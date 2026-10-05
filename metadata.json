@@ -1,0 +1,6 @@
+{
+  "name": "JaliCare",
+  "description": "JaliCare: Commercial multi-tenant Hospital Management Information System for Kenyan health facilities, designed with DHA readiness, NHIF/SHA payer support, and responsive clinical workflows across mobile, tablet, and desktop.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
