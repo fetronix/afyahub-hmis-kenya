@@ -1,14 +1,26 @@
-import crypto from "crypto";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 
 import { db } from "../db";
 import {
   users,
-  sessions,
   loginAttempts,
 } from "../db/schema";
 
 import { verifyPassword } from "../utils/password";
+
+import {
+  createSession,
+  validateSession as validateDatabaseSession,
+  revokeSession as revokeDatabaseSession,
+  revokeAllUserSessions as revokeAllDatabaseSessions,
+} from "./session.service";
+
+import type {
+  LoginInput,
+  AuthenticatedUser,
+  LoginResult,
+} from "./auth.types";
+
 
 /*
 |--------------------------------------------------------------------------
@@ -17,39 +29,9 @@ import { verifyPassword } from "../utils/password";
 */
 
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+
 const LOCKOUT_DURATION_MINUTES = 15;
-const SESSION_DURATION_HOURS = 8;
 
-/*
-|--------------------------------------------------------------------------
-| Types
-|--------------------------------------------------------------------------
-*/
-
-export interface LoginInput {
-  identifier: string;
-  password: string;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-}
-
-export interface AuthenticatedUser {
-  id: number;
-  uid: string;
-  username: string;
-  email: string;
-  fullName: string;
-  tenantId: number | null;
-  facilityId: number | null;
-}
-
-export interface LoginResult {
-  success: boolean;
-  message: string;
-  user?: AuthenticatedUser;
-  sessionToken?: string;
-  expiresAt?: Date;
-}
 
 /*
 |--------------------------------------------------------------------------
@@ -58,42 +40,52 @@ export interface LoginResult {
 */
 
 /**
- * Generate a cryptographically secure random session token.
+ * Convert a database user into the safe user object
+ * returned by the authentication layer.
  *
- * The raw token is returned to the application only once.
- * Only its SHA-256 hash is stored in the database.
+ * Never expose passwordHash or other sensitive fields.
  */
-function generateSessionToken(): string {
-  return crypto.randomBytes(32).toString("hex");
+function toAuthenticatedUser(
+  user: typeof users.$inferSelect,
+): AuthenticatedUser {
+  return {
+    id: user.id,
+    uid: user.uid,
+    username: user.username,
+    email: user.email,
+    fullName: user.fullName,
+    tenantId: user.tenantId,
+    facilityId: user.facilityId,
+    accountStatus: user.accountStatus,
+    mustChangePassword: user.mustChangePassword,
+    mfaEnabled: user.mfaEnabled,
+    mfaRequired: user.mfaRequired,
+  };
 }
 
-/**
- * Hash a session token before storing/searching it.
- */
-function hashSessionToken(token: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(token)
-    .digest("hex");
-}
 
 /**
- * Calculate when the account should be unlocked.
+ * Normalize username/email identifiers.
+ */
+function normalizeIdentifier(
+  identifier: string,
+): string {
+  return identifier
+    .trim()
+    .toLowerCase();
+}
+
+
+/**
+ * Calculate temporary account lock expiration.
  */
 function getLockoutExpiry(): Date {
   return new Date(
-    Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000
+    Date.now() +
+      LOCKOUT_DURATION_MINUTES * 60 * 1000,
   );
 }
 
-/**
- * Calculate session expiration.
- */
-function getSessionExpiry(): Date {
-  return new Date(
-    Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1000
-  );
-}
 
 /*
 |--------------------------------------------------------------------------
@@ -101,121 +93,83 @@ function getSessionExpiry(): Date {
 |--------------------------------------------------------------------------
 */
 
-async function findUser(identifier: string) {
-  const normalizedIdentifier = identifier.trim().toLowerCase();
+async function findUser(
+  identifier: string,
+) {
+  const normalizedIdentifier =
+    normalizeIdentifier(identifier);
 
-  const result = await db
-    .select()
-    .from(users)
-    .where(
-      or(
-        eq(users.username, normalizedIdentifier),
-        eq(users.email, normalizedIdentifier)
+  const result =
+    await db
+      .select()
+      .from(users)
+      .where(
+        or(
+          eq(
+            users.username,
+            normalizedIdentifier,
+          ),
+          eq(
+            users.email,
+            normalizedIdentifier,
+          ),
+        ),
       )
-    )
-    .limit(1);
+      .limit(1);
 
   return result[0] ?? null;
 }
 
+
 /*
 |--------------------------------------------------------------------------
-| Check Account Lockout
+| Record Login Attempt
 |--------------------------------------------------------------------------
 */
 
-function isAccountLocked(user: typeof users.$inferSelect): boolean {
-  if (!user.lockedUntil) {
-    return false;
-  }
+async function recordLoginAttempt(
+  params: {
+    identifier: string;
+    userId?: number;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    successful: boolean;
+    failureReason?: string;
+  },
+): Promise<void> {
+  await db
+    .insert(loginAttempts)
+    .values({
+      usernameOrEmail:
+        params.identifier,
 
-  return user.lockedUntil.getTime() > Date.now();
+      userId:
+        params.userId ?? null,
+
+      ipAddress:
+        params.ipAddress ?? null,
+
+      userAgent:
+        params.userAgent ?? null,
+
+      successful:
+        params.successful,
+
+      failureReason:
+        params.failureReason ?? null,
+    });
 }
 
+
 /*
 |--------------------------------------------------------------------------
-| Login
+| Clear Expired Lockout
 |--------------------------------------------------------------------------
 */
 
-export async function login(
-  input: LoginInput
-): Promise<LoginResult> {
-  const identifier = input.identifier.trim().toLowerCase();
-
-  if (!identifier || !input.password) {
-    return {
-      success: false,
-      message: "Invalid username/email or password.",
-    };
-  }
-
-  /*
-   * Find account
-   */
-  const user = await findUser(identifier);
-
-  /*
-   * Do not reveal whether an account exists.
-   */
-  if (!user) {
-    await db.insert(loginAttempts).values({
-      usernameOrEmail: identifier,
-      userId: null,
-      ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null,
-      successful: false,
-      failureReason: "INVALID_CREDENTIALS",
-    });
-
-    return {
-      success: false,
-      message: "Invalid username/email or password.",
-    };
-  }
-
-  /*
-   * Check whether account is active.
-   */
-  if (!user.isActive || user.accountStatus !== "ACTIVE") {
-    await db.insert(loginAttempts).values({
-      usernameOrEmail: identifier,
-      userId: user.id,
-      ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null,
-      successful: false,
-      failureReason: "ACCOUNT_INACTIVE",
-    });
-
-    return {
-      success: false,
-      message: "This account is not available for login.",
-    };
-  }
-
-  /*
-   * Check account lockout.
-   */
-  if (isAccountLocked(user)) {
-    await db.insert(loginAttempts).values({
-      usernameOrEmail: identifier,
-      userId: user.id,
-      ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null,
-      successful: false,
-      failureReason: "ACCOUNT_LOCKED",
-    });
-
-    return {
-      success: false,
-      message:
-        "This account is temporarily locked. Please try again later.",
-    };
-  }
-
-  /*
-   * If an old lockout has expired, clear it.
-   */
+async function clearExpiredLockout(
+  user: typeof users.$inferSelect,
+): Promise<void> {
   if (
     user.lockedUntil &&
     user.lockedUntil.getTime() <= Date.now()
@@ -224,39 +178,278 @@ export async function login(
       .update(users)
       .set({
         lockedUntil: null,
+
         failedLoginAttempts: 0,
+
         lastFailedLoginAt: null,
-        updatedAt: new Date(),
+
+        accountStatus:
+          user.accountStatus === "LOCKED"
+            ? "ACTIVE"
+            : user.accountStatus,
+
+        updatedAt:
+          new Date(),
       })
-      .where(eq(users.id, user.id));
+      .where(
+        eq(
+          users.id,
+          user.id,
+        ),
+      );
   }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| LOGIN
+|--------------------------------------------------------------------------
+*/
+
+export async function login(
+  input: LoginInput,
+): Promise<LoginResult> {
 
   /*
-   * Account must have a password.
+   * Normalize identifier.
    */
-  if (!user.passwordHash) {
-    await db.insert(loginAttempts).values({
-      usernameOrEmail: identifier,
-      userId: user.id,
-      ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null,
-      successful: false,
-      failureReason: "NO_PASSWORD",
+  const identifier =
+    normalizeIdentifier(
+      input.identifier,
+    );
+
+
+  /*
+   * Basic validation.
+   */
+  if (
+    !identifier ||
+    !input.password
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Invalid username/email or password.",
+
+      error:
+        "INVALID_CREDENTIALS",
+    };
+  }
+
+
+  /*
+   * Find account.
+   *
+   * We deliberately return the same generic
+   * credentials error when the account doesn't exist.
+   */
+  const user =
+    await findUser(identifier);
+
+
+  if (!user) {
+
+    await recordLoginAttempt({
+      identifier,
+
+      ipAddress:
+        input.ipAddress,
+
+      userAgent:
+        input.userAgent,
+
+      successful:
+        false,
+
+      failureReason:
+        "INVALID_CREDENTIALS",
     });
 
     return {
       success: false,
-      message: "This account cannot authenticate with a password.",
+
+      message:
+        "Invalid username/email or password.",
+
+      error:
+        "INVALID_CREDENTIALS",
     };
   }
+
+
+  /*
+   * Clear an expired temporary lock.
+   */
+  if (
+    user.lockedUntil &&
+    user.lockedUntil.getTime() <= Date.now()
+  ) {
+    await clearExpiredLockout(user);
+  }
+
+
+  /*
+   * Check active temporary lock.
+   */
+  if (
+    user.lockedUntil &&
+    user.lockedUntil.getTime() > Date.now()
+  ) {
+
+    await recordLoginAttempt({
+      identifier,
+
+      userId:
+        user.id,
+
+      ipAddress:
+        input.ipAddress,
+
+      userAgent:
+        input.userAgent,
+
+      successful:
+        false,
+
+      failureReason:
+        "ACCOUNT_LOCKED",
+    });
+
+    return {
+      success: false,
+
+      message:
+        "This account is temporarily locked. Please try again later.",
+
+      error:
+        "ACCOUNT_LOCKED",
+    };
+  }
+
+
+  /*
+   * Account availability.
+   */
+  if (
+    !user.isActive ||
+    user.accountStatus === "SUSPENDED" ||
+    user.accountStatus === "DISABLED"
+  ) {
+
+    await recordLoginAttempt({
+      identifier,
+
+      userId:
+        user.id,
+
+      ipAddress:
+        input.ipAddress,
+
+      userAgent:
+        input.userAgent,
+
+      successful:
+        false,
+
+      failureReason:
+        "ACCOUNT_UNAVAILABLE",
+    });
+
+    return {
+      success: false,
+
+      message:
+        "This account is not available for login.",
+
+      error:
+        "ACCOUNT_UNAVAILABLE",
+    };
+  }
+
+
+  /*
+   * Normalize stale LOCKED status.
+   *
+   * If the lock has already expired, the account
+   * should be ACTIVE.
+   */
+  if (
+    user.accountStatus === "LOCKED"
+  ) {
+    await db
+      .update(users)
+      .set({
+        accountStatus:
+          "ACTIVE",
+
+        failedLoginAttempts:
+          0,
+
+        lastFailedLoginAt:
+          null,
+
+        lockedUntil:
+          null,
+
+        updatedAt:
+          new Date(),
+      })
+      .where(
+        eq(
+          users.id,
+          user.id,
+        ),
+      );
+  }
+
+
+  /*
+   * Password must exist.
+   */
+  if (!user.passwordHash) {
+
+    await recordLoginAttempt({
+      identifier,
+
+      userId:
+        user.id,
+
+      ipAddress:
+        input.ipAddress,
+
+      userAgent:
+        input.userAgent,
+
+      successful:
+        false,
+
+      failureReason:
+        "NO_PASSWORD",
+    });
+
+    return {
+      success: false,
+
+      message:
+        "This account cannot authenticate with a password.",
+
+      error:
+        "NO_PASSWORD",
+    };
+  }
+
 
   /*
    * Verify Argon2id password.
    */
-  const passwordValid = await verifyPassword(
-    input.password,
-    user.passwordHash
-  );
+  const passwordValid =
+    await verifyPassword(
+      input.password,
+      user.passwordHash,
+    );
+
 
   /*
    |--------------------------------------------------------------------------
@@ -265,6 +458,7 @@ export async function login(
    */
 
   if (!passwordValid) {
+
     const currentFailedAttempts =
       user.failedLoginAttempts ?? 0;
 
@@ -272,46 +466,190 @@ export async function login(
       currentFailedAttempts + 1;
 
     const shouldLock =
-      newFailedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS;
+      newFailedAttempts >=
+      MAX_FAILED_LOGIN_ATTEMPTS;
 
-    const lockedUntil = shouldLock
-      ? getLockoutExpiry()
-      : null;
+    const lockedUntil =
+      shouldLock
+        ? getLockoutExpiry()
+        : null;
+
+    const now =
+      new Date();
+
 
     await db
       .update(users)
       .set({
-        failedLoginAttempts: newFailedAttempts,
-        lastFailedLoginAt: new Date(),
-        lockedUntil,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, user.id));
 
-    await db.insert(loginAttempts).values({
-      usernameOrEmail: identifier,
-      userId: user.id,
-      ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null,
-      successful: false,
-      failureReason: shouldLock
-        ? "ACCOUNT_LOCKED"
-        : "INVALID_PASSWORD",
+        failedLoginAttempts:
+          newFailedAttempts,
+
+        lastFailedLoginAt:
+          now,
+
+        lockedUntil,
+
+        accountStatus:
+          shouldLock
+            ? "LOCKED"
+            : user.accountStatus,
+
+        updatedAt:
+          now,
+      })
+      .where(
+        eq(
+          users.id,
+          user.id,
+        ),
+      );
+
+
+    await recordLoginAttempt({
+
+      identifier,
+
+      userId:
+        user.id,
+
+      ipAddress:
+        input.ipAddress,
+
+      userAgent:
+        input.userAgent,
+
+      successful:
+        false,
+
+      failureReason:
+        shouldLock
+          ? "ACCOUNT_LOCKED"
+          : "INVALID_PASSWORD",
     });
+
 
     if (shouldLock) {
       return {
         success: false,
+
         message:
           "Too many failed login attempts. Your account has been temporarily locked.",
+
+        error:
+          "ACCOUNT_LOCKED",
       };
     }
 
+
     return {
       success: false,
-      message: "Invalid username/email or password.",
+
+      message:
+        "Invalid username/email or password.",
+
+      error:
+        "INVALID_CREDENTIALS",
     };
   }
+
+
+  /*
+   |--------------------------------------------------------------------------
+   | MFA CHECK
+   |--------------------------------------------------------------------------
+   |
+   | IMPORTANT:
+   |
+   | We do NOT create a normal authenticated session
+   | when MFA is required.
+   |
+   | A proper MFA challenge/session flow should be
+   | implemented before allowing access to protected
+   | resources.
+   |
+   */
+
+  const requiresMfa =
+    user.mfaRequired ||
+    user.mfaEnabled;
+
+
+  /*
+   * If MFA is required, record the successful password
+   * verification but DO NOT create a full session yet.
+   */
+  if (requiresMfa) {
+
+    await db
+      .update(users)
+      .set({
+        failedLoginAttempts:
+          0,
+
+        lastFailedLoginAt:
+          null,
+
+        lockedUntil:
+          null,
+
+        accountStatus:
+          "ACTIVE",
+
+        lastLoginAt:
+          new Date(),
+
+        lastLoginIp:
+          input.ipAddress ?? null,
+
+        updatedAt:
+          new Date(),
+      })
+      .where(
+        eq(
+          users.id,
+          user.id,
+        ),
+      );
+
+
+    await recordLoginAttempt({
+      identifier,
+
+      userId:
+        user.id,
+
+      ipAddress:
+        input.ipAddress,
+
+      userAgent:
+        input.userAgent,
+
+      successful:
+        true,
+
+      failureReason:
+        "MFA_REQUIRED",
+    });
+
+
+    return {
+      success: true,
+
+      message:
+        "Password authentication successful. MFA verification required.",
+
+      user:
+        toAuthenticatedUser(user),
+
+      requiresMfa:
+        true,
+
+      requiresPasswordChange:
+        user.mustChangePassword,
+    };
+  }
+
 
   /*
    |--------------------------------------------------------------------------
@@ -319,9 +657,9 @@ export async function login(
    |--------------------------------------------------------------------------
    */
 
-  const sessionToken = generateSessionToken();
-  const sessionTokenHash = hashSessionToken(sessionToken);
-  const expiresAt = getSessionExpiry();
+  const now =
+    new Date();
+
 
   /*
    * Reset failed login counters.
@@ -329,190 +667,166 @@ export async function login(
   await db
     .update(users)
     .set({
-      failedLoginAttempts: 0,
-      lastFailedLoginAt: null,
-      lockedUntil: null,
-      lastLoginAt: new Date(),
-      lastLoginIp: input.ipAddress ?? null,
-      updatedAt: new Date(),
+
+      failedLoginAttempts:
+        0,
+
+      lastFailedLoginAt:
+        null,
+
+      lockedUntil:
+        null,
+
+      accountStatus:
+        "ACTIVE",
+
+      lastLoginAt:
+        now,
+
+      lastLoginIp:
+        input.ipAddress ?? null,
+
+      updatedAt:
+        now,
     })
-    .where(eq(users.id, user.id));
+    .where(
+      eq(
+        users.id,
+        user.id,
+      ),
+    );
+
 
   /*
-   * Create database session.
+   * Create authenticated database session
+   * through the dedicated session service.
    */
-  await db.insert(sessions).values({
-    userId: user.id,
-    sessionTokenHash,
-    ipAddress: input.ipAddress ?? null,
-    userAgent: input.userAgent ?? null,
-    createdAt: new Date(),
-    lastActivityAt: new Date(),
-    expiresAt,
-    revokedAt: null,
-    revokeReason: null,
-    securityVersion: user.securityVersion ?? 1,
-  });
+  const session =
+    await createSession({
+
+      userId:
+        user.id,
+
+      securityVersion:
+        user.securityVersion,
+
+      ipAddress:
+        input.ipAddress,
+
+      userAgent:
+        input.userAgent,
+    });
+
 
   /*
    * Record successful login.
    */
-  await db.insert(loginAttempts).values({
-    usernameOrEmail: identifier,
-    userId: user.id,
-    ipAddress: input.ipAddress ?? null,
-    userAgent: input.userAgent ?? null,
-    successful: true,
-    failureReason: null,
+  await recordLoginAttempt({
+
+    identifier,
+
+    userId:
+      user.id,
+
+    ipAddress:
+      input.ipAddress,
+
+    userAgent:
+      input.userAgent,
+
+    successful:
+      true,
   });
 
+
+  /*
+   * Return authenticated user.
+   */
   return {
-    success: true,
-    message: "Login successful.",
-    user: {
-      id: user.id,
-      uid: user.uid,
-      username: user.username,
-      email: user.email,
-      fullName: user.fullName,
-      tenantId: user.tenantId,
-      facilityId: user.facilityId,
-    },
-    sessionToken,
-    expiresAt,
+
+    success:
+      true,
+
+    message:
+      user.mustChangePassword
+        ? "Login successful. Password change required."
+        : "Login successful.",
+
+    user:
+      toAuthenticatedUser(user),
+
+    sessionToken:
+      session.sessionToken,
+
+    expiresAt:
+      session.expiresAt,
+
+    requiresMfa:
+      false,
+
+    requiresPasswordChange:
+      user.mustChangePassword,
   };
 }
 
+
 /*
 |--------------------------------------------------------------------------
-| Validate Session
+| VALIDATE SESSION
 |--------------------------------------------------------------------------
 */
 
-export async function validateSession(sessionToken: string) {
-  if (!sessionToken) {
+export async function validateSession(
+  sessionToken: string,
+) {
+  const result =
+    await validateDatabaseSession(
+      sessionToken,
+    );
+
+  if (!result) {
     return null;
   }
-
-  const sessionTokenHash =
-    hashSessionToken(sessionToken);
-
-  const result = await db
-    .select({
-      session: sessions,
-      user: users,
-    })
-    .from(sessions)
-    .innerJoin(
-      users,
-      eq(sessions.userId, users.id)
-    )
-    .where(
-      and(
-        eq(
-          sessions.sessionTokenHash,
-          sessionTokenHash
-        ),
-        isNull(sessions.revokedAt),
-        gt(sessions.expiresAt, new Date()),
-        eq(
-          sessions.securityVersion,
-          users.securityVersion
-        ),
-        eq(users.isActive, true)
-      )
-    )
-    .limit(1);
-
-  if (result.length === 0) {
-    return null;
-  }
-
-  const { session, user } = result[0];
-
-  /*
-   * Update session activity.
-   */
-  await db
-    .update(sessions)
-    .set({
-      lastActivityAt: new Date(),
-    })
-    .where(eq(sessions.id, session.id));
 
   return {
-    session,
-    user: {
-      id: user.id,
-      uid: user.uid,
-      username: user.username,
-      email: user.email,
-      fullName: user.fullName,
-      tenantId: user.tenantId,
-      facilityId: user.facilityId,
-    },
+    session:
+      result.session,
+
+    user:
+      result.user,
   };
 }
 
+
 /*
 |--------------------------------------------------------------------------
-| Revoke Session
+| REVOKE SESSION
 |--------------------------------------------------------------------------
 */
 
 export async function revokeSession(
   sessionToken: string,
-  reason = "LOGOUT"
+  reason = "LOGOUT",
 ): Promise<boolean> {
-  if (!sessionToken) {
-    return false;
-  }
-
-  const sessionTokenHash =
-    hashSessionToken(sessionToken);
-
-  const result = await db
-    .update(sessions)
-    .set({
-      revokedAt: new Date(),
-      revokeReason: reason,
-    })
-    .where(
-      and(
-        eq(
-          sessions.sessionTokenHash,
-          sessionTokenHash
-        ),
-        isNull(sessions.revokedAt)
-      )
-    )
-    .returning({
-      id: sessions.id,
-    });
-
-  return result.length > 0;
+  return revokeDatabaseSession(
+    sessionToken,
+    reason,
+  );
 }
+
 
 /*
 |--------------------------------------------------------------------------
-| Revoke All User Sessions
+| REVOKE ALL USER SESSIONS
 |--------------------------------------------------------------------------
 */
 
 export async function revokeAllUserSessions(
   userId: number,
-  reason = "SECURITY_ACTION"
+  reason = "SECURITY_ACTION",
 ): Promise<void> {
-  await db
-    .update(sessions)
-    .set({
-      revokedAt: new Date(),
-      revokeReason: reason,
-    })
-    .where(
-      and(
-        eq(sessions.userId, userId),
-        isNull(sessions.revokedAt)
-      )
-    );
+  await revokeAllDatabaseSessions(
+    userId,
+    reason,
+  );
 }

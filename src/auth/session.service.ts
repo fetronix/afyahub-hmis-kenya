@@ -5,6 +5,10 @@ import { db } from '../db';
 import { sessions, users } from '../db/schema';
 
 
+/* ============================================================
+   SESSION SECURITY SETTINGS
+   ============================================================ */
+
 const SESSION_DURATION_MS =
   1000 * 60 * 60 * 8; // 8 hours
 
@@ -13,7 +17,9 @@ const SESSION_DURATION_MS =
    HASH SESSION TOKEN
    ============================================================ */
 
-export function hashSessionToken(token: string): string {
+export function hashSessionToken(
+  token: string,
+): string {
   return createHash('sha256')
     .update(token)
     .digest('hex');
@@ -27,39 +33,48 @@ export function hashSessionToken(token: string): string {
 export async function createSession(params: {
   userId: number;
   securityVersion: number;
-  ipAddress?: string;
-  userAgent?: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }) {
-  const sessionToken = randomBytes(48).toString('base64url');
+  const sessionToken =
+    randomBytes(48).toString('base64url');
 
   const sessionTokenHash =
     hashSessionToken(sessionToken);
 
   const now = new Date();
 
-  const expiresAt = new Date(
-    now.getTime() + SESSION_DURATION_MS,
-  );
+  const expiresAt =
+    new Date(
+      now.getTime() +
+        SESSION_DURATION_MS,
+    );
 
-  await db.insert(sessions).values({
-    userId: params.userId,
+  await db
+    .insert(sessions)
+    .values({
+      userId:
+        params.userId,
 
-    sessionTokenHash,
+      sessionTokenHash,
 
-    ipAddress: params.ipAddress ?? null,
+      ipAddress:
+        params.ipAddress ?? null,
 
-    userAgent: params.userAgent ?? null,
+      userAgent:
+        params.userAgent ?? null,
 
-    createdAt: now,
+      createdAt:
+        now,
 
-    lastActivityAt: now,
+      lastActivityAt:
+        now,
 
-    expiresAt,
+      expiresAt,
 
-    securityVersion:
-      params.securityVersion,
-
-  });
+      securityVersion:
+        params.securityVersion,
+    });
 
   return {
     sessionToken,
@@ -75,75 +90,102 @@ export async function createSession(params: {
 export async function validateSession(
   sessionToken: string,
 ) {
-  if (!sessionToken) {
+  if (
+    !sessionToken ||
+    typeof sessionToken !== 'string'
+  ) {
     return null;
   }
 
   const tokenHash =
     hashSessionToken(sessionToken);
 
-  const result = await db
-    .select({
-      session: sessions,
-      user: users,
-    })
-    .from(sessions)
-    .innerJoin(
-      users,
-      eq(sessions.userId, users.id),
-    )
-    .where(
-      and(
+  const result =
+    await db
+      .select({
+        session: sessions,
+        user: users,
+      })
+      .from(sessions)
+      .innerJoin(
+        users,
         eq(
-          sessions.sessionTokenHash,
-          tokenHash,
+          sessions.userId,
+          users.id,
         ),
-        isNull(sessions.revokedAt),
-      ),
-    )
-    .limit(1);
+      )
+      .where(
+        and(
+          eq(
+            sessions.sessionTokenHash,
+            tokenHash,
+          ),
+          isNull(
+            sessions.revokedAt,
+          ),
+        ),
+      )
+      .limit(1);
 
-  if (result.length === 0) {
+  if (
+    result.length === 0
+  ) {
     return null;
   }
 
-  const { session, user } =
-    result[0];
+  const {
+    session,
+    user,
+  } = result[0];
 
-  const now = new Date();
+  const now =
+    new Date();
+
 
   /* ----------------------------------------------------------
-     Session expired
+     SESSION EXPIRED
      ---------------------------------------------------------- */
 
-  if (session.expiresAt <= now) {
+  if (
+    session.expiresAt <= now
+  ) {
     await db
       .update(sessions)
       .set({
-        revokedAt: now,
-        revokeReason: 'SESSION_EXPIRED',
+        revokedAt:
+          now,
+
+        revokeReason:
+          'SESSION_EXPIRED',
       })
       .where(
-        eq(sessions.id, session.id),
+        eq(
+          sessions.id,
+          session.id,
+        ),
       );
 
     return null;
   }
 
+
   /* ----------------------------------------------------------
-     Account disabled
+     ACCOUNT UNAVAILABLE
      ---------------------------------------------------------- */
 
   if (
     !user.isActive ||
-    user.accountStatus === 'DISABLED' ||
-    user.accountStatus === 'SUSPENDED'
+    user.accountStatus ===
+      'DISABLED' ||
+    user.accountStatus ===
+      'SUSPENDED'
   ) {
     return null;
   }
 
+
   /* ----------------------------------------------------------
-     Security version mismatch
+     SECURITY VERSION MISMATCH
      ---------------------------------------------------------- */
 
   if (
@@ -153,29 +195,44 @@ export async function validateSession(
     await db
       .update(sessions)
       .set({
-        revokedAt: now,
+        revokedAt:
+          now,
+
         revokeReason:
           'SECURITY_VERSION_CHANGED',
       })
       .where(
-        eq(sessions.id, session.id),
+        eq(
+          sessions.id,
+          session.id,
+        ),
       );
 
     return null;
   }
 
+
   /* ----------------------------------------------------------
-     Update activity
+     UPDATE LAST ACTIVITY
      ---------------------------------------------------------- */
 
   await db
     .update(sessions)
     .set({
-      lastActivityAt: now,
+      lastActivityAt:
+        now,
     })
     .where(
-      eq(sessions.id, session.id),
+      eq(
+        sessions.id,
+        session.id,
+      ),
     );
+
+
+  /* ----------------------------------------------------------
+     RETURN AUTHENTICATED SESSION
+     ---------------------------------------------------------- */
 
   return {
     session,
@@ -192,27 +249,46 @@ export async function revokeSession(
   sessionToken: string,
   reason = 'USER_LOGOUT',
 ) {
-  const tokenHash =
-    hashSessionToken(sessionToken);
+  if (
+    !sessionToken ||
+    typeof sessionToken !== 'string'
+  ) {
+    return false;
+  }
 
-  const result = await db
-    .update(sessions)
-    .set({
-      revokedAt: new Date(),
-      revokeReason: reason,
-    })
-    .where(
-      and(
-        eq(
-          sessions.sessionTokenHash,
-          tokenHash,
+  const tokenHash =
+    hashSessionToken(
+      sessionToken,
+    );
+
+  const now =
+    new Date();
+
+  const result =
+    await db
+      .update(sessions)
+      .set({
+        revokedAt:
+          now,
+
+        revokeReason:
+          reason,
+      })
+      .where(
+        and(
+          eq(
+            sessions.sessionTokenHash,
+            tokenHash,
+          ),
+          isNull(
+            sessions.revokedAt,
+          ),
         ),
-        isNull(sessions.revokedAt),
-      ),
-    )
-    .returning({
-      id: sessions.id,
-    });
+      )
+      .returning({
+        id:
+          sessions.id,
+      });
 
   return result.length > 0;
 }
@@ -226,16 +302,27 @@ export async function revokeAllUserSessions(
   userId: number,
   reason = 'SECURITY_ACTION',
 ) {
+  const now =
+    new Date();
+
   await db
     .update(sessions)
     .set({
-      revokedAt: new Date(),
-      revokeReason: reason,
+      revokedAt:
+        now,
+
+      revokeReason:
+        reason,
     })
     .where(
       and(
-        eq(sessions.userId, userId),
-        isNull(sessions.revokedAt),
+        eq(
+          sessions.userId,
+          userId,
+        ),
+        isNull(
+          sessions.revokedAt,
+        ),
       ),
     );
 }

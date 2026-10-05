@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import * as queries from './src/db/queries.ts';
 import { seedInitialData } from './src/db/seed.ts';
+import authRoutes from './src/auth/auth.routes.ts';
 import { requireAuth, type AuthRequest } from './src/middleware/auth.ts';
 
 dotenv.config();
@@ -18,6 +19,7 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   const app = express();
   app.use(express.json());
+  app.use('/api/auth', authRoutes);
 
   // Attempt initial seed if empty
   try {

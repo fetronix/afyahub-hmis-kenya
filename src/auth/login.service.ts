@@ -1,4 +1,4 @@
-import { and, eq, or } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 
 import { db } from '../db';
 import {
@@ -50,8 +50,8 @@ function normalizeIdentifier(
 async function recordLoginAttempt(params: {
   identifier: string;
   userId?: number;
-  ipAddress?: string;
-  userAgent?: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
   successful: boolean;
   failureReason?: string;
 }) {
@@ -124,6 +124,7 @@ export async function login(
     };
   }
 
+
   /* ----------------------------------------------------------
      Find account
      ---------------------------------------------------------- */
@@ -142,11 +143,15 @@ export async function login(
 
     await recordLoginAttempt({
       identifier,
+
       ipAddress:
         input.ipAddress,
+
       userAgent:
         input.userAgent,
+
       successful: false,
+
       failureReason:
         'INVALID_CREDENTIALS',
     });
@@ -164,26 +169,31 @@ export async function login(
 
   if (
     !user.isActive ||
-    user.accountStatus ===
-      'DISABLED' ||
-    user.accountStatus ===
-      'SUSPENDED'
+    user.accountStatus === 'DISABLED' ||
+    user.accountStatus === 'SUSPENDED'
   ) {
 
     await recordLoginAttempt({
       identifier,
-      userId: user.id,
+
+      userId:
+        user.id,
+
       ipAddress:
         input.ipAddress,
+
       userAgent:
         input.userAgent,
+
       successful: false,
+
       failureReason:
         'ACCOUNT_UNAVAILABLE',
     });
 
     return {
       success: false,
+
       error:
         'This account is currently unavailable.',
     };
@@ -203,18 +213,25 @@ export async function login(
 
     await recordLoginAttempt({
       identifier,
-      userId: user.id,
+
+      userId:
+        user.id,
+
       ipAddress:
         input.ipAddress,
+
       userAgent:
         input.userAgent,
+
       successful: false,
+
       failureReason:
         'ACCOUNT_LOCKED',
     });
 
     return {
       success: false,
+
       error:
         'Invalid credentials.',
     };
@@ -229,22 +246,30 @@ export async function login(
 
     await recordLoginAttempt({
       identifier,
-      userId: user.id,
+
+      userId:
+        user.id,
+
       ipAddress:
         input.ipAddress,
+
       userAgent:
         input.userAgent,
+
       successful: false,
+
       failureReason:
         'NO_PASSWORD_CONFIGURED',
     });
 
     return {
       success: false,
+
       error:
         'Invalid credentials.',
     };
   }
+
 
   const validPassword =
     await verifyPassword(
@@ -274,9 +299,11 @@ export async function login(
           )
         : null;
 
+
     await db
       .update(users)
       .set({
+
         failedLoginAttempts:
           failedAttempts,
 
@@ -285,28 +312,43 @@ export async function login(
 
         lockedUntil,
 
-        updatedAt: now,
-      })            
+        updatedAt:
+          now,
+      })
       .where(
-        eq(users.id, user.id),
+        eq(
+          users.id,
+          user.id,
+        ),
       );
 
+
     await recordLoginAttempt({
+
       identifier,
-      userId: user.id,
+
+      userId:
+        user.id,
+
       ipAddress:
         input.ipAddress,
+
       userAgent:
         input.userAgent,
-      successful: false,
+
+      successful:
+        false,
+
       failureReason:
         shouldLock
           ? 'ACCOUNT_LOCKED'
           : 'INVALID_CREDENTIALS',
     });
 
+
     return {
       success: false,
+
       error:
         'Invalid credentials.',
     };
@@ -320,34 +362,51 @@ export async function login(
   await db
     .update(users)
     .set({
-      failedLoginAttempts: 0,
 
-      lastFailedLoginAt: null,
+      failedLoginAttempts:
+        0,
 
-      lockedUntil: null,
+      lastFailedLoginAt:
+        null,
 
-      accountStatus: 'ACTIVE',
+      lockedUntil:
+        null,
 
-      lastLoginAt: now,
+      accountStatus:
+        'ACTIVE',
+
+      lastLoginAt:
+        now,
 
       lastLoginIp:
         input.ipAddress ?? null,
 
-      updatedAt: now,
+      updatedAt:
+        now,
     })
     .where(
-      eq(users.id, user.id),
+      eq(
+        users.id,
+        user.id,
+      ),
     );
 
 
   await recordLoginAttempt({
+
     identifier,
-    userId: user.id,
+
+    userId:
+      user.id,
+
     ipAddress:
       input.ipAddress,
+
     userAgent:
       input.userAgent,
-    successful: true,
+
+    successful:
+      true,
   });
 
 
@@ -357,7 +416,9 @@ export async function login(
 
   const session =
     await createSession({
-      userId: user.id,
+
+      userId:
+        user.id,
 
       securityVersion:
         user.securityVersion,
@@ -375,14 +436,26 @@ export async function login(
      ---------------------------------------------------------- */
 
   return {
-    success: true,
+
+    success:
+      true,
 
     user: {
-      id: user.id,
-      uid: user.uid,
-      username: user.username,
-      email: user.email,
-      fullName: user.fullName,
+
+      id:
+        user.id,
+
+      uid:
+        user.uid,
+
+      username:
+        user.username,
+
+      email:
+        user.email,
+
+      fullName:
+        user.fullName,
 
       tenantId:
         user.tenantId,
