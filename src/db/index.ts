@@ -1,34 +1,78 @@
+import 'dotenv/config';
+
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from './schema.ts';
 
-// Add global connection pool caching to persist across hot-reloads
-declare global {
-  var _postgresPool: Pool | undefined;
+
+/* ============================================================
+   DATABASE ENVIRONMENT
+   ============================================================ */
+
+const SQL_HOST = process.env.SQL_HOST;
+const SQL_PORT = process.env.SQL_PORT;
+const SQL_DB_NAME = process.env.SQL_DB_NAME;
+const SQL_ADMIN_USER = process.env.SQL_ADMIN_USER;
+const SQL_ADMIN_PASSWORD = process.env.SQL_ADMIN_PASSWORD;
+
+
+/* ============================================================
+   VALIDATION
+   ============================================================ */
+
+const missing: string[] = [];
+
+if (!SQL_HOST) {
+  missing.push('SQL_HOST');
 }
 
-// Function to create or retrieve the connection pool using platform environment variables
-export const createPool = () => {
-  if (!global._postgresPool) {
-    global._postgresPool = new Pool({
-      host: process.env.SQL_HOST,
-      user: process.env.SQL_USER,
-      password: process.env.SQL_PASSWORD,
-      database: process.env.SQL_DB_NAME,
-      max: 10,
-      connectionTimeoutMillis: 15000,
-    });
+if (!SQL_PORT) {
+  missing.push('SQL_PORT');
+}
 
-    // Prevent unhandled pool-level errors from crashing the application
-    global._postgresPool.on('error', (err) => {
-      console.error('Unexpected error on idle SQL pool client:', err);
-    });
-  }
-  return global._postgresPool;
-};
+if (!SQL_DB_NAME) {
+  missing.push('SQL_DB_NAME');
+}
 
-// Create or retrieve the pool instance lazily
-const pool = createPool();
+if (!SQL_ADMIN_USER) {
+  missing.push('SQL_ADMIN_USER');
+}
 
-// Initialize Drizzle with the pool and schema
-export const db = drizzle(pool, { schema });
+if (!SQL_ADMIN_PASSWORD) {
+  missing.push('SQL_ADMIN_PASSWORD');
+}
+
+if (missing.length > 0) {
+  throw new Error(
+    `Missing required database environment variables: ${missing.join(', ')}`,
+  );
+}
+
+
+/* ============================================================
+   POSTGRESQL CONNECTION POOL
+   ============================================================ */
+
+export const pool = new Pool({
+  host: SQL_HOST,
+  port: Number(SQL_PORT),
+  database: SQL_DB_NAME,
+  user: SQL_ADMIN_USER,
+  password: SQL_ADMIN_PASSWORD,
+
+  /*
+   * Connection pool settings.
+   */
+
+  max: 10,
+
+  idleTimeoutMillis: 30_000,
+
+  connectionTimeoutMillis: 10_000,
+});
+
+
+/* ============================================================
+   DRIZZLE
+   ============================================================ */
+
+export const db = drizzle(pool);
