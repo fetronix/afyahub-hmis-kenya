@@ -425,7 +425,7 @@ export const rolePermissions = pgTable(
   }),
 );
 
-
+   
 /* ============================================================
    9. USERS
    PostgreSQL-backed authentication
