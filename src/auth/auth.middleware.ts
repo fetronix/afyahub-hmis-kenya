@@ -1,4 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
+import type {
+  AuthorizationContext,
+} from "./authorization.types";
 
 import {
   validateSession,
@@ -14,11 +17,14 @@ import type {
 
 export interface AuthRequest extends Request {
   user?: AuthenticatedUser;
+
   session?: {
     id: number;
     userId: number;
     expiresAt: Date;
   };
+
+  authContext?: AuthorizationContext;
 }
 
 function getSessionToken(

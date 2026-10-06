@@ -2,6 +2,12 @@ import { db } from './index.ts';
 import * as schema from './schema.ts';
 import { eq, desc, and, or, ilike, sql } from 'drizzle-orm';
 
+import type { AuthorizationContext } from '../auth/authorization.types.ts';
+import {
+  requireTenantScope,
+  requireFacilityScope,
+} from '../auth/scope.service.ts';
+
 // Tenants
 export async function getTenants() {
   try {
@@ -32,6 +38,323 @@ export async function getFacilities(tenantId?: number) {
   } catch (error) {
     console.error('Error fetching facilities:', error);
     throw new Error('Failed to fetch facilities', { cause: error });
+  }
+}
+
+// =========================================================
+// SECURE TENANT / FACILITY SCOPE QUERIES
+// =========================================================
+
+/**
+ * Get a tenant only if the authenticated user
+ * is authorized to access that tenant.
+ *
+ * IMPORTANT:
+ * This function performs the authorization check BEFORE
+ * returning tenant data.
+ */
+export async function getTenantByIdScoped(
+  context: AuthorizationContext,
+  tenantId: number,
+) {
+  try {
+    requireTenantScope(
+      context,
+      tenantId,
+    );
+
+    const result = await db
+      .select()
+      .from(schema.tenants)
+      .where(
+        and(
+          eq(schema.tenants.id, tenantId),
+          eq(schema.tenants.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    return result[0] || null;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === 'ScopeAccessError'
+    ) {
+      throw error;
+    }
+
+    console.error(
+      'Error fetching scoped tenant:',
+      error,
+    );
+
+    throw new Error(
+      'Failed to fetch tenant',
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Get tenants visible to the authenticated user.
+ *
+ * SUPER_ADMIN:
+ *   All active tenants.
+ *
+ * Tenant user:
+ *   Only their own tenant.
+ *
+ * Facility user:
+ *   Only their own tenant.
+ */
+export async function getTenantsScoped(
+  context: AuthorizationContext,
+) {
+  try {
+    if (
+      context.tenantId === null
+    ) {
+      return await db
+        .select()
+        .from(schema.tenants)
+        .where(
+          eq(
+            schema.tenants.isActive,
+            true,
+          ),
+        );
+    }
+
+    return await db
+      .select()
+      .from(schema.tenants)
+      .where(
+        and(
+          eq(
+            schema.tenants.id,
+            context.tenantId,
+          ),
+          eq(
+            schema.tenants.isActive,
+            true,
+          ),
+        ),
+      );
+  } catch (error) {
+    console.error(
+      'Error fetching scoped tenants:',
+      error,
+    );
+
+    throw new Error(
+      'Failed to fetch tenants',
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Get facilities visible to the authenticated user.
+ *
+ * SUPER_ADMIN:
+ *   Can see facilities for any requested tenant.
+ *
+ * TENANT user:
+ *   Can see facilities only within their tenant.
+ *
+ * FACILITY user:
+ *   Can see only their assigned facility.
+ *
+ * The requested tenantId is NEVER allowed to override
+ * the authenticated user's actual tenant.
+ */
+export async function getFacilitiesScoped(
+  context: AuthorizationContext,
+  requestedTenantId?: number,
+) {
+  try {
+    /*
+     * SUPER_ADMIN
+     *
+     * They can request a specific tenant's facilities.
+     * If no tenant is supplied, they can see all facilities.
+     */
+    if (
+      context.tenantId === null
+    ) {
+      if (
+        requestedTenantId !== undefined
+      ) {
+        requireTenantScope(
+          context,
+          requestedTenantId,
+        );
+
+        return await db
+          .select()
+          .from(schema.facilities)
+          .where(
+            eq(
+              schema.facilities.tenantId,
+              requestedTenantId,
+            ),
+          );
+      }
+
+      return await db
+        .select()
+        .from(schema.facilities);
+    }
+
+    /*
+     * Normal tenant user
+     *
+     * The authenticated tenant is authoritative.
+     */
+    const tenantId =
+      context.tenantId;
+
+    requireTenantScope(
+      context,
+      tenantId,
+    );
+
+    /*
+     * If the frontend supplied another tenantId,
+     * requireTenantScope above will reject it.
+     */
+    if (
+      requestedTenantId !== undefined
+    ) {
+      requireTenantScope(
+        context,
+        requestedTenantId,
+      );
+    }
+
+    /*
+     * Facility-level user:
+     * return ONLY their facility.
+     */
+    if (
+      context.facilityId !== null
+    ) {
+      return await db
+        .select()
+        .from(schema.facilities)
+        .where(
+          and(
+            eq(
+              schema.facilities.id,
+              context.facilityId,
+            ),
+            eq(
+              schema.facilities.tenantId,
+              tenantId,
+            ),
+          ),
+        );
+    }
+
+    /*
+     * Tenant-level user:
+     * return all facilities belonging
+     * to their tenant.
+     */
+    return await db
+      .select()
+      .from(schema.facilities)
+      .where(
+        eq(
+          schema.facilities.tenantId,
+          tenantId,
+        ),
+      );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === 'ScopeAccessError'
+    ) {
+      throw error;
+    }
+
+    console.error(
+      'Error fetching scoped facilities:',
+      error,
+    );
+
+    throw new Error(
+      'Failed to fetch facilities',
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Get a specific facility only when the authenticated
+ * user is authorized to access it.
+ *
+ * The facility's tenantId is read FROM THE DATABASE.
+ * It is never trusted from the request.
+ */
+export async function getFacilityByIdScoped(
+  context: AuthorizationContext,
+  facilityId: number,
+) {
+  try {
+    const facilityResult =
+      await db
+        .select()
+        .from(schema.facilities)
+        .where(
+          eq(
+            schema.facilities.id,
+            facilityId,
+          ),
+        )
+        .limit(1);
+
+    const facility =
+      facilityResult[0];
+
+    if (!facility) {
+      return null;
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * facility.tenantId comes from the database.
+     *
+     * We do NOT use:
+     *
+     * req.query.tenantId
+     * req.body.tenantId
+     */
+    requireFacilityScope(
+      context,
+      facility.tenantId,
+      facility.id,
+    );
+
+    return facility;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === 'ScopeAccessError'
+    ) {
+      throw error;
+    }
+
+    console.error(
+      'Error fetching scoped facility:',
+      error,
+    );
+
+    throw new Error(
+      'Failed to fetch facility',
+      { cause: error },
+    );
   }
 }
 

@@ -32,6 +32,22 @@ import {
 
 const API_BASE = '/api';
 
+
+
+export interface AuthenticatedUser {
+  id: number;
+  uid: string;
+  username: string;
+  email: string;
+  fullName: string;
+  tenantId: number | null;
+  facilityId: number | null;
+  accountStatus: string;
+  mustChangePassword: boolean;
+  mfaEnabled: boolean;
+  mfaRequired: boolean;
+}
+
 /**
  * Session storage
  *
