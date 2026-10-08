@@ -185,7 +185,7 @@ export async function seedInitialData() {
     // 5. Patients
     const [patient1] = await db.insert(schema.patients).values({
       tenantId: tenant1.id,
-      facilityId: facility1.id,
+      registrationFacilityId: facility1.id,
       mrn: 'MRN-2026-0041',
       firstName: 'Juma',
       lastName: 'Otieno',
@@ -214,7 +214,7 @@ export async function seedInitialData() {
 
     const [patient2] = await db.insert(schema.patients).values({
       tenantId: tenant1.id,
-      facilityId: facility1.id,
+      registrationFacilityId: facility1.id,
       mrn: 'MRN-2026-0042',
       firstName: 'Mary',
       lastName: 'Mwangi',
@@ -243,7 +243,7 @@ export async function seedInitialData() {
 
     const [patient3] = await db.insert(schema.patients).values({
       tenantId: tenant1.id,
-      facilityId: facility1.id,
+      registrationFacilityId: facility1.id,
       mrn: 'MRN-2026-0043',
       firstName: 'Brian',
       lastName: 'Chepkwony',
@@ -269,7 +269,7 @@ export async function seedInitialData() {
 
     const [patient4] = await db.insert(schema.patients).values({
       tenantId: tenant1.id,
-      facilityId: facility1.id,
+      registrationFacilityId: facility1.id,
       mrn: 'MRN-2026-0044',
       firstName: 'Hassan',
       lastName: 'Mohamed',

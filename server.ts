@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 import * as queries from './src/db/queries.ts';
-import { seedInitialData } from './src/db/seed.ts';
 import authRoutes from './src/auth/auth.routes.ts';
 
 
@@ -44,18 +43,6 @@ async function startServer() {
    */
   app.use('/api/auth', authRoutes);
 
-  /*
-   * =========================================================
-   * INITIAL DATABASE SEED
-   * =========================================================
-   *
-   * This checks whether the initial data exists.
-   */
-  try {
-    await seedInitialData();
-  } catch (err) {
-    console.error('Initial seeding check failed:', err);
-  }
 
   /*
    * =========================================================
@@ -76,35 +63,6 @@ async function startServer() {
       dhaReadiness: 'Level 4 / Level 5 Compliant Architecture',
       timestamp: new Date().toISOString(),
     });
-  });
-
-  /*
-   * =========================================================
-   * SEED TRIGGER
-   * =========================================================
-   *
-   * The seed endpoint is no longer public.
-   *
-   * NOTE:
-   * This currently requires authentication.
-   * Later we will restrict this specifically to SUPER_ADMIN
-   * or remove this endpoint from production completely.
-   */
-  app.post('/api/seed', requireAuth, async (req, res) => {
-    try {
-      await seedInitialData();
-
-      res.json({
-        success: true,
-        message: 'Database seeded successfully',
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        error:
-          error.message ||
-          'Failed to seed database',
-      });
-    }
   });
 
   /*
@@ -477,7 +435,7 @@ app.use('/api', requireAuthorization);
 
       await queries.logAuditEvent(
         patient.tenantId,
-        patient.facilityId,
+        patient.registrationFacilityId,
         'Staff',
         'CREATE',
         'Patient',
@@ -1706,7 +1664,7 @@ app.use('/api', requireAuthorization);
 
         managingOrganization: {
           reference:
-            `Organization/MFL-${patient.facilityId}`,
+            `Organization/MFL-${patient.registrationFacilityId}`,
 
           display:
             'Kenya Ministry of Health Facility',

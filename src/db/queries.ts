@@ -372,16 +372,33 @@ export async function getDepartments(facilityId?: number) {
 }
 
 // Patients
-export async function getPatients(tenantId?: number, facilityId?: number, search?: string) {
+export async function getPatients(
+  tenantId?: number,
+  facilityId?: number,
+  search?: string,
+) {
   try {
     let query = db.select().from(schema.patients);
     const conditions = [];
 
-    if (tenantId) conditions.push(eq(schema.patients.tenantId, tenantId));
-    if (facilityId) conditions.push(eq(schema.patients.facilityId, facilityId));
+    if (tenantId) {
+      conditions.push(
+        eq(schema.patients.tenantId, tenantId),
+      );
+    }
+
+    if (facilityId) {
+      conditions.push(
+        eq(
+          schema.patients.registrationFacilityId,
+          facilityId,
+        ),
+      );
+    }
 
     if (search && search.trim() !== '') {
       const searchTerm = `%${search.trim()}%`;
+
       conditions.push(
         or(
           ilike(schema.patients.firstName, searchTerm),
@@ -389,18 +406,28 @@ export async function getPatients(tenantId?: number, facilityId?: number, search
           ilike(schema.patients.mrn, searchTerm),
           ilike(schema.patients.phone, searchTerm),
           ilike(schema.patients.nationalId, searchTerm),
-          ilike(schema.patients.shaNumber, searchTerm)
-        )
+          ilike(schema.patients.shaNumber, searchTerm),
+        ),
       );
     }
 
     if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.patients.createdAt)).limit(50);
+      return await query
+        .where(and(...conditions))
+        .orderBy(desc(schema.patients.createdAt))
+        .limit(50);
     }
-    return await query.orderBy(desc(schema.patients.createdAt)).limit(50);
+
+    return await query
+      .orderBy(desc(schema.patients.createdAt))
+      .limit(50);
   } catch (error) {
     console.error('Error fetching patients:', error);
-    throw new Error('Failed to fetch patients', { cause: error });
+
+    throw new Error(
+      'Failed to fetch patients',
+      { cause: error },
+    );
   }
 }
 

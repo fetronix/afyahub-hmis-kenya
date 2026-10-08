@@ -7,6 +7,7 @@ import {
   boolean,
   numeric,
   jsonb,
+  date,
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
@@ -1046,7 +1047,6 @@ export const practitioners = pgTable(
   }),
 );
 
-
 /* ============================================================
    17. PATIENTS
    ============================================================ */
@@ -1060,7 +1060,16 @@ export const patients = pgTable(
       .references(() => tenants.id)
       .notNull(),
 
-    facilityId: integer('facility_id')
+    /*
+      The facility where the patient was first registered.
+
+      IMPORTANT:
+      This is NOT the patient's permanent facility.
+      A patient may receive care at multiple facilities.
+    */
+    registrationFacilityId: integer(
+      'registration_facility_id',
+    )
       .references(() => facilities.id)
       .notNull(),
 
@@ -1068,20 +1077,31 @@ export const patients = pgTable(
       .notNull()
       .unique(),
 
-    firstName: text('first_name').notNull(),
+    firstName: text('first_name')
+      .notNull(),
 
-    lastName: text('last_name').notNull(),
+    lastName: text('last_name')
+      .notNull(),
 
     middleName: text('middle_name'),
 
-    dateOfBirth: text('date_of_birth').notNull(),
+    dateOfBirth: date('date_of_birth')
+      .notNull(),
 
-    gender: text('gender').notNull(),
+    gender: text('gender')
+      .notNull(),
 
-    phone: text('phone').notNull(),
+    phone: text('phone')
+      .notNull(),
 
     email: text('email'),
 
+    /*
+      Keep primary identifiers here only if needed for
+      fast lookup.
+
+      Full identifier history is stored in patientIdentifiers.
+    */
     nationalId: text('national_id'),
 
     shaNumber: text('sha_number'),
@@ -1092,32 +1112,69 @@ export const patients = pgTable(
 
     occupation: text('occupation'),
 
-    county: text('county').default('Nairobi'),
+    county: text('county'),
 
-    subCounty: text('sub_county').default('Westlands'),
+    subCounty: text('sub_county'),
 
-    residentialAddress: text('residential_address'),
+    residentialAddress: text(
+      'residential_address',
+    ),
 
-    emergencyContactName: text('emergency_contact_name'),
+    emergencyContactName: text(
+      'emergency_contact_name',
+    ),
 
-    emergencyContactPhone: text('emergency_contact_phone'),
+    emergencyContactPhone: text(
+      'emergency_contact_phone',
+    ),
 
     emergencyContactRelationship: text(
       'emergency_contact_relationship',
     ),
 
-    allergies: text('allergies')
-      .default('None known'),
+    /*
+      These remain as summary fields.
 
-    chronicConditions: text('chronic_conditions')
-      .default('None known'),
+      Detailed clinical information should eventually
+      live in dedicated clinical tables.
+    */
+    allergies: text('allergies'),
+
+    chronicConditions: text(
+      'chronic_conditions',
+    ),
 
     payerType: text('payer_type')
-      .default('Self-Pay'),
+      .default('SELF_PAY')
+      .notNull(),
 
-    insuranceProvider: text('insurance_provider'),
+    insuranceProvider: text(
+      'insurance_provider',
+    ),
 
     policyNumber: text('policy_number'),
+
+    /*
+      ACTIVE
+      INACTIVE
+      DECEASED
+      MERGED
+    */
+    status: text('status')
+      .default('ACTIVE')
+      .notNull(),
+
+    deceasedAt: timestamp(
+      'deceased_at',
+    ),
+
+    /*
+      If duplicate patients are merged, retain
+      the surviving patient relationship.
+    */
+    mergedIntoPatientId: integer(
+      'merged_into_patient_id',
+    ),
 
     createdAt: timestamp('created_at')
       .defaultNow()
@@ -1128,11 +1185,14 @@ export const patients = pgTable(
       .notNull(),
   },
   (table) => ({
-    tenantFacilityIdx: index(
-      'patients_tenant_facility_idx',
+    tenantIdx: index(
+      'patients_tenant_idx',
+    ).on(table.tenantId),
+
+    registrationFacilityIdx: index(
+      'patients_registration_facility_idx',
     ).on(
-      table.tenantId,
-      table.facilityId,
+      table.registrationFacilityId,
     ),
 
     nationalIdIdx: index(
@@ -1142,12 +1202,234 @@ export const patients = pgTable(
     shaIdx: index(
       'patients_sha_idx',
     ).on(table.shaNumber),
+
+    phoneIdx: index(
+      'patients_phone_idx',
+    ).on(table.phone),
+
+    statusIdx: index(
+      'patients_status_idx',
+    ).on(table.status),
+
+    mergedIntoIdx: index(
+      'patients_merged_into_idx',
+    ).on(table.mergedIntoPatientId),
   }),
 );
 
 
 /* ============================================================
-   18. PATIENT IDENTIFIERS
+   18. PATIENT FACILITY RELATIONSHIPS
+   ============================================================
+
+   Allows one patient to receive care at multiple facilities
+   without creating duplicate patient identities.
+
+   Example:
+
+   Patient
+      |
+      +--- Facility A
+      |
+      +--- Facility B
+      |
+      +--- Facility C
+
+   Historical encounters remain owned by their original
+   facility.
+   ============================================================ */
+
+export const patientFacilities = pgTable(
+  'patient_facilities',
+  {
+    id: serial('id').primaryKey(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    /*
+      PRIMARY
+      CARE
+      REFERRAL
+      CONSULTATION
+      FOLLOW_UP
+      HISTORICAL
+    */
+    relationshipType: text(
+      'relationship_type',
+    )
+      .default('CARE')
+      .notNull(),
+
+    /*
+      ACTIVE
+      INACTIVE
+    */
+    status: text('status')
+      .default('ACTIVE')
+      .notNull(),
+
+    firstSeenAt: timestamp(
+      'first_seen_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    lastSeenAt: timestamp(
+      'last_seen_at',
+    ),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp(
+      'updated_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    patientIdx: index(
+      'patient_facilities_patient_idx',
+    ).on(table.patientId),
+
+    facilityIdx: index(
+      'patient_facilities_facility_idx',
+    ).on(table.facilityId),
+
+    tenantIdx: index(
+      'patient_facilities_tenant_idx',
+    ).on(table.tenantId),
+
+    patientFacilityUnique: uniqueIndex(
+      'patient_facilities_unique_idx',
+    ).on(
+      table.patientId,
+      table.facilityId,
+    ),
+  }),
+);
+
+
+/* ============================================================
+   19. PATIENT ACCOUNTS
+   ============================================================
+
+   Connects a patient clinical identity to a JaliCare user.
+
+   Authentication credentials remain in users.
+
+   Patient clinical identity remains in patients.
+
+   Patient portal access is separated from staff access.
+   ============================================================ */
+
+export const patientAccounts = pgTable(
+  'patient_accounts',
+  {
+    id: serial('id').primaryKey(),
+
+    userId: integer('user_id')
+      .references(() => users.id)
+      .notNull()
+      .unique(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull()
+      .unique(),
+
+    /*
+      PENDING
+      ACTIVE
+      SUSPENDED
+      DISABLED
+    */
+    status: text('status')
+      .default('PENDING')
+      .notNull(),
+
+    /*
+      Indicates that the patient has completed
+      portal verification.
+    */
+    accountVerifiedAt: timestamp(
+      'account_verified_at',
+    ),
+
+    /*
+      Timestamp of first successful portal activation.
+    */
+    activatedAt: timestamp(
+      'activated_at',
+    ),
+
+    lastPortalLoginAt: timestamp(
+      'last_portal_login_at',
+    ),
+
+    lastPortalAccessAt: timestamp(
+      'last_portal_access_at',
+    ),
+
+    disabledAt: timestamp(
+      'disabled_at',
+    ),
+
+    disabledReason: text(
+      'disabled_reason',
+    ),
+
+    /*
+      Used for portal preferences without mixing
+      clinical information into the authentication table.
+    */
+    preferences: jsonb('preferences')
+      .default({})
+      .notNull(),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp(
+      'updated_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    userIdx: uniqueIndex(
+      'patient_accounts_user_idx',
+    ).on(table.userId),
+
+    patientIdx: uniqueIndex(
+      'patient_accounts_patient_idx',
+    ).on(table.patientId),
+
+    statusIdx: index(
+      'patient_accounts_status_idx',
+    ).on(table.status),
+  }),
+);
+
+
+/* ============================================================
+   20. PATIENT IDENTIFIERS
    ============================================================ */
 
 export const patientIdentifiers = pgTable(
@@ -1159,18 +1441,51 @@ export const patientIdentifiers = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    idType: text('id_type').notNull(),
+    /*
+      NATIONAL_ID
+      PASSPORT
+      BIRTH_CERTIFICATE
+      SHA
+      NHIF_LEGACY
+      FACILITY_MRN
+      OTHER
+    */
+    idType: text('id_type')
+      .notNull(),
 
-    idValue: text('id_value').notNull(),
+    idValue: text('id_value')
+      .notNull(),
 
-    issuingAuthority: text('issuing_authority')
-      .default('Government of Kenya'),
+    issuingAuthority: text(
+      'issuing_authority',
+    ),
 
     isPrimary: boolean('is_primary')
       .default(false)
       .notNull(),
 
-    createdAt: timestamp('created_at')
+    verified: boolean('verified')
+      .default(false)
+      .notNull(),
+
+    verifiedAt: timestamp(
+      'verified_at',
+    ),
+
+    verifiedByUserId: integer(
+      'verified_by_user_id',
+    )
+      .references(() => users.id),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp(
+      'updated_at',
+    )
       .defaultNow()
       .notNull(),
   },
@@ -1185,12 +1500,839 @@ export const patientIdentifiers = pgTable(
       table.idType,
       table.idValue,
     ),
+
+    verifiedIdx: index(
+      'patient_identifiers_verified_idx',
+    ).on(table.verified),
   }),
 );
 
 
 /* ============================================================
-   19. CLINICAL ENCOUNTERS
+   21. PATIENT CONSENTS
+   ============================================================ */
+
+export const patientConsents = pgTable(
+  'patient_consents',
+  {
+    id: serial('id').primaryKey(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    grantedByUserId: integer(
+      'granted_by_user_id',
+    )
+      .references(() => users.id),
+
+    recipientFacilityId: integer(
+      'recipient_facility_id',
+    )
+      .references(() => facilities.id),
+
+    recipientUserId: integer(
+      'recipient_user_id',
+    )
+      .references(() => users.id),
+
+    purpose: text('purpose')
+      .notNull(),
+
+    /*
+      ACTIVE
+      REVOKED
+      EXPIRED
+      USED
+    */
+    status: text('status')
+      .default('ACTIVE')
+      .notNull(),
+
+    /*
+      Example:
+
+      {
+        "patientProfile": true,
+        "encounters": true,
+        "laboratory": true,
+        "radiology": true,
+        "medications": true,
+        "diagnoses": true,
+        "procedures": false,
+        "billing": false
+      }
+    */
+    scope: jsonb('scope')
+      .default({})
+      .notNull(),
+
+    grantedAt: timestamp(
+      'granted_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    expiresAt: timestamp(
+      'expires_at',
+    ),
+
+    revokedAt: timestamp(
+      'revoked_at',
+    ),
+
+    revokedByUserId: integer(
+      'revoked_by_user_id',
+    )
+      .references(() => users.id),
+
+    consentVersion: integer(
+      'consent_version',
+    )
+      .default(1)
+      .notNull(),
+
+    /*
+      Stores the version of the consent form/
+      terms that the patient accepted.
+    */
+    consentDocumentHash: text(
+      'consent_document_hash',
+    ),
+
+    /*
+      Useful for electronic consent evidence.
+    */
+    consentMethod: text(
+      'consent_method',
+    ),
+
+    /*
+      PATIENT_PORTAL
+      STAFF
+      EMERGENCY
+      OTHER
+    */
+    grantedThrough: text(
+      'granted_through',
+    ),
+
+    metadata: jsonb('metadata')
+      .default({})
+      .notNull(),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp(
+      'updated_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    patientIdx: index(
+      'patient_consents_patient_idx',
+    ).on(table.patientId),
+
+    recipientFacilityIdx: index(
+      'patient_consents_recipient_facility_idx',
+    ).on(table.recipientFacilityId),
+
+    recipientUserIdx: index(
+      'patient_consents_recipient_user_idx',
+    ).on(table.recipientUserId),
+
+    statusIdx: index(
+      'patient_consents_status_idx',
+    ).on(table.status),
+
+    expiryIdx: index(
+      'patient_consents_expiry_idx',
+    ).on(table.expiresAt),
+  }),
+);
+
+
+/* ============================================================
+   22. PATIENT RECORD ACCESS LOG
+   ============================================================
+
+   Records every important access to patient information.
+
+   This is separate from the general audit log because
+   patient-data access is security-sensitive.
+   ============================================================ */
+
+export const patientRecordAccessLogs = pgTable(
+  'patient_record_access_logs',
+  {
+    id: serial('id').primaryKey(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    userId: integer('user_id')
+      .references(() => users.id),
+
+    facilityId: integer(
+      'facility_id',
+    )
+      .references(() => facilities.id),
+
+    tenantId: integer(
+      'tenant_id',
+    )
+      .references(() => tenants.id),
+
+    /*
+      VIEW
+      DOWNLOAD
+      EXPORT
+      SHARE
+      UPDATE
+      CREATE
+      PRINT
+      IMPORT
+    */
+    action: text('action')
+      .notNull(),
+
+    /*
+      PATIENT_PORTAL
+      STAFF_PORTAL
+      API
+      REFERRAL
+      FHIR
+      EMERGENCY
+    */
+    accessChannel: text(
+      'access_channel',
+    ),
+
+    recordType: text(
+      'record_type',
+    ),
+
+    recordId: integer(
+      'record_id',
+    ),
+
+    purpose: text('purpose'),
+
+    ipAddress: text(
+      'ip_address',
+    ),
+
+    userAgent: text(
+      'user_agent',
+    ),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    patientIdx: index(
+      'patient_record_access_patient_idx',
+    ).on(table.patientId),
+
+    userIdx: index(
+      'patient_record_access_user_idx',
+    ).on(table.userId),
+
+    facilityIdx: index(
+      'patient_record_access_facility_idx',
+    ).on(table.facilityId),
+
+    createdIdx: index(
+      'patient_record_access_created_idx',
+    ).on(table.createdAt),
+  }),
+);
+
+
+/* ============================================================
+   23. REFERRALS
+   ============================================================ */
+
+export const referrals = pgTable(
+  'referrals',
+  {
+    id: serial('id').primaryKey(),
+
+    referralNumber: text(
+      'referral_number',
+    )
+      .notNull()
+      .unique(),
+
+    patientId: integer(
+      'patient_id',
+    )
+      .references(() => patients.id)
+      .notNull(),
+
+    sourceTenantId: integer(
+      'source_tenant_id',
+    )
+      .references(() => tenants.id)
+      .notNull(),
+
+    sourceFacilityId: integer(
+      'source_facility_id',
+    )
+      .references(() => facilities.id)
+      .notNull(),
+
+    destinationTenantId: integer(
+      'destination_tenant_id',
+    )
+      .references(() => tenants.id),
+
+    destinationFacilityId: integer(
+      'destination_facility_id',
+    )
+      .references(() => facilities.id),
+
+    destinationDepartmentId: integer(
+      'destination_department_id',
+    )
+      .references(() => departments.id),
+
+    externalDestinationName: text(
+      'external_destination_name',
+    ),
+
+    externalDestinationContact: text(
+      'external_destination_contact',
+    ),
+
+    referringPractitionerId: integer(
+      'referring_practitioner_id',
+    )
+      .references(() => practitioners.id),
+
+    referredByUserId: integer(
+      'referred_by_user_id',
+    )
+      .references(() => users.id),
+
+    receivingPractitionerId: integer(
+      'receiving_practitioner_id',
+    )
+      .references(() => practitioners.id),
+
+    reason: text('reason')
+      .notNull(),
+
+    clinicalSummary: text(
+      'clinical_summary',
+    ),
+
+    /*
+      ROUTINE
+      URGENT
+      EMERGENCY
+    */
+    urgency: text('urgency')
+      .default('ROUTINE')
+      .notNull(),
+
+    /*
+      DRAFT
+      SENT
+      ACCEPTED
+      DECLINED
+      PATIENT_SEEN
+      COMPLETED
+      CANCELLED
+    */
+    status: text('status')
+      .default('DRAFT')
+      .notNull(),
+
+    requestedAt: timestamp(
+      'requested_at',
+    ),
+
+    sentAt: timestamp(
+      'sent_at',
+    ),
+
+    acceptedAt: timestamp(
+      'accepted_at',
+    ),
+
+    patientSeenAt: timestamp(
+      'patient_seen_at',
+    ),
+
+    completedAt: timestamp(
+      'completed_at',
+    ),
+
+    cancelledAt: timestamp(
+      'cancelled_at',
+    ),
+
+    cancellationReason: text(
+      'cancellation_reason',
+    ),
+
+    /*
+      Clinical response from receiving facility.
+    */
+    receivingClinicalSummary: text(
+      'receiving_clinical_summary',
+    ),
+
+    receivingNotes: text(
+      'receiving_notes',
+    ),
+
+    responseAt: timestamp(
+      'response_at',
+    ),
+
+    metadata: jsonb('metadata')
+      .default({})
+      .notNull(),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp(
+      'updated_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    patientIdx: index(
+      'referrals_patient_idx',
+    ).on(table.patientId),
+
+    sourceFacilityIdx: index(
+      'referrals_source_facility_idx',
+    ).on(table.sourceFacilityId),
+
+    destinationFacilityIdx: index(
+      'referrals_destination_facility_idx',
+    ).on(table.destinationFacilityId),
+
+    destinationDepartmentIdx: index(
+      'referrals_destination_department_idx',
+    ).on(table.destinationDepartmentId),
+
+    statusIdx: index(
+      'referrals_status_idx',
+    ).on(table.status),
+
+    referralNumberIdx: uniqueIndex(
+      'referrals_number_idx',
+    ).on(table.referralNumber),
+  }),
+);
+
+
+/* ============================================================
+   24. REFERRAL DOCUMENTS
+   ============================================================ */
+
+export const referralDocuments = pgTable(
+  'referral_documents',
+  {
+    id: serial('id').primaryKey(),
+
+    referralId: integer(
+      'referral_id',
+    )
+      .references(() => referrals.id)
+      .notNull(),
+
+    patientId: integer(
+      'patient_id',
+    )
+      .references(() => patients.id)
+      .notNull(),
+
+    documentType: text(
+      'document_type',
+    ).notNull(),
+
+    documentName: text(
+      'document_name',
+    ).notNull(),
+
+    storageKey: text(
+      'storage_key',
+    ),
+
+    /*
+      Avoid treating this as a permanent public URL.
+      Prefer signed/private storage access.
+    */
+    documentUrl: text(
+      'document_url',
+    ),
+
+    mimeType: text(
+      'mime_type',
+    ),
+
+    fileSize: integer(
+      'file_size',
+    ),
+
+    documentHash: text(
+      'document_hash',
+    ),
+
+    uploadedByUserId: integer(
+      'uploaded_by_user_id',
+    )
+      .references(() => users.id),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    referralIdx: index(
+      'referral_documents_referral_idx',
+    ).on(table.referralId),
+
+    patientIdx: index(
+      'referral_documents_patient_idx',
+    ).on(table.patientId),
+  }),
+);
+
+
+/* ============================================================
+   25. REFERRAL ACCESS LOG
+   ============================================================ */
+
+export const referralAccessLogs = pgTable(
+  'referral_access_logs',
+  {
+    id: serial('id').primaryKey(),
+
+    referralId: integer(
+      'referral_id',
+    )
+      .references(() => referrals.id)
+      .notNull(),
+
+    patientId: integer(
+      'patient_id',
+    )
+      .references(() => patients.id)
+      .notNull(),
+
+    userId: integer(
+      'user_id',
+    )
+      .references(() => users.id),
+
+    facilityId: integer(
+      'facility_id',
+    )
+      .references(() => facilities.id),
+
+    /*
+      VIEW
+      DOWNLOAD
+      ACCEPT
+      DECLINE
+      UPLOAD
+      COMPLETE
+    */
+    action: text('action')
+      .notNull(),
+
+    ipAddress: text(
+      'ip_address',
+    ),
+
+    userAgent: text(
+      'user_agent',
+    ),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    referralIdx: index(
+      'referral_access_logs_referral_idx',
+    ).on(table.referralId),
+
+    patientIdx: index(
+      'referral_access_logs_patient_idx',
+    ).on(table.patientId),
+
+    userIdx: index(
+      'referral_access_logs_user_idx',
+    ).on(table.userId),
+  }),
+);
+
+
+/* ============================================================
+   26. HEALTH RECORD EXPORTS
+   ============================================================ */
+
+export const healthRecordExports = pgTable(
+  'health_record_exports',
+  {
+    id: serial('id').primaryKey(),
+
+    patientId: integer(
+      'patient_id',
+    )
+      .references(() => patients.id)
+      .notNull(),
+
+    requestedByUserId: integer(
+      'requested_by_user_id',
+    )
+      .references(() => users.id)
+      .notNull(),
+
+    /*
+      PDF
+      JSON
+      FHIR_JSON
+    */
+    format: text('format')
+      .notNull(),
+
+    /*
+      REQUESTED
+      PROCESSING
+      READY
+      EXPIRED
+      FAILED
+    */
+    status: text('status')
+      .default('REQUESTED')
+      .notNull(),
+
+    scope: jsonb('scope')
+      .default({})
+      .notNull(),
+
+    storageKey: text(
+      'storage_key',
+    ),
+
+    documentHash: text(
+      'document_hash',
+    ),
+
+    expiresAt: timestamp(
+      'expires_at',
+    ),
+
+    downloadedAt: timestamp(
+      'downloaded_at',
+    ),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    completedAt: timestamp(
+      'completed_at',
+    ),
+
+    failureReason: text(
+      'failure_reason',
+    ),
+  },
+  (table) => ({
+    patientIdx: index(
+      'health_record_exports_patient_idx',
+    ).on(table.patientId),
+
+    requesterIdx: index(
+      'health_record_exports_requester_idx',
+    ).on(table.requestedByUserId),
+
+    statusIdx: index(
+      'health_record_exports_status_idx',
+    ).on(table.status),
+
+    expiryIdx: index(
+      'health_record_exports_expiry_idx',
+    ).on(table.expiresAt),
+  }),
+);
+
+
+/* ============================================================
+   27. HEALTH RECORD IMPORTS
+   ============================================================ */
+
+export const healthRecordImports = pgTable(
+  'health_record_imports',
+  {
+    id: serial('id').primaryKey(),
+
+    patientId: integer(
+      'patient_id',
+    )
+      .references(() => patients.id),
+
+    targetTenantId: integer(
+      'target_tenant_id',
+    )
+      .references(() => tenants.id)
+      .notNull(),
+
+    targetFacilityId: integer(
+      'target_facility_id',
+    )
+      .references(() => facilities.id)
+      .notNull(),
+
+    uploadedByUserId: integer(
+      'uploaded_by_user_id',
+    )
+      .references(() => users.id)
+      .notNull(),
+
+    sourceFacilityName: text(
+      'source_facility_name',
+    ),
+
+    sourceFacilityId: integer(
+      'source_facility_id',
+    )
+      .references(() => facilities.id),
+
+    /*
+      External source system identifier.
+      Useful for interoperability.
+    */
+    sourceSystem: text(
+      'source_system',
+    ),
+
+    sourceRecordId: text(
+      'source_record_id',
+    ),
+
+    format: text('format')
+      .notNull(),
+
+    /*
+      UPLOADED
+      VALIDATING
+      VALIDATED
+      REVIEW_REQUIRED
+      APPROVED
+      IMPORTED
+      REJECTED
+      FAILED
+    */
+    status: text('status')
+      .default('UPLOADED')
+      .notNull(),
+
+    storageKey: text(
+      'storage_key',
+    ),
+
+    documentHash: text(
+      'document_hash',
+    ),
+
+    validationErrors: jsonb(
+      'validation_errors',
+    )
+      .default([])
+      .notNull(),
+
+    importSummary: jsonb(
+      'import_summary',
+    )
+      .default({})
+      .notNull(),
+
+    matchedPatientId: integer(
+      'matched_patient_id',
+    )
+      .references(() => patients.id),
+
+    reviewedByUserId: integer(
+      'reviewed_by_user_id',
+    )
+      .references(() => users.id),
+
+    reviewedAt: timestamp(
+      'reviewed_at',
+    ),
+
+    importedAt: timestamp(
+      'imported_at',
+    ),
+
+    rejectionReason: text(
+      'rejection_reason',
+    ),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp(
+      'updated_at',
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    targetFacilityIdx: index(
+      'health_record_imports_target_facility_idx',
+    ).on(table.targetFacilityId),
+
+    patientIdx: index(
+      'health_record_imports_patient_idx',
+    ).on(table.patientId),
+
+    matchedPatientIdx: index(
+      'health_record_imports_matched_patient_idx',
+    ).on(table.matchedPatientId),
+
+    statusIdx: index(
+      'health_record_imports_status_idx',
+    ).on(table.status),
+  }),
+);
+
+
+/* ============================================================
+   28. CLINICAL ENCOUNTERS
    ============================================================ */
 
 export const encounters = pgTable(
@@ -1210,22 +2352,50 @@ export const encounters = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    practitionerId: integer('practitioner_id')
+    practitionerId: integer(
+      'practitioner_id',
+    )
       .references(() => practitioners.id),
 
-    encounterType: text('encounter_type')
-      .default('Outpatient'),
-
-    departmentId: integer('department_id')
+    departmentId: integer(
+      'department_id',
+    )
       .references(() => departments.id),
 
+    /*
+      OUTPATIENT
+      INPATIENT
+      EMERGENCY
+      ANC
+      MATERNITY
+      SPECIALIST
+      TELEMEDICINE
+      FOLLOW_UP
+    */
+    encounterType: text(
+      'encounter_type',
+    )
+      .default('OUTPATIENT')
+      .notNull(),
+
+    /*
+      PLANNED
+      ACTIVE
+      ON_HOLD
+      COMPLETED
+      CANCELLED
+    */
     status: text('status')
-      .default('Active'),
+      .default('ACTIVE')
+      .notNull(),
 
-    triageCategory: text('triage_category')
-      .default('Category 3 - Urgent'),
+    triageCategory: text(
+      'triage_category',
+    ),
 
-    chiefComplaint: text('chief_complaint'),
+    chiefComplaint: text(
+      'chief_complaint',
+    ),
 
     historyOfPresentIllness: text(
       'history_of_present_illness',
@@ -1235,19 +2405,60 @@ export const encounters = pgTable(
       'physical_examination',
     ),
 
-    clinicalNotes: text('clinical_notes'),
+    clinicalNotes: text(
+      'clinical_notes',
+    ),
 
-    followUpDate: text('follow_up_date'),
+    followUpDate: date(
+      'follow_up_date',
+    ),
 
-    referralFacility: text('referral_facility'),
+    /*
+      Keep legacy/simple referral text only as
+      a summary. The real referral relationship
+      belongs in referrals.
+    */
+    referralFacility: text(
+      'referral_facility',
+    ),
 
-    startedAt: timestamp('started_at')
+    startedAt: timestamp(
+      'started_at',
+    )
       .defaultNow()
       .notNull(),
 
-    endedAt: timestamp('ended_at'),
+    endedAt: timestamp(
+      'ended_at',
+    ),
+
+    createdByUserId: integer(
+      'created_by_user_id',
+    )
+      .references(() => users.id),
+
+    updatedByUserId: integer(
+      'updated_by_user_id',
+    )
+      .references(() => users.id),
+
+    createdAt: timestamp(
+      'created_at',
+    )
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp(
+      'updated_at',
+    )
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
+    tenantIdx: index(
+      'encounters_tenant_idx',
+    ).on(table.tenantId),
+
     patientIdx: index(
       'encounters_patient_idx',
     ).on(table.patientId),
@@ -1259,9 +2470,20 @@ export const encounters = pgTable(
     practitionerIdx: index(
       'encounters_practitioner_idx',
     ).on(table.practitionerId),
+
+    departmentIdx: index(
+      'encounters_department_idx',
+    ).on(table.departmentId),
+
+    statusIdx: index(
+      'encounters_status_idx',
+    ).on(table.status),
+
+    startedAtIdx: index(
+      'encounters_started_at_idx',
+    ).on(table.startedAt),
   }),
 );
-
 
 /* ============================================================
    20. APPOINTMENTS
@@ -3012,8 +4234,8 @@ export const patientsRelations = relations(
       references: [tenants.id],
     }),
 
-    facility: one(facilities, {
-      fields: [patients.facilityId],
+    registrationFacility: one(facilities, {
+      fields: [patients.registrationFacilityId],
       references: [facilities.id],
     }),
 
