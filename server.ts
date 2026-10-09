@@ -1,8 +1,11 @@
+
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+
+
 
 import * as queries from './src/db/queries.ts';
 import authRoutes from './src/auth/auth.routes.ts';
