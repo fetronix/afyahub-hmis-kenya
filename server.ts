@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 
+import platformRoutes from './src/routes/platform.routes.ts';
+
+
 
 import * as queries from './src/db/queries.ts';
 import authRoutes from './src/auth/auth.routes.ts';
@@ -118,6 +121,8 @@ async function startServer() {
    */
 app.use('/api', requireAuth);
 app.use('/api', requireAuthorization);
+
+app.use('/api/platform', platformRoutes);
 
   /*
    * =========================================================

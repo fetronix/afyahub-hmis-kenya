@@ -174,16 +174,13 @@ export async function validateSession(
      ---------------------------------------------------------- */
 
   if (
-    !user.isActive ||
-    user.accountStatus ===
-      'DISABLED' ||
-    user.accountStatus ===
-      'SUSPENDED'
-  ) {
-    return null;
-  }
-
-
+  !user.isActive ||
+  user.accountStatus === 'DISABLED' ||
+  user.accountStatus === 'SUSPENDED' ||
+  user.accountStatus === 'LOCKED'
+) {
+  return null;
+}
   /* ----------------------------------------------------------
      SECURITY VERSION MISMATCH
      ---------------------------------------------------------- */
