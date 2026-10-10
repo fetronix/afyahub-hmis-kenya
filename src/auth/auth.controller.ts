@@ -14,6 +14,14 @@ import {
 
 import type { LoginInput } from "./auth.types";
 
+
+import {
+  validateFacilityAdminInvitation,
+  acceptFacilityAdminInvitation,
+  FacilityAdminInvitationError,
+} from "./facility-admin-invitation.service";
+
+
 function getClientIp(req: Request): string | null {
   const forwardedFor = req.headers["x-forwarded-for"];
 
@@ -335,6 +343,115 @@ export async function logoutController(
       error: "INTERNAL_SERVER_ERROR",
       message:
         "Unable to complete logout.",
+    });
+  }
+}
+
+
+/**
+ * GET /api/auth/facility-admin-invitations/validate?token=...
+ *
+ * Public endpoint: checks an invitation before account setup.
+ */
+export async function validateFacilityAdminInvitationController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const token = req.query.token;
+
+    if (typeof token !== "string" || !token.trim()) {
+      res.status(400).json({
+        success: false,
+        error: "INVALID_INVITATION_TOKEN",
+        message: "A valid invitation token is required.",
+      });
+      return;
+    }
+
+    const invitation =
+      await validateFacilityAdminInvitation(token.trim());
+
+    res.status(200).json({
+      success: true,
+      invitation,
+    });
+  } catch (error) {
+    if (error instanceof FacilityAdminInvitationError) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+      });
+      return;
+    }
+
+    console.error(
+      "Facility admin invitation validation error:",
+      error,
+    );
+
+    res.status(500).json({
+      success: false,
+      error: "INTERNAL_SERVER_ERROR",
+      message: "Unable to validate this invitation.",
+    });
+  }
+}
+
+/**
+ * POST /api/auth/facility-admin-invitations/accept
+ *
+ * Public endpoint: creates an account from a valid invitation.
+ * The user must log in separately after accepting.
+ */
+export async function acceptFacilityAdminInvitationController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const body = req.body ?? {};
+    const { token, username, password } = body;
+
+    if (
+      typeof token !== "string" ||
+      typeof username !== "string" ||
+      typeof password !== "string"
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "INVALID_REQUEST",
+        message: "Token, username, and password are required.",
+      });
+      return;
+    }
+
+    const result = await acceptFacilityAdminInvitation({
+      token,
+      username,
+      password,
+    });
+
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof FacilityAdminInvitationError) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+      });
+      return;
+    }
+
+    console.error(
+      "Facility admin invitation acceptance error:",
+      error,
+    );
+
+    res.status(500).json({
+      success: false,
+      error: "INTERNAL_SERVER_ERROR",
+      message: "Unable to complete invitation acceptance.",
     });
   }
 }

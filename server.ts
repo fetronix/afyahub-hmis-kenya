@@ -385,92 +385,193 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
+
   // =========================================================
-  // PATIENT MANAGEMENT
+  // PATIENT MANAGEMENT — SCOPED
   // =========================================================
 
-  app.get('/api/patients', async (req, res) => {
+  app.get('/api/patients', async (req: AuthRequest, res: Response) => {
     try {
-      const tenantId = req.query.tenantId
-        ? Number(req.query.tenantId)
-        : undefined;
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
 
-      const facilityId = req.query.facilityId
-        ? Number(req.query.facilityId)
-        : undefined;
+      const tenantId =
+        req.query.tenantId !== undefined
+          ? Number(req.query.tenantId)
+          : undefined;
 
-      const search = req.query.search as string;
+      const facilityId =
+        req.query.facilityId !== undefined
+          ? Number(req.query.facilityId)
+          : undefined;
 
-      const list = await queries.getPatients(
+      if (
+        (tenantId !== undefined &&
+          (!Number.isInteger(tenantId) || tenantId <= 0)) ||
+        (facilityId !== undefined &&
+          (!Number.isInteger(facilityId) || facilityId <= 0))
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_SCOPE_ID',
+          message: 'Invalid tenant or facility ID.',
+        });
+      }
+
+      const list = await queries.getPatientsScoped(
+        req.authContext,
         tenantId,
         facilityId,
-        search
+        typeof req.query.search === 'string'
+          ? req.query.search
+          : undefined,
       );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      return res.json(list);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+
+      console.error('Patient list error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'PATIENT_LIST_FAILED',
       });
     }
   });
 
-  app.get('/api/patients/:id', async (req, res) => {
+  app.get('/api/patients/:id', async (req: AuthRequest, res: Response) => {
     try {
-      const patient = await queries.getPatientById(
-        Number(req.params.id)
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
+
+      const patientId = Number(req.params.id);
+
+      if (!Number.isInteger(patientId) || patientId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_PATIENT_ID',
+        });
+      }
+
+      const patient = await queries.getPatientByIdScoped(
+        req.authContext,
+        patientId,
       );
 
       if (!patient) {
         return res.status(404).json({
-          error: 'Patient not found',
+          success: false,
+          error: 'PATIENT_NOT_FOUND',
+          message: 'Patient not found.',
         });
       }
 
-      res.json(patient);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      return res.json(patient);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+
+      console.error('Patient retrieval error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'PATIENT_RETRIEVAL_FAILED',
       });
     }
   });
 
-  app.post('/api/patients', async (req, res) => {
+  app.post('/api/patients', async (req: AuthRequest, res: Response) => {
     try {
-      const patient = await queries.createPatient(
-        req.body
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
+
+      const patient = await queries.createPatientScoped(
+        req.authContext,
+        req.body,
       );
 
       await queries.logAuditEvent(
         patient.tenantId,
         patient.registrationFacilityId,
-        'Staff',
+        String(req.authContext.userId),
         'CREATE',
         'Patient',
-        patient.id.toString(),
-        `Registered patient ${patient.firstName} ${patient.lastName} (MRN: ${patient.mrn})`
+        String(patient.id),
+        'Patient registered',
       );
 
-      res.status(201).json(patient);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      return res.status(201).json(patient);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+
+      console.error('Patient creation error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'PATIENT_CREATION_FAILED',
       });
     }
   });
 
-  app.put('/api/patients/:id', async (req, res) => {
+  app.put('/api/patients/:id', async (req: AuthRequest, res: Response) => {
     try {
-      const patient =
-        await queries.updatePatient(
-          Number(req.params.id),
-          req.body
-        );
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
 
-      res.json(patient);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      const patientId = Number(req.params.id);
+
+      if (!Number.isInteger(patientId) || patientId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_PATIENT_ID',
+        });
+      }
+
+      const patient = await queries.updatePatientScoped(
+        req.authContext,
+        patientId,
+        req.body,
+      );
+
+      if (!patient) {
+        return res.status(404).json({
+          success: false,
+          error: 'PATIENT_NOT_FOUND',
+          message: 'Patient not found.',
+        });
+      }
+
+      await queries.logAuditEvent(
+        patient.tenantId,
+        patient.registrationFacilityId,
+        String(req.authContext.userId),
+        'UPDATE',
+        'Patient',
+        String(patient.id),
+        'Patient record updated',
+      );
+
+      return res.json(patient);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+
+      console.error('Patient update error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'PATIENT_UPDATE_FAILED',
       });
     }
   });
@@ -1531,409 +1632,191 @@ app.use('/api/platform', platformRoutes);
   // DHA & INTEROPERABILITY
   // =========================================================
 
-  app.get('/api/interop/fhir/patient/:id', async (req, res) => {
-    try {
-      const patient =
-        await queries.getPatientById(
-          Number(req.params.id)
-        );
+    app.get(
+      '/api/interop/fhir/patient/:id',
+        async (req: AuthRequest, res: Response) => {
+          try {
+            if (!req.authContext) {
+              return res.status(401).json({
+                success: false,
+                error: 'AUTHORIZATION_CONTEXT_MISSING',
+              });
+            }
 
-      if (!patient) {
-        return res.status(404).json({
-          error: 'Patient not found',
-        });
-      }
+            const patientId = Number(req.params.id);
 
-      const fhirPatient = {
-        resourceType: 'Patient',
+            if (!Number.isInteger(patientId) || patientId <= 0) {
+              return res.status(400).json({
+                success: false,
+                error: 'INVALID_PATIENT_ID',
+              });
+            }
 
-        id: `ke-hmis-${patient.id}`,
+            const patient = await queries.getPatientByIdScoped(
+              req.authContext,
+              patientId,
+            );
 
-        meta: {
-          versionId: '1',
+            if (!patient) {
+              return res.status(404).json({
+                success: false,
+                error: 'PATIENT_NOT_FOUND',
+              });
+            }
 
-          lastUpdated:
-            patient.updatedAt
-              ? new Date(
-                  patient.updatedAt
-                ).toISOString()
-              : new Date().toISOString(),
+            const fhirPatient = {
+              resourceType: 'Patient',
+              id: `ke-hmis-${patient.id}`,
+              meta: {
+                versionId: '1',
+                lastUpdated: patient.updatedAt
+                  ? new Date(patient.updatedAt).toISOString()
+                  : new Date().toISOString(),
+                profile: [
+                  'http://hl7.org/fhir/StructureDefinition/Patient',
+                ],
+              },
+              identifier: [
+                {
+                  system: 'http://health.go.ke/mrn',
+                  value: patient.mrn,
+                  use: 'usual',
+                },
+                ...(patient.nationalId
+                  ? [
+                      {
+                        system: 'http://identity.go.ke/national-id',
+                        value: patient.nationalId,
+                        type: { text: 'National ID' },
+                      },
+                    ]
+                  : []),
+                ...(patient.shaNumber
+                  ? [
+                      {
+                        system: 'http://sha.go.ke/member-number',
+                        value: patient.shaNumber,
+                        type: {
+                          text: 'Social Health Authority',
+                        },
+                      },
+                    ]
+                  : []),
+              ],
+              name: [
+                {
+                  use: 'official',
+                  family: patient.lastName,
+                  given: [
+                    patient.firstName,
+                    ...(patient.middleName
+                      ? [patient.middleName]
+                      : []),
+                  ],
+                },
+              ],
+              telecom: [
+                ...(patient.phone
+                  ? [
+                      {
+                        system: 'phone',
+                        value: patient.phone,
+                        use: 'mobile',
+                      },
+                    ]
+                  : []),
+                ...(patient.email
+                  ? [
+                      {
+                        system: 'email',
+                        value: patient.email,
+                      },
+                    ]
+                  : []),
+              ],
+              gender:
+                patient.gender?.toLowerCase() === 'female'
+                  ? 'female'
+                  : patient.gender?.toLowerCase() === 'male'
+                    ? 'male'
+                    : 'unknown',
+              ...(patient.dateOfBirth
+                ? { birthDate: patient.dateOfBirth }
+                : {}),
+              address: [
+                {
+                  ...(patient.residentialAddress
+                    ? { line: [patient.residentialAddress] }
+                    : {}),
+                  ...(patient.subCounty
+                    ? { city: patient.subCounty }
+                    : {}),
+                  ...(patient.county
+                    ? { district: patient.county }
+                    : {}),
+                  country: 'KEN',
+                },
+              ],
+              managingOrganization: {
+                reference: `Organization/facility-${patient.registrationFacilityId}`,
+              },
+            };
 
-          profile: [
-            'http://hl7.org/fhir/StructureDefinition/Patient',
-          ],
+            res.setHeader('Content-Type', 'application/fhir+json');
+            return res.json(fhirPatient);
+          } catch (err: unknown) {
+            if (handleScopeError(err, res)) return;
+
+            console.error('FHIR patient retrieval error:', err);
+            return res.status(500).json({
+              success: false,
+              error: 'FHIR_PATIENT_RETRIEVAL_FAILED',
+            });
+          }
         },
-
-        identifier: [
-          {
-            system:
-              'http://health.go.ke/mrn',
-
-            value:
-              patient.mrn,
-
-            use: 'usual',
-          },
-
-          ...(patient.nationalId
-            ? [
-                {
-                  system:
-                    'http://identity.go.ke/national-id',
-
-                  value:
-                    patient.nationalId,
-
-                  type: {
-                    text: 'National ID',
-                  },
-                },
-              ]
-            : []),
-
-          ...(patient.shaNumber
-            ? [
-                {
-                  system:
-                    'http://sha.go.ke/member-number',
-
-                  value:
-                    patient.shaNumber,
-
-                  type: {
-                    text:
-                      'Social Health Authority',
-                  },
-                },
-              ]
-            : []),
-        ],
-
-        name: [
-          {
-            use: 'official',
-
-            family:
-              patient.lastName,
-
-            given: [
-              patient.firstName,
-
-              ...(patient.middleName
-                ? [patient.middleName]
-                : []),
-            ],
-          },
-        ],
-
-        telecom: [
-          {
-            system: 'phone',
-            value: patient.phone,
-            use: 'mobile',
-          },
-
-          ...(patient.email
-            ? [
-                {
-                  system: 'email',
-                  value: patient.email,
-                },
-              ]
-            : []),
-        ],
-
-        gender:
-          patient.gender.toLowerCase() ===
-          'female'
-            ? 'female'
-            : 'male',
-
-        birthDate:
-          patient.dateOfBirth,
-
-        address: [
-          {
-            line: [
-              patient.residentialAddress ||
-                'Nairobi',
-            ],
-
-            city:
-              patient.subCounty,
-
-            district:
-              patient.county,
-
-            country:
-              'KEN',
-          },
-        ],
-
-        managingOrganization: {
-          reference:
-            `Organization/MFL-${patient.registrationFacilityId}`,
-
-          display:
-            'Kenya Ministry of Health Facility',
-        },
-      };
-
-      res.setHeader(
-        'Content-Type',
-        'application/fhir+json'
-      );
-
-      res.json(fhirPatient);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+    );
+  
+app.get(
+  '/api/interop/dha/moh-705',
+  async (req: AuthRequest, res: Response) => {
+    if (!req.authContext) {
+      return res.status(401).json({
+        success: false,
+        error: 'AUTHORIZATION_CONTEXT_MISSING',
       });
     }
-  });
 
-  app.get('/api/interop/dha/moh-705', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : 1;
-
-      const reports =
-        await queries.getPublicHealthReports(
-          facilityId
-        );
-
-      const patients =
-        await queries.getPatients(
-          undefined,
-          facilityId
-        );
-
-      const encounters =
-        await queries.getEncounters(
-          undefined,
-          facilityId
-        );
-
-      const mohSummary = {
-        reportingStandard:
-          'Kenya Digital Health Agency (DHA) - MOH 705 Outpatient Return',
-
-        facilityMflCode:
-          'MFL-12845',
-
-        reportingPeriod:
-          'October 2026',
-
-        generatedAt:
-          new Date().toISOString(),
-
-        indicators: {
-          totalNewOutpatients:
-            patients.length,
-
-          totalReattendances:
-            12,
-
-          totalReferralsIn:
-            4,
-
-          totalReferralsOut:
-            1,
-
-          topMorbidityByIcd10: [
-            {
-              code: 'B50',
-              disease:
-                'Malaria (Confirmed)',
-              under5: 8,
-              over5: 14,
-              total: 22,
-            },
-
-            {
-              code: 'I10',
-              disease:
-                'Hypertension',
-              under5: 0,
-              over5: 19,
-              total: 19,
-            },
-
-            {
-              code: 'E11',
-              disease:
-                'Type 2 Diabetes Mellitus',
-              under5: 0,
-              over5: 11,
-              total: 11,
-            },
-
-            {
-              code: 'J09',
-              disease:
-                'Upper Respiratory Tract Infection',
-              under5: 12,
-              over5: 7,
-              total: 19,
-            },
-
-            {
-              code: 'K29',
-              disease:
-                'Gastritis and Duodenitis',
-              under5: 1,
-              over5: 8,
-              total: 9,
-            },
-          ],
-
-          surveillanceAlerts:
-            reports,
-        },
-      };
-
-      res.json(mohSummary);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+    return res.status(501).json({
+      success: false,
+      error: 'MOH705_REPORT_NOT_IMPLEMENTED',
+      message:
+        'The report is unavailable until verified reporting data, facility identifiers, reporting periods, and scoped queries are implemented.',
+    });
+  },
+);
 
   // =========================================================
   // AGGREGATED ANALYTICS
   // =========================================================
 
-  app.get('/api/analytics/summary', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : 1;
+    app.get(
+      '/api/analytics/summary',
+      async (req: AuthRequest, res: Response) => {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+          });
+        }
 
-      const patients =
-        await queries.getPatients(
-          undefined,
-          facilityId
-        );
-
-      const queues =
-        await queries.getQueues(
-          facilityId
-        );
-
-      const admissions =
-        await queries.getAdmissions(
-          facilityId
-        );
-
-      const theatre =
-        await queries.getTheatreCases(
-          facilityId
-        );
-
-      const labOrders =
-        await queries.getLabOrders(
-          facilityId
-        );
-
-      const invoices =
-        await queries.getInvoices(
-          facilityId
-        );
-
-      const inventory =
-        await queries.getInventoryItems(
-          facilityId
-        );
-
-      const totalRevenue =
-        invoices.reduce(
-          (acc, inv) =>
-            acc +
-            Number(
-              inv.paidAmount || 0
-            ),
-          0
-        );
-
-      const outstandingBills =
-        invoices.reduce(
-          (acc, inv) =>
-            acc +
-            Number(
-              inv.balanceAmount || 0
-            ),
-          0
-        );
-
-      const activeAdmissions =
-        admissions.filter(
-          a =>
-            a.status ===
-              'Admitted'
-        ).length;
-
-      const lowStockItems =
-        inventory.filter(
-          i =>
-            (i.currentStock || 0) <=
-            (i.reorderLevel || 50)
-        );
-
-      res.json({
-        totalPatients:
-          patients.length,
-
-        activeQueuesCount:
-          queues.filter(
-            q =>
-              q.status ===
-                'Waiting' ||
-              q.status ===
-                'In-Progress'
-          ).length,
-
-        currentAdmissions:
-          activeAdmissions,
-
-        bedOccupancyRate:
-          Math.round(
-            (activeAdmissions / 20) *
-              100
-          ),
-
-        scheduledSurgeries:
-          theatre.filter(
-            t =>
-              t.status ===
-              'Scheduled'
-          ).length,
-
-        pendingLabOrders:
-          labOrders.filter(
-            l =>
-              l.status !==
-              'Published'
-          ).length,
-
-        totalRevenueKes:
-          totalRevenue,
-
-        outstandingBillsKes:
-          outstandingBills,
-
-        lowStockAlerts:
-          lowStockItems.length,
-      });
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        return res.status(501).json({
+          success: false,
+          error: 'SCOPED_ANALYTICS_NOT_IMPLEMENTED',
+          message:
+            'Analytics is temporarily unavailable until tenant and facility scoped queries are implemented.',
+        });
+      },
+    );
 
   // =========================================================
   // VITE MIDDLEWARE / STATIC ASSETS

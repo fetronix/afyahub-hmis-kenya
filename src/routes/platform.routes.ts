@@ -1,6 +1,16 @@
 
 import { Router, type Request, type Response } from 'express';
-import { eq } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  gt,
+  isNull,
+} from 'drizzle-orm';
+
+import {
+  createHash,
+  randomBytes,
+} from 'node:crypto';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
@@ -876,5 +886,223 @@ router.post(
     }
   },
 );
+
+
+
+/**
+ * POST /api/platform/facility-admin-invitations
+ *
+ * Create a secure invitation for a facility administrator.
+ * Only the Platform Super Admin may issue this invitation.
+ */
+router.post(
+  '/facility-admin-invitations',
+  async (req: Request, res: Response) => {
+    if (!requireSuperAdmin(req, res)) return;
+
+    const context = getContext(req)!;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const facilityId =
+      typeof body.facilityId === 'number'
+        ? body.facilityId
+        : typeof body.facilityId === 'string'
+          ? Number(body.facilityId)
+          : NaN;
+
+    const fullName = textValue(body.fullName);
+    const email = textValue(body.email)?.toLowerCase();
+    const phone = textValue(body.phone);
+
+    if (
+      !Number.isSafeInteger(facilityId) ||
+      facilityId < 1 ||
+      !fullName ||
+      fullName.length > 200 ||
+      !email ||
+      email.length > 254 ||
+      !validEmail(email)
+    ) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message:
+          'Provide a valid facilityId, fullName, and email.',
+      });
+      return;
+    }
+
+    const baseUrl = process.env.APP_BASE_URL?.trim();
+
+    if (!baseUrl) {
+      res.status(500).json({
+        error: 'CONFIGURATION_ERROR',
+        message:
+          'APP_BASE_URL must be configured before issuing invitations.',
+      });
+      return;
+    }
+
+    let invitationUrl: URL;
+
+    try {
+      invitationUrl = new URL(baseUrl);
+
+      if (
+        invitationUrl.protocol !== 'https:' &&
+        invitationUrl.hostname !== 'localhost'
+      ) {
+        throw new Error('HTTPS is required.');
+      }
+    } catch {
+      res.status(500).json({
+        error: 'CONFIGURATION_ERROR',
+        message: 'APP_BASE_URL is invalid.',
+      });
+      return;
+    }
+
+    try {
+      const [facility] = await db
+        .select({
+          id: schema.facilities.id,
+          tenantId: schema.facilities.tenantId,
+          name: schema.facilities.name,
+          isActive: schema.facilities.isActive,
+          tenantActive: schema.tenants.isActive,
+        })
+        .from(schema.facilities)
+        .innerJoin(
+          schema.tenants,
+          eq(
+            schema.facilities.tenantId,
+            schema.tenants.id,
+          ),
+        )
+        .where(eq(schema.facilities.id, facilityId))
+        .limit(1);
+
+      if (!facility) {
+        res.status(404).json({
+          error: 'FACILITY_NOT_FOUND',
+          message: 'The selected facility was not found.',
+        });
+        return;
+      }
+
+      if (
+        !facility.isActive ||
+        !facility.tenantActive
+      ) {
+        res.status(409).json({
+          error: 'FACILITY_UNAVAILABLE',
+          message:
+            'The facility and its tenant must both be active.',
+        });
+        return;
+      }
+
+      const now = new Date();
+
+      const [existingInvitation] = await db
+        .select({
+          id: schema.facilityAdminInvitations.id,
+        })
+        .from(schema.facilityAdminInvitations)
+        .where(
+          and(
+            eq(
+              schema.facilityAdminInvitations.facilityId,
+              facilityId,
+            ),
+            eq(
+              schema.facilityAdminInvitations.email,
+              email,
+            ),
+            isNull(
+              schema.facilityAdminInvitations.acceptedAt,
+            ),
+            isNull(
+              schema.facilityAdminInvitations.revokedAt,
+            ),
+            gt(
+              schema.facilityAdminInvitations.expiresAt,
+              now,
+            ),
+          ),
+        )
+        .limit(1);
+
+      if (existingInvitation) {
+        res.status(409).json({
+          error: 'INVITATION_ALREADY_PENDING',
+          message:
+            'An unexpired invitation already exists for this email and facility.',
+        });
+        return;
+      }
+
+      const rawToken = randomBytes(32).toString('base64url');
+      const tokenHash = createHash('sha256')
+        .update(rawToken)
+        .digest('hex');
+
+      const expiresAt = new Date(
+        now.getTime() + 48 * 60 * 60 * 1000,
+      );
+
+      const [invitation] = await db
+        .insert(schema.facilityAdminInvitations)
+        .values({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          email,
+          fullName,
+          ...(phone ? { phone } : {}),
+          designation: 'Facility Administrator',
+          invitationTokenHash: tokenHash,
+          expiresAt,
+          invitedBy: String(context.userId),
+        })
+        .returning({
+          id: schema.facilityAdminInvitations.id,
+          email: schema.facilityAdminInvitations.email,
+          expiresAt: schema.facilityAdminInvitations.expiresAt,
+        });
+
+      await queries.logAuditEvent(
+        facility.tenantId,
+        facility.id,
+        String(context.userId),
+        'CREATE',
+        'FACILITY_ADMIN_INVITATION',
+        String(invitation.id),
+        `Issued a facility administrator invitation for ${email}.`,
+      );
+
+      const link = new URL(
+        '/accept-facility-admin-invitation',
+        invitationUrl,
+      );
+      link.searchParams.set('token', rawToken);
+
+      res.status(201).json({
+        success: true,
+        message:
+          'Facility administrator invitation created.',
+        data: {
+          invitationId: invitation.id,
+          facilityId: facility.id,
+          facilityName: facility.name,
+          email: invitation.email,
+          expiresAt: invitation.expiresAt,
+          invitationLink: link.toString(),
+        },
+      });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+);
+
 
 export default router;

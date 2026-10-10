@@ -1,3 +1,4 @@
+import { ScopeAccessError } from '../auth/scope.service.ts';
 import { db } from './index.ts';
 import * as schema from './schema.ts';
 import { eq, desc, and, or, ilike, sql } from 'drizzle-orm';
@@ -449,6 +450,55 @@ export async function createPatient(data: typeof schema.patients.$inferInsert) {
     console.error('Error creating patient:', error);
     throw new Error('Failed to create patient record', { cause: error });
   }
+}
+
+export async function createPatientScoped(
+  context: AuthorizationContext,
+  data: typeof schema.patients.$inferInsert,
+) {
+  const requestedFacilityId = data.registrationFacilityId;
+
+  if (
+    !Number.isInteger(requestedFacilityId) ||
+    Number(requestedFacilityId) <= 0
+  ) {
+    throw new ScopeAccessError(
+      'A valid registration facility is required.',
+      'FACILITY_REQUIRED',
+    );
+  }
+
+  const facility = await getFacilityByIdScoped(
+    context,
+    Number(requestedFacilityId),
+  );
+
+  if (!facility) {
+    throw new ScopeAccessError(
+      'Registration facility not found.',
+      'FACILITY_ACCESS_DENIED',
+    );
+  }
+
+  const {
+    id: _id,
+    tenantId: _tenantId,
+    registrationFacilityId: _requestedFacilityId,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...safeData
+  } = data;
+
+  const [patient] = await db
+    .insert(schema.patients)
+    .values({
+      ...safeData,
+      tenantId: facility.tenantId,
+      registrationFacilityId: facility.id,
+    })
+    .returning();
+
+  return patient;
 }
 
 export async function updatePatient(id: number, data: Partial<typeof schema.patients.$inferInsert>) {
@@ -1170,3 +1220,211 @@ export async function getAuditLogs(facilityId?: number) {
     throw new Error('Failed to fetch audit logs', { cause: error });
   }
 }
+
+// =========================================================
+// SCOPED PATIENT QUERIES
+// =========================================================
+
+/**
+ * Return a patient only if the authenticated user may access
+ * the patient's registration facility.
+ *
+ * Cross-facility access to shared patient records must be
+ * implemented separately using patientFacilities and the
+ * relevant patient-consent/access policies.
+ */
+export async function getPatientByIdScoped(
+  context: AuthorizationContext,
+  patientId: number,
+) {
+  if (!Number.isInteger(patientId) || patientId <= 0) {
+    throw new Error("Invalid patient ID.");
+  }
+
+  const [patient] = await db
+    .select()
+    .from(schema.patients)
+    .where(eq(schema.patients.id, patientId))
+    .limit(1);
+
+  if (!patient) return null;
+
+  requireTenantScope(context, patient.tenantId);
+
+  requireFacilityScope(
+    context,
+    patient.tenantId,
+    patient.registrationFacilityId,
+  );
+
+  return patient;
+}
+
+/**
+ * List patients within the authenticated user's scope.
+ * A facility user's facility assignment takes precedence
+ * over any facility ID supplied by the frontend.
+ */
+export async function getPatientsScoped(
+  context: AuthorizationContext,
+  requestedTenantId?: number,
+  requestedFacilityId?: number,
+  search?: string,
+) {
+  const conditions = [];
+
+  if (context.isSuperAdmin) {
+    if (
+      requestedTenantId === undefined ||
+      !Number.isInteger(requestedTenantId) ||
+      requestedTenantId <= 0
+    ) {
+      throw new Error(
+        "Super Admin must specify a valid target tenant.",
+      );
+    }
+
+    conditions.push(
+      eq(schema.patients.tenantId, requestedTenantId),
+    );
+
+    if (requestedFacilityId !== undefined) {
+      const facility = await getFacilityByIdScoped(
+        context,
+        requestedFacilityId,
+      );
+
+      if (!facility || facility.tenantId !== requestedTenantId) {
+        throw new Error(
+          "The facility does not belong to the requested tenant.",
+        );
+      }
+
+      conditions.push(
+        eq(
+          schema.patients.registrationFacilityId,
+          requestedFacilityId,
+        ),
+      );
+    }
+  } else {
+    if (context.tenantId === null) {
+      throw new Error("Your account has no tenant assignment.");
+    }
+
+    requireTenantScope(context, context.tenantId);
+
+    if (
+      requestedTenantId !== undefined &&
+      requestedTenantId !== context.tenantId
+    ) {
+      requireTenantScope(context, requestedTenantId);
+    }
+
+    conditions.push(
+      eq(schema.patients.tenantId, context.tenantId),
+    );
+
+    if (context.facilityId !== null) {
+      if (
+        requestedFacilityId !== undefined &&
+        requestedFacilityId !== context.facilityId
+      ) {
+        throw new Error(
+          "You are not authorized to access this facility.",
+        );
+      }
+
+      conditions.push(
+        eq(
+          schema.patients.registrationFacilityId,
+          context.facilityId,
+        ),
+      );
+    } else if (requestedFacilityId !== undefined) {
+      const facility = await getFacilityByIdScoped(
+        context,
+        requestedFacilityId,
+      );
+
+      if (!facility || facility.tenantId !== context.tenantId) {
+        throw new Error(
+          "The facility does not belong to your tenant.",
+        );
+      }
+
+      conditions.push(
+        eq(
+          schema.patients.registrationFacilityId,
+          requestedFacilityId,
+        ),
+      );
+    }
+  }
+
+  if (search?.trim()) {
+    const term = `%${search.trim()}%`;
+
+    conditions.push(
+      or(
+        ilike(schema.patients.firstName, term),
+        ilike(schema.patients.lastName, term),
+        ilike(schema.patients.mrn, term),
+        ilike(schema.patients.phone, term),
+        ilike(schema.patients.nationalId, term),
+        ilike(schema.patients.shaNumber, term),
+      )!,
+    );
+  }
+
+  return db
+    .select()
+    .from(schema.patients)
+    .where(and(...conditions))
+    .orderBy(desc(schema.patients.createdAt))
+    .limit(50);
+}
+
+/**
+ * Update a patient only after verifying access to the existing
+ * record. Tenant and registration-facility ownership cannot
+ * be changed through this function.
+ */
+export async function updatePatientScoped(
+  context: AuthorizationContext,
+  patientId: number,
+  data: Partial<typeof schema.patients.$inferInsert>,
+) {
+  const patient = await getPatientByIdScoped(context, patientId);
+
+  if (!patient) return null;
+
+  const {
+    id: _id,
+    tenantId: _tenantId,
+    registrationFacilityId: _facilityId,
+    createdAt: _createdAt,
+    ...safeData
+  } = data;
+
+  const [updated] = await db
+    .update(schema.patients)
+    .set({
+      ...safeData,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.patients.id, patientId),
+        eq(schema.patients.tenantId, patient.tenantId),
+        eq(
+          schema.patients.registrationFacilityId,
+          patient.registrationFacilityId,
+        ),
+      ),
+    )
+    .returning();
+
+  return updated ?? null;
+}
+
