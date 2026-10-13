@@ -21,6 +21,7 @@ import {
   and,
   eq,
   isNull,
+  isNotNull,
 } from 'drizzle-orm';
 
 
@@ -178,6 +179,30 @@ const PERMISSIONS = [
   },
 
   {
+    code: 'users.invite',
+    name: 'Invite Staff',
+    module: 'users',
+    description:
+      'Invite staff to an authorized facility using a secure invitation link.',
+  },
+
+  {
+    code: 'users.invitations.read',
+    name: 'View Staff Invitations',
+    module: 'users',
+    description:
+      'View staff invitations within the authorized scope.',
+  },
+
+  {
+    code: 'users.invitations.revoke',
+    name: 'Revoke Staff Invitations',
+    module: 'users',
+    description:
+      'Revoke unused staff invitations within the authorized scope.',
+  },
+
+  {
     code: 'users.roles.manage',
     name: 'Manage User Roles',
     module: 'users',
@@ -332,6 +357,20 @@ const PERMISSIONS = [
     description:
       'Deactivate patient records where permitted.',
   },
+
+
+  /* ==========================================================
+     FHIR INTEROPERABILITY
+     ========================================================== */
+
+  {
+    code: 'interop.fhir.patient.read',
+    name: 'Export FHIR Patient Resource',
+    module: 'interop',
+    description:
+      'Read and export patient demographics through the FHIR interoperability endpoint.',
+  },
+
 
 
   /* ==========================================================
@@ -623,12 +662,21 @@ const PERMISSIONS = [
      REPORTS
      ========================================================== */
 
+
   {
     code: 'reports.read',
     name: 'View Reports',
     module: 'reports',
     description:
       'View authorized reports.',
+  },
+
+  {
+    code: 'public_health.reports.create',
+    name: 'Create Public Health Reports',
+    module: 'public_health',
+    description:
+      'Record disease surveillance reports for an authorized facility.',
   },
 
   {
@@ -844,6 +892,72 @@ async function seedPermissions(): Promise<void> {
       );
     }
   }
+
+  /* ==========================================================
+     3B. ASSIGN STAFF INVITATION PERMISSIONS TO FACILITY ADMINS
+     ========================================================== */
+
+  console.log('');
+  console.log('Synchronizing facility-admin invitation permissions...');
+
+  const staffInvitationPermissionCodes = [
+    'users.invite',
+    'users.invitations.read',
+    'users.invitations.revoke',
+  ] as const;
+
+  const staffInvitationPermissions = [];
+
+  for (const code of staffInvitationPermissionCodes) {
+    const [permission] = await db
+      .select()
+      .from(permissions)
+      .where(eq(permissions.code, code))
+      .limit(1);
+
+    if (!permission) {
+      throw new Error(`Required permission was not seeded: ${code}`);
+    }
+
+    staffInvitationPermissions.push(permission);
+  }
+
+  const facilityAdminRoles = await db
+    .select()
+    .from(roles)
+    .where(
+      and(
+        eq(roles.name, 'FACILITY_ADMIN'),
+        eq(roles.isActive, true),
+        isNotNull(roles.tenantId),
+      ),
+    );
+
+  for (const facilityAdminRole of facilityAdminRoles) {
+    for (const permission of staffInvitationPermissions) {
+      const [existingAssignment] = await db
+        .select()
+        .from(rolePermissions)
+        .where(
+          and(
+            eq(rolePermissions.roleId, facilityAdminRole.id),
+            eq(rolePermissions.permissionId, permission.id),
+          ),
+        )
+        .limit(1);
+
+      if (!existingAssignment) {
+        await db.insert(rolePermissions).values({
+          roleId: facilityAdminRole.id,
+          permissionId: permission.id,
+        });
+      }
+    }
+  }
+
+  console.log(
+    `Synchronized invitation permissions for ${facilityAdminRoles.length} tenant facility-admin roles.`,
+  );
 
 
   /* ==========================================================

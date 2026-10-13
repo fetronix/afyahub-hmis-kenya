@@ -1,4 +1,4 @@
-import { ScopeAccessError } from '../auth/scope.service.ts';
+﻿import { ScopeAccessError } from '../auth/scope.service.ts';
 import { db } from './index.ts';
 import * as schema from './schema.ts';
 import { eq, desc, and, or, ilike, sql } from 'drizzle-orm';
@@ -1078,26 +1078,37 @@ export async function getInvoices(facilityId?: number, patientId?: number) {
   }
 }
 
-export async function createInvoice(invoiceData: typeof schema.billingInvoices.$inferInsert, items: Array<Omit<typeof schema.billingItems.$inferInsert, 'invoiceId'>>) {
+export async function createInvoice(
+  invoiceData: typeof schema.billingInvoices.$inferInsert,
+  items: Array<Omit<typeof schema.billingItems.$inferInsert, 'invoiceId'>>
+) {
   try {
-    const res = await db.insert(schema.billingInvoices).values(invoiceData).returning();
-    const invoice = res[0];
+    return await db.transaction(async (tx) => {
+      const [invoice] = await tx
+        .insert(schema.billingInvoices)
+        .values(invoiceData)
+        .returning();
 
-    if (items && items.length > 0) {
-      const itemsToInsert = items.map(item => ({
-        ...item,
-        invoiceId: invoice.id,
-      }));
-      await db.insert(schema.billingItems).values(itemsToInsert);
-    }
+      if (!invoice) {
+        throw new Error('Invoice insert returned no record');
+      }
 
-    return invoice;
+      if (items.length > 0) {
+        const itemsToInsert = items.map((item) => ({
+          ...item,
+          invoiceId: invoice.id,
+        }));
+
+        await tx.insert(schema.billingItems).values(itemsToInsert);
+      }
+
+      return invoice;
+    });
   } catch (error) {
     console.error('Error creating invoice:', error);
     throw new Error('Failed to create patient invoice', { cause: error });
   }
 }
-
 export async function getInvoiceItems(invoiceId: number) {
   try {
     return await db.select().from(schema.billingItems).where(eq(schema.billingItems.invoiceId, invoiceId));
@@ -1107,32 +1118,72 @@ export async function getInvoiceItems(invoiceId: number) {
   }
 }
 
-export async function recordPayment(paymentData: typeof schema.billingPayments.$inferInsert) {
+export async function recordPayment(
+  paymentData: typeof schema.billingPayments.$inferInsert
+) {
   try {
-    const payment = await db.insert(schema.billingPayments).values(paymentData).returning();
-    const invoiceId = paymentData.invoiceId;
+    return await db.transaction(async (tx) => {
+      // Lock the invoice so simultaneous payments cannot both spend
+      // the same outstanding balance.
+      const [invoice] = await tx
+        .select()
+        .from(schema.billingInvoices)
+        .where(eq(schema.billingInvoices.id, paymentData.invoiceId))
+        .for('update');
 
-    // Recalculate invoice paid & balance amounts
-    const [inv] = await db.select().from(schema.billingInvoices).where(eq(schema.billingInvoices.id, invoiceId));
-    if (inv) {
-      const newPaid = Number(inv.paidAmount || 0) + Number(paymentData.amount);
-      const newBalance = Math.max(0, Number(inv.totalAmount || 0) - newPaid);
-      const newStatus = newBalance <= 0 ? 'Paid' : 'Partially Paid';
+      if (!invoice) {
+        throw new Error('INVOICE_NOT_FOUND');
+      }
 
-      await db.update(schema.billingInvoices).set({
-        paidAmount: newPaid.toFixed(2),
-        balanceAmount: newBalance.toFixed(2),
-        status: newStatus,
-      }).where(eq(schema.billingInvoices.id, invoiceId));
-    }
+      const amountCents = Math.round(Number(paymentData.amount) * 100);
+      const balanceCents = Math.round(Number(invoice.balanceAmount ?? 0) * 100);
+      const totalCents = Math.round(Number(invoice.totalAmount ?? 0) * 100);
+      const paidCents = Math.round(Number(invoice.paidAmount ?? 0) * 100);
 
-    return payment[0];
+      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+        throw new Error('INVALID_PAYMENT_AMOUNT');
+      }
+
+      if (amountCents > balanceCents) {
+        throw new Error('PAYMENT_EXCEEDS_BALANCE');
+      }
+
+      const newPaidCents = paidCents + amountCents;
+      const newBalanceCents = Math.max(0, totalCents - newPaidCents);
+      const newStatus =
+        newBalanceCents === 0
+          ? 'Paid'
+          : newPaidCents > 0
+            ? 'Partially Paid'
+            : 'Unpaid';
+
+      // Both writes are part of the same transaction. If either fails,
+      // PostgreSQL rolls back both.
+      const [payment] = await tx
+        .insert(schema.billingPayments)
+        .values(paymentData)
+        .returning();
+
+      if (!payment) {
+        throw new Error('Payment insert returned no record');
+      }
+
+      await tx
+        .update(schema.billingInvoices)
+        .set({
+          paidAmount: (newPaidCents / 100).toFixed(2),
+          balanceAmount: (newBalanceCents / 100).toFixed(2),
+          status: newStatus,
+        })
+        .where(eq(schema.billingInvoices.id, invoice.id));
+
+      return payment;
+    });
   } catch (error) {
     console.error('Error recording payment:', error);
     throw new Error('Failed to record patient payment', { cause: error });
   }
 }
-
 // Insurance Claims
 export async function getClaims(facilityId?: number) {
   try {
@@ -1170,21 +1221,33 @@ export async function updateClaimStatus(id: number, status: string, approvedAmou
 }
 
 // Public Health
-export async function getPublicHealthReports(facilityId?: number) {
+
+export async function getPublicHealthReports(facilityId: number) {
+  if (!Number.isSafeInteger(facilityId) || facilityId <= 0) {
+    throw new Error('A valid facility ID is required for public-health reports.');
+  }
+
   try {
-    if (facilityId) {
-      return await db.select().from(schema.publicHealthReports).where(eq(schema.publicHealthReports.facilityId, facilityId)).orderBy(desc(schema.publicHealthReports.reportedAt));
-    }
-    return await db.select().from(schema.publicHealthReports).orderBy(desc(schema.publicHealthReports.reportedAt));
+    return await db
+      .select()
+      .from(schema.publicHealthReports)
+      .where(eq(schema.publicHealthReports.facilityId, facilityId))
+      .orderBy(desc(schema.publicHealthReports.reportedAt));
   } catch (error) {
     console.error('Error fetching public health reports:', error);
     throw new Error('Failed to fetch surveillance reports', { cause: error });
   }
 }
 
-export async function recordPublicHealthReport(data: typeof schema.publicHealthReports.$inferInsert) {
+export async function recordPublicHealthReport(
+  data: typeof schema.publicHealthReports.$inferInsert,
+) {
   try {
-    const res = await db.insert(schema.publicHealthReports).values(data).returning();
+    const res = await db
+      .insert(schema.publicHealthReports)
+      .values(data)
+      .returning();
+
     return res[0];
   } catch (error) {
     console.error('Error recording disease surveillance report:', error);
@@ -1427,4 +1490,5 @@ export async function updatePatientScoped(
 
   return updated ?? null;
 }
+
 

@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   createContext,
   useContext,
   useEffect,
@@ -29,18 +29,7 @@ import type {
 |
 */
 
-export type UserRole =
-  | 'Medical Director'
-  | 'Doctor / Consultant'
-  | 'Clinical Officer'
-  | 'Nurse / Triage'
-  | 'Pharmacist'
-  | 'Laboratory Technologist'
-  | 'Radiographer'
-  | 'Cashier / Revenue'
-  | 'Storekeeper'
-  | 'Facility Administrator'
-  | 'Platform Administrator';
+export type UserRole = string;
 
 export interface StaffUser {
   name: string;
@@ -272,38 +261,27 @@ const emptyStaffUser: StaffUser = {
 function mapAuthenticatedUserToStaffUser(
   user: AuthenticatedUser
 ): StaffUser {
-  let role: UserRole =
-    'Facility Administrator';
+  const assignedRoles = user.roles ?? [];
 
-  /*
-  |--------------------------------------------------------------------------
-  | Temporary Platform Administrator mapping
-  |--------------------------------------------------------------------------
-  |
-  | This is only for UI display.
-  |
-  | Authorization will eventually use backend RBAC.
-  |
-  */
+  let role = user.designation?.trim() ?? '';
 
-  if (
-    user.username.toLowerCase() ===
-      'admin' ||
-    user.email.toLowerCase() ===
-      'admin@jalicare.co.ke'
-  ) {
-    role =
-      'Platform Administrator';
+  if (user.isSuperAdmin || assignedRoles.includes('SUPER_ADMIN')) {
+    role = 'Platform Administrator';
+  } else if (!role && assignedRoles.length > 0) {
+    role = assignedRoles[0]
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   }
 
   return {
     name: user.fullName,
-    role,
+    role: role || 'Unassigned Role',
     license: '',
     department: '',
   };
 }
-
 /*
 |--------------------------------------------------------------------------
 | Context

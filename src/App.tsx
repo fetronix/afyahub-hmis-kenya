@@ -1,9 +1,10 @@
-import React from 'react';
+﻿import React from 'react';
 import { HmisProvider, useHmis } from './context/HmisContext.tsx';
 
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { LoginScreen } from './components/LoginScreen.tsx';
+import { StaffInvitationAcceptance } from './components/StaffInvitationAcceptance.tsx';
 import { PatientJourneyModal } from './components/PatientJourneyModal.tsx';
 
 import { DashboardModule } from './components/modules/DashboardModule.tsx';
@@ -44,6 +45,7 @@ const AppContent: React.FC = () => {
    * While the application is checking whether an existing
    * session is valid, do not show the login screen or dashboard.
    */
+  if (window.location.pathname === '/accept-staff-invitation') return <StaffInvitationAcceptance />;
   if (authLoading) {
     return (
       <div className="min-h-screen w-screen bg-slate-100 flex items-center justify-center">

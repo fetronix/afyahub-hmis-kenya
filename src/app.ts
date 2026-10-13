@@ -1,4 +1,4 @@
-
+﻿import staffInvitationRoutes from "./auth/staff-invitation.routes";
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -10,15 +10,26 @@ import platformRoutes from './routes/platform.routes.ts';
 
 
 
+
 import * as queries from './db/queries.ts';
+import { db } from './db/index.ts';
+import * as schema from './db/schema.ts';
+import { eq } from 'drizzle-orm';
 import authRoutes from './auth/auth.routes.ts';
 
 
 
 import { requireAuth } from './middleware/auth.ts';
-import { requireAuthorization } from './auth/authorization.middleware.ts';
+import {
+  requireAuthorization,
+  requirePermission,
+  requireAnyPermission,
+} from './auth/authorization.middleware.ts';
 import type { AuthRequest } from './auth/auth.middleware.ts';
-import { ScopeAccessError } from './auth/scope.service.ts';
+import {
+  ScopeAccessError,
+  resolveFacilityScope,
+} from './auth/scope.service.ts';
 
 dotenv.config();
 
@@ -125,6 +136,7 @@ app.use('/api', requireAuth);
 app.use('/api', requireAuthorization);
 
 app.use('/api/platform', platformRoutes);
+app.use("/api/staff-invitations", staffInvitationRoutes);
 
   /*
    * =========================================================
@@ -389,10 +401,13 @@ app.use('/api/platform', platformRoutes);
 
 
   // =========================================================
-  // PATIENT MANAGEMENT â€” SCOPED
+  // PATIENT MANAGEMENT ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â SCOPED
   // =========================================================
 
-  app.get('/api/patients', async (req: AuthRequest, res: Response) => {
+  app.get(
+  '/api/patients',
+  requirePermission('patients.read'),
+  async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
         return res.status(401).json({
@@ -445,7 +460,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.get('/api/patients/:id', async (req: AuthRequest, res: Response) => {
+  app.get('/api/patients/:id', requirePermission('patients.read'), async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
         return res.status(401).json({
@@ -488,7 +503,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.post('/api/patients', async (req: AuthRequest, res: Response) => {
+  app.post('/api/patients', requirePermission('patients.create'), async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
         return res.status(401).json({
@@ -524,7 +539,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.put('/api/patients/:id', async (req: AuthRequest, res: Response) => {
+  app.put('/api/patients/:id', requirePermission('patients.update'), async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
         return res.status(401).json({
@@ -556,6 +571,23 @@ app.use('/api/platform', platformRoutes);
         });
       }
 
+                  // Record sensitive patient-data access before returning data.
+            // If this insert fails, the outer catch returns an error
+            // instead of silently serving an unaudited FHIR response.
+            await db.insert(schema.patientRecordAccessLogs).values({
+              patientId: patient.id,
+              userId: req.authContext.userId,
+              tenantId: patient.tenantId,
+              facilityId: patient.registrationFacilityId,
+              action: 'EXPORT',
+              accessChannel: 'FHIR',
+              recordType: 'Patient',
+              recordId: patient.id,
+              purpose: 'FHIR patient resource retrieval',
+              ipAddress: req.ip ?? null,
+              userAgent: req.get('user-agent') ?? null,
+            });
+
       await queries.logAuditEvent(
         patient.tenantId,
         patient.registrationFacilityId,
@@ -582,7 +614,7 @@ app.use('/api/platform', platformRoutes);
   // CLINICAL ENCOUNTERS
   // =========================================================
 
-  app.get('/api/encounters', async (req, res) => {
+  app.get('/api/encounters', requirePermission('clinical.read'), async (req, res) => {
     try {
       const patientId = req.query.patientId
         ? Number(req.query.patientId)
@@ -605,7 +637,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.post('/api/encounters', async (req, res) => {
+  app.post('/api/encounters', requirePermission('clinical.create'), async (req, res) => {
     try {
       const encounter =
         await queries.createEncounter(
@@ -620,7 +652,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.put('/api/encounters/:id', async (req, res) => {
+  app.put('/api/encounters/:id', requirePermission('clinical.update'), async (req, res) => {
     try {
       const encounter =
         await queries.updateEncounter(
@@ -640,7 +672,7 @@ app.use('/api/platform', platformRoutes);
   // QUEUES
   // =========================================================
 
-  app.get('/api/queues', async (req, res) => {
+  app.get('/api/queues', requirePermission('appointments.read'), async (req, res) => {
     try {
       const facilityId = req.query.facilityId
         ? Number(req.query.facilityId)
@@ -662,7 +694,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.post('/api/queues', async (req, res) => {
+  app.post('/api/queues', requirePermission('appointments.create'), async (req, res) => {
     try {
       const item =
         await queries.createQueueEntry(
@@ -677,7 +709,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.put('/api/queues/:id/status', async (req, res) => {
+  app.put('/api/queues/:id/status', requirePermission('appointments.update'), async (req, res) => {
     try {
       const { status } = req.body;
 
@@ -868,7 +900,7 @@ app.use('/api/platform', platformRoutes);
   // MEDICATIONS & PRESCRIPTIONS
   // =========================================================
 
-  app.get('/api/medications', async (req, res) => {
+  app.get('/api/medications', requirePermission('pharmacy.read'), async (req, res) => {
     try {
       const encounterId =
         req.query.encounterId
@@ -894,7 +926,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.post('/api/medications', async (req, res) => {
+  app.post('/api/medications', requirePermission('clinical.create'), async (req, res) => {
     try {
       const med =
         await queries.createMedication(
@@ -909,7 +941,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.put('/api/medications/:id/status', async (req, res) => {
+  app.put('/api/medications/:id/status', requirePermission('pharmacy.dispense'), async (req, res) => {
     try {
       const { status } = req.body;
 
@@ -1314,7 +1346,7 @@ app.use('/api/platform', platformRoutes);
   // PHARMACY & INVENTORY
   // =========================================================
 
-  app.get('/api/inventory', async (req, res) => {
+  app.get('/api/inventory', requirePermission('inventory.read'), async (req, res) => {
     try {
       const facilityId =
         req.query.facilityId
@@ -1334,7 +1366,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.post('/api/inventory', async (req, res) => {
+  app.post('/api/inventory', requirePermission('inventory.manage'), async (req, res) => {
     try {
       const item =
         await queries.createInventoryItem(
@@ -1349,7 +1381,7 @@ app.use('/api/platform', platformRoutes);
     }
   });
 
-  app.post('/api/pharmacy/dispense', async (req, res) => {
+  app.post('/api/pharmacy/dispense', requirePermission('pharmacy.dispense'), async (req, res) => {
     try {
       const disp =
         await queries.dispenseMedication(
@@ -1427,190 +1459,948 @@ app.use('/api/platform', platformRoutes);
   // BILLING & CASHIER
   // =========================================================
 
-  app.get('/api/invoices', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
+  app.get(
+    '/api/invoices',
+    requirePermission('billing.read'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
 
-      const patientId =
-        req.query.patientId
-          ? Number(req.query.patientId)
-          : undefined;
+        const rawFacilityId = req.query.facilityId;
+        const requestedFacilityId =
+          typeof rawFacilityId === 'string' && rawFacilityId.trim()
+            ? Number(rawFacilityId)
+            : undefined;
 
-      const list =
-        await queries.getInvoices(
+        const facilityId = resolveFacilityScope(
+          req.authContext,
+          requestedFacilityId,
+        );
+
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
           facilityId,
-          patientId
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!facility) {
+          return res.status(404).json({
+            success: false,
+            error: 'FACILITY_NOT_FOUND',
+            message: 'Facility not found.',
+          });
+        }
 
-  app.get('/api/invoices/:id/items', async (req, res) => {
-    try {
-      const items =
-        await queries.getInvoiceItems(
-          Number(req.params.id)
+        const rawPatientId = req.query.patientId;
+        let patientId: number | undefined;
+
+        if (rawPatientId !== undefined) {
+          if (
+            typeof rawPatientId !== 'string' ||
+            !rawPatientId.trim() ||
+            !Number.isInteger(Number(rawPatientId)) ||
+            Number(rawPatientId) <= 0
+          ) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_PATIENT_ID',
+              message: 'Invalid patient ID.',
+            });
+          }
+
+          patientId = Number(rawPatientId);
+        }
+
+        const list = await queries.getInvoices(facilityId, patientId);
+        return res.json(list);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        console.error('Failed to fetch invoices:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'INVOICE_FETCH_FAILED',
+          message: 'Failed to fetch invoices.',
+        });
+      }
+    },
+  );
+  app.get(
+    '/api/invoices/:id/items',
+    requirePermission('billing.read'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const invoiceId = Number(req.params.id);
+        if (!Number.isSafeInteger(invoiceId) || invoiceId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_INVOICE_ID',
+            message: 'A valid invoice ID is required.',
+          });
+        }
+
+        const [invoice] = await db
+          .select()
+          .from(schema.billingInvoices)
+          .where(eq(schema.billingInvoices.id, invoiceId))
+          .limit(1);
+
+        if (!invoice) {
+          return res.status(404).json({
+            success: false,
+            error: 'INVOICE_NOT_FOUND',
+            message: 'Invoice not found.',
+          });
+        }
+
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
+          invoice.facilityId,
         );
 
-      res.json(items);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!facility || facility.tenantId !== invoice.tenantId) {
+          return res.status(404).json({
+            success: false,
+            error: 'INVOICE_NOT_FOUND',
+            message: 'Invoice not found.',
+          });
+        }
 
-  app.post('/api/invoices', async (req, res) => {
-    try {
-      const {
-        invoice,
-        items,
-      } = req.body;
+        const items = await queries.getInvoiceItems(invoiceId);
+        return res.json(items);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
 
-      const created =
-        await queries.createInvoice(
-          invoice,
-          items
+        console.error('Failed to fetch invoice items:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'INVOICE_ITEMS_FETCH_FAILED',
+          message: 'Failed to fetch invoice items.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/invoices',
+    requirePermission('billing.create'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const body = req.body;
+        const invoiceInput = body?.invoice;
+        const itemsInput = body?.items;
+
+        if (!invoiceInput || typeof invoiceInput !== 'object' || Array.isArray(invoiceInput)) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_INVOICE',
+            message: 'Invoice details are required.',
+          });
+        }
+
+        const facilityIdInput = Number(invoiceInput.facilityId);
+        if (!Number.isSafeInteger(facilityIdInput) || facilityIdInput <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_FACILITY_ID',
+            message: 'A valid facility ID is required.',
+          });
+        }
+
+        const facilityId = resolveFacilityScope(
+          req.authContext,
+          facilityIdInput,
+        );
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
+          facilityId,
         );
 
-      res.status(201).json(created);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!facility) {
+          return res.status(404).json({
+            success: false,
+            error: 'FACILITY_NOT_FOUND',
+            message: 'Facility not found.',
+          });
+        }
 
-  app.post('/api/billing/payments', async (req, res) => {
-    try {
-      const payment =
-        await queries.recordPayment(
-          req.body
+        const patientId = Number(invoiceInput.patientId);
+        if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_PATIENT_ID',
+            message: 'A valid patient ID is required.',
+          });
+        }
+
+        const patient = await queries.getPatientByIdScoped(
+          req.authContext,
+          patientId,
         );
 
-      res.status(201).json(payment);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!patient || patient.tenantId !== facility.tenantId) {
+          return res.status(400).json({
+            success: false,
+            error: 'PATIENT_NOT_AVAILABLE',
+            message: 'The patient is not available in this tenant scope.',
+          });
+        }
 
-  // =========================================================
-  // INSURANCE & SHA CLAIMS
-  // =========================================================
+        const invoiceNumber =
+          typeof invoiceInput.invoiceNumber === 'string'
+            ? invoiceInput.invoiceNumber.trim()
+            : '';
 
-  app.get('/api/claims', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
+        if (!invoiceNumber || invoiceNumber.length > 100) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_INVOICE_NUMBER',
+            message: 'A valid invoice number is required.',
+          });
+        }
 
-      const list =
-        await queries.getClaims(
-          facilityId
+        if (!Array.isArray(itemsInput) || itemsInput.length === 0 || itemsInput.length > 200) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_INVOICE_ITEMS',
+            message: 'Provide between 1 and 200 invoice items.',
+          });
+        }
+
+        let totalCents = 0;
+        const safeItems: Array<{
+          itemType: string;
+          description: string;
+          quantity: number;
+          unitPrice: string;
+          totalAmount: string;
+        }> = [];
+
+        for (const item of itemsInput) {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_INVOICE_ITEM',
+              message: 'An invoice item is invalid.',
+            });
+          }
+
+          const itemType = typeof item.itemType === 'string' ? item.itemType.trim() : '';
+          const description = typeof item.description === 'string' ? item.description.trim() : '';
+          const quantity = Number(item.quantity);
+          const unitPrice = Number(item.unitPrice);
+
+          if (
+            !itemType ||
+            itemType.length > 100 ||
+            !description ||
+            description.length > 500 ||
+            !Number.isSafeInteger(quantity) ||
+            quantity <= 0 ||
+            !Number.isFinite(unitPrice) ||
+            unitPrice < 0 ||
+            !/^\d+(\.\d{1,2})?$/.test(String(item.unitPrice))
+          ) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_INVOICE_ITEM',
+              message: 'Invoice item descriptions, quantities, and prices must be valid.',
+            });
+          }
+
+          const unitCents = Math.round(unitPrice * 100);
+          const lineCents = unitCents * quantity;
+
+          if (
+            !Number.isSafeInteger(lineCents) ||
+            !Number.isSafeInteger(totalCents + lineCents)
+          ) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVOICE_AMOUNT_TOO_LARGE',
+              message: 'The invoice amount exceeds the supported limit.',
+            });
+          }
+
+          totalCents += lineCents;
+          safeItems.push({
+            itemType,
+            description,
+            quantity,
+            unitPrice: (unitCents / 100).toFixed(2),
+            totalAmount: (lineCents / 100).toFixed(2),
+          });
+        }
+
+        const totalAmount = (totalCents / 100).toFixed(2);
+
+        const created = await queries.createInvoice(
+          {
+            tenantId: facility.tenantId,
+            facilityId,
+            patientId,
+            invoiceNumber,
+            totalAmount,
+            paidAmount: '0.00',
+            balanceAmount: totalAmount,
+            status: 'Pending',
+            payerType:
+              typeof invoiceInput.payerType === 'string'
+                ? invoiceInput.payerType.slice(0, 50)
+                : 'Self-Pay',
+            payerName:
+              typeof invoiceInput.payerName === 'string'
+                ? invoiceInput.payerName.slice(0, 200)
+                : null,
+            memberNumber:
+              typeof invoiceInput.memberNumber === 'string'
+                ? invoiceInput.memberNumber.slice(0, 100)
+                : null,
+          },
+          safeItems,
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        return res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
 
-  app.post('/api/claims', async (req, res) => {
-    try {
-      const claim =
-        await queries.createClaim(
-          req.body
+        console.error('Failed to create invoice:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'INVOICE_CREATE_FAILED',
+          message: 'Failed to create invoice.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/billing/payments',
+    requirePermission('billing.payments.record'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext || !req.user) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const input = req.body;
+        const invoiceId = Number(input?.invoiceId);
+        const amount = Number(input?.amount);
+        const receiptNumber =
+          typeof input?.receiptNumber === 'string'
+            ? input.receiptNumber.trim()
+            : '';
+        const paymentMethod =
+          typeof input?.paymentMethod === 'string'
+            ? input.paymentMethod.trim()
+            : '';
+
+        if (
+          !Number.isSafeInteger(invoiceId) ||
+          invoiceId <= 0 ||
+          !Number.isFinite(amount) ||
+          amount <= 0 ||
+          !/^\d+(\.\d{1,2})?$/.test(String(input?.amount)) ||
+          !receiptNumber ||
+          receiptNumber.length > 100 ||
+          !paymentMethod ||
+          paymentMethod.length > 40
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_PAYMENT',
+            message: 'Invoice, receipt, payment method, and amount must be valid.',
+          });
+        }
+
+        const [invoice] = await db
+          .select()
+          .from(schema.billingInvoices)
+          .where(eq(schema.billingInvoices.id, invoiceId))
+          .limit(1);
+
+        if (!invoice) {
+          return res.status(404).json({
+            success: false,
+            error: 'INVOICE_NOT_FOUND',
+            message: 'Invoice not found.',
+          });
+        }
+
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
+          invoice.facilityId,
         );
 
-      res.status(201).json(claim);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!facility || facility.tenantId !== invoice.tenantId) {
+          return res.status(404).json({
+            success: false,
+            error: 'INVOICE_NOT_FOUND',
+            message: 'Invoice not found.',
+          });
+        }
 
-  app.put('/api/claims/:id/status', async (req, res) => {
-    try {
-      const {
-        status,
-        approvedAmount,
-        notes,
-      } = req.body;
+        const balanceCents = Math.round(Number(invoice.balanceAmount ?? 0) * 100);
+        const paymentCents = Math.round(amount * 100);
 
-      const claim =
-        await queries.updateClaimStatus(
-          Number(req.params.id),
+        if (
+          !Number.isSafeInteger(balanceCents) ||
+          balanceCents <= 0 ||
+          paymentCents > balanceCents
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'PAYMENT_EXCEEDS_BALANCE',
+            message: 'Payment must be positive and cannot exceed the invoice balance.',
+          });
+        }
+
+        const payment = await queries.recordPayment({
+          invoiceId,
+          receiptNumber,
+          paymentMethod,
+          amount: (paymentCents / 100).toFixed(2),
+          referenceCode:
+            typeof input.referenceCode === 'string'
+              ? input.referenceCode.trim().slice(0, 150)
+              : null,
+          cashierName: req.user.fullName,
+        });
+
+        return res.status(201).json(payment);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        console.error('Failed to record payment:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'PAYMENT_RECORD_FAILED',
+          message: 'Failed to record payment.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/claims',
+    requirePermission('insurance.claims.create'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const input = req.body;
+        const facilityIdInput = Number(input?.facilityId);
+        const invoiceId = Number(input?.invoiceId);
+        const patientId = Number(input?.patientId);
+        const claimNumber =
+          typeof input?.claimNumber === 'string'
+            ? input.claimNumber.trim()
+            : '';
+        const claimAmount = Number(input?.claimAmount);
+
+        if (
+          !Number.isSafeInteger(facilityIdInput) ||
+          facilityIdInput <= 0 ||
+          !Number.isSafeInteger(invoiceId) ||
+          invoiceId <= 0 ||
+          !Number.isSafeInteger(patientId) ||
+          patientId <= 0 ||
+          !claimNumber ||
+          claimNumber.length > 100 ||
+          !Number.isFinite(claimAmount) ||
+          claimAmount <= 0 ||
+          !/^\d+(\.\d{1,2})?$/.test(String(input?.claimAmount))
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_CLAIM',
+            message: 'Facility, invoice, patient, claim number, and claim amount must be valid.',
+          });
+        }
+
+        const facilityId = resolveFacilityScope(
+          req.authContext,
+          facilityIdInput,
+        );
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
+          facilityId,
+        );
+
+        if (!facility) {
+          return res.status(404).json({
+            success: false,
+            error: 'FACILITY_NOT_FOUND',
+            message: 'Facility not found.',
+          });
+        }
+
+        const [invoice] = await db
+          .select()
+          .from(schema.billingInvoices)
+          .where(eq(schema.billingInvoices.id, invoiceId))
+          .limit(1);
+
+        if (
+          !invoice ||
+          invoice.facilityId !== facilityId ||
+          invoice.tenantId !== facility.tenantId ||
+          invoice.patientId !== patientId
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'CLAIM_INVOICE_MISMATCH',
+            message: 'The selected invoice must belong to the selected patient and facility.',
+          });
+        }
+
+        const invoiceCents = Math.round(Number(invoice.totalAmount ?? 0) * 100);
+        const claimCents = Math.round(claimAmount * 100);
+
+        if (
+          !Number.isSafeInteger(invoiceCents) ||
+          !Number.isSafeInteger(claimCents) ||
+          claimCents > invoiceCents
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_CLAIM_AMOUNT',
+            message: 'The claim amount cannot exceed the invoice total.',
+          });
+        }
+
+        const canSubmit = req.authContext.permissions.includes(
+          'insurance.claims.submit',
+        );
+
+        const claim = await queries.createClaim({
+          tenantId: facility.tenantId,
+          facilityId,
+          patientId,
+          invoiceId,
+          claimNumber,
+          payerName:
+            typeof input.payerName === 'string'
+              ? input.payerName.slice(0, 200)
+              : 'Social Health Authority (SHA)',
+          policyNumber:
+            typeof input.policyNumber === 'string'
+              ? input.policyNumber.slice(0, 100)
+              : null,
+          preAuthCode:
+            typeof input.preAuthCode === 'string'
+              ? input.preAuthCode.slice(0, 100)
+              : null,
+          claimAmount: (claimCents / 100).toFixed(2),
+          status: canSubmit ? 'Submitted' : 'Draft',
+          submittedAt: canSubmit ? new Date() : null,
+          adjudicationNotes:
+            typeof input.adjudicationNotes === 'string'
+              ? input.adjudicationNotes.slice(0, 2000)
+              : null,
+        });
+
+        return res.status(201).json(claim);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        console.error('Failed to create claim:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIM_CREATE_FAILED',
+          message: 'Failed to create insurance claim.',
+        });
+      }
+    },
+  );
+
+  app.put(
+    '/api/claims/:id/status',
+    requirePermission('insurance.claims.manage'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const claimId = Number(req.params.id);
+        const input = req.body;
+        const status =
+          typeof input?.status === 'string'
+            ? input.status.trim()
+            : '';
+        const allowedStatuses = [
+          'Draft',
+          'Submitted',
+          'Approved',
+          'Settled',
+          'Rejected',
+        ];
+
+        if (
+          !Number.isSafeInteger(claimId) ||
+          claimId <= 0 ||
+          !allowedStatuses.includes(status)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_CLAIM_UPDATE',
+            message: 'A valid claim ID and status are required.',
+          });
+        }
+
+        const rawFacilityId = req.query.facilityId;
+        const requestedFacilityId =
+          typeof rawFacilityId === 'string' && rawFacilityId.trim()
+            ? Number(rawFacilityId)
+            : undefined;
+
+        const facilityId = resolveFacilityScope(
+          req.authContext,
+          requestedFacilityId,
+        );
+
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
+          facilityId,
+        );
+
+        if (!facility) {
+          return res.status(404).json({
+            success: false,
+            error: 'FACILITY_NOT_FOUND',
+            message: 'Facility not found.',
+          });
+        }
+
+        const claims = await queries.getClaims(facilityId);
+        const existingClaim = claims.find((claim) => claim.id === claimId);
+
+        if (!existingClaim || existingClaim.tenantId !== facility.tenantId) {
+          return res.status(404).json({
+            success: false,
+            error: 'CLAIM_NOT_FOUND',
+            message: 'Claim not found.',
+          });
+        }
+
+        let approvedAmount: string | undefined;
+
+        if (input.approvedAmount !== undefined) {
+          const parsedAmount = Number(input.approvedAmount);
+          const maximumAmount = Number(existingClaim.claimAmount);
+
+          if (
+            !Number.isFinite(parsedAmount) ||
+            parsedAmount < 0 ||
+            !/^\d+(\.\d{1,2})?$/.test(String(input.approvedAmount)) ||
+            parsedAmount > maximumAmount
+          ) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_APPROVED_AMOUNT',
+              message: 'The approved amount must be non-negative and cannot exceed the claim amount.',
+            });
+          }
+
+          approvedAmount = parsedAmount.toFixed(2);
+        }
+
+        if (
+          (status === 'Approved' || status === 'Settled') &&
+          approvedAmount === undefined &&
+          Number(existingClaim.approvedAmount ?? 0) <= 0
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'APPROVED_AMOUNT_REQUIRED',
+            message: 'An approved amount is required before approving or settling a claim.',
+          });
+        }
+
+        const notes =
+          typeof input.notes === 'string'
+            ? input.notes.slice(0, 2000)
+            : undefined;
+
+        const claim = await queries.updateClaimStatus(
+          claimId,
           status,
           approvedAmount,
-          notes
+          notes,
         );
 
-      res.json(claim);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!claim) {
+          return res.status(404).json({
+            success: false,
+            error: 'CLAIM_NOT_FOUND',
+            message: 'Claim not found.',
+          });
+        }
 
-  // =========================================================
+        return res.json(claim);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        console.error('Failed to update claim status:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIM_UPDATE_FAILED',
+          message: 'Failed to update insurance claim.',
+        });
+      }
+    },
+  );
   // PUBLIC HEALTH & KHIS SURVEILLANCE
   // =========================================================
 
-  app.get('/api/public-health/reports', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
 
-      const list =
-        await queries.getPublicHealthReports(
-          facilityId
+  app.get(
+    '/api/public-health/reports',
+    requirePermission('reports.read'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const rawFacilityId = req.query.facilityId;
+
+        if (
+          rawFacilityId !== undefined &&
+          (
+            typeof rawFacilityId !== 'string' ||
+            !/^[1-9]\d*$/.test(rawFacilityId)
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_FACILITY_ID',
+            message: 'facilityId must be a positive integer.',
+          });
+        }
+
+        const requestedFacilityId =
+          rawFacilityId === undefined
+            ? undefined
+            : Number(rawFacilityId);
+
+        const facilityId = resolveFacilityScope(
+          req.authContext,
+          requestedFacilityId,
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
-
-  app.post('/api/public-health/reports', async (req, res) => {
-    try {
-      const rep =
-        await queries.recordPublicHealthReport(
-          req.body
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
+          facilityId,
         );
 
-      res.status(201).json(rep);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!facility) {
+          return res.status(404).json({
+            success: false,
+            error: 'FACILITY_NOT_FOUND',
+            message: 'The requested facility was not found.',
+          });
+        }
 
+        const reports = await queries.getPublicHealthReports(
+          facility.id,
+        );
+
+        return res.json(reports);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        console.error('Failed to fetch public-health reports:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'PUBLIC_HEALTH_REPORTS_FETCH_FAILED',
+          message: 'Failed to fetch public-health reports.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/public-health/reports',
+    requirePermission('public_health.reports.create'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const body: unknown = req.body;
+
+        if (
+          body === null ||
+          typeof body !== 'object' ||
+          Array.isArray(body)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_REPORT_BODY',
+            message: 'A valid report object is required.',
+          });
+        }
+
+        const input = body as Record<string, unknown>;
+
+        let requestedFacilityId: number | undefined;
+
+        if (input.facilityId !== undefined) {
+          if (
+            typeof input.facilityId !== 'number' ||
+            !Number.isSafeInteger(input.facilityId) ||
+            input.facilityId <= 0
+          ) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_FACILITY_ID',
+              message: 'facilityId must be a positive integer.',
+            });
+          }
+
+          requestedFacilityId = input.facilityId;
+        }
+
+        if (
+          typeof input.diseaseCode !== 'string' ||
+          !input.diseaseCode.trim() ||
+          input.diseaseCode.trim().length > 50 ||
+          typeof input.diseaseName !== 'string' ||
+          !input.diseaseName.trim() ||
+          input.diseaseName.trim().length > 200 ||
+          typeof input.epiWeek !== 'string' ||
+          !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(input.epiWeek)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_REPORT_FIELDS',
+            message: 'Valid diseaseCode, diseaseName, and epiWeek are required.',
+          });
+        }
+
+        const casesCount =
+          input.casesCount === undefined ? 1 : input.casesCount;
+
+        const mortalityCount =
+          input.mortalityCount === undefined ? 0 : input.mortalityCount;
+
+        const ageGroup =
+          input.ageGroup === undefined
+            ? 'Over 5 Years'
+            : input.ageGroup;
+
+        if (
+          typeof casesCount !== 'number' ||
+          !Number.isSafeInteger(casesCount) ||
+          casesCount < 1 ||
+          typeof mortalityCount !== 'number' ||
+          !Number.isSafeInteger(mortalityCount) ||
+          mortalityCount < 0 ||
+          mortalityCount > casesCount ||
+          typeof ageGroup !== 'string' ||
+          !ageGroup.trim() ||
+          ageGroup.trim().length > 100
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_REPORT_COUNTS',
+            message: 'Report counts and ageGroup are invalid.',
+          });
+        }
+
+        const facilityId = resolveFacilityScope(
+          req.authContext,
+          requestedFacilityId,
+        );
+
+        const facility = await queries.getFacilityByIdScoped(
+          req.authContext,
+          facilityId,
+        );
+
+        if (!facility) {
+          return res.status(404).json({
+            success: false,
+            error: 'FACILITY_NOT_FOUND',
+            message: 'The requested facility was not found.',
+          });
+        }
+
+        const report = await queries.recordPublicHealthReport({
+          facilityId: facility.id,
+          diseaseCode: input.diseaseCode.trim(),
+          diseaseName: input.diseaseName.trim(),
+          casesCount,
+          mortalityCount,
+          ageGroup: ageGroup.trim(),
+          epiWeek: input.epiWeek,
+          reportedBy: String(req.authContext.userId),
+        });
+
+        return res.status(201).json(report);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        console.error('Failed to record public-health report:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'PUBLIC_HEALTH_REPORT_CREATE_FAILED',
+          message: 'Failed to record the public-health report.',
+        });
+      }
+    },
+  );
   // =========================================================
   // AUDIT TRAIL
   // =========================================================
 
-  app.get('/api/audit-logs', async (req, res) => {
+  app.get('/api/audit-logs', requirePermission('audit.read'), async (req, res) => {
     try {
       const facilityId =
         req.query.facilityId
@@ -1636,6 +2426,7 @@ app.use('/api/platform', platformRoutes);
 
     app.get(
       '/api/interop/fhir/patient/:id',
+      requirePermission('interop.fhir.patient.read'),
         async (req: AuthRequest, res: Response) => {
           try {
             if (!req.authContext) {
@@ -1780,6 +2571,7 @@ app.use('/api/platform', platformRoutes);
 
 app.get(
   '/api/interop/dha/moh-705',
+  requirePermission('reports.read'),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({
@@ -1803,7 +2595,8 @@ app.get(
 
     app.get(
       '/api/analytics/summary',
-      async (req: AuthRequest, res: Response) => {
+      requirePermission('reports.read'),
+  async (req: AuthRequest, res: Response) => {
         if (!req.authContext) {
           return res.status(401).json({
             success: false,
@@ -1863,3 +2656,5 @@ app.get(
 
   return app;
 }
+
+

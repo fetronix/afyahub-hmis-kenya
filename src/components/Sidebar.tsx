@@ -95,8 +95,52 @@ export const Sidebar: React.FC = () => {
     facilities,
     isMobileMenuOpen, 
     setIsMobileMenuOpen,
-    showToast
+    showToast,
+    authenticatedUser,
   } = useHmis();
+
+  const permissions = new Set(authenticatedUser?.permissions ?? []);
+  const isSuperAdmin = Boolean(
+    authenticatedUser?.isSuperAdmin ||
+    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
+
+  const can = (permission: string) =>
+    isSuperAdmin || permissions.has(permission);
+
+  const isModuleVisible = (id: ModuleId): boolean => {
+    if (isSuperAdmin) return true;
+
+    const required: Partial<Record<ModuleId, string[]>> = {
+      dashboard: [
+        'patients.read', 'appointments.read', 'clinical.read',
+        'inpatient.read', 'laboratory.read', 'pharmacy.read',
+        'inventory.read', 'billing.read', 'reports.read'
+      ],
+      registration: ['patients.read'],
+      reception: ['appointments.read', 'clinical.read', 'patients.read'],
+      opd: ['clinical.read'],
+      inpatient: ['inpatient.read'],
+      theatre: ['clinical.read', 'inpatient.read'],
+      specialty: ['clinical.read'],
+      laboratory: ['laboratory.read'],
+      radiology: ['laboratory.read', 'clinical.read'],
+      pharmacy: ['pharmacy.read'],
+      inventory: ['inventory.read'],
+      procurement: ['procurement.read'],
+      finance: ['billing.read'],
+      claims: ['insurance.read'],
+      public_health: ['reports.read'],
+      interoperability: ['interop.fhir.patient.read'],
+      configuration: [
+        'system.settings.manage', 'users.roles.manage',
+        'roles.permissions.manage', 'facilities.update'
+      ],
+      audit: ['audit.read', 'audit.security.read']
+    };
+
+    return (required[id] ?? []).some(can);
+  };
 
   const handleSelectModule = (id: ModuleId) => {
     setActiveModule(id);
@@ -195,13 +239,13 @@ export const Sidebar: React.FC = () => {
 
         {/* Navigation Sections */}
         <div className="p-3 space-y-5 flex-1">
-          {navSections.map((sec, secIdx) => (
+          {navSections.filter((sec) => sec.items.some((item) => isModuleVisible(item.id))).map((sec, secIdx) => (
             <div key={secIdx}>
               <div className="px-2.5 pb-1 text-2xs font-semibold text-slate-400 tracking-wider">
                 {sec.title}
               </div>
               <div className="space-y-0.5">
-                {sec.items.map((item) => {
+                {sec.items.filter((item) => isModuleVisible(item.id)).map((item) => {
                   const Icon = item.icon;
                   const isActive = activeModule === item.id;
                   return (
@@ -243,3 +287,5 @@ export const Sidebar: React.FC = () => {
     </>
   );
 };
+
+

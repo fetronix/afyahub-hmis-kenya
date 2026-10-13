@@ -1,4 +1,4 @@
-import {
+﻿import {
   Tenant,
   Facility,
   Department,
@@ -42,6 +42,10 @@ export interface AuthenticatedUser {
   fullName: string;
   tenantId: number | null;
   facilityId: number | null;
+  designation?: string | null;
+  roles?: string[];
+  permissions?: string[];
+  isSuperAdmin?: boolean;
   accountStatus: string;
   mustChangePassword: boolean;
   mfaEnabled: boolean;
@@ -248,6 +252,10 @@ export interface SessionResponse {
     fullName: string;
     tenantId: number | null;
     facilityId: number | null;
+    designation?: string | null;
+    roles?: string[];
+    permissions?: string[];
+    isSuperAdmin?: boolean;
     accountStatus: string;
     mustChangePassword: boolean;
     mfaEnabled: boolean;
@@ -1504,3 +1512,4 @@ export const api = {
         }`
       ),
 };
+

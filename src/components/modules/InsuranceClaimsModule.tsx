@@ -89,7 +89,43 @@ export const InsuranceClaimsModule: React.FC = () => {
     }
   };
 
-  const handleUpdateClaimStatus = async (id: number, status: string, approvedAmount?: string) => {
+  const handleUpdateClaimStatus = async (id: number, status: string) => {
+    const existingClaim = claims.find((claim) => claim.id === id);
+
+    if (!existingClaim) {
+      showToast('Claim not found. Refresh and try again.');
+      return;
+    }
+
+    let approvedAmount: string | undefined;
+
+    if (status === 'Approved' || status === 'Settled') {
+      const claimAmount = Number(existingClaim.claimAmount);
+      const currentApprovedAmount = Number(existingClaim.approvedAmount ?? 0);
+
+      const enteredAmount = window.prompt(
+        `Enter the amount approved by the payer in KES (maximum ${claimAmount.toFixed(2)}):`,
+        currentApprovedAmount > 0 ? currentApprovedAmount.toFixed(2) : ''
+      );
+
+      if (enteredAmount === null) return;
+
+      const normalizedAmount = enteredAmount.trim();
+      const parsedAmount = Number(normalizedAmount);
+
+      if (
+        !/^\d+(\.\d{1,2})?$/.test(normalizedAmount) ||
+        !Number.isFinite(parsedAmount) ||
+        parsedAmount <= 0 ||
+        parsedAmount > claimAmount
+      ) {
+        showToast('Enter a valid approved amount greater than zero and no greater than the claim amount.');
+        return;
+      }
+
+      approvedAmount = parsedAmount.toFixed(2);
+    }
+
     try {
       await api.updateClaimStatus(id, status, approvedAmount);
       showToast(`Claim status updated to "${status}"`);
@@ -104,7 +140,9 @@ export const InsuranceClaimsModule: React.FC = () => {
   };
 
   const totalClaimValue = claims.reduce((acc, c) => acc + Number(c.claimAmount || 0), 0);
-  const totalApprovedValue = claims.reduce((acc, c) => acc + Number(c.approvedAmount || 0), 0);
+  const totalApprovedValue = claims
+    .filter((claim) => claim.status === 'Approved' || claim.status === 'Settled')
+    .reduce((total, claim) => total + Number(claim.approvedAmount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -223,7 +261,7 @@ export const InsuranceClaimsModule: React.FC = () => {
                     <td className="px-4 py-3 text-right font-sans">
                       <select
                         value={c.status}
-                        onChange={(e) => handleUpdateClaimStatus(c.id, e.target.value, c.claimAmount)}
+                        onChange={(e) => handleUpdateClaimStatus(c.id, e.target.value)}
                         className="px-2 py-1 text-2xs border border-slate-200 rounded font-medium"
                       >
                         <option value="Draft">Draft</option>

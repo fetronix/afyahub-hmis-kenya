@@ -20,32 +20,83 @@ import {
 } from 'lucide-react';
 
 export const DashboardModule: React.FC = () => {
-  const { currentFacility, setActiveModule, setSelectedPatient, setIsJourneyModalOpen, refreshKey, showToast } = useHmis();
+  const {
+    currentFacility, setActiveModule, setSelectedPatient,
+    setIsJourneyModalOpen, refreshKey, showToast, authenticatedUser
+  } = useHmis();
+
+  const permissions = new Set(authenticatedUser?.permissions ?? []);
+  const isSuperAdmin = Boolean(
+    authenticatedUser?.isSuperAdmin ||
+    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
+  const can = (permission: string) =>
+    isSuperAdmin || permissions.has(permission);
+  const canAny = (...required: string[]) =>
+    isSuperAdmin || required.some((permission) => permissions.has(permission));
+
+  const canReadReports = can('reports.read');
+  const canReadQueues = can('appointments.read');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [surveillance, setSurveillance] = useState<PublicHealthReport[]>([]);
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     async function loadDashboard() {
+      setLoading(true);
+
+      const tasks: Promise<void>[] = [];
+
+      if (canReadReports) {
+        tasks.push(
+          api.getAnalyticsSummary(currentFacility?.id)
+            .then((value) => { if (active) setSummary(value); })
+            .catch((err) => {
+              console.error('Failed to load analytics summary:', err);
+              if (active) setSummary(null);
+            })
+        );
+
+        tasks.push(
+          api.getPublicHealthReports(currentFacility?.id)
+            .then((value) => { if (active) setSurveillance(value); })
+            .catch((err) => {
+              console.error('Failed to load surveillance reports:', err);
+              if (active) setSurveillance([]);
+            })
+        );
+      } else {
+        setSummary(null);
+        setSurveillance([]);
+      }
+
+      if (canReadQueues) {
+        tasks.push(
+          api.getQueues(currentFacility?.id)
+            .then((value) => { if (active) setQueues(value); })
+            .catch((err) => {
+              console.error('Failed to load queues:', err);
+              if (active) setQueues([]);
+            })
+        );
+      } else {
+        setQueues([]);
+      }
+
       try {
-        setLoading(true);
-        const [sum, rep, q] = await Promise.all([
-          api.getAnalyticsSummary(currentFacility?.id),
-          api.getPublicHealthReports(currentFacility?.id),
-          api.getQueues(currentFacility?.id),
-        ]);
-        setSummary(sum);
-        setSurveillance(rep);
-        setQueues(q);
-      } catch (err) {
-        console.error('Failed to load dashboard metrics:', err);
+        await Promise.all(tasks);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
-    loadDashboard();
-  }, [currentFacility, refreshKey]);
+
+    void loadDashboard();
+
+    return () => { active = false; };
+  }, [currentFacility, refreshKey, canReadReports, canReadQueues]);
 
   return (
     <div className="space-y-6">
@@ -61,7 +112,7 @@ export const DashboardModule: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            {currentFacility?.level} · {currentFacility?.county} County · Master Facility Registry Synchronized
+            {currentFacility?.level} · {currentFacility?.county} County
           </p>
         </div>
 
@@ -90,6 +141,8 @@ export const DashboardModule: React.FC = () => {
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+{can('appointments.read') && (
+        <>
         {/* Card 1: Outpatient Activity */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
@@ -108,6 +161,12 @@ export const DashboardModule: React.FC = () => {
           </div>
         </div>
 
+
+        </>
+        )}
+
+{can('inpatient.read') && (
+        <>
         {/* Card 2: Inpatient Occupancy */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
@@ -128,6 +187,12 @@ export const DashboardModule: React.FC = () => {
           </div>
         </div>
 
+
+        </>
+        )}
+
+{can('billing.read') && (
+        <>
         {/* Card 3: Revenue Today */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
@@ -145,7 +210,13 @@ export const DashboardModule: React.FC = () => {
           </div>
         </div>
 
+
+        </>
+        )}
+
         {/* Card 4: Clinical Diagnostics & OT */}
+        {canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read') && (
+        <>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Theatre & Lab</span>
@@ -156,7 +227,7 @@ export const DashboardModule: React.FC = () => {
               <span className="text-xl font-bold font-mono text-slate-900 tabular-nums">{summary?.scheduledSurgeries ?? 0}</span>
               <span className="text-2xs text-slate-500 ml-1">Surgeries</span>
             </div>
-            <span className="text-slate-300">·</span>
+            <span className="text-slate-300">Â·</span>
             <div>
               <span className="text-xl font-bold font-mono text-slate-900 tabular-nums">{summary?.pendingLabOrders ?? 0}</span>
               <span className="text-2xs text-slate-500 ml-1">Pending Labs</span>
@@ -167,10 +238,14 @@ export const DashboardModule: React.FC = () => {
             <strong className="font-mono text-rose-600">{summary?.lowStockAlerts ?? 0} items</strong>
           </div>
         </div>
+        </>
+        )}
       </div>
 
       {/* Main Grid: Real-Time Patient Queue & Disease Surveillance */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+{can('appointments.read') && (
+        <>
         {/* Real-time OPD Queue Station (2 cols) */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
           <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
@@ -228,6 +303,7 @@ export const DashboardModule: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-sans">
+                      {can('patients.read') && (
                       <button
                         onClick={() => {
                           api.getPatient(q.patientId).then(p => {
@@ -239,6 +315,7 @@ export const DashboardModule: React.FC = () => {
                       >
                         Patient Journey
                       </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -247,7 +324,13 @@ export const DashboardModule: React.FC = () => {
           </div>
         </div>
 
+
+        </>
+        )}
+
         {/* Public Health & Kenya Surveillance Card (1 col) */}
+        {can('reports.read') && (
+        <>
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs flex flex-col">
           <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -266,7 +349,7 @@ export const DashboardModule: React.FC = () => {
 
           <div className="p-4 space-y-3 flex-1">
             <div className="text-2xs text-slate-500 font-medium">
-              Epi-Week: <strong className="text-slate-800 font-mono">2026-W40</strong> · KHIS / DHIS2 Synchronized
+              Epi-Week: <strong className="text-slate-800 font-mono">2026-W40</strong> · Surveillance reporting
             </div>
 
             <div className="space-y-2">
@@ -275,7 +358,7 @@ export const DashboardModule: React.FC = () => {
                   <div>
                     <div className="font-semibold text-slate-900">{rep.diseaseName}</div>
                     <div className="text-2xs text-slate-500 font-mono">
-                      ICD-10: {rep.diseaseCode} · Age: {rep.ageGroup}
+                      ICD-10: {rep.diseaseCode} Â· Age: {rep.ageGroup}
                     </div>
                   </div>
                   <div className="text-right">
@@ -296,6 +379,8 @@ export const DashboardModule: React.FC = () => {
             </div>
           </div>
         </div>
+        </>
+        )}
       </div>
 
       {/* Kenya Digital Health Architecture Summary */}
@@ -304,7 +389,7 @@ export const DashboardModule: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 text-2xs font-mono font-semibold bg-orange-500/20 text-orange-300 rounded border border-orange-500/30">
-                KENYA DIGITAL HEALTH ACT COMPLIANT
+                INTEROPERABILITY READINESS REVIEW
               </span>
               <span className="text-xs text-slate-400">Interoperability Readiness</span>
             </div>
@@ -327,3 +412,4 @@ export const DashboardModule: React.FC = () => {
     </div>
   );
 };
+

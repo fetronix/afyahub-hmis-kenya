@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
+import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import {
   Sliders,
   Building2,
@@ -12,12 +13,13 @@ import {
   CreditCard,
   ToggleLeft,
   ToggleRight,
-  Plus
+  Plus,
+  UserPlus
 } from 'lucide-react';
 
 export const ConfigurationModule: React.FC = () => {
   const { currentFacility, currentTenant, showToast } = useHmis();
-  const [activeTab, setActiveTab] = useState<'facility' | 'modules' | 'roles' | 'tariffs' | 'payments'>('facility');
+  const [activeTab, setActiveTab] = useState<'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'>('facility');
 
   // Facility Info Form
   const [facilityData, setFacilityData] = useState({
@@ -99,6 +101,7 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'facility', label: 'Facility Profile', icon: Building2 },
           { id: 'modules', label: 'Modular Features Engine', icon: Layers },
           { id: 'roles', label: 'RBAC Roles & Permissions', icon: ShieldCheck },
+          { id: 'staff', label: 'Staff Invitations', icon: UserPlus },
           { id: 'payments', label: 'M-Pesa & Payment Channels', icon: CreditCard },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
         ].map((tab) => {
@@ -122,6 +125,8 @@ export const ConfigurationModule: React.FC = () => {
         })}
       </div>
 
+      {/* STAFF INVITATIONS TAB */}
+      {activeTab === 'staff' && <StaffInvitationsPanel />}
       {/* FACILITY PROFILE TAB */}
       {activeTab === 'facility' && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs text-xs space-y-5">
