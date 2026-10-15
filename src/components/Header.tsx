@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 
 import {
   useHmis,
@@ -70,6 +70,8 @@ const moduleTitles: Record<ModuleId, string> = {
 
   interoperability:
     'DHA Certification Readiness & HL7 FHIR',
+
+  platform_administration: 'Platform Administration',
 
   configuration:
     'Facility & System Configuration Engine',
@@ -431,7 +433,7 @@ export const Header: React.FC = () => {
             className="text-slate-300"
             aria-hidden="true"
           >
-            ·
+            Â·
           </span>
 
           <span
@@ -817,7 +819,7 @@ export const Header: React.FC = () => {
                           text-slate-400
                         "
                       >
-                        {facility.level} ·{' '}
+                        {facility.level} Â·{' '}
                         {facility.county}
                       </span>
                     </button>

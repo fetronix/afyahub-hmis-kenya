@@ -1,10 +1,12 @@
-﻿import React from 'react';
+import React from 'react';
 import { HmisProvider, useHmis } from './context/HmisContext.tsx';
 
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { LoginScreen } from './components/LoginScreen.tsx';
 import { StaffInvitationAcceptance } from './components/StaffInvitationAcceptance.tsx';
+import FacilityAdminInvitationAcceptance from './components/FacilityAdminInvitationAcceptance.tsx';
+import { PlatformAdministrationModule } from "./components/modules/PlatformAdministrationModule";
 import { PatientJourneyModal } from './components/PatientJourneyModal.tsx';
 
 import { DashboardModule } from './components/modules/DashboardModule.tsx';
@@ -34,6 +36,7 @@ const AppContent: React.FC = () => {
     toastMessage,
     loading,
     isAuthenticated,
+    authenticatedUser,
     authLoading,
   } = useHmis();
 
@@ -46,6 +49,8 @@ const AppContent: React.FC = () => {
    * session is valid, do not show the login screen or dashboard.
    */
   if (window.location.pathname === '/accept-staff-invitation') return <StaffInvitationAcceptance />;
+
+  if (window.location.pathname === "/accept-facility-admin-invitation") return <FacilityAdminInvitationAcceptance />;
   if (authLoading) {
     return (
       <div className="min-h-screen w-screen bg-slate-100 flex items-center justify-center">
@@ -87,6 +92,7 @@ const AppContent: React.FC = () => {
    */
   const renderModule = () => {
     switch (activeModule) {
+      case 'platform_administration': return (authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes("SUPER_ADMIN")) ? <PlatformAdministrationModule /> : <DashboardModule />;
       case 'dashboard':
         return <DashboardModule />;
 
@@ -199,3 +205,5 @@ export default function App() {
     </HmisProvider>
   );
 }
+
+

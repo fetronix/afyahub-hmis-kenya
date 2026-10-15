@@ -1,9 +1,13 @@
 
 import { Router, type Request, type Response } from 'express';
+
+
 import {
   and,
+  desc,
   eq,
   gt,
+  inArray,
   isNull,
 } from 'drizzle-orm';
 
@@ -109,6 +113,41 @@ function handleError(res: Response, error: unknown): void {
   });
 }
 
+
+
+
+const FACILITY_ADMIN_PERMISSION_CODES = [
+  'appointments.cancel',
+  'appointments.create',
+  'appointments.read',
+  'appointments.update',
+  'audit.read',
+  'billing.read',
+  'clinical.read',
+  'facilities.read',
+  'facilities.update',
+  'inpatient.read',
+  'insurance.read',
+  'inventory.read',
+  'laboratory.read',
+  'patients.create',
+  'patients.read',
+  'patients.update',
+  'pharmacy.read',
+  'practitioners.read',
+  'procurement.read',
+  'reports.export',
+  'reports.read',
+  'roles.read',
+  'users.create',
+  'users.invitations.read',
+  'users.invitations.revoke',
+  'users.invite',
+  'users.read',
+  'users.update',
+] as const;
+
+
 /**
  * POST /api/platform/tenants
  * Create a tenant.
@@ -167,23 +206,83 @@ router.post('/tenants', async (req: Request, res: Response) => {
     });
     return;
   }
-
   try {
-    const [tenant] = await db
-      .insert(schema.tenants)
-      .values({
-        name,
-        slug,
-        ...(domain ? { domain } : {}),
-        ...(logoUrl ? { logoUrl } : {}),
-        ...(brandColor ? { brandColor } : {}),
-        ...(contactEmail ? { contactEmail } : {}),
-        ...(contactPhone ? { contactPhone } : {}),
-        currency,
-        timezone,
-      })
-      .returning();
+    const tenant = await db.transaction(async (tx) => {
+      // 1. Create the tenant.
+      const [createdTenant] = await tx
+        .insert(schema.tenants)
+        .values({
+          name,
+          slug,
+          ...(domain ? { domain } : {}),
+          ...(logoUrl ? { logoUrl } : {}),
+          ...(brandColor ? { brandColor } : {}),
+          ...(contactEmail ? { contactEmail } : {}),
+          ...(contactPhone ? { contactPhone } : {}),
+          currency,
+          timezone,
+        })
+        .returning();
 
+      // 2. Resolve every required permission before creating
+      //    the role. Missing permissions abort the transaction.
+      const permissionRows = await tx
+        .select({
+          id: schema.permissions.id,
+          code: schema.permissions.code,
+        })
+        .from(schema.permissions)
+        .where(
+          inArray(
+            schema.permissions.code,
+            [...FACILITY_ADMIN_PERMISSION_CODES],
+          ),
+        );
+
+      const foundCodes = new Set(
+        permissionRows.map((permission) => permission.code),
+      );
+
+      const missingCodes =
+        FACILITY_ADMIN_PERMISSION_CODES.filter(
+          (code) => !foundCodes.has(code),
+        );
+
+      if (missingCodes.length > 0) {
+        throw new Error(
+          `FACILITY_ADMIN_PERMISSIONS_MISSING: ${missingCodes.join(', ')}`,
+        );
+      }
+
+      // 3. Create a tenant-scoped role, never a global role.
+      const [facilityAdminRole] = await tx
+        .insert(schema.roles)
+        .values({
+          tenantId: createdTenant.id,
+          name: 'FACILITY_ADMIN',
+          description:
+            'Facility administrator for this healthcare organization.',
+          isSystem: false,
+          isActive: true,
+        })
+        .returning({
+          id: schema.roles.id,
+        });
+
+      // 4. Assign the approved permission set.
+      await tx
+        .insert(schema.rolePermissions)
+        .values(
+          permissionRows.map((permission) => ({
+            roleId: facilityAdminRole.id,
+            permissionId: permission.id,
+          })),
+        );
+
+      return createdTenant;
+    });
+
+    // Audit only after the tenant and role transaction commits.
     await queries.logAuditEvent(
       tenant.id,
       null,
@@ -191,13 +290,14 @@ router.post('/tenants', async (req: Request, res: Response) => {
       'CREATE',
       'TENANT',
       String(tenant.id),
-      `Created tenant "${tenant.name}" (${tenant.slug}).`,
+      `Created tenant "${tenant.name}" (${tenant.slug}) with a tenant-scoped FACILITY_ADMIN role.`,
     );
 
     res.status(201).json({ data: tenant });
   } catch (error) {
     handleError(res, error);
   }
+
 });
 
 /**
@@ -1000,6 +1100,53 @@ router.post(
         });
         return;
       }
+      // Verify the tenant-specific facility administrator role.
+      const [facilityAdminRole] = await db
+        .select({
+          id: schema.roles.id,
+        })
+        .from(schema.roles)
+        .where(
+          and(
+            eq(schema.roles.name, 'FACILITY_ADMIN'),
+            eq(schema.roles.tenantId, facility.tenantId),
+            eq(schema.roles.isActive, true),
+          ),
+        )
+        .limit(1);
+
+      if (!facilityAdminRole) {
+        res.status(409).json({
+          error: 'FACILITY_ADMIN_ROLE_NOT_CONFIGURED',
+          message:
+            'The facility administrator role is not configured for this organization. Contact the platform administrator.',
+        });
+        return;
+      }
+
+      // Verify that the role has permission assignments.
+      const [rolePermission] = await db
+        .select({
+          id: schema.rolePermissions.id,
+        })
+        .from(schema.rolePermissions)
+        .where(
+          eq(
+            schema.rolePermissions.roleId,
+            facilityAdminRole.id,
+          ),
+        )
+        .limit(1);
+
+      if (!rolePermission) {
+        res.status(409).json({
+          error: 'FACILITY_ADMIN_PERMISSIONS_NOT_CONFIGURED',
+          message:
+            'The facility administrator role has no permissions configured. Contact the platform administrator.',
+        });
+        return;
+      }
+
 
       const now = new Date();
 
@@ -1104,5 +1251,236 @@ router.post(
   },
 );
 
+
+
+
+/**
+ * GET /api/platform/facility-admin-invitations
+ * List invitation metadata without exposing token hashes.
+ */
+router.get('/facility-admin-invitations', async (req: Request, res: Response) => {
+  if (!requireSuperAdmin(req, res)) return;
+
+  try {
+    const rows = await db
+      .select({
+        id: schema.facilityAdminInvitations.id,
+        tenantId: schema.facilityAdminInvitations.tenantId,
+        tenantName: schema.tenants.name,
+        facilityId: schema.facilityAdminInvitations.facilityId,
+        facilityName: schema.facilities.name,
+        email: schema.facilityAdminInvitations.email,
+        fullName: schema.facilityAdminInvitations.fullName,
+        createdAt: schema.facilityAdminInvitations.createdAt,
+        expiresAt: schema.facilityAdminInvitations.expiresAt,
+        acceptedAt: schema.facilityAdminInvitations.acceptedAt,
+        acceptedUserId: schema.facilityAdminInvitations.acceptedUserId,
+        revokedAt: schema.facilityAdminInvitations.revokedAt,
+      })
+      .from(schema.facilityAdminInvitations)
+      .innerJoin(
+        schema.tenants,
+        eq(schema.facilityAdminInvitations.tenantId, schema.tenants.id),
+      )
+      .innerJoin(
+        schema.facilities,
+        eq(schema.facilityAdminInvitations.facilityId, schema.facilities.id),
+      )
+      .orderBy(desc(schema.facilityAdminInvitations.createdAt))
+      .limit(500);
+
+    const now = Date.now();
+    const data = rows.map((row) => ({
+      ...row,
+      status: row.acceptedAt
+        ? 'ACCEPTED'
+        : row.revokedAt
+          ? 'REVOKED'
+          : new Date(row.expiresAt).getTime() <= now
+            ? 'EXPIRED'
+            : 'PENDING',
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+/**
+ * POST /api/platform/facility-admin-invitations/:id/revoke
+ * Revoke an invitation that has not already been accepted or revoked.
+ */
+router.post(
+  '/facility-admin-invitations/:id/revoke',
+  async (req: Request, res: Response) => {
+    if (!requireSuperAdmin(req, res)) return;
+
+    const context = getContext(req)!;
+    const id = parseId(req.params.id);
+
+    if (!id) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Invalid invitation ID.' });
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const [invitation] = await db
+        .update(schema.facilityAdminInvitations)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(schema.facilityAdminInvitations.id, id),
+            isNull(schema.facilityAdminInvitations.acceptedAt),
+            isNull(schema.facilityAdminInvitations.revokedAt),
+          ),
+        )
+        .returning({
+          id: schema.facilityAdminInvitations.id,
+          tenantId: schema.facilityAdminInvitations.tenantId,
+          facilityId: schema.facilityAdminInvitations.facilityId,
+          email: schema.facilityAdminInvitations.email,
+        });
+
+      if (!invitation) {
+        res.status(409).json({
+          error: 'INVITATION_NOT_REVOCABLE',
+          message: 'The invitation may not exist, or it has already been accepted or revoked.',
+        });
+        return;
+      }
+
+      await queries.logAuditEvent(
+        invitation.tenantId,
+        invitation.facilityId,
+        auditActor(context),
+        'REVOKE',
+        'FACILITY_ADMIN_INVITATION',
+        String(invitation.id),
+        `Revoked a facility administrator invitation for ${invitation.email}.`,
+      );
+
+      res.json({ success: true, message: 'Invitation revoked.' });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+);
+
+/**
+ * POST /api/platform/facility-admin-invitations/:id/reissue
+ * Replace the old token and extend the invitation by 48 hours.
+ */
+router.post(
+  '/facility-admin-invitations/:id/reissue',
+  async (req: Request, res: Response) => {
+    if (!requireSuperAdmin(req, res)) return;
+
+    const context = getContext(req)!;
+    const id = parseId(req.params.id);
+
+    if (!id) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Invalid invitation ID.' });
+      return;
+    }
+
+    const baseUrl = process.env.APP_BASE_URL?.trim();
+    let invitationUrl: URL;
+
+    try {
+      if (!baseUrl) throw new Error('Missing APP_BASE_URL.');
+      invitationUrl = new URL(baseUrl);
+      if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
+        throw new Error('HTTPS is required.');
+      }
+    } catch {
+      res.status(500).json({
+        error: 'CONFIGURATION_ERROR',
+        message: 'APP_BASE_URL must be a valid HTTPS URL (localhost is allowed for development).',
+      });
+      return;
+    }
+
+    try {
+      const [existing] = await db
+        .select()
+        .from(schema.facilityAdminInvitations)
+        .where(eq(schema.facilityAdminInvitations.id, id))
+        .limit(1);
+
+      if (!existing) {
+        res.status(404).json({ error: 'NOT_FOUND', message: 'Invitation not found.' });
+        return;
+      }
+
+      if (existing.acceptedAt || existing.revokedAt) {
+        res.status(409).json({
+          error: 'INVITATION_NOT_REISSUABLE',
+          message: 'Accepted or revoked invitations cannot be reissued.',
+        });
+        return;
+      }
+
+      const now = new Date();
+      const rawToken = randomBytes(32).toString('base64url');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+      const [updated] = await db
+        .update(schema.facilityAdminInvitations)
+        .set({ invitationTokenHash: tokenHash, expiresAt })
+        .where(
+          and(
+            eq(schema.facilityAdminInvitations.id, id),
+            isNull(schema.facilityAdminInvitations.acceptedAt),
+            isNull(schema.facilityAdminInvitations.revokedAt),
+          ),
+        )
+        .returning({
+          id: schema.facilityAdminInvitations.id,
+          tenantId: schema.facilityAdminInvitations.tenantId,
+          facilityId: schema.facilityAdminInvitations.facilityId,
+          email: schema.facilityAdminInvitations.email,
+          fullName: schema.facilityAdminInvitations.fullName,
+          expiresAt: schema.facilityAdminInvitations.expiresAt,
+        });
+
+      if (!updated) {
+        res.status(409).json({
+          error: 'INVITATION_NOT_REISSUABLE',
+          message: 'The invitation changed state. Refresh the list and try again.',
+        });
+        return;
+      }
+
+      await queries.logAuditEvent(
+        updated.tenantId,
+        updated.facilityId,
+        auditActor(context),
+        'UPDATE',
+        'FACILITY_ADMIN_INVITATION',
+        String(updated.id),
+        `Reissued a facility administrator invitation for ${updated.email}.`,
+      );
+
+      const link = new URL('/accept-facility-admin-invitation', invitationUrl);
+      link.searchParams.set('token', rawToken);
+
+      res.json({
+        success: true,
+        message: 'Invitation reissued. The previous token is no longer valid.',
+        data: {
+          invitationId: updated.id,
+          email: updated.email,
+          expiresAt: updated.expiresAt,
+          invitationLink: link.toString(),
+        },
+      });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+);
 
 export default router;

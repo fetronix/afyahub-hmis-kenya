@@ -1,3 +1,4 @@
+﻿import { Building2 } from 'lucide-react';
 import React from 'react';
 import { useHmis, ModuleId } from '../context/HmisContext.tsx';
 import {
@@ -77,6 +78,7 @@ const navSections: NavSection[] = [
   {
     title: 'ADMINISTRATION',
     items: [
+      { id: 'platform_administration', label: 'Platform Administration', icon: Building2 },
       { id: 'configuration', label: 'System Configuration', icon: Sliders },
       { id: 'audit', label: 'Audit Trail & Security', icon: ShieldAlert },
     ],
@@ -287,5 +289,6 @@ export const Sidebar: React.FC = () => {
     </>
   );
 };
+
 
 

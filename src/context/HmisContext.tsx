@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   createContext,
   useContext,
   useEffect,
@@ -46,7 +46,7 @@ export interface StaffUser {
 
 export type ModuleId =
   | 'dashboard'
-  | 'registration'
+  | 'platform_administration' | 'registration'
   | 'reception'
   | 'opd'
   | 'inpatient'
@@ -1425,3 +1425,4 @@ export const useHmis =
 
     return context;
   };
+
