@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const LaboratoryModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -40,7 +40,7 @@ export const LaboratoryModule: React.FC = () => {
         const [tests, orders, pList] = await Promise.all([
           api.getLabTests(currentFacility?.id),
           api.getLabOrders(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setLabTests(tests);
         setLabOrders(orders);
@@ -55,7 +55,7 @@ export const LaboratoryModule: React.FC = () => {
       }
     }
     loadLabData();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const selectOrder = async (order: LabOrder) => {
     setSelectedOrder(order);

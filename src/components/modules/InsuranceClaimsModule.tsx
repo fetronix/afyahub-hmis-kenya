@@ -40,7 +40,7 @@ export const InsuranceClaimsModule: React.FC = () => {
         const [cList, invList, pList] = await Promise.all([
           api.getClaims(currentFacility?.id),
           api.getInvoices(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setClaims(cList);
         setInvoices(invList);
@@ -59,7 +59,7 @@ export const InsuranceClaimsModule: React.FC = () => {
       }
     }
     loadClaimsData();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const handleCreateClaim = async (e: React.FormEvent) => {
     e.preventDefault();

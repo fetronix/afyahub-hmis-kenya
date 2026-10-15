@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const PharmacyModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [prescriptions, setPrescriptions] = useState<Medication[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -35,7 +35,7 @@ export const PharmacyModule: React.FC = () => {
         const [meds, inv, pList] = await Promise.all([
           api.getMedications(),
           api.getInventory(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setPrescriptions(meds);
         setInventory(inv);
@@ -47,7 +47,7 @@ export const PharmacyModule: React.FC = () => {
       }
     }
     loadPharmacy();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const openDispenseModal = (med: Medication) => {
     setDispenseTarget(med);

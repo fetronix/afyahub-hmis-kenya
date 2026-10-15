@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const BillingCashierModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<BillingInvoice | null>(null);
@@ -36,7 +36,7 @@ export const BillingCashierModule: React.FC = () => {
       try {
         const [inv, pList] = await Promise.all([
           api.getInvoices(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setInvoices(inv);
         setPatients(pList);
@@ -50,7 +50,7 @@ export const BillingCashierModule: React.FC = () => {
       }
     }
     loadBilling();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const selectInvoice = async (inv: BillingInvoice) => {
     setSelectedInvoice(inv);

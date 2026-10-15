@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const ReceptionQueueModule: React.FC = () => {
-  const { currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -40,7 +40,7 @@ export const ReceptionQueueModule: React.FC = () => {
         const [qList, aList, pList] = await Promise.all([
           api.getQueues(currentFacility?.id, selectedStation),
           api.getAppointments(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setQueues(qList);
         setAppointments(aList);
@@ -55,7 +55,7 @@ export const ReceptionQueueModule: React.FC = () => {
       }
     }
     loadData();
-  }, [currentFacility, selectedStation, refreshKey]);
+  }, [currentTenant, currentFacility, selectedStation, refreshKey]);
 
   const updateStatus = async (id: number, status: string) => {
     try {

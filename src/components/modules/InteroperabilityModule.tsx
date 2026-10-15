@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const InteroperabilityModule: React.FC = () => {
-  const { currentFacility, showToast, refreshKey } = useHmis();
+  const { currentTenant, currentFacility, showToast, refreshKey } = useHmis();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [fhirData, setFhirData] = useState<any>(null);
@@ -23,7 +23,7 @@ export const InteroperabilityModule: React.FC = () => {
   useEffect(() => {
     async function loadPatients() {
       try {
-        const pList = await api.getPatients(undefined, currentFacility?.id);
+        const pList = await api.getPatients(currentTenant?.id, currentFacility?.id);
         setPatients(pList);
         if (pList.length > 0) {
           setSelectedPatientId(pList[0].id.toString());
@@ -34,7 +34,7 @@ export const InteroperabilityModule: React.FC = () => {
       }
     }
     loadPatients();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const loadFhir = async (id: number) => {
     setLoading(true);

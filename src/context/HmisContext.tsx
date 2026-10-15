@@ -1,4 +1,4 @@
-﻿import React, {
+import React, {
   createContext,
   useContext,
   useEffect,
@@ -839,8 +839,25 @@ export const HmisProvider: React.FC<{
       |--------------------------------------------------------------------------
       */
 
+      const sessionResult = await api.getSession();
+
+      if (!sessionResult.success || !sessionResult.user) {
+        api.clearLocalSession();
+
+        setAuthenticatedUser(null);
+        setIsAuthenticated(false);
+
+        return {
+          success: false,
+          message:
+            'Login succeeded, but your authorized session could not be loaded. Please try again.',
+        };
+      }
+
+      const authenticatedSessionUser = sessionResult.user;
+
       setAuthenticatedUser(
-        result.user
+        authenticatedSessionUser
       );
 
       setIsAuthenticated(
@@ -872,7 +889,7 @@ export const HmisProvider: React.FC<{
       */
 
       await loadTenantAndFacilityContext(
-        result.user
+        authenticatedSessionUser
       );
 
       return {

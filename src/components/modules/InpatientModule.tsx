@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const InpatientModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [wards, setWards] = useState<Ward[]>([]);
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [beds, setBeds] = useState<Bed[]>([]);
@@ -46,7 +46,7 @@ export const InpatientModule: React.FC = () => {
         const [wList, aList, pList] = await Promise.all([
           api.getWards(currentFacility?.id),
           api.getAdmissions(currentFacility?.id, 'Admitted'),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setWards(wList);
         setAdmissions(aList);
@@ -63,7 +63,7 @@ export const InpatientModule: React.FC = () => {
       }
     }
     loadInpatient();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const handleSelectWard = async (ward: Ward) => {
     setSelectedWard(ward);

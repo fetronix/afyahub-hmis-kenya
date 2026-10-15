@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const RadiologyModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [orders, setOrders] = useState<RadiologyOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<RadiologyOrder | null>(null);
@@ -38,7 +38,7 @@ export const RadiologyModule: React.FC = () => {
       try {
         const [rList, pList] = await Promise.all([
           api.getRadiologyOrders(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setOrders(rList);
         setPatients(pList);
@@ -55,7 +55,7 @@ export const RadiologyModule: React.FC = () => {
       }
     }
     loadRadiology();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const selectOrder = (order: RadiologyOrder) => {
     setSelectedOrder(order);
