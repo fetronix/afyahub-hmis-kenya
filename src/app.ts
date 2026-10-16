@@ -167,6 +167,49 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
     return false;
   };
 
+  /**
+   * Maps known encounter input-validation errors to HTTP 400.
+   * Unexpected errors must remain HTTP 500.
+   */
+  const handleEncounterValidationError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const validationMessages = new Set([
+      "A valid patient ID is required.",
+      "Patient not found.",
+      "Invalid practitioner ID.",
+      "Invalid department ID.",
+      "Invalid encounter ID.",
+      "Changing the patient on an existing encounter is not allowed. Use the authorized patient-correction workflow.",
+    ]);
+
+    if (!validationMessages.has(error.message)) {
+      return false;
+    }
+
+    const errorCodeByMessage: Record<string, string> = {
+      "A valid patient ID is required.": "INVALID_PATIENT_ID",
+      "Patient not found.": "PATIENT_NOT_FOUND",
+      "Invalid practitioner ID.": "INVALID_PRACTITIONER_ID",
+      "Invalid department ID.": "INVALID_DEPARTMENT_ID",
+      "Invalid encounter ID.": "INVALID_ENCOUNTER_ID",
+      "Changing the patient on an existing encounter is not allowed. Use the authorized patient-correction workflow.": "PATIENT_REASSIGNMENT_NOT_ALLOWED",
+    };
+
+    res.status(400).json({
+      success: false,
+      error: errorCodeByMessage[error.message],
+      message: error.message,
+    });
+
+    return true;
+  };
+
   // =========================================================
   // TENANTS & FACILITIES
   // =========================================================
@@ -614,56 +657,135 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
   // CLINICAL ENCOUNTERS
   // =========================================================
 
-  app.get('/api/encounters', requirePermission('clinical.read'), async (req, res) => {
+  app.get('/api/encounters', requirePermission('clinical.read'), async (req: AuthRequest, res: Response) => {
     try {
-      const patientId = req.query.patientId
-        ? Number(req.query.patientId)
-        : undefined;
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
 
-      const facilityId = req.query.facilityId
-        ? Number(req.query.facilityId)
-        : undefined;
+      const patientId = req.query.patientId === undefined
+        ? undefined
+        : Number(req.query.patientId);
+      const facilityId = req.query.facilityId === undefined
+        ? undefined
+        : Number(req.query.facilityId);
 
-      const list = await queries.getEncounters(
+      if (patientId !== undefined &&
+          (!Number.isSafeInteger(patientId) || patientId <= 0)) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_PATIENT_ID',
+        });
+      }
+
+      if (facilityId !== undefined &&
+          (!Number.isSafeInteger(facilityId) || facilityId <= 0)) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_FACILITY_ID',
+        });
+      }
+
+      const list = await queries.getEncountersScoped(
+        req.authContext,
         patientId,
-        facilityId
+        facilityId,
       );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      return res.json(list);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      if (handleEncounterValidationError(err, res)) return;
+      console.error('Encounter list error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'ENCOUNTERS_LIST_FAILED',
       });
     }
   });
 
-  app.post('/api/encounters', requirePermission('clinical.create'), async (req, res) => {
+  app.post('/api/encounters', requirePermission('clinical.create'), async (req: AuthRequest, res: Response) => {
     try {
-      const encounter =
-        await queries.createEncounter(
-          req.body
-        );
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
 
-      res.status(201).json(encounter);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_ENCOUNTER_BODY',
+        });
+      }
+
+      const encounter = await queries.createEncounterScoped(
+        req.authContext,
+        req.body,
+      );
+
+      return res.status(201).json(encounter);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      if (handleEncounterValidationError(err, res)) return;
+      console.error('Encounter creation error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'ENCOUNTER_CREATION_FAILED',
       });
     }
   });
 
-  app.put('/api/encounters/:id', requirePermission('clinical.update'), async (req, res) => {
+  app.put('/api/encounters/:id', requirePermission('clinical.update'), async (req: AuthRequest, res: Response) => {
     try {
-      const encounter =
-        await queries.updateEncounter(
-          Number(req.params.id),
-          req.body
-        );
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
 
-      res.json(encounter);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      const encounterId = Number(req.params.id);
+
+      if (!Number.isSafeInteger(encounterId) || encounterId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_ENCOUNTER_ID',
+        });
+      }
+
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_ENCOUNTER_BODY',
+        });
+      }
+
+      const encounter = await queries.updateEncounterScoped(
+        req.authContext,
+        encounterId,
+        req.body,
+      );
+
+      if (!encounter) {
+        return res.status(404).json({
+          success: false,
+          error: 'ENCOUNTER_NOT_FOUND',
+        });
+      }
+
+      return res.json(encounter);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      if (handleEncounterValidationError(err, res)) return;
+      console.error('Encounter update error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'ENCOUNTER_UPDATE_FAILED',
       });
     }
   });

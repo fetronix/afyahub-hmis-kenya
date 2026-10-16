@@ -3870,6 +3870,159 @@ export const auditLogs = pgTable(
 );
 
 
+
+/* ============================================================
+   FACILITY SUBSCRIPTIONS
+   Separate from patient billing and facilities.is_active.
+   ============================================================ */
+
+export const facilitySubscriptionAccess = pgTable(
+  'facility_subscription_access',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    accessStatus: text('access_status').default('ACTIVE').notNull(),
+    suspendedAt: timestamp('suspended_at'),
+    suspendedBy: text('suspended_by'),
+    suspensionReason: text('suspension_reason'),
+    reactivatedAt: timestamp('reactivated_at'),
+    reactivatedBy: text('reactivated_by'),
+
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    facilityUnique: uniqueIndex('facility_subscription_access_facility_uidx')
+      .on(table.facilityId),
+    tenantIdx: index('facility_subscription_access_tenant_idx')
+      .on(table.tenantId),
+    statusIdx: index('facility_subscription_access_status_idx')
+      .on(table.accessStatus),
+  }),
+);
+export const facilitySubscriptionPeriods = pgTable(
+  'facility_subscription_periods',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    subscriptionName: text('subscription_name').notNull(),
+    amountDue: numeric('amount_due', { precision: 12, scale: 2 }).notNull(),
+    currency: text('currency').default('KES').notNull(),
+
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    dueDate: date('due_date').notNull(),
+    gracePeriodEnd: date('grace_period_end'),
+
+    status: text('status').default('PENDING').notNull(),
+    notes: text('notes'),
+
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    facilityIdx: index('facility_subscription_periods_facility_idx')
+      .on(table.facilityId),
+    tenantIdx: index('facility_subscription_periods_tenant_idx')
+      .on(table.tenantId),
+    statusIdx: index('facility_subscription_periods_status_idx')
+      .on(table.status),
+    periodStartIdx: index('facility_subscription_periods_start_idx')
+      .on(table.periodStart),
+  }),
+);
+
+export const facilitySubscriptionPayments = pgTable(
+  'facility_subscription_payments',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    subscriptionPeriodId: integer('subscription_period_id')
+      .references(() => facilitySubscriptionPeriods.id)
+      .notNull(),
+
+    transactionCode: text('transaction_code').notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    paymentMethod: text('payment_method').default('MPESA').notNull(),
+    paymentDate: timestamp('payment_date').defaultNow().notNull(),
+
+    verificationStatus: text('verification_status').default('PENDING').notNull(),
+    verifiedBy: text('verified_by'),
+    verifiedAt: timestamp('verified_at'),
+    verificationNotes: text('verification_notes'),
+
+    createdBy: text('created_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    transactionCodeUnique: uniqueIndex(
+      'facility_subscription_payments_transaction_code_uidx',
+    ).on(table.transactionCode),
+    periodIdx: index('facility_subscription_payments_period_idx')
+      .on(table.subscriptionPeriodId),
+    facilityIdx: index('facility_subscription_payments_facility_idx')
+      .on(table.facilityId),
+    verificationIdx: index('facility_subscription_payments_verification_idx')
+      .on(table.verificationStatus),
+  }),
+);
+
+export const facilitySubscriptionPriceChanges = pgTable(
+  'facility_subscription_price_changes',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    subscriptionPeriodId: integer('subscription_period_id')
+      .references(() => facilitySubscriptionPeriods.id)
+      .notNull(),
+
+    previousAmount: numeric('previous_amount', {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+    newAmount: numeric('new_amount', {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+
+    effectiveTiming: text('effective_timing').notNull(),
+    reason: text('reason').notNull(),
+    changedBy: text('changed_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    periodIdx: index('facility_subscription_price_changes_period_idx')
+      .on(table.subscriptionPeriodId),
+    facilityIdx: index('facility_subscription_price_changes_facility_idx')
+      .on(table.facilityId),
+  }),
+);
 /* ============================================================
    45. RELATIONS
    ============================================================ */
@@ -4983,3 +5136,4 @@ export const publicHealthReportsRelations =
 /* ============================================================
    END OF JALICARE SCHEMA
    ============================================================ */
+

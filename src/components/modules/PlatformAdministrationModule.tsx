@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api, getSessionToken } from "../../api/client.ts";
 import type { Tenant, Facility } from "../../types/index.ts";
-import { Building2, Hospital, UserPlus, RefreshCw, Copy } from "lucide-react";
+import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from "lucide-react";
+import { SubscriptionBillingPanel } from "./SubscriptionBillingPanel.tsx";
 
-type Tab = "tenants" | "facilities" | "administrators";
+type Tab = "tenants" | "facilities" | "administrators" | "billing";
 type InvitationStatus = "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
 
 type FacilityAdminInvitation = {
@@ -260,6 +261,7 @@ export const PlatformAdministrationModule: React.FC = () => {
     { id: "tenants", label: "Tenants", icon: Building2 },
     { id: "facilities", label: "Facilities", icon: Hospital },
     { id: "administrators", label: "Facility administrators", icon: UserPlus },
+    { id: "billing", label: "Subscription billing", icon: CreditCard },
   ];
 
   return (
@@ -279,7 +281,7 @@ export const PlatformAdministrationModule: React.FC = () => {
       {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button key={id} type="button" onClick={() => { setTab(id); setError(""); setNotice(""); }}
             className={`flex items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold ${tab === id ? "border-blue-700 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>
@@ -327,7 +329,8 @@ export const PlatformAdministrationModule: React.FC = () => {
         </div>
       )}
 
-      {tab === "administrators" && (
+      {tab === "billing" && <SubscriptionBillingPanel />}
+        {tab === "administrators" && (
         <>
         <div className="grid gap-5 xl:grid-cols-2">
           <form onSubmit={inviteAdministrator} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">

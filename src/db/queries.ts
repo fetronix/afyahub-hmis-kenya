@@ -1,4 +1,4 @@
-﻿import { ScopeAccessError } from '../auth/scope.service.ts';
+import { ScopeAccessError } from '../auth/scope.service.ts';
 import { db } from './index.ts';
 import * as schema from './schema.ts';
 import { eq, desc, and, or, ilike, sql } from 'drizzle-orm';
@@ -7,6 +7,7 @@ import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import {
   requireTenantScope,
   requireFacilityScope,
+  resolveFacilityScope,
 } from '../auth/scope.service.ts';
 
 // Tenants
@@ -549,6 +550,260 @@ export async function updateEncounter(id: number, data: Partial<typeof schema.en
   }
 }
 
+
+/**
+ * Scope-aware encounter operations.
+ * Facility ownership is verified against the database.
+ * Tenant/facility ownership fields are never accepted from update payloads.
+ */
+const encounterWritableFields = [
+  "practitionerId",
+  "departmentId",
+  "encounterType",
+  "status",
+  "triageCategory",
+  "chiefComplaint",
+  "historyOfPresentIllness",
+  "physicalExamination",
+  "clinicalNotes",
+  "followUpDate",
+  "referralFacility",
+  "startedAt",
+  "endedAt",
+] as const;
+
+function pickEncounterWritableFields(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const allowed = new Set<string>(encounterWritableFields);
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    if (!allowed.has(key)) continue;
+    result[key] = value;
+  }
+
+  return result;
+}
+
+async function requirePatientInTenant(
+  context: AuthorizationContext,
+  patientId: number,
+  tenantId: number,
+) {
+  if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+    throw new Error("A valid patient ID is required.");
+  }
+
+  const [patient] = await db
+    .select({
+      id: schema.patients.id,
+      tenantId: schema.patients.tenantId,
+    })
+    .from(schema.patients)
+    .where(eq(schema.patients.id, patientId))
+    .limit(1);
+
+  if (!patient) return null;
+
+  requireTenantScope(context, patient.tenantId);
+
+  if (patient.tenantId !== tenantId) {
+    throw new ScopeAccessError(
+      "Patient is outside the authorized tenant.",
+      "FACILITY_ACCESS_DENIED",
+    );
+  }
+
+  return patient;
+}
+
+async function validateEncounterReferences(
+  facilityId: number,
+  tenantId: number,
+  data: Record<string, unknown>,
+) {
+  if (data.practitionerId !== undefined && data.practitionerId !== null) {
+    const practitionerId = Number(data.practitionerId);
+    if (!Number.isSafeInteger(practitionerId) || practitionerId <= 0) {
+      throw new Error("Invalid practitioner ID.");
+    }
+
+    const [practitioner] = await db
+      .select({ id: schema.practitioners.id })
+      .from(schema.practitioners)
+      .where(and(
+        eq(schema.practitioners.id, practitionerId),
+        eq(schema.practitioners.tenantId, tenantId),
+        eq(schema.practitioners.facilityId, facilityId),
+      ))
+      .limit(1);
+
+    if (!practitioner) {
+      throw new ScopeAccessError(
+        "Practitioner is not assigned to the authorized facility.",
+        "FACILITY_ACCESS_DENIED",
+      );
+    }
+  }
+
+  if (data.departmentId !== undefined && data.departmentId !== null) {
+    const departmentId = Number(data.departmentId);
+    if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
+      throw new Error("Invalid department ID.");
+    }
+
+    const [department] = await db
+      .select({ id: schema.departments.id })
+      .from(schema.departments)
+      .where(and(
+        eq(schema.departments.id, departmentId),
+        eq(schema.departments.facilityId, facilityId),
+      ))
+      .limit(1);
+
+    if (!department) {
+      throw new ScopeAccessError(
+        "Department is not part of the authorized facility.",
+        "FACILITY_ACCESS_DENIED",
+      );
+    }
+  }
+}
+
+export async function getEncountersScoped(
+  context: AuthorizationContext,
+  patientId?: number,
+  requestedFacilityId?: number,
+) {
+  const facilityId = resolveFacilityScope(context, requestedFacilityId);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+
+  if (!facility) {
+    throw new ScopeAccessError("Facility not found.", "FACILITY_ACCESS_DENIED");
+  }
+
+  const conditions = [
+    eq(schema.encounters.tenantId, facility.tenantId),
+    eq(schema.encounters.facilityId, facility.id),
+  ];
+
+  if (patientId !== undefined) {
+    const patient = await requirePatientInTenant(
+      context,
+      patientId,
+      facility.tenantId,
+    );
+
+    if (!patient) return [];
+
+    conditions.push(eq(schema.encounters.patientId, patient.id));
+  }
+
+  return db
+    .select()
+    .from(schema.encounters)
+    .where(and(...conditions))
+    .orderBy(desc(schema.encounters.startedAt))
+    .limit(50);
+}
+
+export async function createEncounterScoped(
+  context: AuthorizationContext,
+  data: typeof schema.encounters.$inferInsert,
+) {
+  const facilityId = resolveFacilityScope(context, data.facilityId);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+
+  if (!facility) {
+    throw new ScopeAccessError("Facility not found.", "FACILITY_ACCESS_DENIED");
+  }
+
+  const patient = await requirePatientInTenant(
+    context,
+    data.patientId,
+    facility.tenantId,
+  );
+
+  if (!patient) {
+    throw new Error("Patient not found.");
+  }
+
+  const safeData = pickEncounterWritableFields(
+    data as Record<string, unknown>,
+  );
+
+  await validateEncounterReferences(facility.id, facility.tenantId, safeData);
+
+  const [created] = await db
+    .insert(schema.encounters)
+    .values({
+      ...safeData,
+      tenantId: facility.tenantId,
+      facilityId: facility.id,
+      patientId: patient.id,
+    } as typeof schema.encounters.$inferInsert)
+    .returning();
+
+  return created;
+}
+
+export async function updateEncounterScoped(
+  context: AuthorizationContext,
+  encounterId: number,
+  data: Partial<typeof schema.encounters.$inferInsert>,
+) {
+  if (!Number.isSafeInteger(encounterId) || encounterId <= 0) {
+    throw new Error("Invalid encounter ID.");
+  }
+
+  const [current] = await db
+    .select()
+    .from(schema.encounters)
+    .where(eq(schema.encounters.id, encounterId))
+    .limit(1);
+
+  if (!current) return null;
+
+  const facility = await getFacilityByIdScoped(context, current.facilityId);
+
+  if (!facility || facility.tenantId !== current.tenantId) {
+    throw new ScopeAccessError(
+      "Encounter is outside the authorized facility.",
+      "FACILITY_ACCESS_DENIED",
+    );
+  }
+
+  if (
+    data.patientId !== undefined &&
+    data.patientId !== current.patientId
+  ) {
+    throw new Error(
+      "Changing the patient on an existing encounter is not allowed. Use the authorized patient-correction workflow.",
+    );
+  }
+
+  const safeData = pickEncounterWritableFields(
+    data as Record<string, unknown>,
+  );
+
+  await validateEncounterReferences(facility.id, facility.tenantId, safeData);
+
+  const [updated] = await db
+    .update(schema.encounters)
+    .set({
+      ...safeData,
+      updatedAt: new Date(),
+    } as Partial<typeof schema.encounters.$inferInsert>)
+    .where(and(
+      eq(schema.encounters.id, encounterId),
+      eq(schema.encounters.tenantId, facility.tenantId),
+      eq(schema.encounters.facilityId, facility.id),
+    ))
+    .returning();
+
+  return updated ?? null;
+}
 // Queues
 export async function getQueues(facilityId?: number, queueType?: string) {
   try {
