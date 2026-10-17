@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+﻿import React, { useCallback, useEffect, useState } from "react";
 import { api, getSessionToken } from "../../api/client.ts";
 import type { Tenant, Facility } from "../../types/index.ts";
 import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from "lucide-react";
@@ -65,6 +65,30 @@ const fieldClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
 const labelClass = "mb-1 block text-xs font-semibold text-slate-700";
 
+const FACILITY_MODULES = [
+  { id: "registration", label: "Patient Registration" },
+  { id: "reception", label: "Reception & Appointments" },
+  { id: "opd", label: "Outpatient Department (OPD)" },
+  { id: "inpatient", label: "Inpatient & Admissions" },
+  { id: "theatre", label: "Theatre" },
+  { id: "specialty", label: "Specialty Clinics" },
+  { id: "laboratory", label: "Laboratory" },
+  { id: "radiology", label: "Radiology" },
+  { id: "pharmacy", label: "Pharmacy" },
+  { id: "inventory", label: "Inventory" },
+  { id: "procurement", label: "Procurement" },
+  { id: "finance", label: "Finance & Billing" },
+  { id: "insurance", label: "Insurance / SHA Claims" },
+  { id: "public_health", label: "Public Health" },
+  { id: "analytics", label: "Analytics & Reports" },
+  { id: "interoperability", label: "Interoperability" },
+  { id: "configuration", label: "Facility Configuration" },
+  { id: "audit", label: "Audit Logs" },
+] as const;
+
+const DEFAULT_FACILITY_MODULES = FACILITY_MODULES.map(
+  (module) => module.id,
+);
 export const PlatformAdministrationModule: React.FC = () => {
   const [tab, setTab] = useState<Tab>("tenants");
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -94,6 +118,9 @@ export const PlatformAdministrationModule: React.FC = () => {
     code: "", name: "", level: "Level 4", county: "",
     subCounty: "", mflCode: "", email: "", phone: "", address: "",
   });
+  const [enabledModuleSelection, setEnabledModuleSelection] =
+    useState<string[]>([...DEFAULT_FACILITY_MODULES]);
+
   const [adminForm, setAdminForm] = useState({
     fullName: "", email: "", phone: "",
   });
@@ -294,6 +321,22 @@ export const PlatformAdministrationModule: React.FC = () => {
     });
   }, [selectedFacility]);
 
+  useEffect(() => {
+    if (!selectedFacility) {
+      setEnabledModuleSelection([...DEFAULT_FACILITY_MODULES]);
+      return;
+    }
+
+    const savedModules = selectedFacility.enabledModules;
+    setEnabledModuleSelection(
+      Array.isArray(savedModules)
+        ? savedModules.filter((module): module is string =>
+            typeof module === "string"
+          )
+        : [...DEFAULT_FACILITY_MODULES],
+    );
+  }, [selectedFacility]);
+
   const saveFacilityProfile = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -344,6 +387,47 @@ export const PlatformAdministrationModule: React.FC = () => {
       setSaving(false);
     }
   };
+  const saveFacilityModuleSettings = async () => {
+    if (!selectedFacility) {
+      setError("Select a facility before saving module settings.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await request<{ data: Facility }>(
+        `/api/platform/facilities/${selectedFacility.id}`,
+        { enabledModules: enabledModuleSelection },
+        "PATCH",
+      );
+
+      if (!result.data) {
+        throw new Error("The server did not return the updated facility.");
+      }
+
+      setFacilities((current) =>
+        current.map((facility) =>
+          facility.id === result.data.id ? result.data : facility,
+        ),
+      );
+
+      setNotice(
+        `Module settings saved for ${result.data.name}.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save facility module settings.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: "tenants", label: "Tenants", icon: Building2 },
     { id: "facilities", label: "Facilities", icon: Hospital },
@@ -385,12 +469,12 @@ export const PlatformAdministrationModule: React.FC = () => {
             <div><label className={labelClass}>Tenant slug (optional)</label><input className={fieldClass} value={tenantForm.slug} onChange={(e) => setTenantForm({ ...tenantForm, slug: e.target.value })} placeholder="generated-from-name" /></div>
             <div><label className={labelClass}>Contact email</label><input className={fieldClass} type="email" value={tenantForm.contactEmail} onChange={(e) => setTenantForm({ ...tenantForm, contactEmail: e.target.value })} /></div>
             <div><label className={labelClass}>Contact phone</label><input className={fieldClass} value={tenantForm.contactPhone} onChange={(e) => setTenantForm({ ...tenantForm, contactPhone: e.target.value })} /></div>
-            <button disabled={saving} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "Saving…" : "Create tenant"}</button>
+            <button disabled={saving} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "Savingâ€¦" : "Create tenant"}</button>
           </form>
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="mb-3 font-bold text-slate-900">Existing tenants ({tenants.length})</h2>
-            {loading ? <p className="text-sm text-slate-500">Loading…</p> : tenants.length === 0 ? <p className="text-sm text-slate-500">No tenants found.</p> :
-              <ul className="divide-y divide-slate-100">{tenants.map((t) => <li key={t.id} className="py-3"><p className="font-semibold text-slate-800">{t.name}</p><p className="text-xs text-slate-500">{t.slug} · ID {t.id}</p></li>)}</ul>}
+            {loading ? <p className="text-sm text-slate-500">Loadingâ€¦</p> : tenants.length === 0 ? <p className="text-sm text-slate-500">No tenants found.</p> :
+              <ul className="divide-y divide-slate-100">{tenants.map((t) => <li key={t.id} className="py-3"><p className="font-semibold text-slate-800">{t.name}</p><p className="text-xs text-slate-500">{t.slug} Â· ID {t.id}</p></li>)}</ul>}
           </div>
         </div>
       )}
@@ -436,7 +520,7 @@ export const PlatformAdministrationModule: React.FC = () => {
             </div>
             {tenantId && (
               <p className="mt-2 text-xs text-slate-500">
-                Tenant ID: {tenantId} · This ID cannot be changed by editing a facility profile.
+                Tenant ID: {tenantId} Â· This ID cannot be changed by editing a facility profile.
               </p>
             )}
           </section>
@@ -541,7 +625,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                         >
                           <span className="block font-semibold text-slate-800">{facility.name}</span>
                           <span className="mt-1 block text-xs text-slate-500">
-                            {facility.code} · {facility.level} · {facility.county || "County not set"}
+                            {facility.code} Â· {facility.level} Â· {facility.county || "County not set"}
                           </span>
                           <span className="mt-1 block text-xs font-medium text-blue-700">
                             {facilityId === String(facility.id) ? "Selected for editing" : "Select facility"}
@@ -627,7 +711,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                 </div>
 
                 <p className="text-xs text-slate-500">
-                  Facility ID: {selectedFacility.id} · Tenant ID: {selectedFacility.tenantId}
+                  Facility ID: {selectedFacility.id} Â· Tenant ID: {selectedFacility.tenantId}
                 </p>
 
                 <button type="submit" disabled={saving || !selectedFacility} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
@@ -636,6 +720,79 @@ export const PlatformAdministrationModule: React.FC = () => {
               </>
             )}
           </form>
+
+          <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+            <div>
+              <h2 className="font-bold text-slate-900">
+                Facility Module Settings
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Choose which modules this facility should use. These settings
+                are saved separately from the facility profile.
+              </p>
+            </div>
+
+            {!selectedFacility ? (
+              <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+                Select a facility above to manage its modules.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-slate-600">
+                  Facility: <span className="font-semibold">{selectedFacility.name}</span>
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {FACILITY_MODULES.map((module) => (
+                    <label
+                      key={module.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300"
+                        checked={enabledModuleSelection.includes(module.id)}
+                        onChange={(event) => {
+                          setEnabledModuleSelection((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, module.id])]
+                              : current.filter((id) => id !== module.id),
+                          );
+                        }}
+                      />
+                      <span className="text-sm font-medium text-slate-700">
+                        {module.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  {enabledModuleSelection.length} of {FACILITY_MODULES.length} modules selected.
+                  Saving settings does not delete existing facility data.
+                </p>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void saveFacilityModuleSettings()}
+                    disabled={saving}
+                    className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+                  >
+                    {saving ? "Saving..." : "Save module settings"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEnabledModuleSelection([...DEFAULT_FACILITY_MODULES])}
+                    disabled={saving}
+                    className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Select all modules
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
         </div>
       )}
       {tab === "billing" && <SubscriptionBillingPanel />}
@@ -650,7 +807,7 @@ export const PlatformAdministrationModule: React.FC = () => {
             <div><label className={labelClass}>Administrator full name *</label><input className={fieldClass} required maxLength={200} value={adminForm.fullName} onChange={(e) => setAdminForm({ ...adminForm, fullName: e.target.value })} /></div>
             <div><label className={labelClass}>Email *</label><input className={fieldClass} type="email" required maxLength={254} value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} /></div>
             <div><label className={labelClass}>Phone</label><input className={fieldClass} value={adminForm.phone} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })} /></div>
-            <button disabled={saving || !facilityId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "Creating…" : "Create invitation"}</button>
+            <button disabled={saving || !facilityId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "Creatingâ€¦" : "Create invitation"}</button>
           </form>
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-bold text-slate-900">Invitation link</h2>
@@ -740,3 +897,4 @@ export const PlatformAdministrationModule: React.FC = () => {
     </section>
   );
 };
+

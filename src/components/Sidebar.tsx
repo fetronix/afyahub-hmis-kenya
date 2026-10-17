@@ -130,8 +130,39 @@ export const Sidebar: React.FC = () => {
   const can = (permission: string) =>
     isSuperAdmin || permissions.has(permission);
 
+  const isFacilityModuleEnabled = (id: ModuleId): boolean => {
+    // Platform administration is not an operational facility module.
+    if (id === 'platform_administration') return true;
+
+    const enabledModules = new Set(currentFacility?.enabledModules ?? []);
+
+    // Do not expose operational modules until a facility is resolved.
+    if (!currentFacility) return false;
+
+    // Dashboard is available when at least one operational module is enabled.
+    if (id === 'dashboard') {
+      return [
+        'registration', 'reception', 'opd', 'inpatient', 'theatre',
+        'specialty', 'laboratory', 'radiology', 'pharmacy', 'inventory',
+        'procurement', 'finance', 'insurance', 'claims', 'public_health',
+        'analytics', 'interoperability', 'configuration', 'audit'
+      ].some((moduleId) => enabledModules.has(moduleId));
+    }
+
+    // The UI uses "claims"; the persisted facility setting uses "insurance".
+    if (id === 'claims') {
+      return enabledModules.has('insurance') || enabledModules.has('claims');
+    }
+
+    return enabledModules.has(id);
+  };
+
   const isModuleVisible = (id: ModuleId): boolean => {
+    // Global superadmins retain access to platform-management navigation.
     if (isSuperAdmin) return true;
+
+    // Facility configuration overrides role permissions.
+    if (!isFacilityModuleEnabled(id)) return false;
 
     const required: Partial<Record<ModuleId, string[]>> = {
       dashboard: [
@@ -306,6 +337,7 @@ export const Sidebar: React.FC = () => {
     </>
   );
 };
+
 
 
 

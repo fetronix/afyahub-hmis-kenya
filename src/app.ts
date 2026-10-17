@@ -1,4 +1,4 @@
-import staffInvitationRoutes from "./auth/staff-invitation.routes";
+﻿import staffInvitationRoutes from "./auth/staff-invitation.routes";
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -20,6 +20,7 @@ import authRoutes from './auth/auth.routes.ts';
 
 
 import { requireAuth } from './middleware/auth.ts';
+import { requireFacilityModule } from './middleware/facility-module.middleware.ts';
 import {
   requireAuthorization,
   requirePermission,
@@ -137,6 +138,42 @@ app.use('/api', requireAuthorization);
 
 app.use('/api/platform', platformRoutes);
 app.use("/api/staff-invitations", staffInvitationRoutes);
+
+// Facility module enforcement. Keep platform administration, invitations,
+// tenants, and facility-context endpoints outside these operational guards.
+app.use('/api/patients', requireFacilityModule('registration'));
+app.use('/api/appointments', requireFacilityModule('reception'));
+app.use('/api/queues', requireFacilityModule('reception'));
+
+app.use('/api/encounters', requireFacilityModule('opd'));
+app.use('/api/observations', requireFacilityModule('opd'));
+app.use('/api/diagnoses', requireFacilityModule('opd'));
+app.use('/api/procedures', requireFacilityModule('opd'));
+
+app.use('/api/wards', requireFacilityModule('inpatient'));
+app.use('/api/beds', requireFacilityModule('inpatient'));
+app.use('/api/admissions', requireFacilityModule('inpatient'));
+app.use('/api/theatre-cases', requireFacilityModule('theatre'));
+
+app.use('/api/lab-tests', requireFacilityModule('laboratory'));
+app.use('/api/lab-orders', requireFacilityModule('laboratory'));
+app.use('/api/lab-results', requireFacilityModule('laboratory'));
+app.use('/api/radiology-orders', requireFacilityModule('radiology'));
+
+app.get('/api/medications', requireFacilityModule('pharmacy'));
+app.post('/api/medications', requireFacilityModule('opd'));
+app.put('/api/medications/:id/status', requireFacilityModule('pharmacy'));
+app.use('/api/pharmacy', requireFacilityModule('pharmacy'));
+app.use('/api/inventory', requireFacilityModule('inventory'));
+
+app.use('/api/suppliers', requireFacilityModule('procurement'));
+app.use('/api/purchase-orders', requireFacilityModule('procurement'));
+
+app.use('/api/claims', requireFacilityModule('insurance'));
+app.use('/api/public-health', requireFacilityModule('public_health'));
+app.use('/api/analytics', requireFacilityModule('analytics'));
+app.use('/api/interoperability', requireFacilityModule('interoperability'));
+app.use('/api/audit-logs', requireFacilityModule('audit'));
 
   /*
    * =========================================================
@@ -444,7 +481,7 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
 
 
   // =========================================================
-  // PATIENT MANAGEMENT ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â SCOPED
+  // PATIENT MANAGEMENT ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â SCOPED
   // =========================================================
 
   app.get(
@@ -1618,6 +1655,15 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
           });
         }
 
+        if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance')) {
+          return res.status(403).json({
+            success: false,
+            error: 'FACILITY_MODULE_DISABLED',
+            module: 'finance',
+            message: 'The finance module is disabled for this facility.',
+          });
+        }
+
         const rawPatientId = req.query.patientId;
         let patientId: number | undefined;
 
@@ -1701,6 +1747,15 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
           });
         }
 
+        if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance')) {
+          return res.status(403).json({
+            success: false,
+            error: 'FACILITY_MODULE_DISABLED',
+            module: 'finance',
+            message: 'The finance module is disabled for this facility.',
+          });
+        }
+
         const items = await queries.getInvoiceItems(invoiceId);
         return res.json(items);
       } catch (err: unknown) {
@@ -1764,6 +1819,15 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
             success: false,
             error: 'FACILITY_NOT_FOUND',
             message: 'Facility not found.',
+          });
+        }
+
+        if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance')) {
+          return res.status(403).json({
+            success: false,
+            error: 'FACILITY_MODULE_DISABLED',
+            module: 'finance',
+            message: 'The finance module is disabled for this facility.',
           });
         }
 
@@ -1984,6 +2048,15 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
             success: false,
             error: 'INVOICE_NOT_FOUND',
             message: 'Invoice not found.',
+          });
+        }
+
+        if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance')) {
+          return res.status(403).json({
+            success: false,
+            error: 'FACILITY_MODULE_DISABLED',
+            module: 'finance',
+            message: 'The finance module is disabled for this facility.',
           });
         }
 
@@ -2817,5 +2890,7 @@ app.get(
 
   return app;
 }
+
+
 
 
