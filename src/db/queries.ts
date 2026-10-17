@@ -1527,18 +1527,65 @@ export async function logAuditEvent(tenantId: number | null, facilityId: number 
   }
 }
 
-export async function getAuditLogs(facilityId?: number) {
+export async function getAuditLogs(
+  context: AuthorizationContext,
+  requestedFacilityId?: number,
+) {
   try {
-    if (facilityId) {
-      return await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.facilityId, facilityId)).orderBy(desc(schema.auditLogs.timestamp)).limit(50);
+    const conditions = [];
+
+    if (context.isSuperAdmin) {
+      if (requestedFacilityId !== undefined) {
+        conditions.push(
+          eq(schema.auditLogs.facilityId, requestedFacilityId),
+        );
+      }
+    } else if (context.facilityId !== null) {
+      if (
+        requestedFacilityId !== undefined &&
+        requestedFacilityId !== context.facilityId
+      ) {
+        throw new Error(
+          "You are not authorized to view another facility's audit logs.",
+        );
+      }
+
+      conditions.push(
+        eq(schema.auditLogs.facilityId, context.facilityId),
+      );
+    } else if (context.tenantId !== null) {
+      conditions.push(
+        eq(schema.auditLogs.tenantId, context.tenantId),
+      );
+
+      if (requestedFacilityId !== undefined) {
+        conditions.push(
+          eq(schema.auditLogs.facilityId, requestedFacilityId),
+        );
+      }
+    } else {
+      throw new Error("Audit log authorization scope is unavailable.");
     }
-    return await db.select().from(schema.auditLogs).orderBy(desc(schema.auditLogs.timestamp)).limit(50);
+
+    if (conditions.length === 0) {
+      return await db
+        .select()
+        .from(schema.auditLogs)
+        .orderBy(desc(schema.auditLogs.timestamp))
+        .limit(50);
+    }
+
+    return await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(...conditions))
+      .orderBy(desc(schema.auditLogs.timestamp))
+      .limit(50);
   } catch (error) {
-    console.error('Error fetching audit logs:', error);
-    throw new Error('Failed to fetch audit logs', { cause: error });
+    console.error("Error fetching scoped audit logs:", error);
+    throw error;
   }
 }
-
 // =========================================================
 // SCOPED PATIENT QUERIES
 // =========================================================

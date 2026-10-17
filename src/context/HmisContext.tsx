@@ -871,7 +871,10 @@ export const HmisProvider: React.FC<{
       */
 
       setActiveModule(
-        'dashboard'
+        authenticatedSessionUser.isSuperAdmin ||
+        authenticatedSessionUser.roles?.includes('SUPER_ADMIN')
+          ? 'platform_administration'
+          : 'dashboard'
       );
 
       setSelectedPatient(
@@ -1425,4 +1428,5 @@ export const useHmis =
 
     return context;
   };
+
 

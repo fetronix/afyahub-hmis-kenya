@@ -33,6 +33,27 @@ interface NavSection {
   }>;
 }
 
+const superAdminNavSections: NavSection[] = [
+  {
+    title: 'PLATFORM MANAGEMENT',
+    items: [
+      { id: 'dashboard', label: 'Platform Management', icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: 'ORGANIZATIONS & BILLING',
+    items: [
+      { id: 'platform_administration', label: 'Tenant & Facility Management', icon: Building2 },
+    ],
+  },
+  {
+    title: 'SECURITY & ACCESS',
+    items: [
+      { id: 'audit', label: 'Audit Logs', icon: ShieldAlert },
+      { id: 'configuration', label: 'Platform Settings', icon: Sliders },
+    ],
+  },
+];
 const navSections: NavSection[] = [
   {
     title: 'CLINICAL CARE',
@@ -94,7 +115,6 @@ export const Sidebar: React.FC = () => {
     tenants,
     currentFacility, 
     setCurrentFacility,
-    facilities,
     isMobileMenuOpen, 
     setIsMobileMenuOpen,
     showToast,
@@ -211,37 +231,34 @@ export const Sidebar: React.FC = () => {
           </select>
         </div>
 
-        {/* Facility Header Banner with Quick Switcher */}
-        <div className="px-4 py-3 border-b border-slate-200/80 bg-white">
-          <div className="text-2xs uppercase tracking-wider text-slate-400 font-bold mb-1">
-            Active Facility
-          </div>
-          <select
-            value={currentFacility?.id}
-            onChange={(e) => {
-              const f = facilities.find((item) => item.id === Number(e.target.value));
-              if (f) {
-                setCurrentFacility(f);
-                showToast(`Switched facility to: ${f.name} (${f.mflCode})`);
-              }
-            }}
-            className="w-full bg-blue-50/50 border border-blue-200 rounded-md px-2 py-1 text-xs text-blue-950 font-semibold focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
-          >
-            {facilities.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name} ({f.mflCode})
-              </option>
-            ))}
-          </select>
-          <div className="flex items-center justify-between text-2xs font-mono mt-1 px-0.5">
-            <span className="text-orange-700 font-bold">{currentFacility?.mflCode}</span>
-            <span className="text-slate-400">{currentFacility?.level}</span>
-          </div>
-        </div>
+        {/* Read-only facility identity; hidden for superadmin */}
+        {!isSuperAdmin && (
+          <div className="px-4 py-3 border-b border-slate-200/80 bg-white">
+            <div className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-2">
+              Your Facility
+            </div>
 
+            <div className="flex items-start gap-2">
+              <Building2 className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-900 break-words">
+                  {currentFacility?.name || "Facility not assigned"}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  MFL Code: {currentFacility?.mflCode || "Not configured"}
+                </p>
+
+                <p className="mt-1 text-xs font-medium text-slate-600">
+                  {currentFacility?.level || "Level not configured"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Navigation Sections */}
         <div className="p-3 space-y-5 flex-1">
-          {navSections.filter((sec) => sec.items.some((item) => isModuleVisible(item.id))).map((sec, secIdx) => (
+          {(isSuperAdmin ? superAdminNavSections : navSections).filter((sec) => sec.items.some((item) => isModuleVisible(item.id))).map((sec, secIdx) => (
             <div key={secIdx}>
               <div className="px-2.5 pb-1 text-2xs font-semibold text-slate-400 tracking-wider">
                 {sec.title}
@@ -289,6 +306,10 @@ export const Sidebar: React.FC = () => {
     </>
   );
 };
+
+
+
+
 
 
 

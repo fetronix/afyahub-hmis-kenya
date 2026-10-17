@@ -1,4 +1,4 @@
-﻿import staffInvitationRoutes from "./auth/staff-invitation.routes";
+import staffInvitationRoutes from "./auth/staff-invitation.routes";
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -2522,27 +2522,66 @@ app.use("/api/staff-invitations", staffInvitationRoutes);
   // AUDIT TRAIL
   // =========================================================
 
-  app.get('/api/audit-logs', requirePermission('audit.read'), async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
-
-      const list =
-        await queries.getAuditLogs(
-          facilityId
-        );
-
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+  app.get(
+  "/api/audit-logs",
+  requirePermission("audit.read"),
+  async (req: AuthRequest, res: Response) => {
+    if (!req.authContext) {
+      return res.status(401).json({
+        success: false,
+        error: "AUTHORIZATION_CONTEXT_MISSING",
       });
     }
-  });
 
-  // =========================================================
+    const rawFacilityId = req.query.facilityId;
+    let facilityId: number | undefined;
+
+    if (rawFacilityId !== undefined) {
+      if (
+        typeof rawFacilityId !== "string" ||
+        !/^[1-9]\d*$/.test(rawFacilityId) ||
+        !Number.isSafeInteger(Number(rawFacilityId))
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "INVALID_FACILITY_ID",
+          message: "facilityId must be a positive integer.",
+        });
+      }
+
+      facilityId = Number(rawFacilityId);
+    }
+
+    const context = req.authContext;
+
+    if (
+      !context.isSuperAdmin &&
+      context.facilityId !== null &&
+      facilityId !== undefined &&
+      facilityId !== context.facilityId
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "FACILITY_ACCESS_DENIED",
+        message: "You cannot view another facility's audit logs.",
+      });
+    }
+
+    try {
+      const list = await queries.getAuditLogs(context, facilityId);
+      return res.json(list);
+    } catch (err: unknown) {
+      console.error("Failed to fetch audit logs:", err);
+
+      return res.status(500).json({
+        success: false,
+        error: "AUDIT_LOG_FETCH_FAILED",
+        message: "Unable to retrieve audit logs.",
+      });
+    }
+  },
+);
+// =========================================================
   // DHA & INTEROPERABILITY
   // =========================================================
 

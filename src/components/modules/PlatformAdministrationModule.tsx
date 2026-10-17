@@ -39,10 +39,14 @@ async function getRequest<T>(url: string): Promise<T> {
   return data as T;
 }
 
-async function request<T>(url: string, body: unknown): Promise<T> {
+async function request<T>(
+  url: string,
+  body: unknown,
+  method: "POST" | "PATCH" = "POST",
+): Promise<T> {
   const token = getSessionToken();
   const response = await fetch(url, {
-    method: "POST",
+    method,
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -67,6 +71,8 @@ export const PlatformAdministrationModule: React.FC = () => {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [tenantId, setTenantId] = useState("");
   const [facilityId, setFacilityId] = useState("");
+  const [tenantSearch, setTenantSearch] = useState("");
+  const [facilitySearch, setFacilitySearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -80,6 +86,11 @@ export const PlatformAdministrationModule: React.FC = () => {
     name: "", slug: "", contactEmail: "", contactPhone: "",
   });
   const [facilityForm, setFacilityForm] = useState({
+    code: "", name: "", level: "Level 4", county: "",
+    subCounty: "", mflCode: "", email: "", phone: "", address: "",
+  });
+
+  const [editFacilityForm, setEditFacilityForm] = useState({
     code: "", name: "", level: "Level 4", county: "",
     subCounty: "", mflCode: "", email: "", phone: "", address: "",
   });
@@ -257,6 +268,82 @@ export const PlatformAdministrationModule: React.FC = () => {
       setNotice("Invitation created. Copy the secure link and send it to the administrator.");
     });
 
+  const selectedFacility = facilities.find(
+    (facility) => String(facility.id) === facilityId,
+  );
+
+  useEffect(() => {
+    if (!selectedFacility) {
+      setEditFacilityForm({
+        code: "", name: "", level: "Level 4", county: "",
+        subCounty: "", mflCode: "", email: "", phone: "", address: "",
+      });
+      return;
+    }
+
+    setEditFacilityForm({
+      code: selectedFacility.code ?? "",
+      name: selectedFacility.name ?? "",
+      level: selectedFacility.level ?? "Level 4",
+      county: selectedFacility.county ?? "",
+      subCounty: selectedFacility.subCounty ?? "",
+      mflCode: selectedFacility.mflCode ?? "",
+      email: selectedFacility.email ?? "",
+      phone: selectedFacility.phone ?? "",
+      address: selectedFacility.address ?? "",
+    });
+  }, [selectedFacility]);
+
+  const saveFacilityProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!selectedFacility) {
+      setError("Select a facility before saving its profile.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await request<{ data: Facility }>(
+        `/api/platform/facilities/${selectedFacility.id}`,
+        {
+          code: editFacilityForm.code.trim(),
+          name: editFacilityForm.name.trim(),
+          level: editFacilityForm.level,
+          county: editFacilityForm.county.trim(),
+          subCounty: editFacilityForm.subCounty.trim(),
+          mflCode: editFacilityForm.mflCode.trim() || null,
+          email: editFacilityForm.email.trim() || null,
+          phone: editFacilityForm.phone.trim() || null,
+          address: editFacilityForm.address.trim() || null,
+        },
+        "PATCH",
+      );
+
+      if (!result.data) {
+        throw new Error("The server did not return the updated facility.");
+      }
+
+      setFacilities((current) =>
+        current.map((facility) =>
+          facility.id === result.data.id ? result.data : facility,
+        ),
+      );
+
+      setNotice("Facility profile saved successfully.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save the facility profile.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: "tenants", label: "Tenants", icon: Building2 },
     { id: "facilities", label: "Facilities", icon: Hospital },
@@ -309,26 +396,248 @@ export const PlatformAdministrationModule: React.FC = () => {
       )}
 
       {tab === "facilities" && (
-        <div className="grid gap-5 xl:grid-cols-2">
-          <form onSubmit={createFacility} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="font-bold text-slate-900">Create facility</h2>
-            <div><label className={labelClass}>Parent tenant *</label><select className={fieldClass} required value={tenantId} onChange={(e) => void reloadFacilities(e.target.value)}><option value="">Select tenant</option>{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-            <div><label className={labelClass}>Facility name *</label><input className={fieldClass} required maxLength={200} value={facilityForm.name} onChange={(e) => setFacilityForm({ ...facilityForm, name: e.target.value })} /></div>
-            <div><label className={labelClass}>Facility code *</label><input className={fieldClass} required maxLength={80} value={facilityForm.code} onChange={(e) => setFacilityForm({ ...facilityForm, code: e.target.value })} /></div>
-            <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Facility level</label><select className={fieldClass} value={facilityForm.level} onChange={(e) => setFacilityForm({ ...facilityForm, level: e.target.value })}>{["Level 2","Level 3","Level 4","Level 5","Level 6"].map((v) => <option key={v}>{v}</option>)}</select></div><div><label className={labelClass}>MFL code</label><input className={fieldClass} value={facilityForm.mflCode} onChange={(e) => setFacilityForm({ ...facilityForm, mflCode: e.target.value })} /></div></div>
-            <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>County</label><input className={fieldClass} value={facilityForm.county} onChange={(e) => setFacilityForm({ ...facilityForm, county: e.target.value })} /></div><div><label className={labelClass}>Sub-county</label><input className={fieldClass} value={facilityForm.subCounty} onChange={(e) => setFacilityForm({ ...facilityForm, subCounty: e.target.value })} /></div></div>
-            <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>Email</label><input className={fieldClass} type="email" value={facilityForm.email} onChange={(e) => setFacilityForm({ ...facilityForm, email: e.target.value })} /></div><div><label className={labelClass}>Phone</label><input className={fieldClass} value={facilityForm.phone} onChange={(e) => setFacilityForm({ ...facilityForm, phone: e.target.value })} /></div></div>
-            <div><label className={labelClass}>Address</label><input className={fieldClass} value={facilityForm.address} onChange={(e) => setFacilityForm({ ...facilityForm, address: e.target.value })} /></div>
-            <button disabled={saving || !tenantId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "Saving…" : "Create facility"}</button>
-          </form>
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="mb-3 font-bold text-slate-900">Facilities for selected tenant</h2>
-            {!tenantId ? <p className="text-sm text-slate-500">Select a tenant to view facilities.</p> : facilities.length === 0 ? <p className="text-sm text-slate-500">No facilities found for this tenant.</p> :
-              <ul className="divide-y divide-slate-100">{facilities.map((f) => <li key={f.id} className="py-3"><p className="font-semibold text-slate-800">{f.name}</p><p className="text-xs text-slate-500">{f.code} · {f.level} · {f.county || "County not set"}</p></li>)}</ul>}
+        <div className="space-y-5">
+          <section className="rounded-xl border border-slate-200 bg-white p-5">
+            <h2 className="font-bold text-slate-900">Find a tenant</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Search by organization name or slug, then choose the tenant whose facilities you want to manage.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Search tenants</label>
+                <input
+                  className={fieldClass}
+                  value={tenantSearch}
+                  onChange={(e) => setTenantSearch(e.target.value)}
+                  placeholder="Search organization or slug"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Selected tenant</label>
+                <select
+                  className={fieldClass}
+                  value={tenantId}
+                  onChange={(e) => void reloadFacilities(e.target.value)}
+                >
+                  <option value="">Select tenant</option>
+                  {tenants
+                    .filter((tenant) =>
+                      `${tenant.name} ${tenant.slug}`
+                        .toLowerCase()
+                        .includes(tenantSearch.trim().toLowerCase()),
+                    )
+                    .map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.name} ({tenant.slug})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+            {tenantId && (
+              <p className="mt-2 text-xs text-slate-500">
+                Tenant ID: {tenantId} · This ID cannot be changed by editing a facility profile.
+              </p>
+            )}
+          </section>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <form onSubmit={createFacility} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+              <h2 className="font-bold text-slate-900">Create facility</h2>
+              <p className="text-sm text-slate-500">
+                Register a new facility under the selected tenant. This form does not edit existing facilities.
+              </p>
+              <div>
+                <label className={labelClass}>Facility name *</label>
+                <input className={fieldClass} required maxLength={200} value={facilityForm.name} onChange={(e) => setFacilityForm({ ...facilityForm, name: e.target.value })} />
+              </div>
+              <div>
+                <label className={labelClass}>Facility code *</label>
+                <input className={fieldClass} required maxLength={80} value={facilityForm.code} onChange={(e) => setFacilityForm({ ...facilityForm, code: e.target.value })} />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Facility level</label>
+                  <select className={fieldClass} value={facilityForm.level} onChange={(e) => setFacilityForm({ ...facilityForm, level: e.target.value })}>
+                    {["Level 2", "Level 3", "Level 4", "Level 5", "Level 6"].map((level) => (
+                      <option key={level} value={level}>{level}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Kenya Master Facility Code (MFL)</label>
+                  <input className={fieldClass} value={facilityForm.mflCode} onChange={(e) => setFacilityForm({ ...facilityForm, mflCode: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>County</label>
+                  <input className={fieldClass} value={facilityForm.county} onChange={(e) => setFacilityForm({ ...facilityForm, county: e.target.value })} />
+                </div>
+                <div>
+                  <label className={labelClass}>Sub-county</label>
+                  <input className={fieldClass} value={facilityForm.subCounty} onChange={(e) => setFacilityForm({ ...facilityForm, subCounty: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Official email</label>
+                  <input className={fieldClass} type="email" value={facilityForm.email} onChange={(e) => setFacilityForm({ ...facilityForm, email: e.target.value })} />
+                </div>
+                <div>
+                  <label className={labelClass}>Contact phone</label>
+                  <input className={fieldClass} value={facilityForm.phone} onChange={(e) => setFacilityForm({ ...facilityForm, phone: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Address</label>
+                <input className={fieldClass} value={facilityForm.address} onChange={(e) => setFacilityForm({ ...facilityForm, address: e.target.value })} />
+              </div>
+              <button type="submit" disabled={saving || !tenantId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
+                {saving ? "Saving..." : "Create facility"}
+              </button>
+            </form>
+
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 p-5">
+                <h2 className="font-bold text-slate-900">
+                  Facilities for selected tenant ({facilities.length})
+                </h2>
+                <label className={`${labelClass} mt-3`}>Search facilities</label>
+                <input
+                  className={fieldClass}
+                  value={facilitySearch}
+                  onChange={(e) => setFacilitySearch(e.target.value)}
+                  placeholder="Search by name, code, county or MFL code"
+                />
+              </div>
+              {!tenantId ? (
+                <p className="p-5 text-sm text-slate-500">Select a tenant to view its facilities.</p>
+              ) : facilities.length === 0 ? (
+                <p className="p-5 text-sm text-slate-500">No facilities found for this tenant.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {facilities
+                    .filter((facility) =>
+                      `${facility.name} ${facility.code} ${facility.county} ${facility.mflCode ?? ""}`
+                        .toLowerCase()
+                        .includes(facilitySearch.trim().toLowerCase()),
+                    )
+                    .map((facility) => (
+                      <li key={facility.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFacilityId(String(facility.id));
+                            setError("");
+                            setNotice("");
+                          }}
+                          aria-pressed={facilityId === String(facility.id)}
+                          className={`w-full p-4 text-left hover:bg-slate-50 ${
+                            facilityId === String(facility.id)
+                              ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
+                              : ""
+                          }`}
+                        >
+                          <span className="block font-semibold text-slate-800">{facility.name}</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            {facility.code} · {facility.level} · {facility.county || "County not set"}
+                          </span>
+                          <span className="mt-1 block text-xs font-medium text-blue-700">
+                            {facilityId === String(facility.id) ? "Selected for editing" : "Select facility"}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </section>
           </div>
+
+          <form onSubmit={saveFacilityProfile} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+            <div>
+              <h2 className="font-bold text-slate-900">Edit facility profile</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Select an existing facility above. Changes are saved to the existing facility record.
+              </p>
+            </div>
+
+            {!selectedFacility ? (
+              <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+                Select a facility from the list above to load its saved profile.
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Facility name *</label>
+                    <input className={fieldClass} required maxLength={200} value={editFacilityForm.name} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, name: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Facility code *</label>
+                    <input className={fieldClass} required maxLength={80} value={editFacilityForm.code} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, code: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <label className={labelClass}>Facility level</label>
+                    <select className={fieldClass} value={editFacilityForm.level} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, level: e.target.value })}>
+                      {[
+                        ["Level 2", "Level 2 Clinic"],
+                        ["Level 3", "Level 3 Medical Center"],
+                        ["Level 4", "Level 4 Sub-County Hospital"],
+                        ["Level 5", "Level 5 County Referral Hospital"],
+                        ["Level 6", "Level 6 National Referral Hospital"],
+                      ].map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>County</label>
+                    <input className={fieldClass} value={editFacilityForm.county} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, county: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Sub-county</label>
+                    <input className={fieldClass} value={editFacilityForm.subCounty} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, subCounty: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Kenya Master Facility Code (MFL)</label>
+                    <input className={fieldClass} value={editFacilityForm.mflCode} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, mflCode: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Official email</label>
+                    <input className={fieldClass} type="email" maxLength={254} value={editFacilityForm.email} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, email: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>Contact phone</label>
+                    <input className={fieldClass} value={editFacilityForm.phone} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, phone: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Address</label>
+                    <input className={fieldClass} value={editFacilityForm.address} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, address: e.target.value })} />
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  Facility ID: {selectedFacility.id} · Tenant ID: {selectedFacility.tenantId}
+                </p>
+
+                <button type="submit" disabled={saving || !selectedFacility} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
+                  {saving ? "Saving..." : "Save facility profile"}
+                </button>
+              </>
+            )}
+          </form>
         </div>
       )}
-
       {tab === "billing" && <SubscriptionBillingPanel />}
         {tab === "administrators" && (
         <>

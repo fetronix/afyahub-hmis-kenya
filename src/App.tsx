@@ -10,6 +10,7 @@ import { PlatformAdministrationModule } from "./components/modules/PlatformAdmin
 import { PatientJourneyModal } from './components/PatientJourneyModal.tsx';
 
 import { DashboardModule } from './components/modules/DashboardModule.tsx';
+import { SuperAdminDashboardModule } from './components/modules/SuperAdminDashboardModule.tsx';
 import { PatientRegistrationModule } from './components/modules/PatientRegistrationModule.tsx';
 import { ReceptionQueueModule } from './components/modules/ReceptionQueueModule.tsx';
 import { OutpatientModule } from './components/modules/OutpatientModule.tsx';
@@ -33,10 +34,11 @@ import { CheckCircle2, Loader2 } from 'lucide-react';
 const AppContent: React.FC = () => {
   const {
     activeModule,
+    authenticatedUser,
+    setActiveModule,
     toastMessage,
     loading,
     isAuthenticated,
-    authenticatedUser,
     authLoading,
   } = useHmis();
 
@@ -94,7 +96,9 @@ const AppContent: React.FC = () => {
     switch (activeModule) {
       case 'platform_administration': return (authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes("SUPER_ADMIN")) ? <PlatformAdministrationModule /> : <DashboardModule />;
       case 'dashboard':
-        return <DashboardModule />;
+        return (authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes("SUPER_ADMIN"))
+          ? <SuperAdminDashboardModule onNavigate={(module) => setActiveModule(module as any)} />
+          : <DashboardModule />;
 
       case 'registration':
         return <PatientRegistrationModule />;
@@ -205,5 +209,6 @@ export default function App() {
     </HmisProvider>
   );
 }
+
 
 
