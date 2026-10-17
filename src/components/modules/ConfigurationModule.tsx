@@ -53,20 +53,6 @@ export const ConfigurationModule: React.FC = () => {
     interoperability: true,
   });
 
-  // Roles & Permissions matrix
-  const [rolesList, setRolesList] = useState([
-    { role: 'Platform Administrator', perms: ['Full System Admin', 'Multi-Tenant Config', 'Billing Rules', 'Audit Logs'] },
-    { role: 'Facility Administrator', perms: ['User Management', 'Departments', 'Bed Allocation', 'Pricing Tariffs'] },
-    { role: 'Medical Director', perms: ['Approve POs', 'Clinical Reviews', 'Surgical Allocation', 'Death Audits'] },
-    { role: 'Doctor / Consultant', perms: ['OPD Consultation', 'Prescribe Drugs', 'Order Labs', 'Admit Patients'] },
-    { role: 'Clinical Officer', perms: ['OPD Triage', 'Consultation', 'Prescribe', 'Referrals'] },
-    { role: 'Nurse / Midwife', perms: ['Record Vitals', 'Triage Category', 'MAR Nursing Notes', 'Ward Care'] },
-    { role: 'Pharmacist', perms: ['Dispense Medicines', 'Stock Batches', 'Drug Reorders', 'Expiry Tracking'] },
-    { role: 'Laboratory Technologist', perms: ['Sample Accessioning', 'Result Entry', 'Pathologist Verification'] },
-    { role: 'Radiology Staff', perms: ['PACS Management', 'Radiology Reports', 'Imaging Queue'] },
-    { role: 'Cashier / Revenue Officer', perms: ['Receive Payments', 'M-Pesa STK Push', 'Issue Receipts', 'POS Shift'] },
-  ]);
-
   const toggleModule = (key: string) => {
     setEnabledModules(prev => ({ ...prev, [key]: !prev[key] }));
     showToast(`Updated module "${key}" state.`);
@@ -100,7 +86,6 @@ export const ConfigurationModule: React.FC = () => {
         {[
           { id: 'facility', label: 'Facility Profile', icon: Building2 },
           { id: 'modules', label: 'Modular Features Engine', icon: Layers },
-          { id: 'roles', label: 'RBAC Roles & Permissions', icon: ShieldCheck },
           { id: 'staff', label: 'Staff Invitations', icon: UserPlus },
           { id: 'payments', label: 'M-Pesa & Payment Channels', icon: CreditCard },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
@@ -280,41 +265,6 @@ export const ConfigurationModule: React.FC = () => {
         </div>
       )}
 
-      {/* RBAC MATRIX TAB */}
-      {activeTab === 'roles' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs text-xs">
-          <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-            <h2 className="font-bold text-slate-900 uppercase">
-              Role-Based Access Control (RBAC) System
-            </h2>
-            <span className="text-2xs text-slate-400">10 Clinical & Administrative Roles</span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {rolesList.map((r, idx) => (
-              <div key={idx} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-slate-50/60">
-                <div className="min-w-44">
-                  <span className="font-bold text-slate-900">{r.role}</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 flex-1">
-                  {r.perms.map((p, pIdx) => (
-                    <span key={pIdx} className="px-2 py-0.5 rounded text-2xs bg-slate-100 text-slate-700 font-medium">
-                      {p}
-                    </span>
-                  ))}
-                </div>
-                <button
-                  onClick={() => showToast(`Configured permissions for role: ${r.role}`)}
-                  className="px-2.5 py-1 text-2xs font-semibold text-teal-800 bg-teal-50 rounded hover:bg-teal-100 transition-colors"
-                >
-                  Edit Permissions
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* PAYMENT CHANNELS TAB */}
       {activeTab === 'payments' && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs text-xs space-y-4">
@@ -335,7 +285,7 @@ export const ConfigurationModule: React.FC = () => {
                 <label className="block text-slate-600 mb-1">Passkey (Encrypted)</label>
                 <input type="password" defaultValue="bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919" className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono" />
               </div>
-              <span className="text-2xs text-emerald-700 font-medium">✓ Auto-STK Push Active on Cashier POS</span>
+              <span className="text-2xs text-emerald-700 font-medium">âœ“ Auto-STK Push Active on Cashier POS</span>
             </div>
 
             <div className="p-4 border border-slate-200 rounded-lg space-y-3">
@@ -348,7 +298,7 @@ export const ConfigurationModule: React.FC = () => {
                 <label className="block text-slate-600 mb-1">Account Number</label>
                 <input type="text" defaultValue="1102948201" className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono" />
               </div>
-              <span className="text-2xs text-emerald-700 font-medium">✓ Card & EFT Reconciliation Active</span>
+              <span className="text-2xs text-emerald-700 font-medium">âœ“ Card & EFT Reconciliation Active</span>
             </div>
           </div>
         </div>

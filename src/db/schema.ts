@@ -425,6 +425,42 @@ export const rolePermissions = pgTable(
     ).on(table.roleId, table.permissionId),
   }),
 );
+export const facilityRolePermissionOverrides = pgTable(
+  'facility_role_permission_overrides',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id').references(() => tenants.id).notNull(),
+    facilityId: integer('facility_id').references(() => facilities.id).notNull(),
+    roleId: integer('role_id').references(() => roles.id).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    facilityRoleIdx: uniqueIndex(
+      'facility_role_permission_overrides_facility_role_idx',
+    ).on(table.facilityId, table.roleId),
+    tenantFacilityIdx: index(
+      'facility_role_permission_overrides_tenant_facility_idx',
+    ).on(table.tenantId, table.facilityId),
+  }),
+);
+
+export const facilityRolePermissionOverridePermissions = pgTable(
+  'facility_role_permission_override_permissions',
+  {
+    id: serial('id').primaryKey(),
+    overrideId: integer('override_id')
+      .references(() => facilityRolePermissionOverrides.id, { onDelete: 'cascade' })
+      .notNull(),
+    permissionId: integer('permission_id').references(() => permissions.id).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    overridePermissionIdx: uniqueIndex(
+      'facility_role_permission_override_permissions_override_permission_idx',
+    ).on(table.overrideId, table.permissionId),
+  }),
+);
 
    
 /* ============================================================

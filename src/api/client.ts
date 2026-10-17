@@ -1,4 +1,4 @@
-﻿import {
+import {
   Tenant,
   Facility,
   Department,
@@ -269,10 +269,80 @@ export interface SessionResponse {
   };
 }
 
+export interface RbacPermission {
+  id: number;
+  code: string;
+  name: string;
+  module: string;
+  description: string | null;
+  assignable: boolean;
+}
+
+export interface RbacRole {
+  id: number;
+  tenantId: number | null;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+  permissionIds: number[];
+  permissionCodes: string[];
+  hasFacilityOverride: boolean;
+  canEdit: boolean;
+}
+
+export interface RbacRolesResponse {
+  roles: RbacRole[];
+  permissions: RbacPermission[];
+}
 /**
  * Main API client.
  */
 export const api = {
+  // ============================================================
+  // ROLE-BASED ACCESS CONTROL
+  // ============================================================
+
+  getRbacRoles: async (facilityId: number): Promise<RbacRolesResponse> => {
+    const response = await fetchJson<{
+      success: boolean;
+      data?: RbacRolesResponse;
+      message?: string;
+      error?: string;
+    }>(
+      `${API_BASE}/platform/rbac/roles?facilityId=${encodeURIComponent(String(facilityId))}`,
+    );
+
+    if (
+      !response.success ||
+      !response.data ||
+      !Array.isArray(response.data.roles) ||
+      !Array.isArray(response.data.permissions)
+    ) {
+      throw new Error(
+        response.message ||
+        response.error ||
+        "Invalid RBAC roles response from server."
+      );
+    }
+
+    return response.data;
+  },
+
+  updateRbacRolePermissions: (
+    roleId: number,
+    facilityId: number,
+    permissionIds: number[],
+  ): Promise<{ success: boolean; message?: string }> =>
+    fetchJson<{ success: boolean; message?: string }>(
+      `${API_BASE}/platform/rbac/roles/${roleId}/permissions`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facilityId, permissionIds }),
+      }
+    ),
+
   // ============================================================
   // AUTHENTICATION
   // ============================================================
@@ -1512,4 +1582,3 @@ export const api = {
         }`
       ),
 };
-

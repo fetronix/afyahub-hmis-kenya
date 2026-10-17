@@ -2515,6 +2515,521 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
     handleError(res, error);
   }
 });
+
+// ============================================================
+// RBAC: DATABASE-BACKED ROLE AND PERMISSION MANAGEMENT
+// ============================================================
+
+function isFacilityAdminContext(context: AuthorizationContext): boolean {
+  return context.isSuperAdmin !== true &&
+    context.tenantId !== null &&
+    context.tenantId !== undefined &&
+    context.roles.includes('FACILITY_ADMIN');
+}
+
+function isRestrictedForFacilityAdmin(permission: {
+  code: string;
+  module: string;
+}): boolean {
+  const code = permission.code.toLowerCase();
+  const module = permission.module.toLowerCase();
+
+  return [
+    'platform',
+    'tenants',
+    'subscriptions',
+    'security',
+    'rbac',
+  ].includes(module) ||
+    code.startsWith('platform.') ||
+    code.startsWith('tenants.') ||
+    code.startsWith('subscriptions.') ||
+    code.startsWith('permissions.') ||
+    code.startsWith('users.roles.') ||
+    [
+      'roles.manage',
+      'roles.create',
+      'roles.update',
+      'roles.delete',
+    ].includes(code);
+}
+
+/**
+ * GET /api/platform/rbac/roles
+ * Return real database roles, their current permission assignments,
+ * and the permission catalogue.
+ */
+router.get('/rbac/roles', async (req: Request, res: Response) => {
+  const context = getContext(req);
+
+  if (!context || (
+    context.isSuperAdmin !== true &&
+    !isFacilityAdminContext(context)
+  )) {
+    res.status(403).json({
+      error: 'FORBIDDEN',
+      message: 'You are not authorized to view role permissions.',
+    });
+    return;
+  }
+
+  const facilityId = Number(req.query.facilityId);
+
+  if (!Number.isSafeInteger(facilityId) || facilityId < 1) {
+    res.status(400).json({
+      error: 'INVALID_FACILITY_ID',
+      message: 'A valid facilityId query parameter is required.',
+    });
+    return;
+  }
+
+  try {
+    const [facility] = await db
+      .select()
+      .from(schema.facilities)
+      .where(eq(schema.facilities.id, facilityId))
+      .limit(1);
+
+    if (!facility) {
+      res.status(404).json({
+        error: 'FACILITY_NOT_FOUND',
+        message: 'The selected facility was not found.',
+      });
+      return;
+    }
+
+    if (
+      context.isSuperAdmin !== true &&
+      (
+        facility.tenantId !== context.tenantId ||
+        (context.facilityId !== null && context.facilityId !== facility.id)
+      )
+    ) {
+      res.status(403).json({
+        error: 'FACILITY_OUT_OF_SCOPE',
+        message: 'You are not authorized to manage this facility.',
+      });
+      return;
+    }
+
+    /*
+     * This editor manages tenant roles only. Global/platform roles must
+     * not receive facility-specific overrides.
+     */
+    const roleRows = await db
+      .select()
+      .from(schema.roles)
+      .where(eq(schema.roles.tenantId, facility.tenantId))
+      .orderBy(schema.roles.name);
+
+    const permissionRows = await db
+      .select()
+      .from(schema.permissions)
+      .orderBy(schema.permissions.module, schema.permissions.code);
+
+    const roleIds = roleRows.map((role) => role.id);
+
+    const defaults = roleIds.length > 0
+      ? await db
+          .select()
+          .from(schema.rolePermissions)
+          .where(inArray(schema.rolePermissions.roleId, roleIds))
+      : [];
+
+    const overrides = roleIds.length > 0
+      ? await db
+          .select()
+          .from(schema.facilityRolePermissionOverrides)
+          .where(and(
+            eq(schema.facilityRolePermissionOverrides.tenantId, facility.tenantId),
+            eq(schema.facilityRolePermissionOverrides.facilityId, facility.id),
+            inArray(schema.facilityRolePermissionOverrides.roleId, roleIds),
+          ))
+      : [];
+
+    const overrideIds = overrides.map((override) => override.id);
+
+    const overrideAssignments = overrideIds.length > 0
+      ? await db
+          .select()
+          .from(schema.facilityRolePermissionOverridePermissions)
+          .where(inArray(
+            schema.facilityRolePermissionOverridePermissions.overrideId,
+            overrideIds,
+          ))
+      : [];
+
+    const defaultsByRole = new Map<number, number[]>();
+    for (const assignment of defaults) {
+      const ids = defaultsByRole.get(assignment.roleId) ?? [];
+      ids.push(assignment.permissionId);
+      defaultsByRole.set(assignment.roleId, ids);
+    }
+
+    const overrideByRole = new Map<number, number>();
+    for (const override of overrides) {
+      overrideByRole.set(override.roleId, override.id);
+    }
+
+    const overridePermissionsById = new Map<number, number[]>();
+    for (const assignment of overrideAssignments) {
+      const ids = overridePermissionsById.get(assignment.overrideId) ?? [];
+      ids.push(assignment.permissionId);
+      overridePermissionsById.set(assignment.overrideId, ids);
+    }
+
+    const assignedRoleRows = await db
+      .select({ roleId: schema.userRoles.roleId })
+      .from(schema.userRoles)
+      .where(and(
+        eq(schema.userRoles.userId, context.userId),
+        eq(schema.userRoles.isActive, true),
+        isNull(schema.userRoles.revokedAt),
+      ));
+
+    const assignedRoleIds = new Set(
+      assignedRoleRows.map((assignment) => assignment.roleId),
+    );
+
+    const rolesWithPermissions = roleRows.map((role) => {
+      const isProtectedRole =
+        role.tenantId === null ||
+        role.isSystem === true ||
+        [
+          'SUPER_ADMIN',
+          'PLATFORM_ADMIN',
+          'PLATFORM_ADMINISTRATOR',
+          'FACILITY_ADMIN',
+          'TENANT_ADMIN',
+        ].includes(role.name.toUpperCase());
+
+      const canEdit = context.isSuperAdmin === true
+        ? !isProtectedRole
+        : !isProtectedRole &&
+          role.tenantId === context.tenantId &&
+          !assignedRoleIds.has(role.id);
+
+      const overrideId = overrideByRole.get(role.id);
+      const hasFacilityOverride = overrideId !== undefined;
+
+      // An existing empty override intentionally means no permissions.
+      const effectivePermissionIds = hasFacilityOverride
+        ? (overridePermissionsById.get(overrideId!) ?? [])
+        : (defaultsByRole.get(role.id) ?? []);
+
+      return {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+        tenantId: role.tenantId,
+        isSystem: role.isSystem,
+        isActive: role.isActive,
+        permissionIds: effectivePermissionIds,
+        permissionCodes: permissionRows
+          .filter((permission) => effectivePermissionIds.includes(permission.id))
+          .map((permission) => permission.code),
+        hasFacilityOverride,
+        canEdit,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        roles: rolesWithPermissions,
+        permissions: permissionRows.map((permission) => ({
+          id: permission.id,
+          code: permission.code,
+          name: permission.name,
+          module: permission.module,
+          description: permission.description,
+          assignable: context.isSuperAdmin === true ||
+            !isRestrictedForFacilityAdmin(permission),
+        })),
+      },
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+/**
+ * PUT /api/platform/rbac/roles/:id/permissions
+ * Save a facility-specific permission override without changing shared defaults.
+ */
+router.put(
+  '/rbac/roles/:id/permissions',
+  async (req: Request, res: Response) => {
+    const context = getContext(req);
+
+    if (!context || (
+      context.isSuperAdmin !== true &&
+      !isFacilityAdminContext(context)
+    )) {
+      res.status(403).json({
+        error: 'FORBIDDEN',
+        message: 'You are not authorized to edit role permissions.',
+      });
+      return;
+    }
+
+    const roleId = parseId(req.params.id);
+    const facilityId = Number(req.body?.facilityId);
+    const permissionIdsUnknown = req.body?.permissionIds;
+
+    if (roleId === null) {
+      res.status(400).json({
+        error: 'INVALID_ROLE_ID',
+        message: 'A valid role ID is required.',
+      });
+      return;
+    }
+
+    if (!Number.isSafeInteger(facilityId) || facilityId < 1) {
+      res.status(400).json({
+        error: 'INVALID_FACILITY_ID',
+        message: 'A valid facilityId is required.',
+      });
+      return;
+    }
+
+    if (
+      !Array.isArray(permissionIdsUnknown) ||
+      permissionIdsUnknown.some(
+        (id: unknown) =>
+          typeof id !== 'number' ||
+          !Number.isSafeInteger(id) ||
+          id < 1,
+      )
+    ) {
+      res.status(400).json({
+        error: 'INVALID_PERMISSION_IDS',
+        message: 'permissionIds must be an array of positive integer IDs.',
+      });
+      return;
+    }
+
+    const permissionIds = [...new Set(permissionIdsUnknown as number[])];
+
+    if (permissionIds.length !== permissionIdsUnknown.length) {
+      res.status(400).json({
+        error: 'DUPLICATE_PERMISSION_IDS',
+        message: 'Each permission may only be selected once.',
+      });
+      return;
+    }
+
+    try {
+      const [facility] = await db
+        .select()
+        .from(schema.facilities)
+        .where(eq(schema.facilities.id, facilityId))
+        .limit(1);
+
+      if (!facility) {
+        res.status(404).json({
+          error: 'FACILITY_NOT_FOUND',
+          message: 'The selected facility was not found.',
+        });
+        return;
+      }
+
+      if (
+        context.isSuperAdmin !== true &&
+        (
+          facility.tenantId !== context.tenantId ||
+          (context.facilityId !== null && context.facilityId !== facility.id)
+        )
+      ) {
+        res.status(403).json({
+          error: 'FACILITY_OUT_OF_SCOPE',
+          message: 'You are not authorized to manage this facility.',
+        });
+        return;
+      }
+
+      const [role] = await db
+        .select()
+        .from(schema.roles)
+        .where(eq(schema.roles.id, roleId))
+        .limit(1);
+
+      if (!role) {
+        res.status(404).json({
+          error: 'ROLE_NOT_FOUND',
+          message: 'The requested role was not found.',
+        });
+        return;
+      }
+
+      // Only roles belonging to the selected facility's tenant can be overridden.
+      if (role.tenantId !== facility.tenantId) {
+        res.status(403).json({
+          error: 'ROLE_OUT_OF_SCOPE',
+          message: 'Only roles belonging to the facility tenant can be overridden.',
+        });
+        return;
+      }
+
+      if (context.isSuperAdmin !== true) {
+        const isForbiddenRole =
+          role.isSystem === true ||
+          [
+            'SUPER_ADMIN',
+            'PLATFORM_ADMIN',
+            'PLATFORM_ADMINISTRATOR',
+            'FACILITY_ADMIN',
+            'TENANT_ADMIN',
+          ].includes(role.name.toUpperCase());
+
+        if (isForbiddenRole) {
+          res.status(403).json({
+            error: 'ROLE_OUT_OF_SCOPE',
+            message: 'Facility administrators may edit only eligible staff roles.',
+          });
+          return;
+        }
+
+        const [selfAssignment] = await db
+          .select({ id: schema.userRoles.id })
+          .from(schema.userRoles)
+          .where(and(
+            eq(schema.userRoles.userId, context.userId),
+            eq(schema.userRoles.roleId, role.id),
+            eq(schema.userRoles.isActive, true),
+            isNull(schema.userRoles.revokedAt),
+          ))
+          .limit(1);
+
+        if (selfAssignment) {
+          res.status(403).json({
+            error: 'SELF_ROLE_MODIFICATION_BLOCKED',
+            message: 'You cannot modify a role assigned to your own account.',
+          });
+          return;
+        }
+      }
+
+      const requestedPermissions = permissionIds.length > 0
+        ? await db
+            .select()
+            .from(schema.permissions)
+            .where(inArray(schema.permissions.id, permissionIds))
+        : [];
+
+      if (requestedPermissions.length !== permissionIds.length) {
+        res.status(400).json({
+          error: 'UNKNOWN_PERMISSION',
+          message: 'One or more selected permissions do not exist.',
+        });
+        return;
+      }
+
+      if (
+        context.isSuperAdmin !== true &&
+        requestedPermissions.some(isRestrictedForFacilityAdmin)
+      ) {
+        res.status(403).json({
+          error: 'PRIVILEGED_PERMISSION_BLOCKED',
+          message: 'Facility administrators cannot grant platform, tenant-administration, or RBAC-management permissions.',
+        });
+        return;
+      }
+
+      await db.transaction(async (tx) => {
+        const [existingOverride] = await tx
+          .select()
+          .from(schema.facilityRolePermissionOverrides)
+          .where(and(
+            eq(schema.facilityRolePermissionOverrides.tenantId, facility.tenantId),
+            eq(schema.facilityRolePermissionOverrides.facilityId, facility.id),
+            eq(schema.facilityRolePermissionOverrides.roleId, role.id),
+          ))
+          .limit(1);
+
+        let overrideId: number;
+
+        if (existingOverride) {
+          overrideId = existingOverride.id;
+
+          await tx
+            .update(schema.facilityRolePermissionOverrides)
+            .set({ updatedAt: new Date() })
+            .where(eq(schema.facilityRolePermissionOverrides.id, overrideId));
+
+          await tx
+            .delete(schema.facilityRolePermissionOverridePermissions)
+            .where(
+              eq(
+                schema.facilityRolePermissionOverridePermissions.overrideId,
+                overrideId,
+              ),
+            );
+        } else {
+          const [createdOverride] = await tx
+            .insert(schema.facilityRolePermissionOverrides)
+            .values({
+              tenantId: facility.tenantId,
+              facilityId: facility.id,
+              roleId: role.id,
+            })
+            .returning({
+              id: schema.facilityRolePermissionOverrides.id,
+            });
+
+          overrideId = createdOverride.id;
+        }
+
+        if (permissionIds.length > 0) {
+          await tx
+            .insert(schema.facilityRolePermissionOverridePermissions)
+            .values(permissionIds.map((permissionId) => ({
+              overrideId,
+              permissionId,
+            })));
+        }
+
+        await tx.insert(schema.auditLogs).values({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          userId: String(context.userId),
+          action: 'UPDATE',
+          resource: 'facility_role_permission_override',
+          resourceId: String(overrideId),
+          details: JSON.stringify({
+            facilityId: facility.id,
+            facilityName: facility.name,
+            roleId: role.id,
+            roleName: role.name,
+            permissionIds,
+            permissionCodes: requestedPermissions.map(
+              (permission) => permission.code,
+            ),
+            hasFacilityOverride: true,
+            changedBy: context.userId,
+          }),
+          severity: 'HIGH',
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Facility-specific role permissions updated successfully.',
+        data: {
+          facilityId: facility.id,
+          roleId: role.id,
+          permissionIds,
+          permissionCodes: requestedPermissions.map(
+            (permission) => permission.code,
+          ),
+          hasFacilityOverride: true,
+        },
+      });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+);
 export default router;
 
 

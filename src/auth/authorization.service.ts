@@ -25,6 +25,10 @@ import {
   userRoles,
   permissions,
   rolePermissions,
+  facilityRolePermissionOverrides,
+  facilityRolePermissionOverridePermissions,
+
+
 } from "../db/schema";
 
 import type {
@@ -92,110 +96,107 @@ export async function loadAuthorizationContext(
      - SUPER_ADMIN must be global
   */
 
-  const rows = await db
+  /*
+   * Load valid role assignments independently of their permissions.
+   * This keeps roles with zero permissions in the authorization context.
+   */
+  const roleRows = await db
     .select({
+      roleId: roles.id,
       roleName: roles.name,
       roleTenantId: roles.tenantId,
-      permissionCode: permissions.code,
     })
     .from(userRoles)
-    .innerJoin(
-      roles,
-      eq(
-        userRoles.roleId,
-        roles.id,
-      ),
-    )
-    .innerJoin(
-      rolePermissions,
-      eq(
-        rolePermissions.roleId,
-        roles.id,
-      ),
-    )
-    .innerJoin(
-      permissions,
-      eq(
-        rolePermissions.permissionId,
-        permissions.id,
-      ),
-    )
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
     .where(
       and(
-        eq(
-          userRoles.userId,
-          userId,
-        ),
-
-        eq(
-          userRoles.isActive,
-          true,
-        ),
-
-        isNull(
-          userRoles.revokedAt,
-        ),
-
-        eq(
-          roles.isActive,
-          true,
-        ),
-
-        /* ----------------------------------------------------
-           Role scope
-
-           SUPER_ADMIN is only valid as a global role.
-
-           Tenant roles must belong to the authenticated
-           user's tenant.
-        ---------------------------------------------------- */
-
+        eq(userRoles.userId, userId),
+        eq(userRoles.isActive, true),
+        isNull(userRoles.revokedAt),
+        eq(roles.isActive, true),
         user.tenantId === null
-          ? isNull(
-              roles.tenantId,
-            )
-          : eq(
-              roles.tenantId,
-              user.tenantId,
-            ),
+          ? isNull(roles.tenantId)
+          : eq(roles.tenantId, user.tenantId),
       ),
     );
-
-
-  /* ----------------------------------------------------------
-     3. Extract unique roles and permissions
-     ---------------------------------------------------------- */
 
   const roleSet = new Set<string>();
   const permissionSet = new Set<string>();
 
-  for (const row of rows) {
+  for (const role of roleRows) {
+    roleSet.add(role.roleName);
 
-    if (row.roleName) {
-      roleSet.add(
-        row.roleName,
-      );
+    /*
+     * Facility-scoped users use an explicit facility override when one
+     * exists. An override with zero permission rows intentionally grants
+     * zero permissions; it must not fall back to tenant defaults.
+     *
+     * Tenant-wide users and global administrators continue to use the
+     * role's shared permissions.
+     */
+    let overrideId: number | null = null;
+
+    if (user.tenantId !== null && user.facilityId !== null) {
+      const [override] = await db
+        .select({
+          id: facilityRolePermissionOverrides.id,
+        })
+        .from(facilityRolePermissionOverrides)
+        .where(
+          and(
+            eq(facilityRolePermissionOverrides.tenantId, user.tenantId),
+            eq(facilityRolePermissionOverrides.facilityId, user.facilityId),
+            eq(facilityRolePermissionOverrides.roleId, role.roleId),
+          ),
+        )
+        .limit(1);
+
+      overrideId = override?.id ?? null;
     }
 
-    if (row.permissionCode) {
-      permissionSet.add(
-        row.permissionCode,
-      );
+    if (overrideId !== null) {
+      const overridePermissions = await db
+        .select({
+          permissionCode: permissions.code,
+        })
+        .from(facilityRolePermissionOverridePermissions)
+        .innerJoin(
+          permissions,
+          eq(
+            facilityRolePermissionOverridePermissions.permissionId,
+            permissions.id,
+          ),
+        )
+        .where(
+          eq(
+            facilityRolePermissionOverridePermissions.overrideId,
+            overrideId,
+          ),
+        );
+
+      for (const permission of overridePermissions) {
+        permissionSet.add(permission.permissionCode);
+      }
+    } else {
+      const defaultPermissions = await db
+        .select({
+          permissionCode: permissions.code,
+        })
+        .from(rolePermissions)
+        .innerJoin(
+          permissions,
+          eq(rolePermissions.permissionId, permissions.id),
+        )
+        .where(eq(rolePermissions.roleId, role.roleId));
+
+      for (const permission of defaultPermissions) {
+        permissionSet.add(permission.permissionCode);
+      }
     }
   }
 
-
-  const rolesList =
-    Array.from(roleSet);
-
-  const permissionsList =
-    Array.from(permissionSet);
-
-
-  /* ----------------------------------------------------------
-     4. Determine SUPER_ADMIN
-     ---------------------------------------------------------- */
-
+  const rolesList = Array.from(roleSet);
+  const permissionsList = Array.from(permissionSet);
   const isSuperAdmin =
     user.tenantId === null &&
     user.facilityId === null &&

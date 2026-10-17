@@ -1,8 +1,9 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api, getSessionToken } from "../../api/client.ts";
 import type { Tenant, Facility } from "../../types/index.ts";
 import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from "lucide-react";
 import { SubscriptionBillingPanel } from "./SubscriptionBillingPanel.tsx";
+import { FacilityRbacEditor } from "./FacilityRbacEditor.tsx";
 
 type Tab = "tenants" | "facilities" | "administrators" | "billing";
 type InvitationStatus = "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
@@ -793,6 +794,14 @@ export const PlatformAdministrationModule: React.FC = () => {
               </>
             )}
           </section>
+
+          {selectedFacility && (
+            <FacilityRbacEditor
+              key={selectedFacility.id}
+              facilityId={selectedFacility.id}
+              facilityName={selectedFacility.name}
+            />
+          )}
         </div>
       )}
       {tab === "billing" && <SubscriptionBillingPanel />}
