@@ -476,7 +476,7 @@ export const PlatformAdministrationModule: React.FC = () => {
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="mb-3 font-bold text-slate-900">Existing tenants ({tenants.length})</h2>
             {loading ? <p className="text-sm text-slate-500">LoadingÃ¢â‚¬Â¦</p> : tenants.length === 0 ? <p className="text-sm text-slate-500">No tenants found.</p> :
-              <ul className="divide-y divide-slate-100">{tenants.map((t) => <li key={t.id} className="py-3"><p className="font-semibold text-slate-800">{t.name}</p><p className="text-xs text-slate-500">{t.slug} Ã‚Â· ID {t.id}</p></li>)}</ul>}
+              <ul className="divide-y divide-slate-100">{tenants.map((t) => <li key={t.id} className="py-3"><p className="font-semibold text-slate-800">{t.name}</p><p className="text-xs text-slate-500">{t.slug} · ID {t.id}</p></li>)}</ul>}
           </div>
         </div>
       )}
@@ -522,7 +522,7 @@ export const PlatformAdministrationModule: React.FC = () => {
             </div>
             {tenantId && (
               <p className="mt-2 text-xs text-slate-500">
-                Tenant ID: {tenantId} Ã‚Â· This ID cannot be changed by editing a facility profile.
+                Tenant ID: {tenantId} · This ID cannot be changed by editing a facility profile.
               </p>
             )}
           </section>
@@ -627,7 +627,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                         >
                           <span className="block font-semibold text-slate-800">{facility.name}</span>
                           <span className="mt-1 block text-xs text-slate-500">
-                            {facility.code} Ã‚Â· {facility.level} Ã‚Â· {facility.county || "County not set"}
+                            {facility.code} · {facility.level} · {facility.county || "County not set"}
                           </span>
                           <span className="mt-1 block text-xs font-medium text-blue-700">
                             {facilityId === String(facility.id) ? "Selected for editing" : "Select facility"}
@@ -713,7 +713,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                 </div>
 
                 <p className="text-xs text-slate-500">
-                  Facility ID: {selectedFacility.id} Ã‚Â· Tenant ID: {selectedFacility.tenantId}
+                  Facility ID: {selectedFacility.id} · Tenant ID: {selectedFacility.tenantId}
                 </p>
 
                 <button type="submit" disabled={saving || !selectedFacility} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">

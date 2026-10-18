@@ -17,6 +17,7 @@ import {
 } from 'node:crypto';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
+import { STAFF_ROLE_CATALOGUE } from '../auth/staff-role-catalogue.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import * as queries from '../db/queries.ts';
 
@@ -173,6 +174,9 @@ const FACILITY_ADMIN_PERMISSION_CODES = [
 ] as const;
 
 
+
+
+
 /**
  * POST /api/platform/tenants
  * Create a tenant.
@@ -304,6 +308,59 @@ router.post('/tenants', async (req: Request, res: Response) => {
           })),
         );
 
+      
+      // 5. Provision the standard staff roles for the new tenant.
+      const staffPermissionCodes = [
+        ...new Set(STAFF_ROLE_CATALOGUE.flatMap((role) => [...role.permissions])),
+      ];
+
+      const staffPermissionRows = await tx
+        .select({
+          id: schema.permissions.id,
+          code: schema.permissions.code,
+        })
+        .from(schema.permissions)
+        .where(inArray(schema.permissions.code, staffPermissionCodes));
+
+      const staffFoundCodes = new Set(
+        staffPermissionRows.map((permission) => permission.code),
+      );
+
+      const missingStaffCodes = staffPermissionCodes.filter(
+        (code) => !staffFoundCodes.has(code),
+      );
+
+      if (missingStaffCodes.length > 0) {
+        throw new Error(
+          `STAFF_ROLE_PERMISSIONS_MISSING: ${missingStaffCodes.join(', ')}`,
+        );
+      }
+
+      for (const staffRole of STAFF_ROLE_CATALOGUE) {
+        const [createdRole] = await tx
+          .insert(schema.roles)
+          .values({
+            tenantId: createdTenant.id,
+            name: staffRole.name,
+            description: staffRole.description,
+            isSystem: false,
+            isActive: true,
+          })
+          .returning({ id: schema.roles.id });
+
+        const rolePermissionRows = staffPermissionRows
+          .filter((permission) =>
+            (staffRole.permissions as readonly string[]).includes(permission.code),
+          )
+          .map((permission) => ({
+            roleId: createdRole.id,
+            permissionId: permission.id,
+          }));
+
+        await tx
+          .insert(schema.rolePermissions)
+          .values(rolePermissionRows);
+      }
       return createdTenant;
     });
 
@@ -2694,20 +2751,25 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
     );
 
     const rolesWithPermissions = roleRows.map((role) => {
-      const isProtectedRole =
+      const roleName = role.name.toUpperCase();
+
+      const isPlatformProtectedRole =
         role.tenantId === null ||
-        role.isSystem === true ||
         [
           'SUPER_ADMIN',
           'PLATFORM_ADMIN',
           'PLATFORM_ADMINISTRATOR',
-          'FACILITY_ADMIN',
           'TENANT_ADMIN',
-        ].includes(role.name.toUpperCase());
+        ].includes(roleName);
 
+      // Super Admin may override FACILITY_ADMIN permissions for a tenant
+      // facility. Other system roles and platform-level roles stay protected.
       const canEdit = context.isSuperAdmin === true
-        ? !isProtectedRole
-        : !isProtectedRole &&
+        ? !isPlatformProtectedRole &&
+          (!role.isSystem || roleName === 'FACILITY_ADMIN')
+        : !isPlatformProtectedRole &&
+          role.isSystem !== true &&
+          roleName !== 'FACILITY_ADMIN' &&
           role.tenantId === context.tenantId &&
           !assignedRoleIds.has(role.id);
 
@@ -3033,6 +3095,9 @@ router.put(
   },
 );
 export default router;
+
+
+
 
 
 

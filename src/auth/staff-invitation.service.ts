@@ -171,6 +171,7 @@ export async function createStaffInvitation(
   // administrator privileges.
   if (
     role.name.trim().toUpperCase().includes("SUPER_ADMIN") ||
+    role.name.trim().toUpperCase().includes("PLATFORM_ADMIN") ||
     role.name.trim().toUpperCase().includes("FACILITY_ADMIN") ||
     role.name.trim().toUpperCase().includes("TENANT_ADMIN")
   ) {
@@ -565,6 +566,7 @@ export async function acceptStaffInvitation(input: {
       const normalizedRoleName = role.name.trim().toUpperCase();
       if (
         normalizedRoleName.includes("SUPER_ADMIN") ||
+        normalizedRoleName.includes("PLATFORM_ADMIN") ||
         normalizedRoleName.includes("FACILITY_ADMIN") ||
         normalizedRoleName.includes("TENANT_ADMIN")
       ) {
