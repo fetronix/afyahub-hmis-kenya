@@ -1,4 +1,4 @@
-﻿import staffInvitationRoutes from "./auth/staff-invitation.routes";
+import staffInvitationRoutes from "./auth/staff-invitation.routes";
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -14,7 +14,7 @@ import platformRoutes from './routes/platform.routes.ts';
 import * as queries from './db/queries.ts';
 import { db } from './db/index.ts';
 import * as schema from './db/schema.ts';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import authRoutes from './auth/auth.routes.ts';
 
 
@@ -481,7 +481,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
 
   // =========================================================
-  // PATIENT MANAGEMENT ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â SCOPED
+  // PATIENT MANAGEMENT ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â SCOPED
   // =========================================================
 
   app.get(
@@ -1615,6 +1615,487 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   });
 
   // =========================================================
+  // FACILITY SERVICE TARIFFS
+  // =========================================================
+
+  const tariffModuleForDepartment = (department: string): string | null => {
+    const value = department.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const aliases: Record<string, string> = {
+      opd: 'opd',
+      outpatient: 'opd',
+      inpatient: 'inpatient',
+      ward: 'inpatient',
+      theatre: 'theatre',
+      operating_theatre: 'theatre',
+      specialty: 'specialty',
+      specialist: 'specialty',
+      laboratory: 'laboratory',
+      lab: 'laboratory',
+      radiology: 'radiology',
+      imaging: 'radiology',
+      pharmacy: 'pharmacy',
+      registration: 'registration',
+      reception: 'reception',
+      insurance: 'insurance',
+      sha: 'insurance',
+      finance: 'finance',
+      general: 'finance',
+    };
+    return aliases[value] ?? null;
+  };
+
+  const validateTariffInput = (input: any) => {
+    const code = typeof input?.code === 'string' ? input.code.trim() : '';
+    const description = typeof input?.description === 'string'
+      ? input.description.trim()
+      : '';
+    const department = typeof input?.department === 'string'
+      ? input.department.trim()
+      : '';
+    const unit = typeof input?.unit === 'string' ? input.unit.trim() : 'Service';
+    const feeText = typeof input?.fee === 'string' || typeof input?.fee === 'number'
+      ? String(input.fee).trim()
+      : '';
+    const shaStatus = typeof input?.shaStatus === 'string'
+      ? input.shaStatus.trim()
+      : 'Not Assessed';
+    const shaNotes = input?.shaNotes == null
+      ? null
+      : typeof input.shaNotes === 'string'
+        ? input.shaNotes.trim()
+        : undefined;
+    const moduleId = tariffModuleForDepartment(department);
+    const fee = Number(feeText);
+
+    if (
+      !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,49}$/.test(code) ||
+      !description || description.length > 500 ||
+      !department || department.length > 100 || !moduleId ||
+      !unit || unit.length > 50 ||
+      !/^\d{1,8}(\.\d{1,2})?$/.test(feeText) ||
+      !Number.isFinite(fee) || fee < 0 ||
+      !shaStatus || shaStatus.length > 50 ||
+      shaNotes === undefined || (shaNotes !== null && shaNotes.length > 1000)
+    ) {
+      return null;
+    }
+
+    return {
+      code,
+      description,
+      department: moduleId,
+      unit,
+      fee: fee.toFixed(2),
+      shaStatus,
+      shaNotes,
+      moduleId,
+    };
+  };
+
+  const facilityHasTariffModule = (
+    facility: { enabledModules: unknown },
+    moduleId: string,
+  ): boolean =>
+    Array.isArray(facility.enabledModules) &&
+    facility.enabledModules.includes(moduleId);
+
+  // Tariff pricing is restricted to tenant-level Facility Administrators.
+  // This guard runs after requirePermission has loaded req.authContext.
+  const requireFacilityAdminTariffRole = (
+    req: AuthRequest,
+    res: Response,
+  ): boolean => {
+    const context = req.authContext;
+
+    if (!context) {
+      res.status(401).json({
+        success: false,
+        error: 'AUTHORIZATION_CONTEXT_MISSING',
+        message: 'Authorization context is required.',
+      });
+      return false;
+    }
+
+    if (
+      context.isSuperAdmin ||
+      !context.roles.includes('FACILITY_ADMIN')
+    ) {
+      res.status(403).json({
+        success: false,
+        error: 'FACILITY_ADMIN_REQUIRED',
+        message: 'Only Facility Administrators can manage facility service tariffs.',
+      });
+      return false;
+    }
+
+    return true;
+  };
+  const resolveTariffFacility = async (
+    req: AuthRequest,
+    res: Response,
+    requestedId: unknown,
+  ) => {
+    if (!req.authContext) {
+      res.status(401).json({
+        success: false,
+        error: 'AUTHORIZATION_CONTEXT_MISSING',
+        message: 'Authorization context is required.',
+      });
+      return null;
+    }
+
+    const facilityId = Number(requestedId);
+    if (!Number.isSafeInteger(facilityId) || facilityId <= 0) {
+      res.status(400).json({
+        success: false,
+        error: 'INVALID_FACILITY_ID',
+        message: 'A valid facilityId is required.',
+      });
+      return null;
+    }
+
+    try {
+      const scopedId = resolveFacilityScope(req.authContext, facilityId);
+      const facility = await queries.getFacilityByIdScoped(
+        req.authContext,
+        scopedId,
+      );
+
+      if (!facility) {
+        res.status(404).json({
+          success: false,
+          error: 'FACILITY_NOT_FOUND',
+          message: 'The facility was not found in your authorized scope.',
+        });
+        return null;
+      }
+
+      if (!facilityHasTariffModule(facility, 'finance')) {
+        res.status(403).json({
+          success: false,
+          error: 'FACILITY_MODULE_DISABLED',
+          module: 'finance',
+          message: 'The finance module must be enabled to manage tariffs.',
+        });
+        return null;
+      }
+
+      return facility;
+    } catch (error: unknown) {
+      if (handleScopeError(error, res)) return null;
+      throw error;
+    }
+  };
+
+  app.get(
+    '/api/service-tariffs',
+    requirePermission('tariffs.read'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+      try {
+        const facility = await resolveTariffFacility(
+          req,
+          res,
+          req.query.facilityId,
+        );
+        if (!facility) return;
+
+        const rows = await db
+          .select()
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          );
+
+        return res.json(rows);
+      } catch (error: unknown) {
+        console.error('Failed to fetch service tariffs:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'SERVICE_TARIFFS_FETCH_FAILED',
+          message: 'Failed to fetch service tariffs.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/service-tariffs',
+    requirePermission('tariffs.manage'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+      try {
+        const facility = await resolveTariffFacility(
+          req,
+          res,
+          req.body?.facilityId,
+        );
+        if (!facility || !req.authContext) return;
+
+        const input = validateTariffInput(req.body);
+        if (!input) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_SERVICE_TARIFF',
+            message: 'Provide a valid code, description, enabled department, unit, fee, and SHA status.',
+          });
+        }
+
+        if (!facilityHasTariffModule(facility, input.moduleId)) {
+          return res.status(400).json({
+            success: false,
+            error: 'TARIFF_DEPARTMENT_MODULE_DISABLED',
+            message: 'Enable the selected department module before adding its tariff.',
+          });
+        }
+
+        const [existing] = await db
+          .select({ id: schema.facilityServiceTariffs.id })
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+              eq(schema.facilityServiceTariffs.code, input.code),
+            ),
+          )
+          .limit(1);
+
+        if (existing) {
+          return res.status(409).json({
+            success: false,
+            error: 'TARIFF_CODE_EXISTS',
+            message: 'That tariff code already exists for this facility.',
+          });
+        }
+
+        const [created] = await db
+          .insert(schema.facilityServiceTariffs)
+          .values({
+            tenantId: facility.tenantId,
+            facilityId: facility.id,
+            code: input.code,
+            description: input.description,
+            department: input.department,
+            unit: input.unit,
+            fee: input.fee,
+            shaStatus: input.shaStatus,
+            shaNotes: input.shaNotes,
+            isActive: true,
+          })
+          .returning();
+
+        await queries.logAuditEvent(
+          facility.tenantId,
+          facility.id,
+          String(req.authContext.userId),
+          'CREATE',
+          'FACILITY_SERVICE_TARIFF',
+          String(created.id),
+          `Created tariff ${created.code} for department ${created.department}.`,
+        );
+
+        return res.status(201).json(created);
+      } catch (error: unknown) {
+        console.error('Failed to create service tariff:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'SERVICE_TARIFF_CREATE_FAILED',
+          message: 'Failed to create service tariff.',
+        });
+      }
+    },
+  );
+
+  app.put(
+    '/api/service-tariffs/:id',
+    requirePermission('tariffs.manage'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+      try {
+        const facility = await resolveTariffFacility(
+          req,
+          res,
+          req.body?.facilityId,
+        );
+        if (!facility || !req.authContext) return;
+
+        const tariffId = Number(req.params.id);
+        if (!Number.isSafeInteger(tariffId) || tariffId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_TARIFF_ID',
+            message: 'A valid tariff ID is required.',
+          });
+        }
+
+        const input = validateTariffInput(req.body);
+        if (!input) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_SERVICE_TARIFF',
+            message: 'Provide valid tariff details.',
+          });
+        }
+
+        if (!facilityHasTariffModule(facility, input.moduleId)) {
+          return res.status(400).json({
+            success: false,
+            error: 'TARIFF_DEPARTMENT_MODULE_DISABLED',
+            message: 'Enable the selected department module before assigning its tariff.',
+          });
+        }
+
+        const [existing] = await db
+          .select()
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .limit(1);
+
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            error: 'TARIFF_NOT_FOUND',
+            message: 'The tariff was not found in this facility.',
+          });
+        }
+
+        const [duplicate] = await db
+          .select({ id: schema.facilityServiceTariffs.id })
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+              eq(schema.facilityServiceTariffs.code, input.code),
+            ),
+          )
+          .limit(1);
+
+        if (duplicate && duplicate.id !== tariffId) {
+          return res.status(409).json({
+            success: false,
+            error: 'TARIFF_CODE_EXISTS',
+            message: 'That tariff code already exists for this facility.',
+          });
+        }
+
+        const [updated] = await db
+          .update(schema.facilityServiceTariffs)
+          .set({
+            code: input.code,
+            description: input.description,
+            department: input.department,
+            unit: input.unit,
+            fee: input.fee,
+            shaStatus: input.shaStatus,
+            shaNotes: input.shaNotes,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .returning();
+
+        await queries.logAuditEvent(
+          facility.tenantId,
+          facility.id,
+          String(req.authContext.userId),
+          'UPDATE',
+          'FACILITY_SERVICE_TARIFF',
+          String(updated.id),
+          `Updated tariff ${updated.code}. Existing invoice item snapshots are unchanged.`,
+        );
+
+        return res.json(updated);
+      } catch (error: unknown) {
+        console.error('Failed to update service tariff:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'SERVICE_TARIFF_UPDATE_FAILED',
+          message: 'Failed to update service tariff.',
+        });
+      }
+    },
+  );
+
+  app.patch(
+    '/api/service-tariffs/:id/deactivate',
+    requirePermission('tariffs.manage'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+      try {
+        const facility = await resolveTariffFacility(
+          req,
+          res,
+          req.body?.facilityId ?? req.query.facilityId,
+        );
+        if (!facility || !req.authContext) return;
+
+        const tariffId = Number(req.params.id);
+        if (!Number.isSafeInteger(tariffId) || tariffId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_TARIFF_ID',
+            message: 'A valid tariff ID is required.',
+          });
+        }
+
+        const [updated] = await db
+          .update(schema.facilityServiceTariffs)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+              eq(schema.facilityServiceTariffs.isActive, true),
+            ),
+          )
+          .returning();
+
+        if (!updated) {
+          return res.status(404).json({
+            success: false,
+            error: 'ACTIVE_TARIFF_NOT_FOUND',
+            message: 'No active tariff with that ID exists in this facility.',
+          });
+        }
+
+        await queries.logAuditEvent(
+          facility.tenantId,
+          facility.id,
+          String(req.authContext.userId),
+          'DEACTIVATE',
+          'FACILITY_SERVICE_TARIFF',
+          String(updated.id),
+          `Deactivated tariff ${updated.code}. Existing invoice item snapshots are unchanged.`,
+        );
+
+        return res.json(updated);
+      } catch (error: unknown) {
+        console.error('Failed to deactivate service tariff:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'SERVICE_TARIFF_DEACTIVATE_FAILED',
+          message: 'Failed to deactivate service tariff.',
+        });
+      }
+    },
+  );
+
+  // =========================================================
   // BILLING & CASHIER
   // =========================================================
 
@@ -1881,6 +2362,8 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           quantity: number;
           unitPrice: string;
           totalAmount: string;
+          tariffId?: number | null;
+          tariffCode?: string | null;
         }> = [];
 
         for (const item of itemsInput) {
@@ -1892,9 +2375,112 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             });
           }
 
+          const quantity = Number(item.quantity);
+
+          if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_INVOICE_ITEM',
+              message: 'Invoice item quantity must be a positive whole number.',
+            });
+          }
+
+          // When a tariff is selected, the database is authoritative
+          // for its code, description, department and unit fee.
+          if (item.tariffId !== undefined && item.tariffId !== null) {
+            const tariffId = item.tariffId;
+
+            if (
+              typeof tariffId !== 'number' ||
+              !Number.isSafeInteger(tariffId) ||
+              tariffId <= 0
+            ) {
+              return res.status(400).json({
+                success: false,
+                error: 'INVALID_TARIFF_ID',
+                message: 'A valid service tariff must be selected.',
+              });
+            }
+
+            const [tariff] = await db
+              .select()
+              .from(schema.facilityServiceTariffs)
+              .where(
+                and(
+                  eq(schema.facilityServiceTariffs.id, tariffId),
+                  eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+                  eq(schema.facilityServiceTariffs.facilityId, facility.id),
+                  eq(schema.facilityServiceTariffs.isActive, true),
+                ),
+              )
+              .limit(1);
+
+            if (!tariff) {
+              return res.status(400).json({
+                success: false,
+                error: 'INVALID_OR_INACTIVE_TARIFF',
+                message: 'The selected tariff is unavailable for this facility.',
+              });
+            }
+
+            const tariffModule = tariffModuleForDepartment(tariff.department);
+
+            if (
+              !tariffModule ||
+              !facilityHasTariffModule(facility, tariffModule)
+            ) {
+              return res.status(400).json({
+                success: false,
+                error: 'TARIFF_MODULE_DISABLED',
+                message: 'The tariff department is not enabled for this facility.',
+              });
+            }
+
+            const tariffFee = String(tariff.fee);
+
+            if (!/^\d{1,8}(\.\d{1,2})?$/.test(tariffFee)) {
+              console.error('Invalid stored tariff fee:', tariff.id);
+
+              return res.status(500).json({
+                success: false,
+                error: 'INVALID_STORED_TARIFF',
+                message: 'The saved tariff fee is invalid. Contact an administrator.',
+              });
+            }
+
+            const unitCents = Math.round(Number(tariffFee) * 100);
+            const lineCents = unitCents * quantity;
+
+            if (
+              !Number.isSafeInteger(unitCents) ||
+              !Number.isSafeInteger(lineCents) ||
+              !Number.isSafeInteger(totalCents + lineCents)
+            ) {
+              return res.status(400).json({
+                success: false,
+                error: 'INVOICE_AMOUNT_TOO_LARGE',
+                message: 'The invoice amount exceeds the supported limit.',
+              });
+            }
+
+            totalCents += lineCents;
+
+            safeItems.push({
+              itemType: tariff.department,
+              description: tariff.description,
+              quantity,
+              unitPrice: (unitCents / 100).toFixed(2),
+              totalAmount: (lineCents / 100).toFixed(2),
+              tariffId: tariff.id,
+              tariffCode: tariff.code,
+            });
+
+            continue;
+          }
+
+          // Legacy invoice items remain supported when tariffId is omitted.
           const itemType = typeof item.itemType === 'string' ? item.itemType.trim() : '';
           const description = typeof item.description === 'string' ? item.description.trim() : '';
-          const quantity = Number(item.quantity);
           const unitPrice = Number(item.unitPrice);
 
           if (
@@ -1902,8 +2488,6 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             itemType.length > 100 ||
             !description ||
             description.length > 500 ||
-            !Number.isSafeInteger(quantity) ||
-            quantity <= 0 ||
             !Number.isFinite(unitPrice) ||
             unitPrice < 0 ||
             !/^\d+(\.\d{1,2})?$/.test(String(item.unitPrice))
@@ -1930,6 +2514,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           }
 
           totalCents += lineCents;
+
           safeItems.push({
             itemType,
             description,
@@ -1938,7 +2523,6 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             totalAmount: (lineCents / 100).toFixed(2),
           });
         }
-
         const totalAmount = (totalCents / 100).toFixed(2);
 
         const created = await queries.createInvoice(
@@ -2890,6 +3474,7 @@ app.get(
 
   return app;
 }
+
 
 
 

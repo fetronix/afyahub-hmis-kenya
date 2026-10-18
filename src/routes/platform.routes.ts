@@ -146,6 +146,8 @@ const FACILITY_ADMIN_PERMISSION_CODES = [
   'appointments.update',
   'audit.read',
   'billing.read',
+  'tariffs.read',
+  'tariffs.manage',
   'clinical.read',
   'facilities.read',
   'facilities.update',

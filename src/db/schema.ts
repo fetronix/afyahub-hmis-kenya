@@ -3552,6 +3552,36 @@ export const purchaseOrders = pgTable(
    39. BILLING INVOICES
    ============================================================ */
 
+export const facilityServiceTariffs = pgTable(
+  'facility_service_tariffs',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    code: text('code').notNull(),
+    description: text('description').notNull(),
+    department: text('department').notNull(),
+    unit: text('unit').notNull().default('Service'),
+    fee: numeric('fee', { precision: 10, scale: 2 }).notNull(),
+    shaStatus: text('sha_status').notNull().default('Not Assessed'),
+    shaNotes: text('sha_notes'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('facility_service_tariffs_facility_code_unique')
+      .on(table.facilityId, table.code),
+    index('facility_service_tariffs_tenant_facility_idx')
+      .on(table.tenantId, table.facilityId),
+    index('facility_service_tariffs_active_idx')
+      .on(table.facilityId, table.isActive),
+  ],
+);
 export const billingInvoices = pgTable(
   'billing_invoices',
   {
@@ -3633,6 +3663,11 @@ export const billingItems = pgTable(
     invoiceId: integer('invoice_id')
       .references(() => billingInvoices.id)
       .notNull(),
+
+    tariffId: integer('tariff_id')
+      .references(() => facilityServiceTariffs.id, { onDelete: 'set null' }),
+
+    tariffCode: text('tariff_code'),
 
     itemType: text('item_type')
       .notNull(),

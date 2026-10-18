@@ -592,7 +592,24 @@ const PERMISSIONS = [
   },
 
 
-  /* ==========================================================
+    /* ==========================================================
+     FACILITY SERVICE TARIFFS
+     ========================================================== */
+
+  {
+    code: 'tariffs.read',
+    name: 'View Service Tariffs',
+    module: 'billing',
+    description: 'View service tariffs within the authorized facility.',
+  },
+
+  {
+    code: 'tariffs.manage',
+    name: 'Manage Service Tariffs',
+    module: 'billing',
+    description: 'Create, update, and deactivate facility service tariffs.',
+  },
+/* ==========================================================
      INSURANCE / SHA
      ========================================================== */
 
@@ -857,6 +874,10 @@ async function seedPermissions(): Promise<void> {
 
 
   for (const permission of allPermissions) {
+    // Facility tariffs are managed only by tenant-level Facility Admins.
+    if (permission.code === 'tariffs.read' || permission.code === 'tariffs.manage') {
+      continue;
+    }
 
     const existingAssignment = await db
       .select()
@@ -904,6 +925,8 @@ async function seedPermissions(): Promise<void> {
     'users.invite',
     'users.invitations.read',
     'users.invitations.revoke',
+    'tariffs.read',
+    'tariffs.manage',
   ] as const;
 
   const staffInvitationPermissions = [];

@@ -5,6 +5,7 @@ import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from "luci
 import { SubscriptionBillingPanel } from "./SubscriptionBillingPanel.tsx";
 import { FacilityRbacEditor } from "./FacilityRbacEditor.tsx";
 
+
 type Tab = "tenants" | "facilities" | "administrators" | "billing";
 type InvitationStatus = "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
 
@@ -470,12 +471,12 @@ export const PlatformAdministrationModule: React.FC = () => {
             <div><label className={labelClass}>Tenant slug (optional)</label><input className={fieldClass} value={tenantForm.slug} onChange={(e) => setTenantForm({ ...tenantForm, slug: e.target.value })} placeholder="generated-from-name" /></div>
             <div><label className={labelClass}>Contact email</label><input className={fieldClass} type="email" value={tenantForm.contactEmail} onChange={(e) => setTenantForm({ ...tenantForm, contactEmail: e.target.value })} /></div>
             <div><label className={labelClass}>Contact phone</label><input className={fieldClass} value={tenantForm.contactPhone} onChange={(e) => setTenantForm({ ...tenantForm, contactPhone: e.target.value })} /></div>
-            <button disabled={saving} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "Savingâ€¦" : "Create tenant"}</button>
+            <button disabled={saving} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "SavingÃ¢â‚¬Â¦" : "Create tenant"}</button>
           </form>
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="mb-3 font-bold text-slate-900">Existing tenants ({tenants.length})</h2>
-            {loading ? <p className="text-sm text-slate-500">Loadingâ€¦</p> : tenants.length === 0 ? <p className="text-sm text-slate-500">No tenants found.</p> :
-              <ul className="divide-y divide-slate-100">{tenants.map((t) => <li key={t.id} className="py-3"><p className="font-semibold text-slate-800">{t.name}</p><p className="text-xs text-slate-500">{t.slug} Â· ID {t.id}</p></li>)}</ul>}
+            {loading ? <p className="text-sm text-slate-500">LoadingÃ¢â‚¬Â¦</p> : tenants.length === 0 ? <p className="text-sm text-slate-500">No tenants found.</p> :
+              <ul className="divide-y divide-slate-100">{tenants.map((t) => <li key={t.id} className="py-3"><p className="font-semibold text-slate-800">{t.name}</p><p className="text-xs text-slate-500">{t.slug} Ã‚Â· ID {t.id}</p></li>)}</ul>}
           </div>
         </div>
       )}
@@ -521,7 +522,7 @@ export const PlatformAdministrationModule: React.FC = () => {
             </div>
             {tenantId && (
               <p className="mt-2 text-xs text-slate-500">
-                Tenant ID: {tenantId} Â· This ID cannot be changed by editing a facility profile.
+                Tenant ID: {tenantId} Ã‚Â· This ID cannot be changed by editing a facility profile.
               </p>
             )}
           </section>
@@ -626,7 +627,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                         >
                           <span className="block font-semibold text-slate-800">{facility.name}</span>
                           <span className="mt-1 block text-xs text-slate-500">
-                            {facility.code} Â· {facility.level} Â· {facility.county || "County not set"}
+                            {facility.code} Ã‚Â· {facility.level} Ã‚Â· {facility.county || "County not set"}
                           </span>
                           <span className="mt-1 block text-xs font-medium text-blue-700">
                             {facilityId === String(facility.id) ? "Selected for editing" : "Select facility"}
@@ -712,7 +713,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                 </div>
 
                 <p className="text-xs text-slate-500">
-                  Facility ID: {selectedFacility.id} Â· Tenant ID: {selectedFacility.tenantId}
+                  Facility ID: {selectedFacility.id} Ã‚Â· Tenant ID: {selectedFacility.tenantId}
                 </p>
 
                 <button type="submit" disabled={saving || !selectedFacility} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
@@ -794,7 +795,6 @@ export const PlatformAdministrationModule: React.FC = () => {
               </>
             )}
           </section>
-
           {selectedFacility && (
             <FacilityRbacEditor
               key={selectedFacility.id}
@@ -816,7 +816,7 @@ export const PlatformAdministrationModule: React.FC = () => {
             <div><label className={labelClass}>Administrator full name *</label><input className={fieldClass} required maxLength={200} value={adminForm.fullName} onChange={(e) => setAdminForm({ ...adminForm, fullName: e.target.value })} /></div>
             <div><label className={labelClass}>Email *</label><input className={fieldClass} type="email" required maxLength={254} value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} /></div>
             <div><label className={labelClass}>Phone</label><input className={fieldClass} value={adminForm.phone} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })} /></div>
-            <button disabled={saving || !facilityId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "Creatingâ€¦" : "Create invitation"}</button>
+            <button disabled={saving || !facilityId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "CreatingÃ¢â‚¬Â¦" : "Create invitation"}</button>
           </form>
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-bold text-slate-900">Invitation link</h2>
@@ -906,4 +906,5 @@ export const PlatformAdministrationModule: React.FC = () => {
     </section>
   );
 };
+
 

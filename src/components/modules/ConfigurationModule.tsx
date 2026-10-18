@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../../api/client.ts';
+import type { ServiceTariff } from '../../types/index.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import {
@@ -18,8 +20,27 @@ import {
 } from 'lucide-react';
 
 export const ConfigurationModule: React.FC = () => {
-  const { currentFacility, currentTenant, showToast } = useHmis();
-  const [activeTab, setActiveTab] = useState<'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'>('facility');
+  const { currentFacility, currentTenant, showToast, authenticatedUser } = useHmis();
+  const isFacilityAdmin = Boolean(
+    authenticatedUser?.roles?.includes('FACILITY_ADMIN') &&
+    !authenticatedUser?.isSuperAdmin &&
+    !authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
+
+  const isSuperAdmin = Boolean(
+    authenticatedUser?.isSuperAdmin ||
+    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
+
+  const [activeTab, setActiveTab] = useState<'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'>(
+    isFacilityAdmin ? 'staff' : 'facility'
+  );
+
+  useEffect(() => {
+    if (isFacilityAdmin) {
+      setActiveTab('staff');
+    }
+  }, [isFacilityAdmin]);
 
   // Facility Info Form
   const [facilityData, setFacilityData] = useState({
@@ -53,6 +74,156 @@ export const ConfigurationModule: React.FC = () => {
     interoperability: true,
   });
 
+  // Facility-scoped service tariff management.
+  const [tariffs, setTariffs] = useState<ServiceTariff[]>([]);
+  const [tariffsLoading, setTariffsLoading] = useState(false);
+  const [tariffSaving, setTariffSaving] = useState(false);
+  const [tariffError, setTariffError] = useState('');
+  const [editingTariffId, setEditingTariffId] = useState<number | null>(null);
+  const [tariffFormOpen, setTariffFormOpen] = useState(false);
+  const [tariffForm, setTariffForm] = useState({
+    code: '',
+    description: '',
+    department: 'opd',
+    unit: 'Service',
+    fee: '',
+    shaStatus: 'Not Assessed',
+    shaNotes: '',
+  });
+
+  const tariffDepartments = [
+    { id: 'opd', label: 'OPD / Outpatient' },
+    { id: 'inpatient', label: 'Inpatient' },
+    { id: 'theatre', label: 'Theatre' },
+    { id: 'specialty', label: 'Specialty' },
+    { id: 'laboratory', label: 'Laboratory' },
+    { id: 'radiology', label: 'Radiology' },
+    { id: 'pharmacy', label: 'Pharmacy' },
+    { id: 'registration', label: 'Registration' },
+    { id: 'reception', label: 'Reception' },
+    { id: 'insurance', label: 'Insurance / SHA' },
+    { id: 'finance', label: 'Finance / General' },
+  ];
+
+  const facilityModules = Array.isArray(currentFacility?.enabledModules)
+    ? currentFacility.enabledModules
+    : [];
+
+  const availableTariffDepartments = tariffDepartments.filter(
+    (department) => facilityModules.includes(department.id)
+  );
+
+  const resetTariffForm = () => {
+    setEditingTariffId(null);
+    setTariffForm({
+      code: '',
+      description: '',
+      department: availableTariffDepartments[0]?.id || 'opd',
+      unit: 'Service',
+      fee: '',
+      shaStatus: 'Not Assessed',
+      shaNotes: '',
+    });
+    setTariffFormOpen(false);
+  };
+
+  const loadTariffs = async () => {
+    if (!currentFacility?.id) {
+      setTariffs([]);
+      return;
+    }
+
+    setTariffsLoading(true);
+    setTariffError('');
+    try {
+      const result = await api.getServiceTariffs(currentFacility.id);
+      setTariffs(Array.isArray(result) ? result : []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load service tariffs.';
+      setTariffError(message);
+      setTariffs([]);
+    } finally {
+      setTariffsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isFacilityAdmin && activeTab === 'tariffs') {
+      void loadTariffs();
+    }
+  }, [activeTab, currentFacility?.id]);
+
+  const startTariffEdit = (tariff: ServiceTariff) => {
+    setEditingTariffId(tariff.id);
+    setTariffForm({
+      code: tariff.code,
+      description: tariff.description,
+      department: tariff.department,
+      unit: tariff.unit,
+      fee: String(tariff.fee),
+      shaStatus: tariff.shaStatus,
+      shaNotes: tariff.shaNotes || '',
+    });
+    setTariffFormOpen(true);
+  };
+
+  const saveTariff = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!currentFacility?.id) {
+      showToast('Select a facility before managing tariffs.');
+      return;
+    }
+
+    const fee = Number(tariffForm.fee);
+    if (!Number.isFinite(fee) || fee < 0 || !/^\d+(\.\d{1,2})?$/.test(tariffForm.fee.trim())) {
+      showToast('Enter a valid fee with no more than two decimal places.');
+      return;
+    }
+
+    setTariffSaving(true);
+    try {
+      const input = {
+        facilityId: currentFacility.id,
+        code: tariffForm.code.trim().toUpperCase(),
+        description: tariffForm.description.trim(),
+        department: tariffForm.department,
+        unit: tariffForm.unit.trim(),
+        fee: fee.toFixed(2),
+        shaStatus: tariffForm.shaStatus,
+        shaNotes: tariffForm.shaNotes.trim() || null,
+      };
+
+      if (editingTariffId !== null) {
+        await api.updateServiceTariff(editingTariffId, input);
+        showToast('Service tariff updated.');
+      } else {
+        await api.createServiceTariff(input);
+        showToast('Service tariff created.');
+      }
+
+      resetTariffForm();
+      await loadTariffs();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not save the service tariff.');
+    } finally {
+      setTariffSaving(false);
+    }
+  };
+
+  const deactivateTariff = async (tariff: ServiceTariff) => {
+    if (!currentFacility?.id || !window.confirm(`Deactivate tariff ${tariff.code}?`)) {
+      return;
+    }
+
+    try {
+      await api.deactivateServiceTariff(tariff.id, currentFacility.id);
+      showToast('Service tariff deactivated.');
+      await loadTariffs();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not deactivate the tariff.');
+    }
+  };
   const toggleModule = (key: string) => {
     setEnabledModules(prev => ({ ...prev, [key]: !prev[key] }));
     showToast(`Updated module "${key}" state.`);
@@ -89,7 +260,7 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'staff', label: 'Staff Invitations', icon: UserPlus },
           { id: 'payments', label: 'M-Pesa & Payment Channels', icon: CreditCard },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
-        ].map((tab) => {
+        ].filter((tab) => isFacilityAdmin ? (tab.id === 'staff' || tab.id === 'tariffs') : tab.id !== 'tariffs' && (!isSuperAdmin || tab.id !== 'staff')).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
 
@@ -285,7 +456,7 @@ export const ConfigurationModule: React.FC = () => {
                 <label className="block text-slate-600 mb-1">Passkey (Encrypted)</label>
                 <input type="password" defaultValue="bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919" className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono" />
               </div>
-              <span className="text-2xs text-emerald-700 font-medium">âœ“ Auto-STK Push Active on Cashier POS</span>
+              <span className="text-2xs text-emerald-700 font-medium">Ã¢Å“â€œ Auto-STK Push Active on Cashier POS</span>
             </div>
 
             <div className="p-4 border border-slate-200 rounded-lg space-y-3">
@@ -298,58 +469,166 @@ export const ConfigurationModule: React.FC = () => {
                 <label className="block text-slate-600 mb-1">Account Number</label>
                 <input type="text" defaultValue="1102948201" className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono" />
               </div>
-              <span className="text-2xs text-emerald-700 font-medium">âœ“ Card & EFT Reconciliation Active</span>
+              <span className="text-2xs text-emerald-700 font-medium">Ã¢Å“â€œ Card & EFT Reconciliation Active</span>
             </div>
           </div>
         </div>
       )}
 
       {/* SERVICE PRICING TAB */}
-      {activeTab === 'tariffs' && (
+      {isFacilityAdmin && activeTab === 'tariffs' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs text-xs">
-          <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-            <h2 className="font-bold text-slate-900 uppercase">
-              Facility Tariff & Pricing Schedule
-            </h2>
+          <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-slate-900 uppercase">Facility Tariff & Pricing Schedule</h2>
+              <p className="text-slate-500 mt-1">Manage prices for services offered by this facility.</p>
+            </div>
             <button
-              onClick={() => showToast('Tariff added to master list.')}
-              className="text-2xs font-semibold text-teal-800 bg-teal-50 px-2.5 py-1 rounded hover:bg-teal-100"
+              type="button"
+              onClick={() => {
+                resetTariffForm();
+                setTariffForm((previous) => ({
+                  ...previous,
+                  department: availableTariffDepartments[0]?.id || 'opd',
+                }));
+                setTariffFormOpen(true);
+              }}
+              disabled={availableTariffDepartments.length === 0}
+              className="px-3 py-2 rounded-lg bg-teal-700 text-white font-semibold disabled:opacity-50"
             >
-              + Add Custom Service Tariff
+              + Add Service Tariff
             </button>
           </div>
 
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Service Code</th>
-                <th className="px-4 py-2.5 font-medium">Description</th>
-                <th className="px-4 py-2.5 font-medium">Department</th>
-                <th className="px-4 py-2.5 font-medium text-right">Standard Fee (KES)</th>
-                <th className="px-4 py-2.5 font-medium text-right">SHA Covered</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-mono">
-              {[
-                { code: 'SRV-OPD-01', desc: 'General Medical Doctor Consultation', dept: 'OPD', fee: '800.00', sha: 'Yes' },
-                { code: 'SRV-SPEC-01', desc: 'Specialist Physician Consultation', dept: 'Specialist', fee: '2,500.00', sha: 'Yes' },
-                { code: 'SRV-BED-GEN', desc: 'General Ward Inpatient Daily Charge', dept: 'Inpatient', fee: '1,500.00', sha: 'Yes' },
-                { code: 'SRV-BED-ICU', desc: 'ICU / HDU Ventilated Bed Daily Fee', dept: 'Inpatient', fee: '12,000.00', sha: 'Pre-Auth' },
-                { code: 'SRV-OT-CS', desc: 'Emergency Caesarean Section Theatre Fee', dept: 'Theatre', fee: '35,000.00', sha: 'Yes (Linda Mama/SHA)' },
-                { code: 'SRV-REN-01', desc: 'Haemodialysis 4-Hour Session Fee', dept: 'Renal', fee: '9,500.00', sha: 'Yes (Dialysis Benefit)' },
-              ].map((t, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/70">
-                  <td className="px-4 py-2.5 font-bold text-teal-800">{t.code}</td>
-                  <td className="px-4 py-2.5 font-sans font-medium text-slate-900">{t.desc}</td>
-                  <td className="px-4 py-2.5 font-sans text-slate-600">{t.dept}</td>
-                  <td className="px-4 py-2.5 text-right font-bold text-slate-900">KES {t.fee}</td>
-                  <td className="px-4 py-2.5 text-right font-sans text-emerald-700 font-semibold">{t.sha}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {!facilityModules.includes('finance') && (
+            <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
+              The Finance module must be enabled before this facility can manage tariffs.
+            </div>
+          )}
+
+          {availableTariffDepartments.length === 0 && (
+            <div className="m-4 p-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
+              No tariff departments are enabled for this facility. Enable the relevant modules first.
+            </div>
+          )}
+
+          {tariffFormOpen && (
+            <form onSubmit={saveTariff} className="m-4 p-4 border border-teal-200 rounded-xl bg-teal-50/30 space-y-4">
+              <h3 className="font-bold text-slate-900">{editingTariffId === null ? 'Create tariff' : 'Edit tariff'}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <label className="block">
+                  <span className="block mb-1 font-medium text-slate-700">Service code</span>
+                  <input required maxLength={50} value={tariffForm.code} onChange={(event) => setTariffForm({ ...tariffForm, code: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. SRV-OPD-01" />
+                </label>
+                <label className="block md:col-span-1 lg:col-span-2">
+                  <span className="block mb-1 font-medium text-slate-700">Description</span>
+                  <input required maxLength={500} value={tariffForm.description} onChange={(event) => setTariffForm({ ...tariffForm, description: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Service description" />
+                </label>
+                <label className="block">
+                  <span className="block mb-1 font-medium text-slate-700">Department</span>
+                  <select required value={tariffForm.department} onChange={(event) => setTariffForm({ ...tariffForm, department: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2">
+                    {availableTariffDepartments.map((department) => (
+                      <option key={department.id} value={department.id}>{department.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block mb-1 font-medium text-slate-700">Unit</span>
+                  <input required maxLength={50} value={tariffForm.unit} onChange={(event) => setTariffForm({ ...tariffForm, unit: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Service, day, session..." />
+                </label>
+                <label className="block">
+                  <span className="block mb-1 font-medium text-slate-700">Fee (KES)</span>
+                  <input required inputMode="decimal" pattern="^\d+(\.\d{1,2})?$" value={tariffForm.fee} onChange={(event) => setTariffForm({ ...tariffForm, fee: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="0.00" />
+                </label>
+                <label className="block">
+                  <span className="block mb-1 font-medium text-slate-700">SHA status</span>
+                  <select value={tariffForm.shaStatus} onChange={(event) => setTariffForm({ ...tariffForm, shaStatus: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2">
+                    <option>Not Assessed</option>
+                    <option>Covered</option>
+                    <option>Not Covered</option>
+                    <option>Pre-Authorization Required</option>
+                    <option>Conditional</option>
+                  </select>
+                </label>
+                <label className="block md:col-span-2 lg:col-span-2">
+                  <span className="block mb-1 font-medium text-slate-700">SHA notes (optional)</span>
+                  <input maxLength={1000} value={tariffForm.shaNotes} onChange={(event) => setTariffForm({ ...tariffForm, shaNotes: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Coverage conditions or notes" />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button disabled={tariffSaving || !facilityModules.includes('finance') || availableTariffDepartments.length === 0} type="submit" className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
+                  {tariffSaving ? 'Saving…' : editingTariffId === null ? 'Create tariff' : 'Save changes'}
+                </button>
+                <button type="button" onClick={resetTariffForm} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700">Cancel</button>
+              </div>
+            </form>
+          )}
+
+          {tariffError && (
+            <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
+              <p>{tariffError}</p>
+              <p className="mt-1">Confirm the database migration and tariff permissions have been reviewed and applied before retrying.</p>
+              <button type="button" onClick={() => void loadTariffs()} className="mt-2 underline font-semibold">Retry loading</button>
+            </div>
+          )}
+
+          {tariffsLoading ? (
+            <p className="p-6 text-center text-slate-500">Loading facility tariffs…</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-y border-slate-200 text-2xs text-slate-500 uppercase">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Service code</th>
+                    <th className="px-4 py-3 font-medium">Description</th>
+                    <th className="px-4 py-3 font-medium">Department / unit</th>
+                    <th className="px-4 py-3 font-medium text-right">Fee (KES)</th>
+                    <th className="px-4 py-3 font-medium">SHA status</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tariffs.map((tariff) => (
+                    <tr key={tariff.id} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-3 font-mono font-bold text-teal-800">{tariff.code}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {tariff.description}
+                        {tariff.shaNotes && <p className="mt-1 text-slate-500 font-normal">{tariff.shaNotes}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {tariffDepartments.find((department) => department.id === tariff.department)?.label || tariff.department}
+                        <p className="mt-1 text-slate-400">{tariff.unit}</p>
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">{Number(tariff.fee).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-4 py-3 text-slate-600">{tariff.shaStatus}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-1 font-semibold ${tariff.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {tariff.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <button type="button" onClick={() => startTariffEdit(tariff)} className="mr-3 font-semibold text-teal-800 hover:underline">Edit</button>
+                        {tariff.isActive && (
+                          <button type="button" onClick={() => void deactivateTariff(tariff)} className="font-semibold text-rose-700 hover:underline">Deactivate</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {tariffs.length === 0 && !tariffError && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                        No tariffs have been configured for this facility yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
+

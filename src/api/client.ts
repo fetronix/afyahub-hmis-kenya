@@ -23,6 +23,7 @@ import {
   PurchaseOrder,
   BillingInvoice,
   BillingItem,
+  ServiceTariff,
   BillingPayment,
   InsuranceClaim,
   PublicHealthReport,
@@ -1458,6 +1459,43 @@ export const api = {
           }),
         }
       ),
+
+  getServiceTariffs: (facilityId: number) =>
+    fetchJson<ServiceTariff[]>(
+      `${API_BASE}/service-tariffs?facilityId=${encodeURIComponent(String(facilityId))}`
+    ),
+
+  createServiceTariff: (
+    input: Partial<ServiceTariff> & { facilityId: number }
+  ) =>
+    fetchJson<ServiceTariff>(
+      `${API_BASE}/service-tariffs`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }
+    ),
+
+  updateServiceTariff: (
+    id: number,
+    input: Partial<ServiceTariff> & { facilityId: number }
+  ) =>
+    fetchJson<ServiceTariff>(
+      `${API_BASE}/service-tariffs/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }
+    ),
+
+  deactivateServiceTariff: (id: number, facilityId: number) =>
+    fetchJson<ServiceTariff>(
+      `${API_BASE}/service-tariffs/${id}/deactivate`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ facilityId }),
+      }
+    ),
 
   recordPayment:
     (payment: Partial<BillingPayment>) =>

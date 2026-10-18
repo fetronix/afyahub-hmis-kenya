@@ -375,6 +375,24 @@ export interface BillingItem {
   quantity: number;
   unitPrice: string;
   totalAmount: string;
+  tariffId?: number | null;
+  tariffCode?: string | null;
+}
+
+export interface ServiceTariff {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  code: string;
+  description: string;
+  department: string;
+  unit: string;
+  fee: string;
+  shaStatus: string;
+  shaNotes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BillingPayment {
