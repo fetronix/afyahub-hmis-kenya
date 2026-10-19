@@ -117,18 +117,6 @@ export const DashboardModule: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto">
           <button
-            onClick={() => setActiveModule('registration')}
-            className="flex-1 md:flex-none px-4 py-2 text-xs font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 active:bg-orange-800 transition-colors shadow-xs flex items-center justify-center gap-1.5"
-          >
-            <span>+ Register Patient</span>
-          </button>
-          <button
-            onClick={() => setActiveModule('reception')}
-            className="flex-1 md:flex-none px-3.5 py-2 text-xs font-semibold text-blue-900 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors"
-          >
-            Queue Board
-          </button>
-          <button
             onClick={() => setActiveModule('interoperability')}
             className="px-3.5 py-2 text-xs font-semibold text-blue-900 bg-blue-50/70 border border-blue-200 hover:bg-blue-100/70 rounded-lg transition-colors flex items-center gap-1.5"
           >

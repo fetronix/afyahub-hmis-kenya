@@ -39,21 +39,23 @@ export const OutpatientModule: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Vitals State
-  const [vitals, setVitals] = useState({
-    systolicBp: '120',
-    diastolicBp: '80',
-    pulseRate: '72',
-    temperatureC: '36.6',
-    respiratoryRate: '16',
-    spo2Percent: '98',
-    weightKg: '70',
-    heightCm: '172',
-    bloodGlucoseMmol: '5.2',
-  });
+  const emptyVitals = {
+    systolicBp: '',
+    diastolicBp: '',
+    pulseRate: '',
+    temperatureC: '',
+    respiratoryRate: '',
+    spo2Percent: '',
+    weightKg: '',
+    heightCm: '',
+    bloodGlucoseMmol: '',
+  };
+
+  const [vitals, setVitals] = useState({ ...emptyVitals });
 
   // Clinical Notes State
   const [notes, setNotes] = useState({
-    triageCategory: 'Category 3 - Urgent',
+    triageCategory: '',
     chiefComplaint: '',
     historyOfPresentIllness: '',
     physicalExamination: '',
@@ -62,20 +64,20 @@ export const OutpatientModule: React.FC = () => {
   });
 
   // Diagnosis State
-  const [selectedIcd, setSelectedIcd] = useState(commonIcd10List[0]);
+  const [selectedIcd, setSelectedIcd] = useState<(typeof commonIcd10List)[number] | null>(null);
   const [diagnosisType, setDiagnosisType] = useState('Primary');
   const [diagnosisList, setDiagnosisList] = useState<Diagnosis[]>([]);
 
   // Prescription Form
   const [newMed, setNewMed] = useState({
-    drugName: 'Paracetamol',
-    dosage: '1000mg',
-    frequency: 'TDS (3x daily)',
-    duration: '5 days',
-    route: 'Oral',
-    instructions: 'Take with or after food',
-    quantity: 15,
-    unitPrice: '5.00',
+    drugName: '',
+    dosage: '',
+    frequency: '',
+    duration: '',
+    route: '',
+    instructions: '',
+    quantity: '',
+    unitPrice: '',
   });
   const [prescriptions, setPrescriptions] = useState<Medication[]>([]);
 
@@ -93,10 +95,6 @@ export const OutpatientModule: React.FC = () => {
         ]);
         setPatients(pList);
         setLabTests(tests);
-        if (tests.length > 0) setSelectedLabTestId(tests[0].id.toString());
-        if (pList.length > 0 && !activePatient) {
-          selectPatient(pList[0]);
-        }
       } catch (err) {
         console.error('Failed to load OPD data:', err);
       } finally {
@@ -108,106 +106,210 @@ export const OutpatientModule: React.FC = () => {
 
   const selectPatient = async (p: Patient) => {
     setActivePatient(p);
+    setActiveEncounter(null);
+    setVitals({ ...emptyVitals });
+    setNotes({
+      triageCategory: '',
+      chiefComplaint: '',
+      historyOfPresentIllness: '',
+      physicalExamination: '',
+      clinicalNotes: '',
+      referralFacility: '',
+    });
+    setDiagnosisList([]);
+    setPrescriptions([]);
+    setSelectedLabTestId('');
+
     try {
       const encs = await api.getEncounters(p.id, currentFacility?.id);
-      if (encs.length > 0) {
-        setActiveEncounter(encs[0]);
-        setNotes({
-          triageCategory: encs[0].triageCategory || 'Category 3 - Urgent',
-          chiefComplaint: encs[0].chiefComplaint || '',
-          historyOfPresentIllness: encs[0].historyOfPresentIllness || '',
-          physicalExamination: encs[0].physicalExamination || '',
-          clinicalNotes: encs[0].clinicalNotes || '',
-          referralFacility: encs[0].referralFacility || '',
-        });
+      const openEncounter = encs.find(
+        encounter => ['active', 'in progress'].includes(
+          (encounter.status || '').trim().toLowerCase()
+        )
+      );
 
-        // Load existing vitals, diagnoses, meds
-        const [vList, dList, mList] = await Promise.all([
-          api.getObservations(encs[0].id),
-          api.getDiagnoses(encs[0].id),
-          api.getMedications(encs[0].id),
-        ]);
-
-        if (vList.length > 0) {
-          const v = vList[0];
-          setVitals({
-            systolicBp: v.systolicBp?.toString() || '120',
-            diastolicBp: v.diastolicBp?.toString() || '80',
-            pulseRate: v.pulseRate?.toString() || '72',
-            temperatureC: v.temperatureC || '36.6',
-            respiratoryRate: v.respiratoryRate?.toString() || '16',
-            spo2Percent: v.spo2Percent?.toString() || '98',
-            weightKg: v.weightKg || '70',
-            heightCm: v.heightCm || '172',
-            bloodGlucoseMmol: v.bloodGlucoseMmol || '5.2',
-          });
-        }
-        setDiagnosisList(dList);
-        setPrescriptions(mList);
-      } else {
-        // create new active encounter
-        const newEnc = await api.createEncounter({
-          tenantId: p.tenantId,
-          facilityId: p.facilityId,
-          patientId: p.id,
-          encounterType: 'Outpatient',
-          status: 'Active',
-          triageCategory: 'Category 3 - Urgent',
-        });
-        setActiveEncounter(newEnc);
-        setDiagnosisList([]);
-        setPrescriptions([]);
+      if (!openEncounter) {
+        return;
       }
+
+      setActiveEncounter(openEncounter);
+      setNotes({
+        triageCategory: openEncounter.triageCategory || '',
+        chiefComplaint: openEncounter.chiefComplaint || '',
+        historyOfPresentIllness: openEncounter.historyOfPresentIllness || '',
+        physicalExamination: openEncounter.physicalExamination || '',
+        clinicalNotes: openEncounter.clinicalNotes || '',
+        referralFacility: openEncounter.referralFacility || '',
+      });
+
+      const [vList, dList, mList] = await Promise.all([
+        api.getObservations(openEncounter.id),
+        api.getDiagnoses(openEncounter.id),
+        api.getMedications(openEncounter.id),
+      ]);
+
+      if (vList.length > 0) {
+        const v = vList[0];
+        setVitals({
+          systolicBp: v.systolicBp?.toString() || '',
+          diastolicBp: v.diastolicBp?.toString() || '',
+          pulseRate: v.pulseRate?.toString() || '',
+          temperatureC: v.temperatureC || '',
+          respiratoryRate: v.respiratoryRate?.toString() || '',
+          spo2Percent: v.spo2Percent?.toString() || '',
+          weightKg: v.weightKg || '',
+          heightCm: v.heightCm || '',
+          bloodGlucoseMmol: v.bloodGlucoseMmol || '',
+        });
+      }
+
+      setDiagnosisList(dList);
+      setPrescriptions(mList);
     } catch (err) {
       console.error('Failed to select patient for encounter:', err);
+      showToast('Could not load this patient’s visit. Please try again.');
+    }
+  };
+
+  const startVisit = async () => {
+    if (!activePatient || !currentFacility) {
+      showToast('Select a patient and facility before starting a visit.');
+      return;
+    }
+
+    try {
+      const newEncounter = await api.createEncounter({
+        tenantId: activePatient.tenantId,
+        facilityId: currentFacility.id,
+        patientId: activePatient.id,
+        encounterType: 'Outpatient',
+        status: 'Active',
+        triageCategory: '',
+      });
+
+      setActiveEncounter(newEncounter);
+      setVitals({ ...emptyVitals });
+      setNotes({
+        triageCategory: '',
+        chiefComplaint: '',
+        historyOfPresentIllness: '',
+        physicalExamination: '',
+        clinicalNotes: '',
+        referralFacility: '',
+      });
+      setDiagnosisList([]);
+      setPrescriptions([]);
+      showToast('Visit started. Record the patient’s actual observations and triage assessment.');
+    } catch (err: any) {
+      console.error('Failed to start outpatient visit:', err);
+      showToast(`Could not start visit: ${err.message}`);
     }
   };
 
   // BMI Calculation
   const weight = parseFloat(vitals.weightKg) || 0;
   const heightM = (parseFloat(vitals.heightCm) || 0) / 100;
-  const bmi = heightM > 0 ? (weight / (heightM * heightM)).toFixed(1) : '—';
+  const bmi = heightM > 0 ? (weight / (heightM * heightM)).toFixed(1) : 'â€”';
 
   // BP Evaluation
-  const sys = parseInt(vitals.systolicBp, 10);
-  const dia = parseInt(vitals.diastolicBp, 10);
-  let bpCategory = 'Normal';
-  let bpColor = 'text-emerald-700 bg-emerald-50';
-  if (sys >= 180 || dia >= 120) {
+  const sys = Number(vitals.systolicBp);
+  const dia = Number(vitals.diastolicBp);
+  const hasBloodPressure =
+    vitals.systolicBp.trim() !== '' &&
+    vitals.diastolicBp.trim() !== '' &&
+    Number.isFinite(sys) &&
+    Number.isFinite(dia);
+
+  let bpCategory = 'Not recorded';
+  let bpColor = 'text-slate-600 bg-slate-100';
+
+  if (hasBloodPressure) {
+    bpCategory = 'Normal';
+    bpColor = 'text-emerald-700 bg-emerald-50';
+  }
+
+  if (hasBloodPressure && (sys >= 180 || dia >= 120)) {
     bpCategory = 'Hypertensive Crisis!';
     bpColor = 'text-rose-800 bg-rose-100 font-bold';
-  } else if (sys >= 140 || dia >= 90) {
+  } else if (hasBloodPressure && (sys >= 140 || dia >= 90)) {
     bpCategory = 'Stage 2 Hypertension';
     bpColor = 'text-rose-700 bg-rose-50';
-  } else if (sys >= 130 || dia >= 80) {
+  } else if (hasBloodPressure && (sys >= 130 || dia >= 80)) {
     bpCategory = 'Stage 1 Hypertension';
     bpColor = 'text-amber-700 bg-amber-50';
-  } else if (sys >= 120 && dia < 80) {
+  } else if (hasBloodPressure && sys >= 120 && dia < 80) {
     bpCategory = 'Elevated BP';
     bpColor = 'text-amber-600 bg-amber-50';
   }
 
   const handleSaveVitals = async () => {
-    if (!activeEncounter || !activePatient) return;
+    if (!activeEncounter || !activePatient) {
+      showToast('Select a patient with an active visit first.');
+      return;
+    }
+
+    const supplied = [
+      ['Systolic blood pressure', vitals.systolicBp, 40, 300],
+      ['Diastolic blood pressure', vitals.diastolicBp, 20, 200],
+      ['Pulse rate', vitals.pulseRate, 1, 300],
+      ['Temperature', vitals.temperatureC, 25, 45],
+      ['Respiratory rate', vitals.respiratoryRate, 1, 100],
+      ['SpO2', vitals.spo2Percent, 1, 100],
+      ['Weight', vitals.weightKg, 0.1, 500],
+      ['Height', vitals.heightCm, 20, 250],
+      ['Blood glucose', vitals.bloodGlucoseMmol, 0.1, 100],
+    ] as const;
+
+    for (const [label, raw, min, max] of supplied) {
+      if (raw.trim() === '') continue;
+
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < min || value > max) {
+        showToast(`${label} must be a valid value between ${min} and ${max}.`);
+        return;
+      }
+    }
+
+    const hasSystolic = vitals.systolicBp.trim() !== '';
+    const hasDiastolic = vitals.diastolicBp.trim() !== '';
+
+    if (hasSystolic !== hasDiastolic) {
+      showToast('Enter both systolic and diastolic blood pressure, or leave both blank.');
+      return;
+    }
+
+    if (!supplied.some(([, raw]) => raw.trim() !== '')) {
+      showToast('Enter at least one measured vital sign before saving.');
+      return;
+    }
+
     try {
-      await api.recordObservation({
+      const observation: Partial<Observation> = {
         encounterId: activeEncounter.id,
         patientId: activePatient.id,
-        systolicBp: parseInt(vitals.systolicBp, 10),
-        diastolicBp: parseInt(vitals.diastolicBp, 10),
-        pulseRate: parseInt(vitals.pulseRate, 10),
-        temperatureC: vitals.temperatureC,
-        respiratoryRate: parseInt(vitals.respiratoryRate, 10),
-        spo2Percent: parseInt(vitals.spo2Percent, 10),
-        weightKg: vitals.weightKg,
-        heightCm: vitals.heightCm,
-        bmi: bmi !== '—' ? bmi : undefined,
-        bloodGlucoseMmol: vitals.bloodGlucoseMmol,
         recordedBy: currentUser.name,
-      });
-      showToast('Vital signs recorded successfully.');
+      };
+
+      if (hasSystolic && hasDiastolic) {
+        observation.systolicBp = Number(vitals.systolicBp);
+        observation.diastolicBp = Number(vitals.diastolicBp);
+      }
+      if (vitals.pulseRate.trim() !== '') observation.pulseRate = Number(vitals.pulseRate);
+      if (vitals.temperatureC.trim() !== '') observation.temperatureC = vitals.temperatureC;
+      if (vitals.respiratoryRate.trim() !== '') observation.respiratoryRate = Number(vitals.respiratoryRate);
+      if (vitals.spo2Percent.trim() !== '') observation.spo2Percent = Number(vitals.spo2Percent);
+      if (vitals.weightKg.trim() !== '') observation.weightKg = vitals.weightKg;
+      if (vitals.heightCm.trim() !== '') observation.heightCm = vitals.heightCm;
+      if (bmi !== 'â€”' && vitals.weightKg.trim() !== '' && vitals.heightCm.trim() !== '') {
+        observation.bmi = bmi;
+      }
+      if (vitals.bloodGlucoseMmol.trim() !== '') observation.bloodGlucoseMmol = vitals.bloodGlucoseMmol;
+
+      await api.recordObservation(observation);
+      showToast('Recorded vital signs saved successfully.');
     } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+      console.error('Failed to save vital signs:', err);
+      showToast(`Could not save vital signs: ${err.message}`);
     }
   };
 
@@ -229,26 +331,68 @@ export const OutpatientModule: React.FC = () => {
   };
 
   const handleAddDiagnosis = async () => {
-    if (!activeEncounter || !activePatient) return;
+    if (!activeEncounter || !activePatient) {
+      showToast('Select a patient and start an outpatient visit first.');
+      return;
+    }
+
+    const diagnosis = selectedIcd;
+    if (!diagnosis) {
+      showToast('Select a diagnosis before adding it.');
+      return;
+    }
+
     try {
       const diag = await api.recordDiagnosis({
         encounterId: activeEncounter.id,
         patientId: activePatient.id,
-        icd10Code: selectedIcd.code,
-        icd10Description: selectedIcd.desc,
+        icd10Code: diagnosis.code,
+        icd10Description: diagnosis.desc,
         diagnosisType,
         status: 'Confirmed',
         diagnosedBy: currentUser.name,
       });
       setDiagnosisList(prev => [...prev, diag]);
-      showToast(`Diagnosis ${selectedIcd.code} added.`);
+      showToast(`Diagnosis ${diagnosis.code} added.`);
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
     }
   };
 
   const handlePrescribe = async () => {
-    if (!activeEncounter || !activePatient) return;
+    if (!activeEncounter || !activePatient) {
+      showToast('Select a patient and start an outpatient visit first.');
+      return;
+    }
+
+    if (
+      !newMed.drugName.trim() ||
+      !newMed.dosage.trim() ||
+      !newMed.frequency.trim() ||
+      !newMed.duration.trim() ||
+      !newMed.route.trim()
+    ) {
+      showToast('Enter the drug, dosage, frequency, duration, and route.');
+      return;
+    }
+
+    const quantity = Number(newMed.quantity);
+    const unitPrice = Number(newMed.unitPrice);
+
+    if (!newMed.quantity.trim() || !Number.isInteger(quantity) || quantity <= 0) {
+      showToast('Enter a valid positive whole-number quantity.');
+      return;
+    }
+
+    if (
+      !newMed.unitPrice.trim() ||
+      !Number.isFinite(unitPrice) ||
+      unitPrice < 0
+    ) {
+      showToast('Enter a valid unit price of zero or more.');
+      return;
+    }
+
     try {
       const med = await api.prescribeMedication({
         encounterId: activeEncounter.id,
@@ -259,8 +403,8 @@ export const OutpatientModule: React.FC = () => {
         duration: newMed.duration,
         route: newMed.route,
         instructions: newMed.instructions,
-        quantity: Number(newMed.quantity),
-        unitPrice: newMed.unitPrice,
+        quantity,
+        unitPrice: unitPrice.toFixed(2),
         status: 'Prescribed',
         prescribedBy: currentUser.name,
       });
@@ -373,7 +517,7 @@ export const OutpatientModule: React.FC = () => {
         </div>
       </div>
 
-      {activePatient ? (
+      {activePatient && activeEncounter ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Triage Vital Signs & Clinical Alerts (1 col) */}
           <div className="space-y-6">
@@ -390,7 +534,7 @@ export const OutpatientModule: React.FC = () => {
                 Known Chronic: <strong>{activePatient.chronicConditions || 'None'}</strong>
               </div>
               <div className="text-amber-800 text-2xs pt-1 border-t border-amber-200/60 font-mono">
-                Payer: {activePatient.payerType} · {activePatient.shaNumber || 'Self-Pay'}
+                Payer: {activePatient.payerType} Â· {activePatient.shaNumber || 'Self-Pay'}
               </div>
             </div>
 
@@ -440,7 +584,7 @@ export const OutpatientModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-600 font-medium mb-1">Temperature (°C)</label>
+                  <label className="block text-slate-600 font-medium mb-1">Temperature (Â°C)</label>
                   <input
                     type="text"
                     value={vitals.temperatureC}
@@ -607,16 +751,17 @@ export const OutpatientModule: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row items-center gap-2">
                 <select
-                  value={selectedIcd.code}
+                  value={selectedIcd?.code || ''}
                   onChange={(e) => {
                     const match = commonIcd10List.find(x => x.code === e.target.value);
-                    if (match) setSelectedIcd(match);
+                    setSelectedIcd(match || null);
                   }}
                   className="w-full sm:flex-1 px-3 py-2 border border-slate-200 rounded-md"
                 >
+                  <option value="">Select a diagnosis...</option>
                   {commonIcd10List.map(item => (
                     <option key={item.code} value={item.code}>
-                      {item.code} — {item.desc}
+                      {item.code} â€” {item.desc}
                     </option>
                   ))}
                 </select>
@@ -724,6 +869,42 @@ export const OutpatientModule: React.FC = () => {
                     className="px-2 py-1.5 border border-slate-200 rounded"
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Route (e.g. Oral)"
+                    value={newMed.route}
+                    onChange={(e) => setNewMed({ ...newMed, route: e.target.value })}
+                    className="px-2 py-1.5 border border-slate-200 rounded"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="Quantity"
+                    value={newMed.quantity}
+                    onChange={(e) => setNewMed({ ...newMed, quantity: e.target.value })}
+                    className="px-2 py-1.5 border border-slate-200 rounded"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Unit price (KES)"
+                    value={newMed.unitPrice}
+                    onChange={(e) => setNewMed({ ...newMed, unitPrice: e.target.value })}
+                    className="px-2 py-1.5 border border-slate-200 rounded"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Instructions (optional)"
+                    value={newMed.instructions}
+                    onChange={(e) => setNewMed({ ...newMed, instructions: e.target.value })}
+                    className="px-2 py-1.5 border border-slate-200 rounded"
+                  />
+                </div>
                 <button
                   onClick={handlePrescribe}
                   className="w-full py-1.5 bg-slate-900 text-white rounded-md font-medium hover:bg-slate-800 transition-colors"
@@ -734,11 +915,29 @@ export const OutpatientModule: React.FC = () => {
             </div>
           </div>
         </div>
+      ) : activePatient ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
+          <h3 className="text-sm font-bold text-slate-900">No active outpatient visit</h3>
+          <p className="text-xs text-slate-500">
+            {activePatient.firstName} {activePatient.lastName} · {activePatient.mrn}
+          </p>
+          <p className="text-xs text-slate-500">
+            Start a visit to record triage, observations, consultation notes, and orders.
+          </p>
+          <button
+            type="button"
+            onClick={startVisit}
+            className="px-4 py-2 bg-teal-700 text-white rounded-lg text-xs font-semibold hover:bg-teal-800"
+          >
+            Start outpatient visit
+          </button>
+        </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-xs text-slate-400">
-          Please select a patient above to start consultation and triage observation.
+          Please select a patient above to view an active visit or start a new one.
         </div>
       )}
     </div>
   );
 };
+

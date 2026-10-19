@@ -139,3 +139,43 @@ The objective is to implement and complete the OPD workflow for PUCHE using the 
 Identify the existing pages/components, API endpoints, database tables, workflow transitions and permission checks. Compare them against the Step 6 objectives, report the real gaps, and then implement the smallest safe change that advances the workflow.
 
 Do not repeat completed foundation or patient-registration work without evidence of a defect. Do not assume a module is missing until the repository has been inspected. Preserve all existing work and database contents while progressing through Step 6.
+
+
+
+
+
+
+
+We can make meaningful progress today, but we need to be disciplined: prioritize a reliable, demonstrable end-to-end hospital workflow first, then close the most important gaps, and present unfinished capabilities honestly. We should not attempt to rewrite the entire HMIS in one day.
+
+For JaliCare, I recommend working in your existing branch, preserving the database and migrations, and using PowerShell for guarded edits. We will work in short cycles: inspect → patch → type-check → build → test the actual workflow.
+Today's delivery plan
+
+Phase 1 — Stabilize patient records and visits
+First priority
+Patient search and registration, existing history, explicit encounter creation, no fake vital signs, correct facility scope, and no duplicate patients.
+
+
+
+
+Phase 2 — Complete the core clinical journey
+
+Reception → triage → consultation → diagnosis → lab orders/results → prescriptions/dispensing → billing → follow-up or discharge.
+
+
+
+
+Phase 3 — Verify security and data integrity
+
+Role permissions, tenant/facility isolation, input validation, audit logs, error handling, and safe handling of clinical records.
+
+
+
+
+Phase 4 — Prepare the presentation
+
+Build verification, clean demo data, a rehearsed patient journey, a list of completed features, and a transparent list of remaining work.
+
+
+
+The patient portal is part of the target architecture, but if it is not already implemented, we should not rush an insecure portal into production just to meet today's presentation. We can demonstrate the existing patient record and present the portal as a clearly scoped next deliverable.
