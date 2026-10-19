@@ -16,6 +16,39 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
+function calculatePatientAge(dateOfBirth: string): number | null {
+  if (!dateOfBirth) return null;
+
+  const parts = dateOfBirth.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+
+  const [year, month, day] = parts;
+  const birthDate = new Date(year, month - 1, day);
+
+  if (
+    birthDate.getFullYear() !== year ||
+    birthDate.getMonth() !== month - 1 ||
+    birthDate.getDate() !== day
+  ) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - year;
+
+  if (
+    today.getMonth() < month - 1 ||
+    (today.getMonth() === month - 1 && today.getDate() < day)
+  ) {
+    age--;
+  }
+
+  if (age < 0) return null;
+  return age;
+}
+
 export const PatientRegistrationModule: React.FC = () => {
   const { currentTenant, currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -34,6 +67,10 @@ export const PatientRegistrationModule: React.FC = () => {
     email: '',
     nationalId: '',
     shaNumber: '',
+    guardianName: '',
+    guardianRelationship: '',
+    guardianPhone: '',
+    guardianShaNumber: '',
     bloodGroup: '',
     maritalStatus: '',
     occupation: '',
@@ -51,6 +88,8 @@ export const PatientRegistrationModule: React.FC = () => {
   });
 
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const patientAge = calculatePatientAge(formData.dateOfBirth);
+  const isMinor = patientAge !== null && patientAge < 18;
 
   useEffect(() => {
     async function loadPatients() {
@@ -101,7 +140,6 @@ export const PatientRegistrationModule: React.FC = () => {
     if (!formData.lastName.trim()) missingRequiredFields.push('Last Name');
     if (!formData.dateOfBirth) missingRequiredFields.push('Date of Birth');
     if (!formData.gender) missingRequiredFields.push('Gender');
-    if (!formData.phone.trim()) missingRequiredFields.push('Phone');
 
     if (missingRequiredFields.length > 0) {
       showToast(`Please complete required fields: ${missingRequiredFields.join(', ')}`);
@@ -112,6 +150,15 @@ export const PatientRegistrationModule: React.FC = () => {
       const randomMrn = `MRN-2026-${Math.floor(1000 + Math.random() * 9000)}`;
       const newPatient = await api.createPatient({
         ...formData,
+        phone: formData.phone.trim() || null,
+        email: formData.email.trim() || null,
+        nationalId: formData.nationalId.trim() || null,
+        shaNumber: formData.shaNumber.trim() || null,
+        bloodGroup: formData.bloodGroup.trim() || null,
+        guardianName: formData.guardianName.trim() || null,
+        guardianRelationship: formData.guardianRelationship.trim() || null,
+        guardianPhone: formData.guardianPhone.trim() || null,
+        guardianShaNumber: formData.guardianShaNumber.trim() || null,
         mrn: randomMrn,
         registrationFacilityId: currentFacility.id,
       });
@@ -247,6 +294,12 @@ export const PatientRegistrationModule: React.FC = () => {
                     onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   />
+                  {patientAge !== null && (
+                    <p className="mt-1 text-slate-500">
+                      Age: {patientAge} years
+                      {isMinor ? ' · Guardian details recommended' : ''}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-slate-700 font-medium mb-1">Gender *</label>
@@ -269,6 +322,7 @@ export const PatientRegistrationModule: React.FC = () => {
                     onChange={(e) => handleInputChange('bloodGroup', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   >
+                    <option value="">Unknown / Not tested</option>
                     <option value="O+">O Positive (O+)</option>
                     <option value="O-">O Negative (O-)</option>
                     <option value="A+">A Positive (A+)</option>
@@ -309,10 +363,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Phone Number *</label>
+                  <label className="block text-slate-700 font-medium mb-1">Phone Number (optional)</label>
                   <input
                     type="text"
-                    required
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
                     placeholder="+254 700 000 000"
@@ -361,6 +414,71 @@ export const PatientRegistrationModule: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {isMinor && (
+              <div className="pt-4 border-t border-slate-100">
+                <div className="text-2xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Parent / Guardian Details
+                </div>
+                <p className="text-slate-500 mb-3">
+                  Patient is under 18. Record the responsible adult separately from the patient's own details.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Guardian Full Name</label>
+                    <input
+                      type="text"
+                      value={formData.guardianName}
+                      onChange={(e) => handleInputChange('guardianName', e.target.value)}
+                      placeholder="Parent or guardian's full name"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Relationship to Patient</label>
+                    <select
+                      value={formData.guardianRelationship}
+                      onChange={(e) => handleInputChange('guardianRelationship', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    >
+                      <option value="">Select relationship</option>
+                      <option value="Mother">Mother</option>
+                      <option value="Father">Father</option>
+                      <option value="Guardian">Legal / Other Guardian</option>
+                      <option value="Grandparent">Grandparent</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Guardian Phone (optional)</label>
+                    <input
+                      type="text"
+                      value={formData.guardianPhone}
+                      onChange={(e) => handleInputChange('guardianPhone', e.target.value)}
+                      placeholder="+254 700 000 000"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Guardian SHA / Member Number (optional)</label>
+                    <input
+                      type="text"
+                      value={formData.guardianShaNumber}
+                      onChange={(e) => handleInputChange('guardianShaNumber', e.target.value)}
+                      placeholder="Guardian's number, not the child's"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    />
+                    <p className="mt-1 text-slate-500">
+                      Recording a number does not verify SHA membership or coverage.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Section 3: Next of Kin & Payer */}
             <div className="pt-4 border-t border-slate-100">

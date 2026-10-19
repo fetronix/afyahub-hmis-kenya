@@ -1127,8 +1127,7 @@ export const patients = pgTable(
     gender: text('gender')
       .notNull(),
 
-    phone: text('phone')
-      .notNull(),
+    phone: text('phone'),
 
     email: text('email'),
 
@@ -1141,6 +1140,14 @@ export const patients = pgTable(
     nationalId: text('national_id'),
 
     shaNumber: text('sha_number'),
+
+    guardianName: text('guardian_name'),
+
+    guardianRelationship: text('guardian_relationship'),
+
+    guardianPhone: text('guardian_phone'),
+
+    guardianShaNumber: text('guardian_sha_number'),
 
     bloodGroup: text('blood_group'),
 
