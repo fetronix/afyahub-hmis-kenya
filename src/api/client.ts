@@ -577,7 +577,7 @@ export const api = {
       ),
 
   createPatient:
-    (patient: Partial<Patient>) =>
+    (patient: Partial<Patient> & { registrationFacilityId: number }) =>
       fetchJson<Patient>(
         `${API_BASE}/patients`,
         {

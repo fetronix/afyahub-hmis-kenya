@@ -12,7 +12,6 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Clock,
-  CheckCircle2,
   Calendar,
   Building2,
   ShieldCheck,
@@ -108,7 +107,7 @@ export const DashboardModule: React.FC = () => {
               {currentFacility?.name || 'JaliCare Kenya Facility'}
             </h1>
             <span className="font-mono text-xs px-2 py-0.5 bg-blue-50 text-blue-900 rounded font-bold border border-blue-200/80">
-              {currentFacility?.mflCode || 'MFL-12845'}
+              {currentFacility?.mflCode || 'Not configured'}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
@@ -157,7 +156,7 @@ export const DashboardModule: React.FC = () => {
           </div>
           <div className="mt-2 text-2xs text-slate-500 flex items-center gap-1">
             <span>Avg triage wait: </span>
-            <strong className="font-mono text-blue-900">12 mins</strong>
+            <strong className="font-mono text-blue-900">Not available</strong>
           </div>
         </div>
 
@@ -196,7 +195,7 @@ export const DashboardModule: React.FC = () => {
         {/* Card 3: Revenue Today */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Collections (KES)</span>
+            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Recorded paid amount (KES)</span>
             <DollarSign className="w-4 h-4 text-blue-700" />
           </div>
           <div className="mt-2">
@@ -319,6 +318,13 @@ export const DashboardModule: React.FC = () => {
                     </td>
                   </tr>
                 ))}
+                {queues.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center font-sans text-slate-500">
+                      No queue records to display. If activity is expected, verify queue data access.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -349,10 +355,15 @@ export const DashboardModule: React.FC = () => {
 
           <div className="p-4 space-y-3 flex-1">
             <div className="text-2xs text-slate-500 font-medium">
-              Epi-Week: <strong className="text-slate-800 font-mono">2026-W40</strong> · Surveillance reporting
+              Reports loaded: <strong className="text-slate-800 font-mono">{surveillance.length}</strong> · Surveillance reporting
             </div>
 
             <div className="space-y-2">
+              {surveillance.length === 0 && (
+                <p className="text-xs text-slate-500 py-3">
+                  No surveillance reports are available for this facility.
+                </p>
+              )}
               {surveillance.map((rep) => (
                 <div key={rep.id} className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 flex items-center justify-between text-xs">
                   <div>
@@ -374,7 +385,7 @@ export const DashboardModule: React.FC = () => {
             <div className="mt-4 pt-3 border-t border-slate-200 text-2xs text-slate-500 flex items-center justify-between">
               <span>Notifiable Disease Sentinel</span>
               <span className="text-emerald-700 font-medium flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Normal Threshold
+                Not assessed
               </span>
             </div>
           </div>

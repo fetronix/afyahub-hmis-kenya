@@ -28,23 +28,23 @@ export const PatientRegistrationModule: React.FC = () => {
     firstName: '',
     middleName: '',
     lastName: '',
-    dateOfBirth: '1995-01-01',
-    gender: 'Male',
-    phone: '+254 ',
+    dateOfBirth: '',
+    gender: '',
+    phone: '',
     email: '',
     nationalId: '',
     shaNumber: '',
-    bloodGroup: 'O+',
-    maritalStatus: 'Single',
+    bloodGroup: '',
+    maritalStatus: '',
     occupation: '',
-    county: 'Nairobi',
-    subCounty: 'Westlands',
+    county: '',
+    subCounty: '',
     residentialAddress: '',
     emergencyContactName: '',
-    emergencyContactPhone: '+254 ',
-    emergencyContactRelationship: 'Spouse',
-    allergies: 'None known',
-    chronicConditions: 'None known',
+    emergencyContactPhone: '',
+    emergencyContactRelationship: '',
+    allergies: '',
+    chronicConditions: '',
     payerType: 'Self-Pay',
     insuranceProvider: '',
     policyNumber: '',
@@ -90,8 +90,21 @@ export const PatientRegistrationModule: React.FC = () => {
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.firstName || !formData.lastName || !formData.phone) {
-      showToast('Please fill in required fields: First Name, Last Name, Phone');
+    if (!currentTenant?.id || !currentFacility?.id) {
+      showToast('Registration unavailable: select an authorized facility first.');
+      return;
+    }
+
+    const missingRequiredFields: string[] = [];
+
+    if (!formData.firstName.trim()) missingRequiredFields.push('First Name');
+    if (!formData.lastName.trim()) missingRequiredFields.push('Last Name');
+    if (!formData.dateOfBirth) missingRequiredFields.push('Date of Birth');
+    if (!formData.gender) missingRequiredFields.push('Gender');
+    if (!formData.phone.trim()) missingRequiredFields.push('Phone');
+
+    if (missingRequiredFields.length > 0) {
+      showToast(`Please complete required fields: ${missingRequiredFields.join(', ')}`);
       return;
     }
 
@@ -100,14 +113,13 @@ export const PatientRegistrationModule: React.FC = () => {
       const newPatient = await api.createPatient({
         ...formData,
         mrn: randomMrn,
-        tenantId: currentTenant?.id || 1,
-        facilityId: currentFacility?.id || 1,
+        registrationFacilityId: currentFacility.id,
       });
 
       // Automatically add to Triage Queue
       await api.createQueueItem({
-        tenantId: currentTenant?.id || 1,
-        facilityId: currentFacility?.id || 1,
+        tenantId: currentTenant.id,
+        facilityId: currentFacility.id,
         patientId: newPatient.id,
         queueType: 'Triage',
         tokenNumber: `TRG-${Math.floor(100 + Math.random() * 900)}`,
@@ -239,10 +251,12 @@ export const PatientRegistrationModule: React.FC = () => {
                 <div>
                   <label className="block text-slate-700 font-medium mb-1">Gender *</label>
                   <select
+                    required
                     value={formData.gender}
                     onChange={(e) => handleInputChange('gender', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   >
+                    <option value="" disabled>Select gender</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
@@ -544,7 +558,7 @@ export const PatientRegistrationModule: React.FC = () => {
                           <div className="text-orange-700 font-semibold text-2xs">{p.shaNumber || 'No SHA'}</div>
                         </td>
                         <td className="px-4 py-3 font-sans text-slate-700">
-                          {age} yrs · {p.gender}
+                          {age} yrs Â· {p.gender}
                         </td>
                         <td className="px-4 py-3 text-slate-700 font-sans">
                           <div className="font-mono">{p.phone}</div>
