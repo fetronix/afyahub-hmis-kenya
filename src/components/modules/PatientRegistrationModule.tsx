@@ -661,12 +661,12 @@ export const PatientRegistrationModule: React.FC = () => {
                               setSelectedPatient(p);
                               setIsJourneyModalOpen(true);
                             }}
-                            className="font-semibold text-slate-900 hover:text-blue-700 text-left"
+                            className="block font-semibold text-slate-900 hover:text-blue-700 text-left"
                           >
                             {p.firstName} {p.middleName ? `${p.middleName} ` : ''}{p.lastName}
                           </button>
                           {p.allergies && p.allergies !== 'None known' && (
-                            <span className="block text-2xs text-rose-600 font-medium">
+                            <span className="mt-1 block max-w-[18rem] rounded-md border border-rose-100 bg-rose-50 px-2 py-1 text-2xs font-medium leading-snug text-rose-700">
                               Allergy: {p.allergies}
                             </span>
                           )}
@@ -676,7 +676,7 @@ export const PatientRegistrationModule: React.FC = () => {
                           <div className="text-orange-700 font-semibold text-2xs">{p.shaNumber || 'No SHA'}</div>
                         </td>
                         <td className="px-4 py-3 font-sans text-slate-700">
-                          {age} yrs Â· {p.gender}
+                          {age} yrs · {p.gender}
                         </td>
                         <td className="px-4 py-3 text-slate-700 font-sans">
                           <div className="font-mono">{p.phone}</div>

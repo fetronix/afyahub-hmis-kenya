@@ -153,7 +153,7 @@ export const PatientJourneyModal: React.FC = () => {
             { id: 'meds', label: `Prescriptions (${medications.length})` },
             { id: 'labs', label: `Lab Investigations (${labOrders.length})` },
             { id: 'billing', label: `Financial Invoices (${invoices.length})` },
-            { id: 'fhir', label: 'HL7 FHIR R4 Schema' },
+
           ].map((tab) => (
             <button
               key={tab.id}

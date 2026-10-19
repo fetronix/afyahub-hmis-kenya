@@ -209,7 +209,7 @@ export const OutpatientModule: React.FC = () => {
   // BMI Calculation
   const weight = parseFloat(vitals.weightKg) || 0;
   const heightM = (parseFloat(vitals.heightCm) || 0) / 100;
-  const bmi = heightM > 0 ? (weight / (heightM * heightM)).toFixed(1) : 'â€”';
+  const bmi = heightM > 0 ? (weight / (heightM * heightM)).toFixed(1) : '—';
 
   // BP Evaluation
   const sys = Number(vitals.systolicBp);
@@ -300,7 +300,7 @@ export const OutpatientModule: React.FC = () => {
       if (vitals.spo2Percent.trim() !== '') observation.spo2Percent = Number(vitals.spo2Percent);
       if (vitals.weightKg.trim() !== '') observation.weightKg = vitals.weightKg;
       if (vitals.heightCm.trim() !== '') observation.heightCm = vitals.heightCm;
-      if (bmi !== 'â€”' && vitals.weightKg.trim() !== '' && vitals.heightCm.trim() !== '') {
+      if (bmi !== '—' && vitals.weightKg.trim() !== '' && vitals.heightCm.trim() !== '') {
         observation.bmi = bmi;
       }
       if (vitals.bloodGlucoseMmol.trim() !== '') observation.bloodGlucoseMmol = vitals.bloodGlucoseMmol;
@@ -584,7 +584,7 @@ export const OutpatientModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-600 font-medium mb-1">Temperature (Â°C)</label>
+                  <label className="block text-slate-600 font-medium mb-1">Temperature (°C)</label>
                   <input
                     type="text"
                     value={vitals.temperatureC}
@@ -639,7 +639,7 @@ export const OutpatientModule: React.FC = () => {
                 <div>
                   <label className="block text-slate-600 font-medium mb-1">Calculated BMI</label>
                   <div className="px-2 py-1.5 bg-slate-100 text-slate-800 rounded-md font-mono text-center font-bold">
-                    {bmi}
+                    {bmi || '\u2014'}
                   </div>
                 </div>
               </div>
@@ -761,7 +761,7 @@ export const OutpatientModule: React.FC = () => {
                   <option value="">Select a diagnosis...</option>
                   {commonIcd10List.map(item => (
                     <option key={item.code} value={item.code}>
-                      {item.code} â€” {item.desc}
+                      {item.code} — {item.desc}
                     </option>
                   ))}
                 </select>
