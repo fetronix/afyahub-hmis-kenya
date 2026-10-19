@@ -14,7 +14,7 @@ import platformRoutes from './routes/platform.routes.ts';
 import * as queries from './db/queries.ts';
 import { db } from './db/index.ts';
 import * as schema from './db/schema.ts';
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq, sql, sum } from 'drizzle-orm';
 import authRoutes from './auth/auth.routes.ts';
 
 
@@ -3414,24 +3414,157 @@ app.get(
     app.get(
       '/api/analytics/summary',
       requirePermission('reports.read'),
-  async (req: AuthRequest, res: Response) => {
-        if (!req.authContext) {
-          return res.status(401).json({
+      async (req: AuthRequest, res: Response) => {
+        try {
+          if (!req.authContext) {
+            return res.status(401).json({
+              success: false,
+              error: 'AUTHORIZATION_CONTEXT_MISSING',
+            });
+          }
+
+          const rawFacilityId = req.query.facilityId;
+          if (
+            typeof rawFacilityId !== 'string' ||
+            !/^[1-9]\d*$/.test(rawFacilityId)
+          ) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_FACILITY_ID',
+              message: 'A valid facilityId is required.',
+            });
+          }
+
+          const requestedFacilityId = Number(rawFacilityId);
+          if (!Number.isSafeInteger(requestedFacilityId)) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_FACILITY_ID',
+            });
+          }
+
+          const facility = await queries.getFacilityByIdScoped(
+            req.authContext,
+            requestedFacilityId,
+          );
+
+          if (!facility) {
+            return res.status(404).json({
+              success: false,
+              error: 'FACILITY_NOT_FOUND',
+            });
+          }
+
+          const tenantId = facility.tenantId;
+          const facilityId = facility.id;
+
+          const [
+            patientRows,
+            queueRows,
+            admissionRows,
+            bedRows,
+            surgeryRows,
+            labRows,
+            invoiceRows,
+            inventoryRows,
+          ] = await Promise.all([
+            db.select({ value: count() })
+              .from(schema.patients)
+              .where(and(
+                eq(schema.patients.tenantId, tenantId),
+                eq(schema.patients.registrationFacilityId, facilityId),
+              )),
+
+            db.select({ value: count() })
+              .from(schema.queues)
+              .where(and(
+                eq(schema.queues.tenantId, tenantId),
+                eq(schema.queues.facilityId, facilityId),
+                sql`lower(coalesce(${schema.queues.status}, 'waiting')) IN ('waiting', 'in progress', 'serving')`,
+              )),
+
+            db.select({ value: count() })
+              .from(schema.admissions)
+              .where(and(
+                eq(schema.admissions.tenantId, tenantId),
+                eq(schema.admissions.facilityId, facilityId),
+                sql`lower(coalesce(${schema.admissions.status}, 'admitted')) = 'admitted'`,
+              )),
+
+            db.select({
+              total: count(),
+              occupied: sql<number>`count(*) FILTER (WHERE lower(coalesce(${schema.beds.status}, '')) = 'occupied')`,
+            })
+              .from(schema.beds)
+              .innerJoin(
+                schema.wards,
+                eq(schema.beds.wardId, schema.wards.id),
+              )
+              .where(eq(schema.wards.facilityId, facilityId)),
+
+            db.select({ value: count() })
+              .from(schema.theatreCases)
+              .where(and(
+                eq(schema.theatreCases.tenantId, tenantId),
+                eq(schema.theatreCases.facilityId, facilityId),
+                sql`lower(coalesce(${schema.theatreCases.status}, '')) = 'scheduled'`,
+              )),
+
+            db.select({ value: count() })
+              .from(schema.labOrders)
+              .where(and(
+                eq(schema.labOrders.tenantId, tenantId),
+                eq(schema.labOrders.facilityId, facilityId),
+                sql`lower(coalesce(${schema.labOrders.status}, 'ordered')) NOT IN ('completed', 'cancelled', 'canceled', 'reported', 'rejected')`,
+              )),
+
+            db.select({
+              revenue: sum(schema.billingInvoices.paidAmount),
+              outstanding: sum(schema.billingInvoices.balanceAmount),
+            })
+              .from(schema.billingInvoices)
+              .where(and(
+                eq(schema.billingInvoices.tenantId, tenantId),
+                eq(schema.billingInvoices.facilityId, facilityId),
+              )),
+
+            db.select({ value: count() })
+              .from(schema.inventoryItems)
+              .where(and(
+                eq(schema.inventoryItems.facilityId, facilityId),
+                eq(schema.inventoryItems.isActive, true),
+                sql`${schema.inventoryItems.currentStock} <= coalesce(${schema.inventoryItems.reorderLevel}, 0)`,
+              )),
+          ]);
+
+          const totalBeds = Number(bedRows[0]?.total ?? 0);
+          const occupiedBeds = Number(bedRows[0]?.occupied ?? 0);
+
+          return res.json({
+            totalPatients: Number(patientRows[0]?.value ?? 0),
+            activeQueuesCount: Number(queueRows[0]?.value ?? 0),
+            currentAdmissions: Number(admissionRows[0]?.value ?? 0),
+            bedOccupancyRate: totalBeds > 0
+              ? Math.round((occupiedBeds / totalBeds) * 1000) / 10
+              : 0,
+            scheduledSurgeries: Number(surgeryRows[0]?.value ?? 0),
+            pendingLabOrders: Number(labRows[0]?.value ?? 0),
+            totalRevenueKes: Number(invoiceRows[0]?.revenue ?? 0),
+            outstandingBillsKes: Number(invoiceRows[0]?.outstanding ?? 0),
+            lowStockAlerts: Number(inventoryRows[0]?.value ?? 0),
+          });
+        } catch (err: unknown) {
+          if (handleScopeError(err, res)) return;
+
+          console.error('Analytics summary error:', err);
+          return res.status(500).json({
             success: false,
-            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            error: 'ANALYTICS_SUMMARY_FAILED',
+            message: 'Unable to load the facility analytics summary.',
           });
         }
-
-        return res.status(501).json({
-          success: false,
-          error: 'SCOPED_ANALYTICS_NOT_IMPLEMENTED',
-          message:
-            'Analytics is temporarily unavailable until tenant and facility scoped queries are implemented.',
-        });
       },
     );
-
-  // =========================================================
   // VITE MIDDLEWARE / STATIC ASSETS
   // =========================================================
 
