@@ -5,6 +5,7 @@ import {
   listAssignableStaffRoles,
   listStaffInvitations,
   revokeStaffInvitation,
+  reissueStaffInvitation,
   StaffInvitationError,
 } from "./staff-invitation.service";
 import { requireAuth, type AuthRequest } from "./auth.middleware";
@@ -171,6 +172,74 @@ router.get(
   },
 );
 
+router.post(
+  "/:id/reissue",
+  requirePermission("users.invitations.reissue"),
+  async (req, res) => {
+    try {
+      const scope = getScope(req);
+      const invitationId = Number(req.params.id);
+
+      if (!Number.isSafeInteger(invitationId) || invitationId <= 0) {
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_INVITATION_ID",
+          message: "A valid invitation ID is required.",
+        });
+      }
+
+      const baseUrl = process.env.APP_BASE_URL?.trim();
+
+      if (!baseUrl) {
+        return res.status(500).json({
+          success: false,
+          code: "APP_BASE_URL_NOT_CONFIGURED",
+          message: "Staff invitations are temporarily unavailable because the application URL is not configured.",
+        });
+      }
+
+      let invitationBaseUrl: URL;
+
+      try {
+        invitationBaseUrl = new URL(baseUrl);
+
+        if (
+          !["http:", "https:"].includes(invitationBaseUrl.protocol) ||
+          invitationBaseUrl.username ||
+          invitationBaseUrl.password
+        ) {
+          throw new Error("Unsupported application URL.");
+        }
+      } catch {
+        return res.status(500).json({
+          success: false,
+          code: "INVALID_APP_BASE_URL",
+          message: "APP_BASE_URL must be a valid HTTP or HTTPS URL.",
+        });
+      }
+
+      const result = await reissueStaffInvitation(
+        invitationId,
+        scope.tenantId,
+        scope.facilityId,
+      );
+
+      invitationBaseUrl.pathname =
+        `${invitationBaseUrl.pathname.replace(/\/+$/, "")}/accept-staff-invitation`;
+      invitationBaseUrl.search = "";
+      invitationBaseUrl.hash = "";
+      invitationBaseUrl.searchParams.set("token", result.token);
+
+      return res.json({
+        success: true,
+        invitation: result.invitation,
+        invitationUrl: invitationBaseUrl.toString(),
+      });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
+);
 router.post(
   "/:id/revoke",
   requirePermission("users.invitations.revoke"),

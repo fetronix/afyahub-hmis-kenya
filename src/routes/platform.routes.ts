@@ -168,6 +168,7 @@ const FACILITY_ADMIN_PERMISSION_CODES = [
   'users.create',
   'users.invitations.read',
   'users.invitations.revoke',
+  'users.invitations.reissue',
   'users.invite',
   'users.read',
   'users.update',

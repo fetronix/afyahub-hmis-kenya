@@ -323,6 +323,102 @@ export async function listStaffInvitations(
 }
 
 /**
+ * Reissues an unused staff invitation within the authorized facility.
+ * The previous token is invalidated; only its new hash is stored.
+ */
+export async function reissueStaffInvitation(
+  invitationId: number,
+  tenantId: number,
+  facilityId: number,
+) {
+  assertPositiveId(invitationId, "invitation");
+  assertPositiveId(tenantId, "tenant");
+  assertPositiveId(facilityId, "facility");
+
+  const [existing] = await db
+    .select({
+      id: userInvitations.id,
+      acceptedAt: userInvitations.acceptedAt,
+      revokedAt: userInvitations.revokedAt,
+    })
+    .from(userInvitations)
+    .where(
+      and(
+        eq(userInvitations.id, invitationId),
+        eq(userInvitations.tenantId, tenantId),
+        eq(userInvitations.facilityId, facilityId),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    throw new StaffInvitationError(
+      "Invitation not found in this facility.",
+      404,
+      "INVITATION_NOT_FOUND",
+    );
+  }
+
+  if (existing.acceptedAt) {
+    throw new StaffInvitationError(
+      "An accepted invitation cannot be reissued.",
+      409,
+      "INVITATION_ALREADY_ACCEPTED",
+    );
+  }
+
+  if (existing.revokedAt) {
+    throw new StaffInvitationError(
+      "A revoked invitation cannot be reissued.",
+      409,
+      "INVITATION_REVOKED",
+    );
+  }
+
+  const rawToken = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
+
+  // Conditional update protects against acceptance/revocation racing
+  // with this request. The old token hash is replaced atomically.
+  const [invitation] = await db
+    .update(userInvitations)
+    .set({
+      invitationTokenHash: hashToken(rawToken),
+      expiresAt,
+    })
+    .where(
+      and(
+        eq(userInvitations.id, invitationId),
+        eq(userInvitations.tenantId, tenantId),
+        eq(userInvitations.facilityId, facilityId),
+        isNull(userInvitations.acceptedAt),
+        isNull(userInvitations.revokedAt),
+      ),
+    )
+    .returning({
+      id: userInvitations.id,
+      email: userInvitations.email,
+      fullName: userInvitations.fullName,
+      facilityId: userInvitations.facilityId,
+      roleId: userInvitations.roleId,
+      expiresAt: userInvitations.expiresAt,
+      createdAt: userInvitations.createdAt,
+    });
+
+  if (!invitation) {
+    throw new StaffInvitationError(
+      "The invitation changed while being reissued. Refresh and try again.",
+      409,
+      "INVITATION_CHANGED",
+    );
+  }
+
+  return {
+    invitation,
+    token: rawToken,
+  };
+}
+/**
  * Revokes an unused invitation in the authorized facility.
  */
 export async function revokeStaffInvitation(

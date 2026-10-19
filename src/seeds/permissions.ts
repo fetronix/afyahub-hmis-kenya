@@ -201,6 +201,13 @@ const PERMISSIONS = [
     description:
       'Revoke unused staff invitations within the authorized scope.',
   },
+  {
+    code: 'users.invitations.reissue',
+    name: 'Reissue Staff Invitations',
+    module: 'users',
+    description:
+      'Generate a replacement link for an unused staff invitation within the authorized scope.',
+  },
 
   {
     code: 'users.roles.manage',
@@ -925,6 +932,7 @@ async function seedPermissions(): Promise<void> {
     'users.invite',
     'users.invitations.read',
     'users.invitations.revoke',
+    'users.invitations.reissue',
     'tariffs.read',
     'tariffs.manage',
   ] as const;

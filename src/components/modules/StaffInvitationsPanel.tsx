@@ -56,6 +56,7 @@ export const StaffInvitationsPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [reissuingId, setReissuingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [invitationUrl, setInvitationUrl] = useState("");
@@ -175,6 +176,45 @@ export const StaffInvitationsPanel: React.FC = () => {
     }
   };
 
+  const reissueInvitation = async (invitation: StaffInvitation) => {
+    if (!window.confirm(
+      `Generate a new invitation link for ${invitation.email}? The old link will stop working.`,
+    )) {
+      return;
+    }
+
+    setReissuingId(invitation.id);
+    setError("");
+    setNotice("");
+    setInvitationUrl("");
+
+    try {
+      const response = await fetch(
+        `/api/staff-invitations/${invitation.id}/reissue`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: buildAuthHeaders(),
+        },
+      );
+
+      const payload = await readJson<{
+        invitationUrl?: string;
+      }>(response);
+
+      if (!payload.invitationUrl) {
+        throw new Error("The server did not return the new invitation link.");
+      }
+
+      setInvitationUrl(payload.invitationUrl);
+      setNotice(`A new link was generated for ${invitation.email}. Copy it and send it to the staff member.`);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reissue this invitation.");
+    } finally {
+      setReissuingId(null);
+    }
+  };
   const revokeInvitation = async (invitation: StaffInvitation) => {
     if (!window.confirm(`Revoke the invitation for ${invitation.email}? This cannot be undone.`)) {
       return;
@@ -354,6 +394,7 @@ export const StaffInvitationsPanel: React.FC = () => {
                   "pending"
                 );
                 const pending = status.toLowerCase() === "pending";
+                const expired = status.toLowerCase() === "expired";
 
                 return (
                   <article key={invitation.id} className="space-y-2 p-4">
@@ -373,13 +414,29 @@ export const StaffInvitationsPanel: React.FC = () => {
                       {invitation.designation && <span>Title: {invitation.designation}</span>}
                     </div>
                     <p className="text-xs text-slate-500">Expires: {formatDate(invitation.expiresAt)}</p>
-                    {pending && (
-                      <button type="button" onClick={() => void revokeInvitation(invitation)}
-                        disabled={revokingId === invitation.id}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
-                        <XCircle className="h-3.5 w-3.5" />
-                        {revokingId === invitation.id ? "Revoking..." : "Revoke invitation"}
-                      </button>
+                    {(pending || expired) && (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void reissueInvitation(invitation)}
+                          disabled={reissuingId === invitation.id}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-teal-200 px-2.5 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50 disabled:opacity-50"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 ${reissuingId === invitation.id ? "animate-spin" : ""}`} />
+                          {reissuingId === invitation.id ? "Generating link..." : "Reissue link"}
+                        </button>
+                        {pending && (
+                          <button
+                            type="button"
+                            onClick={() => void revokeInvitation(invitation)}
+                            disabled={revokingId === invitation.id}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                            {revokingId === invitation.id ? "Revoking..." : "Revoke invitation"}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </article>
                 );
