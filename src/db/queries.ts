@@ -822,9 +822,114 @@ export async function getQueues(facilityId?: number, queueType?: string) {
   }
 }
 
-export async function createQueueEntry(data: typeof schema.queues.$inferInsert) {
+async function resolveQueueOrLabScope(
+  context: AuthorizationContext,
+  data: {
+    tenantId?: number | null;
+    facilityId?: number | null;
+    patientId?: number | null;
+    encounterId?: number | null;
+  },
+) {
+  let encounter: typeof schema.encounters.$inferSelect | undefined;
+
+  if (data.encounterId !== undefined && data.encounterId !== null) {
+    if (!Number.isSafeInteger(data.encounterId) || data.encounterId <= 0) {
+      throw new Error("A valid encounter ID is required.");
+    }
+
+    const [found] = await db
+      .select()
+      .from(schema.encounters)
+      .where(eq(schema.encounters.id, data.encounterId))
+      .limit(1);
+
+    if (!found) {
+      throw new Error("Encounter not found.");
+    }
+
+    encounter = found;
+  }
+
+  // An encounter is authoritative when supplied. This also supports
+  // requests where the browser accidentally omits facilityId.
+  const requestedFacilityId = data.facilityId ?? encounter?.facilityId;
+  const facilityId = resolveFacilityScope(context, requestedFacilityId);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+
+  if (!facility) {
+    throw new ScopeAccessError("Facility not found.", "FACILITY_ACCESS_DENIED");
+  }
+
+  if (data.tenantId != null && data.tenantId !== facility.tenantId) {
+    throw new ScopeAccessError(
+      "The requested tenant does not match the authorized facility.",
+      "FACILITY_ACCESS_DENIED",
+    );
+  }
+
+  if (
+    encounter &&
+    (encounter.facilityId !== facility.id ||
+      encounter.tenantId !== facility.tenantId)
+  ) {
+    throw new ScopeAccessError(
+      "The encounter is outside the authorized facility.",
+      "FACILITY_ACCESS_DENIED",
+    );
+  }
+
+  if (
+    encounter &&
+    data.patientId != null &&
+    data.patientId !== encounter.patientId
+  ) {
+    throw new ScopeAccessError(
+      "The patient does not match the encounter.",
+      "FACILITY_ACCESS_DENIED",
+    );
+  }
+
+  const patientId = encounter ? encounter.patientId : data.patientId;
+
+  if (
+    typeof patientId !== "number" ||
+    !Number.isSafeInteger(patientId) ||
+    patientId <= 0
+  ) {
+    throw new Error("A valid patient ID is required.");
+  }
+
+  const patient = await requirePatientInTenant(
+    context,
+    patientId,
+    facility.tenantId,
+  );
+
+  if (!patient) {
+    throw new Error("Patient not found.");
+  }
+
+  return {
+    tenantId: facility.tenantId,
+    facilityId: facility.id,
+    patientId: patient.id,
+    encounterId: encounter?.id ?? null,
+  };
+}
+
+export async function createQueueEntry(
+  context: AuthorizationContext,
+  data: typeof schema.queues.$inferInsert,
+) {
+  const scope = await resolveQueueOrLabScope(context, data);
+
   try {
-    const res = await db.insert(schema.queues).values(data).returning();
+    const res = await db
+      .insert(schema.queues)
+      .values({ ...data, ...scope })
+      .returning();
+
     return res[0];
   } catch (error) {
     console.error('Error creating queue entry:', error);
@@ -1137,9 +1242,18 @@ export async function getLabOrders(facilityId?: number, patientId?: number) {
   }
 }
 
-export async function createLabOrder(data: typeof schema.labOrders.$inferInsert) {
+export async function createLabOrder(
+  context: AuthorizationContext,
+  data: typeof schema.labOrders.$inferInsert,
+) {
+  const scope = await resolveQueueOrLabScope(context, data);
+
   try {
-    const res = await db.insert(schema.labOrders).values(data).returning();
+    const res = await db
+      .insert(schema.labOrders)
+      .values({ ...data, ...scope })
+      .returning();
+
     return res[0];
   } catch (error) {
     console.error('Error creating lab order:', error);
@@ -1794,3 +1908,163 @@ export async function updatePatientScoped(
 }
 
 
+
+/**
+ * Creates a laboratory batch and its queue entry atomically.
+ * Duplicate test IDs within one request are rejected.
+ */
+export async function createLabOrderBatch(
+  context: AuthorizationContext,
+  data: {
+    encounterId: number;
+    patientId: number;
+    investigations?: string[];
+    testIds?: number[];
+    clinicalIndication: string;
+    specimenType: string;
+    priority: string;
+    clinicalNotes?: string;
+    orderedBy?: string;
+  },
+) {
+  const priority = data.priority;
+  const allowedPriorities = ['Routine', 'Urgent', 'STAT'];
+
+  if (!allowedPriorities.includes(priority)) {
+    throw new Error('Invalid laboratory priority.');
+  }
+  if (!data.clinicalIndication?.trim()) {
+    throw new Error('Clinical indication is required.');
+  }
+  if (!data.specimenType?.trim()) {
+    throw new Error('Specimen type is required.');
+  }
+  if (
+    data.clinicalIndication.length > 2000 ||
+    data.specimenType.length > 120 ||
+    (data.clinicalNotes?.length ?? 0) > 5000
+  ) {
+    throw new Error('Clinical text exceeds the permitted length.');
+  }
+
+  const freeTextProvided = data.investigations !== undefined;
+  if (freeTextProvided && !Array.isArray(data.investigations)) {
+    throw new Error('Invalid laboratory investigations.');
+  }
+
+  const investigations: string[] = [];
+  if (freeTextProvided) {
+    const seen = new Set<string>();
+    for (const value of data.investigations!) {
+      if (typeof value !== 'string') {
+        throw new Error('Invalid laboratory investigation name.');
+      }
+      const name = value.trim();
+      if (!name) continue;
+      if (name.length > 200) {
+        throw new Error('Each investigation name must be 200 characters or fewer.');
+      }
+      const key = name.toLocaleLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        investigations.push(name);
+      }
+    }
+    if (investigations.length > 100) {
+      throw new Error('Enter no more than 100 laboratory investigations.');
+    }
+  }
+
+  const testIds = data.testIds ?? [];
+  if (!freeTextProvided) {
+    if (!Array.isArray(testIds) || testIds.length === 0) {
+      throw new Error('Enter at least one laboratory investigation.');
+    }
+    if (testIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+      throw new Error('One or more laboratory test IDs are invalid.');
+    }
+    if (new Set(testIds).size !== testIds.length) {
+      throw new Error('Duplicate tests are not allowed in one submission.');
+    }
+  } else if (investigations.length === 0) {
+    throw new Error('Enter at least one laboratory investigation.');
+  }
+
+  const scope = await resolveQueueOrLabScope(context, {
+    encounterId: data.encounterId,
+    patientId: data.patientId,
+  });
+
+  try {
+    return await db.transaction(async (tx) => {
+      const tests: Array<{ id: number | null; name: string }> = [];
+
+      if (freeTextProvided) {
+        for (const name of investigations) {
+          tests.push({ id: null, name });
+        }
+      } else {
+        for (const testId of testIds) {
+          const [test] = await tx
+            .select()
+            .from(schema.labTests)
+            .where(and(
+              eq(schema.labTests.id, testId),
+              eq(schema.labTests.facilityId, scope.facilityId),
+              eq(schema.labTests.isActive, true),
+            ))
+            .limit(1);
+
+          if (!test) {
+            throw new Error('A selected test is unavailable at this facility.');
+          }
+          tests.push({ id: test.id, name: test.name });
+        }
+      }
+
+      const [queue] = await tx
+        .insert(schema.queues)
+        .values({
+          ...scope,
+          queueType: 'Laboratory',
+          tokenNumber: `LAB-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          priority,
+          status: 'Waiting',
+          waitingTimeMinutes: 0,
+        })
+        .returning();
+
+      if (!queue) {
+        throw new Error('Laboratory queue entry could not be created.');
+      }
+
+      const orders = [];
+      for (const test of tests) {
+        const [order] = await tx
+          .insert(schema.labOrders)
+          .values({
+            ...scope,
+            testId: test.id,
+            testName: test.name,
+            status: 'Ordered',
+            orderedBy: data.orderedBy?.trim() || null,
+            clinicalIndication: data.clinicalIndication.trim(),
+            specimenType: data.specimenType.trim(),
+            priority,
+            clinicalNotes: data.clinicalNotes?.trim() || null,
+          })
+          .returning();
+
+        if (!order) {
+          throw new Error('A laboratory order could not be created.');
+        }
+        orders.push(order);
+      }
+
+      return { orders, queue };
+    });
+  } catch (error) {
+    console.error('Laboratory batch transaction failed:', error);
+    throw error;
+  }
+}

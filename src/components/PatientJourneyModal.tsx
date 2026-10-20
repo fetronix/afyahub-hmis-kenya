@@ -24,6 +24,7 @@ export const PatientJourneyModal: React.FC = () => {
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
   const [activeTab, setActiveTab] = useState<'timeline' | 'vitals' | 'diagnoses' | 'meds' | 'labs' | 'billing' | 'fhir'>('timeline');
   const [fhirJson, setFhirJson] = useState<string>('');
@@ -35,12 +36,13 @@ export const PatientJourneyModal: React.FC = () => {
     async function loadPatientDetails() {
       setLoading(true);
       try {
-        const [encs, vitals, diags, meds, labs, invs, fhir] = await Promise.all([
+        const [encs, vitals, diags, meds, labs, results, invs, fhir] = await Promise.all([
           api.getEncounters(selectedPatient!.id),
           api.getObservations(undefined, selectedPatient!.id),
           api.getDiagnoses(undefined, selectedPatient!.id),
           api.getMedications(undefined, selectedPatient!.id),
           api.getLabOrders(undefined, selectedPatient!.id),
+          api.getLabResults(undefined, selectedPatient!.id),
           api.getInvoices(undefined, selectedPatient!.id),
           api.getFhirPatient(selectedPatient!.id).catch(() => null),
         ]);
@@ -50,6 +52,7 @@ export const PatientJourneyModal: React.FC = () => {
         setDiagnoses(diags);
         setMedications(meds);
         setLabOrders(labs);
+        setLabResults(results);
         setInvoices(invs);
         if (fhir) {
           setFhirJson(JSON.stringify(fhir, null, 2));
@@ -373,6 +376,51 @@ export const PatientJourneyModal: React.FC = () => {
                           {new Date(lo.orderedAt).toLocaleString('en-KE')}
                         </span>
                       </div>
+
+                      {labResults.filter(result => result.orderId === lo.id).length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                          <h4 className="text-xs font-bold text-slate-800">Laboratory Results</h4>
+                          {labResults
+                            .filter(result => result.orderId === lo.id)
+                            .map(result => (
+                              <div key={result.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <span className="text-sm font-semibold text-slate-800">
+                                    {result.parameterName}
+                                  </span>
+                                  <span className={`text-xs font-semibold rounded px-2 py-1 ${
+                                    result.flag?.toLowerCase() === 'normal'
+                                      ? 'bg-emerald-50 text-emerald-800'
+                                      : 'bg-amber-50 text-amber-800'
+                                  }`}>
+                                    {result.flag || 'Unflagged'}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-sm text-slate-900">
+                                  Result: <strong>{result.measuredValue}</strong>
+                                  {result.unit ? ` ${result.unit}` : ''}
+                                </p>
+                                {result.referenceRange && (
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    Reference range: {result.referenceRange}
+                                  </p>
+                                )}
+                                {result.notes && (
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    Notes: {result.notes}
+                                  </p>
+                                )}
+                                <p className="mt-2 text-2xs text-slate-500">
+                                  Recorded by: {result.verifiedBy || 'Not specified'}
+                                  {' · '}
+                                  {result.verifiedAt
+                                    ? new Date(result.verifiedAt).toLocaleString('en-KE')
+                                    : 'Time not recorded'}
+                                </p>
+                              </div>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

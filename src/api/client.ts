@@ -1172,6 +1172,25 @@ export const api = {
       );
     },
 
+  createLabOrderBatch:
+    (data: {
+      encounterId: number;
+      patientId: number;
+      testIds?: number[];
+      investigations?: string[];
+      clinicalIndication: string;
+      specimenType: string;
+      priority: string;
+      clinicalNotes?: string;
+      orderedBy?: string;
+    }) =>
+      fetchJson<{ orders: LabOrder[]; queue: QueueItem }>(
+        `${API_BASE}/lab-orders/batch`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      ),
   createLabOrder:
     (order: Partial<LabOrder>) =>
       fetchJson<LabOrder>(
@@ -1620,3 +1639,4 @@ export const api = {
         }`
       ),
 };
+

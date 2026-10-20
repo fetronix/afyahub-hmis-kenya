@@ -853,12 +853,14 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/queues', requirePermission('appointments.create'), async (req, res) => {
+  app.post('/api/queues', requirePermission('appointments.create'), async (req: AuthRequest, res: Response) => {
+    if (!req.authContext) {
+      return res.status(401).json({ error: 'Authentication context is required.' });
+    }
+
     try {
       const item =
-        await queries.createQueueEntry(
-          req.body
-        );
+        await queries.createQueueEntry(req.authContext, req.body);
 
       res.status(201).json(item);
     } catch (err: any) {
@@ -890,7 +892,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // APPOINTMENTS
   // =========================================================
 
-  app.get('/api/appointments', async (req, res) => {
+  app.get('/api/appointments', requirePermission('appointments.read'), async (req, res) => {
     try {
       const facilityId = req.query.facilityId
         ? Number(req.query.facilityId)
@@ -909,7 +911,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/appointments', async (req, res) => {
+  app.post('/api/appointments', requirePermission('appointments.create'), async (req, res) => {
     try {
       const appt =
         await queries.createAppointment(
@@ -928,7 +930,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // VITALS & OBSERVATIONS
   // =========================================================
 
-  app.get('/api/observations', async (req, res) => {
+  app.get('/api/observations', requirePermission('clinical.read'), async (req, res) => {
     try {
       const encounterId =
         req.query.encounterId
@@ -954,7 +956,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/observations', async (req, res) => {
+  app.post('/api/observations', requirePermission('clinical.create'), async (req, res) => {
     try {
       const obs =
         await queries.recordObservation(
@@ -973,7 +975,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // DIAGNOSES & PROCEDURES
   // =========================================================
 
-  app.get('/api/diagnoses', async (req, res) => {
+  app.get('/api/diagnoses', requirePermission('clinical.read'), async (req, res) => {
     try {
       const encounterId =
         req.query.encounterId
@@ -999,7 +1001,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/diagnoses', async (req, res) => {
+  app.post('/api/diagnoses', requirePermission('clinical.create'), async (req, res) => {
     try {
       const diag =
         await queries.recordDiagnosis(
@@ -1014,7 +1016,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.get('/api/procedures', async (req, res) => {
+  app.get('/api/procedures', requirePermission('clinical.read'), async (req, res) => {
     try {
       const encounterId =
         req.query.encounterId
@@ -1040,7 +1042,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/procedures', async (req, res) => {
+  app.post('/api/procedures', requirePermission('clinical.create'), async (req, res) => {
     try {
       const proc =
         await queries.recordProcedure(
@@ -1308,7 +1310,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // LABORATORY
   // =========================================================
 
-  app.get('/api/lab-tests', async (req, res) => {
+  app.get('/api/lab-tests', requirePermission('laboratory.read'), async (req, res) => {
     try {
       const facilityId =
         req.query.facilityId
@@ -1328,7 +1330,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.get('/api/lab-orders', async (req, res) => {
+  app.get('/api/lab-orders', requirePermission('laboratory.read'), async (req, res) => {
     try {
       const facilityId =
         req.query.facilityId
@@ -1354,12 +1356,49 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/lab-orders', async (req, res) => {
+  app.post(
+    '/api/lab-orders/batch',
+    requirePermission('laboratory.orders.create'),
+    
+    async (req: AuthRequest, res: Response) => {
+      if (!req.authContext) {
+        return res.status(401).json({ error: 'Authentication context is required.' });
+      }
+
+      try {
+        const result = await queries.createLabOrderBatch(req.authContext, req.body);
+        return res.status(201).json(result);
+      } catch (err: any) {
+        const message = err?.message || 'Failed to create laboratory batch.';
+        const clientError = [
+          'Select at least one laboratory test.',
+          'Enter no more than 100 laboratory investigations.',
+          'Each investigation name must be 200 characters or fewer.',
+          'Invalid laboratory investigation name.',
+          'Invalid laboratory investigations.',
+          'Enter at least one laboratory investigation.',
+          'One or more laboratory test IDs are invalid.',
+          'Duplicate tests are not allowed in one submission.',
+          'Invalid laboratory priority.',
+          'Clinical indication is required.',
+          'Specimen type is required.',
+          'Clinical text exceeds the permitted length.',
+          'Encounter not found.',
+          'A selected test is unavailable at this facility.',
+        ].includes(message);
+
+        return res.status(clientError ? 400 : 500).json({ error: message });
+      }
+    },
+  );
+  app.post('/api/lab-orders', requirePermission('laboratory.orders.create'), async (req: AuthRequest, res: Response) => {
+    if (!req.authContext) {
+      return res.status(401).json({ error: 'Authentication context is required.' });
+    }
+
     try {
       const order =
-        await queries.createLabOrder(
-          req.body
-        );
+        await queries.createLabOrder(req.authContext, req.body);
 
       res.status(201).json(order);
     } catch (err: any) {
@@ -1369,7 +1408,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.put('/api/lab-orders/:id/status', async (req, res) => {
+  app.put('/api/lab-orders/:id/status', requirePermission('laboratory.results.enter'), async (req, res) => {
     try {
       const {
         status,
@@ -1391,7 +1430,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.get('/api/lab-results', async (req, res) => {
+  app.get('/api/lab-results', requirePermission('laboratory.read'), async (req, res) => {
     try {
       const orderId =
         req.query.orderId
@@ -1417,7 +1456,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/lab-results', async (req, res) => {
+  app.post('/api/lab-results', requirePermission('laboratory.results.enter'), async (req, res) => {
     try {
       const result =
         await queries.addLabResult(

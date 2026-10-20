@@ -3176,6 +3176,14 @@ export const labOrders = pgTable(
 
     status: text('status')
       .default('Ordered'),
+    clinicalIndication: text('clinical_indication'),
+
+    specimenType: text('specimen_type'),
+
+    priority: text('priority')
+      .default('Routine'),
+
+    clinicalNotes: text('clinical_notes'),
 
     sampleCollectedAt: timestamp(
       'sample_collected_at',
@@ -5214,4 +5222,5 @@ export const publicHealthReportsRelations =
 /* ============================================================
    END OF JALICARE SCHEMA
    ============================================================ */
+
 

@@ -12,7 +12,8 @@ export const STAFF_ROLE_CATALOGUE = [
     description: 'Provides clinical care and manages clinical records.',
     permissions: [
       'appointments.read', 'clinical.create', 'clinical.read',
-      'clinical.update', 'inpatient.read', 'patients.read',
+      'clinical.update', 'inpatient.read', 'laboratory.read',
+      'laboratory.orders.create', 'patients.read',
     ],
   },
   {

@@ -272,6 +272,10 @@ export interface LabOrder {
   testId?: number;
   testName: string;
   status: string;
+  clinicalIndication?: string | null;
+  specimenType?: string | null;
+  priority?: string | null;
+  clinicalNotes?: string | null;
   sampleCollectedAt?: string;
   sampleAccessionNumber?: string;
   orderedBy?: string;

@@ -67,6 +67,9 @@ export const OutpatientModule: React.FC = () => {
   const [selectedIcd, setSelectedIcd] = useState<(typeof commonIcd10List)[number] | null>(null);
   const [diagnosisType, setDiagnosisType] = useState('Primary');
   const [diagnosisList, setDiagnosisList] = useState<Diagnosis[]>([]);
+  const [customDiagnosisMode, setCustomDiagnosisMode] = useState(false);
+  const [customDiagnosisDescription, setCustomDiagnosisDescription] = useState('');
+  const [customDiagnosisNotes, setCustomDiagnosisNotes] = useState('');
 
   // Prescription Form
   const [newMed, setNewMed] = useState({
@@ -81,9 +84,17 @@ export const OutpatientModule: React.FC = () => {
   });
   const [prescriptions, setPrescriptions] = useState<Medication[]>([]);
 
-  // Lab Tests Catalogue
+  // Laboratory batch-order form
   const [labTests, setLabTests] = useState<LabTest[]>([]);
-  const [selectedLabTestId, setSelectedLabTestId] = useState<string>('');
+  const [selectedLabTestIds, setSelectedLabTestIds] = useState<string[]>([]);
+  const [labInvestigations, setLabInvestigations] = useState('');
+  const [labSearch, setLabSearch] = useState('');
+  const [labCategory, setLabCategory] = useState('All');
+  const [labIndication, setLabIndication] = useState('');
+  const [labSpecimenType, setLabSpecimenType] = useState('Blood');
+  const [labPriority, setLabPriority] = useState<'Routine' | 'Urgent' | 'STAT'>('Routine');
+  const [labClinicalNotes, setLabClinicalNotes] = useState('');
+  const [submittingLabOrder, setSubmittingLabOrder] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -118,7 +129,13 @@ export const OutpatientModule: React.FC = () => {
     });
     setDiagnosisList([]);
     setPrescriptions([]);
-    setSelectedLabTestId('');
+    setSelectedLabTestIds([]);
+      setLabInvestigations('');
+    setLabSearch('');
+    setLabIndication('');
+    setLabSpecimenType('Blood');
+    setLabPriority('Routine');
+    setLabClinicalNotes('');
 
     try {
       const encs = await api.getEncounters(p.id, currentFacility?.id);
@@ -336,9 +353,22 @@ export const OutpatientModule: React.FC = () => {
       return;
     }
 
-    const diagnosis = selectedIcd;
-    if (!diagnosis) {
-      showToast('Select a diagnosis before adding it.');
+    const description = customDiagnosisMode
+      ? customDiagnosisDescription.trim()
+      : selectedIcd?.desc || '';
+    const code = customDiagnosisMode ? 'UNCODED' : selectedIcd?.code || '';
+
+    if (!description) {
+      showToast(
+        customDiagnosisMode
+          ? 'Enter the clinical diagnosis description first.'
+          : 'Select a diagnosis before adding it.',
+      );
+      return;
+    }
+
+    if (!code) {
+      showToast('Select or enter a diagnosis before adding it.');
       return;
     }
 
@@ -346,14 +376,27 @@ export const OutpatientModule: React.FC = () => {
       const diag = await api.recordDiagnosis({
         encounterId: activeEncounter.id,
         patientId: activePatient.id,
-        icd10Code: diagnosis.code,
-        icd10Description: diagnosis.desc,
+        icd10Code: code,
+        icd10Description: description,
         diagnosisType,
-        status: 'Confirmed',
+        status: customDiagnosisMode ? 'Provisional' : 'Confirmed',
+        notes: customDiagnosisMode
+          ? [
+              'Uncoded diagnosis; requires coding review.',
+              customDiagnosisNotes.trim(),
+            ].filter(Boolean).join(' ')
+          : undefined,
         diagnosedBy: currentUser.name,
       });
       setDiagnosisList(prev => [...prev, diag]);
-      showToast(`Diagnosis ${diagnosis.code} added.`);
+      showToast(
+        customDiagnosisMode
+          ? 'Uncoded provisional diagnosis recorded for later coding review.'
+          : `Diagnosis ${code} added.`,
+      );
+      setSelectedIcd(null);
+      setCustomDiagnosisDescription('');
+      setCustomDiagnosisNotes('');
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
     }
@@ -412,8 +455,8 @@ export const OutpatientModule: React.FC = () => {
 
       // Also route patient to Pharmacy Queue
       await api.createQueueItem({
-        tenantId: activePatient.tenantId,
-        facilityId: activePatient.facilityId,
+        tenantId: activeEncounter.tenantId,
+        facilityId: activeEncounter.facilityId,
         patientId: activePatient.id,
         encounterId: activeEncounter.id,
         queueType: 'Pharmacy',
@@ -430,38 +473,63 @@ export const OutpatientModule: React.FC = () => {
   };
 
   const handleOrderLab = async () => {
-    if (!activeEncounter || !activePatient || !selectedLabTestId) return;
-    const test = labTests.find(t => t.id.toString() === selectedLabTestId);
-    if (!test) return;
+    if (submittingLabOrder) return;
+    if (!activeEncounter || !activePatient) {
+      showToast('Select a patient with an active encounter first.');
+      return;
+    }
 
+    const seen = new Set<string>();
+    const investigations = labInvestigations
+      .split(/\r?\n/)
+      .map(name => name.trim())
+      .filter(name => {
+        if (!name) return false;
+        const key = name.toLocaleLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+    if (investigations.length === 0) {
+      showToast('Enter at least one laboratory investigation.');
+      return;
+    }
+    if (investigations.length > 100 || investigations.some(name => name.length > 200)) {
+      showToast('Enter no more than 100 investigations, with each name up to 200 characters.');
+      return;
+    }
+    if (!labIndication.trim() || !labSpecimenType.trim()) {
+      showToast('Enter the clinical indication and specimen type.');
+      return;
+    }
+
+    setSubmittingLabOrder(true);
     try {
-      await api.createLabOrder({
-        tenantId: activePatient.tenantId,
-        facilityId: activePatient.facilityId,
-        patientId: activePatient.id,
+      const result = await api.createLabOrderBatch({
         encounterId: activeEncounter.id,
-        testId: test.id,
-        testName: test.name,
-        status: 'Ordered',
+        patientId: activePatient.id,
+        investigations,
+        clinicalIndication: labIndication.trim(),
+        specimenType: labSpecimenType.trim(),
+        priority: labPriority,
+        clinicalNotes: labClinicalNotes.trim() || undefined,
         orderedBy: currentUser.name,
       });
 
-      // Route to Lab Queue
-      await api.createQueueItem({
-        tenantId: activePatient.tenantId,
-        facilityId: activePatient.facilityId,
-        patientId: activePatient.id,
-        encounterId: activeEncounter.id,
-        queueType: 'Laboratory',
-        tokenNumber: `LAB-${Math.floor(100 + Math.random() * 900)}`,
-        priority: 'Normal',
-        status: 'Waiting',
-        waitingTimeMinutes: 0,
-      });
-
-      showToast(`Ordered ${test.name} and routed patient to Laboratory queue.`);
+      showToast(
+        `Created ${result.orders.length} lab order(s) and routed the patient to the Laboratory queue.`
+      );
+      setSelectedLabTestIds([]);
+      setLabInvestigations('');
+      setLabSearch('');
+      setLabIndication('');
+      setLabClinicalNotes('');
+      triggerRefresh();
     } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+      showToast(`Laboratory order failed: ${err.message}`);
+    } finally {
+      setSubmittingLabOrder(false);
     }
   };
 
@@ -534,7 +602,7 @@ export const OutpatientModule: React.FC = () => {
                 Known Chronic: <strong>{activePatient.chronicConditions || 'None'}</strong>
               </div>
               <div className="text-amber-800 text-2xs pt-1 border-t border-amber-200/60 font-mono">
-                Payer: {activePatient.payerType} Â· {activePatient.shaNumber || 'Self-Pay'}
+                Payer: {activePatient.payerType} · {activePatient.shaNumber || 'Self-Pay'}
               </div>
             </div>
 
@@ -751,10 +819,18 @@ export const OutpatientModule: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row items-center gap-2">
                 <select
-                  value={selectedIcd?.code || ''}
+                  value={customDiagnosisMode ? '__custom__' : selectedIcd?.code || ''}
                   onChange={(e) => {
-                    const match = commonIcd10List.find(x => x.code === e.target.value);
-                    setSelectedIcd(match || null);
+                    if (e.target.value === '__custom__') {
+                      setCustomDiagnosisMode(true);
+                      setSelectedIcd(null);
+                    } else {
+                      setCustomDiagnosisMode(false);
+                      setCustomDiagnosisDescription('');
+                      setCustomDiagnosisNotes('');
+                      const match = commonIcd10List.find(x => x.code === e.target.value);
+                      setSelectedIcd(match || null);
+                    }
                   }}
                   className="w-full sm:flex-1 px-3 py-2 border border-slate-200 rounded-md"
                 >
@@ -764,6 +840,7 @@ export const OutpatientModule: React.FC = () => {
                       {item.code} — {item.desc}
                     </option>
                   ))}
+                  <option value="__custom__">Diagnosis not listed — enter manually</option>
                 </select>
 
                 <select
@@ -785,6 +862,47 @@ export const OutpatientModule: React.FC = () => {
                 </button>
               </div>
 
+              {customDiagnosisMode && (
+                <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="font-semibold text-amber-900">
+                    Uncoded diagnosis
+                  </div>
+                  <p className="text-amber-800">
+                    Enter the clinician's diagnosis description. Do not invent an ICD-10 code.
+                    This entry will be marked provisional and require coding review.
+                  </p>
+                  <div>
+                    <label className="mb-1 block font-medium text-slate-700">
+                      Clinical diagnosis description *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={500}
+                      value={customDiagnosisDescription}
+                      onChange={(e) => setCustomDiagnosisDescription(e.target.value)}
+                      placeholder="Enter the diagnosis as documented by the clinician"
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block font-medium text-slate-700">
+                      Clinical notes (optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      maxLength={2000}
+                      value={customDiagnosisNotes}
+                      onChange={(e) => setCustomDiagnosisNotes(e.target.value)}
+                      placeholder="Add relevant clinical context or coding information"
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2"
+                    />
+                  </div>
+                  <div className="text-amber-900">
+                    Code: <strong>UNCODED</strong> · Status: <strong>Provisional</strong>
+                  </div>
+                </div>
+              )}
               {/* List of active diagnoses */}
               {diagnosisList.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-100">
@@ -806,28 +924,86 @@ export const OutpatientModule: React.FC = () => {
 
             {/* Diagnostics & Pharmacy Orders Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Order Lab Investigations */}
+              {/* Batch Laboratory Order Form */}
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs space-y-3">
                 <div className="font-bold text-slate-900 uppercase flex items-center gap-1.5">
                   <FlaskConical className="w-3.5 h-3.5 text-teal-700" />
-                  <span>Order Lab Investigation</span>
+                  <span>Order Laboratory Investigations</span>
                 </div>
+
+                <div className="rounded-md bg-slate-50 border border-slate-200 p-3 space-y-1">
+                  <div><span className="font-semibold">Patient ID:</span> {activePatient?.id ?? 'Select patient'}</div>
+                  <div><span className="font-semibold">Encounter ID:</span> {activeEncounter?.id ?? 'No active encounter'}</div>
+                  <div><span className="font-semibold">Facility:</span> {currentFacility?.name ?? 'Current facility'}</div>
+                </div>
+
+                                <div className="space-y-3">
+                  <label className="block font-semibold text-slate-700">
+                    Investigations required * (one per line)
+                  </label>
+                  <textarea
+                    value={labInvestigations}
+                    onChange={(e) => setLabInvestigations(e.target.value)}
+                    maxLength={20099}
+                    rows={5}
+                    placeholder={"Complete blood count (CBC)\nMalaria rapid diagnostic test\nUrinalysis"}
+                    aria-label="Laboratory investigations, one per line"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                  />
+                  <p className="text-slate-500">
+                    Type the investigation names directly. Blank lines and duplicate names are ignored.
+                    Maximum 100 investigations; each name may contain up to 200 characters.
+                  </p>
+                </div>
+<label className="block font-semibold text-slate-700">Clinical indication / reason *</label>
+                <textarea
+                  value={labIndication}
+                  onChange={(e) => setLabIndication(e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  placeholder="Why are these investigations required?"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                />
+
+                <label className="block font-semibold text-slate-700">Specimen type *</label>
+                <input
+                  value={labSpecimenType}
+                  onChange={(e) => setLabSpecimenType(e.target.value)}
+                  maxLength={120}
+                  placeholder="e.g. Blood, Urine"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                />
+
+                <label className="block font-semibold text-slate-700">Priority</label>
                 <select
-                  value={selectedLabTestId}
-                  onChange={(e) => setSelectedLabTestId(e.target.value)}
+                  value={labPriority}
+                  onChange={(e) => setLabPriority(e.target.value as 'Routine' | 'Urgent' | 'STAT')}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
-                  {labTests.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} (KES {Number(t.price).toLocaleString()})
-                    </option>
-                  ))}
+                  <option value="Routine">Routine</option>
+                  <option value="Urgent">Urgent</option>
+                  <option value="STAT">STAT</option>
                 </select>
+
+                <label className="block font-semibold text-slate-700">Additional clinical notes (optional)</label>
+                <textarea
+                  value={labClinicalNotes}
+                  onChange={(e) => setLabClinicalNotes(e.target.value)}
+                  maxLength={5000}
+                  rows={2}
+                  placeholder="Additional instructions for the laboratory"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                />
+
+                <div className="text-slate-600">
+                  {labInvestigations.split(/\r?\n/).filter(name => name.trim()).length} line(s) entered
+                </div>
                 <button
                   onClick={handleOrderLab}
-                  className="w-full py-1.5 bg-teal-700 text-white rounded-md font-medium hover:bg-teal-800 transition-colors"
+                  disabled={submittingLabOrder || !activePatient || !activeEncounter || !labInvestigations.split(/\r?\n/).some(name => name.trim())}
+                  className="w-full py-2 bg-teal-700 text-white rounded-md font-medium hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  Send Order to Laboratory
+                  {submittingLabOrder ? 'Submitting orders...' : 'Submit Orders to Laboratory'}
                 </button>
               </div>
 
@@ -940,4 +1116,3 @@ export const OutpatientModule: React.FC = () => {
     </div>
   );
 };
-
