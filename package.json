@@ -12,7 +12,9 @@
     "lint": "tsc --noEmit",
     "db:clean": "tsx src/db/clean-database.ts",
     "test:inpatient": "tsx src/tests/inpatient-domain.test.ts",
-    "db:grant-inpatient-permissions": "tsx scripts/grant-inpatient-permissions.ts"
+    "db:grant-inpatient-permissions": "tsx scripts/grant-inpatient-permissions.ts",
+    "test:billing": "tsx src/tests/billing-engine.test.ts",
+    "test": "npm run test:inpatient && npm run test:billing"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

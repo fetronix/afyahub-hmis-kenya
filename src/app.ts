@@ -32,6 +32,8 @@ import {
   resolveFacilityScope,
 } from './auth/scope.service.ts';
 
+import * as billing from './billing/billing.service.ts';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -231,6 +233,56 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
 
     return false;
+  };
+
+  /**
+   * Post a charge without ever letting billing break clinical care.
+   *
+   * A missing tariff, a closed invoice or a duplicate key must not stop
+   * a clinician from ordering a test or admitting a patient. Faults are
+   * logged and returned to the caller so the UI can surface them, while
+   * the clinical action still succeeds.
+   */
+  const chargeSafely = async (
+    request: billing.ChargeRequest,
+  ): Promise<billing.ChargeResult | null> => {
+    try {
+      return await billing.chargeForService(db, request);
+    } catch (error: unknown) {
+      console.error('Billing charge failed:', error);
+
+      return {
+        charged: false,
+        reason: 'INVALID_INPUT',
+        message: 'The service was recorded but could not be billed.',
+      };
+    }
+  };
+
+  /**
+   * Translate a clinical record into tariff-code candidates.
+   *
+   * The tariff table is free text per facility, so several plausible
+   * codes are offered and the first configured one wins.
+   */
+  const tariffCodeCandidates = (
+    prefix: string,
+    value: string | null | undefined,
+    defaults: readonly string[],
+  ): string[] => {
+    const codes: string[] = [];
+
+    const cleaned = typeof value === 'string'
+      ? value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '')
+      : '';
+
+    if (cleaned) {
+      codes.push(`${prefix}-${cleaned}`, cleaned);
+    }
+
+    codes.push(...defaults);
+
+    return [...new Set(codes)];
   };
 
   /**
@@ -794,7 +846,36 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         req.body,
       );
 
-      return res.status(201).json(encounter);
+      /*
+       * Consultation fee.
+       *
+       * Inpatient encounters are billed through the admission and the
+       * daily bed charges instead, so they do not raise a consultation.
+       */
+      let charge: billing.ChargeResult | null = null;
+
+      if (encounter && encounter.encounterType !== 'INPATIENT') {
+        charge = await chargeSafely({
+          tenantId: encounter.tenantId,
+          facilityId: encounter.facilityId,
+          patientId: encounter.patientId,
+          encounterId: encounter.id,
+          codes: tariffCodeCandidates('CONSULT', encounter.encounterType, [
+            `OPD-CONSULT`,
+            'CONSULTATION',
+            'CONSULT',
+          ]),
+          sourceType: 'CONSULTATION',
+          sourceId: encounter.id,
+          itemType: 'Consultation',
+          description: 'Clinical consultation',
+        });
+      }
+
+      return res.status(201).json({
+        ...encounter,
+        billing: charge,
+      });
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
       if (handleEncounterValidationError(err, res)) return;
@@ -1071,14 +1152,34 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/procedures', requirePermission('clinical.create'), async (req, res) => {
+  app.post('/api/procedures', requirePermission('clinical.create'), async (req: AuthRequest, res) => {
     try {
       const proc =
         await queries.recordProcedure(
           req.body
         );
 
-      res.status(201).json(proc);
+      let charge: billing.ChargeResult | null = null;
+
+      if (proc && req.authContext) {
+        charge = await chargeSafely({
+          tenantId: req.authContext.tenantId ?? 0,
+          facilityId: req.authContext.facilityId ?? 0,
+          patientId: (proc as { patientId?: number }).patientId ?? 0,
+          encounterId: (proc as { encounterId?: number }).encounterId ?? null,
+          codes: tariffCodeCandidates(
+            'PROC',
+            (proc as { procedureName?: string }).procedureName,
+            ['PROCEDURE', 'PROC-GENERAL'],
+          ),
+          sourceType: 'PROCEDURE',
+          sourceId: (proc as { id?: number }).id ?? 0,
+          itemType: 'Procedure',
+          description: (proc as { procedureName?: string }).procedureName,
+        });
+      }
+
+      res.status(201).json({ ...proc, billing: charge });
     } catch (err: any) {
       res.status(500).json({
         error: err.message,
@@ -1422,7 +1523,37 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           `Admitted patient ${admission.patientId} to ward ${admission.wardId}, bed ${admission.bedId}`,
         );
 
-        res.status(201).json(admission);
+        /*
+         * One-off admission fee, when the facility has configured one.
+         * Daily bed charges are accrued separately on discharge so each
+         * night is billed once, keyed by date.
+         */
+        const [ward] = await db
+          .select({
+            code: schema.wards.code,
+            name: schema.wards.name,
+            dailyRate: schema.wards.dailyRate,
+          })
+          .from(schema.wards)
+          .where(eq(schema.wards.id, admission.wardId))
+          .limit(1);
+
+        const charge = await chargeSafely({
+          tenantId: admission.tenantId,
+          facilityId: admission.facilityId,
+          patientId: admission.patientId,
+          encounterId: admission.encounterId ?? null,
+          codes: tariffCodeCandidates('ADMIT', ward?.code, [
+            'ADMISSION',
+            'INPATIENT-ADMISSION',
+          ]),
+          sourceType: 'ADMISSION',
+          sourceId: admission.id,
+          itemType: 'Admission',
+          description: `Admission — ${ward?.name ?? 'Inpatient ward'}`,
+        });
+
+        res.status(201).json({ ...admission, billing: charge });
       } catch (err: unknown) {
         if (handleInpatientError(err, res)) return;
 
@@ -1460,7 +1591,58 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           `Discharged patient ${admission.patientId} from bed ${admission.bedId}`,
         );
 
-        res.json(admission);
+        /*
+         * Accrue one bed-day charge per night of the stay.
+         *
+         * Each night is keyed BED_DAY:<admissionId>:<date>, so
+         * re-running a discharge, or a nightly accrual job that calls
+         * the same path, can never double-bill a night.
+         */
+        const [ward] = await db
+          .select({
+            code: schema.wards.code,
+            name: schema.wards.name,
+          })
+          .from(schema.wards)
+          .where(eq(schema.wards.id, admission.wardId))
+          .limit(1);
+
+        const nights = billing.bedDayDates(
+          admission.admissionDate,
+          admission.dischargeDate,
+        );
+
+        const bedDayCharges: Array<billing.ChargeResult | null> = [];
+
+        for (const date of nights) {
+          bedDayCharges.push(
+            await chargeSafely({
+              tenantId: admission.tenantId,
+              facilityId: admission.facilityId,
+              patientId: admission.patientId,
+              encounterId: admission.encounterId ?? null,
+              codes: tariffCodeCandidates('BED', ward?.code, [
+                'BED-DAY',
+                'INPATIENT-BED-DAY',
+                'WARD-DAY',
+                'BED',
+              ]),
+              sourceType: 'BED_DAY',
+              sourceId: admission.id,
+              idempotencySuffix: date,
+              itemType: 'Inpatient',
+              description: `${ward?.name ?? 'Ward'} bed — ${date}`,
+            }),
+          );
+        }
+
+        res.json({
+          ...admission,
+          billing: {
+            nights: nights.length,
+            bedDays: bedDayCharges,
+          },
+        });
       } catch (err: unknown) {
         if (handleInpatientError(err, res)) return;
 
@@ -1468,6 +1650,210 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         res.status(500).json({
           success: false,
           error: 'DISCHARGE_FAILED',
+        });
+      }
+    },
+  );
+
+  // =========================================================
+  // INPATIENT EXTRAS: TRANSFER, BED-DAYS, NURSING NOTES
+  // =========================================================
+
+  app.post(
+    '/api/admissions/:id/transfer',
+    requirePermission('inpatient.admit'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const { admission, transfer } =
+          await queries.transferAdmissionScoped(
+            context,
+            Number(req.params.id),
+            {
+              toWardId: req.body?.toWardId,
+              toBedId: req.body?.toBedId,
+              reason: req.body?.reason,
+              transferredBy:
+                typeof req.body?.transferredBy === 'string'
+                  ? req.body.transferredBy
+                  : req.user?.fullName ?? 'Unknown',
+            },
+          );
+
+        await queries.logAuditEvent(
+          admission.tenantId,
+          admission.facilityId,
+          String(context.userId),
+          'UPDATE',
+          'Admission',
+          String(admission.id),
+          `Transferred patient ${admission.patientId} from bed ${transfer.fromBedId} to ${transfer.toBedId}`,
+        );
+
+        /*
+         * Close the departing ward's bed-day segment using the OLD ward
+         * rate, so a stay that moves between wards is not re-priced.
+         */
+        const accrual = await queries.accrueBedDaysScoped(
+          context,
+          admission.id,
+        );
+
+        res.json({ admission, transfer, billing: accrual });
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Admission transfer error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'ADMISSION_TRANSFER_FAILED',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/admissions/:id/transfers',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const list = await queries.getAdmissionTransfersScoped(
+          context,
+          Number(req.params.id),
+        );
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Admission transfer list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'ADMISSION_TRANSFERS_FETCH_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Accrue bed-day charges on demand.
+   *
+   * Called by discharge and transfer. Exposed so a scheduled job can
+   * bill long stays without waiting for discharge — it is idempotent,
+   * so running it repeatedly bills each night once.
+   */
+  app.post(
+    '/api/admissions/:id/accrue-bed-days',
+    requirePermission('billing.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const accrual = await queries.accrueBedDaysScoped(
+          context,
+          Number(req.params.id),
+          typeof req.body?.untilDate === 'string'
+            ? req.body.untilDate
+            : undefined,
+        );
+
+        res.json(accrual);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Bed-day accrual error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'BED_DAY_ACCRUAL_FAILED',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/nursing-notes',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const admissionId = req.query.admissionId
+          ? Number(req.query.admissionId)
+          : undefined;
+
+        const patientId = req.query.patientId
+          ? Number(req.query.patientId)
+          : undefined;
+
+        const list = await queries.getNursingNotesScoped(context, {
+          admissionId,
+          patientId,
+        });
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Nursing note list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'NURSING_NOTES_FETCH_FAILED',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/nursing-notes',
+    requirePermission('clinical.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const note = await queries.createNursingNoteScoped(context, {
+          admissionId: req.body?.admissionId,
+          patientId: req.body?.patientId,
+          encounterId: req.body?.encounterId,
+          noteType: req.body?.noteType,
+          shift: req.body?.shift,
+          note: req.body?.note,
+          recordedBy:
+            typeof req.body?.recordedBy === 'string'
+              ? req.body.recordedBy
+              : req.user?.fullName ?? 'Unknown',
+        });
+
+        await queries.logAuditEvent(
+          note.tenantId,
+          note.facilityId,
+          String(context.userId),
+          'CREATE',
+          'NursingNote',
+          String(note.id),
+          `Nursing note recorded for patient ${note.patientId}`,
+        );
+
+        res.status(201).json(note);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Nursing note creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'NURSING_NOTE_CREATION_FAILED',
         });
       }
     },
@@ -1622,7 +2008,33 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
       const order =
         await queries.createLabOrder(req.authContext, req.body);
 
-      res.status(201).json(order);
+      const labOrder = order as {
+        id?: number;
+        tenantId?: number;
+        facilityId?: number;
+        patientId?: number;
+        encounterId?: number | null;
+        testName?: string;
+      } | null;
+
+      const charge = labOrder && labOrder.id
+        ? await chargeSafely({
+            tenantId: labOrder.tenantId ?? req.authContext.tenantId ?? 0,
+            facilityId: labOrder.facilityId ?? req.authContext.facilityId ?? 0,
+            patientId: labOrder.patientId ?? 0,
+            encounterId: labOrder.encounterId ?? null,
+            codes: tariffCodeCandidates('LAB', labOrder.testName, [
+              'LAB-GENERAL',
+              'LABORATORY',
+            ]),
+            sourceType: 'LAB_ORDER',
+            sourceId: labOrder.id,
+            itemType: 'Laboratory',
+            description: labOrder.testName,
+          })
+        : null;
+
+      res.status(201).json({ ...order, billing: charge });
     } catch (err: any) {
       res.status(500).json({
         error: err.message,
@@ -1802,7 +2214,37 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           req.body
         );
 
-      res.status(201).json(order);
+      const radiologyOrder = order as {
+        id?: number;
+        tenantId?: number;
+        facilityId?: number;
+        patientId?: number;
+        encounterId?: number | null;
+        testName?: string;
+        bodyPart?: string;
+      } | null;
+
+      let charge: billing.ChargeResult | null = null;
+
+      if (radiologyOrder && radiologyOrder.id) {
+        charge = await chargeSafely({
+          tenantId: radiologyOrder.tenantId ?? 0,
+          facilityId: radiologyOrder.facilityId ?? 0,
+          patientId: radiologyOrder.patientId ?? 0,
+          encounterId: radiologyOrder.encounterId ?? null,
+          codes: tariffCodeCandidates(
+            'RAD',
+            radiologyOrder.testName,
+            ['RADIOLOGY', 'RAD-GENERAL', 'IMAGING'],
+          ),
+          sourceType: 'RADIOLOGY',
+          sourceId: radiologyOrder.id,
+          itemType: 'Radiology',
+          description: radiologyOrder.testName,
+        });
+      }
+
+      res.status(201).json({ ...order, billing: charge });
     } catch (err: any) {
       res.status(500).json({
         error: err.message,
@@ -1873,14 +2315,82 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/pharmacy/dispense', requirePermission('pharmacy.dispense'), async (req, res) => {
+  app.post('/api/pharmacy/dispense', requirePermission('pharmacy.dispense'), async (req: AuthRequest, res) => {
     try {
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+        });
+      }
+
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_DISPENSE_BODY',
+        });
+      }
+
       const disp =
         await queries.dispenseMedication(
           req.body
         );
 
-      res.status(201).json(disp);
+      const dispensation = disp as {
+        id?: number;
+        tenantId?: number;
+        facilityId?: number;
+        patientId?: number;
+        prescriptionId?: number | null;
+        quantityDispensed?: number;
+      } | null;
+
+      /*
+       * Price the dispensation from the facility tariff.
+       *
+       * The previous implementation created the invoice in the browser
+       * with a hardcoded KES 15 unit price, which meant pharmacy revenue
+       * never reflected the facility's own rates. Tariffs now win; the
+       * medication's own price is used only as a fallback.
+       */
+      let charge: billing.ChargeResult | null = null;
+
+      if (dispensation && dispensation.id && dispensation.patientId) {
+        const drugName =
+          typeof req.body.drugName === 'string' ? req.body.drugName : 'Medication';
+
+        charge = await chargeSafely({
+          tenantId:
+            dispensation.tenantId ?? req.authContext.tenantId ?? 0,
+          facilityId:
+            dispensation.facilityId ?? req.authContext.facilityId ?? 0,
+          patientId: dispensation.patientId,
+          encounterId:
+            typeof req.body.encounterId === 'number'
+              ? req.body.encounterId
+              : null,
+          codes: tariffCodeCandidates('DRUG', drugName, [
+            'PHARMACY',
+            'MEDICATION',
+          ]),
+          quantity:
+            typeof dispensation.quantityDispensed === 'number'
+              ? dispensation.quantityDispensed
+              : 1,
+          sourceType: 'PHARMACY',
+          sourceId: dispensation.id,
+          itemType: 'Pharmacy',
+          description: drugName,
+          fallbackUnitPrice:
+            typeof req.body.unitPrice === 'string' ||
+            typeof req.body.unitPrice === 'number'
+              ? req.body.unitPrice
+              : null,
+          fallbackDescription: drugName,
+        });
+      }
+
+      res.status(201).json({ ...disp, billing: charge });
     } catch (err: any) {
       res.status(500).json({
         error: err.message,
@@ -2580,6 +3090,147 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           success: false,
           error: 'INVOICE_ITEMS_FETCH_FAILED',
           message: 'Failed to fetch invoice items.',
+        });
+      }
+    },
+  );
+
+  /**
+   * Full invoice: header, line items with their clinical provenance and
+   * every payment already recorded.
+   */
+  app.get(
+    '/api/invoices/:id',
+    requirePermission('billing.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const detail = await queries.getInvoiceDetailScoped(
+          context,
+          Number(req.params.id),
+        );
+
+        if (!detail) {
+          return res.status(404).json({
+            success: false,
+            error: 'INVOICE_NOT_FOUND',
+          });
+        }
+
+        return res.json(detail);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Invoice detail error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'INVOICE_DETAIL_FETCH_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Void an invoice. Audit-preserving: the row and its lines remain,
+   * marked voided, so the record is never destroyed.
+   */
+  app.post(
+    '/api/invoices/:id/void',
+    requirePermission('billing.update'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      const reason =
+        typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+
+      if (!reason) {
+        return res.status(400).json({
+          success: false,
+          error: 'VOID_REASON_REQUIRED',
+          message: 'A reason is required to void an invoice.',
+        });
+      }
+
+      try {
+        const invoice = await queries.voidInvoiceScoped(
+          context,
+          Number(req.params.id),
+          reason,
+        );
+
+        await queries.logAuditEvent(
+          invoice.tenantId,
+          invoice.facilityId,
+          String(context.userId),
+          'UPDATE',
+          'Invoice',
+          String(invoice.id),
+          `Invoice ${invoice.invoiceNumber} voided: ${reason}`,
+        );
+
+        return res.json(invoice);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Invoice void error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'INVOICE_VOID_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Revenue by service category, derived from invoice lines.
+   * Excludes voided invoices so the figures reconcile to cash.
+   */
+  app.get(
+    '/api/analytics/revenue',
+    requirePermission('reports.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = resolveFacilityScope(
+          context,
+          req.query.facilityId ? Number(req.query.facilityId) : undefined,
+        );
+
+        const rows = await billing.getRevenueByServiceType(db, facilityId);
+
+        const totalCents = rows.reduce(
+          (sum, row) => sum + billing.toCents(row.revenue),
+          0,
+        );
+
+        return res.json({
+          facilityId,
+          totalRevenue: billing.fromCents(totalCents),
+          byService: rows
+            .map((row) => ({
+              ...row,
+              revenue: billing.fromCents(billing.toCents(row.revenue)),
+            }))
+            .sort(
+              (a, b) =>
+                billing.toCents(b.revenue) - billing.toCents(a.revenue),
+            ),
+        });
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        console.error('Revenue report error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'REVENUE_REPORT_FAILED',
         });
       }
     },

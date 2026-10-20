@@ -1093,6 +1093,126 @@ export const api = {
         }
       ),
 
+  /**
+   * Transfer an admitted patient to another ward/bed.
+   * Bed-day charges for the departing ward segment are accrued
+   * server-side and returned in `billing`.
+   */
+  transferAdmission:
+    (
+      id: number,
+      data: { toWardId: number; toBedId: number; reason?: string; transferredBy?: string }
+    ) =>
+      fetchJson<any>(
+        `${API_BASE}/admissions/${id}/transfer`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      ),
+
+  getAdmissionTransfers:
+    (id: number) =>
+      fetchJson<any[]>(
+        `${API_BASE}/admissions/${id}/transfers`
+      ),
+
+  /**
+   * Accrue bed-day charges up to a date. Idempotent: each night is
+   * billed once regardless of how often this is called.
+   */
+  accrueBedDays:
+    (id: number, untilDate?: string) =>
+      fetchJson<any>(
+        `${API_BASE}/admissions/${id}/accrue-bed-days`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ untilDate }),
+        }
+      ),
+
+  // ============================================================
+  // NURSING NOTES
+  // ============================================================
+
+  getNursingNotes:
+    (filters: { admissionId?: number; patientId?: number }) => {
+      const params = new URLSearchParams();
+
+      if (filters.admissionId) {
+        params.append('admissionId', String(filters.admissionId));
+      }
+
+      if (filters.patientId) {
+        params.append('patientId', String(filters.patientId));
+      }
+
+      const query = params.toString();
+
+      return fetchJson<any[]>(
+        `${API_BASE}/nursing-notes${query ? `?${query}` : ''}`
+      );
+    },
+
+  createNursingNote:
+    (data: {
+      admissionId?: number;
+      patientId: number;
+      encounterId?: number;
+      noteType?: string;
+      shift?: string;
+      note: string;
+      recordedBy?: string;
+    }) =>
+      fetchJson<any>(
+        `${API_BASE}/nursing-notes`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      ),
+
+  // ============================================================
+  // INVOICE LIFECYCLE & REVENUE
+  // ============================================================
+
+  getInvoiceDetail:
+    (id: number) =>
+      fetchJson<{
+        invoice: BillingInvoice;
+        items: BillingItem[];
+        payments: BillingPayment[];
+      }>(
+        `${API_BASE}/invoices/${id}`
+      ),
+
+  voidInvoice:
+    (id: number, reason: string) =>
+      fetchJson<BillingInvoice>(
+        `${API_BASE}/invoices/${id}/void`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+        }
+      ),
+
+  getRevenueReport:
+    (facilityId?: number) =>
+      fetchJson<{
+        facilityId: number;
+        totalRevenue: string;
+        byService: Array<{
+          itemType: string;
+          sourceType: string | null;
+          lineCount: number;
+          revenue: string;
+        }>;
+      }>(
+        `${API_BASE}/analytics/revenue${
+          facilityId ? `?facilityId=${facilityId}` : ''
+        }`
+      ),
+
   // ============================================================
   // THEATRE CASES
   // ============================================================
@@ -1386,10 +1506,25 @@ export const api = {
       batchNumber?: string;
       dispensedBy: string;
       notes?: string;
-      tenantId: number;
-      facilityId: number;
+      /**
+       * Scope is derived server-side from the session. facilityId is
+       * only a hint for tenant-level users.
+       */
+      facilityId?: number;
+      tenantId?: number;
+      /** Passed to the billing engine for tariff matching / fallback. */
+      drugName?: string;
+      encounterId?: number;
+      unitPrice?: string;
     }) =>
-      fetchJson<any>(
+      fetchJson<{
+        billing?: {
+          charged: boolean;
+          invoiceNumber?: string;
+          totalAmount?: string;
+          message?: string;
+        };
+      }>(
         `${API_BASE}/pharmacy/dispense`,
         {
           method: 'POST',

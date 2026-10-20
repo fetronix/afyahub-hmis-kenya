@@ -10,6 +10,14 @@ import {
   resolveFacilityScope,
 } from '../auth/scope.service.ts';
 
+import {
+  bedDayDates,
+  bedDayTariffCodes,
+  chargeForService,
+} from '../billing/billing.service.ts';
+
+export { bedDayTariffCodes } from '../billing/billing.service.ts';
+
 // Tenants
 export async function getTenants() {
   try {
@@ -2908,3 +2916,568 @@ export async function createLabOrderBatch(
     throw error;
   }
 }
+// ============================================================
+// INPATIENT: TRANSFERS, BED-DAY ACCRUAL AND NURSING NOTES
+// ============================================================
+
+/**
+ * Accrue one bed-day charge per calendar night of a stay segment.
+ *
+ * A "segment" runs from the admission date, or from the last transfer,
+ * up to `untilDate`. Charge keys are BED_DAY:<admissionId>:<date>, so the
+ * boundary day covered by two segments is still billed exactly once.
+ *
+ * Returns the per-night results so the caller can report what was billed.
+ */
+export async function accrueBedDaysScoped(
+  context: AuthorizationContext,
+  admissionId: number,
+  untilDate?: string | null,
+) {
+  const admission = await getAdmissionByIdScoped(context, admissionId);
+
+  if (!admission) {
+    throw new InpatientDomainError(
+      'ADMISSION_NOT_FOUND',
+      'Admission not found.',
+      404,
+    );
+  }
+
+  const [ward] = await db
+    .select({
+      code: schema.wards.code,
+      name: schema.wards.name,
+    })
+    .from(schema.wards)
+    .where(eq(schema.wards.id, admission.wardId))
+    .limit(1);
+
+  const transfers = await db
+    .select({ transferredAt: schema.admissionTransfers.transferredAt })
+    .from(schema.admissionTransfers)
+    .where(eq(schema.admissionTransfers.admissionId, admission.id))
+    .orderBy(desc(schema.admissionTransfers.transferredAt))
+    .limit(1);
+
+  const segmentStart =
+    transfers[0]?.transferredAt instanceof Date
+      ? transfers[0].transferredAt.toISOString().slice(0, 10)
+      : admission.admissionDate;
+
+  const dates = bedDayDates(
+    segmentStart,
+    untilDate ?? admission.dischargeDate ?? null,
+  );
+
+  const results = [];
+
+  for (const date of dates) {
+    results.push(
+      await chargeForService(db, {
+        tenantId: admission.tenantId,
+        facilityId: admission.facilityId,
+        patientId: admission.patientId,
+        encounterId: admission.encounterId ?? null,
+        codes: bedDayTariffCodes(ward?.code),
+        sourceType: 'BED_DAY',
+        sourceId: admission.id,
+        idempotencySuffix: date,
+        itemType: 'Inpatient',
+        description: `${ward?.name ?? 'Ward'} bed — ${date}`,
+      }),
+    );
+  }
+
+  return { nights: dates.length, charges: results };
+}
+
+/* Bed-night tariff code precedence lives in the billing module. */
+
+export interface TransferAdmissionInput {
+  toWardId: number;
+  toBedId: number;
+  reason?: string | null;
+  transferredBy: string;
+}
+
+/**
+ * Move an admitted patient to another ward/bed inside the facility.
+ *
+ * The old bed is released to Cleaning and the new bed occupied in the
+ * same transaction, so the board can never show a patient in two beds.
+ */
+export async function transferAdmissionScoped(
+  context: AuthorizationContext,
+  admissionId: number,
+  input: TransferAdmissionInput,
+) {
+  const admission = await getAdmissionByIdScoped(context, admissionId);
+
+  if (!admission) {
+    throw new InpatientDomainError(
+      'ADMISSION_NOT_FOUND',
+      'Admission not found.',
+      404,
+    );
+  }
+
+  if (admission.status !== 'Admitted') {
+    throw new InpatientDomainError(
+      'ADMISSION_ALREADY_CLOSED',
+      'Only an active admission can be transferred.',
+      409,
+    );
+  }
+
+  const toWardId = Number(input?.toWardId);
+  const toBedId = Number(input?.toBedId);
+
+  if (!Number.isSafeInteger(toWardId) || toWardId <= 0) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'A valid destination ward is required.',
+      400,
+    );
+  }
+
+  if (!Number.isSafeInteger(toBedId) || toBedId <= 0) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'A valid destination bed is required.',
+      400,
+    );
+  }
+
+  return await db.transaction(async (tx) => {
+    const [ward] = await tx
+      .select()
+      .from(schema.wards)
+      .where(
+        and(
+          eq(schema.wards.id, toWardId),
+          eq(schema.wards.facilityId, admission.facilityId),
+        ),
+      )
+      .limit(1);
+
+    if (!ward) {
+      throw new InpatientDomainError(
+        'WARD_NOT_FOUND',
+        'Destination ward not found in this facility.',
+        404,
+      );
+    }
+
+    const [bed] = await tx
+      .select()
+      .from(schema.beds)
+      .where(
+        and(
+          eq(schema.beds.id, toBedId),
+          eq(schema.beds.wardId, ward.id),
+        ),
+      )
+      .limit(1);
+
+    if (!bed) {
+      throw new InpatientDomainError(
+        'BED_NOT_FOUND',
+        'Destination bed not found in that ward.',
+        404,
+      );
+    }
+
+    const [activeOnBed] = await tx
+      .select({ id: schema.admissions.id })
+      .from(schema.admissions)
+      .where(
+        and(
+          eq(schema.admissions.bedId, bed.id),
+          eq(schema.admissions.status, 'Admitted'),
+        ),
+      )
+      .limit(1);
+
+    if (activeOnBed) {
+      throw new InpatientDomainError(
+        'BED_OCCUPIED',
+        'The destination bed already has an active admission.',
+        409,
+      );
+    }
+
+    if (bed.status !== 'Available' && bed.status !== 'Cleaning') {
+      throw new InpatientDomainError(
+        'BED_NOT_AVAILABLE',
+        `The destination bed is not available (current status: ${bed.status ?? 'unknown'}).`,
+        409,
+      );
+    }
+
+    if (bed.id === admission.bedId) {
+      throw new InpatientDomainError(
+        'INVALID_INPUT',
+        'The patient is already in that bed.',
+        400,
+      );
+    }
+
+    const [transfer] = await tx
+      .insert(schema.admissionTransfers)
+      .values({
+        tenantId: admission.tenantId,
+        facilityId: admission.facilityId,
+        admissionId: admission.id,
+        patientId: admission.patientId,
+        fromWardId: admission.wardId,
+        fromBedId: admission.bedId,
+        toWardId: ward.id,
+        toBedId: bed.id,
+        reason: typeof input.reason === 'string' ? input.reason.trim() : null,
+        transferredBy: input.transferredBy,
+        transferredByUserId: context.userId,
+      })
+      .returning();
+
+    const [updated] = await tx
+      .update(schema.admissions)
+      .set({
+        wardId: ward.id,
+        bedId: bed.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.admissions.id, admission.id))
+      .returning();
+
+    /* Release the old bed only if it still holds this patient. */
+    if (admission.bedId) {
+      await tx
+        .update(schema.beds)
+        .set({
+          status: 'Cleaning',
+          currentPatientId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.beds.id, admission.bedId),
+            eq(schema.beds.currentPatientId, admission.patientId),
+          ),
+        );
+    }
+
+    await tx
+      .update(schema.beds)
+      .set({
+        status: 'Occupied',
+        currentPatientId: admission.patientId,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.beds.id, bed.id));
+
+    return { transfer, admission: updated };
+  });
+}
+
+export async function getAdmissionTransfersScoped(
+  context: AuthorizationContext,
+  admissionId: number,
+) {
+  const admission = await getAdmissionByIdScoped(context, admissionId);
+
+  if (!admission) return [];
+
+  return db
+    .select()
+    .from(schema.admissionTransfers)
+    .where(eq(schema.admissionTransfers.admissionId, admission.id))
+    .orderBy(desc(schema.admissionTransfers.transferredAt));
+}
+
+/* ------------------------------------------------------------
+   NURSING NOTES
+   ------------------------------------------------------------ */
+
+const NURSING_NOTE_TYPES = new Set([
+  'Progress',
+  'Observation',
+  'Handover',
+  'Medication',
+  'Incident',
+]);
+
+export interface CreateNursingNoteInput {
+  admissionId?: number | null;
+  patientId: number;
+  encounterId?: number | null;
+  noteType?: string;
+  shift?: string | null;
+  note: string;
+  recordedBy: string;
+}
+
+export async function createNursingNoteScoped(
+  context: AuthorizationContext,
+  input: CreateNursingNoteInput,
+) {
+  const patientId = Number(input?.patientId);
+
+  if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'A valid patient is required.',
+      400,
+    );
+  }
+
+  const note = typeof input?.note === 'string' ? input.note.trim() : '';
+
+  if (!note) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'A nursing note cannot be empty.',
+      400,
+    );
+  }
+
+  if (note.length > 8000) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'A nursing note must be 8000 characters or fewer.',
+      400,
+    );
+  }
+
+  const noteType = NURSING_NOTE_TYPES.has(String(input.noteType))
+    ? String(input.noteType)
+    : 'Progress';
+
+  let admissionId: number | null = null;
+  let tenantId: number;
+  let facilityId: number;
+
+  if (input.admissionId !== undefined && input.admissionId !== null) {
+    const admission = await getAdmissionByIdScoped(
+      context,
+      Number(input.admissionId),
+    );
+
+    if (!admission) {
+      throw new InpatientDomainError(
+        'ADMISSION_NOT_FOUND',
+        'Admission not found.',
+        404,
+      );
+    }
+
+    if (admission.patientId !== patientId) {
+      throw new InpatientDomainError(
+        'INVALID_INPUT',
+        'The patient does not match that admission.',
+        400,
+      );
+    }
+
+    admissionId = admission.id;
+    tenantId = admission.tenantId;
+    facilityId = admission.facilityId;
+  } else {
+    const patient = await requirePatientInTenant(
+      context,
+      patientId,
+      context.tenantId ?? 0,
+    );
+
+    if (!patient) {
+      throw new InpatientDomainError(
+        'PATIENT_NOT_FOUND',
+        'Patient not found in the authorised tenant.',
+        404,
+      );
+    }
+
+    const facility = await requireInpatientFacility(context);
+
+    tenantId = facility.tenantId;
+    facilityId = facility.id;
+  }
+
+  const [created] = await db
+    .insert(schema.nursingNotes)
+    .values({
+      tenantId,
+      facilityId,
+      patientId,
+      admissionId,
+      encounterId:
+        input.encounterId === undefined || input.encounterId === null
+          ? null
+          : Number(input.encounterId),
+      noteType,
+      shift:
+        typeof input.shift === 'string' && input.shift.trim()
+          ? input.shift.trim().slice(0, 20)
+          : null,
+      note,
+      recordedBy:
+        typeof input.recordedBy === 'string' && input.recordedBy.trim()
+          ? input.recordedBy.trim().slice(0, 120)
+          : 'Unknown',
+      recordedByUserId: context.userId,
+    })
+    .returning();
+
+  return created;
+}
+
+export async function getNursingNotesScoped(
+  context: AuthorizationContext,
+  filters: { admissionId?: number; patientId?: number },
+) {
+  const conditions = [];
+
+  if (filters.admissionId !== undefined) {
+    const admission = await getAdmissionByIdScoped(
+      context,
+      Number(filters.admissionId),
+    );
+
+    if (!admission) return [];
+
+    conditions.push(
+      eq(schema.nursingNotes.admissionId, admission.id),
+    );
+  }
+
+  if (filters.patientId !== undefined) {
+    const patientId = Number(filters.patientId);
+
+    if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+      throw new InpatientDomainError(
+        'INVALID_INPUT',
+        'A valid patient ID is required.',
+        400,
+      );
+    }
+
+    await requirePatientInTenant(context, patientId, context.tenantId ?? 0);
+
+    conditions.push(eq(schema.nursingNotes.patientId, patientId));
+  }
+
+  if (conditions.length === 0) {
+    const facility = await requireInpatientFacility(context);
+
+    conditions.push(eq(schema.nursingNotes.facilityId, facility.id));
+  }
+
+  return db
+    .select()
+    .from(schema.nursingNotes)
+    .where(and(...conditions))
+    .orderBy(desc(schema.nursingNotes.recordedAt))
+    .limit(200);
+}
+
+/* ------------------------------------------------------------
+   INVOICE LIFECYCLE
+   ------------------------------------------------------------ */
+
+export async function getInvoiceDetailScoped(
+  context: AuthorizationContext,
+  invoiceId: number,
+) {
+  const id = Number(invoiceId);
+
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'A valid invoice ID is required.',
+      400,
+    );
+  }
+
+  const [invoice] = await db
+    .select()
+    .from(schema.billingInvoices)
+    .where(eq(schema.billingInvoices.id, id))
+    .limit(1);
+
+  if (!invoice) return null;
+
+  requireTenantScope(context, invoice.tenantId);
+  requireFacilityScope(context, invoice.tenantId, invoice.facilityId);
+
+  const items = await db
+    .select()
+    .from(schema.billingItems)
+    .where(eq(schema.billingItems.invoiceId, invoice.id));
+
+  const payments = await db
+    .select()
+    .from(schema.billingPayments)
+    .where(eq(schema.billingPayments.invoiceId, invoice.id))
+    .orderBy(desc(schema.billingPayments.createdAt));
+
+  return { invoice, items, payments };
+}
+
+/**
+ * Void an invoice.
+ *
+ * Voiding is additive: the invoice and its lines are retained for audit,
+ * and `voided_at` removes it from open-invoice lookups so new charges
+ * open a fresh bill. A voided invoice cannot be voided twice.
+ */
+export async function voidInvoiceScoped(
+  context: AuthorizationContext,
+  invoiceId: number,
+  reason: string,
+) {
+  const detail = await getInvoiceDetailScoped(context, invoiceId);
+
+  if (!detail) {
+    throw new InpatientDomainError(
+      'ADMISSION_NOT_FOUND',
+      'Invoice not found.',
+      404,
+    );
+  }
+
+  if (detail.invoice.voidedAt) {
+    throw new InpatientDomainError(
+      'ADMISSION_ALREADY_CLOSED',
+      'This invoice has already been voided.',
+      409,
+    );
+  }
+
+  if (toCentsPositive(detail.invoice.paidAmount) > 0) {
+    throw new InpatientDomainError(
+      'ADMISSION_ALREADY_CLOSED',
+      'A paid invoice cannot be voided. Reverse the payment first.',
+      409,
+    );
+  }
+
+  const [updated] = await db
+    .update(schema.billingInvoices)
+    .set({
+      status: 'Void',
+      voidedAt: new Date(),
+      voidReason: reason.trim().slice(0, 500),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.billingInvoices.id, detail.invoice.id))
+    .returning();
+
+  return updated;
+}
+
+function toCentsPositive(value: string | null | undefined): number {
+  const parsed = Number(value ?? 0);
+
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
+}
+

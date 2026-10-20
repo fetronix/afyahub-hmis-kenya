@@ -72,9 +72,13 @@ export const PharmacyModule: React.FC = () => {
     if (!dispenseTarget) return;
 
     try {
-      await api.dispenseMedication({
-        tenantId: currentFacility?.tenantId || 1,
-        facilityId: currentFacility?.id || 1,
+      /*
+       * Billing is now raised server-side from the facility's service
+       * tariffs. Creating the invoice here (with a hardcoded unit price)
+       * would double-charge the patient alongside the server charge.
+       */
+      const result = await api.dispenseMedication({
+        facilityId: currentFacility?.id,
         prescriptionId: dispenseTarget.id,
         patientId: dispenseTarget.patientId,
         itemId: selectedInventoryItem ? selectedInventoryItem.id : undefined,
@@ -82,40 +86,19 @@ export const PharmacyModule: React.FC = () => {
         quantityDispensed: Number(dispenseQty),
         dispensedBy: currentUser.name,
         notes: dispenseNotes,
+        drugName: dispenseTarget.drugName,
+        encounterId: dispenseTarget.encounterId,
+        unitPrice: dispenseTarget.unitPrice,
       });
 
-      // Automatically create an invoice item for cashier if not yet paid
-      const patient = patients.find(p => p.id === dispenseTarget.patientId);
-      if (patient) {
-        const totalCost = (Number(dispenseTarget.unitPrice || '15') * Number(dispenseQty)).toFixed(2);
-        const invNum = `INV-${Date.now().toString().slice(-6)}`;
-        await api.createInvoice(
-          {
-            tenantId: patient.tenantId,
-            facilityId: patient.facilityId,
-            patientId: patient.id,
-            encounterId: dispenseTarget.encounterId,
-            invoiceNumber: invNum,
-            totalAmount: totalCost,
-            paidAmount: '0.00',
-            balanceAmount: totalCost,
-            status: 'Pending',
-            payerType: patient.payerType,
-            payerName: patient.insuranceProvider || patient.payerType,
-          },
-          [
-            {
-              itemType: 'Pharmacy',
-              description: `${dispenseTarget.drugName} ${dispenseTarget.dosage} (${dispenseQty} units)`,
-              quantity: Number(dispenseQty),
-              unitPrice: dispenseTarget.unitPrice || '15.00',
-              totalAmount: totalCost,
-            },
-          ]
-        );
-      }
+      const billingNote =
+        result?.billing?.charged
+          ? `Billed KES ${result.billing.totalAmount} on ${result.billing.invoiceNumber}.`
+          : result?.billing?.message
+            ? `Not billed: ${result.billing.message}`
+            : 'Not billed.';
 
-      showToast(`Medication dispensed! Stock deducted and invoice created for cashier.`);
+      showToast(`Medication dispensed. Stock deducted. ${billingNote}`);
       setDispenseTarget(null);
       triggerRefresh();
     } catch (err: any) {

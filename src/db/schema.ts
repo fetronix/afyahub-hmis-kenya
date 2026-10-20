@@ -3014,6 +3014,16 @@ export const admissions = pgTable(
       'discharge_summary',
     ),
 
+    dischargedBy: text('discharged_by'),
+
+    /*
+     * Recovered | Improved | Referred | Absconded | Deceased |
+     * Against Medical Advice
+     */
+    dischargeDisposition: text(
+      'discharge_disposition',
+    ),
+
     createdAt: timestamp('created_at')
       .defaultNow()
       .notNull(),
@@ -3022,6 +3032,130 @@ export const admissions = pgTable(
       .defaultNow()
       .notNull(),
   },
+);
+
+
+/* ============================================================
+   28b. INPATIENT TRANSFERS
+   ============================================================ */
+
+export const admissionTransfers = pgTable(
+  'admission_transfers',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    admissionId: integer('admission_id')
+      .references(() => admissions.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    fromWardId: integer('from_ward_id')
+      .references(() => wards.id),
+
+    fromBedId: integer('from_bed_id')
+      .references(() => beds.id),
+
+    toWardId: integer('to_ward_id')
+      .references(() => wards.id)
+      .notNull(),
+
+    toBedId: integer('to_bed_id')
+      .references(() => beds.id)
+      .notNull(),
+
+    reason: text('reason'),
+
+    transferredBy: text('transferred_by')
+      .notNull(),
+
+    transferredByUserId: integer(
+      'transferred_by_user_id',
+    ).references(() => users.id),
+
+    transferredAt: timestamp('transferred_at')
+      .defaultNow()
+      .notNull(),
+
+    createdAt: timestamp('created_at')
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('admission_transfers_admission_idx')
+      .on(table.admissionId, table.transferredAt),
+  ],
+);
+
+
+/* ============================================================
+   28c. NURSING NOTES
+   ============================================================ */
+
+export const nursingNotes = pgTable(
+  'nursing_notes',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    admissionId: integer('admission_id')
+      .references(() => admissions.id),
+
+    encounterId: integer('encounter_id')
+      .references(() => encounters.id),
+
+    /* Progress | Observation | Handover | Medication | Incident */
+    noteType: text('note_type')
+      .default('Progress')
+      .notNull(),
+
+    /* Morning | Afternoon | Night */
+    shift: text('shift'),
+
+    note: text('note').notNull(),
+
+    recordedBy: text('recorded_by')
+      .notNull(),
+
+    recordedByUserId: integer(
+      'recorded_by_user_id',
+    ).references(() => users.id),
+
+    recordedAt: timestamp('recorded_at')
+      .defaultNow()
+      .notNull(),
+
+    createdAt: timestamp('created_at')
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('nursing_notes_admission_idx')
+      .on(table.admissionId, table.recordedAt),
+    index('nursing_notes_patient_idx')
+      .on(table.patientId, table.recordedAt),
+  ],
 );
 
 
@@ -3655,6 +3789,10 @@ export const billingInvoices = pgTable(
 
     memberNumber: text('member_number'),
 
+    voidedAt: timestamp('voided_at'),
+
+    voidReason: text('void_reason'),
+
     createdAt: timestamp('created_at')
       .defaultNow()
       .notNull(),
@@ -3683,6 +3821,23 @@ export const billingItems = pgTable(
       .references(() => facilityServiceTariffs.id, { onDelete: 'set null' }),
 
     tariffCode: text('tariff_code'),
+
+    /*
+     * Provenance: which clinical event produced this line item.
+     *
+     *   CONSULTATION | LAB_ORDER | PROCEDURE | RADIOLOGY | PHARMACY
+     *   ADMISSION | BED_DAY | MANUAL
+     */
+    sourceType: text('source_type'),
+
+    sourceId: integer('source_id'),
+
+    /*
+     * Idempotency key for engine-generated charges, enforced by a UNIQUE
+     * partial index in migration 0009. Replaying a clinical event can
+     * never create a second charge. Manual items leave this NULL.
+     */
+    idempotencyKey: text('idempotency_key'),
 
     itemType: text('item_type')
       .notNull(),
