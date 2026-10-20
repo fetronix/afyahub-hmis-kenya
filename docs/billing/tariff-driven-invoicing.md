@@ -119,16 +119,47 @@ A patient is never refused admission because a tariff row is missing.
 
 ## 6. Applying the migration
 
+Run this yourself, against the database your `.env` points at. Nothing in
+the application applies migrations on boot.
+
 ```bash
+# 0. See what this database still owes, and whether 0009 is already there.
+npm run db:status
+
 # 1. Back up first — this touches live billing and admission tables.
-pg_dump -Fc jalicaredb > jalicaredb-before-0009-$(date +%Y%m%d-%H%M).dump
+#    (set -a sources .env so pg_dump sees the same credentials.)
+set -a; . ./.env; set +a
+pg_dump -Fc -U "$SQL_ADMIN_USER" -h "$SQL_HOST" -p "$SQL_PORT" \
+  "$SQL_DB_NAME" > "backup-before-0009-$(date +%Y%m%d-%H%M).dump"
 
 # 2. Apply
-npx drizzle-kit migrate
+npm run db:migrate
 
-# 3. Confirm the new structures exist
-psql jalicaredb -c "\d billing_items" -c "\d admission_transfers" -c "\d nursing_notes"
+# 3. Prove the structures exist (exits 1 if anything is missing)
+npm run db:status:0009
+
+# 4. Backfill inpatient permissions for EXISTING tenant roles.
+#    New tenants get them from the catalogue; roles created before 1A
+#    do not, and would receive 403 on admit/discharge.
+npx tsx scripts/grant-inpatient-permissions.ts --dry-run
+npx tsx scripts/grant-inpatient-permissions.ts
 ```
+
+`npm run db:status` is read-only: it lists every journal entry as applied
+or pending and checks each structure 0009 creates, including that
+`billing_items_idempotency_key_unique` is UNIQUE and **not** partial
+(the `ON CONFLICT` in the charge engine cannot infer a partial index).
+
+What to expect while it runs: every `ALTER TABLE ... ADD COLUMN` is
+metadata-only (nullable, no default), so existing rows are not rewritten.
+`CREATE UNIQUE INDEX billing_items_idempotency_key_unique` briefly blocks
+writes to `billing_items`; the column is new, so it contains only NULLs and
+the build cannot fail on duplicates. The final `UPDATE` stamps existing
+manual lines as `'MANUAL'` and is the only statement that touches row data.
+
+If `pg_dump` is not installed, back up with cPanel → phpPgAdmin → Export,
+or skip to step 2 only on a database you can afford to rebuild. Do not
+run the migration on a production database without a dump.
 
 ### Known pre-existing issue
 `drizzle/meta` has no snapshots for migrations `0004`, `0007` and `0008`.
