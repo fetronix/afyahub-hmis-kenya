@@ -35,13 +35,18 @@ ALTER TABLE billing_items ADD COLUMN IF NOT EXISTS idempotency_key text;
 /*
  * One line per billable event.
  *
- * The partial index means rows with a NULL key (manually added items) are
- * not constrained, while every engine-generated charge is protected
- * against duplicates even under concurrent requests.
+ * Deliberately NOT a partial index. PostgreSQL treats NULLs as distinct
+ * in a UNIQUE index, so manually entered items (NULL key) remain
+ * unconstrained while engine charges are deduplicated.
+ *
+ * A partial index would break the engine: `ON CONFLICT (idempotency_key)
+ * DO NOTHING` can only infer a unique index whose predicate the statement
+ * itself implies, so a `WHERE ... IS NOT NULL` index would raise
+ * "no unique or exclusion constraint matching the ON CONFLICT
+ * specification" on the first dispense.
  */
 CREATE UNIQUE INDEX IF NOT EXISTS billing_items_idempotency_key_unique
-  ON billing_items (idempotency_key)
-  WHERE idempotency_key IS NOT NULL;
+  ON billing_items (idempotency_key);
 
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS billing_items_source_idx

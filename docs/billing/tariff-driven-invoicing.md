@@ -75,9 +75,14 @@ LAB_ORDER:42
 BED_DAY:7:2026-10-21
 ```
 
-Migration 0009 adds a **UNIQUE partial index** on that column, so a
-replayed event cannot create a second charge even under concurrent
-requests. Re-dispensing, re-saving an order, re-running a discharge or
+Migration 0009 adds a **UNIQUE index** on that column, so a replayed
+event cannot create a second charge even under concurrent requests.
+
+It is intentionally *not* a partial index: PostgreSQL treats NULLs as
+distinct in a UNIQUE index, so manually entered items stay unconstrained,
+while `ON CONFLICT (idempotency_key)` can still infer the index. A
+partial index would fail with "no unique or exclusion constraint matching
+the ON CONFLICT specification". Re-dispensing, re-saving an order, re-running a discharge or
 calling bed-day accrual repeatedly all bill exactly once.
 
 Manual invoice items created by a cashier leave the key NULL and are
