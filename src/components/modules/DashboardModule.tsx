@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { AnalyticsSummary, PublicHealthReport, QueueItem } from '../../types/index.ts';
+import { AnalyticsSummary, PublicHealthReport, QueueItem, InpatientBoard } from '../../types/index.ts';
 import {
   Users,
   BedDouble,
@@ -16,6 +16,8 @@ import {
   Building2,
   ShieldCheck,
   TrendingUp,
+  HeartPulse,
+  Stethoscope,
 } from 'lucide-react';
 
 export const DashboardModule: React.FC = () => {
@@ -36,9 +38,11 @@ export const DashboardModule: React.FC = () => {
 
   const canReadReports = can('reports.read');
   const canReadQueues = can('appointments.read');
+  const canReadInpatient = can('inpatient.read');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [surveillance, setSurveillance] = useState<PublicHealthReport[]>([]);
   const [queues, setQueues] = useState<QueueItem[]>([]);
+  const [inpatientBoard, setInpatientBoard] = useState<InpatientBoard | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -85,6 +89,19 @@ export const DashboardModule: React.FC = () => {
         setQueues([]);
       }
 
+      if (canReadInpatient) {
+        tasks.push(
+          api.getInpatientBoard(currentFacility?.id)
+            .then((value) => { if (active) setInpatientBoard(value); })
+            .catch((err) => {
+              console.error('Failed to load inpatient board:', err);
+              if (active) setInpatientBoard(null);
+            })
+        );
+      } else {
+        setInpatientBoard(null);
+      }
+
       try {
         await Promise.all(tasks);
       } finally {
@@ -95,7 +112,7 @@ export const DashboardModule: React.FC = () => {
     void loadDashboard();
 
     return () => { active = false; };
-  }, [currentFacility, refreshKey, canReadReports, canReadQueues]);
+  }, [currentFacility, refreshKey, canReadReports, canReadQueues, canReadInpatient]);
 
   return (
     <div className="space-y-6">
@@ -172,6 +189,18 @@ export const DashboardModule: React.FC = () => {
               style={{ width: `${Math.min(100, summary?.bedOccupancyRate ?? 0)}%` }}
             />
           </div>
+          <div className="mt-2 flex items-center justify-between text-2xs">
+            <span className="text-slate-500">Vitals overdue:</span>
+            <strong
+              className={`font-mono ${
+                (inpatientBoard?.vitalsOverdueCount ?? 0) > 0
+                  ? 'text-orange-700'
+                  : 'text-emerald-700'
+              }`}
+            >
+              {inpatientBoard?.vitalsOverdueCount ?? 0}
+            </strong>
+          </div>
         </div>
 
 
@@ -228,6 +257,166 @@ export const DashboardModule: React.FC = () => {
         </>
         )}
       </div>
+
+      {/* Ward Nursing Status — vitals and documentation by bed */}
+      {canReadInpatient && inpatientBoard && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gradient-to-r from-slate-50 to-white">
+            <div className="flex items-center gap-2">
+              <HeartPulse className="w-4 h-4 text-teal-700" />
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
+                Ward Nursing Status
+              </h2>
+              <span className="px-1.5 py-0.5 rounded bg-teal-50 text-teal-900 border border-teal-200 text-3xs font-semibold">
+                {inpatientBoard.shift} shift
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 text-2xs">
+              <span className="text-slate-600">
+                <strong className="font-mono text-slate-900">{inpatientBoard.admissionCount}</strong> admitted
+              </span>
+              <span className="text-slate-600">
+                <strong className="font-mono text-slate-900">{inpatientBoard.occupancyRate}%</strong> occupancy
+              </span>
+              <span
+                className={
+                  inpatientBoard.vitalsOverdueCount > 0
+                    ? 'text-orange-700 font-semibold'
+                    : 'text-emerald-700 font-semibold'
+                }
+              >
+                <strong className="font-mono">{inpatientBoard.vitalsOverdueCount}</strong> vitals overdue
+              </span>
+              {inpatientBoard.criticalVitalsCount > 0 && (
+                <span className="text-rose-700 font-semibold flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {inpatientBoard.criticalVitalsCount} critical
+                </span>
+              )}
+              <button
+                onClick={() => setActiveModule('inpatient')}
+                className="text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1"
+              >
+                <span>Open Ward</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {inpatientBoard.rows.length === 0 ? (
+            <div className="px-5 py-6 text-xs text-slate-500">
+              No patients are currently admitted at this facility.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Patient</th>
+                    <th className="px-4 py-2.5 font-medium">Ward / Bed</th>
+                    <th className="px-4 py-2.5 font-medium">Admitted</th>
+                    <th className="px-4 py-2.5 font-medium">Last Vitals</th>
+                    <th className="px-4 py-2.5 font-medium">Flags</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Notes Today</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {inpatientBoard.rows.map((row) => {
+                    const critical = row.lastVitalsFlags.some(
+                      (flag) => flag.severity === 'critical',
+                    );
+
+                    return (
+                      <tr key={row.admissionId} className="hover:bg-slate-50/70">
+                        <td className="px-4 py-2.5">
+                          <div className="font-semibold text-slate-900">
+                            {row.patientName}
+                          </div>
+                          {row.patientMrn && (
+                            <div className="font-mono text-3xs text-slate-500">
+                              {row.patientMrn}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-700">
+                          {row.wardName}
+                          <span className="ml-1 font-mono text-2xs text-teal-800">
+                            #{row.bedNumber}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-600 font-mono text-2xs">
+                          {row.admissionDate}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {row.lastVitalsAt ? (
+                            <span
+                              className={
+                                row.vitalsOverdue
+                                  ? 'text-orange-700 font-semibold'
+                                  : 'text-slate-700'
+                              }
+                            >
+                              {row.hoursSinceVitals}h ago
+                            </span>
+                          ) : (
+                            <span className="text-orange-700 font-semibold">
+                              Never recorded
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {row.lastVitalsFlags.length === 0 ? (
+                            <span className="text-2xs text-emerald-700">Normal</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {row.lastVitalsFlags.slice(0, 3).map((flag) => (
+                                <span
+                                  key={`${row.admissionId}-${flag.field}`}
+                                  className={`px-1.5 py-0.5 rounded text-3xs font-semibold ${
+                                    flag.severity === 'critical'
+                                      ? 'bg-rose-600 text-white'
+                                      : 'bg-amber-200 text-amber-900'
+                                  }`}
+                                >
+                                  {flag.label} {flag.value}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono">
+                          <span
+                            className={
+                              row.notesToday === 0
+                                ? 'text-orange-700 font-semibold'
+                                : 'text-slate-900'
+                            }
+                          >
+                            {row.notesToday}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {inpatientBoard.vitalsOverdueCount > 0 && (
+            <div className="px-5 py-2.5 border-t border-orange-200 bg-orange-50 flex items-center gap-2 text-2xs text-orange-900">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>
+                {inpatientBoard.vitalsOverdueCount} admitted patient
+                {inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} have no
+                observation in the last 8 hours. Record vitals from the ward
+                screen.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Grid: Real-Time Patient Queue & Disease Surveillance */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 items-start">

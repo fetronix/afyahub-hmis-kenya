@@ -594,7 +594,7 @@ function pickEncounterWritableFields(
   return result;
 }
 
-async function requirePatientInTenant(
+export async function requirePatientInTenant(
   context: AuthorizationContext,
   patientId: number,
   tenantId: number,

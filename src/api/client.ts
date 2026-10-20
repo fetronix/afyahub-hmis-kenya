@@ -13,6 +13,9 @@ import {
   Ward,
   Bed,
   Admission,
+  InpatientBoard,
+  VitalObservation,
+  ShiftHandover,
   TheatreCase,
   LabTest,
   LabOrder,
@@ -1130,6 +1133,56 @@ export const api = {
           body: JSON.stringify({ untilDate }),
         }
       ),
+
+  // ============================================================
+  // NURSING & BEDSIDE CARE
+  // ============================================================
+
+  /**
+   * Ward board: occupancy, per-admission vitals status and note counts.
+   */
+  getInpatientBoard:
+    (facilityId?: number) =>
+      fetchJson<InpatientBoard>(
+        `${API_BASE}/inpatient/board${
+          facilityId ? `?facilityId=${facilityId}` : ''
+        }`
+      ),
+
+  getAdmissionVitals:
+    (admissionId: number, limit = 20) =>
+      fetchJson<VitalObservation[]>(
+        `${API_BASE}/admissions/${admissionId}/vitals?limit=${limit}`
+      ),
+
+  recordWardVitals:
+    (
+      admissionId: number,
+      vitals: Partial<Omit<VitalObservation, 'id' | 'recordedAt' | 'encounterId' | 'patientId' | 'flags'>> & {
+        recordedBy?: string;
+      }
+    ) =>
+      fetchJson<VitalObservation>(
+        `${API_BASE}/admissions/${admissionId}/vitals`,
+        {
+          method: 'POST',
+          body: JSON.stringify(vitals),
+        }
+      ),
+
+  getShiftHandover:
+    (date?: string, shift?: string) => {
+      const params = new URLSearchParams();
+
+      if (date) params.append('date', date);
+      if (shift) params.append('shift', shift);
+
+      const query = params.toString();
+
+      return fetchJson<ShiftHandover>(
+        `${API_BASE}/nursing-notes/handover${query ? `?${query}` : ''}`
+      );
+    },
 
   // ============================================================
   // NURSING NOTES

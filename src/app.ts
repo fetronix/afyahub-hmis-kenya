@@ -33,6 +33,7 @@ import {
 } from './auth/scope.service.ts';
 
 import * as billing from './billing/billing.service.ts';
+import * as nursing from './nursing/nursing.service.ts';
 
 dotenv.config();
 
@@ -155,6 +156,8 @@ app.use('/api/procedures', requireFacilityModule('opd'));
 app.use('/api/wards', requireFacilityModule('inpatient'));
 app.use('/api/beds', requireFacilityModule('inpatient'));
 app.use('/api/admissions', requireFacilityModule('inpatient'));
+app.use('/api/inpatient', requireFacilityModule('inpatient'));
+app.use('/api/nursing-notes', requireFacilityModule('inpatient'));
 app.use('/api/theatre-cases', requireFacilityModule('theatre'));
 
 app.use('/api/lab-tests', requireFacilityModule('laboratory'));
@@ -1040,46 +1043,114 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // VITALS & OBSERVATIONS
   // =========================================================
 
-  app.get('/api/observations', requirePermission('clinical.read'), async (req, res) => {
-    try {
-      const encounterId =
-        req.query.encounterId
-          ? Number(req.query.encounterId)
-          : undefined;
+  app.get(
+    '/api/observations',
+    requirePermission('clinical.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
 
-      const patientId =
-        req.query.patientId
-          ? Number(req.query.patientId)
-          : undefined;
+      if (!context) return;
 
-      const list =
-        await queries.getObservations(
-          encounterId,
-          patientId
+      try {
+        const list = await nursing.getObservationsScoped(context, {
+          patientId: req.query.patientId
+            ? Number(req.query.patientId)
+            : undefined,
+          encounterId: req.query.encounterId
+            ? Number(req.query.encounterId)
+            : undefined,
+        });
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Observation list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'OBSERVATIONS_FETCH_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Record ward or clinic vitals.
+   *
+   * Inpatient vitals are recorded against an admission, which guarantees
+   * the patient is actually in a bed at this facility. A bare patient
+   * payload is no longer accepted: observations carry no facility column,
+   * so unscoped writes were a cross-tenant hole.
+   */
+  app.post(
+    '/api/observations',
+    requirePermission('clinical.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const admissionId = Number(req.body?.admissionId);
+        const encounterId = Number(req.body?.encounterId);
+
+        const recordedBy =
+          typeof req.body?.recordedBy === 'string'
+            ? req.body.recordedBy
+            : req.user?.fullName ?? null;
+
+        /*
+         * Ward vitals attach to an admission; OPD/triage vitals attach to
+         * an encounter. Both paths resolve the patient from a scoped
+         * record, so a bare patientId can no longer be written to.
+         */
+        const observation = Number.isSafeInteger(admissionId) && admissionId > 0
+          ? await nursing.recordVitalsScoped(context, {
+              ...req.body,
+              admissionId,
+              recordedBy,
+            })
+          : Number.isSafeInteger(encounterId) && encounterId > 0
+            ? await nursing.recordObservationForEncounterScoped(context, {
+                ...req.body,
+                encounterId,
+                recordedBy,
+              })
+            : null;
+
+        if (!observation) {
+          return res.status(400).json({
+            success: false,
+            error: 'ADMISSION_OR_ENCOUNTER_REQUIRED',
+            message:
+              'Record vitals against an admission or an encounter at this facility.',
+          });
+        }
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'CREATE',
+          'Observation',
+          String(observation.id ?? ''),
+          Number.isSafeInteger(admissionId) && admissionId > 0
+            ? `Vitals recorded for admission ${admissionId}`
+            : `Vitals recorded for encounter ${encounterId}`,
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        res.status(201).json(observation);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
 
-  app.post('/api/observations', requirePermission('clinical.create'), async (req, res) => {
-    try {
-      const obs =
-        await queries.recordObservation(
-          req.body
-        );
-
-      res.status(201).json(obs);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        console.error('Observation creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'OBSERVATION_CREATION_FAILED',
+        });
+      }
+    },
+  );
 
   // =========================================================
   // DIAGNOSES & PROCEDURES
@@ -1774,6 +1845,159 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         res.status(500).json({
           success: false,
           error: 'BED_DAY_ACCRUAL_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Ward board: occupancy, per-admission vitals status and note counts.
+   * One scoped call so the ward screen and dashboard do not fan out.
+   */
+  app.get(
+    '/api/inpatient/board',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+
+        const board = await nursing.getInpatientBoardScoped(
+          context,
+          facilityId,
+        );
+
+        res.json(board);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Inpatient board error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'INPATIENT_BOARD_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Vitals history for one admission, with abnormality flags derived
+   * from adult reference ranges.
+   */
+  app.get(
+    '/api/admissions/:id/vitals',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const vitals = await nursing.getVitalsForAdmissionScoped(
+          context,
+          Number(req.params.id),
+          req.query.limit ? Number(req.query.limit) : 20,
+        );
+
+        res.json(
+          vitals.map((observation) => ({
+            ...observation,
+            flags: nursing.assessVitals(observation),
+          })),
+        );
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Admission vitals error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'ADMISSION_VITALS_FETCH_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Record ward vitals against an admission.
+   *
+   * Separate from POST /api/observations so that ward care does not
+   * depend on the OPD module being enabled for the facility.
+   */
+  app.post(
+    '/api/admissions/:id/vitals',
+    requirePermission('clinical.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const observation = await nursing.recordVitalsScoped(context, {
+          ...req.body,
+          admissionId: Number(req.params.id),
+          recordedBy:
+            typeof req.body?.recordedBy === 'string'
+              ? req.body.recordedBy
+              : req.user?.fullName ?? null,
+        });
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'CREATE',
+          'Observation',
+          String(observation.id ?? ''),
+          `Ward vitals recorded for admission ${req.params.id}`,
+        );
+
+        res.status(201).json(observation);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Ward vitals error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'WARD_VITALS_CREATION_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Shift handover: notes for a day grouped by shift.
+   * Defaults to today; pass ?date=YYYY-MM-DD&shift=Morning to narrow.
+   */
+  app.get(
+    '/api/nursing-notes/handover',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const handover = await nursing.getShiftHandoverScoped(context, {
+          date:
+            typeof req.query.date === 'string' ? req.query.date : undefined,
+          shift:
+            typeof req.query.shift === 'string' ? req.query.shift : undefined,
+        });
+
+        res.json(handover);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Shift handover error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'SHIFT_HANDOVER_FAILED',
         });
       }
     },

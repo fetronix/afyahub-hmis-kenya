@@ -231,6 +231,107 @@ export interface Admission {
   createdAt: string;
 }
 
+export interface VitalFlag {
+  field: string;
+  label: string;
+  value: number;
+  severity: 'warning' | 'critical';
+  direction: 'low' | 'high';
+}
+
+export interface VitalObservation {
+  id: number;
+  encounterId: number;
+  patientId: number;
+  systolicBp?: number | null;
+  diastolicBp?: number | null;
+  pulseRate?: number | null;
+  temperatureC?: string | null;
+  respiratoryRate?: number | null;
+  spo2Percent?: number | null;
+  weightKg?: string | null;
+  heightCm?: string | null;
+  bmi?: string | null;
+  bloodGlucoseMmol?: string | null;
+  recordedBy?: string | null;
+  recordedAt: string;
+  flags?: VitalFlag[];
+}
+
+export interface InpatientBoardRow {
+  admissionId: number;
+  patientId: number;
+  patientName: string;
+  patientMrn: string | null;
+  wardId: number;
+  wardName: string;
+  bedId: number;
+  bedNumber: string;
+  admissionDate: string;
+  admissionType: string | null;
+  admittingDoctor: string | null;
+  provisionalDiagnosis: string | null;
+  lastVitalsAt: string | null;
+  lastVitalsFlags: VitalFlag[];
+  vitalsOverdue: boolean;
+  hoursSinceVitals: number | null;
+  notesToday: number;
+  lastNoteAt: string | null;
+  lastNoteShift: string | null;
+}
+
+export interface InpatientBoard {
+  facilityId: number;
+  generatedAt: string;
+  shift: 'Morning' | 'Afternoon' | 'Night';
+  wardCount: number;
+  bedCount: number;
+  occupiedBeds: number;
+  availableBeds: number;
+  cleaningBeds: number;
+  occupancyRate: number;
+  admissionCount: number;
+  vitalsOverdueCount: number;
+  criticalVitalsCount: number;
+  notesTodayCount: number;
+  rows: InpatientBoardRow[];
+}
+
+export interface NursingNote {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  patientId: number;
+  admissionId?: number | null;
+  encounterId?: number | null;
+  noteType: string;
+  shift?: string | null;
+  note: string;
+  recordedBy: string;
+  recordedAt: string;
+}
+
+export interface ShiftHandoverGroup {
+  shift: 'Morning' | 'Afternoon' | 'Night';
+  noteCount: number;
+  notes: Array<{
+    id: number;
+    patientId: number;
+    admissionId: number | null;
+    noteType: string;
+    note: string;
+    recordedBy: string;
+    recordedAt: string;
+    shift: string | null;
+  }>;
+}
+
+export interface ShiftHandover {
+  date: string;
+  groups: ShiftHandoverGroup[];
+  total: number;
+}
+
 export interface TheatreCase {
   id: number;
   tenantId: number;

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { Ward, Bed, Admission, Patient } from '../../types/index.ts';
+import { Ward, Bed, Admission, Patient, InpatientBoard } from '../../types/index.ts';
+import { NursingPanel } from './NursingPanel.tsx';
 import {
   BedDouble,
   UserCheck,
@@ -20,6 +21,7 @@ export const InpatientModule: React.FC = () => {
   const [beds, setBeds] = useState<Bed[]>([]);
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [board, setBoard] = useState<InpatientBoard | null>(null);
   const [loading, setLoading] = useState(true);
 
   // New Admission Modal
@@ -45,16 +47,19 @@ export const InpatientModule: React.FC = () => {
       try {
         // One facility-scoped bed set drives the board, the roster and
         // the admit modal. Scope is enforced server-side.
-        const [wList, aList, pList, bList] = await Promise.all([
+        const [wList, aList, pList, bList, boardData] = await Promise.all([
           api.getWards(currentFacility?.id),
           api.getAdmissions(currentFacility?.id, 'Admitted'),
           api.getPatients(currentTenant?.id, currentFacility?.id),
           api.getBeds(),
+          // Board is optional: a failure must not hide the ward itself.
+          api.getInpatientBoard(currentFacility?.id).catch(() => null),
         ]);
         setWards(wList);
         setAdmissions(aList);
         setPatients(pList);
         setBeds(bList);
+        setBoard(boardData);
         if (wList.length > 0 && !selectedWard) {
           setSelectedWard(wList[0]);
         }
@@ -229,6 +234,13 @@ export const InpatientModule: React.FC = () => {
             const isCleaning = b.status === 'Cleaning';
             const occupant = b.currentPatientId ? patients.find(p => p.id === b.currentPatientId) : null;
 
+            // Vitals status for this bed, from the facility board.
+            const bedBoard = board?.rows.find((row) => row.bedId === b.id);
+            const hasCritical = (bedBoard?.lastVitalsFlags ?? []).some(
+              (flag) => flag.severity === 'critical',
+            );
+            const vitalsOverdue = Boolean(bedBoard?.vitalsOverdue);
+
             return (
               <div
                 key={b.id}
@@ -247,6 +259,31 @@ export const InpatientModule: React.FC = () => {
                   <div className="font-mono font-bold text-xs">{b.bedNumber}</div>
                   <div className="text-3xs text-slate-400 truncate">{b.bedType}</div>
                 </div>
+
+                {bedBoard && (
+                  <div className="mt-1">
+                    <span
+                      className={`text-3xs font-semibold px-1 py-0.5 rounded ${
+                        hasCritical
+                          ? 'bg-rose-600 text-white'
+                          : vitalsOverdue
+                            ? 'bg-orange-100 text-orange-900'
+                            : 'bg-emerald-50 text-emerald-800'
+                      }`}
+                      title={
+                        bedBoard.lastVitalsAt
+                          ? `Last vitals ${new Date(bedBoard.lastVitalsAt).toLocaleString()}`
+                          : 'No vitals recorded'
+                      }
+                    >
+                      {hasCritical
+                        ? '⚠ CRITICAL'
+                        : vitalsOverdue
+                          ? 'Vitals due'
+                          : 'Vitals ok'}
+                    </span>
+                  </div>
+                )}
 
                 <div className="mt-2 pt-1 border-t border-slate-100">
                   {occupant ? (
@@ -555,6 +592,14 @@ export const InpatientModule: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Nursing & Bedside Care */}
+      <NursingPanel
+        admissions={admissions}
+        patients={patients}
+        board={board}
+        onRefresh={triggerRefresh}
+      />
+
     </div>
   );
 };
