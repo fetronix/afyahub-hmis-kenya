@@ -1,4 +1,4 @@
-﻿ALTER TABLE lab_results
+ALTER TABLE lab_results
   ALTER COLUMN verified_at DROP NOT NULL;
 
 ALTER TABLE lab_results

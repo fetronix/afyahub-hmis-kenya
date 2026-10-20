@@ -122,15 +122,26 @@ A patient is never refused admission because a tariff row is missing.
 Run this yourself, against the database your `.env` points at. Nothing in
 the application applies migrations on boot.
 
-```bash
-# 0. See what this database still owes, and whether 0009 is already there.
+### Windows / PowerShell
+
+```powershell
+# 0. What does this database still owe?
 npm run db:status
 
-# 1. Back up first — this touches live billing and admission tables.
-#    (set -a sources .env so pg_dump sees the same credentials.)
-set -a; . ./.env; set +a
-pg_dump -Fc -U "$SQL_ADMIN_USER" -h "$SQL_HOST" -p "$SQL_PORT" \
-  "$SQL_DB_NAME" > "backup-before-0009-$(date +%Y%m%d-%H%M).dump"
+# 1. Back up first.
+#    PowerShell cannot use `set -a; . ./.env`, so load the keys directly:
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^\s*([^#=]+)=(.*)$') {
+    [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process')
+  }
+}
+
+# pg_dump is usually not on PATH; find it in the PostgreSQL install:
+$pgbin = Get-ChildItem 'C:\Program Files\PostgreSQL' -Recurse -Filter pg_dump.exe `
+           -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+
+& $pgbin -Fc -h $env:SQL_HOST -p $env:SQL_PORT -U $env:SQL_ADMIN_USER `
+         -d $env:SQL_DB_NAME -f "backup-before-0009-$(Get-Date -Format yyyyMMdd-HHmm).dump"
 
 # 2. Apply
 npm run db:migrate
@@ -139,16 +150,44 @@ npm run db:migrate
 npm run db:status:0009
 
 # 4. Backfill inpatient permissions for EXISTING tenant roles.
-#    New tenants get them from the catalogue; roles created before 1A
-#    do not, and would receive 403 on admit/discharge.
 npx tsx scripts/grant-inpatient-permissions.ts --dry-run
 npx tsx scripts/grant-inpatient-permissions.ts
 ```
 
-`npm run db:status` is read-only: it lists every journal entry as applied
-or pending and checks each structure 0009 creates, including that
-`billing_items_idempotency_key_unique` is UNIQUE and **not** partial
-(the `ON CONFLICT` in the charge engine cannot infer a partial index).
+### Linux / macOS / cPanel SSH
+
+```bash
+npm run db:status
+
+set -a; . ./.env; set +a
+pg_dump -Fc -U "$SQL_ADMIN_USER" -h "$SQL_HOST" -p "$SQL_PORT" \
+  "$SQL_DB_NAME" > "backup-before-0009-$(date +%Y%m%d-%H%M).dump"
+
+npm run db:migrate
+npm run db:status:0009
+```
+
+`npm run db:migrate` runs `scripts/migrate.ts`, which prints each statement
+and names the exact one that fails. `npm run db:migrate:drizzle` runs the
+stock `drizzle-kit migrate`.
+
+### Why not just use `drizzle-kit migrate`?
+
+It does work, but two failure modes cost real time:
+
+1. **Errors are swallowed.** drizzle-kit renders the migration through a
+   terminal spinner and calls `process.exit(1)` from the catch without
+   waiting for the error to be written. In a non-interactive shell — any
+   Windows PowerShell, most CI — you see the connection line, then the
+   prompt, and no error at all. The migration has rolled back.
+2. **A UTF-8 BOM kills the whole run.** Migration 0008 was saved with a
+   BOM. PostgreSQL rejects the leading U+FEFF, the transaction rolls back,
+   and 0009 never runs. That is why 0008 and 0009 showed as pending with
+   every structure missing. The BOM is gone; `npm run test:migrations`
+   now fails if any `.sql` file regains one.
+
+`npm run db:migrate` strips a BOM with a warning and reports the failing
+statement, so the same fault is visible instead of silent.
 
 What to expect while it runs: every `ALTER TABLE ... ADD COLUMN` is
 metadata-only (nullable, no default), so existing rows are not rewritten.
@@ -158,8 +197,8 @@ the build cannot fail on duplicates. The final `UPDATE` stamps existing
 manual lines as `'MANUAL'` and is the only statement that touches row data.
 
 If `pg_dump` is not installed, back up with cPanel → phpPgAdmin → Export,
-or skip to step 2 only on a database you can afford to rebuild. Do not
-run the migration on a production database without a dump.
+or skip step 1 only on a database you can afford to rebuild. Do not run the
+migration on a production database without a dump.
 
 ### Known pre-existing issue
 `drizzle/meta` has no snapshots for migrations `0004`, `0007` and `0008`.
