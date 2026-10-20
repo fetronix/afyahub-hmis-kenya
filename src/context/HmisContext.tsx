@@ -60,6 +60,7 @@ export type ModuleId =
   | 'finance'
   | 'claims'
   | 'public_health'
+  | 'analytics'
   | 'interoperability'
   | 'configuration'
   | 'audit';

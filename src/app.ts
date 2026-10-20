@@ -34,6 +34,7 @@ import {
 
 import * as billing from './billing/billing.service.ts';
 import * as nursing from './nursing/nursing.service.ts';
+import * as reporting from './reporting/reporting.service.ts';
 
 dotenv.config();
 
@@ -177,6 +178,7 @@ app.use('/api/purchase-orders', requireFacilityModule('procurement'));
 app.use('/api/claims', requireFacilityModule('insurance'));
 app.use('/api/public-health', requireFacilityModule('public_health'));
 app.use('/api/analytics', requireFacilityModule('analytics'));
+app.use('/api/reporting', requireFacilityModule('analytics'));
 app.use('/api/interoperability', requireFacilityModule('interoperability'));
 app.use('/api/audit-logs', requireFacilityModule('audit'));
 
@@ -3411,6 +3413,102 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   );
 
   /**
+   * Operational report: bed occupancy by ward and length of stay.
+   *
+   * Length of stay is measured from the admission date to now for
+   * patients still in a bed, and from admission to discharge for those
+   * discharged in the last 30 days.
+   */
+  app.get(
+    '/api/reporting/operations',
+    requirePermission('reports.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = resolveFacilityScope(
+          context,
+          req.query.facilityId ? Number(req.query.facilityId) : undefined,
+        );
+
+        const report = await reporting.getOperationsReportScoped(
+          context,
+          facilityId,
+        );
+
+        return res.json(report);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        if (err instanceof queries.InpatientDomainError) {
+          return res.status(err.status).json({
+            success: false,
+            error: err.code,
+            message: err.message,
+          });
+        }
+
+        console.error('Operational report error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'OPERATIONS_REPORT_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Occupied bed-days per calendar day, for the occupancy sparkline.
+   * Defaults to 14 days, capped at 90 so a bad query string cannot ask
+   * the server to walk years of admissions.
+   */
+  app.get(
+    '/api/reporting/occupancy-trend',
+    requirePermission('reports.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = resolveFacilityScope(
+          context,
+          req.query.facilityId ? Number(req.query.facilityId) : undefined,
+        );
+
+        const requestedDays = Number(req.query.days);
+        const days = Number.isFinite(requestedDays) ? requestedDays : 14;
+
+        const points = await reporting.getOccupancyTrendScoped(
+          context,
+          facilityId,
+          days,
+        );
+
+        return res.json({ facilityId, days: points.length, points });
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+
+        if (err instanceof queries.InpatientDomainError) {
+          return res.status(err.status).json({
+            success: false,
+            error: err.code,
+            message: err.message,
+          });
+        }
+
+        console.error('Occupancy trend error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'OCCUPANCY_TREND_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
    * Revenue by service category, derived from invoice lines.
    * Excludes voided invoices so the figures reconcile to cash.
    */
@@ -3428,16 +3526,98 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           req.query.facilityId ? Number(req.query.facilityId) : undefined,
         );
 
-        const rows = await billing.getRevenueByServiceType(db, facilityId);
+        /*
+         * Optional reporting window. Anything unparseable is a 400
+         * rather than a silently unbounded report.
+         */
+        /*
+         * Build the date in SERVER-LOCAL time, not UTC.
+         *
+         * `new Date('2026-10-21')` is UTC midnight, which in Nairobi is
+         * 03:00 on the 21st: a report run at 01:00 would silently drop
+         * the first three hours of the day it was asked about.
+         */
+        const parseRangeDate = (value: unknown, field: string) => {
+          if (typeof value !== 'string' || value.trim().length === 0) {
+            return undefined;
+          }
+
+          const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+
+          if (!match) {
+            throw new Error(`INVALID_${field.toUpperCase()}_DATE`);
+          }
+
+          const year = Number(match[1]);
+          const month = Number(match[2]);
+          const day = Number(match[3]);
+
+          const parsed = new Date(year, month - 1, day);
+
+          /* Reject 2026-02-31, which Date would roll forward to March. */
+          if (
+            Number.isNaN(parsed.getTime()) ||
+            parsed.getFullYear() !== year ||
+            parsed.getMonth() !== month - 1 ||
+            parsed.getDate() !== day
+          ) {
+            throw new Error(`INVALID_${field.toUpperCase()}_DATE`);
+          }
+
+          return parsed;
+        };
+
+        let from: Date | undefined;
+        let to: Date | undefined;
+
+        try {
+          from = parseRangeDate(req.query.from, 'from');
+          to = parseRangeDate(req.query.to, 'to');
+        } catch {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_DATE_RANGE',
+            message: 'from and to must be dates in YYYY-MM-DD format.',
+          });
+        }
+
+        if (from && to && from.getTime() > to.getTime()) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_DATE_RANGE',
+            message: 'from must not be after to.',
+          });
+        }
+
+        const range = { from, to };
+
+        const [rows, totals] = await Promise.all([
+          billing.getRevenueByServiceType(db, facilityId, range),
+          billing.getRevenueTotals(db, facilityId, range),
+        ]);
 
         const totalCents = rows.reduce(
           (sum, row) => sum + billing.toCents(row.revenue),
           0,
         );
 
+        const echoDate = (value: unknown) =>
+          typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())
+            ? value.trim()
+            : null;
+
         return res.json({
           facilityId,
+          from: echoDate(req.query.from),
+          to: echoDate(req.query.to),
           totalRevenue: billing.fromCents(totalCents),
+          totals: {
+            invoiceCount: totals.invoiceCount,
+            voidedCount: totals.voidedCount,
+            invoiced: billing.fromCents(billing.toCents(totals.invoiced)),
+            collected: billing.fromCents(billing.toCents(totals.collected)),
+            outstanding: billing.fromCents(billing.toCents(totals.outstanding)),
+          },
           byService: rows
             .map((row) => ({
               ...row,

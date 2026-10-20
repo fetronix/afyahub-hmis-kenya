@@ -569,3 +569,99 @@ export interface AnalyticsSummary {
   outstandingBillsKes: number;
   lowStockAlerts: number;
 }
+
+/* ============================================================
+   REPORTING — REVENUE, OCCUPANCY AND LENGTH OF STAY
+   ============================================================ */
+
+export interface RevenueServiceRow {
+  itemType: string;
+  sourceType: string | null;
+  lineCount: number;
+  revenue: string;
+}
+
+export interface RevenueTotals {
+  invoiceCount: number;
+  voidedCount: number;
+  invoiced: string;
+  collected: string;
+  outstanding: string;
+}
+
+export interface RevenueReport {
+  facilityId: number;
+  from: string | null;
+  to: string | null;
+  totalRevenue: string;
+  totals: RevenueTotals;
+  byService: RevenueServiceRow[];
+}
+
+export interface WardOccupancyRow {
+  wardId: number;
+  wardName: string;
+  wardType: string | null;
+  totalBeds: number;
+  occupiedBeds: number;
+  availableBeds: number;
+  cleaningBeds: number;
+  outOfServiceBeds: number;
+  occupancyRate: number;
+  activeAdmissions: number;
+  averageStayDays: number | null;
+}
+
+export interface StayBucket {
+  label: string;
+  min: number;
+  max: number | null;
+  count: number;
+}
+
+export interface LengthOfStaySummary {
+  activeAdmissions: number;
+  averageStayDays: number | null;
+  medianStayDays: number | null;
+  longestStayDays: number | null;
+  overstayCount: number;
+  unparseableCount: number;
+  dischargedInWindow: number;
+  averageDischargedStayDays: number | null;
+  medianDischargedStayDays: number | null;
+  dischargedWindowDays: number;
+  buckets: StayBucket[];
+}
+
+export interface LongestStayRow {
+  admissionId: number;
+  patientId: number;
+  patientName: string;
+  wardName: string;
+  bedNumber: string | null;
+  admissionDate: string;
+  days: number;
+}
+
+export interface OperationsReport {
+  facilityId: number;
+  generatedAt: string;
+  occupancy: {
+    wardCount: number;
+    bedCount: number;
+    occupiedBeds: number;
+    availableBeds: number;
+    cleaningBeds: number;
+    outOfServiceBeds: number;
+    occupancyRate: number;
+  };
+  wards: WardOccupancyRow[];
+  lengthOfStay: LengthOfStaySummary;
+  longestStays: LongestStayRow[];
+}
+
+export interface OccupancyTrendResponse {
+  facilityId: number;
+  days: number;
+  points: Array<{ date: string; occupiedBeds: number }>;
+}

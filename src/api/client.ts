@@ -16,6 +16,9 @@ import {
   InpatientBoard,
   VitalObservation,
   ShiftHandover,
+  RevenueReport,
+  OperationsReport,
+  OccupancyTrendResponse,
   TheatreCase,
   LabTest,
   LabOrder,
@@ -1250,21 +1253,44 @@ export const api = {
       ),
 
   getRevenueReport:
+    (
+      facilityId?: number,
+      range?: { from?: string; to?: string }
+    ) => {
+      const params = new URLSearchParams();
+
+      if (facilityId) params.set('facilityId', String(facilityId));
+      if (range?.from) params.set('from', range.from);
+      if (range?.to) params.set('to', range.to);
+
+      const query = params.toString();
+
+      return fetchJson<RevenueReport>(
+        `${API_BASE}/analytics/revenue${query ? `?${query}` : ''}`
+      );
+    },
+
+  getOperationsReport:
     (facilityId?: number) =>
-      fetchJson<{
-        facilityId: number;
-        totalRevenue: string;
-        byService: Array<{
-          itemType: string;
-          sourceType: string | null;
-          lineCount: number;
-          revenue: string;
-        }>;
-      }>(
-        `${API_BASE}/analytics/revenue${
+      fetchJson<OperationsReport>(
+        `${API_BASE}/reporting/operations${
           facilityId ? `?facilityId=${facilityId}` : ''
         }`
       ),
+
+  getOccupancyTrend:
+    (facilityId?: number, days?: number) => {
+      const params = new URLSearchParams();
+
+      if (facilityId) params.set('facilityId', String(facilityId));
+      if (days) params.set('days', String(days));
+
+      const query = params.toString();
+
+      return fetchJson<OccupancyTrendResponse>(
+        `${API_BASE}/reporting/occupancy-trend${query ? `?${query}` : ''}`
+      );
+    },
 
   // ============================================================
   // THEATRE CASES

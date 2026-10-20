@@ -17,6 +17,7 @@ import {
   Receipt,
   FileCheck2,
   Activity,
+  BarChart3,
   Network,
   Sliders,
   ShieldAlert,
@@ -92,6 +93,7 @@ const navSections: NavSection[] = [
   {
     title: 'INTELLIGENCE & DHA',
     items: [
+      { id: 'analytics', label: 'Reports & Revenue', icon: BarChart3 },
       { id: 'public_health', label: 'MOH 705 Surveillance', icon: Activity },
       { id: 'interoperability', label: 'DHA Readiness & FHIR', icon: Network },
     ],
@@ -183,6 +185,7 @@ export const Sidebar: React.FC = () => {
       procurement: ['procurement.read'],
       finance: ['billing.read'],
       claims: ['insurance.read'],
+      analytics: ['reports.read'],
       public_health: ['reports.read'],
       interoperability: ['interop.fhir.patient.read'],
       configuration: [

@@ -24,6 +24,7 @@ import { InventoryModule } from './components/modules/InventoryModule.tsx';
 import { ProcurementModule } from './components/modules/ProcurementModule.tsx';
 import { BillingCashierModule } from './components/modules/BillingCashierModule.tsx';
 import { InsuranceClaimsModule } from './components/modules/InsuranceClaimsModule.tsx';
+import { ReportsModule } from './components/modules/ReportsModule.tsx';
 import { PublicHealthModule } from './components/modules/PublicHealthModule.tsx';
 import { InteroperabilityModule } from './components/modules/InteroperabilityModule.tsx';
 import { ConfigurationModule } from './components/modules/ConfigurationModule.tsx';
@@ -138,6 +139,9 @@ const AppContent: React.FC = () => {
 
       case 'claims':
         return <InsuranceClaimsModule />;
+
+      case 'analytics':
+        return <ReportsModule />;
 
       case 'public_health':
         return <PublicHealthModule />;

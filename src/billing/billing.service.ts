@@ -19,10 +19,12 @@
  *    a patient leaves with a single bill rather than one per service.
  */
 
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 
 import type { db as database } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
+
+import { formatDateKey, parseLooseDate } from '../utils/dates.ts';
 
 /* ============================================================
    TYPES
@@ -560,33 +562,6 @@ export function bedDayDates(
   return dates;
 }
 
-function parseLooseDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-
-  /* 'YYYY-MM-DD HH:mm' is not consistently parsed across engines. */
-  const normalised = value.trim().replace(' ', 'T').replace(/\//g, '-');
-
-  const parsed = new Date(normalised);
-
-  if (!Number.isNaN(parsed.getTime())) return parsed;
-
-  const dateOnly = new Date(normalised.slice(0, 10));
-
-  if (!Number.isNaN(dateOnly.getTime())) return dateOnly;
-
-  return null;
-}
-
-function formatDateKey(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
-
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-  ].join('-');
-}
-
 /* ============================================================
    REPORTING HELPERS
    ============================================================ */
@@ -599,12 +574,43 @@ export interface RevenueSummaryRow {
 }
 
 /**
+ * Optional reporting window, applied to the invoice's creation date.
+ *
+ * Both bounds are inclusive at day resolution: `to` is widened to the
+ * last millisecond of that day, so a report for "1st to 31st" does not
+ * silently drop everything invoiced after midnight on the 31st.
+ */
+export interface RevenueRange {
+  from?: Date | null;
+  to?: Date | null;
+}
+
+function invoiceRangeConditions(range?: RevenueRange) {
+  const conditions = [];
+
+  if (range?.from) {
+    conditions.push(gte(schema.billingInvoices.createdAt, range.from));
+  }
+
+  if (range?.to) {
+    const end = new Date(range.to.getTime());
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(schema.billingInvoices.createdAt, end));
+  }
+
+  return conditions;
+}
+
+/**
  * Revenue grouped by service category for one facility.
  * Used by the analytics dashboard and the revenue report.
+ *
+ * Voided invoices are excluded so the figures reconcile to cash.
  */
 export async function getRevenueByServiceType(
   executor: Executor,
   facilityId: number,
+  range?: RevenueRange,
 ): Promise<RevenueSummaryRow[]> {
   const rows = await executor
     .select({
@@ -622,9 +628,57 @@ export async function getRevenueByServiceType(
       and(
         eq(schema.billingInvoices.facilityId, facilityId),
         isNull(schema.billingInvoices.voidedAt),
+        ...invoiceRangeConditions(range),
       ),
     )
     .groupBy(schema.billingItems.itemType, schema.billingItems.sourceType);
 
   return rows as RevenueSummaryRow[];
+}
+
+export interface RevenueTotals {
+  invoiceCount: number;
+  voidedCount: number;
+  invoiced: string;
+  collected: string;
+  outstanding: string;
+}
+
+/**
+ * Cash position for one facility over the same window.
+ *
+ * `invoiced` is what was billed, `collected` is paid_amount on those
+ * invoices and `outstanding` is balance_amount. Voided invoices are
+ * counted separately and left out of all three figures.
+ */
+export async function getRevenueTotals(
+  executor: Executor,
+  facilityId: number,
+  range?: RevenueRange,
+): Promise<RevenueTotals> {
+  const rows = await executor
+    .select({
+      invoiceCount: sql<number>`COUNT(*) FILTER (WHERE ${schema.billingInvoices.voidedAt} IS NULL)::int`,
+      voidedCount: sql<number>`COUNT(*) FILTER (WHERE ${schema.billingInvoices.voidedAt} IS NOT NULL)::int`,
+      invoiced: sql<string>`COALESCE(SUM(${schema.billingInvoices.totalAmount}) FILTER (WHERE ${schema.billingInvoices.voidedAt} IS NULL), 0)`,
+      collected: sql<string>`COALESCE(SUM(${schema.billingInvoices.paidAmount}) FILTER (WHERE ${schema.billingInvoices.voidedAt} IS NULL), 0)`,
+      outstanding: sql<string>`COALESCE(SUM(${schema.billingInvoices.balanceAmount}) FILTER (WHERE ${schema.billingInvoices.voidedAt} IS NULL), 0)`,
+    })
+    .from(schema.billingInvoices)
+    .where(
+      and(
+        eq(schema.billingInvoices.facilityId, facilityId),
+        ...invoiceRangeConditions(range),
+      ),
+    );
+
+  const row = rows[0];
+
+  return {
+    invoiceCount: Number(row?.invoiceCount ?? 0),
+    voidedCount: Number(row?.voidedCount ?? 0),
+    invoiced: String(row?.invoiced ?? '0'),
+    collected: String(row?.collected ?? '0'),
+    outstanding: String(row?.outstanding ?? '0'),
+  };
 }

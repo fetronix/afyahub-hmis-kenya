@@ -68,6 +68,9 @@ const moduleTitles: Record<ModuleId, string> = {
   public_health:
     'MOH 705 & Disease Surveillance',
 
+  analytics:
+    'Reports, Revenue & Bed Utilisation',
+
   interoperability:
     'DHA Certification Readiness & HL7 FHIR',
 
