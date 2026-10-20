@@ -3234,11 +3234,10 @@ export const labResults = pgTable(
 
     notes: text('notes'),
 
+    status: text('status').notNull().default('Pending Verification'),
     verifiedBy: text('verified_by'),
 
-    verifiedAt: timestamp('verified_at')
-      .defaultNow()
-      .notNull(),
+    verifiedAt: timestamp('verified_at'),
   },
 );
 
@@ -3469,6 +3468,7 @@ export const pharmacyDispensations = pgTable(
     ).defaultNow().notNull(),
 
     notes: text('notes'),
+
   },
 );
 
@@ -4016,7 +4016,6 @@ export const facilitySubscriptionPeriods = pgTable(
 
     status: text('status').default('PENDING').notNull(),
     notes: text('notes'),
-
     createdBy: text('created_by').notNull(),
     updatedBy: text('updated_by').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),

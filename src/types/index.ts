@@ -292,8 +292,9 @@ export interface LabResult {
   referenceRange?: string;
   flag: string;
   notes?: string;
-  verifiedBy?: string;
-  verifiedAt: string;
+  status: string;
+  verifiedBy?: string | null;
+  verifiedAt?: string | null;
 }
 
 export interface RadiologyOrder {

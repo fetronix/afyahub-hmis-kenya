@@ -1330,7 +1330,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.get('/api/lab-orders', requirePermission('laboratory.read'), async (req, res) => {
+  app.get('/api/lab-orders', requirePermission('laboratory.read'), async (req: AuthRequest, res) => {
     try {
       const facilityId =
         req.query.facilityId
@@ -1343,7 +1343,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           : undefined;
 
       const list =
-        await queries.getLabOrders(
+        await queries.getLabOrders(req.authContext!,
           facilityId,
           patientId
         );
@@ -1408,7 +1408,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.put('/api/lab-orders/:id/status', requirePermission('laboratory.results.enter'), async (req, res) => {
+  app.put('/api/lab-orders/:id/status', requirePermission('laboratory.results.enter'), async (req: AuthRequest, res) => {
     try {
       const {
         status,
@@ -1416,7 +1416,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
       } = req.body;
 
       const order =
-        await queries.updateLabOrderStatus(
+        await queries.updateLabOrderStatus(req.authContext!,
           Number(req.params.id),
           status,
           accessionNumber
@@ -1430,7 +1430,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.get('/api/lab-results', requirePermission('laboratory.read'), async (req, res) => {
+  app.get('/api/lab-results', requirePermission('laboratory.read'), async (req: AuthRequest, res) => {
     try {
       const orderId =
         req.query.orderId
@@ -1443,9 +1443,10 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           : undefined;
 
       const list =
-        await queries.getLabResults(
+        await queries.getLabResults(req.authContext!,
           orderId,
-          patientId
+          patientId,
+          req.query.facilityId ? Number(req.query.facilityId) : undefined
         );
 
       res.json(list);
@@ -1456,12 +1457,45 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/lab-results', requirePermission('laboratory.results.enter'), async (req, res) => {
+  app.post('/api/lab-results', requirePermission('laboratory.results.enter'), async (req: AuthRequest, res) => {
     try {
-      const result =
-        await queries.addLabResult(
-          req.body
-        );
+      const {
+        orderId,
+        patientId,
+        parameterName,
+        measuredValue,
+        unit,
+        referenceRange,
+        flag,
+        notes,
+      } = req.body ?? {};
+
+      if (
+        !Number.isInteger(Number(orderId)) ||
+        Number(orderId) <= 0 ||
+        !Number.isInteger(Number(patientId)) ||
+        Number(patientId) <= 0 ||
+        typeof parameterName !== 'string' ||
+        !parameterName.trim() ||
+        typeof measuredValue !== 'string' ||
+        !measuredValue.trim()
+      ) {
+        res.status(400).json({
+          error: 'Valid order, patient, parameter name, and measured value are required.',
+        });
+        return;
+      }
+
+      const result = await queries.addLabResult(req.authContext!, {
+        orderId: Number(orderId),
+        patientId: Number(patientId),
+        parameterName: parameterName.trim(),
+        measuredValue: measuredValue.trim(),
+        unit: typeof unit === 'string' ? unit.trim() || null : null,
+        referenceRange: typeof referenceRange === 'string' ? referenceRange.trim() || null : null,
+        flag: typeof flag === 'string' && flag.trim() ? flag.trim() : null,
+        notes: typeof notes === 'string' ? notes.trim() || null : null,
+      });
 
       res.status(201).json(result);
     } catch (err: any) {
@@ -1472,6 +1506,44 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   });
 
   // =========================================================
+  app.post(
+    '/api/lab-results/:id/verify',
+    requirePermission('laboratory.results.verify'),
+    async (req: AuthRequest, res) => {
+      try {
+        if (!req.authContext || !req.user) {
+          res.status(401).json({ error: 'Authentication is required.' });
+          return;
+        }
+
+        const resultId = Number(req.params.id);
+        if (!Number.isInteger(resultId) || resultId <= 0) {
+          res.status(400).json({ error: 'A valid laboratory result ID is required.' });
+          return;
+        }
+
+        const verifier =
+          req.user.fullName ||
+          req.user.username ||
+          String(req.user.id);
+
+        const result = await queries.verifyLabResult(
+          req.authContext,
+          resultId,
+          verifier,
+        );
+
+        res.json(result);
+      } catch (err: any) {
+        if (typeof handleScopeError === 'function' && handleScopeError(err, res)) {
+          return;
+        }
+        res.status(400).json({
+          error: err instanceof Error ? err.message : 'Could not verify laboratory result.',
+        });
+      }
+    },
+  );
   // RADIOLOGY
   // =========================================================
 

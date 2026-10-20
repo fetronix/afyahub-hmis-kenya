@@ -1,7 +1,7 @@
 import { ScopeAccessError } from '../auth/scope.service.ts';
 import { db } from './index.ts';
 import * as schema from './schema.ts';
-import { eq, desc, and, or, ilike, sql } from 'drizzle-orm';
+import { eq, desc, and, or, ilike, sql, inArray } from 'drizzle-orm';
 
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import {
@@ -1225,21 +1225,35 @@ export async function getLabTests(facilityId?: number) {
   }
 }
 
-export async function getLabOrders(facilityId?: number, patientId?: number) {
-  try {
-    let query = db.select().from(schema.labOrders);
-    const conditions = [];
-    if (facilityId) conditions.push(eq(schema.labOrders.facilityId, facilityId));
-    if (patientId) conditions.push(eq(schema.labOrders.patientId, patientId));
+export async function getLabOrders(
+  context: AuthorizationContext,
+  facilityId?: number,
+  patientId?: number,
+) {
+  const scopedFacilityId = resolveFacilityScope(context, facilityId);
+  const facility = await getFacilityByIdScoped(context, scopedFacilityId);
 
-    if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.labOrders.orderedAt));
-    }
-    return await query.orderBy(desc(schema.labOrders.orderedAt));
-  } catch (error) {
-    console.error('Error fetching lab orders:', error);
-    throw new Error('Failed to fetch lab orders', { cause: error });
+  if (!facility) {
+    throw new Error('Facility not found.');
   }
+
+  const conditions = [
+    eq(schema.labOrders.facilityId, facility.id),
+    eq(schema.labOrders.tenantId, facility.tenantId),
+  ];
+
+  if (patientId !== undefined) {
+    if (!Number.isInteger(patientId) || patientId <= 0) {
+      throw new Error('Invalid patient ID.');
+    }
+    conditions.push(eq(schema.labOrders.patientId, patientId));
+  }
+
+  return db
+    .select()
+    .from(schema.labOrders)
+    .where(and(...conditions))
+    .orderBy(desc(schema.labOrders.orderedAt));
 }
 
 export async function createLabOrder(
@@ -1261,48 +1275,261 @@ export async function createLabOrder(
   }
 }
 
-export async function updateLabOrderStatus(id: number, status: string, accessionNumber?: string) {
-  try {
-    const updateData: any = { status };
-    if (status === 'Sample Collected') {
-      updateData.sampleCollectedAt = new Date();
-      updateData.sampleAccessionNumber = accessionNumber || `ACC-${Date.now().toString().slice(-6)}`;
-    }
-    const res = await db.update(schema.labOrders).set(updateData).where(eq(schema.labOrders.id, id)).returning();
-    return res[0];
-  } catch (error) {
-    console.error('Error updating lab order status:', error);
-    throw new Error('Failed to update lab order status', { cause: error });
+export async function updateLabOrderStatus(
+  context: AuthorizationContext,
+  id: number,
+  status: string,
+  accessionNumber?: string,
+) {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error('Invalid laboratory order ID.');
   }
+
+  // This endpoint handles collection workflow only; it cannot publish results.
+  if (status !== 'Ordered' && status !== 'Sample Collected') {
+    throw new Error('Unsupported laboratory order status.');
+  }
+
+  const found = await db
+    .select()
+    .from(schema.labOrders)
+    .where(eq(schema.labOrders.id, id))
+    .limit(1);
+
+  const order = found[0];
+  if (!order) {
+    throw new Error('Laboratory order not found.');
+  }
+
+  const facility = await getFacilityByIdScoped(context, order.facilityId);
+  if (!facility || facility.tenantId !== order.tenantId) {
+    throw new Error('Laboratory order not found in the authorized facility.');
+  }
+
+  const updateData: {
+    status: string;
+    sampleCollectedAt?: Date;
+    sampleAccessionNumber?: string;
+  } = { status };
+
+  if (status === 'Sample Collected') {
+    updateData.sampleCollectedAt = new Date();
+    updateData.sampleAccessionNumber =
+      accessionNumber?.trim() ||
+      `ACC-${Date.now().toString().slice(-6)}`;
+  }
+
+  const updated = await db
+    .update(schema.labOrders)
+    .set(updateData)
+    .where(
+      and(
+        eq(schema.labOrders.id, id),
+        eq(schema.labOrders.facilityId, facility.id),
+        eq(schema.labOrders.tenantId, facility.tenantId),
+      ),
+    )
+    .returning();
+
+  if (!updated[0]) {
+    throw new Error('Laboratory order could not be updated.');
+  }
+
+  return updated[0];
 }
 
-export async function getLabResults(orderId?: number, patientId?: number) {
-  try {
-    let query = db.select().from(schema.labResults);
-    const conditions = [];
-    if (orderId) conditions.push(eq(schema.labResults.orderId, orderId));
-    if (patientId) conditions.push(eq(schema.labResults.patientId, patientId));
-
-    if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.labResults.verifiedAt));
+export async function getLabResults(
+  context: AuthorizationContext,
+  orderId?: number,
+  patientId?: number,
+  facilityId?: number,
+) {
+  if (orderId !== undefined) {
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      throw new Error('Invalid laboratory order ID.');
     }
-    return await query.orderBy(desc(schema.labResults.verifiedAt));
-  } catch (error) {
-    console.error('Error fetching lab results:', error);
-    throw new Error('Failed to fetch lab results', { cause: error });
+
+    const found = await db
+      .select()
+      .from(schema.labOrders)
+      .where(eq(schema.labOrders.id, orderId))
+      .limit(1);
+
+    const order = found[0];
+    if (!order) {
+      throw new Error('Laboratory order not found.');
+    }
+
+    const facility = await getFacilityByIdScoped(context, order.facilityId);
+    if (!facility || facility.tenantId !== order.tenantId) {
+      throw new Error('Laboratory order not found in the authorized facility.');
+    }
+
+    if (patientId !== undefined && patientId !== order.patientId) {
+      throw new Error('Patient does not match the selected laboratory order.');
+    }
+
+    return db
+      .select()
+      .from(schema.labResults)
+      .where(
+        and(
+          eq(schema.labResults.orderId, order.id),
+          eq(schema.labResults.patientId, order.patientId),
+        ),
+      )
+      .orderBy(desc(schema.labResults.verifiedAt));
   }
+
+  // Listing results without an order is still limited to the authorized facility.
+  const scopedFacilityId = resolveFacilityScope(context, facilityId);
+  const facility = await getFacilityByIdScoped(context, scopedFacilityId);
+
+  if (!facility) {
+    throw new Error('Facility not found.');
+  }
+
+  const orders = await db
+    .select({ id: schema.labOrders.id })
+    .from(schema.labOrders)
+    .where(
+      and(
+        eq(schema.labOrders.facilityId, facility.id),
+        eq(schema.labOrders.tenantId, facility.tenantId),
+        ...(patientId !== undefined
+          ? [eq(schema.labOrders.patientId, patientId)]
+          : []),
+      ),
+    );
+
+  if (orders.length === 0) {
+    return [];
+  }
+
+  return db
+    .select()
+    .from(schema.labResults)
+    .where(inArray(schema.labResults.orderId, orders.map((order) => order.id)))
+    .orderBy(desc(schema.labResults.verifiedAt));
 }
 
-export async function addLabResult(data: typeof schema.labResults.$inferInsert) {
-  try {
-    const res = await db.insert(schema.labResults).values(data).returning();
-    // mark order as published/verified
-    await db.update(schema.labOrders).set({ status: 'Published' }).where(eq(schema.labOrders.id, data.orderId));
-    return res[0];
-  } catch (error) {
-    console.error('Error adding lab result:', error);
-    throw new Error('Failed to publish lab result', { cause: error });
+export async function addLabResult(
+  context: AuthorizationContext,
+  data: typeof schema.labResults.$inferInsert,
+) {
+  if (!Number.isInteger(data.orderId) || data.orderId <= 0) {
+    throw new Error('Valid laboratory order ID is required.');
   }
+
+  const found = await db
+    .select()
+    .from(schema.labOrders)
+    .where(eq(schema.labOrders.id, data.orderId))
+    .limit(1);
+
+  const order = found[0];
+  if (!order) {
+    throw new Error('Laboratory order not found.');
+  }
+
+  const facility = await getFacilityByIdScoped(context, order.facilityId);
+  if (!facility || facility.tenantId !== order.tenantId) {
+    throw new Error('Laboratory order not found in the authorized facility.');
+  }
+
+  if (data.patientId !== order.patientId) {
+    throw new Error('Result patient must match the laboratory order patient.');
+  }
+
+  if (
+    typeof data.parameterName !== 'string' ||
+    !data.parameterName.trim() ||
+    typeof data.measuredValue !== 'string' ||
+    !data.measuredValue.trim()
+  ) {
+    throw new Error('Parameter name and measured value are required.');
+  }
+
+  const inserted = await db
+    .insert(schema.labResults)
+    .values({
+      ...data,
+      parameterName: data.parameterName.trim(),
+      measuredValue: data.measuredValue.trim(),
+      status: 'Pending Verification',
+      verifiedBy: null,
+      verifiedAt: null,
+    })
+    .returning();
+
+  return inserted[0];
+}
+
+export async function verifyLabResult(
+  context: AuthorizationContext,
+  resultId: number,
+  verifiedBy: string,
+) {
+  if (!Number.isInteger(resultId) || resultId <= 0) {
+    throw new Error('Invalid laboratory result ID.');
+  }
+
+  if (!verifiedBy.trim()) {
+    throw new Error('Verifier identity is required.');
+  }
+
+  const found = await db
+    .select()
+    .from(schema.labResults)
+    .where(eq(schema.labResults.id, resultId))
+    .limit(1);
+
+  const result = found[0];
+  if (!result) {
+    throw new Error('Laboratory result not found.');
+  }
+
+  const orderRows = await db
+    .select()
+    .from(schema.labOrders)
+    .where(eq(schema.labOrders.id, result.orderId))
+    .limit(1);
+
+  const order = orderRows[0];
+  if (!order || order.patientId !== result.patientId) {
+    throw new Error('Laboratory result does not match its order patient.');
+  }
+
+  const facility = await getFacilityByIdScoped(context, order.facilityId);
+  if (!facility || facility.tenantId !== order.tenantId) {
+    throw new Error('Laboratory result not found in the authorized facility.');
+  }
+
+  if (result.status === 'Verified' || result.verifiedAt || result.verifiedBy) {
+    throw new Error('This laboratory result has already been verified.');
+  }
+
+  const updated = await db
+    .update(schema.labResults)
+    .set({
+      status: 'Verified',
+      verifiedBy: verifiedBy.trim(),
+      verifiedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.labResults.id, resultId),
+        eq(schema.labResults.orderId, order.id),
+        eq(schema.labResults.patientId, order.patientId),
+      ),
+    )
+    .returning();
+
+  if (!updated[0]) {
+    throw new Error('Laboratory result could not be verified.');
+  }
+
+  return updated[0];
 }
 
 // Radiology

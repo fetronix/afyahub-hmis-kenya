@@ -1267,6 +1267,12 @@ export const api = {
       ),
 
   // ============================================================
+  verifyLabResult:
+    (id: number) =>
+      fetchJson<LabResult>(
+        `${API_BASE}/lab-results/${id}/verify`,
+        { method: 'POST' }
+      ),
   // RADIOLOGY
   // ============================================================
 

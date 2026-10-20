@@ -57,6 +57,13 @@
                         "when":  1792520416402,
                         "tag":  "0007_lab_order_clinical_details",
                         "breakpoints":  true
+                    },
+                    {
+                        "idx":  8,
+                        "version":  "7",
+                        "when":  1792532002706,
+                        "tag":  "0008_lab_result_verification_state",
+                        "breakpoints":  true
                     }
                 ]
 }
