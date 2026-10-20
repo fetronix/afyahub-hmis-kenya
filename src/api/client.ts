@@ -1003,8 +1003,7 @@ export const api = {
   updateBedStatus:
     (
       id: number,
-      status: string,
-      currentPatientId?: number | null
+      status: string
     ) =>
       fetchJson<Bed>(
         `${API_BASE}/beds/${id}/status`,
@@ -1012,8 +1011,20 @@ export const api = {
           method: 'PUT',
           body: JSON.stringify({
             status,
-            currentPatientId,
           }),
+        }
+      ),
+
+  /**
+   * Return a bed to service after terminal cleaning
+   * (Cleaning -> Available).
+   */
+  releaseBed:
+    (id: number) =>
+      fetchJson<Bed>(
+        `${API_BASE}/beds/${id}/release`,
+        {
+          method: 'PUT',
         }
       ),
 
@@ -1067,7 +1078,6 @@ export const api = {
     (
       id: number,
       data: {
-        bedId: number;
         dischargeDate: string;
         dischargeType: string;
         dischargeSummary: string;

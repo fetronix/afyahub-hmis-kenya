@@ -205,6 +205,35 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   };
 
   /**
+   * Maps inpatient domain failures onto their intended HTTP status.
+   *
+   *   400 invalid input
+   *   403 tenant/facility scope violation (delegated to handleScopeError)
+   *   404 record not found inside the authorised scope
+   *   409 conflict with current state (occupied bed, closed admission)
+   *
+   * Returns false for unexpected errors so the caller keeps HTTP 500.
+   */
+  const handleInpatientError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (handleScopeError(error, res)) return true;
+
+    if (error instanceof queries.InpatientDomainError) {
+      res.status(error.status).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+      });
+
+      return true;
+    }
+
+    return false;
+  };
+
+  /**
    * Maps known encounter input-validation errors to HTTP 400.
    * Unexpected errors must remain HTTP 500.
    */
@@ -1124,132 +1153,325 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // INPATIENT: WARDS, BEDS, ADMISSIONS
   // =========================================================
 
-  app.get('/api/wards', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
+  // =========================================================
+  // INPATIENT: WARDS, BEDS AND ADMISSIONS
+  // =========================================================
+  //
+  // Tenant and facility scope are derived from req.authContext.
+  // Client-supplied tenantId / facilityId are never trusted.
+  //
+  // Occupancy is created only by admitting a patient and released
+  // only by discharging one, so bed status cannot forge a bed.
 
-      const list =
-        await queries.getWards(
-          facilityId
+  /**
+   * Return the request's authorization context, or respond 401.
+   */
+  const requireAuthContext = (
+    req: AuthRequest,
+    res: Response,
+  ) => {
+    if (!req.authContext) {
+      res.status(401).json({
+        success: false,
+        error: 'AUTHORIZATION_CONTEXT_MISSING',
+        message: 'Authentication is required.',
+      });
+
+      return null;
+    }
+
+    return req.authContext;
+  };
+
+  /**
+   * Parse an optional positive integer query parameter.
+   * Invalid values become HTTP 400 instead of a scope error.
+   */
+  const parseOptionalPositiveId = (
+    value: unknown,
+    field: string,
+  ): number | undefined => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+
+    const raw = Array.isArray(value) ? value[0] : value;
+
+    if (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw)) {
+      throw new queries.InpatientDomainError(
+        'INVALID_INPUT',
+        `A valid ${field} is required.`,
+        400,
+      );
+    }
+
+    return Number(raw);
+  };
+
+  app.get(
+    '/api/wards',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
-
-  app.get('/api/beds', async (req, res) => {
-    try {
-      const wardId =
-        req.query.wardId
-          ? Number(req.query.wardId)
-          : undefined;
-
-      const list =
-        await queries.getBeds(
-          wardId
-        );
-
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
-
-  app.put('/api/beds/:id/status', async (req, res) => {
-    try {
-      const {
-        status,
-        currentPatientId,
-      } = req.body;
-
-      const bed =
-        await queries.updateBedStatus(
-          Number(req.params.id),
-          status,
-          currentPatientId
-        );
-
-      res.json(bed);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
-
-  app.get('/api/admissions', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
-
-      const status =
-        req.query.status as string;
-
-      const list =
-        await queries.getAdmissions(
+        const list = await queries.getWardsScoped(
+          context,
           facilityId,
-          status
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
 
-  app.post('/api/admissions', async (req, res) => {
-    try {
-      const adm =
-        await queries.createAdmission(
-          req.body
+        console.error('Ward list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'WARD_LIST_FAILED',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/beds',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const wardId = parseOptionalPositiveId(
+          req.query.wardId,
+          'ward ID',
         );
 
-      res.status(201).json(adm);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        const list = await queries.getBedsScoped(
+          context,
+          wardId,
+        );
 
-  app.post('/api/admissions/:id/discharge', async (req, res) => {
-    try {
-      const {
-        bedId,
-        dischargeDate,
-        dischargeType,
-        dischargeSummary,
-      } = req.body;
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
 
-      const adm =
-        await queries.dischargeAdmission(
+        console.error('Bed list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'BED_LIST_FAILED',
+        });
+      }
+    },
+  );
+
+  /*
+   * Change a bed's housekeeping status.
+   *
+   * 'Occupied' is rejected by the query layer: occupancy must come
+   * from an admission. A bed holding a patient cannot be changed
+   * until that patient is discharged or transferred.
+   */
+  app.put(
+    '/api/beds/:id/status',
+    requirePermission('inpatient.admit'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const bed = await queries.setBedStatusScoped(
+          context,
           Number(req.params.id),
-          bedId,
-          dischargeDate,
-          dischargeType,
-          dischargeSummary
+          req.body?.status,
         );
 
-      res.json(adm);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'UPDATE',
+          'Bed',
+          String(bed?.id ?? req.params.id),
+          `Bed status set to ${String(req.body?.status)}`,
+        );
+
+        res.json(bed);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Bed status update error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'BED_STATUS_UPDATE_FAILED',
+        });
+      }
+    },
+  );
+
+  /*
+   * Release a cleaned bed back into service (Cleaning -> Available).
+   *
+   * Without this, every discharge permanently removes a bed from the
+   * usable board because nothing else restores 'Available'.
+   */
+  app.put(
+    '/api/beds/:id/release',
+    requirePermission('inpatient.admit'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const bed = await queries.releaseBedScoped(
+          context,
+          Number(req.params.id),
+        );
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'UPDATE',
+          'Bed',
+          String(bed?.id ?? req.params.id),
+          'Bed released to Available after terminal cleaning',
+        );
+
+        res.json(bed);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Bed release error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'BED_RELEASE_FAILED',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/admissions',
+    requirePermission('inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+
+        const status =
+          typeof req.query.status === 'string'
+            ? req.query.status
+            : undefined;
+
+        const list = await queries.getAdmissionsScoped(
+          context,
+          facilityId,
+          status,
+        );
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Admission list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'ADMISSION_LIST_FAILED',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/admissions',
+    requirePermission('inpatient.admit'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const admission = await queries.createAdmissionScoped(
+          context,
+          req.body ?? {},
+        );
+
+        await queries.logAuditEvent(
+          admission.tenantId,
+          admission.facilityId,
+          String(context.userId),
+          'CREATE',
+          'Admission',
+          String(admission.id),
+          `Admitted patient ${admission.patientId} to ward ${admission.wardId}, bed ${admission.bedId}`,
+        );
+
+        res.status(201).json(admission);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Admission creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'ADMISSION_CREATION_FAILED',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/admissions/:id/discharge',
+    requirePermission('inpatient.discharge'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const admission = await queries.dischargeAdmissionScoped(
+          context,
+          Number(req.params.id),
+          req.body ?? {},
+        );
+
+        await queries.logAuditEvent(
+          admission.tenantId,
+          admission.facilityId,
+          String(context.userId),
+          'UPDATE',
+          'Admission',
+          String(admission.id),
+          `Discharged patient ${admission.patientId} from bed ${admission.bedId}`,
+        );
+
+        res.json(admission);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Discharge error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'DISCHARGE_FAILED',
+        });
+      }
+    },
+  );
 
   // =========================================================
   // THEATRE CASES

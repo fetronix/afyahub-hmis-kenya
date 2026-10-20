@@ -12,7 +12,10 @@ export const STAFF_ROLE_CATALOGUE = [
     description: 'Provides clinical care and manages clinical records.',
     permissions: [
       'appointments.read', 'clinical.create', 'clinical.read',
-      'clinical.update', 'inpatient.read', 'laboratory.read',
+      'clinical.update',
+      // Doctors admit and authorise discharge for their own patients.
+      'inpatient.read', 'inpatient.admit', 'inpatient.discharge',
+      'laboratory.read',
       'laboratory.orders.create', 'patients.read',
     ],
   },
@@ -36,7 +39,10 @@ export const STAFF_ROLE_CATALOGUE = [
     name: 'NURSE',
     description: 'Provides nursing care and accesses clinical records.',
     permissions: [
-      'clinical.create', 'clinical.read', 'inpatient.read', 'patients.read',
+      'clinical.create', 'clinical.read',
+      // Nurses admit patients to a ward and manage beds, but do not
+      // discharge them: discharge stays a doctor authorisation.
+      'inpatient.read', 'inpatient.admit', 'patients.read',
     ],
   },
   {

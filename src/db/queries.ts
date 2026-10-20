@@ -1097,86 +1097,699 @@ export async function updateMedicationStatus(id: number, status: string) {
   }
 }
 
-// Inpatient Wards & Beds
-export async function getWards(facilityId?: number) {
-  try {
-    if (facilityId) {
-      return await db.select().from(schema.wards).where(eq(schema.wards.facilityId, facilityId));
+// ============================================================
+// INPATIENT: WARDS, BEDS AND ADMISSIONS (SCOPED)
+// ============================================================
+//
+// Tenant and facility scope are ALWAYS derived from the
+// authenticated AuthorizationContext. Client-supplied
+// tenantId / facilityId values are never trusted.
+//
+// Occupancy is created only by admitting a patient, and is
+// released only by discharging one. Bed status therefore
+// cannot be used to forge an occupied bed.
+
+import {
+  ACTIVE_ADMISSION_STATUS,
+  ADMISSION_STATUS_SET,
+  ADMISSION_STATUSES,
+  BED_STATUS_SET,
+  BED_STATUSES,
+  BED_STATUS_SETTABLE,
+  CLOSED_ADMISSION_STATUS,
+  InpatientDomainError,
+} from './inpatient-contracts.ts';
+
+export {
+  ADMISSION_STATUSES,
+  BED_STATUSES,
+  BED_STATUS_SETTABLE,
+  InpatientDomainError,
+  type InpatientErrorCode,
+} from './inpatient-contracts.ts';
+
+function requirePositiveId(value: unknown, field: string): number {
+  const id = Number(value);
+
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      `A valid ${field} is required.`,
+      400,
+    );
+  }
+
+  return id;
+}
+
+function optionalText(value: unknown, maxLength = 2000): string | null {
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+
+  if (!trimmed) return null;
+
+  return trimmed.slice(0, maxLength);
+}
+
+function formatTimestampNow(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return [
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+  ].join(' ');
+}
+
+function normaliseTimestamp(value: unknown): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) return trimmed.slice(0, 40);
+  }
+
+  return formatTimestampNow();
+}
+
+/**
+ * Resolve the facility for an inpatient operation and prove it exists
+ * inside the user's authorised scope.
+ */
+async function requireInpatientFacility(
+  context: AuthorizationContext,
+  requestedFacilityId?: number | null,
+) {
+  const facilityId = resolveFacilityScope(context, requestedFacilityId);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+
+  if (!facility) {
+    throw new InpatientDomainError(
+      'FACILITY_NOT_FOUND',
+      'Facility not found.',
+      404,
+    );
+  }
+
+  return facility;
+}
+
+/**
+ * Load a bed and prove that its ward belongs to a facility the
+ * authenticated user may access.
+ */
+async function requireBedInScope(
+  context: AuthorizationContext,
+  bedId: number,
+) {
+  const [bed] = await db
+    .select()
+    .from(schema.beds)
+    .where(eq(schema.beds.id, bedId))
+    .limit(1);
+
+  if (!bed) {
+    throw new InpatientDomainError(
+      'BED_NOT_FOUND',
+      'Bed not found.',
+      404,
+    );
+  }
+
+  const [ward] = await db
+    .select()
+    .from(schema.wards)
+    .where(eq(schema.wards.id, bed.wardId))
+    .limit(1);
+
+  if (!ward) {
+    throw new InpatientDomainError(
+      'BED_NOT_FOUND',
+      'Bed is not attached to a ward.',
+      404,
+    );
+  }
+
+  const facility = await getFacilityByIdScoped(context, ward.facilityId);
+
+  if (!facility) {
+    throw new InpatientDomainError(
+      'BED_NOT_FOUND',
+      'Bed not found in the authorised facility.',
+      404,
+    );
+  }
+
+  return { bed, ward, facility };
+}
+
+/* ------------------------------------------------------------
+   WARDS
+   ------------------------------------------------------------ */
+
+export async function getWardsScoped(
+  context: AuthorizationContext,
+  requestedFacilityId?: number | null,
+) {
+  const facility = await requireInpatientFacility(
+    context,
+    requestedFacilityId,
+  );
+
+  return db
+    .select()
+    .from(schema.wards)
+    .where(eq(schema.wards.facilityId, facility.id))
+    .orderBy(schema.wards.name);
+}
+
+/* ------------------------------------------------------------
+   BEDS
+   ------------------------------------------------------------ */
+
+export async function getBedsScoped(
+  context: AuthorizationContext,
+  wardId?: number | null,
+) {
+  if (wardId !== undefined && wardId !== null) {
+    const id = requirePositiveId(wardId, 'ward ID');
+
+    const [ward] = await db
+      .select()
+      .from(schema.wards)
+      .where(eq(schema.wards.id, id))
+      .limit(1);
+
+    if (!ward) {
+      throw new InpatientDomainError(
+        'WARD_NOT_FOUND',
+        'Ward not found.',
+        404,
+      );
     }
-    return await db.select().from(schema.wards);
-  } catch (error) {
-    console.error('Error fetching wards:', error);
-    throw new Error('Failed to fetch wards', { cause: error });
-  }
-}
 
-export async function getBeds(wardId?: number) {
-  try {
-    if (wardId) {
-      return await db.select().from(schema.beds).where(eq(schema.beds.wardId, wardId));
+    const facility = await getFacilityByIdScoped(context, ward.facilityId);
+
+    if (!facility) {
+      throw new InpatientDomainError(
+        'WARD_NOT_FOUND',
+        'Ward not found in the authorised facility.',
+        404,
+      );
     }
-    return await db.select().from(schema.beds);
-  } catch (error) {
-    console.error('Error fetching beds:', error);
-    throw new Error('Failed to fetch beds', { cause: error });
+
+    return db
+      .select()
+      .from(schema.beds)
+      .where(eq(schema.beds.wardId, ward.id))
+      .orderBy(schema.beds.bedNumber);
   }
+
+  const facility = await requireInpatientFacility(context);
+
+  const wardRows = await db
+    .select({ id: schema.wards.id })
+    .from(schema.wards)
+    .where(eq(schema.wards.facilityId, facility.id));
+
+  if (wardRows.length === 0) return [];
+
+  return db
+    .select()
+    .from(schema.beds)
+    .where(
+      inArray(
+        schema.beds.wardId,
+        wardRows.map((row) => row.id),
+      ),
+    )
+    .orderBy(schema.beds.bedNumber);
 }
 
-export async function updateBedStatus(bedId: number, status: string, currentPatientId: number | null = null) {
-  try {
-    const res = await db.update(schema.beds).set({ status, currentPatientId }).where(eq(schema.beds.id, bedId)).returning();
-    return res[0];
-  } catch (error) {
-    console.error('Error updating bed status:', error);
-    throw new Error('Failed to update bed status', { cause: error });
-  }
-}
+/* ------------------------------------------------------------
+   ADMISSIONS — READ
+   ------------------------------------------------------------ */
 
-export async function getAdmissions(facilityId?: number, status?: string) {
-  try {
-    let query = db.select().from(schema.admissions);
-    const conditions = [];
-    if (facilityId) conditions.push(eq(schema.admissions.facilityId, facilityId));
-    if (status) conditions.push(eq(schema.admissions.status, status));
+export async function getAdmissionsScoped(
+  context: AuthorizationContext,
+  requestedFacilityId?: number | null,
+  status?: string | null,
+) {
+  const facility = await requireInpatientFacility(
+    context,
+    requestedFacilityId,
+  );
 
-    if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.admissions.createdAt));
+  const conditions = [
+    eq(schema.admissions.facilityId, facility.id),
+  ];
+
+  if (typeof status === 'string' && status.trim()) {
+    const normalised = status.trim();
+
+    if (!ADMISSION_STATUS_SET.has(normalised)) {
+      throw new InpatientDomainError(
+        'INVALID_INPUT',
+        `Admission status must be one of: ${ADMISSION_STATUSES.join(', ')}.`,
+        400,
+      );
     }
-    return await query.orderBy(desc(schema.admissions.createdAt));
-  } catch (error) {
-    console.error('Error fetching admissions:', error);
-    throw new Error('Failed to fetch admissions', { cause: error });
+
+    conditions.push(eq(schema.admissions.status, normalised));
   }
+
+  return db
+    .select()
+    .from(schema.admissions)
+    .where(and(...conditions))
+    .orderBy(desc(schema.admissions.createdAt));
 }
 
-export async function createAdmission(data: typeof schema.admissions.$inferInsert) {
-  try {
-    const res = await db.insert(schema.admissions).values(data).returning();
-    // mark bed as occupied
-    await db.update(schema.beds).set({ status: 'Occupied', currentPatientId: data.patientId }).where(eq(schema.beds.id, data.bedId));
-    return res[0];
-  } catch (error) {
-    console.error('Error admitting patient:', error);
-    throw new Error('Failed to admit patient', { cause: error });
-  }
+export async function getAdmissionByIdScoped(
+  context: AuthorizationContext,
+  admissionId: number,
+) {
+  const id = requirePositiveId(admissionId, 'admission ID');
+
+  const [admission] = await db
+    .select()
+    .from(schema.admissions)
+    .where(eq(schema.admissions.id, id))
+    .limit(1);
+
+  if (!admission) return null;
+
+  requireTenantScope(context, admission.tenantId);
+  requireFacilityScope(
+    context,
+    admission.tenantId,
+    admission.facilityId,
+  );
+
+  return admission;
 }
 
-export async function dischargeAdmission(id: number, bedId: number, dischargeDate: string, dischargeType: string, dischargeSummary: string) {
-  try {
-    const res = await db.update(schema.admissions).set({
-      status: 'Discharged',
-      dischargeDate,
-      dischargeType,
-      dischargeSummary
-    }).where(eq(schema.admissions.id, id)).returning();
+/* ------------------------------------------------------------
+   ADMISSIONS — CREATE
+   ------------------------------------------------------------ */
 
-    // mark bed as available or cleaning
-    await db.update(schema.beds).set({ status: 'Cleaning', currentPatientId: null }).where(eq(schema.beds.id, bedId));
-    return res[0];
-  } catch (error) {
-    console.error('Error discharging patient:', error);
-    throw new Error('Failed to discharge patient', { cause: error });
+export interface CreateAdmissionInput {
+  facilityId?: number | null;
+  patientId: number;
+  wardId: number;
+  bedId: number;
+  encounterId?: number | null;
+  admissionDate?: string;
+  admissionType?: string;
+  admittingDoctor?: string | null;
+  provisionalDiagnosis?: string | null;
+  nursingNotes?: string | null;
+}
+
+export async function createAdmissionScoped(
+  context: AuthorizationContext,
+  input: CreateAdmissionInput,
+) {
+  const patientId = requirePositiveId(input?.patientId, 'patient ID');
+  const wardId = requirePositiveId(input?.wardId, 'ward ID');
+  const bedId = requirePositiveId(input?.bedId, 'bed ID');
+
+  const facility = await requireInpatientFacility(
+    context,
+    input?.facilityId,
+  );
+
+  const patient = await requirePatientInTenant(
+    context,
+    patientId,
+    facility.tenantId,
+  );
+
+  if (!patient) {
+    throw new InpatientDomainError(
+      'PATIENT_NOT_FOUND',
+      'Patient not found in the authorised facility.',
+      404,
+    );
   }
+
+  let encounterId: number | null = null;
+
+  if (
+    input?.encounterId !== undefined &&
+    input?.encounterId !== null &&
+    String(input.encounterId) !== ''
+  ) {
+    encounterId = requirePositiveId(input.encounterId, 'encounter ID');
+  }
+
+  const admissionDate = normaliseTimestamp(input?.admissionDate);
+  const admissionType =
+    optionalText(input?.admissionType, 60) ?? 'Emergency';
+
+  return await db.transaction(async (tx) => {
+    const [ward] = await tx
+      .select()
+      .from(schema.wards)
+      .where(
+        and(
+          eq(schema.wards.id, wardId),
+          eq(schema.wards.facilityId, facility.id),
+        ),
+      )
+      .limit(1);
+
+    if (!ward) {
+      throw new InpatientDomainError(
+        'WARD_NOT_FOUND',
+        'Ward not found in the authorised facility.',
+        404,
+      );
+    }
+
+    const [bed] = await tx
+      .select()
+      .from(schema.beds)
+      .where(
+        and(
+          eq(schema.beds.id, bedId),
+          eq(schema.beds.wardId, ward.id),
+        ),
+      )
+      .limit(1);
+
+    if (!bed) {
+      throw new InpatientDomainError(
+        'BED_NOT_FOUND',
+        'Bed not found in the selected ward.',
+        404,
+      );
+    }
+
+    if (encounterId !== null) {
+      const [encounter] = await tx
+        .select({ id: schema.encounters.id })
+        .from(schema.encounters)
+        .where(
+          and(
+            eq(schema.encounters.id, encounterId),
+            eq(schema.encounters.patientId, patient.id),
+            eq(schema.encounters.facilityId, facility.id),
+          ),
+        )
+        .limit(1);
+
+      if (!encounter) {
+        throw new InpatientDomainError(
+          'ENCOUNTER_NOT_FOUND',
+          'Encounter not found for this patient at this facility.',
+          404,
+        );
+      }
+    }
+
+    /* ---- Bed availability ---------------------------------- */
+
+    const [activeOnBed] = await tx
+      .select({ id: schema.admissions.id })
+      .from(schema.admissions)
+      .where(
+        and(
+          eq(schema.admissions.bedId, bed.id),
+          eq(schema.admissions.status, ACTIVE_ADMISSION_STATUS),
+        ),
+      )
+      .limit(1);
+
+    if (activeOnBed) {
+      throw new InpatientDomainError(
+        'BED_OCCUPIED',
+        'That bed already has an active admission.',
+        409,
+      );
+    }
+
+    if (bed.status === 'Occupied') {
+      throw new InpatientDomainError(
+        'BED_OCCUPIED',
+        'That bed is already marked as occupied.',
+        409,
+      );
+    }
+
+    if (bed.status !== 'Available' && bed.status !== 'Cleaning') {
+      throw new InpatientDomainError(
+        'BED_NOT_AVAILABLE',
+        `That bed is not available (current status: ${bed.status ?? 'unknown'}).`,
+        409,
+      );
+    }
+
+    /* ---- One active admission per patient per facility ------ */
+
+    const [existingAdmission] = await tx
+      .select({ id: schema.admissions.id })
+      .from(schema.admissions)
+      .where(
+        and(
+          eq(schema.admissions.patientId, patient.id),
+          eq(schema.admissions.facilityId, facility.id),
+          eq(schema.admissions.status, ACTIVE_ADMISSION_STATUS),
+        ),
+      )
+      .limit(1);
+
+    if (existingAdmission) {
+      throw new InpatientDomainError(
+        'PATIENT_ALREADY_ADMITTED',
+        'This patient already has an active admission at this facility.',
+        409,
+      );
+    }
+
+    /* ---- Insert admission ---------------------------------- */
+
+    const [created] = await tx
+      .insert(schema.admissions)
+      .values({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        patientId: patient.id,
+        encounterId,
+        wardId: ward.id,
+        bedId: bed.id,
+        admissionDate,
+        admissionType,
+        admittingDoctor: optionalText(input?.admittingDoctor, 120),
+        provisionalDiagnosis: optionalText(
+          input?.provisionalDiagnosis,
+          2000,
+        ),
+        nursingNotes: optionalText(input?.nursingNotes, 4000),
+        status: ACTIVE_ADMISSION_STATUS,
+      })
+      .returning();
+
+    /* ---- Occupy the bed in the same transaction ------------ */
+
+    await tx
+      .update(schema.beds)
+      .set({
+        status: 'Occupied',
+        currentPatientId: patient.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.beds.id, bed.id));
+
+    return created;
+  });
+}
+
+/* ------------------------------------------------------------
+   ADMISSIONS — DISCHARGE
+   ------------------------------------------------------------ */
+
+export interface DischargeAdmissionInput {
+  dischargeDate?: string;
+  dischargeType?: string | null;
+  dischargeSummary?: string | null;
+}
+
+export async function dischargeAdmissionScoped(
+  context: AuthorizationContext,
+  admissionId: number,
+  input: DischargeAdmissionInput,
+) {
+  const id = requirePositiveId(admissionId, 'admission ID');
+
+  return await db.transaction(async (tx) => {
+    const [admission] = await tx
+      .select()
+      .from(schema.admissions)
+      .where(eq(schema.admissions.id, id))
+      .limit(1);
+
+    if (!admission) {
+      throw new InpatientDomainError(
+        'ADMISSION_NOT_FOUND',
+        'Admission not found.',
+        404,
+      );
+    }
+
+    requireTenantScope(context, admission.tenantId);
+    requireFacilityScope(
+      context,
+      admission.tenantId,
+      admission.facilityId,
+    );
+
+    if (admission.status !== ACTIVE_ADMISSION_STATUS) {
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        `This admission is already closed (status: ${admission.status ?? 'unknown'}).`,
+        409,
+      );
+    }
+
+    const [updated] = await tx
+      .update(schema.admissions)
+      .set({
+        status: CLOSED_ADMISSION_STATUS,
+        dischargeDate: normaliseTimestamp(input?.dischargeDate),
+        dischargeType: optionalText(input?.dischargeType, 120),
+        dischargeSummary: optionalText(input?.dischargeSummary, 8000),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.admissions.id, admission.id))
+      .returning();
+
+    /*
+     * Release the bed recorded ON THE ADMISSION.
+     *
+     * A client-supplied bedId is never used here: doing so allowed one
+     * patient's discharge to free another patient's bed. The patient
+     * condition additionally prevents clobbering a bed that has since
+     * been reassigned.
+     */
+    if (admission.bedId) {
+      await tx
+        .update(schema.beds)
+        .set({
+          status: 'Cleaning',
+          currentPatientId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.beds.id, admission.bedId),
+            eq(schema.beds.currentPatientId, admission.patientId),
+          ),
+        );
+    }
+
+    return updated;
+  });
+}
+
+/* ------------------------------------------------------------
+   BEDS — STATUS AND RELEASE
+   ------------------------------------------------------------ */
+
+export async function setBedStatusScoped(
+  context: AuthorizationContext,
+  bedId: number,
+  nextStatus: unknown,
+) {
+  const id = requirePositiveId(bedId, 'bed ID');
+
+  if (
+    typeof nextStatus !== 'string' ||
+    !BED_STATUS_SET.has(nextStatus)
+  ) {
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      `Bed status must be one of: ${BED_STATUSES.join(', ')}.`,
+      400,
+    );
+  }
+
+  if (!BED_STATUS_SETTABLE.has(nextStatus)) {
+    throw new InpatientDomainError(
+      'BED_STATUS_NOT_ALLOWED',
+      'Bed occupancy is created by admitting a patient, not by changing bed status.',
+      400,
+    );
+  }
+
+  const { bed } = await requireBedInScope(context, id);
+
+  if (
+    bed.status === 'Occupied' ||
+    (bed.currentPatientId !== null && bed.currentPatientId !== undefined)
+  ) {
+    throw new InpatientDomainError(
+      'BED_STATUS_CONFLICT',
+      'This bed is occupied. Discharge or transfer the patient first.',
+      409,
+    );
+  }
+
+  const [updated] = await db
+    .update(schema.beds)
+    .set({
+      status: nextStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.beds.id, bed.id))
+    .returning();
+
+  return updated;
+}
+
+/**
+ * Release a cleaned bed back into service (Cleaning → Available).
+ *
+ * Without this, every discharge removes a bed from the usable board
+ * permanently, because nothing else ever restores 'Available'.
+ */
+export async function releaseBedScoped(
+  context: AuthorizationContext,
+  bedId: number,
+) {
+  const id = requirePositiveId(bedId, 'bed ID');
+
+  const { bed } = await requireBedInScope(context, id);
+
+  if (
+    bed.currentPatientId !== null &&
+    bed.currentPatientId !== undefined
+  ) {
+    throw new InpatientDomainError(
+      'BED_STATUS_CONFLICT',
+      'This bed still has a patient assigned. Discharge or transfer the patient first.',
+      409,
+    );
+  }
+
+  if (bed.status !== 'Cleaning') {
+    throw new InpatientDomainError(
+      'BED_STATUS_CONFLICT',
+      `Only beds in Cleaning can be released to Available (current status: ${bed.status ?? 'unknown'}).`,
+      409,
+    );
+  }
+
+  const [updated] = await db
+    .update(schema.beds)
+    .set({
+      status: 'Available',
+      currentPatientId: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.beds.id, bed.id))
+    .returning();
+
+  return updated;
 }
 
 // Operating Theatres

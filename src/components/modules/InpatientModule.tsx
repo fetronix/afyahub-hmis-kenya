@@ -43,18 +43,20 @@ export const InpatientModule: React.FC = () => {
     async function loadInpatient() {
       setLoading(true);
       try {
-        const [wList, aList, pList] = await Promise.all([
+        // One facility-scoped bed set drives the board, the roster and
+        // the admit modal. Scope is enforced server-side.
+        const [wList, aList, pList, bList] = await Promise.all([
           api.getWards(currentFacility?.id),
           api.getAdmissions(currentFacility?.id, 'Admitted'),
           api.getPatients(currentTenant?.id, currentFacility?.id),
+          api.getBeds(),
         ]);
         setWards(wList);
         setAdmissions(aList);
         setPatients(pList);
+        setBeds(bList);
         if (wList.length > 0 && !selectedWard) {
           setSelectedWard(wList[0]);
-          const bList = await api.getBeds(wList[0].id);
-          setBeds(bList);
         }
       } catch (err) {
         console.error('Failed to load inpatient data:', err);
@@ -65,13 +67,20 @@ export const InpatientModule: React.FC = () => {
     loadInpatient();
   }, [currentTenant, currentFacility, refreshKey]);
 
-  const handleSelectWard = async (ward: Ward) => {
+  const handleSelectWard = (ward: Ward) => {
     setSelectedWard(ward);
+  };
+
+  /**
+   * Return a terminal-cleaned bed to service.
+   */
+  const handleReleaseBed = async (bed: Bed) => {
     try {
-      const bList = await api.getBeds(ward.id);
-      setBeds(bList);
-    } catch (err) {
-      console.error('Failed to load beds for ward:', err);
+      await api.releaseBed(bed.id);
+      showToast(`Bed ${bed.bedNumber} released to Available.`);
+      triggerRefresh();
+    } catch (err: any) {
+      showToast(`Bed release error: ${err.message}`);
     }
   };
 
@@ -84,8 +93,9 @@ export const InpatientModule: React.FC = () => {
 
     try {
       await api.createAdmission({
-        tenantId: currentFacility?.tenantId || 1,
-        facilityId: currentFacility?.id || 1,
+        // Tenant and facility scope are assigned server-side from the
+        // authenticated session; facilityId is only a request hint.
+        facilityId: currentFacility?.id,
         patientId: Number(admitForm.patientId),
         wardId: Number(admitForm.wardId),
         bedId: Number(admitForm.bedId),
@@ -109,8 +119,9 @@ export const InpatientModule: React.FC = () => {
     if (!dischargeTarget) return;
 
     try {
+      // The bed is released server-side from the admission record, so a
+      // client-supplied bedId is neither needed nor trusted.
       await api.dischargePatient(dischargeTarget.id, {
-        bedId: dischargeTarget.bedId,
         dischargeDate: new Date().toISOString().slice(0, 16).replace('T', ' '),
         dischargeType,
         dischargeSummary,
@@ -144,10 +155,14 @@ export const InpatientModule: React.FC = () => {
           <button
             onClick={() => {
               if (wards.length > 0) {
+                const firstWardBeds = beds.filter(b => b.wardId === wards[0].id);
+                const firstAvailable = firstWardBeds.find(b => b.status === 'Available');
+
                 setAdmitForm(prev => ({
                   ...prev,
                   wardId: wards[0].id.toString(),
                   patientId: patients[0]?.id.toString() || '',
+                  bedId: firstAvailable ? firstAvailable.id.toString() : '',
                 }));
               }
               setIsAdmitModalOpen(true);
@@ -209,7 +224,7 @@ export const InpatientModule: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-          {beds.map((b) => {
+          {beds.filter((b) => b.wardId === selectedWard?.id).map((b) => {
             const isOccupied = b.status === 'Occupied';
             const isCleaning = b.status === 'Cleaning';
             const occupant = b.currentPatientId ? patients.find(p => p.id === b.currentPatientId) : null;
@@ -243,6 +258,14 @@ export const InpatientModule: React.FC = () => {
                       className="text-2xs font-semibold text-teal-900 hover:underline block truncate w-full"
                     >
                       {occupant.firstName} {occupant.lastName[0]}.
+                    </button>
+                  ) : isCleaning ? (
+                    <button
+                      onClick={() => handleReleaseBed(b)}
+                      title="Terminal cleaning complete — return bed to service"
+                      className="w-full text-3xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 rounded px-1.5 py-1 transition-colors truncate"
+                    >
+                      Mark Clean → Available
                     </button>
                   ) : (
                     <span className={`text-3xs font-medium uppercase tracking-wider ${
@@ -374,12 +397,13 @@ export const InpatientModule: React.FC = () => {
                     value={admitForm.wardId}
                     onChange={(e) => {
                       const wid = e.target.value;
-                      setAdmitForm({ ...admitForm, wardId: wid });
-                      api.getBeds(Number(wid)).then(b => {
-                        setBeds(b);
-                        const avail = b.find(x => x.status === 'Available');
-                        if (avail) setAdmitForm(prev => ({ ...prev, bedId: avail.id.toString() }));
-                      });
+                      const wardBeds = beds.filter(b => b.wardId === Number(wid));
+                      const avail = wardBeds.find(x => x.status === 'Available');
+                      setAdmitForm(prev => ({
+                        ...prev,
+                        wardId: wid,
+                        bedId: avail ? avail.id.toString() : '',
+                      }));
                     }}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   >
@@ -396,7 +420,7 @@ export const InpatientModule: React.FC = () => {
                     onChange={(e) => setAdmitForm({ ...admitForm, bedId: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
                   >
-                    {beds.filter(b => b.status === 'Available').map(b => (
+                    {beds.filter(b => b.wardId === Number(admitForm.wardId) && (b.status === 'Available' || b.status === 'Cleaning')).map(b => (
                       <option key={b.id} value={b.id}>
                         {b.bedNumber} ({b.bedType} - KES {Number(b.dailyCharge).toLocaleString()}/d)
                       </option>
