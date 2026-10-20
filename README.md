@@ -25,7 +25,7 @@ The existing roadmap remains unchanged. Status reflects the reported implementat
 7. Inpatient, wards, beds and theatre — Not started
 8. Maternity, MCH and preventive services — Not started
 9. Laboratory and radiology — Not started as a milestone; laboratory permissions have begun to be wired in Step 6
-10. Pharmacy, inventory and procurement — Not started
+10. Pharmacy, inventory and procurement — In progress; expiry control and FEFO dispensing implemented
 11. Tariffs, billing, payments and insurance — Not started
 12. Reports, analytics and public-health reporting — Not started as a milestone; the analytics summary endpoint has already been implemented
 13. Interoperability and integrations — Not started
@@ -82,6 +82,42 @@ After these permission changes:
 - Production build output reported a JavaScript chunk of approximately 628.90 kB and a Vite warning about chunks larger than 500 kB. This is a performance optimisation item, not a build failure.
 
 These checks establish successful compilation and bundling. They do not establish that the permissions work correctly at runtime or that facility/tenant isolation is secure.
+
+### 3.4 Pharmacy stock batches, expiry control and FEFO dispensing
+
+`inventory_batches` existed in the schema but nothing wrote to it, so every dispense deducted from `inventory_items.current_stock` with no idea which physical box left the shelf and no protection against handing out expired stock. That is now implemented.
+
+**Database:** no migration was required. The existing `inventory_batches` table is used as-is. Receiving stock writes `batch_number`, `expiry_date` (text, ISO `YYYY-MM-DD`), `quantity_remaining` and `cost_per_unit`.
+
+**Endpoints added** (all under the existing `inventory` facility module):
+
+| Endpoint | Permission | Purpose |
+|---|---|---|
+| `GET /api/inventory/batches` | `inventory.read` | Batch ledger with expiry status; filter by item, status or horizon |
+| `GET /api/inventory/expiry-summary` | `inventory.read` | Expired/expiring units and KES value at risk |
+| `POST /api/inventory/:id/batches` | `inventory.manage` | Receive stock into a batch |
+
+**Dispensing changed:** `POST /api/pharmacy/dispense` now runs inside a transaction that row-locks the candidate lots, selects usable lots ordered by `expiry_date ASC, id ASC`, and consumes the earliest expiry first. The response gained `stockTracking` (`FEFO` or `untracked`), `allocations` (batch, expiry and quantity per lot), `stockAfter` and `billing`. Dispensations record the batch numbers drawn.
+
+**Rules enforced:**
+
+- A batch expiring today is usable; it becomes `Expired` the following day.
+- Only ISO `YYYY-MM-DD` dates are accepted. Impossible dates such as `2026-02-31` are rejected rather than silently rolled forward.
+- Expired stock is never allocated. A shortfall reports requested, available and expired units separately so "we have none" is distinguishable from "ours are all out of date".
+- An item with at least one batch row is dispensed by FEFO only; a partial fill is refused rather than silently substituting. An item with no batch rows falls back to the existing `current_stock` decrement and is labelled `untracked`, so pre-existing catalogue items keep working.
+- Receiving stock that is already expired is refused. Receiving an existing batch number tops up that lot and never extends its recorded expiry; the response flags `expiryMismatch` when the supplied expiry differs.
+
+**Screens:** Inventory has an Items/Batches tab split with expired and expiring counts, a status filter, and a Receive Batch form. The pharmacy dispense dialog no longer asks the pharmacist to type a batch number — it reports which lots the server drew and warns when expired stock is on the shelf. The dashboard summary gained `expiringStockAlerts`.
+
+**Validation completed:**
+
+- `npm run test:pharmacy-batches` — passed, 80 assertions covering date parsing, expiry boundaries, FEFO ordering and tie-breaking, expired-stock exclusion, shortfall reporting, cent-based valuation and route/UI wiring.
+- `npm test` — passed: 48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 545 migration.
+- `npm run build` — passed (`✓ built in 602ms`), with the same pre-existing chunk-size warning.
+- `npm run lint` — reports only the pre-existing `src/lib/firebase.ts` missing-config error.
+- `npx tsx` runtime-shape probe — 19/19 checks confirming the service orders and locks lots the way the pure planner assumes, and that a realistic three-lot shelf draws near-expiry stock first.
+
+**Not verified:** no PostgreSQL instance was available in the working environment, so the endpoint-to-database path (transaction rollback, row locking under contention, live expiry SQL) has not been executed against a real database. No browser check of the two screens was performed. Confirm both on staging before treating this as Verified.
 
 ## 4. Existing backups and modified files to preserve
 

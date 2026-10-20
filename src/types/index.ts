@@ -568,6 +568,7 @@ export interface AnalyticsSummary {
   totalRevenueKes: number;
   outstandingBillsKes: number;
   lowStockAlerts: number;
+  expiringStockAlerts: number;
 }
 
 /* ============================================================
@@ -664,4 +665,68 @@ export interface OccupancyTrendResponse {
   facilityId: number;
   days: number;
   points: Array<{ date: string; occupiedBeds: number }>;
+}
+
+/* ============================================================
+   PHARMACY STOCK — BATCHES AND EXPIRY
+   ============================================================ */
+
+export type BatchExpiryStatus = 'Expired' | 'Expiring' | 'OK';
+
+export interface InventoryBatchRow {
+  id: number;
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  unit: string | null;
+  batchNumber: string;
+  expiryDate: string;
+  quantityRemaining: number;
+  costPerUnit: string;
+  daysToExpiry: number | null;
+  status: BatchExpiryStatus;
+}
+
+export interface ExpirySummaryItem {
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  expiredUnits: number;
+  expiringUnits: number;
+  earliestExpiry: string;
+}
+
+export interface ExpirySummary {
+  facilityId: number;
+  generatedAt: string;
+  horizonDays: number;
+  expiredBatches: number;
+  expiredUnits: number;
+  expiringBatches: number;
+  expiringUnits: number;
+  expiredValueCents: number;
+  expiringValueCents: number;
+  affectedItems: number;
+  items: ExpirySummaryItem[];
+}
+
+export interface ReceiveBatchResult {
+  batch: {
+    id: number;
+    itemId: number;
+    batchNumber: string;
+    expiryDate: string;
+    quantityRemaining: number;
+    costPerUnit: string | null;
+  };
+  item: InventoryItem | null;
+  received: number;
+  expiryMismatch: string | null;
+}
+
+export interface DispenseAllocation {
+  batchId: number;
+  batchNumber: string;
+  expiryDate: string;
+  quantity: number;
 }

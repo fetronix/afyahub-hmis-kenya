@@ -249,9 +249,22 @@ export const DashboardModule: React.FC = () => {
               <span className="text-2xs text-slate-500 ml-1">Pending Labs</span>
             </div>
           </div>
-          <div className="mt-2 text-2xs text-slate-500">
-            <span>Low drug stocks: </span>
-            <strong className="font-mono text-rose-600">{summary?.lowStockAlerts ?? 0} items</strong>
+          <div className="mt-2 text-2xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span>
+              Low drug stocks:{' '}
+              <strong className="font-mono text-rose-600">{summary?.lowStockAlerts ?? 0} items</strong>
+            </span>
+            <span className="text-slate-300">·</span>
+            <span>
+              Expiring ≤30d:{' '}
+              <strong
+                className={`font-mono ${
+                  (summary?.expiringStockAlerts ?? 0) > 0 ? 'text-amber-700' : 'text-slate-600'
+                }`}
+              >
+                {summary?.expiringStockAlerts ?? 0} batches
+              </strong>
+            </span>
           </div>
         </div>
         </>

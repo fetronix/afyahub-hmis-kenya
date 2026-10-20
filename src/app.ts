@@ -35,6 +35,7 @@ import {
 import * as billing from './billing/billing.service.ts';
 import * as nursing from './nursing/nursing.service.ts';
 import * as reporting from './reporting/reporting.service.ts';
+import * as inventory from './inventory/inventory.service.ts';
 
 dotenv.config();
 
@@ -232,6 +233,35 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         success: false,
         error: error.code,
         message: error.message,
+      });
+
+      return true;
+    }
+
+    return false;
+  };
+
+  /**
+   * Maps pharmacy stock failures onto their intended HTTP status.
+   *
+   *   400 invalid input or an already-expired batch
+   *   404 item or patient not found inside the authorised scope
+   *   409 insufficient unexpired stock
+   *
+   * Returns false for unexpected errors so the caller keeps HTTP 500.
+   */
+  const handleInventoryError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (handleScopeError(error, res)) return true;
+
+    if (error instanceof inventory.InventoryDomainError) {
+      res.status(error.status).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+        ...(error.detail ? { detail: error.detail } : {}),
       });
 
       return true;
@@ -2506,6 +2536,130 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // PHARMACY & INVENTORY
   // =========================================================
 
+  /**
+   * Batches with their expiry status, ordered earliest expiry first.
+   * Everything reaches the facility through inventory_items, because
+   * inventory_batches has no facility column of its own.
+   */
+  app.get(
+    '/api/inventory/batches',
+    requirePermission('inventory.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const status = typeof req.query.status === 'string' ? req.query.status : 'All';
+
+        if (!['All', 'Expired', 'Expiring', 'OK'].includes(status)) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_STATUS',
+            message: 'status must be one of All, Expired, Expiring, OK.',
+          });
+        }
+
+        const rows = await inventory.getBatchesScoped(context, {
+          facilityId: req.query.facilityId ? Number(req.query.facilityId) : undefined,
+          itemId: req.query.itemId ? Number(req.query.itemId) : undefined,
+          status: status as 'All' | 'Expired' | 'Expiring' | 'OK',
+          horizonDays: req.query.horizonDays
+            ? Number(req.query.horizonDays)
+            : undefined,
+        });
+
+        return res.json(rows);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+        if (handleInventoryError(err, res)) return;
+
+        console.error('Batch list error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'BATCH_LIST_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Expired and near-expiry stock for the facility.
+   */
+  app.get(
+    '/api/inventory/expiry-summary',
+    requirePermission('inventory.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const summary = await inventory.getExpirySummaryScoped(
+          context,
+          req.query.facilityId ? Number(req.query.facilityId) : undefined,
+          req.query.days ? Number(req.query.days) : 30,
+        );
+
+        return res.json(summary);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+        if (handleInventoryError(err, res)) return;
+
+        console.error('Expiry summary error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'EXPIRY_SUMMARY_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Receive stock into a batch.
+   *
+   * Tops up an existing batch number instead of failing, so a second
+   * delivery of the same lot is not rejected by the unique index.
+   */
+  app.post(
+    '/api/inventory/:id/batches',
+    requirePermission('inventory.manage'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      const itemId = Number(req.params.id);
+
+      if (!Number.isSafeInteger(itemId) || itemId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_ITEM_ID',
+        });
+      }
+
+      try {
+        const result = await inventory.receiveBatchScoped(
+          context,
+          itemId,
+          req.body ?? {},
+          typeof req.body?.facilityId === 'number' ? req.body.facilityId : undefined,
+        );
+
+        return res.status(201).json(result);
+      } catch (err: unknown) {
+        if (handleScopeError(err, res)) return;
+        if (handleInventoryError(err, res)) return;
+
+        console.error('Batch receive error:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'BATCH_RECEIVE_FAILED',
+        });
+      }
+    },
+  );
+
   app.get('/api/inventory', requirePermission('inventory.read'), async (req, res) => {
     try {
       const facilityId =
@@ -2557,19 +2711,17 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         });
       }
 
-      const disp =
-        await queries.dispenseMedication(
-          req.body
-        );
+      /*
+       * Dispensing draws first-expiry-first-out inside a transaction
+       * with the batch rows locked, so two tills cannot take the same
+       * last strip and an expired lot is never handed to a patient.
+       */
+      const result = await inventory.dispenseFefoScoped(
+        req.authContext,
+        req.body,
+      );
 
-      const dispensation = disp as {
-        id?: number;
-        tenantId?: number;
-        facilityId?: number;
-        patientId?: number;
-        prescriptionId?: number | null;
-        quantityDispensed?: number;
-      } | null;
+      const dispensation = result.dispensation;
 
       /*
        * Price the dispensation from the facility tariff.
@@ -2616,10 +2768,21 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         });
       }
 
-      res.status(201).json({ ...disp, billing: charge });
-    } catch (err: any) {
+      res.status(201).json({
+        ...result.dispensation,
+        stockTracking: result.stockTracking,
+        allocations: result.allocations,
+        stockAfter: result.stockAfter,
+        billing: charge,
+      });
+    } catch (err: unknown) {
+      if (handleInventoryError(err, res)) return;
+
+      const message = err instanceof Error ? err.message : 'Dispensing failed.';
+
+      console.error('Dispense error:', err);
       res.status(500).json({
-        error: err.message,
+        error: message,
       });
     }
   });
@@ -4846,6 +5009,16 @@ app.get(
           const tenantId = facility.tenantId;
           const facilityId = facility.id;
 
+          /* Today + 30 days, as the ISO text expiry_date stores. */
+          const horizon = new Date();
+          horizon.setDate(horizon.getDate() + 30);
+
+          const expiryHorizon = [
+            horizon.getFullYear(),
+            String(horizon.getMonth() + 1).padStart(2, '0'),
+            String(horizon.getDate()).padStart(2, '0'),
+          ].join('-');
+
           const [
             patientRows,
             queueRows,
@@ -4855,6 +5028,7 @@ app.get(
             labRows,
             invoiceRows,
             inventoryRows,
+            expiringRows,
           ] = await Promise.all([
             db.select({ value: count() })
               .from(schema.patients)
@@ -4923,6 +5097,23 @@ app.get(
                 eq(schema.inventoryItems.isActive, true),
                 sql`${schema.inventoryItems.currentStock} <= coalesce(${schema.inventoryItems.reorderLevel}, 0)`,
               )),
+
+            /*
+             * Batches already expired or expiring within 30 days that
+             * still hold stock. expiry_date is stored as ISO text, so a
+             * lexicographic comparison is also a chronological one.
+             */
+            db.select({ value: count() })
+              .from(schema.inventoryBatches)
+              .innerJoin(
+                schema.inventoryItems,
+                eq(schema.inventoryBatches.itemId, schema.inventoryItems.id),
+              )
+              .where(and(
+                eq(schema.inventoryItems.facilityId, facilityId),
+                sql`${schema.inventoryBatches.quantityRemaining} > 0`,
+                sql`${schema.inventoryBatches.expiryDate} <= ${expiryHorizon}`,
+              )),
           ]);
 
           const totalBeds = Number(bedRows[0]?.total ?? 0);
@@ -4940,6 +5131,7 @@ app.get(
             totalRevenueKes: Number(invoiceRows[0]?.revenue ?? 0),
             outstandingBillsKes: Number(invoiceRows[0]?.outstanding ?? 0),
             lowStockAlerts: Number(inventoryRows[0]?.value ?? 0),
+            expiringStockAlerts: Number(expiringRows[0]?.value ?? 0),
           });
         } catch (err: unknown) {
           if (handleScopeError(err, res)) return;

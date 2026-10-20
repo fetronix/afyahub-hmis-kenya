@@ -19,6 +19,10 @@ import {
   RevenueReport,
   OperationsReport,
   OccupancyTrendResponse,
+  InventoryBatchRow,
+  ExpirySummary,
+  ReceiveBatchResult,
+  DispenseAllocation,
   TheatreCase,
   LabTest,
   LabOrder,
@@ -1554,6 +1558,58 @@ export const api = {
   // PHARMACY & INVENTORY
   // ============================================================
 
+  getInventoryBatches:
+    (
+      facilityId?: number,
+      options?: { itemId?: number; status?: 'All' | 'Expired' | 'Expiring' | 'OK'; horizonDays?: number }
+    ) => {
+      const params = new URLSearchParams();
+
+      if (facilityId) params.set('facilityId', String(facilityId));
+      if (options?.itemId) params.set('itemId', String(options.itemId));
+      if (options?.status) params.set('status', options.status);
+      if (options?.horizonDays) params.set('horizonDays', String(options.horizonDays));
+
+      const query = params.toString();
+
+      return fetchJson<InventoryBatchRow[]>(
+        `${API_BASE}/inventory/batches${query ? `?${query}` : ''}`
+      );
+    },
+
+  getExpirySummary:
+    (facilityId?: number, days?: number) => {
+      const params = new URLSearchParams();
+
+      if (facilityId) params.set('facilityId', String(facilityId));
+      if (days) params.set('days', String(days));
+
+      const query = params.toString();
+
+      return fetchJson<ExpirySummary>(
+        `${API_BASE}/inventory/expiry-summary${query ? `?${query}` : ''}`
+      );
+    },
+
+  receiveBatch:
+    (
+      itemId: number,
+      payload: {
+        batchNumber: string;
+        expiryDate: string;
+        quantity: number;
+        costPerUnit?: string | number;
+        facilityId?: number;
+      }
+    ) =>
+      fetchJson<ReceiveBatchResult>(
+        `${API_BASE}/inventory/${itemId}/batches`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      ),
+
   getInventory:
     (facilityId?: number) =>
       fetchJson<InventoryItem[]>(
@@ -1597,6 +1653,10 @@ export const api = {
       unitPrice?: string;
     }) =>
       fetchJson<{
+        batchNumber?: string | null;
+        stockTracking?: 'FEFO' | 'untracked';
+        allocations?: DispenseAllocation[];
+        stockAfter?: number | null;
         billing?: {
           charged: boolean;
           invoiceNumber?: string;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { Medication, InventoryItem, Patient } from '../../types/index.ts';
+import { Medication, InventoryItem, Patient, InventoryBatchRow } from '../../types/index.ts';
 import {
   Pill,
   CheckCircle2,
@@ -24,7 +24,7 @@ export const PharmacyModule: React.FC = () => {
   // Dispensing Target Modal
   const [dispenseTarget, setDispenseTarget] = useState<Medication | null>(null);
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
-  const [batchNumber, setBatchNumber] = useState('B-2026-08');
+  const [batches, setBatches] = useState<InventoryBatchRow[]>([]);
   const [dispenseQty, setDispenseQty] = useState(1);
   const [dispenseNotes, setDispenseNotes] = useState('Labelled: Take with plenty of water after food.');
 
@@ -32,14 +32,19 @@ export const PharmacyModule: React.FC = () => {
     async function loadPharmacy() {
       setLoading(true);
       try {
-        const [meds, inv, pList] = await Promise.all([
+        const [meds, inv, pList, batchList] = await Promise.all([
           api.getMedications(),
           api.getInventory(currentFacility?.id),
           api.getPatients(currentTenant?.id, currentFacility?.id),
+          api.getInventoryBatches(currentFacility?.id).catch((err) => {
+            console.error('Failed to load stock batches:', err);
+            return [] as InventoryBatchRow[];
+          }),
         ]);
         setPrescriptions(meds);
         setInventory(inv);
         setPatients(pList);
+        setBatches(batchList);
       } catch (err) {
         console.error('Failed to load pharmacy data:', err);
       } finally {
@@ -61,10 +66,8 @@ export const PharmacyModule: React.FC = () => {
 
     if (match) {
       setSelectedInventoryItem(match);
-      setBatchNumber(`B-${match.itemCode}-01`);
     } else if (inventory.length > 0) {
       setSelectedInventoryItem(inventory[0]);
-      setBatchNumber(`B-${inventory[0].itemCode}-01`);
     }
   };
 
@@ -82,7 +85,6 @@ export const PharmacyModule: React.FC = () => {
         prescriptionId: dispenseTarget.id,
         patientId: dispenseTarget.patientId,
         itemId: selectedInventoryItem ? selectedInventoryItem.id : undefined,
-        batchNumber,
         quantityDispensed: Number(dispenseQty),
         dispensedBy: currentUser.name,
         notes: dispenseNotes,
@@ -98,7 +100,16 @@ export const PharmacyModule: React.FC = () => {
             ? `Not billed: ${result.billing.message}`
             : 'Not billed.';
 
-      showToast(`Medication dispensed. Stock deducted. ${billingNote}`);
+      const allocationNote =
+        result?.allocations && result.allocations.length > 0
+          ? `Drawn FEFO from ${result.allocations
+              .map((a) => `${a.batchNumber} (exp ${a.expiryDate}) x${a.quantity}`)
+              .join(', ')}.`
+          : result?.stockTracking === 'untracked'
+            ? 'Item has no tracked batches; stock deducted from the plain count.'
+            : 'Stock deducted.';
+
+      showToast(`Medication dispensed. ${allocationNote} ${billingNote}`);
       setDispenseTarget(null);
       triggerRefresh();
     } catch (err: any) {
@@ -270,26 +281,61 @@ export const PharmacyModule: React.FC = () => {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Batch Number</label>
-                  <input
-                    type="text"
-                    value={batchNumber}
-                    onChange={(e) => setBatchNumber(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Quantity Dispensed</label>
-                  <input
-                    type="number"
-                    value={dispenseQty}
-                    onChange={(e) => setDispenseQty(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold"
-                  />
-                </div>
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Quantity Dispensed</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={dispenseQty}
+                  onChange={(e) => setDispenseQty(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold"
+                />
               </div>
+
+              {/* FEFO — the server picks the lot, not the pharmacist */}
+              {(() => {
+                if (!selectedInventoryItem) return null;
+
+                const lots = batches.filter((b) => b.itemId === selectedInventoryItem.id);
+                const usable = lots
+                  .filter((b) => b.status !== 'Expired')
+                  .reduce((sum, b) => sum + b.quantityRemaining, 0);
+                const expired = lots
+                  .filter((b) => b.status === 'Expired')
+                  .reduce((sum, b) => sum + b.quantityRemaining, 0);
+                const next = lots.find((b) => b.status !== 'Expired');
+
+                if (lots.length === 0) {
+                  return (
+                    <div className="text-2xs bg-slate-50 border border-slate-200 rounded-md p-2.5 text-slate-600">
+                      <strong className="text-slate-800">No tracked batches.</strong> Dispensing deducts
+                      from the plain stock count. Receive a batch in Inventory to enable FEFO and expiry control.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="text-2xs bg-teal-50 border border-teal-200 rounded-md p-2.5 text-teal-900 space-y-0.5">
+                    <div className="font-semibold flex items-center gap-1">
+                      <Layers className="w-3 h-3" />
+                      FEFO — {lots.length} lot{lots.length === 1 ? '' : 's'} tracked
+                    </div>
+                    <div>
+                      {usable} usable unit{usable === 1 ? '' : 's'}
+                      {next ? ` · next to expire ${next.batchNumber} on ${next.expiryDate}` : ''}
+                    </div>
+                    {expired > 0 && (
+                      <div className="text-rose-700 font-semibold flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        {expired} expired unit{expired === 1 ? '' : 's'} excluded from dispensing
+                      </div>
+                    )}
+                    <div className="text-teal-700">
+                      The lot is chosen automatically; expired stock is never dispensed.
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Patient Instructions on Dispense Label</label>
