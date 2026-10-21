@@ -1,8 +1,12 @@
 # JaliCare Kenya HMIS — Updated Project Handover
-**Last updated:** 20 October 2026  
+**Last updated:** 21 October 2026  
 **Client:** PUCHE — Level 3B healthcare facility  
 **Current milestone:** Step 6 — OPD, triage and consultations  
 **Overall status:** In progress
+
+> **Bring the database up to date first.** Three migrations (0012, 0013, 0014) are
+> not applied on the development database. Every command, and what to do when one
+> fails, is in **[§10 Migrations and full sync](#10-migrations-and-full-sync)**.
 
 ## 1. Repository and development environment
 
@@ -14,23 +18,26 @@
 
 ## 2. Roadmap status
 
-The existing roadmap remains unchanged. Status reflects the reported implementation progress, not comprehensive production certification.
+Status reflects what is in the repository on 21 October 2026, checked against the
+code rather than carried forward from the previous handover. "Covered by tests"
+means contract or unit assertions run in CI (`npm test`); it does **not** mean the
+screen was exercised, or that a clinician has accepted it.
 
 1. **Foundation and project structure — Completed**
-2. **Authentication, permissions and onboarding — Completed**
-3. **Multi-tenant and facility security — Completed for the current roadmap; further endpoint-level scope hardening remains outstanding**
+2. **Authentication, permissions and onboarding — Completed** (staff invitations, role catalogue, permission seed)
+3. **Multi-tenant and facility security — In progress.** Most queries are scoped through `resolveFacilityScope` and `getFacilityByIdScoped`. Three clinical paths are still unscoped: `getObservations`, `getDiagnoses`, `recordDiagnosis`. This is the last known cross-facility read in the codebase.
 4. **PUCHE facility overview — Completed**
 5. **Patient registration and records — Completed**
-6. **OPD, triage and consultations — In progress; current priority**
-7. Inpatient, wards, beds and theatre — Not started
-8. Maternity, MCH and preventive services — Not started
-9. Laboratory and radiology — Not started as a milestone; laboratory permissions have begun to be wired in Step 6
-10. Pharmacy, inventory and procurement — In progress; expiry control and FEFO dispensing implemented
-11. Tariffs, billing, payments and insurance — In progress; billing spine, mobile money settlement and the claims workflow are implemented
-12. Reports, analytics and public-health reporting — Not started as a milestone; the analytics summary endpoint has already been implemented
-13. Interoperability and integrations — In progress; DHA/AfyaConnect client, readiness report and service-area mapping implemented against the published contracts. No live credential exists yet, so nothing has been exercised against DHA.
-14. Security, regression and user acceptance testing — Not started
-15. Production deployment and handover — Not started
+6. **OPD, triage and consultations — In progress; current priority.** Queue and triage exist; the queue → triage → consultation → investigation → follow-up path has not been walked end to end.
+7. **Inpatient, wards, beds and theatre — Implemented.** Admission board, transfers, discharge authorisation and theatre cases. Covered by 48 assertions in `test:inpatient`. No user acceptance.
+8. **Maternity, MCH and preventive services — Not started.** No dedicated module; only incidental references inside `SpecialtyModule` and `ReceptionQueueModule`.
+9. **Laboratory and radiology — Implemented.** Result entry and verification are separate: `addLabResult` writes `Pending Verification` with `verifiedBy`/`verifiedAt` null, and `POST /api/lab-results/:id/verify` is gated on `laboratory.results.verify`. The schema column is nullable since migration 0008.
+10. **Pharmacy, inventory and procurement — In progress.** Batch tracking, expiry control and FEFO dispensing implemented (80 assertions). Procurement screens exist; no test coverage.
+11. **Tariffs, billing, payments and insurance — Implemented.** Billing spine, mobile money settlement with overpayment handling, and the claims workflow (draft → submit → adjudicate → settle). 31 + 85 + 93 assertions.
+12. **Reports, analytics and public-health reporting — Implemented.** Analytics summary and the reporting dashboard (216 assertions).
+13. **Interoperability and integrations — Implemented to the published contract.** DHA/AfyaConnect client, readiness report, member eligibility, coverage and service-area mapping. Professional registration verification against the Health Worker Registry (§3.8). **No live credential exists, so nothing has been exercised against DHA.** 176 + 100 assertions.
+14. **Security, regression and user acceptance testing — Not started.**
+15. **Production deployment and handover — Not started.**
 
 **Status definitions:** Completed means implementation progress has been reported. Verified requires relevant implementation and test evidence. Do not mark a milestone Verified solely because the TypeScript check and production build pass.
 
@@ -496,6 +503,13 @@ The patient portal is part of the target architecture, but if it is not already 
 **Branch:** `restructure/phase-2-foundation`  
 **Current milestone:** Step 6 — OPD, triage and consultations
 
+> **Historical snapshot — 20 October 2026.**
+> Everything below this line was written before the billing, inpatient, reporting,
+> DHA and professional-verification work. Where it disagrees with §2, §3.7, §3.8
+> or §10, those sections are current. Two claims here are now out of date and are
+> corrected above: laboratory result entry/verification **is** separated, and
+> `req.authContext` **is** assigned in `src/auth/auth.middleware.ts:144`.
+
 ## 1. Completed work
 
 ### Foundation and authentication
@@ -598,3 +612,137 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 | Production deployment and handover | Not started |
 
 **Immediate focus:** Complete and validate tenant/facility scope enforcement for clinical and laboratory operations, then finish the OPD/triage workflow. Avoid reopening completed work unless a specific defect is demonstrated.
+
+## 10. Migrations and full sync
+
+This is the end-to-end procedure for bringing a checkout and its database to the
+same state as the branch. It is written for the Windows/PowerShell development
+machine described in §1, and the same commands work on Linux.
+
+### 10.1 What is pending, and what each migration does
+
+Migrations 0000–0011 are applied on the development database. Three are not:
+
+| Migration | What it adds | Touches existing data |
+|---|---|---|
+| `0012_dha_integration_audit` | `dha_api_calls` table, plus four `patients` columns for DHA eligibility | No — additive columns only |
+| `0013_dha_service_mappings` | `dha_service_mappings` table and its unique index | No |
+| `0014_professional_verification` | `staff_professional_credentials`, `professional_verification_events`, four indexes | No |
+
+Every statement in all three is guarded with `IF NOT EXISTS`. None contains
+`DROP`, `TRUNCATE` or `DELETE`. Re-running them is harmless.
+
+### 10.2 Take a backup first
+
+`0012` adds columns to `patients`. The migration does not rewrite rows, but a dump
+costs a minute and a mistake costs the clinic's records.
+
+```powershell
+New-Item -ItemType Directory -Force backups | Out-Null
+
+& "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" `
+  -h localhost -p 5432 -U postgres -Fc `
+  -f "backups\jalicaredb-before-0014-$(Get-Date -Format yyyyMMdd-HHmmss).dump" `
+  jalicaredb
+```
+
+If `pg_dump` is not at that path, `Get-ChildItem "C:\Program Files\PostgreSQL" -Recurse -Filter pg_dump.exe` will find it.
+
+### 10.3 The commands
+
+```powershell
+git pull
+npm install
+
+npm run db:status              # what the database still owes
+npm run db:migrate -- --dry-run   # the plan, executes nothing
+npm run db:migrate             # apply
+npm run db:status:all          # verify every structure exists
+```
+
+`npm run db:migrate` runs `scripts/migrate.ts`, not `drizzle-kit`. That is
+deliberate — see 10.5.
+
+After a successful migration, grant the permissions that were added since the
+last seed, then restart the server:
+
+```powershell
+npm run db:grant-inpatient-permissions
+npm run dev
+```
+
+### 10.4 Reading the output
+
+`db:status` prints each journal entry as applied (`✓`) or `PENDING`, then checks
+that the tables, columns, indexes and the invoice-number sequence that 0009
+creates actually exist. It exits `0` only when everything it checks is present, so
+it can gate a deploy.
+
+Expected result after migrating: **15 migrations recorded, 0 pending, every line
+`✓`**, and `db:status:all` reporting `READY`.
+
+### 10.5 Why not `drizzle-kit migrate`
+
+`npm run db:migrate:drizzle` is plain `drizzle-kit migrate`. It renders a spinner
+and calls `process.exit()` from inside its own error handler, so when a migration
+fails the Postgres error is never printed. On Windows the spinner is often not
+even visible: the command appears to do nothing and returns to the prompt, while
+`db:status` still says `PENDING`. That is the exact symptom that produced
+`scripts/migrate.ts`.
+
+The alternative is safe to keep for reference but should not be the one you rely
+on:
+
+```powershell
+npm run db:migrate:drizzle   # swallows errors — avoid
+```
+
+`scripts/migrate.ts` applies the same journal entries and writes the same
+tracking rows, but prints the plan first, names the migration and statement that
+failed with the Postgres code, detail and hint, and matches on the migration hash
+so a tracking table that has drifted ahead of the journal cannot make it skip
+work silently.
+
+### 10.6 When it fails
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Cannot reach the database (ECONNREFUSED)` | Postgres not running, or wrong port | Start the service; confirm `SQL_HOST`/`SQL_PORT` in `.env` |
+| `password authentication failed` | Wrong `SQL_ADMIN_PASSWORD` | Correct `.env`; the value is never printed by the scripts |
+| `Missing required environment variable: SQL_HOST` | No `.env`, or the file is not in the repo root | Copy `.env.example` to `.env` and fill it in |
+| `relation "..." does not exist` during 0012–0014 | An earlier migration was recorded but not applied (a half-run from `drizzle-kit`) | Re-run `npm run db:migrate`; the runner matches on hash and re-applies |
+| Command prints nothing and returns | You ran `db:migrate:drizzle` | Use `npm run db:migrate` |
+| BOM warning | A `.sql` file starts with a UTF-8 BOM | The runner strips it and says so; no action needed |
+
+Never run `npm run db:clean`. It exists for disposable databases only and will
+remove data.
+
+### 10.7 Verifying the application afterwards
+
+```powershell
+npm test                       # 1,489 assertions across ten suites
+npm run build
+npm run lint                   # one pre-existing Firebase TS2307 is expected
+```
+
+Then open the app and confirm three screens that depend on the new tables:
+**Interoperability** (readiness report loads), **Configuration → Staff
+Invitations** (selecting a clinical role offers *Verify registration*), and
+**Billing** (invoices still list).
+
+### 10.8 Full sync from a clean clone
+
+```powershell
+git clone https://github.com/fetronix/afyahub-hmis-kenya.git
+cd afyahub-hmis-kenya
+git checkout restructure/phase-2-foundation
+npm install
+Copy-Item .env.example .env      # then fill in the SQL_* values
+npm run db:migrate
+npm run db:seed                  # only on an empty database
+npm run dev
+```
+
+`db:seed` refuses to run against a database that already has tenants; it never
+truncates or overwrites. If you are restoring an existing clinic database, skip
+it entirely and restore the dump instead.

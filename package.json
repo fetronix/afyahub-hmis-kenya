@@ -27,7 +27,8 @@
     "test": "npm run test:inpatient && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:migrations",
     "db:status:all": "tsx scripts/migration-status.ts --expect-all",
     "test:dha": "tsx src/tests/dha.test.ts",
-    "test:verification": "tsx src/tests/professional-verification.test.ts"
+    "test:verification": "tsx src/tests/professional-verification.test.ts",
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
