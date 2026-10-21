@@ -1141,6 +1141,14 @@ export const patients = pgTable(
 
     shaNumber: text('sha_number'),
 
+    /* Client Registry id used by every DHA eligibility and claim call. */
+    dhaClientRegistryId: text('dha_client_registry_id'),
+
+    /* Minimal cache of the last eligibility result (no demographics). */
+    dhaEligibilityStatus: text('dha_eligibility_status'),
+    dhaEligibilityCheckedAt: timestamp('dha_eligibility_checked_at'),
+    dhaEligibilitySchemes: jsonb('dha_eligibility_schemes'),
+
     guardianName: text('guardian_name'),
 
     guardianRelationship: text('guardian_relationship'),
@@ -5442,3 +5450,78 @@ export const publicHealthReportsRelations =
    ============================================================ */
 
 
+/* ============================================================
+   DHA / AFYACONNECT INTEGRATION AUDIT
+   ============================================================ */
+
+/**
+ * One row per outbound call to the national health exchange.
+ *
+ * No request body, response body, token or patient identifier is stored
+ * here. The path is templated at the call site.
+ */
+/* ============================================================
+   DHA SERVICE-AREA MAPPINGS
+   ============================================================ */
+
+/**
+ * Which DHA intervention code covers each service area at this facility.
+ *
+ * The code is entered by an administrator from the DHA portal. It is
+ * never seeded, generated or inferred: an invented intervention code
+ * produces a rejected claim, and a wrong one tells the authority
+ * something untrue about the care that was delivered.
+ *
+ * A unique index on (facility_id, service_area) lives in migration 0013,
+ * so a claim line can never resolve to two codes.
+ */
+export const dhaServiceMappings = pgTable(
+  'dha_service_mappings',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id').notNull(),
+    facilityId: integer('facility_id').notNull(),
+
+    /* One of DhaServiceAreaId, validated in dha.service-areas.ts. */
+    serviceArea: text('service_area').notNull(),
+
+    interventionCode: text('intervention_code').notNull(),
+
+    /* Documented DHA enums. Null until the administrator records them. */
+    accessPoint: text('access_point'),
+    paymentMechanism: text('payment_mechanism'),
+    fund: text('fund'),
+    needsPreauth: boolean('needs_preauth'),
+
+    notes: text('notes'),
+    createdBy: integer('created_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+);
+
+export const dhaApiCalls = pgTable(
+  'dha_api_calls',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id'),
+    facilityId: integer('facility_id'),
+    userId: integer('user_id'),
+
+    mode: text('mode').notNull(),
+    operation: text('operation').notNull(),
+    method: text('method').notNull(),
+    path: text('path').notNull(),
+
+    status: integer('status'),
+    durationMs: integer('duration_ms').default(0).notNull(),
+    outcome: text('outcome').notNull(),
+    errorCode: text('error_code'),
+    requestId: text('request_id'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+);

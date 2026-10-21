@@ -35,6 +35,9 @@ import {
 import * as billing from './billing/billing.service.ts';
 import * as billingPayments from './billing/payments.service.ts';
 import * as insuranceClaims from './insurance/claims.service.ts';
+import * as dha from './integrations/dha/dha.service.ts';
+import { buildReadinessReport } from './integrations/dha/dha.readiness.ts';
+import { DhaError } from './integrations/dha/dha.errors.ts';
 import * as nursing from './nursing/nursing.service.ts';
 import * as reporting from './reporting/reporting.service.ts';
 import * as inventory from './inventory/inventory.service.ts';
@@ -179,6 +182,7 @@ app.use('/api/suppliers', requireFacilityModule('procurement'));
 app.use('/api/purchase-orders', requireFacilityModule('procurement'));
 
 app.use('/api/claims', requireFacilityModule('insurance'));
+app.use('/api/integrations', requireFacilityModule('interoperability'));
 app.use('/api/public-health', requireFacilityModule('public_health'));
 app.use('/api/analytics', requireFacilityModule('analytics'));
 app.use('/api/reporting', requireFacilityModule('analytics'));
@@ -206,6 +210,48 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         success: false,
         error: error.code,
         message: error.message,
+      });
+
+      return true;
+    }
+
+    return false;
+  };
+
+  /**
+   * Maps DHA integration failures onto their intended HTTP status.
+   *
+   * A missing configuration is a 503, not a 500: nothing is broken, the
+   * facility simply has not been onboarded yet, and the message says
+   * exactly what is missing.
+   */
+  const handleDhaError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (handleScopeError(error, res)) return true;
+
+    if (error instanceof DhaError) {
+      const status =
+        error.code === 'NOT_CONFIGURED' || error.code === 'PRODUCTION_BLOCKED'
+          ? 503
+          : error.code === 'UNAUTHORIZED' || error.code === 'AUTH_FAILED'
+            ? 502
+            : error.code === 'FORBIDDEN'
+              ? 403
+              : error.code === 'NOT_FOUND'
+                ? 404
+                : error.code === 'VALIDATION_FAILED'
+                  ? 400
+                  : error.code === 'RATE_LIMITED'
+                    ? 429
+                    : 502;
+
+      res.status(status).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+        operation: error.operation,
       });
 
       return true;
@@ -4565,6 +4611,324 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           success: false,
           error: 'CLAIM_UPDATE_FAILED',
           message: 'Failed to update insurance claim.',
+        });
+      }
+    },
+  );
+
+  /*
+   * =========================================================
+   * DHA / AFYACONNECT INTEGRATION
+   * =========================================================
+   *
+   * Only documented endpoints are called. The readiness report is the
+   * single place to discover what is configured, what is missing and
+   * what this build does not implement yet.
+   */
+
+  app.get(
+    '/api/integrations/dha/readiness',
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const probe = String(req.query.probe ?? 'true') !== 'false';
+        const report = await buildReadinessReport({ probe });
+
+        return res.json(report);
+      } catch (err: unknown) {
+        if (handleDhaError(err, res)) return;
+
+        console.error('Failed to build DHA readiness report:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'DHA_READINESS_FAILED',
+          message: 'Failed to build the integration readiness report.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/integrations/dha/service-mappings',
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const result = await dha.listServiceMappingsScoped(
+          req.authContext,
+          typeof req.query.facilityId === 'string' ? req.query.facilityId : null,
+        );
+
+        return res.json(result);
+      } catch (err: unknown) {
+        if (handleDhaError(err, res)) return;
+
+        console.error('Failed to load DHA service mappings:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'DHA_MAPPINGS_FAILED',
+          message: 'Failed to load the service-area mapping.',
+        });
+      }
+    },
+  );
+
+  app.put(
+    '/api/integrations/dha/service-mappings',
+    requireAnyPermission('tariffs.manage', 'system.settings.manage'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const body = req.body ?? {};
+
+        const saved = await dha.saveServiceMappingScoped(req.authContext, {
+          serviceArea: body.serviceArea,
+          interventionCode: body.interventionCode,
+          accessPoint: body.accessPoint ?? null,
+          paymentMechanism: body.paymentMechanism ?? null,
+          fund: body.fund ?? null,
+          needsPreauth:
+            typeof body.needsPreauth === 'boolean' ? body.needsPreauth : null,
+          notes: body.notes ?? null,
+          facilityId: body.facilityId ?? null,
+          userId: req.user?.id ?? null,
+        });
+
+        return res.json(saved);
+      } catch (err: unknown) {
+        if (handleDhaError(err, res)) return;
+
+        console.error('Failed to save DHA service mapping:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'DHA_MAPPING_SAVE_FAILED',
+          message: 'Failed to save the service-area mapping.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/integrations/dha/invoices/:id/interventions',
+    requireAnyPermission('insurance.read', 'billing.read'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const result = await dha.resolveInvoiceInterventionsScoped(
+          req.authContext,
+          req.params.id,
+          typeof req.query.facilityId === 'string' ? req.query.facilityId : null,
+        );
+
+        return res.json(result);
+      } catch (err: unknown) {
+        if (handleDhaError(err, res)) return;
+
+        console.error('Failed to resolve invoice interventions:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'DHA_INTERVENTIONS_FAILED',
+          message: 'Failed to resolve interventions for this invoice.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/integrations/dha/calls',
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const calls = await dha.listRecentCallsScoped(
+          req.authContext,
+          typeof req.query.facilityId === 'string' ? req.query.facilityId : null,
+          Number(req.query.limit ?? 50),
+        );
+
+        return res.json(calls);
+      } catch (err: unknown) {
+        if (handleDhaError(err, res)) return;
+
+        console.error('Failed to load DHA call log:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'DHA_CALLS_FAILED',
+          message: 'Failed to load the integration call log.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/integrations/dha/patients/:id/eligibility',
+    requirePermission('patients.read'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const result = await dha.checkEligibilityScoped(req.authContext, {
+          patientId: req.params.id,
+          facilityId: req.body?.facilityId ?? null,
+          identificationType: req.body?.identificationType ?? null,
+          identificationNumber: req.body?.identificationNumber ?? null,
+        });
+
+        return res.json(result);
+      } catch (err: unknown) {
+        if (handleDhaError(err, res)) return;
+
+        console.error('Failed to check DHA eligibility:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'DHA_ELIGIBILITY_FAILED',
+          message: 'Failed to check SHA eligibility.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/integrations/dha/patients/:id/coverage',
+    requirePermission('patients.read'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const query = (name: string): string | null =>
+          typeof req.query[name] === 'string' && String(req.query[name]).trim()
+            ? String(req.query[name]).trim()
+            : null;
+
+        const facilityId = query('facilityId');
+        const kind = query('kind') ?? 'benefits';
+
+        const context = req.authContext;
+        const patientId = req.params.id;
+
+        switch (kind) {
+          case 'benefits':
+            return res.json(
+              await dha.getBenefitsScoped(context, patientId, facilityId),
+            );
+
+          case 'interventions':
+            return res.json(
+              await dha.getInterventionsScoped(
+                context,
+                patientId,
+                {
+                  subBenefitCode: query('subBenefitCode'),
+                  code: query('code'),
+                  accessPoint: query('accessPoint'),
+                  search: query('search'),
+                },
+                facilityId,
+              ),
+            );
+
+          case 'sub-benefits':
+            return res.json(
+              await dha.getSubBenefitsScoped(
+                context,
+                patientId,
+                query('parentBenefitCode'),
+                facilityId,
+              ),
+            );
+
+          case 'utilization': {
+            const interventionCode = query('interventionCode');
+
+            if (!interventionCode) {
+              return res.status(400).json({
+                success: false,
+                error: 'INTERVENTION_CODE_REQUIRED',
+                message: 'interventionCode is required for a utilization balance.',
+              });
+            }
+
+            return res.json(
+              await dha.getUtilizationScoped(
+                context,
+                patientId,
+                interventionCode,
+                facilityId,
+              ),
+            );
+          }
+
+          case 'pomsf-balances':
+            return res.json(
+              await dha.getPomsfBalancesScoped(
+                context,
+                patientId,
+                query('policyYear'),
+                facilityId,
+              ),
+            );
+
+          default:
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_COVERAGE_KIND',
+              message:
+                'kind must be one of: benefits, interventions, sub-benefits, utilization, pomsf-balances.',
+            });
+        }
+      } catch (err: unknown) {
+        if (handleDhaError(err, res)) return;
+
+        console.error('Failed to load DHA coverage:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'DHA_COVERAGE_FAILED',
+          message: 'Failed to load SHA coverage.',
         });
       }
     },

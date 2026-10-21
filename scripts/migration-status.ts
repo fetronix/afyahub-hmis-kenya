@@ -20,7 +20,7 @@
  * USAGE
  * -----
  *   npx tsx scripts/migration-status.ts
- *   npx tsx scripts/migration-status.ts --expect-0009
+ *   npx tsx scripts/migration-status.ts --expect-0009   (alias: --expect-all)
  *
  * REQUIRES: a .env with SQL_HOST, SQL_PORT, SQL_DB_NAME, SQL_ADMIN_USER,
  * SQL_ADMIN_PASSWORD — the same values drizzle.config.ts uses.
@@ -31,7 +31,9 @@ import { resolve } from 'node:path';
 
 import type { Pool } from 'pg';
 
-const EXPECT_0009 = process.argv.includes('--expect-0009');
+const EXPECT_0009 =
+  process.argv.includes('--expect-0009') ||
+  process.argv.includes('--expect-all');
 
 const RESET = '\u001b[0m';
 const RED = '\u001b[31m';
@@ -69,6 +71,8 @@ interface TableCheck {
 const TABLES: TableCheck[] = [
   { name: 'admission_transfers' },
   { name: 'nursing_notes' },
+  { name: 'dha_api_calls' },
+  { name: 'dha_service_mappings' },
 ];
 
 const COLUMNS: ColumnCheck[] = [
@@ -79,6 +83,10 @@ const COLUMNS: ColumnCheck[] = [
   { table: 'billing_invoices', column: 'void_reason' },
   { table: 'admissions', column: 'discharged_by' },
   { table: 'admissions', column: 'discharge_disposition' },
+  { table: 'patients', column: 'dha_client_registry_id' },
+  { table: 'patients', column: 'dha_eligibility_status' },
+  { table: 'patients', column: 'dha_eligibility_checked_at' },
+  { table: 'patients', column: 'dha_eligibility_schemes' },
 ];
 
 const INDEXES: IndexCheck[] = [
@@ -115,6 +123,35 @@ const INDEXES: IndexCheck[] = [
   {
     name: 'nursing_notes_patient_idx',
     table: 'nursing_notes',
+    mustBeUnique: false,
+    mustBeTotal: false,
+  },
+  {
+    name: 'dha_api_calls_facility_idx',
+    table: 'dha_api_calls',
+    mustBeUnique: false,
+    mustBeTotal: false,
+  },
+  {
+    name: 'dha_api_calls_operation_idx',
+    table: 'dha_api_calls',
+    mustBeUnique: false,
+    mustBeTotal: false,
+  },
+  {
+    /*
+     * This one must be UNIQUE. The mapping screen upserts on
+     * (facility_id, service_area); without the constraint ON CONFLICT
+     * cannot match and every save fails.
+     */
+    name: 'dha_service_mappings_facility_area_idx',
+    table: 'dha_service_mappings',
+    mustBeUnique: true,
+    mustBeTotal: true,
+  },
+  {
+    name: 'dha_service_mappings_tenant_idx',
+    table: 'dha_service_mappings',
     mustBeUnique: false,
     mustBeTotal: false,
   },
@@ -216,7 +253,7 @@ async function reportStructures(pool: Pool): Promise<{ failures: string[] }> {
   const failures: string[] = [];
 
   console.log('');
-  console.log('Structures required by migration 0009');
+  console.log('Structures required by migrations 0009, 0012 and 0013');
   console.log('----------------------------------------------');
 
   /* Tables */

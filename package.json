@@ -24,7 +24,9 @@
     "test:pharmacy-batches": "tsx src/tests/pharmacy-batches.test.ts",
     "test:payments": "tsx src/tests/payments.test.ts",
     "test:claims": "tsx src/tests/claims.test.ts",
-    "test": "npm run test:inpatient && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:migrations"
+    "test": "npm run test:inpatient && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:migrations",
+    "db:status:all": "tsx scripts/migration-status.ts --expect-all",
+    "test:dha": "tsx src/tests/dha.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

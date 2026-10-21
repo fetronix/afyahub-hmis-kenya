@@ -625,6 +625,89 @@ export interface ClaimSettlementResult {
   facilityId: number;
 }
 
+/* ============================================================
+   DHA / AfyaConnect
+   ============================================================ */
+
+export type DhaCheckStatus = 'READY' | 'BLOCKED' | 'WARNING';
+
+export interface DhaReadinessCheck {
+  id: string;
+  label: string;
+  status: DhaCheckStatus;
+  detail: string;
+}
+
+export interface DhaOperationState {
+  operation: string;
+  method: string;
+  path: string;
+  implemented: boolean;
+  blockedReason?: string;
+}
+
+export interface DhaReadinessReport {
+  generatedAt: string;
+  config: {
+    mode: 'mock' | 'sandbox' | 'production';
+    enabled: boolean;
+    baseUrl: string | null;
+    disabledReason: string | null;
+    productionOptIn: boolean;
+    timeoutMs: number;
+    maxRetries: number;
+    /** Values only ever say 'configured' or 'missing'. */
+    credentials: {
+      clientId: 'configured' | 'missing';
+      clientSecret: 'configured' | 'missing';
+      facilityCode: 'configured' | 'missing';
+    };
+  };
+  checks: DhaReadinessCheck[];
+  operations: DhaOperationState[];
+  ready: boolean;
+  blockers: string[];
+}
+
+export interface DhaEligibilityVerdict {
+  eligible: boolean;
+  pomsfEligible: boolean;
+  deceased: boolean;
+  otpWhitelisted: boolean;
+  biometricsEnforced: boolean;
+  schemes: string[];
+  matchedPrefixes: string[];
+  statusCode: string | null;
+  statusDesc: string | null;
+  memberCrNumber: string | null;
+}
+
+export interface DhaEligibilityResult {
+  verdict: DhaEligibilityVerdict;
+  identificationType: string;
+  identificationHint: string;
+  simulated: boolean;
+  mode: string;
+  retrievedAt: string;
+  memberCrNumberRecorded: boolean;
+}
+
+export interface DhaCallLog {
+  id: number;
+  facilityId: number | null;
+  patientId: number | null;
+  operation: string;
+  method: string;
+  path: string;
+  status: string;
+  httpStatus: number | null;
+  durationMs: number | null;
+  mode: string;
+  simulated: boolean;
+  errorCode: string | null;
+  createdAt: string;
+}
+
 export interface PublicHealthReport {
   id: number;
   facilityId: number;

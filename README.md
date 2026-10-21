@@ -26,9 +26,9 @@ The existing roadmap remains unchanged. Status reflects the reported implementat
 8. Maternity, MCH and preventive services — Not started
 9. Laboratory and radiology — Not started as a milestone; laboratory permissions have begun to be wired in Step 6
 10. Pharmacy, inventory and procurement — In progress; expiry control and FEFO dispensing implemented
-11. Tariffs, billing, payments and insurance — Not started
+11. Tariffs, billing, payments and insurance — In progress; billing spine, mobile money settlement and the claims workflow are implemented
 12. Reports, analytics and public-health reporting — Not started as a milestone; the analytics summary endpoint has already been implemented
-13. Interoperability and integrations — Not started
+13. Interoperability and integrations — In progress; DHA/AfyaConnect client, readiness report and service-area mapping implemented against the published contracts. No live credential exists yet, so nothing has been exercised against DHA.
 14. Security, regression and user acceptance testing — Not started
 15. Production deployment and handover — Not started
 
@@ -189,6 +189,56 @@ What it does:
 - `npm run build` — passed (`✓ built in 583ms`); `npm run lint` reports only the pre-existing `src/lib/firebase.ts` error.
 
 **Not verified:** the claims screens were not opened in a browser. The legacy `PUT /api/claims/:id/status` endpoint was kept for compatibility and now delegates to the state machine, but it has not been exercised from an old client.
+
+### 3.7 DHA / AfyaConnect: a document-verified client, an honest readiness report, and service-area mapping
+
+**What was verified, and where.** Every endpoint, header, enum and query parameter in this build was read from the published reference rather than assumed:
+
+- `https://hie-docs.dha.go.ke/auth/authentication` — OAuth 2.0 client credentials, `POST /tenants/token`, `{ client_id, client_secret }` in, `{ access_token, expires_in, token_type }` out.
+- `https://hie-docs.dha.go.ke/eclaims/eligibility` — `GET /patients/eligibility`, `/patients/benefits`, `/patients/benefits/interventions`, `/patients/benefits/utilization`, `/patients/sub-benefits`, `/patients/pomsf-balances`, and the seven-value identification-type enum.
+- `https://hie-docs.dha.go.ke/eclaims/authorizations` and `/eclaims/start-visit-consent` — consent and visit contracts, captured but **not** wired (see below).
+- `https://hie-docs.dha.go.ke/docs/scenarios/overview` — the decision matrix: `accessPoint` (IP/OP), `paymentMechanism` (PER_DIEM/FEE_FOR_SERVICE), `fund` (SHIF/UHC/ECCIF), `needsPreauth`, and the ECCIF emergency window.
+
+The documented UAT base is `https://ilm-dev.dha.go.ke/uat-middleware/api/v1`. DHA publishes **no** production base URL. Every business call sends `X-Facility-Id` (the Facility Registry code) and `X-Facility-Id-Type: fr-code`.
+
+**Three modes, and production is off.**
+
+| `DHA_MODE` | What happens | Credentials needed |
+|---|---|---|
+| `mock` (default) | Deterministic local fixtures. Nothing leaves the process. Every response is marked `simulated: true` and the screen prints `SIMULATED — not a SHIF decision`. | none |
+| `sandbox` | Real HTTPS calls to the documented UAT gateway. | `DHA_CLIENT_ID`, `DHA_CLIENT_SECRET`, `DHA_FACILITY_CODE` |
+| `production` | Refuses to run unless `DHA_ALLOW_PRODUCTION=true` **and** an `https` `DHA_BASE_URL` is supplied. Both are absent by default. | all of the above |
+
+Mock fixtures are keyed on the identifier so a demo is reproducible: `11111111` returns a deceased beneficiary, `22222222` returns no schemes, anything else returns an eligible member with `POMSF-047` and `SHIF`. A ceremony is not a verification, and the label says which one you are looking at.
+
+**Two rules from the documentation are enforced in code.**
+
+- **POMSF is matched as a prefix.** Scheme names arrive suffixed (`POMSF-047`); exact equality would report a civil servant as uncovered. `TSC` and `USALAMA` are recognised the same way.
+- **`isAlive: false` blocks everything.** The verdict is `deceased`, eligibility is false regardless of schemes, the patient row is marked `DECEASED`, and no downstream call is made.
+
+**Identifiers never leave in clear.** The Client Registry id, national ID and every identification override are masked to their last four characters before they reach a log, an audit row, a response or the screen. `dha_api_calls` stores no request body and no patient identifier — only the operation, the path, the status, the duration and the outcome. No secret, token or payload is logged anywhere in the integration.
+
+**Readiness is reported as fact, not aspiration.** `GET /api/integrations/dha/readiness` returns the mode, each configuration check with `READY`/`WARNING`/`BLOCKED`, the blockers in plain language, and every operation this build knows about — implemented or not. The screen renders that report directly; it no longer shows the previous hard-coded list of eight "Compliant" items, because nothing here is certified, approved or connected to production.
+
+**Not implemented, and why:**
+
+- `consent.authorize` — an OTP must reach the patient and biometrics need a registered device. This build has neither, so wiring the call would produce a screen that cannot work.
+- `claim.startVisit` — consumes a consent token; without consent capture it cannot run end to end.
+- Claim line items, diagnoses, preauthorisation and remittance — the contracts were not captured from the published reference. They are named as missing rather than invented.
+
+**Service-area mapping, without inventing a single code.** DHA adjudicates claim lines against **intervention codes**, which belong to DHA and arrive per beneficiary. This HMIS bills against its own tariff catalogue. `dha.service-areas.ts` defines the eight areas (outpatient, inpatient, laboratory, pharmacy, imaging, theatre, maternity, emergency) and resolves each billable line from its provenance (`billing_items.source_type`) to an area, then to the documented attributes for that area. The intervention code itself is **configuration**: an administrator copies it from the DHA portal into `dha_service_mappings`, one row per facility per area. `GET /api/integrations/dha/invoices/:id/interventions` groups an invoice's lines by area and returns any line whose area has no code as `unmapped` — it refuses to fabricate, and it refuses to silently drop the line.
+
+**Migration:** `0012_dha_integration_audit` adds `dha_api_calls` and four `patients` columns (`dha_client_registry_id`, `dha_eligibility_status`, `dha_eligibility_checked_at`, `dha_eligibility_schemes`). `0013_dha_service_mappings` adds the mapping table with a unique index on `(facility_id, service_area)` so a line can never resolve to two codes. Both are additive and guarded with `IF NOT EXISTS`; neither touches existing rows.
+
+**Validation completed:**
+
+- `npm run test:dha` — passed, 176 assertions. These are mostly honesty checks: the secret never appears in the readiness output or any log statement, production refuses without the opt-in, a disabled client never reaches the network, tokens are cached, the documented paths and identification enum are exact, a mock result is marked simulated, an operation without a fixture throws rather than inventing one, `statusDesc`/`POMSF` semantics hold, all eight service areas carry only documented enum values and no code field, and the four DHA routes are registered behind the module gate.
+- `npm test` — passed, 1,379 assertions across nine suites (48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 84 payments, 91 claims, 176 DHA, 573 migrations).
+- `npm run build` — passed (`✓ built in 545ms`); `npm run lint` reports only the pre-existing `src/lib/firebase.ts` `TS2307`.
+
+**Not verified, and cannot be from here:** no call has been made to the real DHA gateway, because no credentials exist until the application is approved. The sandbox path is exercised only against a stubbed `fetch` that asserts the token exchange, the `Authorization` header, the facility headers and the URL construction. The DHA screen was not opened in a browser.
+
+**Blocked on DHA approval:** client credentials, the Facility Registry code, the enabled API products, and the production base URL. Until those arrive the integration runs in `mock` only, and the readiness report says exactly that.
 
 ## 4. Existing backups and modified files to preserve
 

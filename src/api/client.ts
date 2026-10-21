@@ -38,6 +38,9 @@ import {
   RecordPaymentResult,
   PaymentLedgerRow,
   InsuranceClaim,
+  DhaReadinessReport,
+  DhaEligibilityResult,
+  DhaCallLog,
   ClaimableLinesResponse,
   DraftClaimResult,
   ClaimSettlementResult,
@@ -2036,6 +2039,42 @@ export const api = {
             ? `?facilityId=${facilityId}`
             : ''
         }`
+      ),
+
+  // ============================================================
+  // DHA / AFYACONNECT
+  // ============================================================
+
+  /** Readiness is computed locally and never returns a credential. */
+  getDhaReadiness:
+    (probe = false) =>
+      fetchJson<DhaReadinessReport>(
+        `${API_BASE}/integrations/dha/readiness?probe=${probe ? 'true' : 'false'}`
+      ),
+
+  getDhaCalls:
+    (facilityId?: number, limit = 25) =>
+      fetchJson<DhaCallLog[]>(
+        `${API_BASE}/integrations/dha/calls?limit=${limit}${
+          facilityId ? `&facilityId=${facilityId}` : ''
+        }`
+      ),
+
+  checkDhaEligibility:
+    (
+      patientId: number,
+      options: {
+        identificationType?: string;
+        identificationNumber?: string;
+        facilityId?: number;
+      } = {}
+    ) =>
+      fetchJson<DhaEligibilityResult>(
+        `${API_BASE}/integrations/dha/patients/${patientId}/eligibility`,
+        {
+          method: 'POST',
+          body: JSON.stringify(options),
+        }
       ),
 
   getAuditLogs:
