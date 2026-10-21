@@ -866,6 +866,12 @@ export type RoleTaskCatalogue = {
     requiresVerification: boolean;
   };
   granted: string[];
+  /**
+   * Grants held by the role that sit outside the delegable allowlist
+   * (a custom permission, for example). They are shown, left untouched
+   * by a save, and never offered in the picker.
+   */
+  unmapped: string[];
   groups: RoleTaskGroup[];
 };
 
@@ -959,6 +965,15 @@ export async function getRoleTaskCatalogue(input: {
     });
   }
 
+  const grantedCodes = grantedRows.map((row) => row.code).sort();
+  const delegableCodes = new Set<string>();
+
+  for (const group of groups.values()) {
+    for (const permission of group.permissions) {
+      delegableCodes.add(permission.code);
+    }
+  }
+
   return {
     role: {
       id: role.id,
@@ -966,7 +981,8 @@ export async function getRoleTaskCatalogue(input: {
       description: role.description,
       requiresVerification: described.requiresVerification,
     },
-    granted: grantedRows.map((row) => row.code).sort(),
+    granted: grantedCodes,
+    unmapped: grantedCodes.filter((code) => !delegableCodes.has(code)),
     groups: Array.from(groups.values()),
   };
 }
@@ -1087,15 +1103,30 @@ export async function updateRolePermissions(input: {
     }
 
     const currentRows = await tx
-      .select({ permissionId: rolePermissions.permissionId })
+      .select({
+        permissionId: rolePermissions.permissionId,
+        code: permissions.code,
+        module: permissions.module,
+      })
       .from(rolePermissions)
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
       .where(eq(rolePermissions.roleId, target.id));
 
     const currentIds = new Set(currentRows.map((row) => row.permissionId));
     const wantedIds = new Set(uniqueIds);
 
+    /*
+     * Only grants inside the allowlist are compared. A custom or
+     * administrative permission the role already holds is left exactly
+     * as it is: this screen may add and remove delegable work, it may
+     * not quietly strip something it never offered.
+     */
+    const delegableCurrentIds = currentRows
+      .filter((row) => isDelegablePermission(row))
+      .map((row) => row.permissionId);
+
     const toAdd = uniqueIds.filter((id) => !currentIds.has(id));
-    const toRemove = Array.from(currentIds).filter((id) => !wantedIds.has(id));
+    const toRemove = delegableCurrentIds.filter((id) => !wantedIds.has(id));
 
     if (toAdd.length === 0 && toRemove.length === 0) {
       return {

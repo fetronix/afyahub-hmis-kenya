@@ -623,6 +623,11 @@ function testTaskDelegationBoundary(): void {
     'Revoking a task removes the grant row',
   );
   assert(
+    rolesService.includes('delegableCurrentIds') &&
+      rolesService.includes('unmapped'),
+    'A grant outside the allowlist is preserved and named, never silently stripped',
+  );
+  assert(
     rolesService.includes('resource: "ROLE_PERMISSIONS"'),
     'A task change writes an audit row naming the role',
   );

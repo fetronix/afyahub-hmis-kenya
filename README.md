@@ -686,6 +686,7 @@ The `blue`, `teal` and `slate` ramps resolve to those values, so every existing 
 - **The boundary is a module allowlist**, not "you may only grant what you hold". A freshly seeded `FACILITY_ADMIN` holds staff and tariff permissions but not `billing.read`, so a caller-ceiling rule would refuse the exact example that was asked for. What may be delegated is operational work: `patients`, `appointments`, `clinical`, `inpatient`, `maternity`, `laboratory`, `pharmacy`, `inventory`, `procurement`, `billing`, `insurance`, `reports`, `public_health`, `interop`, `practitioners`.
 - **What may never be delegated:** anything under `users.`, `roles.`, `audit.`, `facilities.`, `system.`, `auth.`, `platform.`, `tenants.`, `subscriptions.`, `security.`, `rbac.` or `permissions.`, plus anything whose module is not on the allowlist. An unknown module fails closed.
 - **Administrator roles are not editable here** — the same policy that decides which roles a facility may hand out (§3.15) decides which roles may be edited. A role that grants nothing cannot be saved; at least one task remains.
+- **A grant outside the allowlist is preserved.** If a role already holds a custom permission this screen never offers, the editor names it and a save leaves it exactly as it is. The screen may add and remove delegable work; it may not quietly strip something it never showed.
 - **A role belongs to the tenant, not one facility.** The screen states this before saving, and the audit row names the role. Staff who hold the role may need to sign in again for the *sidebar* to show a newly granted module; the server enforces the change on the next request.
 - **The screen:** *Configuration → Staff* now carries a **Role tasks** section (count per role, **Edit tasks** opening a grouped checkbox editor) beside the directory, which gained an **Active / Deactivated** pill and a **Deactivate / Activate** button with a confirmation dialog and optional reason.
 
@@ -693,9 +694,9 @@ The `blue`, `teal` and `slate` ramps resolve to those values, so every existing 
 
 **Validation**
 
-- `npm run build` — **598 ms**.
+- `npm run build` — **616 ms**.
 - `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
-- `npm test` — **2,177 assertions across seventeen suites**, all green. `test:staff-roles` grew from 93 to **133**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring. A new `test:design` suite (28 assertions) fails the build if a screen references a colour family the theme no longer defines, or if a semantic class it uses disappears.
+- `npm test` — **2,178 assertions across seventeen suites**, all green. `test:staff-roles` grew from 93 to **134**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring. A new `test:design` suite (28 assertions) fails the build if a screen references a colour family the theme no longer defines, or if a semantic class it uses disappears.
 
 **Not verified:** no browser exists in this environment, so no screen in this round was clicked — the palette is verified only as far as "Tailwind emitted the utilities and the bundle builds". The two new features were **not** exercised against a live PostgreSQL database: the assertions are contract/source checks plus type-checking, and the earlier live run (§3.15, 49 checks) covered only the role-assignment routes. Treat the new SQL paths as untested against a real database until they are walked.
 
