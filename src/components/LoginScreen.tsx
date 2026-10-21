@@ -4,6 +4,7 @@ import {
   Eye,
   EyeOff,
   LockKeyhole,
+  UserRound,
   ShieldCheck,
   HeartPulse,
   ArrowRight,
@@ -52,6 +53,14 @@ export const LoginScreen: React.FC = () => {
 
   const [infoMessage, setInfoMessage] =
     useState('');
+
+  /*
+   * The logo is a local file; in a fresh checkout it may be absent.
+   * Track that once so the brand panel falls back to a typographic
+   * wordmark instead of an empty gap.
+   */
+  const [logoFailed, setLogoFailed] =
+    useState(false);
 
   /*
   |--------------------------------------------------------------------------
@@ -143,1168 +152,238 @@ export const LoginScreen: React.FC = () => {
   */
 
   return (
-    <main
-      className="
-        min-h-screen
-        bg-slate-100
-        flex
-        items-center
-        justify-center
-        p-4
-        sm:p-6
-        relative
-        overflow-hidden
-      "
-    >
+    <main className="relative min-h-screen overflow-hidden bg-canvas">
+      {/* A warm wash, not a light show: two soft fields of colour. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-48 -top-48 h-[38rem] w-[38rem] rounded-full bg-pine-100/60 blur-3xl" />
+        <div className="absolute -right-40 top-1/3 h-[30rem] w-[30rem] rounded-full bg-clay-100/50 blur-3xl" />
+      </div>
 
-      {/* ================================================================
-          PAGE BACKGROUND ACCENTS
-      ================================================================= */}
-
-      <div
-        className="
-          absolute
-          -top-40
-          -left-40
-          w-96
-          h-96
-          rounded-full
-          bg-blue-100
-          blur-3xl
-          opacity-60
-          pointer-events-none
-        "
-      />
-
-      <div
-        className="
-          absolute
-          -bottom-40
-          -right-40
-          w-96
-          h-96
-          rounded-full
-          bg-orange-100
-          blur-3xl
-          opacity-50
-          pointer-events-none
-        "
-      />
-
-      {/* ================================================================
-          MAIN CARD
-      ================================================================= */}
-
-      <div
-        className="
-          relative
-          z-10
-          w-full
-          max-w-6xl
-          min-h-[650px]
-          bg-white
-          rounded-2xl
-          shadow-2xl
-          border
-          border-slate-200
-          overflow-hidden
-          flex
-          flex-col
-          md:flex-row
-        "
-      >
-
-        {/* ================================================================
-            BRANDING PANEL
-        ================================================================= */}
-
-        <section
-          className="
-            relative
-            md:w-[48%]
-            bg-blue-900
-            text-white
-            overflow-hidden
-            flex
-            flex-col
-            justify-between
-            p-7
-            sm:p-10
-            md:p-12
-            lg:p-14
-          "
-        >
-
-          {/* ==============================================================
-              BACKGROUND DECORATIONS
-          ============================================================== */}
-
-          <div
-            className="
-              absolute
-              -top-32
-              -right-32
-              w-96
-              h-96
-              rounded-full
-              bg-blue-800
-              opacity-70
-              animate-[float_8s_ease-in-out_infinite]
-            "
-          />
-
-          <div
-            className="
-              absolute
-              -bottom-40
-              -left-32
-              w-[28rem]
-              h-[28rem]
-              rounded-full
-              bg-blue-950
-              opacity-80
-              animate-[floatReverse_10s_ease-in-out_infinite]
-            "
-          />
-
-          <div
-            className="
-              absolute
-              top-1/2
-              right-[-110px]
-              w-64
-              h-64
-              rounded-full
-              border
-              border-blue-700
-              opacity-40
-              animate-[spin_30s_linear_infinite]
-            "
-          />
-
-          {/* Orange accent line */}
-
-          <div
-            className="
-              absolute
-              left-0
-              top-0
-              bottom-0
-              w-1
-              bg-orange-600
-            "
-          />
-
-          {/* ==============================================================
-              BRAND
-          ============================================================== */}
-
-          <div className="relative z-10">
-
-            {/* ============================================================
-                LOGO — NO CONTAINER
-            ============================================================= */}
-
-            <div
-              className="
-                relative
-                inline-block
-                animate-[logoFloat_4s_ease-in-out_infinite]
-              "
-            >
-
-              {/* Soft logo glow */}
-
-              <div
-                className="
-                  absolute
-                  inset-0
-                  bg-white/20
-                  blur-2xl
-                  rounded-full
-                  scale-75
-                  animate-pulse
-                "
-              />
-
-              {/* Shine */}
-
-              <div
-                className="
-                  absolute
-                  top-0
-                  bottom-0
-                  -left-1/2
-                  w-1/3
-                  skew-x-[-20deg]
-                  bg-gradient-to-r
-                  from-transparent
-                  via-white/50
-                  to-transparent
-                  animate-[logoShine_5s_ease-in-out_infinite]
-                  z-20
-                  pointer-events-none
-                "
-              />
-
-              <img
-                src={LOGO_PATH}
-                alt="JaliCare HMIS"
-                className="
-                  relative
-                  z-10
-                  block
-                  w-auto
-                  h-auto
-                  max-w-[320px]
-                  max-h-[140px]
-                  object-contain
-                  drop-shadow-[0_8px_20px_rgba(0,0,0,0.25)]
-                  transition-transform
-                  duration-500
-                  hover:scale-105
-                "
-                onError={(event) => {
-                  event.currentTarget.style.display =
-                    'none';
-                }}
-              />
-
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1240px] items-center justify-center px-4 py-6 sm:px-6 lg:py-10">
+        <div className="grid w-full overflow-hidden rounded-[28px] border border-hair bg-surface shadow-lift lg:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)]">
+          {/*
+            Brand panel. Deep pine, a faint set of rings, and the
+            promise the product is making. No motion: a clinic at
+            7 a.m. does not need a light show.
+          */}
+          <section className="relative hidden flex-col justify-between overflow-hidden bg-pine-900 p-10 text-white lg:flex xl:p-12">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+              <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full border border-white/10" />
+              <div className="absolute -right-10 top-10 h-56 w-56 rounded-full border border-white/10" />
+              <div className="absolute -bottom-32 -left-24 h-96 w-96 rounded-full border border-white/[0.07]" />
+              <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-pine-950/60 to-transparent" />
             </div>
 
-            {/* ============================================================
-                BRAND BADGE
-            ============================================================= */}
-
-            <div className="mt-8">
-
-              <div
-                className="
-                  inline-flex
-                  items-center
-                  gap-2
-                  px-3
-                  py-1.5
-                  rounded-full
-                  bg-blue-800
-                  border
-                  border-blue-700
-                  text-blue-100
-                  text-xs
-                  font-medium
-                "
-              >
-
-                <HeartPulse
-                  className="
-                    w-3.5
-                    h-3.5
-                    text-orange-400
-                  "
+            <div className="relative z-10">
+              {!logoFailed ? (
+                <img
+                  src={LOGO_PATH}
+                  alt="JaliCare HMIS"
+                  className="mb-8 h-auto max-h-[104px] w-auto max-w-[240px] object-contain"
+                  onError={() => setLogoFailed(true)}
                 />
+              ) : (
+                <div className="mb-8 flex items-center gap-2.5">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 font-display text-lg">
+                    J
+                  </span>
+                  <span className="font-display text-xl tracking-tight">
+                    JaliCare
+                  </span>
+                </div>
+              )}
 
-                Kenya Healthcare
-                Information System
+              <p className="text-2xs font-semibold uppercase tracking-[0.22em] text-pine-200">
+                Kenya Health Information System
+              </p>
 
-              </div>
-
-              <h1
-                className="
-                  mt-6
-                  text-3xl
-                  sm:text-4xl
-                  font-bold
-                  tracking-tight
-                  leading-tight
-                "
-              >
-                Healthcare
+              <h1 className="mt-5 font-display text-[2.6rem] leading-[1.08] tracking-tight text-white">
+                Care that stays
                 <br />
-                managed
-                <br />
-
-                <span className="text-orange-400">
-                  intelligently.
-                </span>
-
+                with the patient.
               </h1>
 
-              <p
-                className="
-                  mt-5
-                  text-sm
-                  sm:text-base
-                  text-blue-100
-                  leading-relaxed
-                  max-w-md
-                "
-              >
-                JaliCare brings clinical care,
-                patient management, pharmacy,
-                laboratory, finance,
-                interoperability and
-                administration into one
-                secure healthcare platform.
+              <p className="mt-5 max-w-sm text-sm leading-relaxed text-pine-100/90">
+                One clinical record from the reception desk to the ward:
+                registration, triage, consultation, laboratory, pharmacy,
+                billing and follow-up in a single secure system.
               </p>
 
+              <div className="mt-8 h-px w-16 bg-clay-400/70" />
+
+              <ul className="mt-6 space-y-3 text-xs text-pine-100/85">
+                <li className="flex items-center gap-2.5">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-clay-300" />
+                  Protected sessions, audited access
+                </li>
+                <li className="flex items-center gap-2.5">
+                  <HeartPulse className="h-4 w-4 shrink-0 text-clay-300" />
+                  Every stage billed against the same encounter
+                </li>
+                <li className="flex items-center gap-2.5">
+                  <LockKeyhole className="h-4 w-4 shrink-0 text-clay-300" />
+                  Tenant and facility isolation by design
+                </li>
+              </ul>
             </div>
 
-          </div>
-
-          {/* ==============================================================
-              SECURITY INDICATORS
-          ============================================================== */}
-
-          <div
-            className="
-              relative
-              z-10
-              mt-10
-              grid
-              grid-cols-1
-              sm:grid-cols-2
-              md:grid-cols-1
-              gap-3
-            "
-          >
-
-            {/* Secure Access */}
-
-            <div
-              className="
-                flex
-                items-center
-                gap-3
-                rounded-xl
-                bg-blue-800/60
-                border
-                border-blue-700
-                px-4
-                py-3
-                transition-all
-                duration-300
-                hover:bg-blue-800
-                hover:border-orange-500/50
-                hover:-translate-y-0.5
-              "
-            >
-
-              <div
-                className="
-                  w-9
-                  h-9
-                  rounded-lg
-                  bg-orange-600
-                  flex
-                  items-center
-                  justify-center
-                  shrink-0
-                  shadow-lg
-                "
-              >
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-
-              <div>
-
-                <div
-                  className="
-                    text-sm
-                    font-semibold
-                  "
-                >
-                  Secure Access
-                </div>
-
-                <div
-                  className="
-                    text-xs
-                    text-blue-200
-                  "
-                >
-                  Protected healthcare environment
-                </div>
-
-              </div>
-
+            <div className="relative z-10 mt-10 flex items-center justify-between border-t border-white/10 pt-5 text-2xs text-pine-200/80">
+              <span>JaliCare HMIS</span>
+              <span className="flex items-center gap-1.5">
+                DHA ready
+                <span className="h-1 w-1 rounded-full bg-clay-400" />
+                FHIR R4
+              </span>
             </div>
+          </section>
 
-            {/* Protected Sessions */}
-
-            <div
-              className="
-                flex
-                items-center
-                gap-3
-                rounded-xl
-                bg-blue-800/60
-                border
-                border-blue-700
-                px-4
-                py-3
-                transition-all
-                duration-300
-                hover:bg-blue-800
-                hover:border-orange-500/50
-                hover:-translate-y-0.5
-              "
-            >
-
-              <div
-                className="
-                  w-9
-                  h-9
-                  rounded-lg
-                  bg-orange-600
-                  flex
-                  items-center
-                  justify-center
-                  shrink-0
-                  shadow-lg
-                "
-              >
-                <LockKeyhole className="w-5 h-5" />
+          {/* Sign-in panel */}
+          <section className="flex flex-col justify-center px-6 py-10 sm:px-10 lg:px-12 xl:px-16">
+            <div className="mx-auto w-full max-w-[400px]">
+              {/* Small screens lose the brand panel, not the brand. */}
+              <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+                {!logoFailed ? (
+                  <img
+                    src={LOGO_PATH}
+                    alt="JaliCare HMIS"
+                    className="h-auto max-h-12 w-auto max-w-[180px] object-contain"
+                    onError={() => setLogoFailed(true)}
+                  />
+                ) : (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-pine-800 font-display text-base text-white">
+                      J
+                    </span>
+                    <span className="font-display text-lg text-ink">JaliCare</span>
+                  </>
+                )}
               </div>
 
-              <div>
-
-                <div
-                  className="
-                    text-sm
-                    font-semibold
-                  "
-                >
-                  Protected Sessions
-                </div>
-
-                <div
-                  className="
-                    text-xs
-                    text-blue-200
-                  "
-                >
-                  Authenticated staff access
-                </div>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* ==============================================================
-              FOOTER
-          ============================================================== */}
-
-          <div
-            className="
-              relative
-              z-10
-              mt-8
-              pt-5
-              border-t
-              border-blue-800
-              text-xs
-              text-blue-300
-            "
-          >
-
-            JaliCare HMIS
-
-            <span className="mx-2">
-              ·
-            </span>
-
-            <span className="text-orange-400">
-              Secure Healthcare Operations
-            </span>
-
-          </div>
-
-        </section>
-
-        {/* ================================================================
-            LOGIN PANEL
-        ================================================================= */}
-
-        <section
-          className="
-            relative
-            flex-1
-            flex
-            items-center
-            justify-center
-            bg-white
-            px-6
-            py-10
-            sm:px-10
-            md:px-12
-            lg:px-16
-            overflow-hidden
-          "
-        >
-
-          {/* ==============================================================
-              FORM SIDE DECORATION
-          ============================================================== */}
-
-          <div
-            className="
-              absolute
-              top-0
-              left-0
-              right-0
-              h-1
-              bg-gradient-to-r
-              from-blue-700
-              via-blue-600
-              to-orange-600
-            "
-          />
-
-          <div
-            className="
-              absolute
-              bottom-0
-              left-0
-              w-32
-              h-32
-              border-l-4
-              border-b-4
-              border-orange-500/20
-              rounded-bl-3xl
-              pointer-events-none
-            "
-          />
-
-          <div
-            className="
-              absolute
-              top-0
-              right-0
-              w-32
-              h-32
-              border-r-4
-              border-t-4
-              border-blue-600/20
-              rounded-tr-3xl
-              pointer-events-none
-            "
-          />
-
-          <div className="relative z-10 w-full max-w-md">
-
-            {/* ============================================================
-                MOBILE LOGO
-            ============================================================= */}
-
-            <div
-              className="
-                flex
-                justify-center
-                mb-8
-                md:hidden
-              "
-            >
-
-              <img
-                src={LOGO_PATH}
-                alt="JaliCare HMIS"
-                className="
-                  max-w-[260px]
-                  max-h-[100px]
-                  object-contain
-                  animate-[logoFloat_4s_ease-in-out_infinite]
-                  drop-shadow-md
-                "
-              />
-
-            </div>
-
-            {/* ============================================================
-                HEADING
-            ============================================================= */}
-
-            <div className="mb-8">
-
-              <div
-                className="
-                  flex
-                  items-center
-                  gap-2
-                  mb-3
-                "
-              >
-
-                <div
-                  className="
-                    w-8
-                    h-1
-                    rounded-full
-                    bg-orange-600
-                  "
-                />
-
-                <p
-                  className="
-                    text-xs
-                    uppercase
-                    tracking-[0.16em]
-                    text-blue-700
-                    font-bold
-                  "
-                >
-                  Staff Portal
-                </p>
-
-              </div>
-
-              <h2
-                className="
-                  text-2xl
-                  sm:text-3xl
-                  font-bold
-                  text-slate-900
-                  tracking-tight
-                "
-              >
-                Welcome back
+              <p className="eyebrow">Staff portal</p>
+              <h2 className="mt-2 font-display text-[2rem] leading-tight tracking-tight text-ink">
+                Welcome back.
               </h2>
-
-              <p
-                className="
-                  mt-2
-                  text-sm
-                  text-slate-500
-                  leading-relaxed
-                "
-              >
-                Sign in to access your JaliCare
-                healthcare workspace.
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                Sign in with the account your facility administrator issued to you.
               </p>
 
-            </div>
-
-            {/* ============================================================
-                ERROR
-            ============================================================= */}
-
-            {error && (
-              <div
-                role="alert"
-                className="
-                  mb-5
-                  rounded-xl
-                  border
-                  border-red-200
-                  bg-red-50
-                  px-4
-                  py-3
-                  text-sm
-                  text-red-700
-                  leading-relaxed
-                "
-              >
-                {error}
-              </div>
-            )}
-
-            {/* ============================================================
-                INFO
-            ============================================================= */}
-
-            {infoMessage && (
-              <div
-                role="status"
-                className="
-                  mb-5
-                  rounded-xl
-                  border
-                  border-blue-200
-                  bg-blue-50
-                  px-4
-                  py-3
-                  text-sm
-                  text-blue-800
-                  leading-relaxed
-                "
-              >
-                {infoMessage}
-              </div>
-            )}
-
-            {/* ============================================================
-                FORM
-            ============================================================= */}
-
-            <form
-              onSubmit={handleSubmit}
-              noValidate
-              className="space-y-5"
-            >
-
-              {/* ==========================================================
-                  IDENTIFIER
-              =========================================================== */}
-
-              <div>
-
-                <label
-                  htmlFor="identifier"
-                  className="
-                    block
-                    text-sm
-                    font-semibold
-                    text-slate-700
-                    mb-2
-                  "
+              {error && (
+                <div
+                  role="alert"
+                  className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-800"
                 >
-                  Username or email
-                </label>
+                  {error}
+                </div>
+              )}
 
-                <div className="relative">
+              {infoMessage && (
+                <div
+                  role="status"
+                  className="mt-6 rounded-xl border border-pine-200 bg-pine-50 px-4 py-3 text-sm leading-relaxed text-pine-900"
+                >
+                  {infoMessage}
+                </div>
+              )}
 
-                  {/* Blue accent */}
-
-                  <div
-                    className="
-                      absolute
-                      left-0
-                      top-0
-                      bottom-0
-                      w-1
-                      rounded-l-lg
-                      bg-blue-600
-                    "
-                  />
-
-                  <input
-                    id="identifier"
-                    name="identifier"
-                    type="text"
-                    autoComplete="username"
-                    value={identifier}
-                    onChange={(event) =>
-                      setIdentifier(
-                        event.target.value
-                      )
-                    }
-                    disabled={loading}
-                    placeholder="Enter username or email"
-                    className="
-                      w-full
-                      h-12
-                      rounded-lg
-                      border
-                      border-slate-300
-                      bg-white
-                      pl-5
-                      pr-4
-                      text-sm
-                      text-slate-900
-                      outline-none
-                      transition-all
-                      placeholder:text-slate-400
-                      focus:border-blue-600
-                      focus:ring-4
-                      focus:ring-blue-100
-                      disabled:bg-slate-50
-                      disabled:text-slate-500
-                    "
-                  />
-
+              <form onSubmit={handleSubmit} noValidate className="mt-7 space-y-5">
+                <div>
+                  <label htmlFor="identifier" className="field-label">
+                    Username or email
+                  </label>
+                  <div className="relative">
+                    <UserRound
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      id="identifier"
+                      name="identifier"
+                      type="text"
+                      autoComplete="username"
+                      value={identifier}
+                      onChange={(event) => setIdentifier(event.target.value)}
+                      disabled={loading}
+                      placeholder="e.g. jane.wanjiku"
+                      className="field-input pl-10"
+                    />
+                  </div>
                 </div>
 
-              </div>
-
-              {/* ==========================================================
-                  PASSWORD
-              =========================================================== */}
-
-              <div>
-
-                <label
-                  htmlFor="password"
-                  className="
-                    block
-                    text-sm
-                    font-semibold
-                    text-slate-700
-                    mb-2
-                  "
-                >
-                  Password
-                </label>
-
-                <div className="relative">
-
-                  {/* Orange accent */}
-
-                  <div
-                    className="
-                      absolute
-                      left-0
-                      top-0
-                      bottom-0
-                      w-1
-                      rounded-l-lg
-                      bg-orange-600
-                      z-10
-                    "
-                  />
-
-                  <input
-                    id="password"
-                    name="password"
-                    type={
-                      showPassword
-                        ? 'text'
-                        : 'password'
-                    }
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(event) =>
-                      setPassword(
-                        event.target.value
-                      )
-                    }
-                    disabled={loading}
-                    placeholder="Enter your password"
-                    className="
-                      w-full
-                      h-12
-                      rounded-lg
-                      border
-                      border-slate-300
-                      bg-white
-                      pl-5
-                      pr-12
-                      text-sm
-                      text-slate-900
-                      outline-none
-                      transition-all
-                      placeholder:text-slate-400
-                      focus:border-orange-600
-                      focus:ring-4
-                      focus:ring-orange-100
-                      disabled:bg-slate-50
-                      disabled:text-slate-500
-                    "
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowPassword(
-                        !showPassword
-                      )
-                    }
-                    disabled={loading}
-                    className="
-                      absolute
-                      right-3
-                      top-1/2
-                      -translate-y-1/2
-                      p-1.5
-                      text-slate-400
-                      hover:text-blue-700
-                      rounded-md
-                      transition-colors
-                      disabled:opacity-50
-                    "
-                    aria-label={
-                      showPassword
-                        ? 'Hide password'
-                        : 'Show password'
-                    }
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
-                  </button>
-
+                <div>
+                  <label htmlFor="password" className="field-label">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <LockKeyhole
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      disabled={loading}
+                      placeholder="Enter your password"
+                      className="field-input pl-10 pr-12"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={loading}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 transition-colors hover:text-pine-700 disabled:opacity-50"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
-              </div>
-
-              {/* ==========================================================
-                  SIGN IN BUTTON
-              =========================================================== */}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="
-                  group
-                  relative
-                  w-full
-                  h-12
-                  rounded-lg
-                  overflow-hidden
-                  bg-blue-700
-                  text-white
-                  font-semibold
-                  text-sm
-                  flex
-                  items-center
-                  justify-center
-                  gap-2
-                  shadow-md
-                  hover:shadow-lg
-                  transition-all
-                  duration-300
-                  disabled:opacity-60
-                  disabled:cursor-not-allowed
-                "
-              >
-
-                {/* Animated orange accent */}
-
-                <span
-                  className="
-                    absolute
-                    inset-y-0
-                    left-0
-                    w-1
-                    bg-orange-500
-                    transition-all
-                    duration-300
-                    group-hover:w-full
-                    group-hover:bg-blue-800
-                  "
-                />
-
-                <span
-                  className="
-                    relative
-                    z-10
-                    flex
-                    items-center
-                    justify-center
-                    gap-2
-                  "
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary group h-11 w-full"
                 >
-
                   {loading ? (
                     <>
-                      <Loader2
-                        className="
-                          w-4
-                          h-4
-                          animate-spin
-                        "
-                      />
-
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Signing in...
                     </>
                   ) : (
                     <>
                       Sign in
-
-                      <ArrowRight
-                        className="
-                          w-4
-                          h-4
-                          transition-transform
-                          duration-300
-                          group-hover:translate-x-1
-                        "
-                      />
+                      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
                     </>
                   )}
+                </button>
+              </form>
 
-                </span>
-
-              </button>
-
-            </form>
-
-            {/* ============================================================
-                SECURITY NOTICE
-            ============================================================= */}
-
-            <div
-              className="
-                mt-8
-                pt-6
-                border-t
-                border-slate-100
-              "
-            >
-
-              <div
-                className="
-                  flex
-                  items-start
-                  gap-3
-                "
-              >
-
-                <div
-                  className="
-                    w-9
-                    h-9
-                    rounded-lg
-                    bg-blue-50
-                    flex
-                    items-center
-                    justify-center
-                    shrink-0
-                    border
-                    border-blue-100
-                  "
-                >
-
-                  <ShieldCheck
-                    className="
-                      w-4
-                      h-4
-                      text-blue-700
-                    "
-                  />
-
-                </div>
-
-                <div>
-
-                  <p
-                    className="
-                      text-xs
-                      font-semibold
-                      text-slate-700
-                    "
-                  >
-                    Authorized access only
-                  </p>
-
-                  <p
-                    className="
-                      mt-1
-                      text-xs
-                      text-slate-500
-                      leading-relaxed
-                    "
-                  >
-                    This system is intended for
-                    authorized healthcare personnel.
-                    Your activity may be recorded
-                    for security and audit purposes.
-                  </p>
-
-                </div>
-
+              <div className="mt-8 flex items-start gap-3 rounded-xl border border-hair bg-slate-50/70 px-4 py-3">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-pine-700" />
+                <p className="text-xs leading-relaxed text-muted">
+                  <span className="font-semibold text-ink-soft">
+                    Authorized personnel only.
+                  </span>{' '}
+                  Access is recorded for security and audit purposes. Do not
+                  share your password or leave a session unattended.
+                </p>
               </div>
 
+              <p className="mt-8 text-center text-2xs text-muted">
+                © {new Date().getFullYear()} JaliCare HMIS
+                <span className="mx-2 text-clay-500">·</span>
+                Secure healthcare operations
+              </p>
             </div>
-
-            {/* ============================================================
-                COPYRIGHT
-            ============================================================= */}
-
-            <div
-              className="
-                mt-8
-                text-center
-                text-xs
-                text-slate-400
-              "
-            >
-
-              © {new Date().getFullYear()} JaliCare HMIS
-
-              <span className="mx-2 text-orange-500">
-                •
-              </span>
-
-              Secure Healthcare Platform
-
-            </div>
-
-          </div>
-
-        </section>
-
+          </section>
+        </div>
       </div>
-
-      {/* ================================================================
-          ANIMATIONS
-      ================================================================= */}
-
-      <style>
-        {`
-
-          @keyframes logoFloat {
-            0%,
-            100% {
-              transform: translateY(0px);
-            }
-
-            50% {
-              transform: translateY(-7px);
-            }
-          }
-
-          @keyframes logoShine {
-            0% {
-              transform: translateX(-150%);
-              opacity: 0;
-            }
-
-            15% {
-              opacity: 1;
-            }
-
-            40% {
-              transform: translateX(400%);
-              opacity: 0;
-            }
-
-            100% {
-              transform: translateX(400%);
-              opacity: 0;
-            }
-          }
-
-          @keyframes float {
-            0%,
-            100% {
-              transform: translateY(0px);
-            }
-
-            50% {
-              transform: translateY(-20px);
-            }
-          }
-
-          @keyframes floatReverse {
-            0%,
-            100% {
-              transform: translateY(0px);
-            }
-
-            50% {
-              transform: translateY(20px);
-            }
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            *,
-            *::before,
-            *::after {
-              animation-duration: 0.01ms !important;
-              animation-iteration-count: 1 !important;
-              transition-duration: 0.01ms !important;
-              scroll-behavior: auto !important;
-            }
-          }
-
-        `}
-      </style>
-
     </main>
   );
 };
-
-export default LoginScreen;

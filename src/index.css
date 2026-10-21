@@ -1,48 +1,231 @@
 @import "tailwindcss";
 
 /*
- * Text sizes below the default xs.
+ * JaliCare — the design language
+ * ------------------------------------------------------------------
  *
- * `text-2xs` and `text-3xs` were used in more than three hundred places
- * before they were defined anywhere, so Tailwind emitted nothing and the
- * labels inherited their parent's size. Defining them here fixes every
- * one of those usages at once and keeps the dense clinical tables
- * legible on the same scale.
+ * One palette, defined once. The application grew up on Tailwind's
+ * cool blue/slate defaults: every screen picked its own accent, and
+ * the result read as a collection of pages rather than one product.
+ *
+ * Two deliberate moves live in this file:
+ *
+ *   1. The *existing* palettes the modules already use are re-pointed
+ *      at the JaliCare palette (blue and teal to pine, slate to warm
+ *      stone). Twenty modules have thousands of `bg-blue-700`,
+ *      `text-slate-500` and `border-slate-200` classes; redefining
+ *      the ramp changes all of them at once and keeps them consistent,
+ *      instead of a class-by-class rewrite that would drift within a
+ *      week.
+ *
+ *   2. A small set of semantic tokens (canvas, surface, ink, hair,
+ *      clay) and component classes (panel, eyebrow, stat, field) give
+ *      new screens something quieter to build with.
+ *
+ * Luminance is kept close to the palette it replaces, so contrast that
+ * passed before still passes. Status colours (emerald, amber, rose)
+ * are *not* re-pointed: a warning must keep looking like a warning.
  */
+
 @theme {
+  /* Small type, under Tailwind's xs — used throughout the tables. */
   --text-2xs: 0.6875rem; /* 11px */
   --text-2xs--line-height: 1rem;
   --text-3xs: 0.625rem; /* 10px */
   --text-3xs--line-height: 0.875rem;
+
+  /* Type */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display:
+    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+    Georgia, "Times New Roman", serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Surfaces */
+  --color-canvas: #f6f3ec;
+  --color-surface: #ffffff;
+  --color-ink: #16241f;
+  --color-ink-soft: #46544f;
+  --color-muted: #6f7b75;
+  --color-hair: #e7e1d5;
+
+  /* Pine — the primary. Replaces blue and teal. */
+  --color-pine-50: #eef5f2;
+  --color-pine-100: #d8e8e2;
+  --color-pine-200: #b3d2c8;
+  --color-pine-300: #86b6a8;
+  --color-pine-400: #579487;
+  --color-pine-500: #38786c;
+  --color-pine-600: #256157;
+  --color-pine-700: #184f46;
+  --color-pine-800: #113d36;
+  --color-pine-900: #0c302a;
+  --color-pine-950: #071f1b;
+
+  /* Clay — the warm counterpoint. Used sparingly. */
+  --color-clay-50: #fbf3ec;
+  --color-clay-100: #f5e3d3;
+  --color-clay-200: #ebc7a7;
+  --color-clay-300: #dda274;
+  --color-clay-400: #cd8049;
+  --color-clay-500: #b96634;
+  --color-clay-600: #9c5129;
+  --color-clay-700: #7c4022;
+  --color-clay-800: #5d311c;
+  --color-clay-900: #442416;
+
+  /* Warm stone — replaces slate. */
+  --color-slate-50: #faf9f5;
+  --color-slate-100: #f4f1e9;
+  --color-slate-200: #e8e2d6;
+  --color-slate-300: #d6cebe;
+  --color-slate-400: #b1a795;
+  --color-slate-500: #7b7263;
+  --color-slate-600: #5f5749;
+  --color-slate-700: #484238;
+  --color-slate-800: #2f2b24;
+  --color-slate-900: #201d18;
+  --color-slate-950: #13110d;
+
+  /* Blue stays blue in meaning, but follows the brand. */
+  --color-blue-50: #eef5f2;
+  --color-blue-100: #d8e8e2;
+  --color-blue-200: #b3d2c8;
+  --color-blue-300: #86b6a8;
+  --color-blue-400: #579487;
+  --color-blue-500: #38786c;
+  --color-blue-600: #256157;
+  --color-blue-700: #184f46;
+  --color-blue-800: #113d36;
+  --color-blue-900: #0c302a;
+  --color-blue-950: #071f1b;
+
+  /* ...and so does teal, so the two families are one. */
+  --color-teal-50: #eef5f2;
+  --color-teal-100: #d8e8e2;
+  --color-teal-200: #b3d2c8;
+  --color-teal-300: #86b6a8;
+  --color-teal-400: #579487;
+  --color-teal-500: #38786c;
+  --color-teal-600: #256157;
+  --color-teal-700: #184f46;
+  --color-teal-800: #113d36;
+  --color-teal-900: #0c302a;
+  --color-teal-950: #071f1b;
+
+  --radius-card: 1.125rem;
+  --shadow-card:
+    0 1px 2px rgba(22, 36, 31, 0.04), 0 12px 28px -18px rgba(22, 36, 31, 0.28);
+  --shadow-lift:
+    0 1px 2px rgba(22, 36, 31, 0.05), 0 22px 44px -24px rgba(22, 36, 31, 0.4);
 }
 
 @layer base {
-  :root {
-    --hospital-blue: #1d4ed8;
-    --hospital-blue-dark: #1e40af;
-    --hospital-orange: #ea580c;
-    --hospital-orange-light: #fff7ed;
-  }
-
-  /* Smooth clinical scrolling */
   html {
     color-scheme: light;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
-  /* Custom subtle hospital scrollbars */
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+  }
+
+  ::selection {
+    background-color: var(--color-pine-100);
+    color: var(--color-pine-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-pine-400);
+    outline-offset: 2px;
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
+    background: #d6cebe;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: #b1a795;
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* A quiet card: hairline, soft lift, generous radius. */
+  .panel {
+    @apply rounded-card border border-hair bg-surface shadow-card;
+  }
+
+  .panel-header {
+    @apply flex flex-col gap-1 border-b border-hair px-5 py-4 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  /* Small caps label above a section or a value. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.18em] text-muted;
+  }
+
+  .display-title {
+    @apply font-display text-2xl leading-tight tracking-tight text-ink;
+  }
+
+  .stat-value {
+    @apply font-mono text-3xl font-semibold tabular-nums tracking-tight text-ink;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-pine-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-quiet {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-hair bg-surface px-3.5 py-2 text-xs font-semibold text-ink-soft transition-colors hover:border-pine-200 hover:text-pine-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-xs font-semibold text-ink-soft;
+  }
+
+  .field-input {
+    @apply h-11 w-full rounded-xl border border-hair bg-surface px-3.5 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-pine-400 focus:ring-4 focus:ring-pine-100 disabled:bg-slate-50 disabled:text-slate-500;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-hair bg-slate-50 px-2 py-0.5 text-2xs font-semibold text-ink-soft;
+  }
+
+  .table-quiet {
+    @apply w-full text-left text-xs;
+  }
+
+  .table-quiet thead th {
+    @apply border-b border-hair bg-slate-50/70 px-4 py-2.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted;
+  }
+
+  .table-quiet tbody td {
+    @apply border-b border-slate-100 px-4 py-3 align-middle;
+  }
+
+  .table-quiet tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .table-quiet tbody tr:hover {
+    @apply bg-slate-50/60;
   }
 }

@@ -314,10 +314,21 @@ function testUiWiring(): void {
     dashboard.includes('getInpatientBoard'),
     'dashboard reads the inpatient board',
   );
+  /*
+   * The redesign renamed the panel "Ward round"; the nursing columns
+   * must still be rendered, so assert the table itself, not the old
+   * heading alone.
+   */
   assert(
-    dashboard.includes('Ward Nursing Status'),
+    dashboard.includes('Ward round'),
     'dashboard renders the ward nursing section',
   );
+  for (const column of ['Last vitals', 'Notes today', 'Ward / bed']) {
+    assert(
+      dashboard.includes(column),
+      `dashboard ward table keeps the "${column}" column`,
+    );
+  }
   assert(
     dashboard.includes('vitalsOverdueCount'),
     'dashboard surfaces the vitals-overdue KPI',

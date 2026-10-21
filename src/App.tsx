@@ -57,16 +57,14 @@ const AppContent: React.FC = () => {
   if (window.location.pathname === "/accept-facility-admin-invitation") return <FacilityAdminInvitationAcceptance />;
   if (authLoading) {
     return (
-      <div className="min-h-screen w-screen bg-slate-100 flex items-center justify-center">
+      <div className="min-h-screen w-screen bg-canvas flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white shadow-lg flex items-center justify-center">
-            <Loader2 className="w-7 h-7 text-teal-600 animate-spin" />
+          <div className="w-14 h-14 rounded-2xl bg-white shadow-card flex items-center justify-center">
+            <Loader2 className="w-7 h-7 text-pine-600 animate-spin" />
           </div>
 
           <div className="text-center">
-            <h1 className="text-lg font-semibold text-slate-800">
-              JaliCare HMIS
-            </h1>
+            <h1 className="font-display text-xl text-ink">JaliCare HMIS</h1>
 
             <p className="text-sm text-slate-500 mt-1">
               Verifying your secure session...
@@ -170,7 +168,7 @@ const AppContent: React.FC = () => {
    * ---------------------------------------------------------
    */
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-100 overflow-hidden font-sans text-slate-800 antialiased selection:bg-teal-100 selection:text-teal-900">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas font-sans text-ink antialiased">
 
       {/* Top Header */}
       <Header />
@@ -182,8 +180,8 @@ const AppContent: React.FC = () => {
         <Sidebar />
 
         {/* Viewport Content */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 bg-slate-100/80">
-          <div className="max-w-7xl mx-auto space-y-4">
+        <main className="flex-1 overflow-y-auto bg-canvas px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
+          <div className="mx-auto w-full max-w-[1400px] space-y-5">
             {renderModule()}
           </div>
         </main>
@@ -194,8 +192,8 @@ const AppContent: React.FC = () => {
 
       {/* Toast Notification Banner */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 border border-slate-800 animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-xl border border-pine-800 bg-pine-900 px-4 py-3 text-xs text-white shadow-lift animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
       )}

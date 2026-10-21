@@ -1,4 +1,4 @@
-﻿import { Baby, Building2 } from 'lucide-react';
+import { Baby, Building2, X } from 'lucide-react';
 import React from 'react';
 import { useHmis, ModuleId } from '../context/HmisContext.tsx';
 import {
@@ -21,7 +21,6 @@ import {
   Network,
   Sliders,
   ShieldAlert,
-  X
 } from 'lucide-react';
 
 interface NavSection {
@@ -55,6 +54,12 @@ const superAdminNavSections: NavSection[] = [
     ],
   },
 ];
+
+/*
+ * The facility rail follows the patient, not the database: the order is
+ * the order of a visit — arrive, be seen, be investigated, collect
+ * medicine, be admitted — then the money and the reporting that follow.
+ */
 const navSections: NavSection[] = [
   {
     title: 'CLINICAL CARE',
@@ -110,15 +115,14 @@ const navSections: NavSection[] = [
 ];
 
 export const Sidebar: React.FC = () => {
-  const { 
-    activeModule, 
-    setActiveModule, 
+  const {
+    activeModule,
+    setActiveModule,
     currentTenant,
     setCurrentTenant,
     tenants,
-    currentFacility, 
-    setCurrentFacility,
-    isMobileMenuOpen, 
+    currentFacility,
+    isMobileMenuOpen,
     setIsMobileMenuOpen,
     showToast,
     authenticatedUser,
@@ -220,30 +224,26 @@ export const Sidebar: React.FC = () => {
       {isMobileMenuOpen && (
         <div
           onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-30 md:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 z-30 bg-pine-950/50 backdrop-blur-[2px] md:hidden animate-in fade-in duration-200"
           aria-hidden="true"
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={`w-64 border-r border-slate-200 bg-slate-50/90 flex flex-col shrink-0 select-none overflow-y-auto transition-transform duration-200 ease-in-out z-40 
-          fixed inset-y-0 left-0 top-14 md:top-0 md:static md:translate-x-0 ${
-            isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
+        className={`flex w-[17rem] shrink-0 select-none flex-col overflow-y-auto bg-pine-950 transition-transform duration-200 ease-in-out z-40
+          fixed inset-y-0 left-0 top-16 md:static md:translate-x-0 ${
+            isMobileMenuOpen ? 'translate-x-0 shadow-lift' : '-translate-x-full md:translate-x-0'
           }`}
       >
         {/* Mobile Header Close */}
-        <div className="md:hidden px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-blue-700 text-white flex items-center justify-center font-bold text-xs relative overflow-hidden">
-              <span>Jc</span>
-              <span className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-orange-500" />
-            </div>
-            <span className="text-xs font-bold text-slate-900 tracking-tight">JaliCare HMIS</span>
-          </div>
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 md:hidden">
+          <span className="font-display text-sm tracking-tight text-pine-50">
+            JaliCare HMIS
+          </span>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
-            className="p-1 rounded-md text-slate-500 hover:text-slate-800"
+            className="rounded-lg p-1.5 text-pine-200 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
@@ -251,8 +251,8 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Mobile Tenant Selector (Visible on small screens) */}
-        <div className="md:hidden px-4 py-2.5 bg-slate-100/70 border-b border-slate-200">
-          <div className="text-2xs uppercase tracking-wider text-slate-400 font-bold mb-1">
+        <div className="border-b border-white/10 px-4 py-3 md:hidden">
+          <div className="mb-1.5 text-3xs font-semibold uppercase tracking-[0.18em] text-pine-400">
             Organization (Tenant)
           </div>
           <select
@@ -264,7 +264,7 @@ export const Sidebar: React.FC = () => {
                 showToast(`Switched tenant to: ${t.name}`);
               }
             }}
-            className="w-full bg-white border border-slate-200 rounded-md px-2 py-1.5 text-xs text-slate-800 font-medium focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
+            className="w-full rounded-lg border border-white/15 bg-pine-900 px-2.5 py-2 text-xs font-medium text-pine-50 outline-none focus:border-clay-400"
           >
             {tenants.map((t) => (
               <option key={t.id} value={t.id}>
@@ -276,84 +276,96 @@ export const Sidebar: React.FC = () => {
 
         {/* Read-only facility identity; hidden for superadmin */}
         {!isSuperAdmin && (
-          <div className="px-4 py-3 border-b border-slate-200/80 bg-white">
-            <div className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-2">
-              Your Facility
+          <div className="border-b border-white/10 px-4 py-4">
+            <div className="mb-2 text-3xs font-semibold uppercase tracking-[0.18em] text-pine-400">
+              Your facility
             </div>
 
-            <div className="flex items-start gap-2">
-              <Building2 className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5">
+              <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-clay-400" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900 break-words">
-                  {currentFacility?.name || "Facility not assigned"}
+                <p className="font-display text-sm leading-snug text-pine-50 break-words">
+                  {currentFacility?.name || 'Facility not assigned'}
                 </p>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  MFL Code: {currentFacility?.mflCode || "Not configured"}
+                <p className="mt-1.5 font-mono text-2xs text-pine-300/80">
+                  MFL {currentFacility?.mflCode || '—'}
                 </p>
 
-                <p className="mt-1 text-xs font-medium text-slate-600">
-                  {currentFacility?.level || "Level not configured"}
+                <p className="mt-0.5 text-2xs text-pine-400">
+                  {currentFacility?.level || 'Level not configured'}
                 </p>
               </div>
             </div>
           </div>
         )}
+
         {/* Navigation Sections */}
-        <div className="p-3 space-y-5 flex-1">
-          {(isSuperAdmin ? superAdminNavSections : navSections).filter((sec) => sec.items.some((item) => isModuleVisible(item.id))).map((sec, secIdx) => (
-            <div key={secIdx}>
-              <div className="px-2.5 pb-1 text-2xs font-semibold text-slate-400 tracking-wider">
-                {sec.title}
-              </div>
-              <div className="space-y-0.5">
-                {sec.items.filter((item) => isModuleVisible(item.id)).map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeModule === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleSelectModule(item.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-md text-xs font-medium transition-colors text-left min-h-[38px] md:min-h-0 ${
-                        isActive
-                          ? 'bg-blue-700 text-white font-semibold shadow-xs border-l-2 border-orange-400'
-                          : 'text-slate-700 hover:bg-blue-50/50 hover:text-blue-900 active:bg-blue-100'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                        <span className="truncate">{item.label}</span>
-                      </div>
-                      {item.badge && (
-                        <span className={`text-2xs font-mono px-1.5 py-0.2 rounded font-semibold ${isActive ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                          {item.badge}
+        <nav className="flex-1 space-y-6 px-3 py-4">
+          {(isSuperAdmin ? superAdminNavSections : navSections)
+            .filter((sec) => sec.items.some((item) => isModuleVisible(item.id)))
+            .map((sec, secIdx) => (
+              <div key={secIdx}>
+                <div className="mb-1.5 px-2.5 text-3xs font-semibold uppercase tracking-[0.18em] text-pine-400/80">
+                  {sec.title}
+                </div>
+                <div className="space-y-0.5">
+                  {sec.items.filter((item) => isModuleVisible(item.id)).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeModule === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSelectModule(item.id)}
+                        aria-current={isActive ? 'page' : undefined}
+                        className={`relative flex min-h-[40px] w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors md:min-h-0 md:py-1.5 ${
+                          isActive
+                            ? 'bg-white/[0.09] font-semibold text-white'
+                            : 'font-medium text-pine-200/85 hover:bg-white/[0.05] hover:text-white'
+                        }`}
+                      >
+                        {isActive && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-clay-400"
+                          />
+                        )}
+                        <span className="flex min-w-0 items-center gap-2.5 truncate">
+                          <Icon
+                            className={`h-4 w-4 shrink-0 ${
+                              isActive ? 'text-clay-300' : 'text-pine-400'
+                            }`}
+                          />
+                          <span className="truncate">{item.label}</span>
                         </span>
-                      )}
-                    </button>
-                  );
-                })}
+                        {item.badge && (
+                          <span
+                            className={`rounded px-1.5 font-mono text-2xs font-semibold ${
+                              isActive
+                                ? 'bg-clay-500 text-white'
+                                : 'bg-white/10 text-pine-200'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+        </nav>
 
         {/* Footer Info */}
-        <div className="p-3 border-t border-slate-200 bg-white/70 text-2xs text-slate-500 shrink-0">
+        <div className="border-t border-white/10 px-4 py-3 text-3xs text-pine-400">
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-blue-950">JaliCare HMIS</span>
-            <span className="text-orange-600 font-bold">Kenya MOH Ready</span>
+            <span className="font-display text-xs text-pine-100">JaliCare HMIS</span>
+            <span className="font-semibold text-clay-300">Kenya MOH Ready</span>
           </div>
-          <div className="text-slate-400 mt-0.5">DHA Architecture & FHIR R4</div>
+          <div className="mt-1 text-pine-500">DHA Architecture &amp; FHIR R4</div>
         </div>
       </aside>
     </>
   );
 };
-
-
-
-
-
-
-
-
