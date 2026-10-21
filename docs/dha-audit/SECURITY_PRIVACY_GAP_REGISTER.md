@@ -84,22 +84,29 @@ This is where the audit found the most serious defects.
 | Reads without a facility returned every facility's rows | `getTheatreCases`, `getRadiologyOrders`, `getPurchaseOrders`, `getSuppliers` | **Fixed** |
 | Writes trusted `req.body.facilityId` / `tenantId` | theatre, radiology, purchase orders | **Fixed** — identifiers are overwritten from the session |
 | Object-level ownership | theatre `PUT`, radiology report `PUT` updated by id with no check | **Fixed** — scoped readers added |
-| Five routes still unguarded | see §3.2.1 | **Open** |
-| 33 id-addressed routes unaudited | `Number(req.params.id)` used in 33 places | **Open** |
+| Seven more routes had no permission check | claims list, claimable lines, claim items, DHA readiness, service mappings, call log | **Fixed** (2026-10-21 evening) |
+| `/api/departments` returned any facility's departments | Took `facilityId` from the query string and never checked it | **Fixed** — `getDepartmentsScoped` |
+| id-addressed routes | Every route read so far proves ownership before it writes; no exhaustive pass exists | **Open** |
 
 #### 3.2.1 The remaining unguarded routes
 
-The static scan flagged 20 routes without a visible guard. Fifteen were resolved:
-ten already used scoped queries or were mounted behind a router-level guard, and
-five were the ones fixed above (the count differs because some routes share a
-handler block). The routes that still need review before any deployment are the
-ones that take an id and call a query directly. The audit did **not** enumerate
-all 33; that is deliberate honesty rather than a claim of completeness.
+The static scan flagged 20 routes without a visible guard. Twelve were resolved in
+the audit round: ten already used scoped queries or were mounted behind a
+router-level guard, and two were fixed. The second remediation round fixed seven
+more — the claims list, claimable lines, claim items, DHA readiness, service
+mappings, the DHA call log, and `/api/departments`, which was the only one that
+also lacked tenant scoping.
+
+What remains is not a known hole but an unfinished review. Every id-addressed route
+examined since has proved ownership — the maternity service resolves the pregnancy
+inside the caller's scope, invoice items check the invoice's facility, claim lines
+use `getClaimableLinesScoped` — but no complete pass exists, so the claim is "not
+yet disproven", not "clean".
 
 **Required next action:** for each route using `Number(req.params.id)`, prove that
 the row is fetched through a scoped query or that the update includes
-`facility_id = <session facility>`. Until then, treat object-level access control
-as unproven.
+`facility_id = <session facility>`. Until that pass is finished, treat object-level
+access control as unproven in the parts not yet read.
 
 ### 3.3 Audit trail
 
@@ -109,27 +116,13 @@ as unproven.
 | Write path | `logAuditEvent()` on sensitive writes (facility modules, staff status, roles, claims, DHA calls) |
 | Read path | `GET /api/audit-logs` requires `audit.read`, scoped |
 | Immutability (application) | No route updates or deletes audit rows |
-| Immutability (database) | **None.** No trigger, no `REVOKE UPDATE, DELETE ON audit_logs`. A database user can rewrite history. |
-| Record *views* | Patient record reads are **not** logged in `audit_logs`; `patient_record_access_logs` exists in the schema but is not written by the patient read path. |
+| Immutability (database) | **Trigger written, not applied.** Migration `0017` installs `jalicare_audit_is_append_only()` with row and statement triggers on UPDATE/DELETE, plus `REVOKE UPDATE, DELETE, TRUNCATE`. INSERT is accepted. The migration has not been executed. |
+| Record *views* | **Fixed.** `patient_record_access_logs` had exactly one writer — the patient-update route, labelled `EXPORT` / `FHIR` — and the FHIR endpoint wrote nothing. Reads now log `VIEW`, edits `UPDATE`, FHIR logs an `EXPORT` on the `FHIR` channel, each with a purpose from a fixed list, written before the response is sent. |
 
-**Remediation SQL (not executed by this audit — see `DATABASE_MIGRATION_AUDIT.md`):**
-
-```sql
-CREATE OR REPLACE FUNCTION deny_audit_mutation() RETURNS trigger AS $$
-BEGIN
-  RAISE EXCEPTION 'audit_logs is append-only';
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER audit_logs_no_update
-  BEFORE UPDATE OR DELETE ON audit_logs
-  FOR EACH ROW EXECUTE FUNCTION deny_audit_mutation();
-
-REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs FROM PUBLIC;
-```
-
-Apply only after confirming the application never updates the table (it does not)
-and after a backup.
+**Remediation SQL:** implemented in `drizzle/0017_consent_allergy_audit_integrity.sql`
+and verified statically by `test:consent-allergy`. It must be applied by the DBA
+after a backup, exactly like any other migration in this repository — the agent does
+not run migrations. Until it is applied, a database user can still rewrite history.
 
 ### 3.4 Encryption
 
@@ -137,12 +130,14 @@ and after a backup.
 |---|---|---|
 | Browser → server | **Deployment** | The Express app serves no TLS. TLS 1.2+ must terminate in front of it. `helmet` sets HSTS only over HTTPS. |
 | Server → PostgreSQL | **Configurable, default off** | `SQL_SSL` + `SQL_SSL_REJECT_UNAUTHORIZED` added in this audit. Previously hard-coded `false`. |
-| Database at rest | **Absent** | No volume encryption, TDE or `pgcrypto` usage is configured in the repository. |
+| Database at rest | **Partial** | Whole-volume encryption, TDE and `pgcrypto` are still absent. Two direct identifiers (`patients.national_id`, `patients.sha_number`) are now sealed by the application with AES-256-GCM before insert (`src/security/field-crypto.ts`), with an HMAC blind index for exact search and legacy plaintext passthrough. The key is `FIELD_ENCRYPTION_KEY`; there is no default. Free-text clinical notes, names, phone numbers and dates of birth remain plaintext. |
 | Backups | **Absent** | No backup mechanism, therefore no encrypted backup. |
 | Secrets | **Partly** | `.env` and `firebase-applet-config.json` are git-ignored; `.env.example` holds names only; no secret manager or rotation. |
 
-No claim of AES-256 or TLS 1.3 is made anywhere, because neither was configured
-where it could be verified.
+AES-256-GCM is now used, and only for the two identifier columns; that is a narrow
+claim, tested in `test:field-encryption` (48 assertions). No claim of TLS 1.3 or
+database-level encryption is made anywhere, because neither is configured where it
+could be verified.
 
 ### 3.5 Application security review (non-destructive)
 

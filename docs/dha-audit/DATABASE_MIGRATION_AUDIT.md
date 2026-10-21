@@ -10,9 +10,9 @@
 
 | Check | Method | Result |
 |---|---|---|
-| Schema definition | Read `src/db/schema.ts` | 75 tables, 211 `.references()` |
-| Migration SQL | Read all 17 files in `drizzle/` | 75 tables created, 212 `REFERENCES` |
-| Journal consistency | JSON parse + comparison | 17 entries = 17 files |
+| Schema definition | Read `src/db/schema.ts` | 76 tables after 0017, 211 `.references()` |
+| Migration SQL | Read all 18 files in `drizzle/` | 76 tables created, 212 `REFERENCES` |
+| Journal consistency | JSON parse + comparison | 18 entries = 18 files |
 | Schema ↔ migration table parity | Static name comparison | **75 = 75, no gaps** |
 | Destructive statements | Text scan | 1 `DROP COLUMN`, 0 `DROP TABLE`, 0 `TRUNCATE`, 0 `DELETE FROM` |
 | Live database | `npm run db:status` | **BLOCKED** — no `SQL_HOST` |
@@ -27,13 +27,17 @@ live database below is either marked UNVERIFIED or BLOCKED.
 ## 2. Schema and migration parity
 
 ```
-schema tables           75
-tables created by SQL   75
+schema tables           76   (0017 adds patient_allergies)
+tables created by SQL   76
 missing from migrations 0
 extra in migrations     0
-journal entries         17
-.sql files              17
+journal entries         18
+.sql files              18
 ```
+
+The figures above were 75 / 17 before migration `0017` was written. That migration
+has **not** been executed against any database; the parity check is static, and
+`npm run test:migrations` (680 assertions) passes against the files, not a server.
 
 Three tables were initially reported missing by a naive scan —
 `admission_transfers`, `dha_service_mappings`, `nursing_notes` — because they are
@@ -82,6 +86,7 @@ BLOCKED.
 | 0014 | `professional_verification` | Practitioner verification |
 | 0015 | `maternity_mch` | Antenatal, labour, delivery |
 | 0016 | `postnatal_immunisation` | Postnatal and immunisation |
+| 0017 | `consent_allergy_audit_integrity` | Append-only audit triggers, `patient_allergies`, blind-index columns. **Added 2026-10-21 evening; not applied** |
 
 ### 3.1 The one destructive statement
 
@@ -119,6 +124,32 @@ drizzle-generated base migrations and correct for a fresh database. They are
 indexes (39 of 153 index statements are explicitly idempotent).
 
 Apply through the documented runner, never by pasting files into `psql` twice.
+
+### 3.3 Migration 0017 — consent, allergies and audit integrity
+
+Written on 2026-10-21 evening and **not executed anywhere**. It is idempotent
+throughout (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`,
+`CREATE INDEX IF NOT EXISTS`, `CREATE OR REPLACE FUNCTION`, `DROP TRIGGER IF EXISTS`
+before each `CREATE TRIGGER`), so a second run is a no-op rather than an error.
+
+| Change | Effect |
+|---|---|
+| `jalicare_audit_is_append_only()` + row trigger + statement trigger on `audit_logs` | `UPDATE`, `DELETE` and `TRUNCATE` raise; `INSERT` is untouched |
+| `REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs` | Removes the privilege even if a future trigger is dropped |
+| `patient_allergies` | Tenant, facility and patient foreign keys; `allergen_type`, `allergen`, `reaction`, `severity`, `status`, `recorded_by_user_id`, `resolved_at` |
+| `patients.national_id_bidx`, `patients.sha_number_bidx` | Nullable text columns for the HMAC blind index |
+| `patients_national_id_bidx_idx`, `patients_sha_number_bidx_idx` | Partial indexes (`WHERE ... IS NOT NULL`) so existing rows cost nothing |
+
+**Order of operations when it is applied.** Take a verified backup; run 0017
+through `npm run db:migrate`; then, and only then, set `FIELD_ENCRYPTION_KEY`. The
+columns are nullable and the application passes plaintext through, so the reverse
+order (key first, migration later) would make every insert fail on a missing column.
+Backfilling existing identifiers is a separate, deliberate job: it rewrites patient
+rows, and it must be run once, logged, and counted before and after.
+
+**Privilege caveat.** `REVOKE ... FROM PUBLIC` does not stop the table owner or a
+superuser. If the application connects as the owner — this repository's default —
+the trigger is the control that matters, and it is the reason both exist.
 
 ---
 
@@ -191,4 +222,4 @@ project runner exists for a reason.
 | Orphaned rows | **UNVERIFIED** |
 | Transactional integrity under concurrency | **PARTIAL** — billing and claims use transactions; stock paths untested |
 | Backup and restore | **MISSING** — see `DEPLOYMENT_AND_RECOVERY.md` |
-| Audit immutability | **MISSING** — SQL supplied, not applied |
+| Audit immutability | **PARTIAL** — migration 0017 written and statically tested; not applied |

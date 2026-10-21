@@ -16,6 +16,13 @@ import {
   chargeForService,
 } from '../billing/billing.service.ts';
 
+import {
+  identifierLookup,
+  openPatientIdentifiers,
+  openPatientRows,
+  sealPatientIdentifiers,
+} from '../security/patient-identifiers.ts';
+
 export { bedDayTariffCodes } from '../billing/billing.service.ts';
 
 // Tenants
@@ -381,6 +388,72 @@ export async function getDepartments(facilityId?: number) {
   }
 }
 
+/**
+ * Departments within the caller's own tenant and facility.
+ *
+ * The unscoped reader above accepts any facility id, which let one
+ * facility list another tenant's departments by guessing a number.
+ * Departments are derived from facilities, so the same scope rules
+ * apply: a facility user sees their facility, a tenant user sees the
+ * tenant, a super admin sees everything (optionally filtered).
+ */
+export async function getDepartmentsScoped(
+  context: AuthorizationContext,
+  requestedFacilityId?: number,
+) {
+  if (context.isSuperAdmin) {
+    if (requestedFacilityId === undefined) {
+      return db.select().from(schema.departments);
+    }
+
+    const facility = await getFacilityByIdScoped(context, requestedFacilityId);
+
+    if (!facility) {
+      throw new ScopeAccessError('Facility not found.', 'FACILITY_NOT_FOUND');
+    }
+
+    return db
+      .select()
+      .from(schema.departments)
+      .where(eq(schema.departments.facilityId, requestedFacilityId));
+  }
+
+  if (context.facilityId) {
+    if (
+      requestedFacilityId !== undefined &&
+      requestedFacilityId !== context.facilityId
+    ) {
+      throw new ScopeAccessError(
+        'You can only see departments of your own facility.',
+        'FACILITY_ACCESS_DENIED',
+      );
+    }
+
+    return db
+      .select()
+      .from(schema.departments)
+      .where(eq(schema.departments.facilityId, context.facilityId));
+  }
+
+  /*
+   * A tenant-wide user (no single facility) sees the departments of
+   * every facility in their tenant.
+   */
+  const tenantFacilities = await getFacilitiesScoped(context);
+
+  if (tenantFacilities.length === 0) return [];
+
+  return db
+    .select()
+    .from(schema.departments)
+    .where(
+      inArray(
+        schema.departments.facilityId,
+        tenantFacilities.map((facility) => facility.id),
+      ),
+    );
+}
+
 // Patients
 export async function getPatients(
   tenantId?: number,
@@ -408,6 +481,8 @@ export async function getPatients(
 
     if (search && search.trim() !== '') {
       const searchTerm = `%${search.trim()}%`;
+      const nationalIdToken = identifierLookup(search, 'nationalId');
+      const shaToken = identifierLookup(search, 'shaNumber');
 
       conditions.push(
         or(
@@ -415,22 +490,36 @@ export async function getPatients(
           ilike(schema.patients.lastName, searchTerm),
           ilike(schema.patients.mrn, searchTerm),
           ilike(schema.patients.phone, searchTerm),
-          ilike(schema.patients.nationalId, searchTerm),
-          ilike(schema.patients.shaNumber, searchTerm),
+          /*
+           * An encrypted column cannot be matched with ILIKE. With a
+           * key configured, an exact identifier is found through the
+           * blind index instead; without one, the plaintext column
+           * still answers.
+           */
+          ...(nationalIdToken
+            ? [eq(schema.patients.nationalIdBlindIndex, nationalIdToken)]
+            : [ilike(schema.patients.nationalId, searchTerm)]),
+          ...(shaToken
+            ? [eq(schema.patients.shaNumberBlindIndex, shaToken)]
+            : [ilike(schema.patients.shaNumber, searchTerm)]),
         ),
       );
     }
 
     if (conditions.length > 0) {
-      return await query
+      const rows = await query
         .where(and(...conditions))
         .orderBy(desc(schema.patients.createdAt))
         .limit(50);
+
+      return openPatientRows(rows);
     }
 
-    return await query
+    const rows = await query
       .orderBy(desc(schema.patients.createdAt))
       .limit(50);
+
+    return openPatientRows(rows);
   } catch (error) {
     console.error('Error fetching patients:', error);
 
@@ -444,7 +533,7 @@ export async function getPatients(
 export async function getPatientById(id: number) {
   try {
     const res = await db.select().from(schema.patients).where(eq(schema.patients.id, id));
-    return res[0] || null;
+    return res[0] ? openPatientIdentifiers(res[0]) : null;
   } catch (error) {
     console.error('Error fetching patient by id:', error);
     throw new Error('Failed to fetch patient', { cause: error });
@@ -453,8 +542,12 @@ export async function getPatientById(id: number) {
 
 export async function createPatient(data: typeof schema.patients.$inferInsert) {
   try {
-    const res = await db.insert(schema.patients).values(data).returning();
-    return res[0];
+    const res = await db
+      .insert(schema.patients)
+      .values(sealPatientIdentifiers(data))
+      .returning();
+
+    return res[0] ? openPatientIdentifiers(res[0]) : res[0];
   } catch (error) {
     console.error('Error creating patient:', error);
     throw new Error('Failed to create patient record', { cause: error });
@@ -561,15 +654,17 @@ export async function createPatientScoped(
     try {
       const [patient] = await db
         .insert(schema.patients)
-        .values({
-          ...safeData,
-          mrn,
-          tenantId: facility.tenantId,
-          registrationFacilityId: facility.id,
-        })
+        .values(
+          sealPatientIdentifiers({
+            ...safeData,
+            mrn,
+            tenantId: facility.tenantId,
+            registrationFacilityId: facility.id,
+          }),
+        )
         .returning();
 
-      return patient;
+      return openPatientIdentifiers(patient);
     } catch (error) {
       const code =
         (error as { code?: string })?.code ??
@@ -590,8 +685,13 @@ export async function createPatientScoped(
 
 export async function updatePatient(id: number, data: Partial<typeof schema.patients.$inferInsert>) {
   try {
-    const res = await db.update(schema.patients).set({ ...data, updatedAt: new Date() }).where(eq(schema.patients.id, id)).returning();
-    return res[0];
+    const res = await db
+      .update(schema.patients)
+      .set({ ...sealPatientIdentifiers(data), updatedAt: new Date() })
+      .where(eq(schema.patients.id, id))
+      .returning();
+
+    return res[0] ? openPatientIdentifiers(res[0]) : res[0];
   } catch (error) {
     console.error('Error updating patient:', error);
     throw new Error('Failed to update patient record', { cause: error });
@@ -3061,7 +3161,7 @@ export async function getPatientByIdScoped(
     patient.registrationFacilityId,
   );
 
-  return patient;
+  return openPatientIdentifiers(patient);
 }
 
 /**
@@ -3168,6 +3268,8 @@ export async function getPatientsScoped(
 
   if (search?.trim()) {
     const term = `%${search.trim()}%`;
+    const nationalIdToken = identifierLookup(search, 'nationalId');
+    const shaToken = identifierLookup(search, 'shaNumber');
 
     conditions.push(
       or(
@@ -3175,18 +3277,24 @@ export async function getPatientsScoped(
         ilike(schema.patients.lastName, term),
         ilike(schema.patients.mrn, term),
         ilike(schema.patients.phone, term),
-        ilike(schema.patients.nationalId, term),
-        ilike(schema.patients.shaNumber, term),
+        ...(nationalIdToken
+          ? [eq(schema.patients.nationalIdBlindIndex, nationalIdToken)]
+          : [ilike(schema.patients.nationalId, term)]),
+        ...(shaToken
+          ? [eq(schema.patients.shaNumberBlindIndex, shaToken)]
+          : [ilike(schema.patients.shaNumber, term)]),
       )!,
     );
   }
 
-  return db
+  const rows = await db
     .select()
     .from(schema.patients)
     .where(and(...conditions))
     .orderBy(desc(schema.patients.createdAt))
     .limit(50);
+
+  return openPatientRows(rows);
 }
 
 /**
@@ -3214,7 +3322,7 @@ export async function updatePatientScoped(
   const [updated] = await db
     .update(schema.patients)
     .set({
-      ...safeData,
+      ...sealPatientIdentifiers(safeData),
       updatedAt: new Date(),
     })
     .where(
@@ -3229,7 +3337,7 @@ export async function updatePatientScoped(
     )
     .returning();
 
-  return updated ?? null;
+  return updated ? openPatientIdentifiers(updated) : updated ?? null;
 }
 
 

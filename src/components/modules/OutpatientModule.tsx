@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
-import { api } from '../../api/client.ts';
+import { api, ApiError } from '../../api/client.ts';
 import type { ServiceCharge } from '../../api/client.ts';
 import { Patient, Encounter, Observation, Diagnosis, Procedure, Medication, LabTest, QueueItem } from '../../types/index.ts';
 import {
@@ -520,7 +520,14 @@ export const OutpatientModule: React.FC = () => {
       return;
     }
 
-    try {
+    /*
+     * The server refuses a prescription that matches a recorded
+     * allergy until the prescriber acknowledges it. That is a
+     * deliberate two-step: the warning cannot be skipped by not
+     * looking, but a documented tolerance is not blocked. The
+     * acknowledgement is audited server-side.
+     */
+    const submit = async (allergyAcknowledged: boolean) => {
       const med = await api.prescribeMedication({
         encounterId: activeEncounter.id,
         patientId: activePatient.id,
@@ -534,7 +541,9 @@ export const OutpatientModule: React.FC = () => {
         unitPrice: unitPrice.toFixed(2),
         status: 'Prescribed',
         prescribedBy: currentUser.name,
+        ...(allergyAcknowledged ? { allergyAcknowledged: true } : {}),
       });
+
       setPrescriptions(prev => [...prev, med]);
 
       // Also route patient to Pharmacy Queue. The token is allocated
@@ -553,7 +562,48 @@ export const OutpatientModule: React.FC = () => {
       showToast(
         `Prescription saved and patient routed to Pharmacy — token ${pharmacyEntry.tokenNumber}.`
       );
+    };
+
+    try {
+      await submit(false);
     } catch (err: any) {
+      if (err instanceof ApiError && err.code === 'ALLERGY_CONFLICT') {
+        const warnings = Array.isArray(err.detail?.warnings)
+          ? (err.detail!.warnings as Array<Record<string, unknown>>)
+          : [];
+
+        const lines = warnings.map((warning) =>
+          `• ${String(warning.allergen)} (${String(warning.severity)
+            .replace(/_/g, ' ')
+            .toLowerCase()}${warning.reaction ? ` — ${String(warning.reaction)}` : ''})`
+        );
+
+        const confirmed = window.confirm(
+          [
+            `ALLERGY WARNING for ${activePatient.firstName} ${activePatient.lastName}`,
+            '',
+            ...lines,
+            '',
+            String(err.detail?.disclaimer ?? ''),
+            '',
+            'Prescribe anyway? The override is recorded against your name.',
+          ].join('\n')
+        );
+
+        if (!confirmed) {
+          showToast('Prescription cancelled. Nothing was saved.');
+          return;
+        }
+
+        try {
+          await submit(true);
+        } catch (retryError: any) {
+          showToast(`Error: ${retryError.message}`);
+        }
+
+        return;
+      }
+
       showToast(`Error: ${err.message}`);
     }
   };

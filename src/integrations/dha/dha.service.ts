@@ -25,6 +25,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
+import { openPatientIdentifiers } from '../../security/patient-identifiers.ts';
 
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { resolveFacilityScope } from '../../auth/scope.service.ts';
@@ -152,7 +153,12 @@ async function loadPatient(
     throw new DhaError('NOT_FOUND', 'patient', 'Patient not found.');
   }
 
-  return patient;
+  /*
+   * Identifiers may be sealed at rest. DHA needs the national ID, not
+   * the ciphertext, so the row is opened here — after the tenant check
+   * and before anything is sent.
+   */
+  return openPatientIdentifiers(patient);
 }
 
 function identificationFor(

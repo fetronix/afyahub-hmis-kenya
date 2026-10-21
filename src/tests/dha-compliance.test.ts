@@ -27,6 +27,7 @@ import {
   MINIMUM_READINESS_SCORE,
   STATUS_CREDIT,
   buildDhaScore,
+  isCriticalGap,
   scoreCategory,
 } from '../compliance/dha-score.ts';
 
@@ -98,13 +99,44 @@ function testRegister(): void {
    */
   const byId = new Map(DHA_REQUIREMENTS.map((item) => [item.id, item]));
 
+  /*
+   * Consent and allergy checking were implemented on 2026-10-21, but
+   * neither is finished: consent does not gate sharing, and there is no
+   * interaction engine. PARTIAL is the truthful status, and both must
+   * remain critical gaps — a half-built critical control does not lift
+   * the readiness cap.
+   */
   assert(
-    byId.get('FN-06')?.status === 'MISSING',
-    'Consent capture is recorded as missing until a route and screen exist',
+    byId.get('FN-06')?.status === 'PARTIAL',
+    'Consent capture is partial: recorded, but not yet enforced on sharing',
   );
   assert(
-    byId.get('FN-15')?.status === 'MISSING',
-    'Allergy checking is recorded as missing',
+    byId.get('FN-06')?.evidence?.includes('/api/patients/:id/consents') ?? false,
+    'The consent row cites the route that now exists',
+  );
+  assert(
+    byId.get('FN-06') !== undefined && isCriticalGap(byId.get('FN-06')!),
+    'Partial consent capture is still a critical gap',
+  );
+  assert(
+    byId.get('FN-15')?.status === 'PARTIAL',
+    'Allergy checking is partial: name matching, no interaction engine',
+  );
+  assert(
+    byId.get('FN-15') !== undefined && isCriticalGap(byId.get('FN-15')!),
+    'Partial allergy checking is still a critical gap',
+  );
+  assert(
+    byId.get('SP-08')?.status === 'PARTIAL',
+    'Encryption at rest is partial: identifiers sealed, volume not encrypted',
+  );
+  assert(
+    byId.get('SP-08') !== undefined && isCriticalGap(byId.get('SP-08')!),
+    'Partial encryption is still a critical gap',
+  );
+  assert(
+    (byId.get('SP-08')?.externalDependency ?? '').length > 0,
+    'The encryption row names the party that must finish it',
   );
   assert(
     byId.get('SP-01')?.status === 'BLOCKED',
@@ -229,6 +261,35 @@ function testScoring(): void {
   assert(
     STATUS_CREDIT.BLOCKED === 0 && STATUS_CREDIT.MISSING === 0,
     'Blocked and missing work earns no credit',
+  );
+
+  /*
+   * A critical row that is half-built must still gate. Otherwise
+   * implementing 50% of every critical control lifts the cap while
+   * none of them is actually finished.
+   */
+  const partialCritical = buildDhaScore([
+    ...Array.from({ length: 19 }, (_, index) => ({
+      ...fixture[0],
+      id: `OK-${index}`,
+      category: 'functionality' as const,
+    })),
+    {
+      ...fixture[0],
+      id: 'HALF-1',
+      category: 'security',
+      status: 'PARTIAL' as const,
+      severity: 'critical' as const,
+    },
+  ]);
+
+  assert(
+    partialCritical.criticalGateTriggered,
+    'A critical requirement that is only PARTIAL still triggers the gate',
+  );
+  assert(
+    partialCritical.overallScore <= CRITICAL_GAP_CEILING,
+    'Partial critical work does not lift the cap',
   );
 }
 

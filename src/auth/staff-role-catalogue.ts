@@ -22,6 +22,9 @@ export const STAFF_ROLE_CATALOGUE = [
       'appointments.read', 'clinical.create', 'clinical.read',
       'clinical.update', 'inpatient.read', 'inpatient.admit',
       'laboratory.read', 'laboratory.orders.create', 'patients.read',
+      // Recording consent and correcting a patient's own demographic
+      // details are part of the consultation, not admin work.
+      'patients.update',
       // Clinical officers run antenatal clinics and conduct deliveries.
       'maternity.read', 'maternity.create', 'maternity.update',
     ],
@@ -36,6 +39,9 @@ export const STAFF_ROLE_CATALOGUE = [
       'inpatient.read', 'inpatient.admit', 'inpatient.discharge',
       'laboratory.read',
       'laboratory.orders.create', 'patients.read',
+      // Consent to treatment and to sharing is taken during the
+      // consultation; a doctor who cannot record it will not ask.
+      'patients.update',
       'maternity.read', 'maternity.create', 'maternity.update',
     ],
   },
@@ -81,6 +87,10 @@ export const STAFF_ROLE_CATALOGUE = [
     permissions: [
       'appointments.create', 'appointments.read', 'appointments.update',
       'patients.create', 'patients.read',
+      // Consent is a registration form at most facilities, so the desk
+      // that registers the patient must be able to record it — and to
+      // revoke it when the patient asks.
+      'patients.update',
       // Enough to find a booked mother and her next appointment; not
       // enough to record clinical findings.
       'maternity.read',

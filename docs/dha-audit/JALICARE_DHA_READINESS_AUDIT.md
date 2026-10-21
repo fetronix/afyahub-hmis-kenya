@@ -31,8 +31,16 @@ This audit therefore did two things:
    score can only be produced from per-requirement statuses that name their own
    evidence.
 
-The result is 42.5%, capped below a pass by seven critical gaps. That is a very
+The result is **45.5%**, held below a pass by eleven critical gaps. That is a very
 different number from 90%, and the difference is the point.
+
+> **Remediation round, 2026-10-21 (evening).** After the audit was published, three
+> of its critical findings were partially built: consent capture, a structured
+> allergy registry with a prescribing warning, and application-level encryption of
+> direct identifiers. The score moved from 42.5% to 45.5% because those rows moved
+> from MISSING to PARTIAL. None of them is finished, all three remain critical gaps,
+> and the cap still applies. The remaining work is named in §9 and in
+> `REMEDIATION_PLAN.md`. Nothing here has been re-labelled as complete.
 
 ---
 
@@ -50,7 +58,7 @@ different number from 90%, and the difference is the point.
 | Source size | 144 `.ts`/`.tsx` files, 84,426 lines (excluding backups) | `wc -l` |
 | Schema | 75 tables, 211 `.references()` declarations | `src/db/schema.ts` |
 | Migrations | 17 SQL files, 17 journal entries, 75 tables — parity confirmed | `drizzle/` |
-| Tests | 21 suites, 2,553 counted assertions | `npm test` |
+| Tests | 23 suites, 2,717 counted assertions | `npm test` |
 | Deployment | Single Node process; frontend built by Vite; no container, CI or IaC in repo | absence verified |
 
 **The brief assumed SQLite.** It is not. PostgreSQL changes two conclusions:
@@ -171,8 +179,8 @@ modules that nothing imported.
 | Check | Command | Result |
 |---|---|---|
 | Type check | `npm run lint` | **Passes** — previously always failed on `firebase.ts` |
-| Production build | `npm run build` | **716 ms**, bundle emitted |
-| Test suite | `npm test` | **21 suites, 2,553 assertions, no failures** |
+| Production build | `npm run build` | **644 ms**, bundle emitted |
+| Test suite | `npm test` | **23 suites, 2,717 assertions, no failures** |
 | Route inventory | static scan of `src/app.ts` | 134 routes; 9 previously unguarded routes now guarded |
 | Schema/migration parity | static comparison | 75 = 75; 17 journal entries = 17 files |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
@@ -200,7 +208,7 @@ and must be reviewed and signed by the responsible officer.
 |---|---|
 | Client ↔ server | The application terminates no TLS. Helmet and CORS are configured; HSTS is only meaningful behind TLS. Deployment must terminate TLS 1.2+. |
 | App ↔ PostgreSQL | Was hard-coded off. Now `SQL_SSL`, default off for local, with certificate verification on. **Not enabled in any environment I could see.** |
-| At rest | No storage encryption, no key management, no encrypted-backup procedure in the repository. |
+| At rest | Storage encryption, key management and encrypted backups are still absent. Application-level sealing of national ID and SHA number exists (`src/security/field-crypto.ts`, AES-256-GCM, `FIELD_ENCRYPTION_KEY`), but a sealed column is not an encrypted database. |
 | Backups | No backup automation, retention policy or restore runbook. |
 
 HTTPS does not encrypt a database. No such claim is made here.
@@ -214,22 +222,30 @@ requirements (see `DHA_REQUIREMENT_TRACEABILITY.md`).
 
 | Category | Weight | Requirements assessed | Verified | Score | Contribution |
 |---|---:|---:|---:|---:|---:|
-| Clinical functionality | 35% | 20 | 9 | 61.3% | 21.4 |
-| Security & privacy | 30% | 12 | 2 | 37.5% | 11.3 |
+| Clinical functionality | 35% | 20 | 9 | 66.3% | 23.2 |
+| Security & privacy | 30% | 12 | 2 | 41.7% | 12.5 |
 | Public health reporting | 20% | 6 | 0 | 16.7% | 3.3 |
 | Interoperability | 15% | 7 | 0 | 42.9% | 6.4 |
-| **Weighted average** | | | | **42.5%** | |
-| **Reported score** | | | | **42.5%** | |
+| **Weighted average** | | | | **45.5%** | |
+| **Reported score** | | | | **45.5%** | |
 
-Status counts across 46 requirements: **11 verified**, 3 built-but-untested, 15
-partial, 14 missing, 2 blocked on an external party, 1 not applicable.
+Status counts across 46 requirements: **11 verified**, 3 built-but-untested, 18
+partial, 11 missing, 2 blocked on an external party, 1 not applicable.
 
 The critical gate is triggered, but the average is already below the 59.9 ceiling,
 so the cap does not change the figure. `readyForSubmission` is false either way.
 
-**Seven critical requirements are unmet:** consent capture (FN-06), allergy
-checking (FN-15), ODPC registration (SP-01), DPIA (SP-02), encryption at rest
-(SP-08), backup and disaster recovery (SP-09), and IDSR weekly reporting (PH-02).
+**Eleven critical requirements are unmet:** consent capture (FN-06, partial),
+allergy and interaction checking (FN-15, partial), ODPC registration (SP-01),
+DPIA (SP-02), access control review (SP-04, partial), incident response (SP-05,
+partial), audit trail (SP-07, partial), encryption at rest (SP-08, partial),
+backup and disaster recovery (SP-09), surveillance submission (PH-01, partial)
+and IDSR weekly reporting (PH-02).
+
+**Method note.** The critical gate now also counts a PARTIAL critical
+requirement as a gap. Without that, implementing half of each critical control
+would lift the 59.9 cap while none of them worked end to end — which is exactly
+the arithmetic that produced the 90% figure this audit rejected.
 
 **Ready for submission:** no.
 

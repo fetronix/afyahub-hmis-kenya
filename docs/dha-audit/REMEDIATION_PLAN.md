@@ -13,14 +13,14 @@ can close from what only the responsible organisation or DHA can close.
 
 | ID | Action | Owner | Dependency | Evidence of completion |
 |---|---|---|---|---|
-| P1-1 | Finish the authorisation audit: the five remaining unguarded routes and all 33 `Number(req.params.id)` routes | Engineering | — | Each route either uses a scoped query or includes `facility_id` in the `WHERE`; a test per route |
+| P1-1 | Finish the authorisation audit: every `Number(req.params.id)` route | Engineering | — | Each route either uses a scoped query or includes `facility_id` in the `WHERE`; a test per route. **Partly done** — seven more unguarded routes closed on 2026-10-21 (claims ×3, DHA ×3, departments) and every route read so far proves ownership, but no exhaustive pass exists |
 | P1-2 | ODPC registration for the responsible legal entity | Organisation / DPO | Legal entity identified | Certificate number and role recorded |
 | P1-3 | Review, sign and date the DPIA | DPO / responsible officer | `DPIA_DRAFT.md` | Signed document, version and date |
 | P1-4 | Enable encryption at rest for database and backups | Hosting / DBA | Hosting decision | Provider configuration evidence |
 | P1-5 | Implement and test backup + restore | Operations | Storage target | A restore performed into an isolated database, with timings recorded |
-| P1-6 | Make `audit_logs` append-only at the database level | DBA | Backup taken | Trigger and `REVOKE` applied; an attempted `UPDATE` fails |
-| P1-7 | Build patient consent capture (route, screen, access effect) | Engineering | — | `patient_consents` written and read; consent visible on the record |
-| P1-8 | Build allergy recording and a prescribing warning | Engineering | Clinical sign-off on rules | A recorded allergy warns at prescribing; test covers it |
+| P1-6 | Apply migration `0017`: append-only `audit_logs` triggers + `REVOKE` | DBA | Backup taken | **Written and tested statically; not applied.** An attempted `UPDATE` must fail after the migration |
+| P1-7 | Patient consent capture | Engineering | — | **Done except enforcement.** Grant, list, revoke, derived status, patient-record tab and 80 assertions. Consent does **not** yet gate sharing or insurer submission — see P2-9 |
+| P1-8 | Allergy recording and a prescribing warning | Engineering | Clinical sign-off on the matching rules | **Done except interactions.** Registry, 409 conflict, audited override, screen. No drug-drug interaction engine — see P2-10 |
 
 **Why P1-1 is first:** it is the only item that can expose another facility's
 patient data *today*. The other P1 items are gaps in readiness; this one is an
@@ -34,12 +34,15 @@ active risk.
 |---|---|---|---|
 | P2-1 | Server-side duplicate-patient rule + merge/reconciliation workflow | Engineering | The UI warning is not enough |
 | P2-2 | Radiology and theatre automated tests | Engineering | These routes had no guard and no test; they now have the guard |
-| P2-3 | Record patient-record **views** in `patient_record_access_logs` | Engineering | Table exists, unwritten |
+| P2-3 | ~~Record patient-record **views** in `patient_record_access_logs`~~ | Engineering | **Done 2026-10-21**: VIEW / UPDATE / FHIR EXPORT logged before the response; the mislabelled FHIR row removed |
 | P2-4 | IDSR weekly return and MOH 705 aggregate | Engineering | Needs the official reporting specification; do not invent definitions |
 | P2-5 | Submission outbox with status, retry and idempotency | Engineering | Prerequisite for any national reporting |
 | P2-6 | DHA sandbox verification | Engineering + DHA | Blocked on credentials |
 | P2-7 | MFA for privileged accounts | Engineering | Required before production DHA credentials |
 | P2-8 | Terminate TLS in deployment and set `SQL_SSL=true` for remote databases | Operations | App serves no TLS |
+| P2-9 | Make consent gate cross-facility sharing and insurer submission | Engineering + clinical governance | `hasActiveConsent()` is exposed; the policy decision is not an engineering default. Do **not** block the treating clinician's own access |
+| P2-10 | Drug-drug interaction data | Clinical governance | Needs a licensed interaction dataset; name matching is not that, and the UI says so |
+| P2-11 | Decide whether to encrypt further columns | Engineering + DPO | Names, phone numbers and dates of birth are still plaintext. Encrypting them breaks search unless every lookup moves to a blind index |
 
 ---
 

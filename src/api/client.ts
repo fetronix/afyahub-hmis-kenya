@@ -133,6 +133,54 @@ interface ApiErrorResponse {
   detail?: Record<string, unknown>;
 }
 
+export interface PatientConsent {
+  id: number;
+  patientId: number;
+  purpose: string;
+  /** Derived by the server from stored status and expiry. */
+  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  storedStatus: string;
+  scope: Record<string, boolean>;
+  method: string;
+  grantedThrough: string | null;
+  documentHash: string | null;
+  version: number | null;
+  grantedAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  revokedByUserId: number | null;
+}
+
+export interface PatientAllergy {
+  id: number;
+  patientId: number;
+  allergenType: string;
+  allergen: string;
+  reaction: string | null;
+  severity: string;
+  status: 'ACTIVE' | 'RESOLVED' | 'ENTERED_IN_ERROR';
+  notes: string | null;
+  recordedAt: string;
+  recordedByUserId: number | null;
+  resolvedAt: string | null;
+}
+
+export interface AllergyWarning {
+  allergyId: number;
+  allergen: string;
+  allergenType: string;
+  severity: string;
+  reaction: string | null;
+  matchedOn: string;
+}
+
+export interface AllergyCheckResult {
+  success: boolean;
+  warnings: AllergyWarning[];
+  checked: string[];
+  disclaimer: string;
+}
+
 /**
  * Error thrown for a non-2xx response.
  *
@@ -1067,6 +1115,85 @@ export const api = {
       ),
 
   // ============================================================
+  // CONSENT (Data Protection Act 2019)
+  // ============================================================
+
+  getPatientConsents:
+    (patientId: number) =>
+      fetchJson<{ success: boolean; consents: PatientConsent[]; counts: Record<string, number> }>(
+        `${API_BASE}/patients/${patientId}/consents`
+      ),
+
+  grantPatientConsent:
+    (
+      patientId: number,
+      consent: {
+        purpose: string;
+        method: string;
+        scope: Record<string, boolean>;
+        expiresAt?: string | null;
+        documentHash?: string | null;
+      },
+    ) =>
+      fetchJson<{ success: boolean; consent: PatientConsent }>(
+        `${API_BASE}/patients/${patientId}/consents`,
+        {
+          method: 'POST',
+          body: JSON.stringify(consent),
+        }
+      ),
+
+  revokePatientConsent:
+    (patientId: number, consentId: number, reason?: string) =>
+      fetchJson<{ success: boolean; consent: PatientConsent }>(
+        `${API_BASE}/patients/${patientId}/consents/${consentId}/revoke`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+        }
+      ),
+
+  // ============================================================
+  // ALLERGIES
+  // ============================================================
+
+  getPatientAllergies:
+    (patientId: number) =>
+      fetchJson<{ success: boolean; allergies: PatientAllergy[]; disclaimer: string }>(
+        `${API_BASE}/patients/${patientId}/allergies`
+      ),
+
+  recordPatientAllergy:
+    (patientId: number, allergy: Partial<PatientAllergy> & { allergen: string; allergenType: string }) =>
+      fetchJson<{ success: boolean; allergy: PatientAllergy }>(
+        `${API_BASE}/patients/${patientId}/allergies`,
+        {
+          method: 'POST',
+          body: JSON.stringify(allergy),
+        }
+      ),
+
+  setPatientAllergyStatus:
+    (patientId: number, allergyId: number, status: string) =>
+      fetchJson<{ success: boolean; allergy: PatientAllergy }>(
+        `${API_BASE}/patients/${patientId}/allergies/${allergyId}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        }
+      ),
+
+  checkMedicationAllergies:
+    (patientId: number, medications: string[]) =>
+      fetchJson<AllergyCheckResult>(
+        `${API_BASE}/patients/${patientId}/allergies/check`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ medications }),
+        }
+      ),
+
+  // ============================================================
   // ENCOUNTERS
   // ============================================================
 
@@ -1413,7 +1540,7 @@ export const api = {
     },
 
   prescribeMedication:
-    (med: Partial<Medication>) =>
+    (med: Partial<Medication> & { allergyAcknowledged?: boolean }) =>
       fetchJson<Medication>(
         `${API_BASE}/medications`,
         {

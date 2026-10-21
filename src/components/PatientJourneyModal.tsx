@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../context/HmisContext.tsx';
 import { api } from '../api/client.ts';
+import { PatientConsentAllergyPanel } from './PatientConsentAllergyPanel.tsx';
 import { Patient, Encounter, Observation, Diagnosis, Medication, LabOrder, LabResult, BillingInvoice } from '../types/index.ts';
 import { 
   X, 
@@ -26,7 +27,7 @@ export const PatientJourneyModal: React.FC = () => {
   const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
   const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'vitals' | 'diagnoses' | 'meds' | 'labs' | 'billing' | 'fhir'>('timeline');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'vitals' | 'diagnoses' | 'meds' | 'labs' | 'billing' | 'consent' | 'fhir'>('timeline');
   const [fhirJson, setFhirJson] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
@@ -156,7 +157,7 @@ export const PatientJourneyModal: React.FC = () => {
             { id: 'meds', label: `Prescriptions (${medications.length})` },
             { id: 'labs', label: `Lab Investigations (${labOrders.length})` },
             { id: 'billing', label: `Financial Invoices (${invoices.length})` },
-
+            { id: 'consent', label: 'Consent & Allergies' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -468,6 +469,14 @@ export const PatientJourneyModal: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {/* CONSENT & ALLERGY TAB */}
+              {activeTab === 'consent' && (
+                <PatientConsentAllergyPanel
+                  patientId={selectedPatient.id}
+                  patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                />
               )}
 
               {/* FHIR SCHEMA TAB */}

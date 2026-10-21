@@ -942,23 +942,27 @@ now `SQL_SSL`, with certificate verification on by default.
 | Traceability matrix, regenerated from the register | `scripts/dha-traceability.ts` → `docs/dha-audit/` |
 
 The published formula is the one in the brief: (functionality × 0.35) + (security ×
-0.30) + (reporting × 0.20) + (interoperability × 0.15). Two rules make it honest:
-`NOT_APPLICABLE` is excluded from the denominator, and any **critical** requirement
-that is `MISSING` or `BLOCKED` caps the whole figure at 59.9%.
+0.30) + (reporting × 0.20) + (interoperability × 0.15). Three rules make it honest:
+`NOT_APPLICABLE` is excluded from the denominator; any **critical** requirement that
+is `MISSING`, `BLOCKED` or `PARTIAL` caps the whole figure at 59.9%; and a status is
+only `VERIFIED` when a test in this repository walks the path.
 
 **The result at this commit:**
 
 | Category | Weight | Verified / assessed | Score |
 |---|---:|---:|---:|
-| Clinical functionality | 35% | 9 / 20 | 61.3% |
-| Security & privacy | 30% | 2 / 12 | 37.5% |
+| Clinical functionality | 35% | 9 / 20 | 66.3% |
+| Security & privacy | 30% | 2 / 12 | 41.7% |
 | Public health reporting | 20% | 0 / 6 | 16.7% |
 | Interoperability | 15% | 0 / 7 | 42.9% |
-| **Overall** | | 11 / 46 | **42.5%** |
+| **Overall** | | 11 / 46 | **45.5%** |
 
-Seven critical gaps remain: consent capture, allergy checking, ODPC registration,
-the DPIA, encryption at rest, backup and disaster recovery, and IDSR weekly
-reporting. `readyForSubmission` is false, and the endpoint always returns
+Eleven critical gaps remain. Three are now **partially** built — consent capture,
+allergy checking and encryption at rest — and eight are untouched: ODPC
+registration, the DPIA, access-control review, incident response, audit-trail
+completeness, backup and disaster recovery, surveillance submission and IDSR
+weekly reporting. A partial critical control is still a gap, so the cap applies.
+`readyForSubmission` is false, and the endpoint always returns
 `certification: false`.
 
 **Audit documents** in `docs/dha-audit/`: readiness audit, requirement
@@ -967,18 +971,32 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation.** `npm run lint` passes (first time in this repository's recent
-history). `npm run build` — **716 ms**, 1,702 modules. `npm test` — **21 suites,
-2,553 assertions**, no failures. `test:compliance` adds 222 assertions and
-`test:route-scope` adds 66.
+history). `npm run build` — **644 ms**, 1,703 modules (build time moves by a few hundred milliseconds between runs). `npm test` — **23 suites,
+2,717 assertions**, no failures. `test:compliance` adds 230 assertions,
+`test:route-scope` 66, `test:field-encryption` 48 and `test:consent-allergy` 80.
 
 **Not verified.** No database and no browser: `npm run db:status` fails with
 `Missing required environment variable: SQL_HOST`. Every SQL path is
 contract-checked, not executed; no screen was clicked; no DHA sandbox call was made.
-Five unguarded routes and 33 id-addressed routes remain unaudited — the largest
-residual risk, recorded as P1-1.
+No exhaustive pass over the id-addressed routes — every one read so far proves
+ownership before writing, but that is not the same as all of them having been read.
 
 **Backups created during this round**
 
+- `src/app.ts.before-consent-allergy-20261021.bak`
+- `src/db/queries.ts.before-field-encryption-20261021.bak`
+- `src/db/schema.ts.before-allergy-consent-20261021.bak`
+- `src/api/client.ts.before-consent-allergy-20261021.bak`
+- `src/auth/staff-role-catalogue.ts.before-consent-permission-20261021.bak`
+- `src/components/PatientJourneyModal.tsx.before-consent-allergy-20261021.bak`
+- `src/components/modules/OutpatientModule.tsx.before-allergy-gate-20261021.bak`
+- `src/compliance/dha-requirements.ts.before-consent-remediation-20261021.bak`
+- `src/compliance/dha-score.ts.before-consent-remediation-20261021.bak`
+- `src/tests/dha-compliance.test.ts.before-consent-remediation-20261021.bak`
+- `docs/dha-audit/JALICARE_DHA_READINESS_AUDIT.md.before-consent-remediation-20261021.bak`
+- `docs/dha-audit/TEST_RESULTS.md.before-consent-remediation-20261021.bak`
+- `package.json.before-consent-tests-20261021.bak`
+- `README.md.before-consent-remediation-20261021.bak`
 - `src/app.ts.before-dha-audit-scope-20261021.bak`
 - `src/db/queries.ts.before-dha-audit-scope-20261021.bak`
 - `src/config/env.ts.before-sql-tls-20261021.bak`
@@ -992,6 +1010,64 @@ residual risk, recorded as P1-1.
 - `src/tests/opd-journey.test.ts.before-route-format-20261021.bak`
 - `package.json.before-dha-audit-tests-20261021.bak`
 - `README.md.before-dha-audit-20261021.bak`
+
+### 3.21 Consent, allergies and identifier encryption — the first remediation round
+
+The audit named critical gaps and then stopped, which is only half a job. This round
+built the parts that are code rather than organisational control.
+
+**Consent (FN-06, now PARTIAL).** `src/clinical/consent.service.ts` records purpose,
+method, scope, expiry and who took it, and derives `ACTIVE` / `REVOKED` / `EXPIRED`
+from the row instead of trusting a stored string. Revocation sets `revoked_at` and
+`revoked_by_user_id`; there is no DELETE route, because "the patient withdrew" is a
+fact about the record, not a reason to erase it. An empty scope is refused by the
+server, and the screen mirrors that rule rather than allowing a save the API will
+reject. A consent that covers nothing is not consent.
+
+**Allergies (FN-15, now PARTIAL).** `patient_allergies` is a real table, not the
+free-text `patients.allergies` column nothing wrote to. `POST /api/medications`
+calls `checkMedicationAllergies` before it writes; a match returns
+`409 ALLERGY_CONFLICT`, the screen shows what was recorded and why it matched, and
+retrying requires `allergyAcknowledged: true`, which is written to the audit trail
+as a `PRESCRIBE` override. The check does not block, and the UI says an empty
+result means "nothing recorded matches", never "safe". Matching is name-based, so
+penicillin does not warn for amoxicillin — asserted in a test, stated on screen.
+
+**Identifier encryption (SP-08, still PARTIAL).** National ID and SHA number are
+sealed with AES-256-GCM (`v1:` version prefix, random IV per value, tag verified on
+read) before insert, and opened on the way out. Because an encrypted column cannot
+be searched, an HMAC blind index in a separate indexed column answers exact
+lookups; `getPatients` and `getPatientsScoped` use it when the key is configured and
+fall back to `ILIKE` on plaintext rows otherwise. Rows written before a key existed
+keep working. There is **no default key**: without `FIELD_ENCRYPTION_KEY` nothing
+is encrypted and the readiness panel says so. The database volume, its snapshots
+and backups are still unencrypted — that remains a hosting control.
+
+**Access logging.** `patient_record_access_logs` existed and was written in exactly
+one place: the patient-update route, labelled `EXPORT` / `FHIR` /
+"FHIR patient resource retrieval". The FHIR endpoint itself logged nothing. That is
+now corrected: reads log `VIEW`, edits log `UPDATE`, FHIR logs an `EXPORT` on the
+`FHIR` channel, and every row carries a purpose from a fixed list. The write happens
+before the response, so a record that cannot be accounted for is not served.
+
+**Audit immutability.** Migration `0017` installs `jalicare_audit_is_append_only()`
+with row and statement triggers on `audit_logs`, plus
+`REVOKE UPDATE, DELETE, TRUNCATE`. INSERT is still accepted. This is defence in
+depth: the trigger holds even for a role that owns the table.
+
+**Routes.** Seven more endpoints gained a permission: the claims list, claimable
+lines and claim items (`insurance.read` or `billing.read`), DHA readiness, service
+mappings and the call log (`system.health.read` / `tariffs.read` /
+`audit.security.read` alongside `system.settings.manage`), and `/api/departments`,
+which now uses a new `getDepartmentsScoped` instead of returning any facility's
+departments to anyone who guessed an id.
+
+**What this round did not do.** Consent does not gate clinical reads — whether a
+clinician needs consent to treat the patient in front of them is a clinical
+governance decision, and `hasActiveConsent()` is exposed for whoever makes it. There
+is no drug-drug interaction engine. Volume and backup encryption are untouched. No
+PostgreSQL was available, so every SQL path in this round is type-checked and
+contract-tested, not executed, and migration `0017` has **not** been applied.
 
 
 ## 4. Existing backups and modified files to preserve
@@ -1340,8 +1416,12 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 | Maternity, postnatal care and immunisation | Implemented; 131 + 151 assertions and 40 live checks; not walked in a browser, no clinical review |
 | Maternity/ANC visibility | Was hidden by the facility module list and a decorative switch; catalogue, endpoint and screen now wired (53 assertions); not exercised against a live database |
 | Notifications | One centred, animated dialog for all 145 `showToast` call sites; queued, toned, dismissible; not watched in a browser |
-| DHA readiness | Evidence-based register of 46 requirements, critical-gap gating, read-only API and panel. Self-assessment **42.5%**, not ready to submit; no live database, browser or DHA sandbox |
-| Cross-facility exposure | Nine operational routes were unguarded and unscoped; fixed and regression-tested. Five unguarded and 33 id-addressed routes remain unaudited |
+| DHA readiness | Evidence-based register of 46 requirements, critical-gap gating, read-only API and panel. Self-assessment **45.5%**, not ready to submit; no live database, browser or DHA sandbox |
+| Cross-facility exposure | Sixteen routes were unguarded or unscoped across two rounds; fixed and regression-tested. `departments` is now tenant-scoped as well. No exhaustive pass over the remaining id-addressed routes — each one read so far proves ownership, but that is not the same as all of them having been read |
+| Patient consent | Grant, list and revoke with purpose, method, scope and expiry; status derived, revocation recorded; visible as a tab on the patient record. **Not enforced on clinical reads** and the PostgreSQL path is untested |
+| Allergy safety | Structured registry with severity and status; the prescription route refuses to write an unacknowledged match (409), the override is audited, and the screen asks. Name matching only — **no drug-drug interaction engine** |
+| Identifier encryption | AES-256-GCM sealing of national ID and SHA number with an HMAC blind index, key from `FIELD_ENCRYPTION_KEY`, no default key, legacy plaintext passthrough. 48 assertions. **Database volume and backups remain unencrypted** |
+| Patient access logging | Every read, edit and FHIR export of a patient record writes an access row before the response goes out. The old mislabelled FHIR row in the patient-update route is removed |
 | End-to-end OPD/triage verification | In progress — no browser walkthrough yet |
 | Independent security testing, load test, restore drill | Not started |
 | Comprehensive regression testing and user acceptance | Not started |

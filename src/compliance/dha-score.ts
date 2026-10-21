@@ -130,10 +130,23 @@ export function scoreCategory(
   };
 }
 
+/**
+ * Is this requirement a gap that blocks a readiness claim?
+ *
+ * `PARTIAL` is included, and deliberately so. A critical control that
+ * is half-built — consent captured but not enforced, an allergy
+ * warning with no interaction data, identifiers sealed while the
+ * database volume is not — is still a gap. Excluding it would let
+ * three partial criticals lift a cap that exists precisely because
+ * those controls are not finished, which is how a readiness score
+ * becomes fiction.
+ */
 export function isCriticalGap(requirement: DhaRequirement): boolean {
   return (
     requirement.severity === 'critical' &&
-    (requirement.status === 'MISSING' || requirement.status === 'BLOCKED')
+    (requirement.status === 'MISSING' ||
+      requirement.status === 'BLOCKED' ||
+      requirement.status === 'PARTIAL')
   );
 }
 

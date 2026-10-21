@@ -10,6 +10,9 @@ import dotenv from 'dotenv';
 import platformRoutes from './routes/platform.routes.ts';
 import facilityModuleRoutes from './config/facility-modules.routes.ts';
 import complianceRoutes from './compliance/compliance.routes.ts';
+import clinicalRecordsRoutes from './clinical/clinical-records.routes.ts';
+import { checkMedicationAllergies } from './clinical/allergy.service.ts';
+import { logPatientAccess } from './clinical/access-log.service.ts';
 
 
 
@@ -214,6 +217,13 @@ app.use('/api/compliance', complianceRoutes);
 // Facility module enforcement. Keep platform administration, invitations,
 // tenants, and facility-context endpoints outside these operational guards.
 app.use('/api/patients', requireFacilityModule('registration'));
+
+/*
+ * Consent and allergy records live under the patient they belong to.
+ * Mounted after the module guard, so a facility without registration
+ * enabled cannot reach them either.
+ */
+app.use('/api/patients', clinicalRecordsRoutes);
 app.use('/api/appointments', requireFacilityModule('reception'));
 app.use('/api/queues', requireFacilityModule('reception'));
 
@@ -874,23 +884,47 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     },
   );
 
-  app.get('/api/departments', async (req, res) => {
-    try {
-      const facilityId = req.query.facilityId
-        ? Number(req.query.facilityId)
-        : undefined;
+  app.get(
+    '/api/departments',
+    requirePermission('patients.read'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+          });
+        }
 
-      const list = await queries.getDepartments(
-        facilityId
-      );
+        const facilityId = req.query.facilityId
+          ? Number(req.query.facilityId)
+          : undefined;
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (
+          facilityId !== undefined &&
+          (!Number.isInteger(facilityId) || facilityId <= 0)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_FACILITY_ID',
+          });
+        }
+
+        const list = await queries.getDepartmentsScoped(
+          req.authContext,
+          facilityId,
+        );
+
+        return res.json(list);
+      } catch (err: any) {
+        if (handleScopeError(err, res)) return;
+
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
 
 
   // =========================================================
@@ -984,6 +1018,26 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         });
       }
 
+      /*
+       * Every read of a patient record is accounted for. The insert
+       * happens before the response is written: if the log cannot be
+       * written the request fails, because an unaccountable read of
+       * identifiable health data is the thing the DPA prohibits.
+       */
+      await logPatientAccess({
+        context: req.authContext,
+        patientId: patient.id,
+        tenantId: patient.tenantId,
+        facilityId: patient.registrationFacilityId,
+        action: 'VIEW',
+        purpose: 'DIRECT_CARE',
+        recordType: 'Patient',
+        request: {
+          ipAddress: req.ip ?? null,
+          userAgent: req.get('user-agent') ?? null,
+        },
+      });
+
       return res.json(patient);
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
@@ -1072,22 +1126,27 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         });
       }
 
-                  // Record sensitive patient-data access before returning data.
-            // If this insert fails, the outer catch returns an error
-            // instead of silently serving an unaudited FHIR response.
-            await db.insert(schema.patientRecordAccessLogs).values({
-              patientId: patient.id,
-              userId: req.authContext.userId,
-              tenantId: patient.tenantId,
-              facilityId: patient.registrationFacilityId,
-              action: 'EXPORT',
-              accessChannel: 'FHIR',
-              recordType: 'Patient',
-              recordId: patient.id,
-              purpose: 'FHIR patient resource retrieval',
-              ipAddress: req.ip ?? null,
-              userAgent: req.get('user-agent') ?? null,
-            });
+      /*
+       * This route previously wrote an access row marked
+       * EXPORT / FHIR / "FHIR patient resource retrieval" — on a staff
+       * edit. The row was wrong twice over: wrong action, wrong
+       * channel, and it meant the real FHIR endpoint logged nothing.
+       * It is now a correct UPDATE row, and the FHIR route logs its
+       * own read.
+       */
+      await logPatientAccess({
+        context: req.authContext,
+        patientId: patient.id,
+        tenantId: patient.tenantId,
+        facilityId: patient.registrationFacilityId,
+        action: 'UPDATE',
+        purpose: 'DIRECT_CARE',
+        recordType: 'Patient',
+        request: {
+          ipAddress: req.ip ?? null,
+          userAgent: req.get('user-agent') ?? null,
+        },
+      });
 
       await queries.logAuditEvent(
         patient.tenantId,
@@ -2395,20 +2454,93 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.post('/api/medications', requirePermission('clinical.create'), async (req, res) => {
-    try {
-      const med =
-        await queries.createMedication(
-          req.body
+  app.post(
+    '/api/medications',
+    requirePermission('clinical.create'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+          });
+        }
+
+        const body = (req.body ?? {}) as Record<string, unknown>;
+
+        /*
+         * The allergy check runs before the prescription is written.
+         *
+         * It does not block care: a hard stop on a name match would
+         * refuse a documented tolerance or a deliberate desensitisation,
+         * and clinicians learn to click through hard stops. Instead the
+         * prescriber is shown what the registry holds and must
+         * acknowledge it explicitly. The acknowledgement goes into the
+         * audit trail.
+         */
+        const patientId = Number(body.patientId);
+        const drugName =
+          typeof body.drugName === 'string' ? body.drugName.trim() : '';
+
+        if (
+          Number.isSafeInteger(patientId) &&
+          patientId > 0 &&
+          drugName !== ''
+        ) {
+          const check = await checkMedicationAllergies(
+            req.authContext,
+            patientId,
+            [drugName],
+          );
+
+          if (check.warnings.length > 0) {
+            const acknowledged = body.allergyAcknowledged === true;
+
+            if (!acknowledged) {
+              return res.status(409).json({
+                success: false,
+                error: 'ALLERGY_CONFLICT',
+                message:
+                  'This patient has a recorded allergy that matches this medication. Confirm to prescribe anyway.',
+                warnings: check.warnings,
+                disclaimer: check.disclaimer,
+                detail: {
+                  warnings: check.warnings,
+                  disclaimer: check.disclaimer,
+                },
+              });
+            }
+
+            await queries.logAuditEvent(
+              req.authContext.tenantId,
+              req.authContext.facilityId,
+              String(req.authContext.userId),
+              'PRESCRIBE',
+              'Medication',
+              null,
+              `Allergy warning overridden for ${drugName}: ${check.warnings
+                .map((warning) => warning.allergen)
+                .join(', ')}`,
+            );
+          }
+        }
+
+        const { allergyAcknowledged: _acknowledged, ...payload } = body;
+
+        const med = await queries.createMedication(
+          payload as Parameters<typeof queries.createMedication>[0],
         );
 
-      res.status(201).json(med);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        res.status(201).json(med);
+      } catch (err: any) {
+        if (handleScopeError(err, res)) return;
+
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
 
   app.put('/api/medications/:id/status', requirePermission('pharmacy.dispense'), async (req, res) => {
     try {
@@ -5728,6 +5860,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
   app.get(
     '/api/claims',
+    requireAnyPermission('insurance.read', 'billing.read'),
     async (req: AuthRequest, res: Response) => {
       try {
         if (!req.authContext) {
@@ -5763,6 +5896,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
    */
   app.get(
     '/api/invoices/:id/claimable-lines',
+    requireAnyPermission('insurance.read', 'billing.read'),
     async (req: AuthRequest, res: Response) => {
       try {
         if (!req.authContext) {
@@ -5795,6 +5929,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
   app.get(
     '/api/claims/:id/items',
+    requireAnyPermission('insurance.read', 'billing.read'),
     async (req: AuthRequest, res: Response) => {
       try {
         if (!req.authContext) {
@@ -6049,6 +6184,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
   app.get(
     '/api/integrations/dha/readiness',
+    requireAnyPermission('system.health.read', 'system.settings.manage'),
     async (req: AuthRequest, res: Response) => {
       try {
         if (!req.authContext) {
@@ -6078,6 +6214,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
   app.get(
     '/api/integrations/dha/service-mappings',
+    requireAnyPermission('tariffs.read', 'system.settings.manage'),
     async (req: AuthRequest, res: Response) => {
       try {
         if (!req.authContext) {
@@ -6184,6 +6321,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
   app.get(
     '/api/integrations/dha/calls',
+    requireAnyPermission('audit.security.read', 'system.settings.manage'),
     async (req: AuthRequest, res: Response) => {
       try {
         if (!req.authContext) {
@@ -6762,6 +6900,21 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
                 reference: `Organization/facility-${patient.registrationFacilityId}`,
               },
             };
+
+            await logPatientAccess({
+              context: req.authContext,
+              patientId: patient.id,
+              tenantId: patient.tenantId,
+              facilityId: patient.registrationFacilityId,
+              action: 'EXPORT',
+              channel: 'FHIR',
+              purpose: 'FHIR_EXCHANGE',
+              recordType: 'Patient',
+              request: {
+                ipAddress: req.ip ?? null,
+                userAgent: req.get('user-agent') ?? null,
+              },
+            });
 
             res.setHeader('Content-Type', 'application/fhir+json');
             return res.json(fhirPatient);

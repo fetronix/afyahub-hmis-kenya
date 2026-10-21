@@ -1140,7 +1140,20 @@ export const patients = pgTable(
     */
     nationalId: text('national_id'),
 
+    /*
+      Blind index for `national_id`.
+
+      An encrypted column cannot be searched with ILIKE, so an exact
+      match is found through this HMAC. Set by `sealPatientIdentifiers`
+      in src/security/patient-identifiers.ts; null when field
+      encryption is not configured.
+    */
+    nationalIdBlindIndex: text('national_id_bidx'),
+
     shaNumber: text('sha_number'),
+
+    /* Blind index for `sha_number`; see national_id_bidx above. */
+    shaNumberBlindIndex: text('sha_number_bidx'),
 
     /* Client Registry id used by every DHA eligibility and claim call. */
     dhaClientRegistryId: text('dha_client_registry_id'),
@@ -1268,6 +1281,92 @@ export const patients = pgTable(
     ).on(table.mergedIntoPatientId),
   }),
 );
+/* ============================================================
+   PATIENT ALLERGIES
+   ============================================================
+
+   A structured allergy registry, not a free-text summary.
+
+   `patients.allergies` already existed but nothing wrote to it: a
+   prescribing system with no allergy record cannot warn anyone. This
+   table records what the reaction was, how severe it was, and who
+   recorded it, which is what a warning needs in order to be credible
+   and auditable.
+
+   A resolved allergy is kept, not deleted: "the patient reacted to
+   penicillin in 2019" remains clinically relevant after the episode.
+   Entered-in-error is a distinct status so a mistake can be withdrawn
+   without erasing the fact that someone recorded it.
+   ============================================================ */
+
+export const patientAllergies = pgTable(
+  'patient_allergies',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    /* DRUG / FOOD / ENVIRONMENTAL / OTHER */
+    allergenType: text('allergen_type')
+      .default('DRUG')
+      .notNull(),
+
+    allergen: text('allergen')
+      .notNull(),
+
+    reaction: text('reaction'),
+
+    /* MILD / MODERATE / SEVERE / LIFE_THREATENING */
+    severity: text('severity')
+      .default('MODERATE')
+      .notNull(),
+
+    /* ACTIVE / RESOLVED / ENTERED_IN_ERROR */
+    status: text('status')
+      .default('ACTIVE')
+      .notNull(),
+
+    notes: text('notes'),
+
+    recordedByUserId: integer('recorded_by_user_id')
+      .references(() => users.id),
+
+    recordedAt: timestamp('recorded_at')
+      .defaultNow()
+      .notNull(),
+
+    resolvedAt: timestamp('resolved_at'),
+
+    createdAt: timestamp('created_at')
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    patientIdx: index('patient_allergies_patient_idx').on(
+      table.patientId,
+      table.status,
+    ),
+
+    tenantIdx: index('patient_allergies_tenant_idx').on(table.tenantId),
+
+    facilityIdx: index('patient_allergies_facility_idx').on(table.facilityId),
+  }),
+);
+
 
 
 /* ============================================================

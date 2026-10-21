@@ -120,6 +120,13 @@
             "when": 1792900000004,
             "tag": "0016_postnatal_immunisation",
             "breakpoints": true
+        },
+        {
+            "idx": 17,
+            "version": "7",
+            "when": 1792900000005,
+            "tag": "0017_consent_allergy_audit_integrity",
+            "breakpoints": true
         }
     ]
 }

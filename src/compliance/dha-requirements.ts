@@ -170,15 +170,17 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     title: 'Patient consent capture',
     requirement:
       'Consent is recorded with version, method and evidence, and access is restricted accordingly.',
-    module: 'patient_consents (schema only)',
-    status: 'MISSING',
+    module: 'src/clinical/consent.service.ts',
+    status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'schema.ts defines patient_consents; no route, service or screen reads or writes it',
+      'Consent can be granted, listed and revoked with purpose, method, scope and expiry; status is derived (ACTIVE / REVOKED / EXPIRED) rather than trusted from the client; revocation is a state change, never a delete; every write is audited. Routes live at /api/patients/:id/consents and the panel is the Consent & Allergies tab of the patient record. Unit tests cover status derivation and input validation (80 assertions, consent-allergy.test.ts).',
     verification:
-      'Exhaustive search for patient_consents across src/: only the table declaration and DHA consent placeholders use it.',
+      'Read the service, routes and panel; ran test:consent-allergy. The PostgreSQL paths (grantConsent, revokeConsent, listConsents) have NOT been executed: this environment has no database and migration 0017 is unapplied.',
     note:
-      'DHA consent authorisation (OTP) is separately blocked; this row concerns the facility-level consent record.',
+      'Still partial: consent is captured but does not yet gate clinical reads. hasActiveConsent() is exposed for that policy decision, which is a clinical-governance call rather than a coding default. DHA consent authorisation (OTP) is separately blocked; this row concerns the facility-level consent record.',
+    remainingGap:
+      'Wire consent checks into cross-facility sharing and insurer submission, not into the treating clinician\'s own access.',
   },
   {
     id: 'FN-07',
@@ -290,14 +292,17 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     title: 'Allergy and interaction checking',
     requirement:
       'Known allergies and clinically significant interactions warn the prescriber.',
-    module: 'Not implemented',
-    status: 'MISSING',
+    module: 'src/clinical/allergy.service.ts',
+    status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'The only allergy field is a boolean in the theatre safety checklist; no allergy registry, no interaction engine.',
-    verification: 'Repository-wide search for allergy/interaction.',
+      'A structured allergy registry (allergen type, reaction, severity, status) can be recorded and resolved from the patient record. The prescription route calls checkMedicationAllergies before writing; a match returns 409 ALLERGY_CONFLICT and the prescriber must acknowledge it, which is written to the audit trail as a PRESCRIBE override. Matching is name-based (equal, containment at four characters or more, shared leading word); unit tests cover it.',
+    verification:
+      'Read the service, the prescription route and the prescribing screen; ran test:consent-allergy. No database was available, so the registry queries were not executed.',
     note:
-      'A prescribing system without an allergy record is a patient-safety gap, not a cosmetic one.',
+      'Still partial: there is no drug-drug interaction engine and no cross-reactivity table. The UI says an empty check is not a guarantee of safety rather than implying one.',
+    remainingGap:
+      'A pharmacological interaction dataset is a licensed-content decision, not a code change.',
   },
   {
     id: 'FN-16',
@@ -482,13 +487,15 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     title: 'Encryption at rest',
     requirement:
       'The database, its backups and any object storage are encrypted, with keys managed and rotated.',
-    module: 'Deployment',
-    status: 'MISSING',
+    module: 'src/security/field-crypto.ts',
+    status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'No storage-encryption configuration, key-management integration or encrypted-backup procedure exists in the repository.',
+      'Direct identifiers (national ID, SHA number) can be sealed with AES-256-GCM before they reach PostgreSQL, with an HMAC blind index for exact lookups and legacy plaintext passthrough. The key comes from FIELD_ENCRYPTION_KEY and there is no compiled-in default; 48 assertions cover round-trip, tamper detection, wrong-key refusal and key absence.',
     verification:
-      'Repository-wide search. HTTPS does not encrypt a database file, and no such claim is made.',
+      'Ran test:field-encryption against the real crypto module. The volume, its snapshots and backups are NOT encrypted by anything in this repository.',
+    note:
+      'Still an operational control: whole-volume and backup encryption, key custody and rotation remain the hosting provider and facility responsibility. Application-level sealing of two columns does not make the database encrypted at rest.',
     externalDependency:
       'Hosting provider or DBA must enable storage encryption and document key custody.',
   },

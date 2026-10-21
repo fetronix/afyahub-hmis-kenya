@@ -121,14 +121,14 @@ not show what *should* be.
 
 | # | Risk | Likelihood | Impact | Existing controls | Residual |
 |---|---|---|---|---|---|
-| R1 | Cross-facility exposure through an unprotected API route | **Was high** — confirmed on six routes | Severe | Permissions and scope added; five routes and 33 id-routes still unaudited | **Medium — open** |
+| R1 | Cross-facility exposure through an unprotected API route | **Was high** — confirmed on six routes | Severe | Permissions and scope added across three rounds; `/api/departments` was the last unscoped read found and is now tenant-scoped. No exhaustive pass over id-addressed routes | **Medium — open** |
 | R2 | Record filed against the wrong facility | Was high (six screens defaulted to facility 1) | High | Guard added; server ignores client-supplied facility on the fixed routes | Low |
 | R3 | Unauthorised access by a compromised staff account | Medium | Severe | argon2, 8-hour sessions, lockout, rate limiting | Medium — no MFA |
-| R4 | Insider alteration of the audit trail | Low | Severe | No application route to edit audit rows | **High — no database restriction** |
+| R4 | Insider alteration of the audit trail | Low | Severe | No application route exists; append-only triggers and a `REVOKE` are written in migration 0017 but **not applied** | **High until 0017 is applied** |
 | R5 | Loss of data through failed hardware | Medium | Severe | **No backup exists** | **Critical** |
-| R6 | Disclosure through an unencrypted database volume | Medium | Severe | **No encryption at rest** | **Critical** |
-| R7 | Consent not demonstrable | High | High | **No consent capture** | **Critical** |
-| R8 | Patient harmed by prescribing without allergy data | Medium | Severe | **No allergy record** | **Critical** |
+| R6 | Disclosure through an unencrypted database volume | Medium | Severe | National ID and SHA number sealed by the application (AES-256-GCM); volume, snapshots and backups still unencrypted; names, phones and dates of birth still plaintext | **Critical — hosting control outstanding** |
+| R7 | Consent not demonstrable | Was high | High | Consent capture with purpose, method, scope, expiry and revocation, visible on the patient record; not yet enforced on sharing | **Medium — enforcement outstanding** |
+| R8 | Patient harmed by prescribing without allergy data | Was medium | Severe | Structured allergy registry; a match blocks the prescription until acknowledged, and the override is audited. No interaction engine | **Medium — name matching only** |
 | R9 | Over-broad platform-administrator access | Medium | High | Role-scoped, audited | Medium — needs a policy decision |
 | R10 | Data sent to DHA unintentionally | Low | Severe | Production switch off by default; mock clearly labelled | Low |
 
@@ -142,8 +142,8 @@ not show what *should* be.
 | Encrypt database and backups at rest | Operations | P1-4 |
 | Implement and test backups | Operations | P1-5 |
 | Make the audit log append-only | DBA | P1-6 |
-| Build consent capture | Engineering + clinical | P1-7 |
-| Build allergy recording | Engineering + clinical | P1-8 |
+| Build consent capture | Engineering + clinical | P1-7 — **built; enforcement in P2-9** |
+| Build allergy recording | Engineering + clinical | P1-8 — **built; interaction data in P2-10** |
 | Define retention and deletion | Organisation | §4 |
 | Decide the legal basis | Organisation / DPO | §4 |
 | Add MFA for privileged accounts | Engineering | P2-7 |
