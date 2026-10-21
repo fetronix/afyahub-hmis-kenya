@@ -1,11 +1,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { getSessionToken } from "../../api/client.ts";
-import { Copy, Mail, RefreshCw, ShieldCheck, UserPlus, XCircle } from "lucide-react";
+import { BadgeCheck, Copy, Mail, RefreshCw, ShieldCheck, UserPlus, XCircle } from "lucide-react";
+import { StaffVerificationModal } from "./StaffVerificationModal.tsx";
 
 type AssignableRole = {
   id: number;
   name: string;
   description?: string | null;
+};
+
+type RegulatorSummary = {
+  code: string;
+  shortName: string;
+  staffRoles: string[];
 };
 
 type StaffInvitation = {
@@ -68,16 +75,25 @@ export const StaffInvitationsPanel: React.FC = () => {
     roleId: "",
   });
 
+  /* Professional verification performed before an invitation is issued. */
+  const [regulators, setRegulators] = useState<RegulatorSummary[]>([]);
+  const [verification, setVerification] = useState<{ credentialId: number; summary: string } | null>(null);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [roleResponse, invitationResponse] = await Promise.all([
+      const [roleResponse, invitationResponse, regulatorResponse] = await Promise.all([
         fetch("/api/staff-invitations/roles", {
           credentials: "same-origin",
           headers: buildAuthHeaders(),
         }),
         fetch("/api/staff-invitations/", {
+          credentials: "same-origin",
+          headers: buildAuthHeaders(),
+        }),
+        fetch("/api/staff-invitations/regulators", {
           credentials: "same-origin",
           headers: buildAuthHeaders(),
         }),
@@ -90,6 +106,16 @@ export const StaffInvitationsPanel: React.FC = () => {
 
       setRoles(rolePayload.roles ?? []);
       setInvitations(invitationPayload.invitations ?? []);
+
+      try {
+        const regulatorPayload = await readJson<{ regulators: RegulatorSummary[] }>(
+          regulatorResponse,
+        );
+        setRegulators(regulatorPayload.regulators ?? []);
+      } catch {
+        /* The regulator list is only needed for clinical roles. */
+        setRegulators([]);
+      }
       setForm((current) => ({
         ...current,
         roleId:
@@ -121,6 +147,13 @@ export const StaffInvitationsPanel: React.FC = () => {
       return;
     }
 
+    if (isClinicalRole && !verification) {
+      setError(
+        "Verify the applicant's professional registration before creating this invitation.",
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       const response = await fetch("/api/staff-invitations/", {
@@ -133,6 +166,7 @@ export const StaffInvitationsPanel: React.FC = () => {
           phone: form.phone.trim() || null,
           designation: form.designation.trim() || null,
           roleId: Number(form.roleId),
+          credentialId: verification?.credentialId ?? null,
         }),
       });
 
@@ -158,6 +192,7 @@ export const StaffInvitationsPanel: React.FC = () => {
         phone: "",
         designation: "",
       }));
+      setVerification(null);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the invitation.");
@@ -241,6 +276,18 @@ export const StaffInvitationsPanel: React.FC = () => {
       setRevokingId(null);
     }
   };
+
+  const selectedRoleName =
+    roles.find((role) => String(role.id) === form.roleId)?.name ?? "";
+
+  /**
+   * Clinical roles are the ones a regulator covers. Derived from the
+   * server's regulator catalogue, not hard-coded here, so adding a
+   * regulator does not require editing two places.
+   */
+  const isClinicalRole = regulators.some((regulator) =>
+    regulator.staffRoles.includes(selectedRoleName.trim().toUpperCase()),
+  );
 
   return (
     <section className="space-y-5">
@@ -345,7 +392,10 @@ export const StaffInvitationsPanel: React.FC = () => {
           <div>
             <label htmlFor="invite-role" className="mb-1 block text-xs font-medium text-slate-700">Access role *</label>
             <select id="invite-role" required value={form.roleId}
-              onChange={(event) => setForm({ ...form, roleId: event.target.value })}
+              onChange={(event) => {
+                setForm({ ...form, roleId: event.target.value });
+                setVerification(null);
+              }}
               disabled={loading || roles.length === 0}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 disabled:bg-slate-50">
               <option value="">Select a role</option>
@@ -360,7 +410,54 @@ export const StaffInvitationsPanel: React.FC = () => {
             )}
           </div>
 
-          <button type="submit" disabled={submitting || loading || roles.length === 0}
+          {/*
+            Clinical roles are gated on a professional registration check.
+            The invitation button stays disabled until a usable result
+            exists — and a simulated result never produces one.
+          */}
+          {isClinicalRole && (
+            <div className="space-y-2 rounded-lg border border-teal-200 bg-teal-50/50 p-3">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-teal-700" />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-900">
+                    Professional registration required
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-600">
+                    {selectedRoleName} is a regulated role. Check the applicant against the
+                    regulator&apos;s register before an invitation link is created.
+                  </p>
+                </div>
+              </div>
+
+              {verification ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-800">
+                    <BadgeCheck className="h-3.5 w-3.5" />
+                    {verification.summary}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setVerifyOpen(true)}
+                    className="text-[11px] font-semibold text-emerald-800 underline"
+                  >
+                    Re-check
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setVerifyOpen(true)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white hover:bg-teal-800"
+                >
+                  <BadgeCheck className="h-4 w-4" />
+                  Verify registration
+                </button>
+              )}
+            </div>
+          )}
+
+          <button type="submit" disabled={submitting || loading || roles.length === 0 || (isClinicalRole && !verification)}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">
             <Mail className="h-4 w-4" />
             {submitting ? "Creating invitation..." : "Create invitation link"}
@@ -445,6 +542,19 @@ export const StaffInvitationsPanel: React.FC = () => {
           )}
         </div>
       </div>
+
+      {verifyOpen && (
+        <StaffVerificationModal
+          roleName={selectedRoleName}
+          fullName={form.fullName}
+          onClose={() => setVerifyOpen(false)}
+          onVerified={(credentialId, summary) => {
+            setVerification({ credentialId, summary });
+            setVerifyOpen(false);
+            setNotice("Registration checked. You can now create the invitation link.");
+          }}
+        />
+      )}
     </section>
   );
 };

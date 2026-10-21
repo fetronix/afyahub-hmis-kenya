@@ -33,6 +33,7 @@ const MOCKABLE = new Set([
   'coverage.pomsf',
   'consent.authorize',
   'claim.startVisit',
+  'practitioner.search',
 ]);
 
 export function isMockableOperation(operation: string): boolean {
@@ -244,6 +245,95 @@ export function mockResponse<T>(operation: string, call: MockCall): T {
       };
 
       return response as unknown as T;
+    }
+
+    case 'practitioner.search': {
+      /*
+       * Deterministic fixtures for the Health Worker Registry.
+       *
+       * Magic registration numbers so every branch can be demonstrated:
+       *
+       *   KMPDC-EXPIRED-001 -> licence expired last year
+       *   NCK-INACTIVE-002  -> registration withdrawn
+       *   PPB-MISMATCH-003  -> record for a different person
+       *   COC-MISSING-004   -> no record
+       *   anything else     -> live registration, current licence
+       */
+      const number = firstValue(source, 'identification_number') ?? 'UNKNOWN';
+      const regulator = firstValue(source, 'regulator') ?? 'KMPDC';
+      const type = firstValue(source, 'identification_type') ?? 'registration_number';
+
+      if (number === 'COC-MISSING-004') {
+        return { message: null, _simulated: true } as unknown as T;
+      }
+
+      const names: Record<string, string> = {
+        KMPDC: 'Dr. Amina Wanjiru Otieno',
+        NCK: 'Grace Njeri Mwangi',
+        COC: 'Peter Ochieng Wekesa',
+        PPB: 'Samuel Kiprop Cheruiyot',
+      };
+
+      const base = {
+        registrationNumber: number,
+        regulator,
+        profession: regulator === 'NCK' ? 'Registered Nurse' : 'Health professional',
+        specialty: null as string | null,
+        registrationStatus: 'Active',
+        registrationDate: '2019-03-14',
+        identification_type_echo: type,
+        _simulated: true,
+      };
+
+      if (number === 'KMPDC-EXPIRED-001') {
+        return {
+          message: {
+            ...base,
+            regulator: 'KMPDC',
+            fullName: 'Dr. Joseph Mwangi Kamau',
+            licenseNumber: 'KMPDC/LIC/2019/001',
+            licenseStatus: 'Expired',
+            licenseExpiryDate: '2025-12-31',
+          },
+        } as unknown as T;
+      }
+
+      if (number === 'NCK-INACTIVE-002') {
+        return {
+          message: {
+            ...base,
+            regulator: 'NCK',
+            fullName: 'Mary Atieno Odhiambo',
+            registrationStatus: 'Withdrawn',
+            licenseNumber: 'NCK/LIC/2018/002',
+            licenseStatus: 'Expired',
+            licenseExpiryDate: '2024-06-30',
+          },
+        } as unknown as T;
+      }
+
+      if (number === 'PPB-MISMATCH-003') {
+        return {
+          message: {
+            ...base,
+            regulator: 'PPB',
+            fullName: 'Kevin Barasa Wekesa',
+            licenseNumber: 'PPB/LIC/2021/003',
+            licenseStatus: 'Active',
+            licenseExpiryDate: '2027-01-31',
+          },
+        } as unknown as T;
+      }
+
+      return {
+        message: {
+          ...base,
+          fullName: names[regulator] ?? 'Mock Practitioner',
+          licenseNumber: `${regulator}/LIC/MOCK/0099`,
+          licenseStatus: 'Active',
+          licenseExpiryDate: '2027-12-31',
+        },
+      } as unknown as T;
     }
 
     default:

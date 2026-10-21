@@ -11,6 +11,14 @@ import {
 import { requireAuth, type AuthRequest } from "./auth.middleware";
 import { requirePermission } from "./authorization.middleware";
 
+import {
+  ProfessionalVerificationError,
+  getVerificationDashboardScoped,
+  recordManualVerificationScoped,
+  verifyPractitionerScoped,
+} from "../integrations/professional/professional-verification.service.ts";
+import { REGULATORS } from "../integrations/professional/practitioner.contracts.ts";
+
 const router = Router();
 
 router.use(requireAuth);
@@ -38,6 +46,14 @@ function getScope(req: AuthRequest) {
 }
 
 function sendError(res: any, error: unknown) {
+  if (error instanceof ProfessionalVerificationError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      code: error.code,
+      message: error.message,
+    });
+  }
+
   if (error instanceof StaffInvitationError) {
     return res.status(error.statusCode).json({
       success: false,
@@ -54,6 +70,151 @@ function sendError(res: any, error: unknown) {
     message: "The staff invitation request could not be completed.",
   });
 }
+
+/**
+ * Regulator catalogue for the invitation popup.
+ *
+ * Read-only and static; it tells the client which regulators exist, which
+ * staff roles they cover, and which of them can be checked automatically.
+ */
+router.get(
+  "/regulators",
+  requirePermission("users.invite"),
+  async (_req, res) => {
+    return res.json({
+      success: true,
+      regulators: REGULATORS.map((regulator) => ({
+        code: regulator.code,
+        name: regulator.name,
+        shortName: regulator.shortName,
+        professions: regulator.professions,
+        apiSupported: regulator.apiSupported,
+        website: regulator.website,
+        staffRoles: regulator.staffRoles,
+      })),
+    });
+  },
+);
+
+/**
+ * Pre-invitation check.
+ *
+ * Runs the registry lookup and stores the result, returning a
+ * `credentialId` that the invitation endpoint will require for a clinical
+ * role. A simulated answer is returned as simulated and is not invitable.
+ */
+router.post(
+  "/verify-practitioner",
+  requirePermission("users.invite"),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          code: "AUTHORIZATION_CONTEXT_MISSING",
+          message: "Authorization context is required.",
+        });
+      }
+
+      const scope = getScope(req);
+      const {
+        regulator,
+        registrationNumber,
+        identificationNumber,
+        identificationType,
+        fullName,
+        userId,
+      } = req.body ?? {};
+
+      const outcome = await verifyPractitionerScoped(req.authContext, {
+        regulator,
+        registrationNumber:
+          typeof registrationNumber === "string" ? registrationNumber : null,
+        identificationNumber:
+          typeof identificationNumber === "string" ? identificationNumber : null,
+        identificationType:
+          typeof identificationType === "string" ? identificationType : null,
+        fullName: typeof fullName === "string" ? fullName : null,
+        userId: Number.isSafeInteger(Number(userId)) && Number(userId) > 0
+          ? Number(userId)
+          : null,
+        facilityId: scope.facilityId,
+      });
+
+      return res.json({ success: true, verification: outcome });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
+);
+
+/**
+ * Manual verification.
+ *
+ * For regulators without an authorised API, and for any case where the
+ * automated check cannot decide. The source and date are recorded, and
+ * the result is never labelled as automated.
+ */
+router.post(
+  "/manual-verification",
+  requirePermission("users.invite"),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          code: "AUTHORIZATION_CONTEXT_MISSING",
+          message: "Authorization context is required.",
+        });
+      }
+
+      const scope = getScope(req);
+      const body = req.body ?? {};
+
+      const outcome = await recordManualVerificationScoped(req.authContext, {
+        credentialId: body.credentialId ?? null,
+        regulator: body.regulator,
+        registrationNumber: body.registrationNumber,
+        fullName: body.fullName ?? null,
+        source: body.source,
+        notes: body.notes ?? null,
+        status: body.status ?? null,
+        licenceExpiry: body.licenceExpiry ?? null,
+        facilityId: scope.facilityId,
+      });
+
+      return res.json({ success: true, verification: outcome });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
+);
+
+router.get(
+  "/verification-dashboard",
+  requirePermission("users.invitations.read"),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.authContext) {
+        return res.status(401).json({
+          success: false,
+          code: "AUTHORIZATION_CONTEXT_MISSING",
+          message: "Authorization context is required.",
+        });
+      }
+
+      const scope = getScope(req);
+      const dashboard = await getVerificationDashboardScoped(
+        req.authContext,
+        scope.facilityId,
+      );
+
+      return res.json({ success: true, dashboard });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
+);
 
 router.get(
   "/roles",
@@ -74,7 +235,8 @@ router.post(
   async (req, res) => {
     try {
       const scope = getScope(req);
-      const { email, fullName, phone, designation, roleId } = req.body ?? {};
+      const { email, fullName, phone, designation, roleId, credentialId } =
+        req.body ?? {};
 
       if (
         typeof email !== "string" ||
@@ -129,6 +291,10 @@ router.post(
           typeof designation === "string" ? designation : null,
         roleId: Number(roleId),
         invitedBy: String(scope.userId),
+        credentialId:
+          Number.isSafeInteger(Number(credentialId)) && Number(credentialId) > 0
+            ? Number(credentialId)
+            : null,
       });
 
       invitationBaseUrl.pathname =

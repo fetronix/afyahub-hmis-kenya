@@ -5461,6 +5461,104 @@ export const publicHealthReportsRelations =
  * here. The path is templated at the call site.
  */
 /* ============================================================
+   PROFESSIONAL CREDENTIAL VERIFICATION
+   ============================================================ */
+
+/**
+ * A professional registration, as verified against a regulator source.
+ *
+ * Independent of `users`, `userInvitations` and role assignment: losing a
+ * licence does not delete an account, and a verified licence does not
+ * grant a privilege. The status here is one of the values in
+ * practitioner.contracts.ts.
+ *
+ * Data minimisation: no national ID, no date of birth, no contact
+ * details. The registration number is retained because the whole point is
+ * to be able to show, later, what was checked.
+ */
+export const staffProfessionalCredentials = pgTable(
+  'staff_professional_credentials',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id').notNull(),
+    facilityId: integer('facility_id').notNull(),
+
+    /** Set once the person accepts an invitation and has a user row. */
+    userId: integer('user_id'),
+    invitationId: integer('invitation_id'),
+
+    regulator: text('regulator').notNull(),
+    registrationNumber: text('registration_number').notNull(),
+
+    licenceNumber: text('licence_number'),
+    professionalCategory: text('professional_category'),
+    specialty: text('specialty'),
+
+    status: text('status').default('NOT_VERIFIED').notNull(),
+
+    /** Raw regulator wording, kept separate from the licence fields. */
+    registrationStatus: text('registration_status'),
+    licenceStatus: text('licence_status'),
+
+    licenceExpiry: date('licence_expiry'),
+    lastVerifiedAt: timestamp('last_verified_at'),
+
+    verificationSource: text('verification_source'),
+    externalReference: text('external_reference'),
+    responseReference: text('response_reference'),
+    mode: text('mode'),
+
+    verifiedBy: integer('verified_by'),
+
+    manualReviewReason: text('manual_review_reason'),
+    manualSource: text('manual_source'),
+    manualCheckedAt: timestamp('manual_checked_at'),
+
+    /** Concerns raised by the normaliser, in plain language. */
+    warnings: jsonb('warnings'),
+    /** Candidate keys that matched; no values are stored here. */
+    matchedFields: jsonb('matched_fields'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+);
+
+/**
+ * Append-only history. Every verification attempt, manual check and
+ * administrative decision is recorded here, including the failures, so a
+ * gap in the audit trail cannot be mistaken for a clean record.
+ */
+export const professionalVerificationEvents = pgTable(
+  'professional_verification_events',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id').notNull(),
+    facilityId: integer('facility_id').notNull(),
+
+    credentialId: integer('credential_id'),
+    userId: integer('user_id'),
+    invitationId: integer('invitation_id'),
+
+    action: text('action').notNull(),
+    statusBefore: text('status_before'),
+    statusAfter: text('status_after'),
+
+    source: text('source'),
+    mode: text('mode'),
+    httpStatus: integer('http_status'),
+    errorCode: text('error_code'),
+
+    performedBy: integer('performed_by'),
+    notes: text('notes'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+);
+
+/* ============================================================
    DHA SERVICE-AREA MAPPINGS
    ============================================================ */
 

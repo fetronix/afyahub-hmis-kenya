@@ -12,7 +12,10 @@ import {
   users,
   userRoles,
   rolePermissions,
+  staffProfessionalCredentials,
 } from "../db/schema";
+
+import { assertInvitationCredential } from "../integrations/professional/professional-verification.service.ts";
 
 export class StaffInvitationError extends Error {
   constructor(
@@ -34,6 +37,11 @@ export interface CreateStaffInvitationInput {
   designation?: string | null;
   roleId: number;
   invitedBy: string;
+  /**
+   * The verification record produced by the pre-invite check. Required
+   * for clinical roles and ignored for the rest.
+   */
+  credentialId?: number | null;
 }
 
 const INVITATION_LIFETIME_MS = 48 * 60 * 60 * 1000;
@@ -182,6 +190,18 @@ export async function createStaffInvitation(
     );
   }
 
+  /*
+   * A clinical invitation needs a professional registration that was
+   * verified against the right regulator. The check lives in the
+   * verification service so the rule has exactly one home.
+   */
+  const credential = await assertInvitationCredential({
+    tenantId: input.tenantId,
+    facilityId: input.facilityId,
+    roleName: role.name,
+    credentialId: input.credentialId ?? null,
+  });
+
   const rawToken = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
@@ -215,6 +235,13 @@ export async function createStaffInvitation(
       500,
       "INVITATION_CREATE_FAILED",
     );
+  }
+
+  if (credential.required && credential.credentialId) {
+    await db
+      .update(staffProfessionalCredentials)
+      .set({ invitationId: created.id, updatedAt: new Date() })
+      .where(eq(staffProfessionalCredentials.id, credential.credentialId));
   }
 
   // Return the raw token only once. Store only its hash.

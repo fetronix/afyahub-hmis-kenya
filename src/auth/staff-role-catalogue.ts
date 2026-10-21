@@ -8,6 +8,23 @@ export const STAFF_ROLE_CATALOGUE = [
     ],
   },
   {
+    /**
+     * Clinical officers practise independently in Kenya and are regulated
+     * by the Clinical Officers Council, which is one of the four
+     * regulators the Health Worker Registry accepts.
+     *
+     * Discharge is deliberately absent: whether a clinical officer may
+     * authorise discharge is a facility policy decision, not a default.
+     */
+    name: 'CLINICAL_OFFICER',
+    description: 'Provides clinical care under the Clinical Officers Council.',
+    permissions: [
+      'appointments.read', 'clinical.create', 'clinical.read',
+      'clinical.update', 'inpatient.read', 'inpatient.admit',
+      'laboratory.read', 'laboratory.orders.create', 'patients.read',
+    ],
+  },
+  {
     name: 'DOCTOR',
     description: 'Provides clinical care and manages clinical records.',
     permissions: [
