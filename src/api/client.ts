@@ -492,6 +492,7 @@ export interface LabourRecord {
   pregnancy?: MaternityPregnancy;
   entries?: PartographEntry[];
   guidance?: PartographGuidance;
+  plot?: PartographPlot;
 }
 
 export interface DeliveryBaby {
@@ -541,6 +542,145 @@ export interface MaternityPregnancyDetail extends MaternityPregnancy {
   ancVisits: AncVisit[];
   labours: LabourRecord[];
   deliveries: Array<DeliveryRecord & { babies: DeliveryBaby[] }>;
+}
+
+/**
+ * One point on the partograph, positioned by the server.
+ *
+ * `hoursSinceAdmission` is computed from the stored admission time, not
+ * from the browser clock, so a chart opened three days later plots the
+ * same shape it did on the night.
+ */
+export interface PlottedReading {
+  recordedAt: string;
+  hoursSinceAdmission: number;
+  dilatationCm: number | null;
+  fetalHeartRateBpm: number | null;
+  contractionsPer10Min: number | null;
+  contractionDurationSec: number | null;
+}
+
+export interface PartographLine {
+  startHour: number;
+  endHour: number;
+  startCm: number;
+  endCm: number;
+}
+
+export interface PartographPlot {
+  readings: PlottedReading[];
+  alertLine: PartographLine | null;
+  actionLine: PartographLine | null;
+  maxHour: number;
+  zone: string;
+  note: string;
+}
+
+export interface PostnatalVisit {
+  id: number;
+  pregnancyId: number;
+  patientId: number;
+  facilityId: number;
+  deliveryId: number | null;
+  visitDate: string;
+  visitNumber: number | null;
+  dayPostpartum: number | null;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  pulseBpm: number | null;
+  temperatureC: string | null;
+  fundalHeightCm: string | null;
+  involution: string | null;
+  lochia: string | null;
+  perineum: string | null;
+  breasts: string | null;
+  breastfeeding: string | null;
+  moodScreening: string | null;
+  haemoglobinGdl: string | null;
+  dangerSigns: string | null;
+  notes: string | null;
+  nextVisitDate: string | null;
+  babyWeightGrams: number | null;
+  babyNotes: string | null;
+  patient?: MaternityPatientRef;
+}
+
+export interface ImmunisationRecord {
+  id: number;
+  patientId: number;
+  facilityId: number;
+  antigenCode: string;
+  doseNumber: number;
+  administeredOn: string;
+  batchNumber: string | null;
+  site: string | null;
+  route: string | null;
+  notes: string | null;
+}
+
+export interface ImmunisationAntigen {
+  code: string;
+  name: string;
+  weeks: number;
+  doses: number;
+  route: string;
+  note?: string;
+}
+
+export interface ImmunisationDoseStatus {
+  antigenCode: string;
+  name: string;
+  scheduledWeeks: number;
+  route: string;
+  note?: string;
+  givenOn: string | null;
+  status: 'Given' | 'Due' | 'Overdue' | 'Not yet due';
+}
+
+export interface ImmunisationCard {
+  patient: MaternityPatientRef & { dateOfBirth?: string | null };
+  dateOfBirth: string | null;
+  records: ImmunisationRecord[];
+  statuses: ImmunisationDoseStatus[];
+  outstanding: ImmunisationDoseStatus[];
+  note: string;
+}
+
+export interface ImmunisationDueRow {
+  id: number;
+  mrn: string | null;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  outstandingCount: number;
+  overdueCount: number;
+  nextDue: {
+    antigenCode: string;
+    name: string;
+    status: string;
+    scheduledWeeks: number;
+  } | null;
+}
+
+/**
+ * What the billing engine answered for a clinical action.
+ *
+ * `charged: false` with `reason: 'TARIFF_NOT_CONFIGURED'` is a normal
+ * outcome, not an error: the service happened and the facility has no
+ * price for it yet. The screen must say that rather than show zero.
+ */
+export interface ServiceCharge {
+  charged: boolean;
+  reason?: string;
+  invoiceId?: number;
+  invoiceNumber?: string;
+  itemId?: number;
+  tariffCode?: string;
+  description?: string;
+  quantity?: number;
+  unitPrice?: string;
+  totalAmount?: string;
+  message?: string;
 }
 
 export const api = {
@@ -1373,6 +1513,7 @@ export const api = {
       delivery: DeliveryRecord;
       babies: DeliveryBaby[];
       pregnancy: MaternityPregnancy;
+      billing?: ServiceCharge | null;
     }>(`${API_BASE}/maternity/deliveries`, {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -1381,6 +1522,60 @@ export const api = {
   getDelivery: (deliveryId: number) =>
     fetchJson<DeliveryRecord & { babies: DeliveryBaby[] }>(
       `${API_BASE}/maternity/deliveries/${deliveryId}`
+    ),
+
+  // ---- Postnatal care ----
+
+  getPostnatalVisits: (pregnancyId: number) =>
+    fetchJson<PostnatalVisit[]>(
+      `${API_BASE}/maternity/pregnancies/${pregnancyId}/postnatal`
+    ),
+
+  getPostnatalRegister: (facilityId?: number) =>
+    fetchJson<PostnatalVisit[]>(
+      `${API_BASE}/maternity/postnatal${
+        facilityId ? `?facilityId=${facilityId}` : ''
+      }`
+    ),
+
+  recordPostnatalVisit: (payload: Record<string, unknown>) =>
+    fetchJson<PostnatalVisit>(`${API_BASE}/maternity/postnatal`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  // ---- Immunisation ----
+
+  getImmunisationSchedule: () =>
+    fetchJson<{ antigens: ImmunisationAntigen[]; note: string }>(
+      `${API_BASE}/immunisation/schedule`
+    ),
+
+  getImmunisationCard: (patientId: number) =>
+    fetchJson<ImmunisationCard>(
+      `${API_BASE}/immunisation/card?patientId=${patientId}`
+    ),
+
+  getImmunisationRecords: (patientId: number) =>
+    fetchJson<ImmunisationRecord[]>(
+      `${API_BASE}/immunisation/records?patientId=${patientId}`
+    ),
+
+  recordImmunisation: (payload: Record<string, unknown>) =>
+    fetchJson<ImmunisationRecord>(`${API_BASE}/immunisation/records`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getImmunisationDueList: (facilityId?: number) =>
+    fetchJson<{
+      asOf: string;
+      children: ImmunisationDueRow[];
+      note: string;
+    }>(
+      `${API_BASE}/immunisation/due${
+        facilityId ? `?facilityId=${facilityId}` : ''
+      }`
     ),
 
   // ============================================================

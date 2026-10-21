@@ -79,6 +79,38 @@ export const PERINEUM_STATES = [
   'Episiotomy',
 ] as const;
 
+export const INVOLUTION = [
+  'Normal',
+  'Subinvolution',
+  'Not examined',
+] as const;
+
+export const LOCHIA = ['Rubra', 'Serosa', 'Alba', 'Abnormal', 'Not examined'] as const;
+
+export const POSTPARTUM_PERINEUM = [
+  'Intact',
+  'Healing',
+  'Infected',
+  'Dehisced',
+  'Episiotomy healing',
+  'Not examined',
+] as const;
+
+export const BREASTS = ['Normal', 'Engorged', 'Cracked nipples', 'Mastitis'] as const;
+
+export const BREASTFEEDING = [
+  'Exclusive',
+  'Mixed',
+  'Formula',
+  'Not breastfeeding',
+] as const;
+
+export const MOOD_SCREENING = [
+  'Not screened',
+  'No concern',
+  'Concern — referred',
+] as const;
+
 export const PRESENTATIONS = [
   'Cephalic',
   'Breech',
@@ -246,6 +278,136 @@ export function oneOf<T extends readonly string[]>(
   }
 
   return { value: value as T[number] };
+}
+
+
+/* ============================================================
+   PARTOGRAPH PLOT
+   ============================================================ */
+
+export type PlottedReading = {
+  recordedAt: string;
+  hoursSinceAdmission: number;
+  dilatationCm: number | null;
+  fetalHeartRateBpm: number | null;
+  contractionsPer10Min: number | null;
+  contractionDurationSec: number | null;
+};
+
+export type PlotLine = {
+  /** Hours since admission where the line starts and ends. */
+  startHour: number;
+  endHour: number;
+  startCm: number;
+  endCm: number;
+};
+
+export type PartographPlot = {
+  readings: PlottedReading[];
+  /** Null until a reading reaches 4 cm. */
+  alertLine: PlotLine | null;
+  actionLine: PlotLine | null;
+  /** Furthest plotted hour, for the x axis. At least 12 to keep the sheet. */
+  maxHour: number;
+  zone: PartographZone;
+  note: string;
+};
+
+/**
+ * Turns stored readings into the geometry a partograph chart needs.
+ *
+ * The x axis is hours since admission, because that is how the sheet is
+ * read. The alert line begins at the reading that first reaches 4 cm and
+ * climbs 1 cm per hour to 10 cm; the action line is the same line four
+ * hours to its right. Nothing is extrapolated beyond the last reading —
+ * an empty right-hand side of the chart means no readings, not a stall.
+ */
+export function buildPartographPlot(
+  admittedAt: string,
+  readings: Array<{
+    recordedAt: string;
+    cervicalDilatationCm: number | string | null;
+    fetalHeartRateBpm?: number | null;
+    contractionsPer10Min?: number | null;
+    contractionDurationSec?: number | null;
+  }>,
+): PartographPlot {
+  const admission = new Date(admittedAt).getTime();
+
+  const plotted: PlottedReading[] = readings
+    .map((reading) => {
+      const at = new Date(reading.recordedAt).getTime();
+
+      const raw =
+        reading.cervicalDilatationCm === null ||
+        reading.cervicalDilatationCm === undefined ||
+        reading.cervicalDilatationCm === ''
+          ? null
+          : Number(reading.cervicalDilatationCm);
+
+      return {
+        recordedAt: reading.recordedAt,
+        hoursSinceAdmission:
+          Number.isFinite(at) && Number.isFinite(admission)
+            ? Math.round(((at - admission) / 3_600_000) * 100) / 100
+            : 0,
+        dilatationCm: Number.isFinite(raw) ? raw : null,
+        fetalHeartRateBpm: reading.fetalHeartRateBpm ?? null,
+        contractionsPer10Min: reading.contractionsPer10Min ?? null,
+        contractionDurationSec: reading.contractionDurationSec ?? null,
+      };
+    })
+    .sort((a, b) => a.hoursSinceAdmission - b.hoursSinceAdmission);
+
+  const atFour = plotted.find((point) => (point.dilatationCm ?? 0) >= 4);
+
+  let alertLine: PlotLine | null = null;
+
+  if (atFour) {
+    const startCm = 4;
+    const hoursToTen = 10 - startCm;
+
+    alertLine = {
+      startHour: atFour.hoursSinceAdmission,
+      endHour: atFour.hoursSinceAdmission + hoursToTen,
+      startCm,
+      endCm: 10,
+    };
+  }
+
+  const actionLine: PlotLine | null = alertLine
+    ? {
+        startHour: alertLine.startHour + 4,
+        endHour: alertLine.endHour + 4,
+        startCm: alertLine.startCm,
+        endCm: alertLine.endCm,
+      }
+    : null;
+
+  const lastHour = plotted.at(-1)?.hoursSinceAdmission ?? 0;
+
+  /*
+   * The axis has to reach the end of the action line, not just the last
+   * reading: a chart that crops its own action line is worse than no
+   * chart, because the line simply appears to stop.
+   */
+  const lineEnd = actionLine?.endHour ?? alertLine?.endHour ?? 0;
+
+  const guidance = partographGuidance(
+    plotted.map((point) => ({
+      recordedAt: point.recordedAt,
+      cervicalDilatationCm: point.dilatationCm,
+    })),
+  );
+
+  return {
+    readings: plotted,
+    alertLine,
+    actionLine,
+    maxHour: Math.max(12, Math.ceil(Math.max(lastHour, lineEnd)) + 1),
+    zone: guidance.zone,
+    note: guidance.note,
+  };
 }
 
 /* ============================================================

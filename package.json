@@ -24,7 +24,7 @@
     "test:pharmacy-batches": "tsx src/tests/pharmacy-batches.test.ts",
     "test:payments": "tsx src/tests/payments.test.ts",
     "test:claims": "tsx src/tests/claims.test.ts",
-    "test": "npm run test:inpatient && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:roles && npm run test:maternity && npm run test:security && npm run test:migrations",
+    "test": "npm run test:inpatient && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:roles && npm run test:maternity && npm run test:postnatal && npm run test:security && npm run test:migrations",
     "db:status:all": "tsx scripts/migration-status.ts --expect-all",
     "test:dha": "tsx src/tests/dha.test.ts",
     "test:verification": "tsx src/tests/professional-verification.test.ts",
@@ -32,6 +32,7 @@
     "test:security": "tsx src/tests/http-security.test.ts",
     "test:roles": "tsx src/tests/staff-role-catalogue.test.ts",
     "test:maternity": "tsx src/tests/maternity.test.ts",
+    "test:postnatal": "tsx src/tests/postnatal-immunisation.test.ts",
     "db:seed:permissions": "tsx src/seeds/permissions.ts"
   },
   "dependencies": {

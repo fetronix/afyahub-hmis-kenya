@@ -208,9 +208,17 @@ function testMigration(): void {
     entries: Array<{ idx: number; tag: string }>;
   };
 
-  const last = journal.entries.at(-1);
-  assertEqual(last?.tag, '0015_maternity_mch', 'the journal ends with this migration');
-  assertEqual(last?.idx, 15, 'and its index follows 0014');
+  /*
+   * Do not pin the last tag: later migrations are allowed, and a test
+   * that fails when the next one lands teaches people to edit the test
+   * instead of reading it.
+   */
+  const tags = journal.entries.map((entry) => entry.tag);
+  const indexes = journal.entries.map((entry) => entry.idx);
+
+  assert(tags.includes('0015_maternity_mch'), 'the maternity migration is in the journal');
+  assertEqual(indexes.at(-1), journal.entries.length - 1, 'the journal indexes are contiguous');
+  assertEqual(new Set(indexes).size, indexes.length, 'no migration index repeats');
 }
 
 /* ============================================================

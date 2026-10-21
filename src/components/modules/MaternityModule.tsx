@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   Baby,
   CalendarDays,
@@ -23,6 +24,7 @@ import {
   HeartPulse,
   Plus,
   RefreshCw,
+  Syringe,
   UserPlus,
 } from 'lucide-react';
 
@@ -31,12 +33,19 @@ import {
   api,
   type AncVisit,
   type DeliveryRecord,
+  type ImmunisationAntigen,
+  type ImmunisationCard,
+  type ImmunisationDueRow,
   type LabourRecord,
   type MaternityPregnancy,
   type MaternityPregnancyDetail,
   type MaternitySummary,
   type PartographEntry,
+  type PostnatalVisit,
+  type ServiceCharge,
 } from '../../api/client.ts';
+
+import { PartographChart } from '../maternity/PartographChart.tsx';
 
 import type { Patient } from '../../types/index.ts';
 
@@ -86,11 +95,58 @@ const fieldClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100';
 const labelClass = 'mb-1 block text-xs font-semibold text-slate-700';
 
+/*
+ * Presentation lists. The server validates every one of these on the way
+ * in, so a stale option here is refused rather than stored.
+ */
+const INVOLUTION_OPTIONS = ['Normal', 'Subinvolution', 'Not examined'];
+const LOCHIA_OPTIONS = ['Rubra', 'Serosa', 'Alba', 'Abnormal', 'Not examined'];
+const PERINEUM_OPTIONS = [
+  'Intact',
+  'Healing',
+  'Infected',
+  'Dehisced',
+  'Episiotomy healing',
+  'Not examined',
+];
+const BREAST_OPTIONS = ['Normal', 'Engorged', 'Cracked nipples', 'Mastitis'];
+const BREASTFEEDING_OPTIONS = [
+  'Exclusive',
+  'Mixed',
+  'Formula',
+  'Not breastfeeding',
+];
+const MOOD_OPTIONS = ['Not screened', 'No concern', 'Concern — referred'];
+
+/** Children under five, for the immunisation card picker. */
+function isUnderFive(patient: Patient): boolean {
+  if (!patient.dateOfBirth) return false;
+
+  const born = new Date(`${patient.dateOfBirth}T00:00:00Z`).getTime();
+
+  if (!Number.isFinite(born)) return false;
+
+  return Date.now() - born < 5 * 365.25 * 86_400_000;
+}
+
+function doseStatusClass(status: string): string {
+  switch (status) {
+    case 'Overdue':
+      return 'bg-rose-100 text-rose-800';
+    case 'Due':
+      return 'bg-amber-100 text-amber-900';
+    case 'Given':
+      return 'bg-emerald-100 text-emerald-800';
+    default:
+      return 'bg-slate-100 text-slate-600';
+  }
+}
+
 /* ============================================================
    MODULE
    ============================================================ */
 
-type Tab = 'anc' | 'labour' | 'deliveries';
+type Tab = 'anc' | 'labour' | 'deliveries' | 'postnatal' | 'immunisation';
 
 export const MaternityModule: React.FC = () => {
   const { currentFacility, showToast } = useHmis();
@@ -105,6 +161,33 @@ export const MaternityModule: React.FC = () => {
   const [selectedPregnancy, setSelectedPregnancy] =
     useState<MaternityPregnancyDetail | null>(null);
   const [selectedLabour, setSelectedLabour] = useState<LabourRecord | null>(null);
+
+  /* ---------------- postnatal ---------------- */
+  const [postnatalRegister, setPostnatalRegister] = useState<PostnatalVisit[]>([]);
+  const [postnatalPregnancy, setPostnatalPregnancy] =
+    useState<MaternityPregnancyDetail | null>(null);
+  const [postnatalVisits, setPostnatalVisits] = useState<PostnatalVisit[]>([]);
+  const [postnatalOpen, setPostnatalOpen] = useState(false);
+
+  /* ---------------- immunisation ---------------- */
+  const [immunisationSchedule, setImmunisationSchedule] = useState<
+    ImmunisationAntigen[]
+  >([]);
+  const [immunisationDue, setImmunisationDue] = useState<ImmunisationDueRow[]>([]);
+  const [immunisationAsOf, setImmunisationAsOf] = useState<string | null>(null);
+  const [immunisationNote, setImmunisationNote] = useState<string | null>(null);
+  const [immunisationCard, setImmunisationCard] =
+    useState<ImmunisationCard | null>(null);
+  const [immunisationOpen, setImmunisationOpen] = useState(false);
+
+  /*
+   * What billing answered for the last delivery. A delivery is billable,
+   * but only if the facility has priced it; the panel says which.
+   */
+  const [lastCharge, setLastCharge] = useState<{
+    patient: string;
+    charge: ServiceCharge;
+  } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -197,6 +280,39 @@ export const MaternityModule: React.FC = () => {
     }>
   >([{ outcome: 'Live Birth', sex: '', birthWeightGrams: '', apgar1: '', apgar5: '', resuscitation: '' }]);
 
+  /* ---------------- postnatal form ---------------- */
+  const [pn, setPn] = useState({
+    visitDate: todayIso(),
+    visitNumber: '',
+    bpSystolic: '',
+    bpDiastolic: '',
+    pulseBpm: '',
+    temperatureC: '',
+    fundalHeightCm: '',
+    involution: '',
+    lochia: '',
+    perineum: '',
+    breasts: '',
+    breastfeeding: '',
+    moodScreening: '',
+    haemoglobinGdl: '',
+    dangerSigns: '',
+    notes: '',
+    nextVisitDate: '',
+    babyWeightGrams: '',
+    babyNotes: '',
+  });
+
+  /* ---------------- immunisation form ---------------- */
+  const [imm, setImm] = useState({
+    antigenCode: '',
+    doseNumber: '1',
+    administeredOn: todayIso(),
+    batchNumber: '',
+    site: '',
+    notes: '',
+  });
+
   /* ============================================================
      LOADING
      ============================================================ */
@@ -206,20 +322,41 @@ export const MaternityModule: React.FC = () => {
     setError(null);
 
     try {
-      const [summaryResult, pregnancyRows, labourRows, deliveryRows, patientRows] =
-        await Promise.all([
-          api.getMaternitySummary(facilityId),
-          api.getPregnancies({ facilityId }),
-          api.getLabours({ facilityId }),
-          api.getDeliveries({ facilityId }),
-          api.getPatients(undefined, facilityId),
-        ]);
+      const [
+        summaryResult,
+        pregnancyRows,
+        labourRows,
+        deliveryRows,
+        patientRows,
+        postnatalRows,
+        scheduleResult,
+        dueResult,
+      ] = await Promise.all([
+        api.getMaternitySummary(facilityId),
+        api.getPregnancies({ facilityId }),
+        api.getLabours({ facilityId }),
+        api.getDeliveries({ facilityId }),
+        api.getPatients(undefined, facilityId),
+        api.getPostnatalRegister(facilityId),
+        api.getImmunisationSchedule(),
+        /*
+         * The due list needs a facility. A tenant-level user with no
+         * facility selected gets the schedule and the card, and an empty
+         * list rather than a failed screen.
+         */
+        facilityId ? api.getImmunisationDueList(facilityId) : Promise.resolve(null),
+      ]);
 
       setSummary(summaryResult);
       setPregnancies(pregnancyRows);
       setLabours(labourRows);
       setDeliveries(deliveryRows);
       setPatients(patientRows);
+      setPostnatalRegister(postnatalRows);
+      setImmunisationSchedule(scheduleResult.antigens);
+      setImmunisationDue(dueResult?.children ?? []);
+      setImmunisationAsOf(dueResult?.asOf ?? null);
+      setImmunisationNote(dueResult?.note ?? scheduleResult.note);
     } catch (err) {
       setError(
         errorMessage(err, 'The maternity register could not be loaded.'),
@@ -260,6 +397,32 @@ export const MaternityModule: React.FC = () => {
     const detail = await api.getLabour(labourRecordId);
 
     setSelectedLabour(detail);
+  };
+
+  const loadPostnatal = async (pregnancyId: number) => {
+    const [detail, visits] = await Promise.all([
+      api.getPregnancy(pregnancyId),
+      api.getPostnatalVisits(pregnancyId),
+    ]);
+
+    setPostnatalPregnancy(detail);
+    setPostnatalVisits(visits);
+  };
+
+  const loadImmunisationCard = async (patientId: number) => {
+    const card = await api.getImmunisationCard(patientId);
+
+    setImmunisationCard(card);
+  };
+
+  const refreshImmunisationDue = async () => {
+    if (!facilityId) return;
+
+    const due = await api.getImmunisationDueList(facilityId);
+
+    setImmunisationDue(due.children);
+    setImmunisationAsOf(due.asOf);
+    setImmunisationNote(due.note);
   };
 
   /* ============================================================
@@ -449,6 +612,14 @@ export const MaternityModule: React.FC = () => {
         })),
       });
 
+      const mother = created.delivery.patient
+        ? patientName(created.delivery.patient)
+        : `Patient #${created.delivery.patientId}`;
+
+      setLastCharge(
+        created.billing ? { patient: mother, charge: created.billing } : null,
+      );
+
       setNotice(
         `Delivery recorded: ${created.babies.length} ${created.babies.length === 1 ? 'baby' : 'babies'}.`,
       );
@@ -460,6 +631,114 @@ export const MaternityModule: React.FC = () => {
       await loadAll();
       setTab('deliveries');
     }, 'The delivery could not be recorded.');
+  };
+
+  const submitPostnatal = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!postnatalPregnancy) return;
+
+    const pregnancyId = postnatalPregnancy.id;
+    const delivery = postnatalPregnancy.deliveries?.[0];
+
+    await runAction(async () => {
+      const created = await api.recordPostnatalVisit({
+        pregnancyId,
+        deliveryId: delivery?.id,
+        visitDate: pn.visitDate,
+        visitNumber: num(pn.visitNumber),
+        bpSystolic: num(pn.bpSystolic),
+        bpDiastolic: num(pn.bpDiastolic),
+        pulseBpm: num(pn.pulseBpm),
+        temperatureC: num(pn.temperatureC),
+        fundalHeightCm: num(pn.fundalHeightCm),
+        involution: text(pn.involution),
+        lochia: text(pn.lochia),
+        perineum: text(pn.perineum),
+        breasts: text(pn.breasts),
+        breastfeeding: text(pn.breastfeeding),
+        moodScreening: text(pn.moodScreening),
+        haemoglobinGdl: num(pn.haemoglobinGdl),
+        dangerSigns: text(pn.dangerSigns),
+        notes: text(pn.notes),
+        nextVisitDate: text(pn.nextVisitDate),
+        babyWeightGrams: num(pn.babyWeightGrams),
+        babyNotes: text(pn.babyNotes),
+      });
+
+      setNotice(
+        `Postnatal contact recorded for ${created.visitDate}${
+          created.dayPostpartum !== null ? ` (day ${created.dayPostpartum})` : ''
+        }.`,
+      );
+
+      setPostnatalOpen(false);
+      setPn((current) => ({
+        ...current,
+        visitNumber: '',
+        bpSystolic: '',
+        bpDiastolic: '',
+        pulseBpm: '',
+        temperatureC: '',
+        fundalHeightCm: '',
+        involution: '',
+        lochia: '',
+        perineum: '',
+        breasts: '',
+        breastfeeding: '',
+        moodScreening: '',
+        haemoglobinGdl: '',
+        dangerSigns: '',
+        notes: '',
+        nextVisitDate: '',
+        babyWeightGrams: '',
+        babyNotes: '',
+      }));
+
+      await loadPostnatal(pregnancyId);
+      setPostnatalRegister(await api.getPostnatalRegister(facilityId));
+    }, 'The postnatal contact could not be recorded.');
+  };
+
+  const submitImmunisation = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!immunisationCard) return;
+
+    const patientId = immunisationCard.patient.id;
+    const antigen = immunisationSchedule.find(
+      (candidate) => candidate.code === imm.antigenCode,
+    );
+
+    await runAction(async () => {
+      const created = await api.recordImmunisation({
+        patientId,
+        antigenCode: imm.antigenCode,
+        doseNumber: num(imm.doseNumber),
+        administeredOn: imm.administeredOn,
+        batchNumber: text(imm.batchNumber),
+        site: text(imm.site),
+        route: antigen?.route,
+        notes: text(imm.notes),
+      });
+
+      setNotice(
+        `${created.antigenCode} dose ${created.doseNumber} recorded on ${created.administeredOn}.`,
+      );
+
+      setImmunisationOpen(false);
+      setImm({
+        antigenCode: '',
+        doseNumber: '1',
+        administeredOn: todayIso(),
+        batchNumber: '',
+        site: '',
+        notes: '',
+      });
+
+      await loadImmunisationCard(patientId);
+      await refreshImmunisationDue();
+    }, 'The dose could not be recorded.');
   };
 
   /* ============================================================
@@ -534,7 +813,9 @@ export const MaternityModule: React.FC = () => {
           [
             { id: 'anc', label: 'Antenatal register', icon: CalendarDays },
             { id: 'labour', label: 'Labour & partograph', icon: HeartPulse },
-            { id: 'deliveries', label: 'Deliveries', icon: Baby },
+            { id: 'deliveries', label: 'Deliveries & billing', icon: Baby },
+            { id: 'postnatal', label: 'Postnatal care', icon: Activity },
+            { id: 'immunisation', label: 'Immunisation', icon: Syringe },
           ] as const
         ).map(({ id, label, icon: Icon }) => (
           <button
@@ -1120,6 +1401,10 @@ export const MaternityModule: React.FC = () => {
                   </form>
                 )}
 
+                {selectedLabour.plot && (
+                  <PartographChart plot={selectedLabour.plot} />
+                )}
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-2xs">
                     <thead className="bg-slate-50 text-slate-500">
@@ -1314,6 +1599,41 @@ export const MaternityModule: React.FC = () => {
             </form>
           )}
 
+          {lastCharge && (
+            <div
+              role="status"
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                lastCharge.charge.charged
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+              }`}
+            >
+              {lastCharge.charge.charged ? (
+                <>
+                  <strong>Billed.</strong> {lastCharge.patient} —{' '}
+                  {lastCharge.charge.invoiceNumber
+                    ? `invoice ${lastCharge.charge.invoiceNumber}`
+                    : 'added to an open invoice'}
+                  {lastCharge.charge.totalAmount
+                    ? ` · KES ${lastCharge.charge.totalAmount}`
+                    : ''}
+                  {lastCharge.charge.tariffCode
+                    ? ` · tariff ${lastCharge.charge.tariffCode}`
+                    : ''}
+                  .
+                </>
+              ) : (
+                <>
+                  <strong>Recorded, not billed.</strong>{' '}
+                  {lastCharge.charge.reason === 'TARIFF_NOT_CONFIGURED'
+                    ? 'This facility has no active delivery tariff, so no invoice line was raised. Add one under Finance → Service tariffs; the delivery itself is saved.'
+                    : lastCharge.charge.message ??
+                      'The billing engine did not raise an invoice line.'}
+                </>
+              )}
+            </div>
+          )}
+
           <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
               <h2 className="text-sm font-bold text-slate-800">Delivery register</h2>
@@ -1368,6 +1688,659 @@ export const MaternityModule: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </section>
+        </div>
+      )}
+
+      {/* ---------------- POSTNATAL ---------------- */}
+      {tab === 'postnatal' && (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+              <h2 className="text-sm font-bold text-slate-800">Postnatal contacts</h2>
+              <span className="text-2xs text-slate-500">
+                {postnatalRegister.length} recent
+              </span>
+            </div>
+
+            <div className="border-b border-slate-100 p-4">
+              <Field label="Open a mother's record">
+                <select
+                  value={postnatalPregnancy?.id ?? ''}
+                  onChange={(e) =>
+                    void runAction(
+                      () => loadPostnatal(Number(e.target.value)),
+                      'The postnatal record could not be opened.',
+                    )
+                  }
+                  className={fieldClass}
+                >
+                  <option value="">Select a pregnancy</option>
+                  {pregnancies.map((pregnancy) => (
+                    <option key={pregnancy.id} value={pregnancy.id}>
+                      {pregnancy.patient
+                        ? patientName(pregnancy.patient)
+                        : `#${pregnancy.patientId}`}{' '}
+                      · {pregnancy.status} · EDD {pregnancy.eddDate}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <p className="mt-2 text-2xs leading-relaxed text-slate-500">
+                Postnatal care is filed against the pregnancy, not the
+                delivery, so a woman who delivered elsewhere still has a
+                record here.
+              </p>
+            </div>
+
+            <ul className="divide-y divide-slate-100">
+              {postnatalRegister.length === 0 && (
+                <li className="px-4 py-6 text-center text-xs text-slate-500">
+                  No postnatal contacts recorded yet.
+                </li>
+              )}
+
+              {postnatalRegister.map((visit) => (
+                <li key={visit.id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runAction(
+                        () => loadPostnatal(visit.pregnancyId),
+                        'The postnatal record could not be opened.',
+                      )
+                    }
+                    className={`w-full px-4 py-3 text-left hover:bg-slate-50 ${
+                      postnatalPregnancy?.id === visit.pregnancyId
+                        ? 'bg-teal-50'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-900">
+                        {visit.patient ? patientName(visit.patient) : `Patient #${visit.patientId}`}
+                      </span>
+                      <span className="font-mono text-2xs text-slate-500">
+                        {visit.dayPostpartum !== null
+                          ? `day ${visit.dayPostpartum}`
+                          : 'day —'}
+                      </span>
+                    </div>
+                    <div className="mt-1 font-mono text-2xs text-slate-500">
+                      {visit.visitDate}
+                      {visit.babyWeightGrams !== null
+                        ? ` · baby ${visit.babyWeightGrams} g`
+                        : ''}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4">
+            {!postnatalPregnancy ? (
+              <p className="text-sm text-slate-500">
+                Select a mother on the left to see her postnatal contacts and
+                record the next one.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      {postnatalPregnancy.patient
+                        ? patientName(postnatalPregnancy.patient)
+                        : `Pregnancy #${postnatalPregnancy.id}`}
+                    </h2>
+                    <p className="mt-1 font-mono text-2xs text-slate-500">
+                      {postnatalPregnancy.patient?.mrn ?? ''} · delivered{' '}
+                      {postnatalPregnancy.deliveries?.[0]?.deliveredAt.slice(0, 10) ??
+                        'not recorded here'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setPostnatalOpen((open) => !open)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Record contact
+                  </button>
+                </div>
+
+                {postnatalOpen && (
+                  <form
+                    onSubmit={submitPostnatal}
+                    className="space-y-2 rounded-lg border border-slate-200 p-3"
+                  >
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <Field label="Visit date *">
+                        <input
+                          required
+                          type="date"
+                          value={pn.visitDate}
+                          onChange={(e) => setPn({ ...pn, visitDate: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Contact no.">
+                        <input
+                          type="number"
+                          min={1}
+                          value={pn.visitNumber}
+                          onChange={(e) => setPn({ ...pn, visitNumber: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Baby weight (g)">
+                        <input
+                          type="number"
+                          value={pn.babyWeightGrams}
+                          onChange={(e) => setPn({ ...pn, babyWeightGrams: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="BP systolic">
+                        <input
+                          type="number"
+                          value={pn.bpSystolic}
+                          onChange={(e) => setPn({ ...pn, bpSystolic: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="BP diastolic">
+                        <input
+                          type="number"
+                          value={pn.bpDiastolic}
+                          onChange={(e) => setPn({ ...pn, bpDiastolic: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Pulse">
+                        <input
+                          type="number"
+                          value={pn.pulseBpm}
+                          onChange={(e) => setPn({ ...pn, pulseBpm: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Temp (°C)">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={pn.temperatureC}
+                          onChange={(e) => setPn({ ...pn, temperatureC: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Fundal height (cm)">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={pn.fundalHeightCm}
+                          onChange={(e) => setPn({ ...pn, fundalHeightCm: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Hb (g/dL)">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={pn.haemoglobinGdl}
+                          onChange={(e) => setPn({ ...pn, haemoglobinGdl: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Involution">
+                        <select
+                          value={pn.involution}
+                          onChange={(e) => setPn({ ...pn, involution: e.target.value })}
+                          className={fieldClass}
+                        >
+                          <option value="">Not examined</option>
+                          {INVOLUTION_OPTIONS.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Lochia">
+                        <select
+                          value={pn.lochia}
+                          onChange={(e) => setPn({ ...pn, lochia: e.target.value })}
+                          className={fieldClass}
+                        >
+                          <option value="">Not examined</option>
+                          {LOCHIA_OPTIONS.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Perineum">
+                        <select
+                          value={pn.perineum}
+                          onChange={(e) => setPn({ ...pn, perineum: e.target.value })}
+                          className={fieldClass}
+                        >
+                          <option value="">Not examined</option>
+                          {PERINEUM_OPTIONS.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Breasts">
+                        <select
+                          value={pn.breasts}
+                          onChange={(e) => setPn({ ...pn, breasts: e.target.value })}
+                          className={fieldClass}
+                        >
+                          <option value="">Not recorded</option>
+                          {BREAST_OPTIONS.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Breastfeeding">
+                        <select
+                          value={pn.breastfeeding}
+                          onChange={(e) => setPn({ ...pn, breastfeeding: e.target.value })}
+                          className={fieldClass}
+                        >
+                          <option value="">Not recorded</option>
+                          {BREASTFEEDING_OPTIONS.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Mood screening">
+                        <select
+                          value={pn.moodScreening}
+                          onChange={(e) => setPn({ ...pn, moodScreening: e.target.value })}
+                          className={fieldClass}
+                        >
+                          <option value="">Not screened</option>
+                          {MOOD_OPTIONS.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Next visit">
+                        <input
+                          type="date"
+                          value={pn.nextVisitDate}
+                          onChange={(e) => setPn({ ...pn, nextVisitDate: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                    </div>
+
+                    <Field label="Danger signs">
+                      <input
+                        type="text"
+                        value={pn.dangerSigns}
+                        onChange={(e) => setPn({ ...pn, dangerSigns: e.target.value })}
+                        className={fieldClass}
+                        placeholder="Blank means none were recorded"
+                      />
+                    </Field>
+                    <Field label="Notes">
+                      <textarea
+                        rows={2}
+                        value={pn.notes}
+                        onChange={(e) => setPn({ ...pn, notes: e.target.value })}
+                        className={fieldClass}
+                      />
+                    </Field>
+                    <Field label="Baby notes">
+                      <input
+                        type="text"
+                        value={pn.babyNotes}
+                        onChange={(e) => setPn({ ...pn, babyNotes: e.target.value })}
+                        className={fieldClass}
+                      />
+                    </Field>
+
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="w-full rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+                    >
+                      {busy ? 'Saving…' : 'Record postnatal contact'}
+                    </button>
+                  </form>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-2xs uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Date</th>
+                        <th className="px-3 py-2 font-medium">Day</th>
+                        <th className="px-3 py-2 font-medium">BP</th>
+                        <th className="px-3 py-2 font-medium">Pulse</th>
+                        <th className="px-3 py-2 font-medium">Involution</th>
+                        <th className="px-3 py-2 font-medium">Lochia</th>
+                        <th className="px-3 py-2 font-medium">Breastfeeding</th>
+                        <th className="px-3 py-2 font-medium">Baby weight</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {postnatalVisits.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                            No postnatal contacts recorded for this mother yet.
+                          </td>
+                        </tr>
+                      )}
+
+                      {postnatalVisits.map((visit) => (
+                        <tr key={visit.id} className="hover:bg-slate-50/70">
+                          <td className="px-3 py-2 font-mono text-slate-700">{visit.visitDate}</td>
+                          <td className="px-3 py-2 font-mono">{visit.dayPostpartum ?? '—'}</td>
+                          <td className="px-3 py-2 font-mono">
+                            {visit.bpSystolic && visit.bpDiastolic
+                              ? `${visit.bpSystolic}/${visit.bpDiastolic}`
+                              : '—'}
+                          </td>
+                          <td className="px-3 py-2 font-mono">{visit.pulseBpm ?? '—'}</td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">{visit.involution ?? '—'}</td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">{visit.lochia ?? '—'}</td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">{visit.breastfeeding ?? '—'}</td>
+                          <td className="px-3 py-2 font-mono">
+                            {visit.babyWeightGrams !== null ? `${visit.babyWeightGrams} g` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* ---------------- IMMUNISATION ---------------- */}
+      {tab === 'immunisation' && (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+              <h2 className="text-sm font-bold text-slate-800">Doses outstanding</h2>
+              <span className="text-2xs text-slate-500">
+                {immunisationAsOf ? `as of ${immunisationAsOf}` : '—'}
+              </span>
+            </div>
+
+            <div className="border-b border-slate-100 p-4">
+              <Field label="Open a child's card">
+                <select
+                  value={immunisationCard?.patient.id ?? ''}
+                  onChange={(e) =>
+                    void runAction(
+                      () => loadImmunisationCard(Number(e.target.value)),
+                      'The immunisation card could not be opened.',
+                    )
+                  }
+                  className={fieldClass}
+                >
+                  <option value="">Select a child under five</option>
+                  {patients.filter(isUnderFive).map((patient) => (
+                    <option key={patient.id} value={patient.id}>
+                      {patientName(patient)} · {patient.mrn} · {patient.dateOfBirth}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <ul className="divide-y divide-slate-100">
+              {immunisationDue.length === 0 && (
+                <li className="px-4 py-6 text-center text-xs text-slate-500">
+                  No child at this facility has a dose due.
+                </li>
+              )}
+
+              {immunisationDue.map((child) => (
+                <li key={child.id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runAction(
+                        () => loadImmunisationCard(child.id),
+                        'The immunisation card could not be opened.',
+                      )
+                    }
+                    className={`w-full px-4 py-3 text-left hover:bg-slate-50 ${
+                      immunisationCard?.patient.id === child.id ? 'bg-teal-50' : ''
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-900">
+                        {patientName(child)}
+                      </span>
+                      {child.overdueCount > 0 ? (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-2xs font-semibold text-rose-800">
+                          {child.overdueCount} overdue
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-2xs font-semibold text-amber-900">
+                          {child.outstandingCount} due
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 font-mono text-2xs text-slate-500">
+                      {child.mrn} · born {child.dateOfBirth}
+                      {child.nextDue ? ` · next ${child.nextDue.name}` : ''}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4">
+            {!immunisationCard ? (
+              <p className="text-sm text-slate-500">
+                Select a child on the left to see the doses given and what the
+                reference schedule says is outstanding.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      {patientName(immunisationCard.patient)}
+                    </h2>
+                    <p className="mt-1 font-mono text-2xs text-slate-500">
+                      {immunisationCard.patient.mrn} · born{' '}
+                      {immunisationCard.dateOfBirth ?? 'not recorded'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setImmunisationOpen((open) => !open)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800"
+                  >
+                    <Syringe className="h-3.5 w-3.5" />
+                    Record dose
+                  </button>
+                </div>
+
+                {immunisationCard.dateOfBirth === null && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    {immunisationCard.note}
+                  </div>
+                )}
+
+                {immunisationOpen && (
+                  <form
+                    onSubmit={submitImmunisation}
+                    className="space-y-2 rounded-lg border border-slate-200 p-3"
+                  >
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <Field label="Antigen *">
+                        <select
+                          required
+                          value={imm.antigenCode}
+                          onChange={(e) => setImm({ ...imm, antigenCode: e.target.value })}
+                          className={fieldClass}
+                        >
+                          <option value="">Select an antigen</option>
+                          {immunisationSchedule.map((antigen) => (
+                            <option key={antigen.code} value={antigen.code}>
+                              {antigen.name} · {antigen.weeks}w · {antigen.route}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Dose number">
+                        <select
+                          value={imm.doseNumber}
+                          onChange={(e) => setImm({ ...imm, doseNumber: e.target.value })}
+                          className={fieldClass}
+                        >
+                          {[1, 2, 3, 4].map((dose) => (
+                            <option key={dose} value={dose}>{dose}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Date given *">
+                        <input
+                          required
+                          type="date"
+                          value={imm.administeredOn}
+                          onChange={(e) => setImm({ ...imm, administeredOn: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Batch">
+                        <input
+                          type="text"
+                          value={imm.batchNumber}
+                          onChange={(e) => setImm({ ...imm, batchNumber: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                      <Field label="Site">
+                        <input
+                          type="text"
+                          value={imm.site}
+                          onChange={(e) => setImm({ ...imm, site: e.target.value })}
+                          className={fieldClass}
+                          placeholder="e.g. Left thigh"
+                        />
+                      </Field>
+                      <Field label="Notes">
+                        <input
+                          type="text"
+                          value={imm.notes}
+                          onChange={(e) => setImm({ ...imm, notes: e.target.value })}
+                          className={fieldClass}
+                        />
+                      </Field>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="w-full rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+                    >
+                      {busy ? 'Saving…' : 'Record dose'}
+                    </button>
+
+                    <p className="text-2xs text-slate-500">
+                      The database refuses a second dose of the same antigen at
+                      the same dose number.
+                    </p>
+                  </form>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-2xs uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Antigen</th>
+                        <th className="px-3 py-2 font-medium">Scheduled</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium">Given on</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {immunisationCard.statuses.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
+                            Due dates need a date of birth. Doses can still be
+                            recorded below.
+                          </td>
+                        </tr>
+                      )}
+
+                      {immunisationCard.statuses.map((dose) => (
+                        <tr key={dose.antigenCode} className="hover:bg-slate-50/70">
+                          <td className="px-3 py-2">
+                            <span className="font-semibold text-slate-800">{dose.name}</span>
+                            {dose.note && (
+                              <span className="ml-1.5 text-2xs text-slate-500">{dose.note}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-2xs text-slate-600">
+                            week {dose.scheduledWeeks}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded-full px-2 py-0.5 text-2xs font-semibold ${doseStatusClass(dose.status)}`}>
+                              {dose.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-2xs text-slate-600">
+                            {dose.givenOn ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-2xs uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Given</th>
+                        <th className="px-3 py-2 font-medium">Antigen</th>
+                        <th className="px-3 py-2 font-medium">Dose</th>
+                        <th className="px-3 py-2 font-medium">Batch</th>
+                        <th className="px-3 py-2 font-medium">Site</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {immunisationCard.records.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
+                            No doses recorded for this child yet.
+                          </td>
+                        </tr>
+                      )}
+
+                      {immunisationCard.records.map((record) => (
+                        <tr key={record.id} className="hover:bg-slate-50/70">
+                          <td className="px-3 py-2 font-mono text-slate-700">{record.administeredOn}</td>
+                          <td className="px-3 py-2 font-semibold text-slate-800">{record.antigenCode}</td>
+                          <td className="px-3 py-2 font-mono">{record.doseNumber}</td>
+                          <td className="px-3 py-2 font-mono text-2xs text-slate-600">{record.batchNumber ?? '—'}</td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">{record.site ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="text-2xs leading-relaxed text-slate-500">
+                  {immunisationNote}
+                </p>
+              </div>
+            )}
           </section>
         </div>
       )}

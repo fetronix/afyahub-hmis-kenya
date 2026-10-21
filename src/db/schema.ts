@@ -4766,6 +4766,187 @@ export const deliveryBabies = pgTable(
 );
 
 /* ============================================================
+   44c. POSTNATAL CARE
+   ============================================================
+
+   One row per postnatal contact. The mother is the subject; the baby is
+   noted on the same row because at this stage the two are seen together
+   and a separate baby record would be empty for most visits.
+
+   Postnatal visits hang off the pregnancy, not the delivery: a woman who
+   delivered elsewhere still attends here for her six-week check.
+   ============================================================ */
+
+export const postnatalVisits = pgTable(
+  'postnatal_visits',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    pregnancyId: integer('pregnancy_id')
+      .references(() => maternityPregnancies.id)
+      .notNull(),
+
+    deliveryId: integer('delivery_id')
+      .references(() => deliveries.id),
+
+    visitDate: text('visit_date').notNull(),
+
+    /* 1..n within this pregnancy, and the day counted from delivery. */
+    visitNumber: integer('visit_number'),
+    dayPostpartum: integer('day_postpartum'),
+
+    bpSystolic: integer('bp_systolic'),
+    bpDiastolic: integer('bp_diastolic'),
+    pulseBpm: integer('pulse_bpm'),
+    temperatureC: numeric('temperature_c', { precision: 4, scale: 1 }),
+
+    /* Involution: how far the fundus has descended, in cm. */
+    fundalHeightCm: numeric('fundal_height_cm', { precision: 4, scale: 1 }),
+
+    /* Normal | Subinvolution | Not examined */
+    involution: text('involution'),
+
+    /* Rubra | Serosa | Alba | Abnormal | Not examined */
+    lochia: text('lochia'),
+
+    /* Intact | Healing | Infected | Dehisced | Episiotomy healing */
+    perineum: text('perineum'),
+
+    /* Normal | Engorged | Cracked nipples | Mastitis */
+    breasts: text('breasts'),
+
+    /* Exclusive | Mixed | Formula | Not breastfeeding */
+    breastfeeding: text('breastfeeding'),
+
+    /*
+     * Not a diagnosis. A recorded screening outcome, so the next
+     * clinician knows whether anyone asked.
+     */
+    moodScreening: text('mood_screening'),
+
+    haemoglobinGdl: numeric('haemoglobin_gdl', { precision: 4, scale: 1 }),
+
+    dangerSigns: text('danger_signs'),
+    notes: text('notes'),
+    nextVisitDate: text('next_visit_date'),
+
+    babyWeightGrams: integer('baby_weight_grams'),
+    babyNotes: text('baby_notes'),
+
+    recordedBy: integer('recorded_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    pregnancyIdx: index('postnatal_visits_pregnancy_idx').on(
+      table.pregnancyId,
+      table.visitDate,
+    ),
+
+    facilityIdx: index('postnatal_visits_facility_idx').on(
+      table.facilityId,
+      table.visitDate,
+    ),
+  }),
+);
+
+/* ============================================================
+   44d. IMMUNISATION
+   ============================================================
+
+   The antigen and dose are stored as administered. The schedule lives in
+   code (`immunisation-contracts.ts`), not in this table: a schedule
+   changes, a record of what was given does not.
+
+   The unique index is the safety property that matters most here. Two
+   doses of the same antigen on the same child at the same dose number is
+   a double administration, and it is refused by the database rather than
+   by a screen that someone may not be looking at.
+   ============================================================ */
+
+export const immunisationRecords = pgTable(
+  'immunisation_records',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    /* Set when the child was born here and the link is known. */
+    deliveryId: integer('delivery_id')
+      .references(() => deliveries.id),
+
+    deliveryBabyId: integer('delivery_baby_id')
+      .references(() => deliveryBabies.id),
+
+    pregnancyId: integer('pregnancy_id')
+      .references(() => maternityPregnancies.id),
+
+    /* BCG | OPV | PENTA | PCV | ROTA | IPV | MR | YF | HPV | Td */
+    antigenCode: text('antigen_code').notNull(),
+
+    doseNumber: integer('dose_number').default(1).notNull(),
+
+    administeredOn: text('administered_on').notNull(),
+
+    batchNumber: text('batch_number'),
+    site: text('site'),
+
+    /* Intradermal | Subcutaneous | Intramuscular | Oral */
+    route: text('route'),
+
+    administeredBy: integer('administered_by'),
+    notes: text('notes'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    patientIdx: index('immunisation_records_patient_idx').on(
+      table.tenantId,
+      table.patientId,
+      table.administeredOn,
+    ),
+
+    facilityIdx: index('immunisation_records_facility_idx').on(
+      table.facilityId,
+      table.administeredOn,
+    ),
+
+    /*
+     * A child cannot receive the same dose twice. This is the one
+     * constraint a paper card cannot enforce.
+     */
+    uniqueDoseIdx: uniqueIndex('immunisation_records_dose_idx').on(
+      table.tenantId,
+      table.patientId,
+      table.antigenCode,
+      table.doseNumber,
+    ),
+  }),
+);
+
+/* ============================================================
    45. RELATIONS
    ============================================================ */
 

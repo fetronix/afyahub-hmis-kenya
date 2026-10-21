@@ -48,6 +48,7 @@ import {
   oneOf,
   numberInRange,
   partographGuidance,
+  buildPartographPlot,
   type FieldError,
   type Gestation,
 } from './maternity-contracts.ts';
@@ -159,7 +160,7 @@ async function patientInScope(
   return patient;
 }
 
-async function resolvePregnancy(
+export async function resolvePregnancy(
   context: AuthorizationContext,
   pregnancyId: unknown,
 ) {
@@ -1013,6 +1014,21 @@ export async function getLabour(
           entry.cervicalDilatationCm === null
             ? null
             : Number(entry.cervicalDilatationCm),
+      })),
+    ),
+    /*
+     * The same readings, positioned for the chart. Computed here rather
+     * than in the screen so that the table and the plot cannot disagree
+     * about where the alert line sits.
+     */
+    plot: buildPartographPlot(
+      labour.admittedAt,
+      entries.map((entry) => ({
+        recordedAt: entry.recordedAt,
+        cervicalDilatationCm: entry.cervicalDilatationCm,
+        fetalHeartRateBpm: entry.fetalHeartRateBpm,
+        contractionsPer10Min: entry.contractionsPer10Min,
+        contractionDurationSec: entry.contractionDurationSec,
       })),
     ),
   };

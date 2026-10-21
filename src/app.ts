@@ -42,6 +42,8 @@ import * as nursing from './nursing/nursing.service.ts';
 import * as reporting from './reporting/reporting.service.ts';
 import * as inventory from './inventory/inventory.service.ts';
 import * as maternity from './maternity/maternity.service.ts';
+import * as postnatal from './maternity/postnatal.service.ts';
+import * as immunisation from './immunisation/immunisation.service.ts';
 
 import {
   createApiRateLimiter,
@@ -198,6 +200,14 @@ app.use('/api/diagnoses', requireFacilityModule('opd'));
 app.use('/api/procedures', requireFacilityModule('opd'));
 
 app.use('/api/maternity', requireFacilityModule('maternity'));
+
+/*
+ * Immunisation rides on the maternity module on purpose: in Kenya the
+ * doses are given in the MCH clinic, on the same visit as the mother's
+ * postnatal check. A second module switch would let a facility open the
+ * child register while the mother's record stayed closed.
+ */
+app.use('/api/immunisation', requireFacilityModule('maternity'));
 
 app.use('/api/wards', requireFacilityModule('inpatient'));
 app.use('/api/beds', requireFacilityModule('inpatient'));
@@ -404,6 +414,32 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         ...(error.fields && error.fields.length > 0
           ? { fields: error.fields }
           : {}),
+      });
+
+      return true;
+    }
+
+    return false;
+  };
+
+  /**
+   * Maps immunisation failures onto their HTTP status.
+   *
+   * 400 an antigen outside the schedule, a future date, an impossible
+   *     dose number; 404 a patient outside the caller's scope; 409 a dose
+   *     the database has already seen.
+   */
+  const handleImmunisationError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (handleScopeError(error, res)) return true;
+
+    if (error instanceof immunisation.ImmunisationDomainError) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: error.code,
+        message: error.message,
       });
 
       return true;
@@ -1756,7 +1792,33 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
       try {
         const created = await maternity.recordDelivery(context, req.body ?? {});
 
-        res.status(201).json(created);
+        /*
+         * A delivery is a billable event, and until now it raised nothing.
+         *
+         * The price comes from `facility_service_tariffs` and nowhere else.
+         * No fallback price is passed, so a facility with no delivery tariff
+         * gets `charged: false, reason: 'TARIFF_NOT_CONFIGURED'` and the UI
+         * says so. It does not invent a number to fill the invoice.
+         *
+         * One charge per delivery, not per baby: twins are one delivery with
+         * two babies, and the tariff is for the delivery.
+         */
+        const charge = await chargeSafely({
+          tenantId: created.delivery.tenantId,
+          facilityId: created.delivery.facilityId,
+          patientId: created.delivery.patientId,
+          encounterId: null,
+          codes: tariffCodeCandidates('DELIVERY', created.delivery.deliveryMode, [
+            'DELIVERY',
+            'MATERNITY-DELIVERY',
+          ]),
+          sourceType: 'MATERNITY',
+          sourceId: created.delivery.id,
+          itemType: 'Maternity',
+          description: `Delivery — ${created.delivery.deliveryMode}`,
+        });
+
+        res.status(201).json({ ...created, billing: charge });
       } catch (err: unknown) {
         if (handleMaternityError(err, res)) return;
 
@@ -1793,6 +1855,275 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           success: false,
           error: 'DELIVERY_FETCH_FAILED',
           message: 'The delivery record could not be loaded.',
+        });
+      }
+    },
+  );
+
+  // =========================================================
+  // POSTNATAL CARE
+  //
+  // Six weeks of contacts after a delivery, hung off the pregnancy so a
+  // woman who delivered elsewhere still has a record here.
+  // =========================================================
+
+  app.get(
+    '/api/maternity/postnatal',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+
+        const list = await postnatal.listPostnatalVisitsForFacility(
+          context,
+          facilityId,
+        );
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Postnatal register error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'POSTNATAL_LIST_FAILED',
+          message: 'The postnatal register could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/pregnancies/:id/postnatal',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const visits = await postnatal.listPostnatalVisits(
+          context,
+          Number(req.params.id),
+        );
+
+        res.json(visits);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Postnatal visit list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'POSTNATAL_VISITS_FAILED',
+          message: 'The postnatal visits could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/maternity/postnatal',
+    requirePermission('maternity.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await postnatal.recordPostnatalVisit(
+          context,
+          req.body ?? {},
+        );
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Postnatal visit creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'POSTNATAL_CREATION_FAILED',
+          message: 'The postnatal visit could not be recorded.',
+        });
+      }
+    },
+  );
+
+  // =========================================================
+  // IMMUNISATION
+  //
+  // The schedule is in `immunisation-contracts.ts`; this is the record
+  // of what was given. Mounted under the maternity module (see the gate
+  // at the top of this file).
+  // =========================================================
+
+  /*
+   * The reference schedule, straight from the module that computes
+   * against it. The screen reads its antigen list from here rather than
+   * carrying a second copy that would drift the first time a dose is
+   * added.
+   */
+  app.get(
+    '/api/immunisation/schedule',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      res.json({
+        antigens: immunisation.ANTIGENS,
+        note: immunisation.SCHEDULE_AGREES_NOTE,
+      });
+    },
+  );
+
+  app.get(
+    '/api/immunisation/card',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const patientId = parseOptionalPositiveId(
+          req.query.patientId,
+          'patient ID',
+        );
+
+        if (!patientId) {
+          res.status(400).json({
+            success: false,
+            error: 'PATIENT_REQUIRED',
+            message: 'A valid patientId is required.',
+          });
+
+          return;
+        }
+
+        const card = await immunisation.immunisationCard(context, patientId);
+
+        res.json(card);
+      } catch (err: unknown) {
+        if (handleImmunisationError(err, res)) return;
+
+        console.error('Immunisation card error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'IMMUNISATION_CARD_FAILED',
+          message: 'The immunisation card could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/immunisation/records',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const patientId = parseOptionalPositiveId(
+          req.query.patientId,
+          'patient ID',
+        );
+
+        if (!patientId) {
+          res.status(400).json({
+            success: false,
+            error: 'PATIENT_REQUIRED',
+            message: 'A valid patientId is required.',
+          });
+
+          return;
+        }
+
+        const records = await immunisation.listImmunisationRecords(
+          context,
+          patientId,
+        );
+
+        res.json(records);
+      } catch (err: unknown) {
+        if (handleImmunisationError(err, res)) return;
+
+        console.error('Immunisation record list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'IMMUNISATION_RECORDS_FAILED',
+          message: 'The immunisation records could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/immunisation/records',
+    requirePermission('maternity.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await immunisation.recordImmunisation(
+          context,
+          req.body ?? {},
+        );
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleImmunisationError(err, res)) return;
+
+        console.error('Immunisation record error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'IMMUNISATION_CREATION_FAILED',
+          message: 'The dose could not be recorded.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/immunisation/due',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+
+        const list = await immunisation.immunisationDueList(
+          context,
+          facilityId,
+        );
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleImmunisationError(err, res)) return;
+
+        console.error('Immunisation due list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'IMMUNISATION_DUE_FAILED',
+          message: 'The immunisation list could not be loaded.',
         });
       }
     },

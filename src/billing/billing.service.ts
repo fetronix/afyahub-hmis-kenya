@@ -46,6 +46,7 @@ export type BillingSourceType =
   | 'PHARMACY'
   | 'ADMISSION'
   | 'BED_DAY'
+  | 'MATERNITY'
   | 'MANUAL';
 
 export type ChargeSkipReason =

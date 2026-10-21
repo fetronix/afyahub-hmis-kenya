@@ -4,9 +4,10 @@
 **Current milestone:** Step 6 — OPD, triage and consultations  
 **Overall status:** In progress
 
-> **Bring the database up to date first.** Three migrations (0012, 0013, 0014) are
-> not applied on the development database. Every command, and what to do when one
-> fails, is in **[§10 Migrations and full sync](#10-migrations-and-full-sync)**.
+> **Bring the database up to date first.** Run `npm run db:status` — it prints what
+> is recorded and what is pending against the database in `.env`. If anything is
+> pending, every command, and what to do when one fails, is in
+> **[§10 Migrations and full sync](#10-migrations-and-full-sync)**.
 
 ## 1. Repository and development environment
 
@@ -30,7 +31,7 @@ screen was exercised, or that a clinician has accepted it.
 5. **Patient registration and records — Completed**
 6. **OPD, triage and consultations — In progress; current priority.** Queue and triage exist; the queue → triage → consultation → investigation → follow-up path has not been walked end to end.
 7. **Inpatient, wards, beds and theatre — Implemented.** Admission board, transfers, discharge authorisation and theatre cases. Covered by 48 assertions in `test:inpatient`. No user acceptance.
-8. **Maternity, MCH and preventive services — In progress.** Antenatal booking and visits, labour with a partograph, and delivery with one row per baby are built on six tables (§3.11). **Not built:** postnatal visits, immunisation, a plotted partograph chart (the readings and the alert-line position are stored and shown as a table), and any billing linkage — a delivery raises no invoice. The fake antenatal form that lived in `SpecialtyModule` is gone.
+8. **Maternity, MCH and preventive services — Implemented.** Antenatal booking and visits, labour with a partograph, delivery with one row per baby, postnatal contacts and the childhood immunisation register, on eight tables (§3.11 and §3.12). The partograph is drawn as a chart from the stored readings, with the alert and action lines computed by the same function the table uses. A delivery raises an invoice line only through a real `facility_service_tariffs` price; with none configured the screen says **recorded, not billed** rather than inventing a figure. 131 + 151 assertions. No user acceptance.
 9. **Laboratory and radiology — Implemented.** Result entry and verification are separate: `addLabResult` writes `Pending Verification` with `verifiedBy`/`verifiedAt` null, and `POST /api/lab-results/:id/verify` is gated on `laboratory.results.verify`. The schema column is nullable since migration 0008.
 10. **Pharmacy, inventory and procurement — In progress.** Batch tracking, expiry control and FEFO dispensing implemented (80 assertions). Procurement screens exist; no test coverage.
 11. **Tariffs, billing, payments and insurance — Implemented.** Billing spine, mobile money settlement with overpayment handling, and the claims workflow (draft → submit → adjudicate → settle). 31 + 85 + 93 assertions.
@@ -422,10 +423,39 @@ Without the second, existing roles hold no maternity permission and the module a
 
 - `npm run test:maternity` — 130 assertions: date arithmetic (including 30 February and leap years), Naegele's rule, gestation from the EDD, absent-is-not-zero, every partograph zone, the migration's additive guarantees, no default on any clinical measurement, route permissions, and that the screen ships no sample patient.
 - **Live against PostgreSQL 16** — the scratch database was built by applying all sixteen migrations, then the service was exercised end to end: 24 checks covering EDD derivation, the one-active-pregnancy rule, ANC gestation computation, values stored versus left NULL, labour admission, three partograph readings, the duplicate-timestamp refusal, the dilatation range, the delivery with its baby, the pregnancy and labour closing to `Delivered`, refusal of a second delivery, refusal of a reading after delivery, the summary counts, and cross-facility isolation. Two defects were found this way and fixed: Drizzle wraps driver errors so the SQLSTATE sits on `cause` (every unique violation was returning 500), and a facility denial was surfacing as 403 instead of 404.
-- `npm test` — **1,696 assertions across thirteen suites**.
+- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.12).
 - `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
 
-**Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care and immunisation are not started.
+**Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care, immunisation and the plotted chart were still outstanding at the end of that round; they are in §3.12.
+
+### 3.12 Postnatal care, immunisation, a plotted partograph and delivery billing
+
+**What was missing.** The MCH pathway stopped at the delivery. There was no way to record the six weeks that follow, no childhood immunisation register, the partograph was a table of numbers with no chart, and a delivery raised no invoice at all — the largest single billable event in a maternity facility.
+
+**Postnatal contacts** (`postnatal_visits`). One row per contact. The mother is the subject and the baby's weight sits on the same row, because at this stage the two are seen together and a separate baby record would be empty for most visits. The contact hangs off the **pregnancy**, not the delivery, so a woman who delivered elsewhere still has a record. `day_postpartum` is counted from the recorded delivery date and stored, not recomputed on read — a contact recorded on day 3 stays day 3.
+
+**Immunisation** (`immunisation_records`). The schedule lives in `src/immunisation/immunisation-contracts.ts` — 19 KEPI reference doses — and not in a table, for the same reason the partograph alert line is computed: a schedule changes, a record of what was given must not. `immunisation_records_dose_idx` is a unique index on (tenant, patient, antigen, dose), so the same dose administered twice is refused **by the database**, which is the one guarantee a paper card cannot give. Four further refusals sit in code: an unknown antigen, a future date, a date before the child was born, and a dose number outside 1–4.
+
+**"Due" is not a diagnosis.** A dose is **Due** from its scheduled week and **Overdue** only four weeks later — a child seen a fortnight late is late, not overdue, and a list that shouts at every late attendance stops being read. The card carries the caveat in the payload: *confirm the ages against the current KEPI chart*.
+
+**The partograph is now a chart.** `buildPartographPlot` turns stored readings into geometry: hours since admission on the x axis, centimetres on the y axis, the alert line beginning at the first reading that reaches 4 cm and climbing 1 cm/h to 10 cm, the action line four hours to its right. The axis is extended to the end of the action line, because a chart that crops its own action line makes the line look as if it stopped. The same function feeds the table's zone, so the two cannot disagree. It is rendered as inline SVG (`src/components/maternity/PartographChart.tsx`): no canvas, no charting library, no network fetch — the facility laptop may have no internet. The table remains, because a clinician reading six hours of observations wants the numbers.
+
+**A delivery now bills — or says it cannot.** `POST /api/maternity/deliveries` calls `chargeForService` with candidate codes `DELIVERY`, `MATERNITY-DELIVERY` and the mode, `sourceType: 'MATERNITY'`, and `sourceId` set to the delivery. **No fallback price is passed**, so a facility with no delivery tariff gets `TARIFF_NOT_CONFIGURED` and the screen prints *"Recorded, not billed"* with the next step. One charge per delivery, not per baby: twins are one delivery. The new source type is mapped to the DHA `maternity` service area.
+
+**Reachable on the screen.** Two new tabs — *Postnatal care* and *Immunisation* — plus the chart in the labour pane and a billing banner on the delivery screen. The immunisation antigen picker is served from the same array the due-date logic uses (`GET /api/immunisation/schedule`); a second copy in the UI would be a second schedule, and the second one is always the wrong one.
+
+**Permissions.** No new codes. Postnatal and immunisation ride on `maternity.read` / `maternity.create`, and `/api/immunisation` is gated on the `maternity` module, because in Kenya the doses are given in the MCH clinic on the same visit as the mother's check. A second switch would let a facility open the child register while the mother's record stayed closed.
+
+**Validation completed**
+
+- `npm run test:postnatal` — 151 assertions: the schedule's uniqueness and ages, `Due`/`Overdue` boundaries at 0/4 weeks, an early dose still recorded, the plot's geometry including a late 4 cm start and the axis covering the action line, the additive migration and its guards, the service refusals, the delivery charge carrying no fallback price and no money literal, and that every capability is on the screen.
+- `npm test` — **1,845 assertions** across thirteen counting suites, plus the staff-role-catalogue suite (which reports pass/fail without a count). All green.
+- **Live against PostgreSQL 16.** All 17 migrations applied to a scratch database, then 40 checks: plot geometry from real rows (alert at hour 2, action at hour 6, axis 13 h), chart and table agreeing on the zone, no tariff → `TARIFF_NOT_CONFIGURED`, a 12,000 tariff → billed with invoice `INV-000001`, a repeat → `DUPLICATE`, exactly one invoice line, day postpartum 3 from the delivery date, an unmeasured temperature stored NULL, cross-facility 404, duplicate dose refused, future/before-birth/unknown-antigen refusals, a 19-antigen card, and the facility due list.
+- `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**A defect found and deliberately NOT fixed.** A freshly built database cannot get past migration `0002`: two `ALTER COLUMN … SET DATA TYPE date` statements have no `USING` clause, so PostgreSQL raises `42804` and the runner rolls back. Adding `USING "col"::date` fixes it — verified on the scratch database, where all 17 then applied. It is not committed because it changes the file's hash, and a database that has already applied `0002` has that hash recorded; editing it would make the runner want to re-apply a migration that is not idempotent. Existing databases are unaffected, and the user's database has already applied `0002`. **Fix it only alongside a plan for re-recording that hash.** A second, smaller defect: `scripts/migrate.ts` prints its failure but does not exit — the process stays alive holding the pool open. It is harmless for a human at a terminal but would hang a CI job.
+
+**Not verified:** the screens were still not walked in a browser — no browser was available in this environment, so the tabs, the chart and the billing banner have been type-checked and built but not clicked. No clinician has reviewed the field set against the MOH 405 card, and no one has confirmed the KEPI ages against the current chart.
 
 ## 4. Existing backups and modified files to preserve
 
@@ -433,6 +463,11 @@ Without the second, existing roles hold no maternity permission and the module a
 
 - `src/app.ts.backup-permissions-20261020-121641`
 - `src/auth/staff-role-catalogue.ts.backup-permissions-20261020-121641`
+- `schema.ts.before-postnatal.bak` (in `src/db/`)
+- `src/app.ts.before-postnatal-20261021.bak`
+- `src/api/client.ts.before-postnatal-20261021.bak`
+- `src/components/modules/MaternityModule.tsx.before-postnatal-20261021.bak`
+- `README.md.before-postnatal-20261021.bak`
 
 ### Earlier uncommitted changes and backups
 
@@ -719,11 +754,11 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 
 ## 4. Next actions — in priority order
 
-1. **Walk the maternity screens in a browser.** The service was exercised against PostgreSQL, but nobody has clicked through booking → ANC → labour → delivery.
-2. **Apply migrations 0012–0014, then run `npm run db:status:all`.** Additive only, `IF NOT EXISTS`, no destructive statements. This is a facility action — the commands and failure guidance are in §10.3 and §10.6.
+1. **Walk the screens in a browser.** Booking → ANC → labour → the chart → delivery → the billing banner → postnatal → immunisation. The services and the HTTP layer have been exercised; nobody has clicked through the screens, and no browser was available in the working environment.
+2. **Bring the database up to date.** `npm run db:status` first, then `npm run db:migrate` for whatever is pending, then `npm run db:status:all`. Additive only, `IF NOT EXISTS`, no destructive statements. Commands and failure guidance are in §10.3 and §10.6.
 3. **Audit the remaining query functions** for the pattern closed in §3.9: a route that passes a client-supplied `facilityId` or a bare record ID where a scope check belongs.
 4. **Verify effective permissions.** Test doctor, triage/reception and laboratory access, including facility overrides.
-5. **Finish maternity/MCH** — postnatal visits and immunisation are still missing, and no clinician has checked the field set against the MOH 405 card. The partograph is stored and read as a table; a plotted chart is a separate piece of work.
+5. **Have a clinician check the MCH field sets** against the MOH 405 card, and the immunisation ages against the current KEPI chart. Both are recorded as reference data, not validated clinical policy.
 6. **Update the tracker with evidence.** Mark a task Verified only when its own checks pass; "the test suite passes" is not evidence that a screen works.
 
 ## 5. Current status summary
@@ -738,6 +773,7 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 | Tenant/facility scope for clinical and lab queries | Clinical paths closed and tested; remaining queries not audited |
 | Laboratory verification/publication workflow | Resolved (migration 0008) |
 | HTTP hardening (headers, CORS, rate limits) | Implemented and probed against a running server |
+| Maternity, postnatal care and immunisation | Implemented; 131 + 151 assertions and 40 live checks; not walked in a browser, no clinical review |
 | End-to-end OPD/triage verification | In progress — no browser walkthrough yet |
 | Independent security testing, load test, restore drill | Not started |
 | Comprehensive regression testing and user acceptance | Not started |

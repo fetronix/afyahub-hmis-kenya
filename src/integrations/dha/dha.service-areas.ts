@@ -152,7 +152,7 @@ export const DHA_SERVICE_AREAS: DhaServiceAreaDefinition[] = [
     paymentMechanism: 'PER_DIEM',
     fund: 'SHIF',
     expectsPreauth: true,
-    sourceTypes: ['ADMISSION', 'BED_DAY', 'PROCEDURE'],
+    sourceTypes: ['MATERNITY', 'ADMISSION', 'BED_DAY', 'PROCEDURE'],
     departments: ['maternity'],
     note: 'Delivery and antenatal packages carry their own interventions. Map them separately from general inpatient care.',
   },
