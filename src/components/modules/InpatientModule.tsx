@@ -556,8 +556,10 @@ export const InpatientModule: React.FC = () => {
           ) : (
             <p className="text-2xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
               You do not have the <span className="font-mono">inpatient.wards.create</span>{' '}
-              permission. Ask a facility administrator to grant it under
-              Administration → Roles, or to create the ward for you.
+              permission. A facility administrator can grant it under
+              Administration → Platform Administration → Facilities →
+              <span className="font-semibold"> Facility Role Permissions</span>,
+              or can create the ward for you.
             </p>
           )}
         </div>
