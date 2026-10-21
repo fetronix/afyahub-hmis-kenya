@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { useHmis } from '../../context/HmisContext.tsx';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useHmis, type ModuleId } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { AnalyticsSummary, PublicHealthReport, QueueItem, InpatientBoard } from '../../types/index.ts';
+import {
+  AnalyticsSummary,
+  AuditLog,
+  InpatientBoard,
+  PublicHealthReport,
+  QueueItem,
+} from '../../types/index.ts';
 import {
   Users,
   BedDouble,
@@ -13,8 +19,20 @@ import {
   HeartPulse,
   RefreshCw,
   ShieldCheck,
-  Stethoscope,
   ChevronRight,
+  UserPlus,
+  Stethoscope,
+  FlaskConical,
+  Pill,
+  Package,
+  Receipt,
+  FileCheck2,
+  BarChart3,
+  Baby,
+  Scissors,
+  Eye,
+  Building2,
+  type LucideIcon,
 } from 'lucide-react';
 
 /*
@@ -34,11 +52,15 @@ import {
 |
 */
 
+/* ----------------------------------------------------------------
+   Small building blocks
+   ---------------------------------------------------------------- */
+
 type SectionProps = {
   step: string;
   title: string;
   subtitle: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   action?: React.ReactNode;
 };
 
@@ -51,12 +73,12 @@ const SectionHeading: React.FC<SectionProps> = ({
 }) => (
   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
     <div className="flex items-start gap-3">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-pine-100 bg-pine-50 font-mono text-2xs font-semibold text-pine-700">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-brand-100 bg-brand-50 font-mono text-2xs font-semibold text-brand-700">
         {step}
       </span>
       <div>
-        <h2 className="flex items-center gap-1.5 font-display text-lg leading-tight tracking-tight text-ink">
-          <Icon className="h-4 w-4 text-pine-600" />
+        <h2 className="flex items-center gap-1.5 text-base font-semibold leading-tight tracking-tight text-navy-900">
+          <Icon className="h-4 w-4 text-brand-600" />
           {title}
         </h2>
         <p className="mt-0.5 text-2xs text-muted">{subtitle}</p>
@@ -69,7 +91,7 @@ const SectionHeading: React.FC<SectionProps> = ({
 
 type KpiCellProps = {
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   value: React.ReactNode;
   unit?: React.ReactNode;
   footer: React.ReactNode;
@@ -83,11 +105,13 @@ const KpiCell: React.FC<KpiCellProps> = ({ label, icon: Icon, value, unit, foote
   <div className="bg-surface px-5 py-4">
     <div className="flex items-start justify-between gap-3">
       <span className="eyebrow">{label}</span>
-      <Icon className="h-4 w-4 shrink-0 text-pine-500" />
+      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-50">
+        <Icon className="h-3.5 w-3.5 text-brand-600" />
+      </span>
     </div>
 
     <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight text-ink">
+      <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight text-navy-900">
         {value}
       </span>
       {unit && <span className="text-2xs text-muted">{unit}</span>}
@@ -114,6 +138,58 @@ const queueStationLabel = (queueType: string): string => {
   return known[queueType.trim().toLowerCase()] ?? `${queueType} queue`;
 };
 
+const timeGreeting = (): string => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+const localeDate = (): string =>
+  new Date().toLocaleDateString('en-KE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+/* ----------------------------------------------------------------
+   Quick actions — one entry per real module, gated twice
+   ---------------------------------------------------------------- */
+
+type QuickAction = {
+  module: ModuleId;
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+  permissions: string[];
+};
+
+/*
+ * Ordered by the visit, not alphabetically. `permissions` mirrors the
+ * sidebar's map; the module must also be enabled for the facility.
+ */
+const QUICK_ACTIONS: QuickAction[] = [
+  { module: 'registration', label: 'Register or find a patient', hint: 'Patient directory', icon: UserPlus, permissions: ['patients.read'] },
+  { module: 'reception', label: 'Work the queue', hint: 'Reception & appointments', icon: Users, permissions: ['appointments.read'] },
+  { module: 'opd', label: 'Start a consultation', hint: 'Outpatient & triage', icon: Stethoscope, permissions: ['clinical.read'] },
+  { module: 'laboratory', label: 'Review laboratory work', hint: 'Orders, results, verification', icon: FlaskConical, permissions: ['laboratory.read'] },
+  { module: 'pharmacy', label: 'Dispense a prescription', hint: 'Pharmacy & stock', icon: Pill, permissions: ['pharmacy.read'] },
+  { module: 'inventory', label: 'Check stock levels', hint: 'Inventory & batches', icon: Package, permissions: ['inventory.read'] },
+  { module: 'inpatient', label: 'Open the ward board', hint: 'Admissions & beds', icon: BedDouble, permissions: ['inpatient.read'] },
+  { module: 'maternity', label: 'Maternity & MCH', hint: 'ANC, labour, postnatal', icon: Baby, permissions: ['maternity.read'] },
+  { module: 'theatre', label: 'Theatre list', hint: 'Surgical cases', icon: Scissors, permissions: ['clinical.read', 'inpatient.read'] },
+  { module: 'specialty', label: 'Specialty clinics', hint: 'Dental, eye, ENT, renal', icon: Eye, permissions: ['clinical.read'] },
+  { module: 'finance', label: 'Bill and take payment', hint: 'Billing & cashier', icon: Receipt, permissions: ['billing.read'] },
+  { module: 'claims', label: 'Work the claim queue', hint: 'SHA e-claims', icon: FileCheck2, permissions: ['insurance.read'] },
+  { module: 'analytics', label: 'Open reports', hint: 'Revenue & utilisation', icon: BarChart3, permissions: ['reports.read'] },
+  { module: 'configuration', label: 'Manage staff', hint: 'Staff, roles and settings', icon: Building2, permissions: ['users.invite', 'users.roles.manage'] },
+];
+
+/* ----------------------------------------------------------------
+   Dashboard
+   ---------------------------------------------------------------- */
+
 export const DashboardModule: React.FC = () => {
   const {
     currentFacility,
@@ -122,6 +198,7 @@ export const DashboardModule: React.FC = () => {
     setIsJourneyModalOpen,
     refreshKey,
     authenticatedUser,
+    currentUser,
   } = useHmis();
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
@@ -137,11 +214,29 @@ export const DashboardModule: React.FC = () => {
   const canReadReports = can('reports.read');
   const canReadQueues = can('appointments.read');
   const canReadInpatient = can('inpatient.read');
+  const canReadAudit = can('audit.read');
+
+  const facilityModules = useMemo(
+    () => new Set(currentFacility?.enabledModules ?? []),
+    [currentFacility]
+  );
+
+  /* The same enablement rule the sidebar uses, for the same reason. */
+  const moduleEnabled = (id: ModuleId): boolean => {
+    if (id === 'platform_administration') return true;
+    if (isSuperAdmin) return true;
+    if (!currentFacility) return false;
+    if (id === 'claims') {
+      return facilityModules.has('insurance') || facilityModules.has('claims');
+    }
+    return facilityModules.has(id);
+  };
 
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [surveillance, setSurveillance] = useState<PublicHealthReport[]>([]);
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [inpatientBoard, setInpatientBoard] = useState<InpatientBoard | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -219,6 +314,24 @@ export const DashboardModule: React.FC = () => {
         setInpatientBoard(null);
       }
 
+      /*
+       * Recent activity is secondary. If the audit module is switched
+       * off for this facility the endpoint answers 403; that is not a
+       * dashboard failure and must not raise the page-level alert.
+       */
+      if (canReadAudit && facilityModules.has('audit')) {
+        tasks.push(
+          api.getAuditLogs(currentFacility?.id)
+            .then((value) => { if (active) setAuditLogs(value.slice(0, 6)); })
+            .catch((err) => {
+              console.error('Failed to load recent activity:', err);
+              if (active) setAuditLogs([]);
+            })
+        );
+      } else {
+        setAuditLogs([]);
+      }
+
       try {
         await Promise.all(tasks);
       } finally {
@@ -229,7 +342,71 @@ export const DashboardModule: React.FC = () => {
     void loadDashboard();
 
     return () => { active = false; };
-  }, [currentFacility, refreshKey, canReadReports, canReadQueues, canReadInpatient]);
+  }, [currentFacility, refreshKey, canReadReports, canReadQueues, canReadInpatient, canReadAudit, facilityModules]);
+
+  /* ----------------------------------------------------------------
+     Derived view data — every number below came from the server
+     ---------------------------------------------------------------- */
+
+  const alerts: Array<{
+    key: string;
+    tone: 'danger' | 'warning' | 'info';
+    label: string;
+    module: ModuleId;
+  }> = [];
+
+  if (inpatientBoard && inpatientBoard.criticalVitalsCount > 0) {
+    alerts.push({
+      key: 'critical-vitals',
+      tone: 'danger',
+      label: `${inpatientBoard.criticalVitalsCount} critical observation${inpatientBoard.criticalVitalsCount === 1 ? '' : 's'} on the ward`,
+      module: 'inpatient',
+    });
+  }
+
+  if (inpatientBoard && inpatientBoard.vitalsOverdueCount > 0) {
+    alerts.push({
+      key: 'vitals-overdue',
+      tone: 'warning',
+      label: `${inpatientBoard.vitalsOverdueCount} patient${inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} with no observation in 8 hours`,
+      module: 'inpatient',
+    });
+  }
+
+  if (summary && summary.pendingLabOrders > 0) {
+    alerts.push({
+      key: 'labs-pending',
+      tone: 'info',
+      label: `${summary.pendingLabOrders} laboratory order${summary.pendingLabOrders === 1 ? '' : 's'} pending`,
+      module: 'laboratory',
+    });
+  }
+
+  if (summary && summary.lowStockAlerts > 0) {
+    alerts.push({
+      key: 'low-stock',
+      tone: 'warning',
+      label: `${summary.lowStockAlerts} item${summary.lowStockAlerts === 1 ? '' : 's'} at or below reorder level`,
+      module: 'inventory',
+    });
+  }
+
+  if (summary && summary.expiringStockAlerts > 0) {
+    alerts.push({
+      key: 'expiring-stock',
+      tone: 'warning',
+      label: `${summary.expiringStockAlerts} batch${summary.expiringStockAlerts === 1 ? '' : 'es'} expiring within 30 days`,
+      module: 'inventory',
+    });
+  }
+
+  const quickActions = QUICK_ACTIONS.filter(
+    (action) => moduleEnabled(action.module) && canAny(...action.permissions)
+  ).slice(0, 6);
+
+  const firstName = (authenticatedUser?.fullName || currentUser?.name || '')
+    .trim()
+    .split(/\s+/)[0];
 
   const hasAnyKpi =
     can('appointments.read') ||
@@ -238,63 +415,98 @@ export const DashboardModule: React.FC = () => {
     canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read');
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-7">
       {/* ---------------------------------------------------------------
-          Where you are, who you are serving
+          Welcome
       --------------------------------------------------------------- */}
 
-      <section className="relative overflow-hidden rounded-card border border-hair bg-gradient-to-br from-white via-white to-pine-50/70 p-6 shadow-card sm:p-7">
-        <div
+      <section className="relative overflow-hidden rounded-card border border-hair bg-surface p-5 shadow-card sm:p-6">
+        <span
           aria-hidden="true"
-          className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full border border-pine-100/70"
+          className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-brand-600 via-brand-500 to-ember-500"
         />
 
-        <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-5 pl-2 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <p className="eyebrow">Today at the facility</p>
+            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+              {localeDate()}
+            </p>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2.5">
-              <h1 className="font-display text-[1.7rem] leading-tight tracking-tight text-ink">
+            <h1 className="mt-1.5 text-[1.6rem] font-bold leading-tight tracking-tight text-navy-900">
+              {timeGreeting()}
+              {firstName ? `, ${firstName}` : ''}.
+            </h1>
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-muted">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 font-semibold text-brand-800">
+                {currentUser?.role || 'Authenticated user'}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-slate-400" />
                 {currentFacility?.name || 'JaliCare Kenya Facility'}
-              </h1>
-
-              <span className="chip font-mono">
+              </span>
+              <span className="font-mono text-2xs text-slate-400">
                 MFL {currentFacility?.mflCode || 'not configured'}
               </span>
-
               {loading && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-pine-200 bg-white px-2.5 py-1 text-2xs font-medium text-pine-800">
+                <span className="inline-flex items-center gap-1.5 text-2xs text-brand-700">
                   <RefreshCw className="h-3 w-3 animate-spin" />
                   Refreshing
                 </span>
               )}
             </div>
-
-            <p className="mt-1.5 text-xs text-muted">
-              {currentFacility?.level || 'Level not configured'}
-              {currentFacility?.county ? ` · ${currentFacility.county} County` : ''}
-            </p>
           </div>
 
-          <button
-            onClick={() => setActiveModule('interoperability')}
-            className="btn-quiet self-start md:self-auto"
-          >
-            <ShieldCheck className="h-3.5 w-3.5 text-pine-600" />
-            DHA readiness
-            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveModule('interoperability')}
+              className="btn-quiet"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
+              DHA readiness
+              <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+            </button>
+          </div>
         </div>
       </section>
 
       {loadError && (
         <div
           role="alert"
-          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"
         >
           {loadError} Figures shown as an em dash are unknown, not zero. Reload
           the page to try again.
         </div>
+      )}
+
+      {/* ---------------------------------------------------------------
+          Alerts the server reported, not a notification system
+      --------------------------------------------------------------- */}
+
+      {alerts.length > 0 && (
+        <section aria-label="Alerts" className="flex flex-wrap gap-2">
+          {alerts.map((alert) => {
+            const tone =
+              alert.tone === 'danger'
+                ? 'border-rose-200 bg-rose-50 text-rose-900 hover:border-rose-300'
+                : alert.tone === 'warning'
+                ? 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300'
+                : 'border-brand-200 bg-brand-50 text-brand-900 hover:border-brand-300';
+
+            return (
+              <button
+                key={alert.key}
+                onClick={() => setActiveModule(alert.module)}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-2xs font-semibold transition-colors ${tone}`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                {alert.label}
+                <ArrowUpRight className="h-3 w-3 opacity-60" />
+              </button>
+            );
+          })}
+        </section>
       )}
 
       {/* ---------------------------------------------------------------
@@ -304,7 +516,7 @@ export const DashboardModule: React.FC = () => {
       {hasAnyKpi && (
         <section className="panel overflow-hidden">
           <div className="flex items-center justify-between border-b border-hair px-5 py-3">
-            <span className="eyebrow">The shift in four numbers</span>
+            <span className="eyebrow">The shift in numbers</span>
             <span className="text-2xs text-slate-400">Live from this facility only</span>
           </div>
 
@@ -338,7 +550,7 @@ export const DashboardModule: React.FC = () => {
                   <div className="space-y-1.5">
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className="h-1.5 rounded-full bg-pine-600"
+                        className="h-1.5 rounded-full bg-brand-600"
                         style={{
                           width: `${Math.min(100, summary?.bedOccupancyRate ?? 0)}%`,
                         }}
@@ -349,7 +561,7 @@ export const DashboardModule: React.FC = () => {
                       <strong
                         className={`font-mono font-semibold ${
                           (inpatientBoard?.vitalsOverdueCount ?? 0) > 0
-                            ? 'text-clay-700'
+                            ? 'text-ember-700'
                             : 'text-emerald-700'
                         }`}
                       >
@@ -405,6 +617,7 @@ export const DashboardModule: React.FC = () => {
                 }
               />
             )}
+
             {can('billing.read') && (
               <KpiCell
                 label="Paid to date"
@@ -417,7 +630,7 @@ export const DashboardModule: React.FC = () => {
                 footer={
                   <span className="flex items-center justify-between gap-2">
                     <span>Outstanding</span>
-                    <strong className="font-mono font-semibold text-clay-700">
+                    <strong className="font-mono font-semibold text-ember-700">
                       {summary
                         ? `KES ${Number(summary.outstandingBillsKes).toLocaleString()}`
                         : '\u2014'}
@@ -426,7 +639,52 @@ export const DashboardModule: React.FC = () => {
                 }
               />
             )}
+          </div>
+        </section>
+      )}
 
+      {/* ---------------------------------------------------------------
+          Your workspace — only modules this session can actually open
+      --------------------------------------------------------------- */}
+
+      {quickActions.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-navy-900">
+                Your workspace
+              </h2>
+              <p className="mt-0.5 text-2xs text-muted">
+                The tasks that match your role. Everything here is already
+                permitted to this account.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={action.module}
+                  onClick={() => setActiveModule(action.module)}
+                  className="group flex items-center gap-3 rounded-card border border-hair bg-surface px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 transition-colors group-hover:bg-brand-600 group-hover:text-white">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-semibold text-navy-900">
+                      {action.label}
+                    </span>
+                    <span className="block truncate text-2xs text-muted">
+                      {action.hint}
+                    </span>
+                  </span>
+                  <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-300 transition-colors group-hover:text-brand-600" />
+                </button>
+              );
+            })}
           </div>
         </section>
       )}
@@ -469,7 +727,7 @@ export const DashboardModule: React.FC = () => {
                 <tbody>
                   {queues.slice(0, 5).map((q) => (
                     <tr key={q.id}>
-                      <td className="font-mono font-semibold text-ink">{q.tokenNumber}</td>
+                      <td className="font-mono font-semibold text-navy-900">{q.tokenNumber}</td>
                       <td className="text-ink-soft">{queueStationLabel(q.queueType)}</td>
                       <td>
                         <span
@@ -477,7 +735,7 @@ export const DashboardModule: React.FC = () => {
                             q.priority === 'Emergency'
                               ? 'bg-rose-50 text-rose-700'
                               : q.priority === 'Priority'
-                              ? 'border border-clay-200 bg-clay-50 text-clay-700'
+                              ? 'border border-ember-200 bg-ember-50 text-ember-700'
                               : 'bg-slate-100 text-ink-soft'
                           }`}
                         >
@@ -491,7 +749,7 @@ export const DashboardModule: React.FC = () => {
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-2xs font-medium ${
                             q.status === 'In-Progress'
-                              ? 'bg-pine-50 text-pine-800'
+                              ? 'bg-brand-50 text-brand-800'
                               : 'bg-slate-100 text-ink-soft'
                           }`}
                         >
@@ -507,7 +765,7 @@ export const DashboardModule: React.FC = () => {
                                 setIsJourneyModalOpen(true);
                               });
                             }}
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-2xs font-semibold text-pine-700 transition-colors hover:bg-pine-50"
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs font-semibold text-brand-700 transition-colors hover:bg-brand-50"
                           >
                             Patient journey
                             <ArrowUpRight className="h-3 w-3" />
@@ -534,7 +792,7 @@ export const DashboardModule: React.FC = () => {
                 <span>Showing the first 5 of {queues.length} open tickets</span>
                 <button
                   onClick={() => setActiveModule('reception')}
-                  className="font-semibold text-pine-700 hover:text-pine-900"
+                  className="font-semibold text-brand-700 hover:text-brand-900"
                 >
                   See the whole queue
                 </button>
@@ -571,13 +829,13 @@ export const DashboardModule: React.FC = () => {
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-hair px-5 py-3 text-2xs text-muted">
                 <span className="chip">{(inpatientBoard.shift || 'Current') + ' shift'}</span>
                 <span>
-                  <strong className="font-mono text-sm text-ink">
+                  <strong className="font-mono text-sm text-navy-900">
                     {inpatientBoard.admissionCount}
                   </strong>{' '}
                   admitted
                 </span>
                 <span>
-                  <strong className="font-mono text-sm text-ink">
+                  <strong className="font-mono text-sm text-navy-900">
                     {inpatientBoard.occupancyRate}%
                   </strong>{' '}
                   occupancy
@@ -585,7 +843,7 @@ export const DashboardModule: React.FC = () => {
                 <span
                   className={
                     inpatientBoard.vitalsOverdueCount > 0
-                      ? 'font-semibold text-clay-700'
+                      ? 'font-semibold text-ember-700'
                       : 'font-semibold text-emerald-700'
                   }
                 >
@@ -621,7 +879,7 @@ export const DashboardModule: React.FC = () => {
                       {inpatientBoard.rows.map((row) => (
                         <tr key={row.admissionId}>
                           <td>
-                            <div className="font-semibold text-ink">{row.patientName}</div>
+                            <div className="font-semibold text-navy-900">{row.patientName}</div>
                             {row.patientMrn && (
                               <div className="font-mono text-3xs text-muted">
                                 {row.patientMrn}
@@ -630,7 +888,7 @@ export const DashboardModule: React.FC = () => {
                           </td>
                           <td className="text-ink-soft">
                             {row.wardName}
-                            <span className="ml-1 font-mono text-2xs text-pine-700">
+                            <span className="ml-1 font-mono text-2xs text-brand-700">
                               #{row.bedNumber}
                             </span>
                           </td>
@@ -642,14 +900,14 @@ export const DashboardModule: React.FC = () => {
                               <span
                                 className={
                                   row.vitalsOverdue
-                                    ? 'font-semibold text-clay-700'
+                                    ? 'font-semibold text-ember-700'
                                     : 'text-ink-soft'
                                 }
                               >
                                 {row.hoursSinceVitals}h ago
                               </span>
                             ) : (
-                              <span className="font-semibold text-clay-700">
+                              <span className="font-semibold text-ember-700">
                                 Never recorded
                               </span>
                             )}
@@ -678,8 +936,8 @@ export const DashboardModule: React.FC = () => {
                             <span
                               className={
                                 row.notesToday === 0
-                                  ? 'font-semibold text-clay-700'
-                                  : 'text-ink'
+                                  ? 'font-semibold text-ember-700'
+                                  : 'text-navy-900'
                               }
                             >
                               {row.notesToday}
@@ -693,7 +951,7 @@ export const DashboardModule: React.FC = () => {
               )}
 
               {inpatientBoard.vitalsOverdueCount > 0 && (
-                <div className="flex items-center gap-2 border-t border-clay-200 bg-clay-50 px-5 py-2.5 text-2xs text-clay-800">
+                <div className="flex items-center gap-2 border-t border-ember-200 bg-ember-50 px-5 py-2.5 text-2xs text-ember-800">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>
                     {inpatientBoard.vitalsOverdueCount} admitted patient
@@ -741,9 +999,9 @@ export const DashboardModule: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hair px-5 py-3">
               <span className="text-2xs text-muted">
                 Reports loaded:{' '}
-                <strong className="font-mono text-ink">{surveillance.length}</strong>
+                <strong className="font-mono text-navy-900">{surveillance.length}</strong>
               </span>
-              <span className="text-2xs font-medium text-clay-700">Not assessed</span>
+              <span className="text-2xs font-medium text-ember-700">Not assessed</span>
             </div>
 
             {surveillance.length === 0 ? (
@@ -756,7 +1014,7 @@ export const DashboardModule: React.FC = () => {
                   <div key={rep.id} className="bg-surface px-5 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-xs font-semibold text-ink">
+                        <div className="truncate text-xs font-semibold text-navy-900">
                           {rep.diseaseName}
                         </div>
                         <div className="mt-0.5 font-mono text-3xs text-muted">
@@ -764,7 +1022,7 @@ export const DashboardModule: React.FC = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-mono text-lg font-semibold tabular-nums text-ink">
+                        <div className="font-mono text-lg font-semibold tabular-nums text-navy-900">
                           {rep.casesCount}
                         </div>
                         <div className="text-3xs uppercase tracking-wide text-muted">
@@ -780,13 +1038,67 @@ export const DashboardModule: React.FC = () => {
         </section>
       )}
 
+      {/* ---------------------------------------------------------------
+          Recent activity — only for accounts allowed to read the trail
+      --------------------------------------------------------------- */}
+
+      {canReadAudit && auditLogs.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-navy-900">
+                Recent activity
+              </h2>
+              <p className="mt-0.5 text-2xs text-muted">
+                The newest entries on this facility's audit trail. Open the
+                audit screen for the full record.
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveModule('audit')}
+              className="btn-quiet self-start"
+            >
+              Audit trail
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="panel divide-y divide-hair">
+            {auditLogs.map((log) => (
+              <div
+                key={log.id}
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
+                  <span className="truncate font-medium text-ink-soft">
+                    {log.action}
+                  </span>
+                  <span className="truncate font-mono text-2xs text-muted">
+                    {log.resource}
+                    {log.resourceId ? ` #${log.resourceId}` : ''}
+                  </span>
+                </div>
+                <span className="font-mono text-2xs text-slate-400">
+                  {new Date(log.timestamp).toLocaleString('en-KE', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Scope note. No call to action: the rail already does that. */}
       <p className="pt-1 text-center text-3xs leading-relaxed text-slate-400">
         Figures cover {currentFacility?.name || 'this facility'} only and are
         read when this page loads. A queue ticket is a place in line, not a
         diagnosis; open the encounter for the clinical record.
       </p>
-
     </div>
   );
 };

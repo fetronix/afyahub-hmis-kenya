@@ -60,7 +60,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen w-screen bg-canvas flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-white shadow-card flex items-center justify-center">
-            <Loader2 className="w-7 h-7 text-pine-600 animate-spin" />
+            <Loader2 className="w-7 h-7 text-brand-600 animate-spin" />
           </div>
 
           <div className="text-center">
@@ -192,7 +192,7 @@ const AppContent: React.FC = () => {
 
       {/* Toast Notification Banner */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-xl border border-pine-800 bg-pine-900 px-4 py-3 text-xs text-white shadow-lift animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-xl border border-brand-800 bg-brand-900 px-4 py-3 text-xs text-white shadow-lift animate-in fade-in slide-in-from-bottom-2 duration-200">
           <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>

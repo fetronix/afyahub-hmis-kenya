@@ -5,13 +5,17 @@ import {
   type ModuleId,
 } from '../context/HmisContext.tsx';
 
+import { navSections, superAdminNavSections } from './Sidebar.tsx';
+
 import {
   ChevronDown,
+  ChevronRight,
   LogOut,
   Menu,
   X,
   UserCircle,
   ShieldCheck,
+  LayoutDashboard,
 } from 'lucide-react';
 
 /*
@@ -19,8 +23,8 @@ import {
 | Module Titles
 |--------------------------------------------------------------------------
 |
-| One place that names where the user is. Rendered next to the brand so
-| the rail can stay quiet: the header answers "which screen am I on".
+| One place that names where the user is. Rendered as the last crumb of
+| the breadcrumb so the rail can stay quiet.
 |
 */
 
@@ -49,6 +53,25 @@ const moduleTitles: Record<ModuleId, string> = {
 };
 
 /*
+ * The group a module belongs to comes from the rail itself, so the two
+ * cannot disagree about where "Laboratory" lives.
+ */
+const sectionLabel = (id: ModuleId, isSuperAdmin: boolean): string | null => {
+  const sections = isSuperAdmin
+    ? [...superAdminNavSections, ...navSections]
+    : [...navSections, ...superAdminNavSections];
+
+  const match = sections.find((section) =>
+    section.items.some((item) => item.id === id)
+  );
+
+  if (!match) return null;
+
+  const words = match.title.toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+/*
 |--------------------------------------------------------------------------
 | Header
 |--------------------------------------------------------------------------
@@ -59,6 +82,7 @@ export const Header: React.FC = () => {
     authenticatedUser,
     currentUser,
     activeModule,
+    setActiveModule,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
     logout,
@@ -88,6 +112,13 @@ export const Header: React.FC = () => {
   const department = currentUser?.department || 'JaliCare HMIS';
   const professionalId = currentUser?.license || '';
 
+  const isSuperAdmin = Boolean(
+    authenticatedUser?.isSuperAdmin ||
+    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
+
+  const group = sectionLabel(activeModule, isSuperAdmin);
+
   const userInitials =
     displayName
       .trim()
@@ -116,7 +147,7 @@ export const Header: React.FC = () => {
   return (
     <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-hair bg-surface px-3 sm:px-5">
       {/* ---------------------------------------------------------------
-          Brand + location
+          Brand + breadcrumb
       --------------------------------------------------------------- */}
 
       <div className="flex min-w-0 items-center gap-2.5 sm:gap-4">
@@ -134,40 +165,62 @@ export const Header: React.FC = () => {
         </button>
 
         <div className="flex items-center gap-2.5">
-          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-pine-800 text-white shadow-sm">
-            <span className="font-display text-base leading-none">J</span>
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-700 text-white shadow-sm">
+            <span className="text-base font-bold leading-none tracking-tight">J</span>
             <span
               aria-hidden="true"
-              className="absolute bottom-0 right-0 h-2 w-2 rounded-tl-[4px] bg-clay-400"
+              className="absolute bottom-0 right-0 h-2 w-2 rounded-tl-[4px] bg-ember-500"
               title="Care Indicator"
             />
           </div>
 
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="font-display text-base leading-none tracking-tight text-ink whitespace-nowrap">
-                JaliCare
+          <div className="flex flex-col leading-none">
+            <span className="flex items-center gap-1.5">
+              <span className="text-[15px] font-bold tracking-tight text-navy-900 whitespace-nowrap">
+                Jali<span className="text-ember-600">Care</span>
               </span>
-              <span className="rounded bg-clay-100 px-1.5 py-0.5 text-3xs font-semibold uppercase leading-none tracking-[0.14em] text-clay-700">
+              <span className="hidden rounded bg-navy-50 px-1.5 py-0.5 text-3xs font-bold uppercase leading-none tracking-[0.14em] text-navy-600 sm:inline">
                 HMIS
               </span>
-            </div>
-            <span className="mt-1 hidden text-3xs font-medium tracking-wide text-muted xs:inline">
-              Kenya Health Information System
+            </span>
+            <span className="mt-1 hidden text-3xs font-medium tracking-wide text-muted sm:inline">
+              Healthcare. Empowered.
             </span>
           </div>
         </div>
 
-        <span aria-hidden="true" className="hidden h-7 w-px bg-hair md:block" />
+        <span aria-hidden="true" className="hidden h-8 w-px bg-hair md:block" />
 
-        <div className="hidden min-w-0 flex-col md:flex">
-          <span className="text-3xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Current section
-          </span>
-          <span className="truncate text-xs font-semibold text-ink-soft">
+        {/* Breadcrumb: home › department › screen */}
+        <nav
+          aria-label="Breadcrumb"
+          className="hidden min-w-0 items-center gap-1.5 text-xs md:flex"
+        >
+          <button
+            type="button"
+            onClick={() => setActiveModule('dashboard')}
+            className="flex items-center gap-1 rounded px-1 py-0.5 text-muted transition-colors hover:bg-brand-50 hover:text-brand-700"
+            aria-label="Go to overview"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+          </button>
+
+          {group && (
+            <>
+              <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" />
+              <span className="whitespace-nowrap text-muted">{group}</span>
+            </>
+          )}
+
+          <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" />
+          <span
+            className="truncate font-semibold text-navy-800"
+            aria-current="page"
+            title={moduleTitles[activeModule]}
+          >
             {moduleTitles[activeModule]}
           </span>
-        </div>
+        </nav>
       </div>
 
       {/* ---------------------------------------------------------------
@@ -175,12 +228,10 @@ export const Header: React.FC = () => {
       --------------------------------------------------------------- */}
 
       <div className="flex items-center gap-1.5 sm:gap-3">
-        <div className="hidden items-center gap-1.5 rounded-full border border-hair bg-slate-50 py-1 pl-2 pr-2.5 lg:flex">
-          <ShieldCheck className="h-3.5 w-3.5 text-pine-600" />
-          <span className="text-2xs font-semibold text-ink-soft">
-            DHA ready
-          </span>
-          <span className="text-2xs text-slate-400">·</span>
+        <div className="hidden items-center gap-1.5 rounded-full border border-hair bg-canvas py-1 pl-2 pr-2.5 lg:flex">
+          <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
+          <span className="text-2xs font-semibold text-ink-soft">DHA ready</span>
+          <span className="text-2xs text-slate-300">·</span>
           <span className="font-mono text-2xs text-muted">FHIR R4</span>
         </div>
 
@@ -188,19 +239,19 @@ export const Header: React.FC = () => {
           <button
             type="button"
             onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-            className="flex items-center gap-2 rounded-xl border border-hair bg-surface py-1 pl-1 pr-2.5 text-left transition-colors hover:border-pine-200 hover:bg-slate-50/60 sm:pr-3"
+            className="flex items-center gap-2 rounded-lg border border-hair bg-surface py-1 pl-1 pr-2.5 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/40 sm:pr-3"
             aria-haspopup="menu"
             aria-expanded={userDropdownOpen}
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-pine-700 text-2xs font-semibold text-white">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-navy-800 text-2xs font-semibold text-white">
               {userInitials}
             </span>
 
             <span className="hidden min-w-0 flex-col sm:flex">
-              <span className="max-w-28 truncate text-xs font-semibold leading-tight text-ink sm:max-w-32">
+              <span className="max-w-28 truncate text-xs font-semibold leading-tight text-navy-900 sm:max-w-32">
                 {displayName}
               </span>
-              <span className="max-w-28 truncate text-2xs font-medium leading-tight text-clay-700 sm:max-w-32">
+              <span className="max-w-28 truncate text-2xs font-medium leading-tight text-brand-700 sm:max-w-32">
                 {displayRole}
               </span>
             </span>
@@ -227,12 +278,12 @@ export const Header: React.FC = () => {
               >
                 <div className="border-b border-hair px-3 py-3">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pine-700 text-sm font-semibold text-white">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-navy-800 text-sm font-semibold text-white">
                       {userInitials}
                     </span>
 
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-ink">
+                      <div className="truncate font-semibold text-navy-900">
                         {displayName}
                       </div>
 
@@ -242,7 +293,7 @@ export const Header: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="mt-0.5 text-2xs font-semibold text-clay-700">
+                      <div className="mt-0.5 text-2xs font-semibold text-brand-700">
                         {displayRole}
                       </div>
                     </div>
@@ -251,7 +302,7 @@ export const Header: React.FC = () => {
 
                 <div className="space-y-2.5 px-3 py-3">
                   <div>
-                    <div className="text-3xs font-semibold uppercase tracking-[0.16em] text-muted">
+                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
                       Email
                     </div>
                     <div className="mt-0.5 truncate text-xs text-ink-soft">
@@ -260,7 +311,7 @@ export const Header: React.FC = () => {
                   </div>
 
                   <div>
-                    <div className="text-3xs font-semibold uppercase tracking-[0.16em] text-muted">
+                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
                       Work area
                     </div>
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-soft">
@@ -271,7 +322,7 @@ export const Header: React.FC = () => {
 
                   {professionalId && (
                     <div>
-                      <div className="text-3xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
                         Professional ID
                       </div>
                       <div className="mt-0.5 font-mono text-xs text-ink-soft">
@@ -282,7 +333,7 @@ export const Header: React.FC = () => {
 
                   {authenticatedUser && (
                     <div>
-                      <div className="text-3xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
                         Account status
                       </div>
                       <div className="mt-0.5 text-xs text-ink-soft">

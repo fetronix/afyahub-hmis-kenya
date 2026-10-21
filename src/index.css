@@ -4,27 +4,24 @@
  * JaliCare — the design language
  * ------------------------------------------------------------------
  *
- * One palette, defined once. The application grew up on Tailwind's
- * cool blue/slate defaults: every screen picked its own accent, and
- * the result read as a collection of pages rather than one product.
+ * The brand is the logo: a deep hospital blue frame, a sky-blue arc and
+ * an orange arrow. Healthcare. Empowered. Everything below is that
+ * logo, restated as tokens:
  *
- * Two deliberate moves live in this file:
+ *   navy    the deep hospital blue — the rail, the login panel, headings
+ *   brand   sky/hospital blue — links, active navigation, primary actions
+ *   ember   bright orange — one call to action per screen, sparingly
+ *   copper  dark orange — emphasis, selected indicators, warning-adjacent
+ *   canvas  light blue-grey — the page behind the cards
  *
- *   1. The *existing* palettes the modules already use are re-pointed
- *      at the JaliCare palette (blue and teal to pine, slate to warm
- *      stone). Twenty modules have thousands of `bg-blue-700`,
- *      `text-slate-500` and `border-slate-200` classes; redefining
- *      the ramp changes all of them at once and keeps them consistent,
- *      instead of a class-by-class rewrite that would drift within a
- *      week.
+ * Tailwind's own `blue`, `teal` and `slate` ramps are re-pointed at this
+ * palette. The application already writes thousands of `bg-blue-700`,
+ * `text-slate-500` and `border-slate-200` classes; re-pointing the ramp
+ * restyles every module consistently without a class-by-class rewrite
+ * that would drift within a week.
  *
- *   2. A small set of semantic tokens (canvas, surface, ink, hair,
- *      clay) and component classes (panel, eyebrow, stat, field) give
- *      new screens something quieter to build with.
- *
- * Luminance is kept close to the palette it replaces, so contrast that
- * passed before still passes. Status colours (emerald, amber, rose)
- * are *not* re-pointed: a warning must keep looking like a warning.
+ * Status colours (emerald, amber, rose) are deliberately NOT re-pointed:
+ * a warning must keep looking like a warning.
  */
 
 @theme {
@@ -34,94 +31,121 @@
   --text-3xs: 0.625rem; /* 10px */
   --text-3xs--line-height: 0.875rem;
 
-  /* Type */
+  /* Type. One family, two weights of voice: UI sans and tabular mono. */
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --font-display:
-    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
-    Georgia, "Times New Roman", serif;
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
   /* Surfaces */
-  --color-canvas: #f6f3ec;
+  --color-canvas: #f3f7fc;
   --color-surface: #ffffff;
-  --color-ink: #16241f;
-  --color-ink-soft: #46544f;
-  --color-muted: #6f7b75;
-  --color-hair: #e7e1d5;
+  --color-ink: #0d2033;
+  --color-ink-soft: #3b4d61;
+  --color-muted: #64748b;
+  --color-hair: #dce6f2;
 
-  /* Pine — the primary. Replaces blue and teal. */
-  --color-pine-50: #eef5f2;
-  --color-pine-100: #d8e8e2;
-  --color-pine-200: #b3d2c8;
-  --color-pine-300: #86b6a8;
-  --color-pine-400: #579487;
-  --color-pine-500: #38786c;
-  --color-pine-600: #256157;
-  --color-pine-700: #184f46;
-  --color-pine-800: #113d36;
-  --color-pine-900: #0c302a;
-  --color-pine-950: #071f1b;
+  /* Deep hospital blue — the frame. */
+  --color-navy-50: #eef3f9;
+  --color-navy-100: #d8e4f1;
+  --color-navy-200: #b0c7e0;
+  --color-navy-300: #7fa3c8;
+  --color-navy-400: #4d7aa8;
+  --color-navy-500: #2f5d8a;
+  --color-navy-600: #214a72;
+  --color-navy-700: #17395b;
+  --color-navy-800: #102b47;
+  --color-navy-900: #0b2038;
+  --color-navy-950: #061527;
 
-  /* Clay — the warm counterpoint. Used sparingly. */
-  --color-clay-50: #fbf3ec;
-  --color-clay-100: #f5e3d3;
-  --color-clay-200: #ebc7a7;
-  --color-clay-300: #dda274;
-  --color-clay-400: #cd8049;
-  --color-clay-500: #b96634;
-  --color-clay-600: #9c5129;
-  --color-clay-700: #7c4022;
-  --color-clay-800: #5d311c;
-  --color-clay-900: #442416;
+  /* Sky / hospital blue — the primary. */
+  --color-brand-50: #eef6fd;
+  --color-brand-100: #d8ebfa;
+  --color-brand-200: #b3d8f4;
+  --color-brand-300: #7fbfec;
+  --color-brand-400: #46a1e0;
+  --color-brand-500: #2384c9;
+  --color-brand-600: #186aa9;
+  --color-brand-700: #145588;
+  --color-brand-800: #12456e;
+  --color-brand-900: #103a5c;
+  --color-brand-950: #0a253c;
 
-  /* Warm stone — replaces slate. */
-  --color-slate-50: #faf9f5;
-  --color-slate-100: #f4f1e9;
-  --color-slate-200: #e8e2d6;
-  --color-slate-300: #d6cebe;
-  --color-slate-400: #b1a795;
-  --color-slate-500: #7b7263;
-  --color-slate-600: #5f5749;
-  --color-slate-700: #484238;
-  --color-slate-800: #2f2b24;
-  --color-slate-900: #201d18;
-  --color-slate-950: #13110d;
+  /* Bright orange — the one call to action. */
+  --color-ember-50: #fff7ed;
+  --color-ember-100: #ffedd5;
+  --color-ember-200: #fed7aa;
+  --color-ember-300: #fdba74;
+  --color-ember-400: #fb923c;
+  --color-ember-500: #f97316;
+  --color-ember-600: #ea580c;
+  --color-ember-700: #c2410c;
+  --color-ember-800: #9a3412;
+  --color-ember-900: #7c2d12;
 
-  /* Blue stays blue in meaning, but follows the brand. */
-  --color-blue-50: #eef5f2;
-  --color-blue-100: #d8e8e2;
-  --color-blue-200: #b3d2c8;
-  --color-blue-300: #86b6a8;
-  --color-blue-400: #579487;
-  --color-blue-500: #38786c;
-  --color-blue-600: #256157;
-  --color-blue-700: #184f46;
-  --color-blue-800: #113d36;
-  --color-blue-900: #0c302a;
-  --color-blue-950: #071f1b;
+  /* Dark orange — emphasis, markers, selected state. */
+  --color-copper-50: #fdf3ec;
+  --color-copper-100: #fae2d0;
+  --color-copper-200: #f3c2a3;
+  --color-copper-300: #e79b70;
+  --color-copper-400: #d97545;
+  --color-copper-500: #c4532a;
+  --color-copper-600: #a63f1f;
+  --color-copper-700: #85321c;
+  --color-copper-800: #652818;
+  --color-copper-900: #4b2014;
 
-  /* ...and so does teal, so the two families are one. */
-  --color-teal-50: #eef5f2;
-  --color-teal-100: #d8e8e2;
-  --color-teal-200: #b3d2c8;
-  --color-teal-300: #86b6a8;
-  --color-teal-400: #579487;
-  --color-teal-500: #38786c;
-  --color-teal-600: #256157;
-  --color-teal-700: #184f46;
-  --color-teal-800: #113d36;
-  --color-teal-900: #0c302a;
-  --color-teal-950: #071f1b;
+  /* Hospital blue for every `blue-*` utility. */
+  --color-blue-50: #eef6fd;
+  --color-blue-100: #d8ebfa;
+  --color-blue-200: #b3d8f4;
+  --color-blue-300: #7fbfec;
+  --color-blue-400: #46a1e0;
+  --color-blue-500: #2384c9;
+  --color-blue-600: #186aa9;
+  --color-blue-700: #145588;
+  --color-blue-800: #12456e;
+  --color-blue-900: #103a5c;
+  --color-blue-950: #0a253c;
 
-  --radius-card: 1.125rem;
+  /* `teal` was the old clinical accent; it is the same blue now. */
+  --color-teal-50: #eef6fd;
+  --color-teal-100: #d8ebfa;
+  --color-teal-200: #b3d8f4;
+  --color-teal-300: #7fbfec;
+  --color-teal-400: #46a1e0;
+  --color-teal-500: #2384c9;
+  --color-teal-600: #186aa9;
+  --color-teal-700: #145588;
+  --color-teal-800: #12456e;
+  --color-teal-900: #103a5c;
+  --color-teal-950: #0a253c;
+
+  /* Cool blue-grey neutrals. */
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  --radius-card: 0.875rem;
   --shadow-card:
-    0 1px 2px rgba(22, 36, 31, 0.04), 0 12px 28px -18px rgba(22, 36, 31, 0.28);
+    0 1px 2px rgba(13, 32, 51, 0.05),
+    0 10px 24px -18px rgba(13, 32, 51, 0.35);
   --shadow-lift:
-    0 1px 2px rgba(22, 36, 31, 0.05), 0 22px 44px -24px rgba(22, 36, 31, 0.4);
+    0 2px 4px rgba(13, 32, 51, 0.06),
+    0 22px 44px -24px rgba(13, 32, 51, 0.45);
 }
 
 @layer base {
@@ -138,12 +162,12 @@
   }
 
   ::selection {
-    background-color: var(--color-pine-100);
-    color: var(--color-pine-900);
+    background-color: var(--color-brand-100);
+    color: var(--color-brand-900);
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-pine-400);
+    outline: 2px solid var(--color-brand-500);
     outline-offset: 2px;
   }
 
@@ -155,13 +179,13 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #d6cebe;
+    background: #cbd5e1;
     border-radius: 999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #b1a795;
+    background: #94a3b8;
     background-clip: content-box;
   }
 }
@@ -173,16 +197,16 @@
   }
 
   .panel-header {
-    @apply flex flex-col gap-1 border-b border-hair px-5 py-4 sm:flex-row sm:items-center sm:justify-between;
+    @apply flex flex-col gap-1 border-b border-hair px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between;
   }
 
   /* Small caps label above a section or a value. */
   .eyebrow {
-    @apply text-2xs font-semibold uppercase tracking-[0.18em] text-muted;
+    @apply text-2xs font-semibold uppercase tracking-[0.16em] text-muted;
   }
 
   .display-title {
-    @apply font-display text-2xl leading-tight tracking-tight text-ink;
+    @apply text-2xl font-semibold leading-tight tracking-tight text-ink;
   }
 
   .stat-value {
@@ -190,11 +214,15 @@
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-pine-800 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-copper-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-700 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-quiet {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-hair bg-surface px-3.5 py-2 text-xs font-semibold text-ink-soft transition-colors hover:border-pine-200 hover:text-pine-800 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-hair bg-surface px-3.5 py-2 text-xs font-semibold text-ink-soft transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .field-label {
@@ -202,7 +230,7 @@
   }
 
   .field-input {
-    @apply h-11 w-full rounded-xl border border-hair bg-surface px-3.5 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-pine-400 focus:ring-4 focus:ring-pine-100 disabled:bg-slate-50 disabled:text-slate-500;
+    @apply h-11 w-full rounded-lg border border-slate-300 bg-surface px-3.5 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500;
   }
 
   .chip {
@@ -214,7 +242,7 @@
   }
 
   .table-quiet thead th {
-    @apply border-b border-hair bg-slate-50/70 px-4 py-2.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted;
+    @apply border-b border-hair bg-slate-50/80 px-4 py-2.5 text-2xs font-semibold uppercase tracking-[0.08em] text-muted;
   }
 
   .table-quiet tbody td {
@@ -226,6 +254,6 @@
   }
 
   .table-quiet tbody tr:hover {
-    @apply bg-slate-50/60;
+    @apply bg-brand-50/40;
   }
 }
