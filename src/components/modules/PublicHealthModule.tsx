@@ -84,10 +84,10 @@ export const PublicHealthModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Public Health Surveillance & MOH 705 Reporting</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Public Health Surveillance & MOH 705 Reporting</h1>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             Routine disease reporting (MOH 705A & 705B), notifiable epidemic alerts, and Kenya Health Information System (KHIS) export.
           </p>
         </div>

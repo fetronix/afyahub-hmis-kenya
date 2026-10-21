@@ -273,12 +273,12 @@ export const ReportsModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
+      <div className="rounded-card border border-hair bg-surface p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
             Reports &amp; Analytics
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             {currentFacility.name}
             <span className="mx-1.5 text-slate-300">·</span>
             <span className="font-mono">{currentFacility.mflCode || 'No MFL'}</span>

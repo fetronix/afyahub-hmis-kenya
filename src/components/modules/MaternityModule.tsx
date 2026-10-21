@@ -762,12 +762,12 @@ export const MaternityModule: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 rounded-card border border-hair bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-slate-900">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
             Maternity &amp; MCH
           </h1>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             Antenatal care, labour with a partograph, and delivery — recorded
             against one pregnancy.
           </p>

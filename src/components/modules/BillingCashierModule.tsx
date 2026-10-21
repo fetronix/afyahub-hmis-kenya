@@ -145,10 +145,10 @@ export const BillingCashierModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Patient Billing, Cashier POS & Receipts</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Patient Billing, Cashier POS & Receipts</h1>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             M-Pesa STK push integration, Cash reconciliation, tariff charging, and official medical receipting.
           </p>
         </div>

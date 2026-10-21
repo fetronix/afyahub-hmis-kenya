@@ -282,12 +282,12 @@ export const InsuranceClaimsModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
             Payer Claims — SHA and Private Insurers
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             Draft a claim from invoice lines, record the payer&apos;s decision, and post the approved
             amount back to the invoice.
           </p>
