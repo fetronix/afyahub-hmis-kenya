@@ -414,13 +414,39 @@ export const InpatientModule: React.FC = () => {
     try {
       // The bed is released server-side from the admission record, so a
       // client-supplied bedId is neither needed nor trusted.
-      await api.dischargePatient(dischargeTarget.id, {
+      const discharged = await api.dischargePatient(dischargeTarget.id, {
         dischargeDate: new Date().toISOString().slice(0, 16).replace('T', ' '),
         dischargeType,
         dischargeSummary,
       });
 
-      showToast('Patient discharged and bed sent for terminal cleaning.');
+      /*
+       * Say what the bill says. Each night is charged from the ward's
+       * bed-day tariff; a facility that has not priced one gets a
+       * discharge and an untouched invoice, and needs to be told.
+       */
+      const nightsBilled = (discharged.billing?.bedDays ?? []).filter(
+        (charge) => charge?.charged,
+      );
+      const nightsUnbilled = (discharged.billing?.bedDays ?? []).filter(
+        (charge) => charge && !charge.charged,
+      );
+      const billedTotal = nightsBilled.reduce(
+        (sum, charge) => sum + Number(charge?.totalAmount ?? 0),
+        0,
+      );
+
+      if (nightsUnbilled.length > 0) {
+        showToast(
+          `Patient discharged, bed sent for cleaning. ${nightsUnbilled[0]?.message ?? 'Bed nights were not billed.'}`,
+        );
+      } else if (nightsBilled.length > 0) {
+        showToast(
+          `Patient discharged and bed sent for cleaning. ${nightsBilled.length} night(s) billed, KES ${billedTotal.toFixed(2)}.`,
+        );
+      } else {
+        showToast('Patient discharged and bed sent for terminal cleaning.');
+      }
       setDischargeTarget(null);
       triggerRefresh();
     } catch (err: any) {

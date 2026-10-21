@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { Patient, Encounter, Observation, Diagnosis, Procedure, Medication, LabTest } from '../../types/index.ts';
+import type { ServiceCharge } from '../../api/client.ts';
+import { Patient, Encounter, Observation, Diagnosis, Procedure, Medication, LabTest, QueueItem } from '../../types/index.ts';
 import {
   Stethoscope,
   Activity,
@@ -36,6 +37,7 @@ export const OutpatientModule: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [activeEncounter, setActiveEncounter] = useState<Encounter | null>(null);
+  const [triageQueue, setTriageQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Vitals State
@@ -100,12 +102,15 @@ export const OutpatientModule: React.FC = () => {
     async function loadData() {
       setLoading(true);
       try {
-        const [pList, tests] = await Promise.all([
+        const [pList, tests, queue] = await Promise.all([
           api.getPatients(currentTenant?.id, currentFacility?.id),
           api.getLabTests(currentFacility?.id),
+          // The desk works from the queue the receptionist filled.
+          api.getQueues(currentFacility?.id, 'Triage').catch(() => []),
         ]);
         setPatients(pList);
         setLabTests(tests);
+        setTriageQueue(queue);
       } catch (err) {
         console.error('Failed to load OPD data:', err);
       } finally {
@@ -206,6 +211,24 @@ export const OutpatientModule: React.FC = () => {
 
       setActiveEncounter(newEncounter);
       setVitals({ ...emptyVitals });
+
+      /*
+       * The receptionist's token moves to In-Progress as the clinician
+       * opens the visit, so the waiting room can see who is being seen.
+       */
+      const waitingToken = triageQueue.find(
+        (token) =>
+          token.patientId === activePatient.id &&
+          (token.status === 'Waiting' || token.status === 'Called'),
+      );
+
+      if (waitingToken) {
+        await api
+          .updateQueueStatus(waitingToken.id, 'In-Progress')
+          .catch((error: unknown) => {
+            console.error('Could not move the triage token:', error);
+          });
+      }
       setNotes({
         triageCategory: '',
         chiefComplaint: '',
@@ -216,7 +239,24 @@ export const OutpatientModule: React.FC = () => {
       });
       setDiagnosisList([]);
       setPrescriptions([]);
-      showToast('Visit started. Record the patient’s actual observations and triage assessment.');
+      /*
+       * Say what the invoice says. The consultation is charged by the
+       * server; if the facility has not priced OPD-CONSULT the screen
+       * must not imply a fee was raised.
+       */
+      const consultBilling = (newEncounter as { billing?: ServiceCharge | null }).billing;
+
+      if (consultBilling?.charged) {
+        showToast(
+          `Visit started. Consultation billed KES ${consultBilling.totalAmount} on ${consultBilling.invoiceNumber}.`
+        );
+      } else {
+        showToast(
+          `Visit started, but the consultation was not billed: ${
+            consultBilling?.message ?? 'the server returned no billing result'
+          }`
+        );
+      }
     } catch (err: any) {
       console.error('Failed to start outpatient visit:', err);
       showToast(`Could not start visit: ${err.message}`);
@@ -327,6 +367,50 @@ export const OutpatientModule: React.FC = () => {
     } catch (err: any) {
       console.error('Failed to save vital signs:', err);
       showToast(`Could not save vital signs: ${err.message}`);
+    }
+  };
+
+  /**
+   * End the visit.
+   *
+   * Without this the encounter stayed Active forever, the next visit
+   * reused it, and the consultation on the second visit was refused as
+   * a duplicate of the first — a returning patient was seen but never
+   * billed.
+   */
+  const handleCompleteVisit = async () => {
+    if (!activeEncounter) return;
+
+    if (
+      !window.confirm(
+        'Complete this visit? The clinical record stays, and any unpaid balance stays on the patient\'s invoice at the cashier.',
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await api.updateEncounter(activeEncounter.id, { status: 'Completed' });
+
+      const openToken = triageQueue.find(
+        (token) =>
+          token.patientId === activeEncounter.patientId &&
+          token.status === 'In-Progress',
+      );
+
+      if (openToken) {
+        await api
+          .updateQueueStatus(openToken.id, 'Completed')
+          .catch((error: unknown) => {
+            console.error('Could not close the triage token:', error);
+          });
+      }
+
+      showToast('Visit completed. The patient can be seen again as a new visit.');
+      setActiveEncounter(null);
+      triggerRefresh();
+    } catch (err: any) {
+      showToast(`Could not complete the visit: ${err.message}`);
     }
   };
 
@@ -453,20 +537,22 @@ export const OutpatientModule: React.FC = () => {
       });
       setPrescriptions(prev => [...prev, med]);
 
-      // Also route patient to Pharmacy Queue
-      await api.createQueueItem({
+      // Also route patient to Pharmacy Queue. The token is allocated
+      // by the server so two prescriptions cannot share one.
+      const pharmacyEntry = await api.createQueueItem({
         tenantId: activeEncounter.tenantId,
         facilityId: activeEncounter.facilityId,
         patientId: activePatient.id,
         encounterId: activeEncounter.id,
         queueType: 'Pharmacy',
-        tokenNumber: `PHARM-${Math.floor(100 + Math.random() * 900)}`,
         priority: 'Normal',
         status: 'Waiting',
         waitingTimeMinutes: 0,
       });
 
-      showToast(`Prescription saved and patient routed to Pharmacy queue.`);
+      showToast(
+        `Prescription saved and patient routed to Pharmacy — token ${pharmacyEntry.tokenNumber}.`
+      );
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
     }
@@ -517,9 +603,23 @@ export const OutpatientModule: React.FC = () => {
         orderedBy: currentUser.name,
       });
 
-      showToast(
-        `Created ${result.orders.length} lab order(s) and routed the patient to the Laboratory queue.`
-      );
+      const charges = result.billing ?? [];
+      const billedTotal = charges
+        .filter((entry) => entry.billing?.charged)
+        .reduce((sum, entry) => sum + Number(entry.billing?.totalAmount ?? 0), 0);
+      const unbilled = charges.filter((entry) => !entry.billing?.charged);
+
+      if (unbilled.length === 0 && billedTotal > 0) {
+        showToast(
+          `Created ${result.orders.length} lab order(s) and billed KES ${billedTotal.toFixed(2)} — routed to the Laboratory queue.`
+        );
+      } else {
+        showToast(
+          `Created ${result.orders.length} lab order(s) and routed them to the Laboratory queue. Not billed: ${
+            unbilled[0]?.billing?.message ?? 'no laboratory tariff matched'
+          }`
+        );
+      }
       setSelectedLabTestIds([]);
       setLabInvestigations('');
       setLabSearch('');
@@ -549,15 +649,25 @@ export const OutpatientModule: React.FC = () => {
           </div>
 
           {activePatient && (
-            <button
-              onClick={() => {
-                setSelectedPatient(activePatient);
-                setIsJourneyModalOpen(true);
-              }}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-medium transition-colors"
-            >
-              Full Longitudinal Record
-            </button>
+            <div className="flex items-center gap-2">
+              {activeEncounter && (
+                <button
+                  onClick={handleCompleteVisit}
+                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-md text-xs font-semibold transition-colors"
+                >
+                  Complete visit
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setSelectedPatient(activePatient);
+                  setIsJourneyModalOpen(true);
+                }}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-medium transition-colors"
+              >
+                Full Longitudinal Record
+              </button>
+            </div>
           )}
         </div>
 
@@ -583,6 +693,41 @@ export const OutpatientModule: React.FC = () => {
             </button>
           ))}
         </div>
+
+        {/*
+          Who the reception desk has actually sent. Selecting from here
+          is the same as selecting from the carousel, but it tells the
+          clinician they have someone waiting.
+        */}
+        {triageQueue.filter((token) => token.status !== 'Completed' && token.status !== 'Cancelled').length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="text-2xs font-semibold text-slate-400 uppercase tracking-wider">
+              Waiting in Triage:
+            </span>
+            {triageQueue
+              .filter((token) => token.status !== 'Completed' && token.status !== 'Cancelled')
+              .map((token) => {
+                const queuedPatient = patients.find((p) => p.id === token.patientId);
+
+                return (
+                  <button
+                    key={token.id}
+                    onClick={() => queuedPatient && selectPatient(queuedPatient)}
+                    className="px-2.5 py-1 rounded-md border border-amber-200 bg-amber-50 text-amber-900 text-2xs font-medium hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+                  >
+                    <Clock className="w-3 h-3" />
+                    <span className="font-mono font-bold">{token.tokenNumber}</span>
+                    <span>
+                      {queuedPatient
+                        ? `${queuedPatient.firstName} ${queuedPatient.lastName}`
+                        : `Patient #${token.patientId}`}
+                    </span>
+                    <span className="opacity-70">({token.status})</span>
+                  </button>
+                );
+              })}
+          </div>
+        )}
       </div>
 
       {activePatient && activeEncounter ? (

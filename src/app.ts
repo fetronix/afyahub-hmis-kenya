@@ -34,6 +34,11 @@ import {
 
 import * as billing from './billing/billing.service.ts';
 import * as billingPayments from './billing/payments.service.ts';
+import {
+  chargeLabOrderBatch,
+  radiologyChargeRequest,
+  tariffCodeCandidates,
+} from './billing/service-charges.ts';
 import * as insuranceClaims from './insurance/claims.service.ts';
 import * as dha from './integrations/dha/dha.service.ts';
 import { buildReadinessReport } from './integrations/dha/dha.readiness.ts';
@@ -503,32 +508,6 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   };
 
   /**
-   * Translate a clinical record into tariff-code candidates.
-   *
-   * The tariff table is free text per facility, so several plausible
-   * codes are offered and the first configured one wins.
-   */
-  const tariffCodeCandidates = (
-    prefix: string,
-    value: string | null | undefined,
-    defaults: readonly string[],
-  ): string[] => {
-    const codes: string[] = [];
-
-    const cleaned = typeof value === 'string'
-      ? value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '')
-      : '';
-
-    if (cleaned) {
-      codes.push(`${prefix}-${cleaned}`, cleaned);
-    }
-
-    codes.push(...defaults);
-
-    return [...new Set(codes)];
-  };
-
-  /**
    * Maps known encounter input-validation errors to HTTP 400.
    * Unexpected errors must remain HTTP 500.
    */
@@ -935,6 +914,14 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
 
+      if (err instanceof queries.PatientMrnConflictError) {
+        return res.status(409).json({
+          success: false,
+          error: err.code,
+          message: err.message,
+        });
+      }
+
       console.error('Patient creation error:', err);
       return res.status(500).json({
         success: false,
@@ -1223,20 +1210,34 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.put('/api/queues/:id/status', requirePermission('appointments.update'), async (req, res) => {
-    try {
-      const { status } = req.body;
+  app.put('/api/queues/:id/status', requirePermission('appointments.update'), async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
 
-      const updated =
-        await queries.updateQueueStatus(
-          Number(req.params.id),
-          status
-        );
+    if (!context) return;
+
+    try {
+      const { status } = req.body ?? {};
+
+      const updated = await queries.updateQueueStatusScoped(
+        context,
+        Number(req.params.id),
+        String(status ?? ''),
+      );
+
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          error: 'QUEUE_TOKEN_NOT_FOUND',
+        });
+      }
 
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
+      const message = err?.message ?? 'Failed to update queue status.';
+      const clientError = message === 'Invalid queue status.' || message === 'A valid queue token is required.';
+
+      res.status(clientError ? 400 : 500).json({
+        error: message,
       });
     }
   });
@@ -3421,7 +3422,19 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
       try {
         const result = await queries.createLabOrderBatch(req.authContext, req.body);
-        return res.status(201).json(result);
+
+        /*
+         * Every order in the batch is priced, not just the first.
+         *
+         * The screen orders investigations through this endpoint and
+         * never through the single-order one, so this is the only place
+         * a laboratory charge can be raised. Before this, a batch of
+         * tests reached the laboratory queue and the patient's invoice
+         * stayed empty.
+         */
+        const billed = await chargeLabOrderBatch(result.orders, db);
+
+        return res.status(201).json({ ...result, billing: billed });
       } catch (err: any) {
         const message = err?.message || 'Failed to create laboratory batch.';
         const clientError = [
@@ -3660,34 +3673,28 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           req.body
         );
 
+      /*
+       * The table has `procedure_name`, not `test_name`. Reading a field
+       * that does not exist meant no RAD-<study> tariff could ever match:
+       * a chest X-ray priced as RAD-CHEST-X-RAY was recorded and never
+       * billed, while only a generic RADIOLOGY tariff would catch it.
+       */
       const radiologyOrder = order as {
         id?: number;
         tenantId?: number;
         facilityId?: number;
         patientId?: number;
         encounterId?: number | null;
-        testName?: string;
-        bodyPart?: string;
+        procedureName?: string;
+        modality?: string;
       } | null;
 
       let charge: billing.ChargeResult | null = null;
 
       if (radiologyOrder && radiologyOrder.id) {
-        charge = await chargeSafely({
-          tenantId: radiologyOrder.tenantId ?? 0,
-          facilityId: radiologyOrder.facilityId ?? 0,
-          patientId: radiologyOrder.patientId ?? 0,
-          encounterId: radiologyOrder.encounterId ?? null,
-          codes: tariffCodeCandidates(
-            'RAD',
-            radiologyOrder.testName,
-            ['RADIOLOGY', 'RAD-GENERAL', 'IMAGING'],
-          ),
-          sourceType: 'RADIOLOGY',
-          sourceId: radiologyOrder.id,
-          itemType: 'Radiology',
-          description: radiologyOrder.testName,
-        });
+        charge = await chargeSafely(
+          radiologyChargeRequest(radiologyOrder as never),
+        );
       }
 
       res.status(201).json({ ...order, billing: charge });
@@ -3957,6 +3964,21 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           fallbackDescription: drugName,
         });
       }
+
+      /*
+       * The patient has been served, so the token that sent them here
+       * is done. A board that keeps showing them is a board nobody
+       * trusts by the end of the day.
+       */
+      await queries
+        .completeQueueTokensForPatient(
+          req.authContext,
+          result.dispensation.patientId,
+          'Pharmacy',
+        )
+        .catch((error: unknown) => {
+          console.error('Could not close the pharmacy queue token:', error);
+        });
 
       res.status(201).json({
         ...result.dispensation,

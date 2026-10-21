@@ -147,7 +147,11 @@ export const PatientRegistrationModule: React.FC = () => {
     }
 
     try {
-      const randomMrn = `MRN-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+      /*
+       * No MRN is sent: the server allocates the next number for this
+       * tenant. Four random digits had 9,000 possible values for the
+       * whole database, and a collision failed the registration.
+       */
       const newPatient = await api.createPatient({
         ...formData,
         phone: formData.phone.trim() || null,
@@ -159,23 +163,24 @@ export const PatientRegistrationModule: React.FC = () => {
         guardianRelationship: formData.guardianRelationship.trim() || null,
         guardianPhone: formData.guardianPhone.trim() || null,
         guardianShaNumber: formData.guardianShaNumber.trim() || null,
-        mrn: randomMrn,
         registrationFacilityId: currentFacility.id,
       });
 
-      // Automatically add to Triage Queue
-      await api.createQueueItem({
+      // Automatically add to Triage Queue. The token is allocated by
+      // the server, because the browser cannot see the other desks.
+      const triageEntry = await api.createQueueItem({
         tenantId: currentTenant.id,
         facilityId: currentFacility.id,
         patientId: newPatient.id,
         queueType: 'Triage',
-        tokenNumber: `TRG-${Math.floor(100 + Math.random() * 900)}`,
         priority: 'Normal',
         status: 'Waiting',
         waitingTimeMinutes: 0,
       });
 
-      showToast(`Patient ${newPatient.firstName} ${newPatient.lastName} registered successfully (MRN: ${newPatient.mrn}) and routed to Triage queue!`);
+      showToast(
+        `Patient ${newPatient.firstName} ${newPatient.lastName} registered (MRN: ${newPatient.mrn}) and routed to Triage — token ${triageEntry.tokenNumber}.`
+      );
       setIsRegistering(false);
       triggerRefresh();
     } catch (err: any) {
@@ -185,19 +190,16 @@ export const PatientRegistrationModule: React.FC = () => {
 
   const sendToQueue = async (patient: Patient, queueType: string) => {
     try {
-      const tokenPrefix = queueType.slice(0, 3).toUpperCase();
-      const token = `${tokenPrefix}-${Math.floor(100 + Math.random() * 900)}`;
-      await api.createQueueItem({
+      const entry = await api.createQueueItem({
         tenantId: patient.tenantId,
         facilityId: patient.facilityId,
         patientId: patient.id,
         queueType,
-        tokenNumber: token,
         priority: 'Normal',
         status: 'Waiting',
         waitingTimeMinutes: 0,
       });
-      showToast(`Patient ${patient.firstName} ${patient.lastName} added to ${queueType} queue (Token: ${token})`);
+      showToast(`Patient ${patient.firstName} ${patient.lastName} added to ${queueType} queue (Token: ${entry.tokenNumber})`);
       triggerRefresh();
     } catch (err: any) {
       showToast(`Queue failed: ${err.message}`);

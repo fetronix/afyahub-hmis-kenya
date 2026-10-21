@@ -29,12 +29,12 @@ screen was exercised, or that a clinician has accepted it.
 3. **Multi-tenant and facility security — In progress.** Most queries are scoped through `resolveFacilityScope` and `getFacilityByIdScoped`. The clinical paths named in §5 — observations, diagnoses and procedures — now resolve the encounter before reading or writing and refuse a request that names neither an encounter nor a patient; the laboratory routes pass `authContext` into `resolveFacilityScope`. The unscoped functions still exist in `queries.ts`, but no route calls them and `test:security` fails if one starts to. This is not a clean bill of health: the remaining query functions have not been audited one by one.
 4. **PUCHE facility overview — Completed**
 5. **Patient registration and records — Completed**
-6. **OPD, triage and consultations — In progress; current priority.** Queue and triage exist; the queue → triage → consultation → investigation → follow-up path has not been walked end to end.
+6. **OPD, triage and consultations — In progress.** Reception registration issues a Triage token, the token appears on the clinician's screen, starting the visit moves it to In-Progress, and completing the visit closes it. The clinical → investigation → pharmacy → cashier path now runs end to end against a real database (§3.14, 55 checks). No user has walked the screens.
 7. **Inpatient, wards, beds and theatre — Implemented.** Ward and bed set-up (create, rename, retire, delete), admission board with an empty state that leads to the first ward, transfers, discharge authorisation and theatre cases. Covered by 97 assertions in `test:inpatient`. No user acceptance.
 8. **Maternity, MCH and preventive services — Implemented.** Antenatal booking and visits, labour with a partograph, delivery with one row per baby, postnatal contacts and the childhood immunisation register, on eight tables (§3.11 and §3.12). The partograph is drawn as a chart from the stored readings, with the alert and action lines computed by the same function the table uses. A delivery raises an invoice line only through a real `facility_service_tariffs` price; with none configured the screen says **recorded, not billed** rather than inventing a figure. 131 + 151 assertions. No user acceptance.
 9. **Laboratory and radiology — Implemented.** Result entry and verification are separate: `addLabResult` writes `Pending Verification` with `verifiedBy`/`verifiedAt` null, and `POST /api/lab-results/:id/verify` is gated on `laboratory.results.verify`. The schema column is nullable since migration 0008.
 10. **Pharmacy, inventory and procurement — In progress.** Batch tracking, expiry control and FEFO dispensing implemented (80 assertions). Procurement screens exist; no test coverage.
-11. **Tariffs, billing, payments and insurance — Implemented.** Billing spine, mobile money settlement with overpayment handling, and the claims workflow (draft → submit → adjudicate → settle). 31 + 85 + 93 assertions.
+11. **Tariffs, billing, payments and insurance — Implemented.** Billing spine, mobile money settlement with overpayment handling, and the claims workflow (draft → submit → adjudicate → settle). Every billable stage of the outpatient and inpatient journey raises its own line (§3.14). 31 + 58 + 87 + 97 assertions.
 12. **Reports, analytics and public-health reporting — Implemented.** Analytics summary and the reporting dashboard (216 assertions).
 13. **Interoperability and integrations — Implemented to the published contract.** DHA/AfyaConnect client, readiness report, member eligibility, coverage and service-area mapping. Professional registration verification against the Health Worker Registry (§3.8). **No live credential exists, so nothing has been exercised against DHA.** 176 + 100 assertions.
 14. **Security, regression and user acceptance testing — In progress.** HTTP hardening is implemented and was exercised against a running server (§3.9): security headers, an origin allowlist, and per-IP rate limits on sign-in and the API. Still absent: independent review or penetration testing, a load test, a restore drill, monitoring and alerting, and any user acceptance.
@@ -423,7 +423,7 @@ Without the second, existing roles hold no maternity permission and the module a
 
 - `npm run test:maternity` — 130 assertions: date arithmetic (including 30 February and leap years), Naegele's rule, gestation from the EDD, absent-is-not-zero, every partograph zone, the migration's additive guarantees, no default on any clinical measurement, route permissions, and that the screen ships no sample patient.
 - **Live against PostgreSQL 16** — the scratch database was built by applying all sixteen migrations, then the service was exercised end to end: 24 checks covering EDD derivation, the one-active-pregnancy rule, ANC gestation computation, values stored versus left NULL, labour admission, three partograph readings, the duplicate-timestamp refusal, the dilatation range, the delivery with its baby, the pregnancy and labour closing to `Delivered`, refusal of a second delivery, refusal of a reading after delivery, the summary counts, and cross-facility isolation. Two defects were found this way and fixed: Drizzle wraps driver errors so the SQLSTATE sits on `cause` (every unique violation was returning 500), and a facility denial was surfacing as 403 instead of 404.
-- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.13).
+- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.14).
 - `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
 
 **Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care, immunisation and the plotted chart were still outstanding at the end of that round; they are in §3.12.
@@ -518,6 +518,49 @@ Reading stays on `inpatient.read`. All six mutate paths are audited, and every o
 
 **Not verified:** the screen was not walked in a browser — none is available in this environment, so the buttons, empty state and modals are type-checked and built but not clicked. No facility user has set up a real ward yet.
 
+### 3.14 The patient journey, walked end to end
+
+**What was asked.** Whether a patient can go from the reception desk to a paid bill, whether every stage raises its own charge, and whether the patient directory, reception and queue actually work.
+
+**The answer, before any change.** Most of it worked, and three stages did not:
+
+1. **Laboratory was never billed from the screen.** `POST /api/lab-orders/batch` — the endpoint the OPD screen calls — created the orders, routed the patient to the laboratory queue and returned. Only the single-order endpoint priced anything, and nothing in the UI calls it. A consultation could order six tests and the invoice stayed at the consultation fee.
+2. **Radiology read a column that does not exist.** The route priced from `radiologyOrder.testName`; the table has `procedure_name`. `RAD-<STUDY>` could never match, so only a generic `RADIOLOGY` tariff would ever catch a study.
+3. **A visit could never end.** No screen set an encounter to `Completed`. The next visit therefore resumed the same Active encounter, the consultation charge was keyed to it, and the second visit was refused as a duplicate — a returning patient was seen and never billed.
+
+Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four `Math.random()` digits, 9,000 values for the whole database, and a collision failed registration with a raw database error) and every queue token (`TRG-347`, `PHARM-812`), so two desks could call the same number.
+
+**What now happens, stage by stage**
+
+| Stage | What the server does |
+|---|---|
+| Register | Allocates `MRN-<year>-<000000>` (global, because `patients.mrn` is unique across the database), retrying if two registrations race. A supplied duplicate is a **409**, not a 500. |
+| Route to Triage | Allocates the next token for that facility and desk (`TRG-001`, `PHM-001`). The registration receipt names it. |
+| Call / start | `PUT /api/queues/:id/status` is scoped to the caller's facility and accepts only `Waiting`, `Called`, `In-Progress`, `Completed`, `Cancelled`. |
+| Consultation | `POST /api/encounters` charges the facility's `OPD-CONSULT` (or `CONSULTATION`/`CONSULT`). The screen says either **billed KES x on INV-y** or **not billed: <reason>**. |
+| Procedure | `PROC-<NAME>`/`PROCEDURE`. |
+| Laboratory | Every order in the batch is priced at `LAB-<TEST>`/`LAB-GENERAL`, and the result is returned per order. |
+| Radiology | `RAD-<STUDY>` from `procedure_name`, falling back to `RADIOLOGY`/`IMAGING`. |
+| Pharmacy | Prescribing records the prescription; **dispensing** charges `DRUG-<NAME>`/`PHARMACY`, with the prescription's own price only as a last resort. Dispensing also closes the patient's Pharmacy token. |
+| Admission | `ADMIT-<WARD>`/`ADMISSION` at admission. |
+| Discharge | One `BED-DAY` line per night, keyed by date, so a re-run cannot double-bill. The discharge toast reports the nights and the amount, or why nothing was billed. |
+| Cashier | One open invoice per encounter collects the lines. Cash, M-Pesa, Airtel Money and Card; a mobile-money code is required and must look like the SMS (`QGH4XYZ123`); the same code cannot be receipted twice; overpayment needs an explicit confirmation and is held as credit, never a negative balance. Every payment gets a receipt (`RCP-YYYYMMDD-000001`). |
+| Next visit | Completing the visit stamps `endedAt` **on the server** (a browser-supplied timestamp is a string Drizzle's timestamp mapper refuses). The next visit opens a new encounter and bills a new consultation; a paid invoice is never reopened. |
+
+**The queue is now the road.** The OPD screen loads the Triage queue and shows *Waiting in Triage* with each token; selecting a token selects the patient. Starting the visit moves the token to `In-Progress`, completing it moves the token to `Completed`.
+
+**The tariff screen names the codes.** Automatic billing only works when the facility's tariff codes match what the engine looks for, and a facility that prices "Consultation" rather than `OPD-CONSULT` was silently billing nothing. *Facility Configuration → Service tariffs* now carries a **Codes the automatic billing looks for** panel with every pattern, and says plainly that an unmatched service is recorded and **not** billed.
+
+**Validation completed**
+
+- `npm test` — **2,013 assertions** across fourteen counting suites, all green. The new `test:opd` suite (58 assertions) asserts the batch endpoint prices every order and returns the result, that radiology uses `procedure_name` and no longer mentions `testName`, that every stage's route carries its source type, that a completed visit is stamped by the server, that neither screen calls `Math.random()`, that the queue update is scoped, and that the tariff panel names all seven code patterns.
+- **Live against PostgreSQL 16**, all 17 migrations applied to a scratch database: **55 checks**. A patient is registered, given a Triage token, called, seen, diagnosed, given a procedure, a laboratory batch, a radiology study and a dispensed prescription; the five charges land on **one invoice totalling 3,025.00**; 1,000.00 cash leaves it Partially Paid; the balance is settled by M-Pesa with a real-format code; the same code is refused; the visit is completed; a second visit bills a new consultation on a new invoice; that invoice is paid; the patient is admitted, billed an admission fee, discharged after two nights with two bed-day lines (5,000.00) and a repeat discharge cannot double-bill; another facility cannot move the token and an unknown status is refused; dispensing closes the pharmacy token.
+- `npm run build` — passed (551 ms). `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**One behaviour to know.** A charge with no encounter — the admission fee and bed nights, because the inpatient screens do not create an encounter — attaches to the patient's open *Pending* invoice if there is one. Settle the clinic bill before admitting and the admission opens its own invoice, which is what the live check does. The lines keep their own type either way, so revenue is attributed correctly; the patient simply sees one bill instead of two.
+
+**Not verified:** no screen was clicked — there is no browser in this environment. The payment and dispensing *forms* are type-checked and built, not exercised. The live check calls the same functions the routes call, not the routes themselves.
+
 ## 4. Existing backups and modified files to preserve
 
 ### Backups created during the latest session
@@ -536,6 +579,14 @@ Reading stays on `inpatient.read`. All six mutate paths are audited, and every o
 - `src/components/modules/InpatientModule.tsx.before-ward-setup-20261021.bak`
 - `src/db/inpatient-contracts.ts.before-ward-setup-20261021.bak`
 - `src/types/index.ts.before-ward-setup-20261021.bak`
+- `src/app.ts.before-opd-journey-20261021.bak`
+- `src/api/client.ts.before-opd-journey-20261021.bak`
+- `src/components/modules/InpatientModule.tsx.before-opd-journey-20261021.bak`
+- `src/components/modules/PatientRegistrationModule.tsx.before-opd-journey-20261021.bak`
+- `src/components/modules/OutpatientModule.tsx.before-opd-journey-20261021.bak`
+- `src/components/modules/FacilityServiceTariffsPanel.tsx.before-opd-journey-20261021.bak`
+- `package.json.before-opd-journey-20261021.bak`
+- `README.md.before-opd-journey-20261021.bak`
 
 ### Earlier uncommitted changes and backups
 

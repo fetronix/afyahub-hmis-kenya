@@ -261,6 +261,61 @@ export const FacilityServiceTariffsPanel: React.FC<
         </p>
       )}
 
+      {/*
+        The billing engine matches a service to a tariff by code. A
+        facility that prices "Consultation" rather than "OPD-CONSULT"
+        records the visit and bills nothing, so the codes it looks for
+        are written where the codes are typed.
+      */}
+      <details className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <summary className="cursor-pointer font-semibold text-slate-800">
+          Codes the automatic billing looks for
+        </summary>
+        <p className="mt-2 text-xs text-slate-500">
+          The first active tariff whose code matches wins. A service with no
+          matching code is recorded on the clinical record and <strong>not</strong> billed.
+        </p>
+        <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+          <div>
+            <dt className="font-semibold text-slate-700">Consultation</dt>
+            <dd className="font-mono text-xs text-slate-600">OPD-CONSULT · CONSULTATION · CONSULT · CONSULT-&lt;VISIT TYPE&gt;</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Laboratory</dt>
+            <dd className="font-mono text-xs text-slate-600">LAB-&lt;TEST NAME&gt; · LAB-GENERAL · LABORATORY</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Radiology</dt>
+            <dd className="font-mono text-xs text-slate-600">RAD-&lt;STUDY NAME&gt; · RAD-GENERAL · RADIOLOGY · IMAGING</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Procedure</dt>
+            <dd className="font-mono text-xs text-slate-600">PROC-&lt;NAME&gt; · PROCEDURE · PROC-GENERAL</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Pharmacy</dt>
+            <dd className="font-mono text-xs text-slate-600">DRUG-&lt;DRUG NAME&gt; · &lt;DRUG NAME&gt; · PHARMACY · MEDICATION</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Admission</dt>
+            <dd className="font-mono text-xs text-slate-600">ADMIT-&lt;WARD CODE&gt; · ADMISSION · INPATIENT-ADMISSION</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Bed-day (per night)</dt>
+            <dd className="font-mono text-xs text-slate-600">BED-&lt;WARD CODE&gt; · BED-DAY · INPATIENT-BED-DAY · WARD-DAY · BED</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Maternity delivery</dt>
+            <dd className="font-mono text-xs text-slate-600">DELIVERY · DELIVERY-&lt;MODE&gt; · MATERNITY-DELIVERY</dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs text-slate-500">
+          &lt;NAME&gt; is the record&apos;s own text with spaces and punctuation turned
+          into dashes and upper-cased — a wound dressing priced as
+          <span className="font-mono"> PROC-WOUND-DRESSING</span> bills itself.
+        </p>
+      </details>
+
       {formOpen && (
         <form
           onSubmit={saveTariff}

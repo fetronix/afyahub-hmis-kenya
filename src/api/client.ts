@@ -1063,7 +1063,7 @@ export const api = {
 
   createEncounter:
     (encounter: Partial<Encounter>) =>
-      fetchJson<Encounter>(
+      fetchJson<Encounter & { billing?: ServiceCharge | null }>(
         `${API_BASE}/encounters`,
         {
           method: 'POST',
@@ -1764,7 +1764,14 @@ export const api = {
         dischargeSummary: string;
       }
     ) =>
-      fetchJson<Admission>(
+      fetchJson<
+        Admission & {
+          billing?: {
+            nights: number;
+            bedDays: Array<ServiceCharge | null>;
+          };
+        }
+      >(
         `${API_BASE}/admissions/${id}/discharge`,
         {
           method: 'POST',
@@ -2068,7 +2075,15 @@ export const api = {
       clinicalNotes?: string;
       orderedBy?: string;
     }) =>
-      fetchJson<{ orders: LabOrder[]; queue: QueueItem }>(
+      fetchJson<{
+        orders: LabOrder[];
+        queue: QueueItem;
+        billing?: Array<{
+          orderId: number;
+          testName: string;
+          billing: ServiceCharge | null;
+        }>;
+      }>(
         `${API_BASE}/lab-orders/batch`,
         {
           method: 'POST',

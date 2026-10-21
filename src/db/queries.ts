@@ -461,9 +461,53 @@ export async function createPatient(data: typeof schema.patients.$inferInsert) {
   }
 }
 
+/**
+ * A patient number the database can defend.
+ *
+ * The registration screen used to mint `MRN-2026-` plus four digits in
+ * the browser, which is 9,000 possible values for an entire database:
+ * eventually two patients collide, and the second registration fails
+ * with a raw unique-key error. Numbers are now allocated here, one
+ * higher than the highest the tenant already has, and the unique index
+ * arbitrates if two registrations race.
+ */
+export async function nextPatientMrn(): Promise<string> {
+  /*
+   * `patients.mrn` is unique across the whole database, not per
+   * tenant, so the sequence is global. A per-tenant counter would hand
+   * two organisations the same number and the second insert would fail.
+   */
+  const [row] = await db
+    .select({
+      highest: sql<number | null>`MAX((substring(${schema.patients.mrn} from '([0-9]+)$'))::int)`,
+    })
+    .from(schema.patients);
+
+  const next = Number(row?.highest ?? 0) + 1;
+  const year = new Date().getFullYear();
+
+  return `MRN-${year}-${String(next).padStart(6, '0')}`;
+}
+
+/** Raised when a caller supplies an MRN another patient already holds. */
+export class PatientMrnConflictError extends Error {
+  readonly code = 'MRN_ALREADY_EXISTS';
+
+  constructor(mrn: string) {
+    super(`Patient number ${mrn} is already in use. Leave it blank to have one allocated.`);
+    this.name = 'PatientMrnConflictError';
+  }
+}
+
 export async function createPatientScoped(
   context: AuthorizationContext,
-  data: typeof schema.patients.$inferInsert,
+  /*
+   * The MRN is optional: leave it out and the server allocates the next
+   * number for this tenant.
+   */
+  data: Omit<typeof schema.patients.$inferInsert, 'mrn'> & {
+    mrn?: string | null;
+  },
 ) {
   const requestedFacilityId = data.registrationFacilityId;
 
@@ -498,16 +542,50 @@ export async function createPatientScoped(
     ...safeData
   } = data;
 
-  const [patient] = await db
-    .insert(schema.patients)
-    .values({
-      ...safeData,
-      tenantId: facility.tenantId,
-      registrationFacilityId: facility.id,
-    })
-    .returning();
+  const suppliedMrn =
+    typeof safeData.mrn === 'string' && safeData.mrn.trim() !== ''
+      ? safeData.mrn.trim()
+      : null;
 
-  return patient;
+  /*
+   * Six attempts: a generated number may lose a race to a concurrent
+   * registration, in which case the highest-numbered row has moved on
+   * and the next attempt takes a fresh one.
+   */
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const mrn =
+      suppliedMrn ?? (await nextPatientMrn());
+
+    try {
+      const [patient] = await db
+        .insert(schema.patients)
+        .values({
+          ...safeData,
+          mrn,
+          tenantId: facility.tenantId,
+          registrationFacilityId: facility.id,
+        })
+        .returning();
+
+      return patient;
+    } catch (error) {
+      const code =
+        (error as { code?: string })?.code ??
+        (error as { cause?: { code?: string } })?.cause?.code;
+
+      if (code !== '23505') throw error;
+
+      lastError = error;
+
+      if (suppliedMrn) throw new PatientMrnConflictError(suppliedMrn);
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Could not allocate a patient number. Try again.');
 }
 
 export async function updatePatient(id: number, data: Partial<typeof schema.patients.$inferInsert>) {
@@ -795,6 +873,15 @@ export async function updateEncounterScoped(
     data as Record<string, unknown>,
   );
 
+  /*
+   * Completing a visit ends it. The screen sends `status` only; a
+   * browser-supplied `endedAt` arrived as a string and Drizzle's
+   * timestamp mapping cannot take one, so the server stamps it.
+   */
+  if (safeData.status === 'Completed' || safeData.status === 'Cancelled') {
+    safeData.endedAt = safeData.endedAt ?? new Date();
+  }
+
   await validateEncounterReferences(facility.id, facility.tenantId, safeData);
 
   const [updated] = await db
@@ -926,16 +1013,91 @@ async function resolveQueueOrLabScope(
   };
 }
 
+/**
+ * The prefix a desk's tokens carry.
+ *
+ * A token is read aloud in a waiting room, so it is three letters and a
+ * number, not a timestamp.
+ */
+export function queueTokenPrefix(queueType: string): string {
+  const known: Record<string, string> = {
+    triage: 'TRG',
+    consultation: 'CON',
+    opd: 'OPD',
+    pharmacy: 'PHM',
+    laboratory: 'LAB',
+    lab: 'LAB',
+    radiology: 'RAD',
+    cashier: 'CSH',
+    billing: 'CSH',
+    records: 'REC',
+    maternity: 'MAT',
+    immunisation: 'IMM',
+  };
+
+  const key = queueType.trim().toLowerCase();
+
+  if (known[key]) return known[key];
+
+  const letters = queueType.replace(/[^A-Za-z]/g, '').toUpperCase();
+
+  return (letters || 'TOK').slice(0, 3).padEnd(3, 'X');
+}
+
+/**
+ * The next free token for this desk today.
+ *
+ * The number is allocated on the server because the browser cannot see
+ * the other desk: two receptionists minting `TRG-347` from
+ * `Math.random()` both call the same patient, and the person holding
+ * the second slip has no way to know.
+ */
+export async function nextQueueToken(
+  facilityId: number,
+  queueType: string,
+): Promise<string> {
+  const [row] = await db
+    .select({
+      highest: sql<number | null>`MAX((substring(${schema.queues.tokenNumber} from '([0-9]+)$'))::int)`,
+    })
+    .from(schema.queues)
+    .where(
+      and(
+        eq(schema.queues.facilityId, facilityId),
+        eq(schema.queues.queueType, queueType),
+        sql`${schema.queues.createdAt}::date = CURRENT_DATE`,
+      ),
+    );
+
+  const next = Number(row?.highest ?? 0) + 1;
+
+  return `${queueTokenPrefix(queueType)}-${String(next).padStart(3, '0')}`;
+}
+
 export async function createQueueEntry(
   context: AuthorizationContext,
-  data: typeof schema.queues.$inferInsert,
+  /*
+   * The token is optional: leave it out and the server allocates the
+   * next one for this facility and desk.
+   */
+  data: Omit<typeof schema.queues.$inferInsert, 'tokenNumber'> & {
+    tokenNumber?: string | null;
+  },
 ) {
   const scope = await resolveQueueOrLabScope(context, data);
+
+  const suppliedToken =
+    typeof data.tokenNumber === 'string' && data.tokenNumber.trim() !== ''
+      ? data.tokenNumber.trim()
+      : null;
+
+  const tokenNumber =
+    suppliedToken ?? (await nextQueueToken(scope.facilityId, data.queueType));
 
   try {
     const res = await db
       .insert(schema.queues)
-      .values({ ...data, ...scope })
+      .values({ ...data, ...scope, tokenNumber })
       .returning();
 
     return res[0];
@@ -945,14 +1107,86 @@ export async function createQueueEntry(
   }
 }
 
-export async function updateQueueStatus(id: number, status: string) {
-  try {
-    const res = await db.update(schema.queues).set({ status }).where(eq(schema.queues.id, id)).returning();
-    return res[0];
-  } catch (error) {
-    console.error('Error updating queue status:', error);
-    throw new Error('Failed to update queue status', { cause: error });
+export const QUEUE_STATUSES = [
+  'Waiting',
+  'Called',
+  'In-Progress',
+  'Completed',
+  'Cancelled',
+] as const;
+
+/**
+ * Move a token, inside the caller's facility.
+ *
+ * The previous version updated any row by id, so a user at one facility
+ * could move another facility's token — and an unknown status string was
+ * stored as given.
+ */
+export async function updateQueueStatusScoped(
+  context: AuthorizationContext,
+  queueId: number,
+  status: string,
+) {
+  if (!Number.isSafeInteger(queueId) || queueId <= 0) {
+    throw new Error('A valid queue token is required.');
   }
+
+  if (!QUEUE_STATUSES.includes(status as (typeof QUEUE_STATUSES)[number])) {
+    throw new Error('Invalid queue status.');
+  }
+
+  const [token] = await db
+    .select()
+    .from(schema.queues)
+    .where(eq(schema.queues.id, queueId))
+    .limit(1);
+
+  if (!token) return null;
+
+  const facility = await getFacilityByIdScoped(context, token.facilityId).catch(
+    () => null,
+  );
+
+  if (!facility) return null;
+
+  const [updated] = await db
+    .update(schema.queues)
+    .set({ status })
+    .where(
+      and(
+        eq(schema.queues.id, queueId),
+        eq(schema.queues.facilityId, facility.id),
+      ),
+    )
+    .returning();
+
+  return updated ?? null;
+}
+
+/**
+ * Close a patient's tokens at a desk.
+ *
+ * Called when the work the token represents is actually done — a
+ * dispensation — so the board stops showing a patient who has left.
+ */
+export async function completeQueueTokensForPatient(
+  context: AuthorizationContext,
+  patientId: number,
+  queueType: string,
+) {
+  const facilityId = resolveFacilityScope(context);
+
+  await db
+    .update(schema.queues)
+    .set({ status: 'Completed' })
+    .where(
+      and(
+        eq(schema.queues.facilityId, facilityId),
+        eq(schema.queues.patientId, patientId),
+        eq(schema.queues.queueType, queueType),
+        inArray(schema.queues.status, ['Waiting', 'Called', 'In-Progress']),
+      ),
+    );
 }
 
 // Appointments
