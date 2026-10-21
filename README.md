@@ -240,6 +240,57 @@ Mock fixtures are keyed on the identifier so a demo is reproducible: `11111111` 
 
 **Blocked on DHA approval:** client credentials, the Facility Registry code, the enabled API products, and the production base URL. Until those arrive the integration runs in `mock` only, and the readiness report says exactly that.
 
+### 3.8 Professional verification before a staff invitation
+
+**The rule.** A clinical invitation cannot be issued until the applicant's professional registration has been checked. Selecting `DOCTOR`, `CLINICAL_OFFICER`, `NURSE` or `PHARMACIST` in the invite form opens a verification panel; the "Create invitation link" button stays disabled until a usable result exists.
+
+**What was verified against the documentation**
+
+- `https://hie-docs.dha.go.ke/registries/health-worker-registry` — `GET /professionals`, with `identification_number` (required), `identification_type` (`registration_number` | `National ID` | `Alien ID` | `Refugee ID`) and `regulator` (`KMPDC` | `COC` | `NCK` | `PPB`). The 200 response is documented as `{ message: object }`.
+- `https://hie-docs.dha.go.ke/docs/registries/process/professionalSearch` — workflow, identifier types and the three expected outcomes (found, not found, input error). This page also mentions a `license_number` identifier type that the endpoint enum does **not** list; the endpoint wins, so it is not offered.
+- `https://hie-docs.dha.go.ke/docs/goLive` — production access: Development/Testing → UAT demo → DHA Certification → production credentials. Nothing here is certified, so nothing here points at production.
+- `https://afyalink.dha.go.ke/practitioner-search-api-docs` — **unreachable** on 21 Oct 2026. No contract was taken from it, and nothing was invented to fill the gap.
+
+**Regulators genuinely supported**
+
+| Role | Regulator | Automated |
+|---|---|---|
+| `DOCTOR` | KMPDC | yes |
+| `CLINICAL_OFFICER` | COC (Clinical Officers Council) | yes |
+| `NURSE` | NCK (Nursing Council of Kenya) | yes |
+| `PHARMACIST` | PPB (Pharmacy and Poisons Board) | yes |
+| `LABORATORY_TECHNICIAN` | KMLTTB | **no** — not in the published enum; manual check only |
+
+`CLINICAL_OFFICER` was added to `STAFF_ROLE_CATALOGUE`, so newly created tenants get it. Existing tenants need the role created before it can be selected.
+
+**Registration is not a licence.** The two are separate columns and separate statuses:
+
+- `REGISTRATION_VERIFIED` — the register contains this person and the registration is live.
+- `LICENCE_CONFIRMED` — an explicit licence status said "active" and no expiry date contradicts it.
+- `LICENCE_EXPIRED`, `REGISTRATION_INACTIVE` — the register said so; both block an invitation.
+- `IDENTITY_MISMATCH` — the returned name shares no token with the name entered. Blocks, and requires human resolution.
+- `RECORD_NOT_FOUND` — the registry returned nothing. Blocks, offers a manual check.
+- `SERVICE_UNAVAILABLE` — the call failed. **This is not a failed credential check**, and it does not overwrite a credential that was verified earlier.
+- `MANUAL_REVIEW_REQUIRED` — the response could not be interpreted. Blocks, requires human resolution.
+- `MANUALLY_VERIFIED` — an administrator checked the regulator's own register; source and date are recorded.
+
+**The response mapping is provisional, and says so.** The published reference renders the response body as `message: object` and DHA publishes no machine-readable OpenAPI document at a discoverable path. Rather than invent keys, `practitioner.normalise.ts` reads a declared, ordered list of candidate keys, records which ones matched, lists unrecognised keys (names only, never values) and sends anything it cannot interpret to `MANUAL_REVIEW_REQUIRED`. Every result carries `mapping: 'provisional'`, which the screen displays. Correct the key list once against the first real sandbox record; nothing else needs to change.
+
+**Mock mode cannot appoint anyone.** Fixtures are deterministic and labelled `SIMULATED` in the result and on screen. A credential recorded in mock mode is refused at the invitation gate (`409 SIMULATED_VERIFICATION`), so a demo cannot become an employment decision.
+
+**Data minimisation.** No national ID, date of birth or contact details are stored, and no response body is retained. The credential row keeps the registration number, the returned statuses, the licence expiry, the matched key names and the warnings. `professional_verification_events` is append-only and records every attempt, including the failures.
+
+**Separation of concerns.** Credential status is independent of employment, role assignment and clinical privileges. A verified registration grants nothing; it only satisfies the pre-invitation check.
+
+**Migration:** `0014_professional_verification` adds `staff_professional_credentials` and `professional_verification_events` with four indexes, all guarded. **Run `npm run db:migrate` before using the new invitation flow** — without it, a clinical invitation fails on a missing relation.
+
+**Validation completed:**
+
+- `npm run test:verification` — 100 assertions: regulator and role mapping, every status branch, `dd/mm/yyyy` parsing, nested envelopes, multiple-match handling, unrecognised shapes, mock determinism, the outage-preserves-status rule, the mock-cannot-invite rule, and that migration 0014 contains no `DROP`, `TRUNCATE` or `DELETE`.
+- `npm test` — 1,489 assertions across ten suites. `npm run build` — passed (`✓ built in 621ms`). `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**Not verified:** no request has been made to the real Health Worker Registry (no credentials), and the screens were not opened in a browser. The response key mapping is unconfirmed until the first sandbox call.
+
 ## 4. Existing backups and modified files to preserve
 
 ### Backups created during the latest session
