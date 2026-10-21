@@ -35,6 +35,7 @@ import { getFacilityByIdScoped } from '../db/queries.ts';
 
 import {
   BED_STATUS_SETTABLE,
+  GENDER_ALLOCATIONS,
   InpatientDomainError,
 } from '../db/inpatient-contracts.ts';
 
@@ -277,11 +278,11 @@ export async function createWard(
 
   const wardType = requiredText(input.wardType, 'Ward type', 60);
 
-  const genderAllocation = oneOf(input.genderAllocation, 'Gender allocation', [
-    'Mixed',
-    'Male',
-    'Female',
-  ]);
+  const genderAllocation = oneOf(
+    input.genderAllocation,
+    'Gender allocation',
+    GENDER_ALLOCATIONS,
+  );
 
   const dailyRate = optionalMoney(input.dailyRate, 'Daily rate');
 
@@ -347,7 +348,7 @@ export async function updateWard(
     patch.genderAllocation = oneOf(
       input.genderAllocation,
       'Gender allocation',
-      ['Mixed', 'Male', 'Female'],
+      GENDER_ALLOCATIONS,
     );
   }
 

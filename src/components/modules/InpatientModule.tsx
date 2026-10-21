@@ -3,6 +3,17 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { Ward, Bed, Admission, Patient, InpatientBoard } from '../../types/index.ts';
 import { NursingPanel } from './NursingPanel.tsx';
+
+/*
+ * The ward and bed vocabulary comes from the same module the server
+ * validates against. A second copy here would be a second vocabulary,
+ * and the second one is always the wrong one.
+ */
+import {
+  SUGGESTED_WARD_TYPES as WARD_TYPE_OPTIONS,
+  SUGGESTED_BED_TYPES as BED_TYPE_OPTIONS,
+  GENDER_ALLOCATIONS,
+} from '../../db/inpatient-contracts.ts';
 import {
   BedDouble,
   UserCheck,
@@ -19,28 +30,6 @@ import {
   Building2,
 } from 'lucide-react';
 
-/*
- * Common Kenyan ward and bed labels, offered so they are one click away
- * rather than retyped. The server accepts any short label.
- */
-const WARD_TYPE_OPTIONS = [
-  'General',
-  'Medical',
-  'Surgical',
-  'Maternity',
-  'Paediatric',
-  'ICU/HDU',
-  'Isolation',
-  'Recovery',
-];
-
-const BED_TYPE_OPTIONS = [
-  'Standard',
-  'Fowler Electric Bed',
-  'ICU Ventilated Unit',
-  'Cot',
-  'Isolation Bed',
-];
 
 const EMPTY_WARD_FORM = {
   id: null as number | null,
@@ -1171,9 +1160,9 @@ export const InpatientModule: React.FC = () => {
                     onChange={(e) => setWardForm({ ...wardForm, genderAllocation: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   >
-                    <option value="Mixed">Mixed</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                    {GENDER_ALLOCATIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                   </select>
                 </div>
 

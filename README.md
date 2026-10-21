@@ -506,6 +506,8 @@ Reading stays on `inpatient.read`. All six mutate paths are audited, and every o
 
 **Reachable on the screen** (`src/components/modules/InpatientModule.tsx`). *Add ward* and *Add beds* buttons appear on the ward strip when the signed-in user holds the matching permission. A facility with no wards at all is shown a first-run card — *"Create the first ward"* — rather than an empty grey panel. Bed tiles carry edit and delete icons. Three modals cover the ward form, the batch bed form and the bed edit; the admit modal offers only active wards and beds that are `Available`, and disables submit when either is empty. Retiring is a checkbox on the ward form, not a second screen. Users without a permission see the count and the reason (`Adding beds needs inpatient.beds.create`) instead of a button that would fail.
 
+**One vocabulary.** The ward-type and bed-type suggestions and the gender-allocation list live in `src/db/inpatient-contracts.ts`, the module the server validates against, and the screen imports them from there. A second copy in the component would be a second vocabulary, and the second one is always the wrong one.
+
 **Where the permissions are granted.** All six codes carry `module: 'inpatient'`, so they appear in **Administration → Facility roles** under the existing *inpatient* heading alongside `inpatient.read`, `.admit` and `.discharge`. No role receives them by default — a facility decides who configures the ward versus who admits into it. The seeder is idempotent: it inserts what is missing and updates the label and description of what exists.
 
 **Validation completed**
