@@ -160,7 +160,35 @@ The original command is still available as `npm run db:migrate:drizzle`.
 - `npm test` — passed: 48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 81 payments, 552 migration.
 - `npm run build` — passed (`✓ built in 559ms`); `npm run lint` reports only the pre-existing `src/lib/firebase.ts` error.
 
-**Not verified:** no browser check of the cashier screen was performed. The SHA claims workflow has not been built, so nothing in the Insurance module has changed.
+**Not verified:** no browser check of the cashier screen was performed.
+
+### 3.6 Insurance claims: draft, adjudicate, settle
+
+Claims were previously free-typed: the screen prefilled a random claim number, a made-up policy number (`SHA-KEN-2026-9921`), a made-up pre-authorisation code (`AUTH-SHA-782109`) and a fixed amount, then reported *"E-Claim submitted to SHA portal"* while contacting nothing. It also printed "API Integration Ready" and "DHA Electronic Remittance Ready". A status dropdown let anyone mark a claim `Settled` without any money moving, so the invoice balance stayed wrong.
+
+**No live SHA connection exists, and this feature does not pretend otherwise.** There is no public SHA claims API with documented credentials to build against, and a facility cannot submit claims without SHA accreditation and onboarding. The screen now says so in a banner, and the module contains no external URL of any kind.
+
+What it does:
+
+- **Draft from real lines.** Pick an invoice, and the screen loads its actual charges with checkboxes. Everything is selected by default; the clerk can untick what the payer will not cover. The claim amount is computed from the selection and capped at what the patient still owes — a claim can never exceed the outstanding balance.
+- **Lines are snapshotted.** `insurance_claim_items` stores the description and amount as they were at claim time, because invoices get edited afterwards and a claim must still say what it asked for.
+- **One open claim per invoice** (`Draft`, `Submitted`, `Approved`), enforced under an invoice row lock so two clerks cannot both draft against the same balance. A partial unique index was deliberately *not* used: it would fail to apply on a database that already holds two open claims.
+- **A real state machine.** `Draft → Submitted → Approved|Rejected → Settled`, enforced on the server. Only a submitted claim can be adjudicated; an approved amount cannot exceed the claimed amount.
+- **Settlement moves money.** `Settled` is reachable only through `settleClaimScoped`, which writes a `billing_payments` row (method `SHA`, transaction code = claim number) and updates the invoice balance in the same transaction. If a payer approves more than is still owed, only the owed amount is posted and the remainder is reported — turning the difference into patient credit would be inventing money.
+- **Claim numbers come from a sequence** (`CLM-YYYYMMDD-000123`), not from `Math.random()` in the browser.
+
+**Permissions.** Mutations keep the gates that already existed: `insurance.claims.create` to draft and submit, `insurance.claims.manage` to adjudicate and settle. The read endpoints were deliberately left on the module gate alone. No role in `STAFF_ROLE_CATALOGUE` currently holds any `insurance.*` permission, so adding `insurance.read` to the claim list would have taken the screen away from clerks who can open it today. Tighten it once roles are granted the code.
+
+**Migration:** `0011_insurance_claims_workflow` adds `insurance_claim_items`, `insurance_claims.settled_payment_id`, `settled_at`, `created_by_user_id`, an invoice/status index and `insurance_claim_number_seq`. Every statement is guarded.
+
+**Validation completed:**
+
+- `npm run test:claims` — passed, 87 assertions. Half of them are honesty checks: the fabricated policy number, pre-auth code, hardcoded amount, `Math.random()` claim numbers and every "integration ready" phrase must stay absent, and the screen must state that it does not transmit claims. It also asserts that exactly one place in the service writes `Settled`, and that a settlement is capped at the balance.
+- **Live PostgreSQL 16 run** — 26 checks against the real service: three claimable lines, draft for one selected line, policy number inherited from the invoice, server-issued claim number, second open claim refused, adjudicating a draft refused, approval above the claim refused, approval recorded, settlement posting `1800.00` with the invoice moving to `3200.00` outstanding and `Partially Paid`, cannot settle twice, and the claim line snapshot preserved.
+- `npm test` — passed: 48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 82 payments, 87 claims, 559 migration.
+- `npm run build` — passed (`✓ built in 583ms`); `npm run lint` reports only the pre-existing `src/lib/firebase.ts` error.
+
+**Not verified:** the claims screens were not opened in a browser. The legacy `PUT /api/claims/:id/status` endpoint was kept for compatibility and now delegates to the state machine, but it has not been exercised from an old client.
 
 ## 4. Existing backups and modified files to preserve
 

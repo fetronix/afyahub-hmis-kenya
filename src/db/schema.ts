@@ -4000,6 +4000,17 @@ export const insuranceClaims = pgTable(
       'adjudication_notes',
     ),
 
+    /*
+     * The payment that settled this claim. Set when an approved amount
+     * is posted against the invoice; null while the money is outstanding.
+     */
+    settledPaymentId: integer('settled_payment_id')
+      .references(() => billingPayments.id, { onDelete: 'set null' }),
+
+    settledAt: timestamp('settled_at'),
+
+    createdByUserId: integer('created_by_user_id'),
+
     createdAt: timestamp('created_at')
       .defaultNow()
       .notNull(),
@@ -4007,6 +4018,35 @@ export const insuranceClaims = pgTable(
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .notNull(),
+  },
+);
+
+
+/* ============================================================
+   42b. INSURANCE CLAIM ITEMS
+   ============================================================ */
+
+export const insuranceClaimItems = pgTable(
+  'insurance_claim_items',
+  {
+    id: serial('id').primaryKey(),
+
+    claimId: integer('claim_id')
+      .references(() => insuranceClaims.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    billingItemId: integer('billing_item_id')
+      .references(() => billingItems.id, { onDelete: 'set null' }),
+
+    /*
+     * Snapshot of the line at claim time. The invoice may be edited or
+     * voided later; the claim must still say what it asked for.
+     */
+    description: text('description').notNull(),
+
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
 );
 

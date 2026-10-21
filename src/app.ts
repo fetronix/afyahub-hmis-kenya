@@ -34,6 +34,7 @@ import {
 
 import * as billing from './billing/billing.service.ts';
 import * as billingPayments from './billing/payments.service.ts';
+import * as insuranceClaims from './insurance/claims.service.ts';
 import * as nursing from './nursing/nursing.service.ts';
 import * as reporting from './reporting/reporting.service.ts';
 import * as inventory from './inventory/inventory.service.ts';
@@ -205,6 +206,32 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         success: false,
         error: error.code,
         message: error.message,
+      });
+
+      return true;
+    }
+
+    return false;
+  };
+
+  /**
+   * Maps claims workflow failures onto their intended HTTP status.
+   *
+   * A duplicate open claim is a 409, not a 500: the record already
+   * exists and the clerk needs to be told which one.
+   */
+  const handleClaimError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (handleScopeError(error, res)) return true;
+
+    if (error instanceof insuranceClaims.ClaimDomainError) {
+      res.status(error.status).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+        ...(Object.keys(error.detail).length > 0 ? { detail: error.detail } : {}),
       });
 
       return true;
@@ -4222,8 +4249,150 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     },
   );
 
+  /*
+   * =========================================================
+   * INSURANCE CLAIMS
+   * =========================================================
+   *
+   * Claims are drafted from real invoice lines, adjudicated when the
+   * payer responds, and settled only when the approved money is actually
+   * posted. Nothing here contacts SHA or any other payer.
+   */
+
+  app.get(
+    '/api/claims',
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const claims = await insuranceClaims.getClaimsScoped(
+          req.authContext,
+          typeof req.query.facilityId === 'string' ? req.query.facilityId : null,
+        );
+
+        return res.json(claims);
+      } catch (err: unknown) {
+        if (handleClaimError(err, res)) return;
+
+        console.error('Failed to load claims:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIMS_FETCH_FAILED',
+          message: 'Failed to load insurance claims.',
+        });
+      }
+    },
+  );
+
+  /*
+   * The lines a claim could cover, plus any claim already open on the
+   * invoice. The screen prefills its selection from this.
+   */
+  app.get(
+    '/api/invoices/:id/claimable-lines',
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const result = await insuranceClaims.getClaimableLinesScoped(
+          req.authContext,
+          req.params.id,
+          typeof req.query.facilityId === 'string' ? req.query.facilityId : null,
+        );
+
+        return res.json(result);
+      } catch (err: unknown) {
+        if (handleClaimError(err, res)) return;
+
+        console.error('Failed to load claimable lines:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIM_LINES_FETCH_FAILED',
+          message: 'Failed to load the invoice charges.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/claims/:id/items',
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const items = await insuranceClaims.getClaimItemsScoped(
+          req.authContext,
+          req.params.id,
+          typeof req.query.facilityId === 'string' ? req.query.facilityId : null,
+        );
+
+        return res.json(items);
+      } catch (err: unknown) {
+        if (handleClaimError(err, res)) return;
+
+        console.error('Failed to load claim items:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIM_ITEMS_FETCH_FAILED',
+          message: 'Failed to load the claim lines.',
+        });
+      }
+    },
+  );
+
   app.post(
     '/api/claims',
+    requirePermission('insurance.claims.create'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext || !req.user) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const result = await insuranceClaims.draftClaimScoped(
+          req.authContext,
+          req.body,
+          req.user.id,
+        );
+
+        return res.status(201).json(result);
+      } catch (err: unknown) {
+        if (handleClaimError(err, res)) return;
+
+        console.error('Failed to draft claim:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIM_CREATE_FAILED',
+          message: 'Failed to draft the claim.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/claims/:id/submit',
     requirePermission('insurance.claims.create'),
     async (req: AuthRequest, res: Response) => {
       try {
@@ -4235,134 +4404,28 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           });
         }
 
-        const input = req.body;
-        const facilityIdInput = Number(input?.facilityId);
-        const invoiceId = Number(input?.invoiceId);
-        const patientId = Number(input?.patientId);
-        const claimNumber =
-          typeof input?.claimNumber === 'string'
-            ? input.claimNumber.trim()
-            : '';
-        const claimAmount = Number(input?.claimAmount);
-
-        if (
-          !Number.isSafeInteger(facilityIdInput) ||
-          facilityIdInput <= 0 ||
-          !Number.isSafeInteger(invoiceId) ||
-          invoiceId <= 0 ||
-          !Number.isSafeInteger(patientId) ||
-          patientId <= 0 ||
-          !claimNumber ||
-          claimNumber.length > 100 ||
-          !Number.isFinite(claimAmount) ||
-          claimAmount <= 0 ||
-          !/^\d+(\.\d{1,2})?$/.test(String(input?.claimAmount))
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'INVALID_CLAIM',
-            message: 'Facility, invoice, patient, claim number, and claim amount must be valid.',
-          });
-        }
-
-        const facilityId = resolveFacilityScope(
+        const claim = await insuranceClaims.submitClaimScoped(
           req.authContext,
-          facilityIdInput,
-        );
-        const facility = await queries.getFacilityByIdScoped(
-          req.authContext,
-          facilityId,
+          req.params.id,
+          req.body?.facilityId ?? null,
         );
 
-        if (!facility) {
-          return res.status(404).json({
-            success: false,
-            error: 'FACILITY_NOT_FOUND',
-            message: 'Facility not found.',
-          });
-        }
-
-        const [invoice] = await db
-          .select()
-          .from(schema.billingInvoices)
-          .where(eq(schema.billingInvoices.id, invoiceId))
-          .limit(1);
-
-        if (
-          !invoice ||
-          invoice.facilityId !== facilityId ||
-          invoice.tenantId !== facility.tenantId ||
-          invoice.patientId !== patientId
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'CLAIM_INVOICE_MISMATCH',
-            message: 'The selected invoice must belong to the selected patient and facility.',
-          });
-        }
-
-        const invoiceCents = Math.round(Number(invoice.totalAmount ?? 0) * 100);
-        const claimCents = Math.round(claimAmount * 100);
-
-        if (
-          !Number.isSafeInteger(invoiceCents) ||
-          !Number.isSafeInteger(claimCents) ||
-          claimCents > invoiceCents
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'INVALID_CLAIM_AMOUNT',
-            message: 'The claim amount cannot exceed the invoice total.',
-          });
-        }
-
-        const canSubmit = req.authContext.permissions.includes(
-          'insurance.claims.submit',
-        );
-
-        const claim = await queries.createClaim({
-          tenantId: facility.tenantId,
-          facilityId,
-          patientId,
-          invoiceId,
-          claimNumber,
-          payerName:
-            typeof input.payerName === 'string'
-              ? input.payerName.slice(0, 200)
-              : 'Social Health Authority (SHA)',
-          policyNumber:
-            typeof input.policyNumber === 'string'
-              ? input.policyNumber.slice(0, 100)
-              : null,
-          preAuthCode:
-            typeof input.preAuthCode === 'string'
-              ? input.preAuthCode.slice(0, 100)
-              : null,
-          claimAmount: (claimCents / 100).toFixed(2),
-          status: canSubmit ? 'Submitted' : 'Draft',
-          submittedAt: canSubmit ? new Date() : null,
-          adjudicationNotes:
-            typeof input.adjudicationNotes === 'string'
-              ? input.adjudicationNotes.slice(0, 2000)
-              : null,
-        });
-
-        return res.status(201).json(claim);
+        return res.json(claim);
       } catch (err: unknown) {
-        if (handleScopeError(err, res)) return;
+        if (handleClaimError(err, res)) return;
 
-        console.error('Failed to create claim:', err);
+        console.error('Failed to submit claim:', err);
         return res.status(500).json({
           success: false,
-          error: 'CLAIM_CREATE_FAILED',
-          message: 'Failed to create insurance claim.',
+          error: 'CLAIM_SUBMIT_FAILED',
+          message: 'Failed to mark the claim as submitted.',
         });
       }
     },
   );
 
-  app.put(
-    '/api/claims/:id/status',
+  app.post(
+    '/api/claims/:id/adjudicate',
     requirePermission('insurance.claims.manage'),
     async (req: AuthRequest, res: Response) => {
       try {
@@ -4374,124 +4437,128 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           });
         }
 
-        const claimId = Number(req.params.id);
-        const input = req.body;
-        const status =
-          typeof input?.status === 'string'
-            ? input.status.trim()
-            : '';
-        const allowedStatuses = [
-          'Draft',
-          'Submitted',
-          'Approved',
-          'Settled',
-          'Rejected',
-        ];
-
-        if (
-          !Number.isSafeInteger(claimId) ||
-          claimId <= 0 ||
-          !allowedStatuses.includes(status)
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'INVALID_CLAIM_UPDATE',
-            message: 'A valid claim ID and status are required.',
-          });
-        }
-
-        const rawFacilityId = req.query.facilityId;
-        const requestedFacilityId =
-          typeof rawFacilityId === 'string' && rawFacilityId.trim()
-            ? Number(rawFacilityId)
-            : undefined;
-
-        const facilityId = resolveFacilityScope(
+        const claim = await insuranceClaims.adjudicateClaimScoped(
           req.authContext,
-          requestedFacilityId,
+          req.params.id,
+          req.body,
         );
-
-        const facility = await queries.getFacilityByIdScoped(
-          req.authContext,
-          facilityId,
-        );
-
-        if (!facility) {
-          return res.status(404).json({
-            success: false,
-            error: 'FACILITY_NOT_FOUND',
-            message: 'Facility not found.',
-          });
-        }
-
-        const claims = await queries.getClaims(facilityId);
-        const existingClaim = claims.find((claim) => claim.id === claimId);
-
-        if (!existingClaim || existingClaim.tenantId !== facility.tenantId) {
-          return res.status(404).json({
-            success: false,
-            error: 'CLAIM_NOT_FOUND',
-            message: 'Claim not found.',
-          });
-        }
-
-        let approvedAmount: string | undefined;
-
-        if (input.approvedAmount !== undefined) {
-          const parsedAmount = Number(input.approvedAmount);
-          const maximumAmount = Number(existingClaim.claimAmount);
-
-          if (
-            !Number.isFinite(parsedAmount) ||
-            parsedAmount < 0 ||
-            !/^\d+(\.\d{1,2})?$/.test(String(input.approvedAmount)) ||
-            parsedAmount > maximumAmount
-          ) {
-            return res.status(400).json({
-              success: false,
-              error: 'INVALID_APPROVED_AMOUNT',
-              message: 'The approved amount must be non-negative and cannot exceed the claim amount.',
-            });
-          }
-
-          approvedAmount = parsedAmount.toFixed(2);
-        }
-
-        if (
-          (status === 'Approved' || status === 'Settled') &&
-          approvedAmount === undefined &&
-          Number(existingClaim.approvedAmount ?? 0) <= 0
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'APPROVED_AMOUNT_REQUIRED',
-            message: 'An approved amount is required before approving or settling a claim.',
-          });
-        }
-
-        const notes =
-          typeof input.notes === 'string'
-            ? input.notes.slice(0, 2000)
-            : undefined;
-
-        const claim = await queries.updateClaimStatus(
-          claimId,
-          status,
-          approvedAmount,
-          notes,
-        );
-
-        if (!claim) {
-          return res.status(404).json({
-            success: false,
-            error: 'CLAIM_NOT_FOUND',
-            message: 'Claim not found.',
-          });
-        }
 
         return res.json(claim);
       } catch (err: unknown) {
-        if (handleScopeError(err, res)) return;
+        if (handleClaimError(err, res)) return;
+
+        console.error('Failed to adjudicate claim:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIM_ADJUDICATION_FAILED',
+          message: 'Failed to record the adjudication.',
+        });
+      }
+    },
+  );
+
+  /*
+   * Settling posts the approved money against the invoice. This is the
+   * only path that can move a claim to "Settled".
+   */
+  app.post(
+    '/api/claims/:id/settle',
+    requirePermission('insurance.claims.manage'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext || !req.user) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const result = await insuranceClaims.settleClaimScoped(
+          req.authContext,
+          req.params.id,
+          req.user.fullName,
+          req.body?.facilityId ?? null,
+        );
+
+        return res.json(result);
+      } catch (err: unknown) {
+        if (handleClaimError(err, res)) return;
+
+        console.error('Failed to settle claim:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'CLAIM_SETTLEMENT_FAILED',
+          message: 'Failed to settle the claim.',
+        });
+      }
+    },
+  );
+
+  /*
+   * Legacy status endpoint. Kept so existing screens do not break, but
+   * it now goes through the same state machine: "Settled" posts money.
+   */
+  app.put(
+    '/api/claims/:id/status',
+    requirePermission('insurance.claims.manage'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext || !req.user) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const status =
+          typeof req.body?.status === 'string' ? req.body.status.trim() : '';
+        const facilityId = req.body?.facilityId ?? null;
+
+        if (status === 'Submitted') {
+          const claim = await insuranceClaims.submitClaimScoped(
+            req.authContext,
+            req.params.id,
+            facilityId,
+          );
+
+          return res.json(claim);
+        }
+
+        if (status === 'Approved' || status === 'Rejected') {
+          const claim = await insuranceClaims.adjudicateClaimScoped(
+            req.authContext,
+            req.params.id,
+            {
+              approvedAmount: status === 'Rejected' ? 0 : req.body?.approvedAmount,
+              notes: req.body?.notes,
+              facilityId,
+            },
+          );
+
+          return res.json(claim);
+        }
+
+        if (status === 'Settled') {
+          const result = await insuranceClaims.settleClaimScoped(
+            req.authContext,
+            req.params.id,
+            req.user.fullName,
+            facilityId,
+          );
+
+          return res.json(result.claim);
+        }
+
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_TRANSITION',
+          message:
+            'A claim cannot be set back to Draft. Use submit, adjudicate or settle.',
+        });
+      } catch (err: unknown) {
+        if (handleClaimError(err, res)) return;
 
         console.error('Failed to update claim status:', err);
         return res.status(500).json({
@@ -4502,6 +4569,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
       }
     },
   );
+
   // PUBLIC HEALTH & KHIS SURVEILLANCE
   // =========================================================
 

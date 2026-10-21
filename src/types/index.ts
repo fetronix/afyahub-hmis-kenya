@@ -579,6 +579,50 @@ export interface InsuranceClaim {
   status: string;
   submittedAt?: string;
   adjudicationNotes?: string;
+  /** Set once the approved amount has been posted against the invoice. */
+  settledPaymentId?: number | null;
+  settledAt?: string | null;
+}
+
+export interface ClaimableLine {
+  id: number;
+  description: string;
+  itemType: string | null;
+  quantity: number | null;
+  unitPrice: string | null;
+  totalAmount: string | null;
+}
+
+export interface ClaimableLinesResponse {
+  invoice: {
+    id: number;
+    invoiceNumber: string;
+    patientId: number;
+    totalAmount: string;
+    paidAmount: string;
+    balanceAmount: string;
+    status: string;
+    payerType: string;
+  };
+  lines: ClaimableLine[];
+  openClaims: Array<{ id: number; claimNumber: string }>;
+}
+
+export interface DraftClaimResult {
+  claim: InsuranceClaim;
+  claimedLines: number;
+  cappedAtBalance: boolean;
+  selectedCents: number;
+  balanceCents: number;
+}
+
+export interface ClaimSettlementResult {
+  claim: InsuranceClaim;
+  payment: BillingPayment;
+  settlement: PaymentSettlement;
+  appliedCents: number;
+  unappliedCents: number;
+  facilityId: number;
 }
 
 export interface PublicHealthReport {

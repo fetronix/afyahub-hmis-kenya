@@ -38,6 +38,9 @@ import {
   RecordPaymentResult,
   PaymentLedgerRow,
   InsuranceClaim,
+  ClaimableLinesResponse,
+  DraftClaimResult,
+  ClaimSettlementResult,
   PublicHealthReport,
   AuditLog,
   AnalyticsSummary,
@@ -1883,15 +1886,80 @@ export const api = {
         }`
       ),
 
-  createClaim:
-    (claim: Partial<InsuranceClaim>) =>
-      fetchJson<InsuranceClaim>(
+  /** Charges on an invoice that a claim could cover. */
+  getClaimableLines:
+    (invoiceId: number, facilityId?: number) =>
+      fetchJson<ClaimableLinesResponse>(
+        `${API_BASE}/invoices/${invoiceId}/claimable-lines${
+          facilityId ? `?facilityId=${facilityId}` : ''
+        }`
+      ),
+
+  getClaimItems:
+    (claimId: number, facilityId?: number) =>
+      fetchJson<Array<{ id: number; description: string; amount: string }>>(
+        `${API_BASE}/claims/${claimId}/items${
+          facilityId ? `?facilityId=${facilityId}` : ''
+        }`
+      ),
+
+  /** Draft a claim. Omit lineItemIds to claim the whole outstanding balance. */
+  draftClaim:
+    (claim: {
+      invoiceId: number;
+      lineItemIds?: number[];
+      payerName?: string;
+      policyNumber?: string;
+      preAuthCode?: string;
+      notes?: string;
+      facilityId?: number;
+    }) =>
+      fetchJson<DraftClaimResult>(
         `${API_BASE}/claims`,
         {
           method: 'POST',
           body: JSON.stringify(
             claim
           ),
+        }
+      ),
+
+  submitClaim:
+    (id: number, facilityId?: number) =>
+      fetchJson<InsuranceClaim>(
+        `${API_BASE}/claims/${id}/submit`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ facilityId }),
+        }
+      ),
+
+  adjudicateClaim:
+    (
+      id: number,
+      approvedAmount: string,
+      notes?: string,
+      facilityId?: number
+    ) =>
+      fetchJson<InsuranceClaim>(
+        `${API_BASE}/claims/${id}/adjudicate`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            approvedAmount,
+            notes,
+            facilityId,
+          }),
+        }
+      ),
+
+  settleClaim:
+    (id: number, facilityId?: number) =>
+      fetchJson<ClaimSettlementResult>(
+        `${API_BASE}/claims/${id}/settle`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ facilityId }),
         }
       ),
 
