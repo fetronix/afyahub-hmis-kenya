@@ -449,20 +449,30 @@ Without the second, existing roles hold no maternity permission and the module a
 **Validation completed**
 
 - `npm run test:postnatal` — 151 assertions: the schedule's uniqueness and ages, `Due`/`Overdue` boundaries at 0/4 weeks, an early dose still recorded, the plot's geometry including a late 4 cm start and the axis covering the action line, the additive migration and its guards, the service refusals, the delivery charge carrying no fallback price and no money literal, and that every capability is on the screen.
-- `npm test` — **1,849 assertions** across thirteen counting suites, plus the staff-role-catalogue suite (which reports pass/fail without a count). All green.
+- `npm test` — **1,906 assertions** across thirteen counting suites, plus the staff-role-catalogue suite (which reports pass/fail without a count). All green.
 - **Live against PostgreSQL 16.** All 17 migrations applied to a scratch database, then 40 checks: plot geometry from real rows (alert at hour 2, action at hour 6, axis 13 h), chart and table agreeing on the zone, no tariff → `TARIFF_NOT_CONFIGURED`, a 12,000 tariff → billed with invoice `INV-000001`, a repeat → `DUPLICATE`, exactly one invoice line, day postpartum 3 from the delivery date, an unmeasured temperature stored NULL, cross-facility 404, duplicate dose refused, future/before-birth/unknown-antigen refusals, a 19-antigen card, and the facility due list.
 - `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
 
-**Two migration defects found and fixed.** A freshly built database could not get past migration `0002`: two `ALTER COLUMN … SET DATA TYPE date` statements had no `USING` clause, so PostgreSQL raised `42804` and the whole run rolled back. The cast is harmless on an empty table and required on a populated one. Because `0002` has already been applied on existing databases, editing it alone was not safe — the runner matched **only** on the file's SHA-256, so a changed file would look pending and be re-applied on the one database that must not see it run again.
+**Three migration defects found and fixed.** A database could not be brought up to date on 21 October 2026, and each attempt exposed a different fault.
 
-The fix has two halves, and both were verified against PostgreSQL 16:
+1. **`0002` blocked every fresh install.** Two `ALTER COLUMN … SET DATA TYPE date` statements had no `USING` clause, so PostgreSQL raised `42804` and the whole run rolled back. The cast is harmless on an empty table and required on a populated one.
 
-1. `0002` now carries `USING "col"::date`. A fresh database applies all 17 migrations and exits 0.
-2. `scripts/migrate.ts` treats a migration as applied when **either** its hash **or** its journal timestamp is recorded — the same rule `scripts/migration-status.ts` already used, so the two no longer disagree. When an applied file has changed on disk the runner says so, by name, and does not run it: *"applied migration(s) have changed on disk … the change reaches only databases that have not applied them yet."* A database that has applied `0002` — including the development one — is therefore unaffected: `npm run db:migrate` reports nothing pending and touches nothing.
+2. **`0008` blocked a database that had been built with `drizzle-kit push`.** Push writes the schema but not the migration log, so `lab_results.status` already existed while the migration row did not. `ADD COLUMN status` failed with `42701 — column "status" … already exists`, the run rolled back as a unit, and the database could not move past `0008`. The file is now guarded and re-runnable: `ADD COLUMN IF NOT EXISTS`, the default and `NOT NULL` set separately, and a backfill written so a second run changes nothing. On a drifted database the backfill still does the thing that matters — a row with a verifier recorded but a status of `Pending Verification` is promoted to `Verified`, and a row with no verifier loses a verification time it should never have carried.
 
-The same round fixed a second defect in the runner: it printed its failure and then **hung**, because it awaited `pool.end()` while still holding the failed client. It now releases the client first and exits 1. Measured: the failing run that previously sat until killed at 300 s now prints the failing statement and exits in **1 s**, with the database unchanged (0 tables — the whole run is one transaction).
+3. **The runner hung on failure.** It printed the failing statement and then waited, because it called `pool.end()` while still holding the failed client. It now releases the client first and exits 1. Measured: the run that previously sat until killed at 300 s now exits in **1 s**, with one transaction rolled back and 0 tables created.
 
-Two regression guards were added to `test:migrations` (598 assertions now): no migration may convert a column to `date`/`timestamp`/`numeric` without `USING`, and the runner must keep both the timestamp skip and the client release. Removing the cast from `0002` makes the suite fail by name.
+Editing `0002` alone would have been unsafe, because the runner decided what was applied from the file's SHA-256 only: a changed file would look pending and be re-applied on the one database that must not see it run again. The runner now treats a migration as applied when **either** its hash **or** its journal timestamp is recorded — the rule `db:status` already used, so the two no longer disagree. An applied file that has changed on disk is named in a warning and skipped.
+
+Verified against PostgreSQL 16:
+
+| Scenario | Result |
+|---|---|
+| Fresh database | all 17 migrations apply, exit 0 |
+| `0000`–`0007` applied, then `lab_results.status` added by hand (the pushed-schema state) | `0008`–`0016` apply; the verified row becomes `Verified`; the unverified row's `verified_at` is cleared; `db:status:all` says READY |
+| `0002` edited after being applied | `Pending: 0`, warning, exit 0, no SQL run |
+| Deliberately broken `0002` | fails in 1 s with exit 1, database unchanged |
+
+`test:migrations` now enforces the class rather than the instance (655 assertions): from `0007` onward no migration may add a column, table, index or sequence without `IF NOT EXISTS`, none may be destructive, no column type change may omit `USING`, and the runner must keep both the timestamp skip and the client release. Reverting `0008`'s guard fails the suite by name.
 
 **Not verified:** the screens were still not walked in a browser — no browser was available in this environment, so the tabs, the chart and the billing banner have been type-checked and built but not clicked. No clinician has reviewed the field set against the MOH 405 card, and no one has confirmed the KEPI ages against the current chart.
 
@@ -800,16 +810,30 @@ machine described in §1, and the same commands work on Linux.
 
 ### 10.1 What is pending, and what each migration does
 
-Migrations 0000–0011 are applied on the development database. Three are not:
+What is pending depends on the database in front of you, not on this document.
+`npm run db:status` is the authority: it matches the journal against
+`drizzle.__drizzle_migrations` and prints `PENDING` beside anything not yet
+recorded. Migrations `0000`–`0007` form the base schema and are applied on every
+live database. The tail beyond that, and what each one adds:
 
 | Migration | What it adds | Touches existing data |
 |---|---|---|
-| `0012_dha_integration_audit` | `dha_api_calls` table, plus four `patients` columns for DHA eligibility | No — additive columns only |
-| `0013_dha_service_mappings` | `dha_service_mappings` table and its unique index | No |
+| `0008_lab_result_verification_state` | `lab_results.status`, and `verified_at` becomes nullable | Backfills `status` from `verified_by`; clears a verification time where there is no verifier |
+| `0009_billing_provenance_and_inpatient` | `admission_transfers`, `nursing_notes`, invoice numbering sequence, billing provenance columns, admission discharge columns | Adds columns only |
+| `0010_mobile_money_settlement` | Settlement state on `billing_payments` and the receipt sequence | Adds columns only |
+| `0011_insurance_claims_workflow` | Claim lines, adjudication and settlement columns | Adds columns only |
+| `0012_dha_integration_audit` | `dha_api_calls`, plus four `patients` columns for DHA eligibility | Adds columns only |
+| `0013_dha_service_mappings` | `dha_service_mappings` and its unique index | No |
 | `0014_professional_verification` | `staff_professional_credentials`, `professional_verification_events`, four indexes | No |
+| `0015_maternity_mch` | Six maternity tables and their indexes | No |
+| `0016_postnatal_immunisation` | `postnatal_visits`, `immunisation_records`, the unique dose index | No |
 
-Every statement in all three is guarded with `IF NOT EXISTS`. None contains
-`DROP`, `TRUNCATE` or `DELETE`. Re-running them is harmless.
+From `0007` onward every `CREATE TABLE`, `CREATE INDEX`, `CREATE SEQUENCE` and
+`ADD COLUMN` is written with `IF NOT EXISTS`, none contains `DROP`, `TRUNCATE` or
+`DELETE`, and `npm run test:migrations` fails if one stops being guarded. That
+matters because a database whose schema was built with `drizzle-kit push` has the
+objects but not the migration rows: re-running a guarded migration is a no-op,
+re-running an unguarded one fails. Re-running any of the above is harmless.
 
 ### 10.2 Take a backup first
 
@@ -889,7 +913,9 @@ work silently.
 | `Cannot reach the database (ECONNREFUSED)` | Postgres not running, or wrong port | Start the service; confirm `SQL_HOST`/`SQL_PORT` in `.env` |
 | `password authentication failed` | Wrong `SQL_ADMIN_PASSWORD` | Correct `.env`; the value is never printed by the scripts |
 | `Missing required environment variable: SQL_HOST` | No `.env`, or the file is not in the repo root | Copy `.env.example` to `.env` and fill it in |
-| `relation "..." does not exist` during 0012–0014 | An earlier migration was recorded but not applied (a half-run from `drizzle-kit`) | Re-run `npm run db:migrate`; the runner matches on hash and re-applies |
+| `column "..." already exists` (`42701`) | The schema was built with `drizzle-kit push`, which writes objects but not migration rows | Fixed in `0008` on 21 October 2026 — re-run `npm run db:migrate`. Any future migration that hits this is a missing `IF NOT EXISTS`; report it rather than editing the table by hand |
+| `relation "..." does not exist` | An earlier migration was recorded but not applied (a half-run from `drizzle-kit`) | Re-run `npm run db:migrate`; the runner matches on hash **or** journal timestamp and re-applies |
+| `! N applied migration(s) have changed on disk` | A migration file was edited after this database applied it | No action. It keeps its recorded timestamp and does not run again; the change reaches only databases that have not applied it |
 | Command prints nothing and returns | You ran `db:migrate:drizzle` | Use `npm run db:migrate` |
 | BOM warning | A `.sql` file starts with a UTF-8 BOM | The runner strips it and says so; no action needed |
 

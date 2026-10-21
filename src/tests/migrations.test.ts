@@ -145,6 +145,50 @@ function testDataTypeCasts(): void {
 }
 
 /**
+ * From 0007 onward a migration must be re-runnable against a database
+ * whose schema already contains the object.
+ *
+ * That state is common: `drizzle-kit push` writes the schema but not the
+ * migration log, so the tables and columns exist while every row in
+ * drizzle.__drizzle_migrations is missing. An unguarded ADD COLUMN then
+ * fails with 42701, the run rolls back, and the database can never move
+ * past that migration. It is exactly what happened to 0008 on the
+ * development database on 21 October 2026.
+ *
+ * 0000-0006 predate the convention and are already applied everywhere,
+ * so the rule starts at 0007.
+ */
+function testGuardedDdl(): void {
+  const files = readdirSync(DRIZZLE_DIR).filter((name) => name.endsWith('.sql'));
+
+  let checked = 0;
+
+  for (const file of files) {
+    const order = Number(file.slice(0, 4));
+
+    if (!Number.isFinite(order) || order < 7) continue;
+
+    checked += 1;
+
+    const sql = readFileSync(resolve(DRIZZLE_DIR, file), 'utf8').toUpperCase();
+
+    const rules: Array<[RegExp, string]> = [
+      [/ADD COLUMN(?! IF NOT EXISTS)/, 'ADD COLUMN must say IF NOT EXISTS'],
+      [/CREATE TABLE(?! IF NOT EXISTS)/, 'CREATE TABLE must say IF NOT EXISTS'],
+      [/CREATE (?:UNIQUE )?INDEX(?! IF NOT EXISTS)/, 'CREATE INDEX must say IF NOT EXISTS'],
+      [/CREATE SEQUENCE(?! IF NOT EXISTS)/, 'CREATE SEQUENCE must say IF NOT EXISTS'],
+      [/(DROP TABLE|TRUNCATE|DELETE FROM|DROP COLUMN)/, 'the migration is not destructive'],
+    ];
+
+    for (const [pattern, label] of rules) {
+      assert(!pattern.test(sql), `${file}: ${label}`);
+    }
+  }
+
+  assert(checked >= 8, `the guarded-DDL rule covered ${checked} migration(s)`);
+}
+
+/**
  * Two behaviours in the runner that a fresh install depends on:
  * an edited migration that has already been applied must not run again,
  * and a failed migration must exit rather than hang.
@@ -220,6 +264,9 @@ function run(): void {
 
   testRunnerSafety();
   console.log('  6. The runner cannot re-run an applied migration or hang on failure');
+
+  testGuardedDdl();
+  console.log('  7. Migrations from 0007 are re-runnable against a pushed schema');
 
   console.log('');
   console.log('==============================================');
