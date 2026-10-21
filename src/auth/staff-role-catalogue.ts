@@ -22,6 +22,8 @@ export const STAFF_ROLE_CATALOGUE = [
       'appointments.read', 'clinical.create', 'clinical.read',
       'clinical.update', 'inpatient.read', 'inpatient.admit',
       'laboratory.read', 'laboratory.orders.create', 'patients.read',
+      // Clinical officers run antenatal clinics and conduct deliveries.
+      'maternity.read', 'maternity.create', 'maternity.update',
     ],
   },
   {
@@ -34,6 +36,7 @@ export const STAFF_ROLE_CATALOGUE = [
       'inpatient.read', 'inpatient.admit', 'inpatient.discharge',
       'laboratory.read',
       'laboratory.orders.create', 'patients.read',
+      'maternity.read', 'maternity.create', 'maternity.update',
     ],
   },
   {
@@ -60,6 +63,9 @@ export const STAFF_ROLE_CATALOGUE = [
       // Nurses admit patients to a ward and manage beds, but do not
       // discharge them: discharge stays a doctor authorisation.
       'inpatient.read', 'inpatient.admit', 'patients.read',
+      // Nurse-midwives conduct deliveries in Kenya, so the nursing cadre
+      // records the whole maternity pathway.
+      'maternity.read', 'maternity.create', 'maternity.update',
     ],
   },
   {
@@ -75,6 +81,9 @@ export const STAFF_ROLE_CATALOGUE = [
     permissions: [
       'appointments.create', 'appointments.read', 'appointments.update',
       'patients.create', 'patients.read',
+      // Enough to find a booked mother and her next appointment; not
+      // enough to record clinical findings.
+      'maternity.read',
     ],
   },
 ] as const;

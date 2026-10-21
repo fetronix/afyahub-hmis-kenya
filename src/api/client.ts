@@ -377,6 +377,172 @@ export interface RbacCatalogueApplyResult {
 /**
  * Main API client.
  */
+/* ============================================================
+   MATERNITY / MCH
+   ============================================================ */
+
+export interface MaternityPatientRef {
+  id: number;
+  mrn: string | null;
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string | null;
+}
+
+export interface GestationSummary {
+  totalDays: number;
+  weeks: number;
+  days: number;
+}
+
+export interface MaternityPregnancy {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  patientId: number;
+  bookedAt: string;
+  lmpDate: string | null;
+  eddDate: string;
+  eddBasis: string;
+  gravida: number | null;
+  para: number | null;
+  abortions: number | null;
+  livingChildren: number | null;
+  heightCm: string | null;
+  bloodGroup: string | null;
+  rhesus: string | null;
+  haemoglobinGdl: string | null;
+  riskFactors: string | null;
+  status: string;
+  closedAt: string | null;
+  closedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  patient?: MaternityPatientRef;
+  gestation?: GestationSummary | null;
+  weeksToEdd?: number;
+}
+
+export interface AncVisit {
+  id: number;
+  pregnancyId: number;
+  visitDate: string;
+  visitNumber: number | null;
+  gestationWeeks: number | null;
+  gestationDays: number | null;
+  weightKg: string | null;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  pulseBpm: number | null;
+  temperatureC: string | null;
+  fundalHeightCm: string | null;
+  fetalHeartRateBpm: number | null;
+  presentation: string | null;
+  fetalMovements: string | null;
+  urineProtein: string | null;
+  urineGlucose: string | null;
+  haemoglobinGdl: string | null;
+  ttDose: number | null;
+  ifasDispensed: boolean;
+  dangerSigns: string | null;
+  notes: string | null;
+  nextVisitDate: string | null;
+}
+
+export interface PartographEntry {
+  id: number;
+  labourRecordId: number;
+  recordedAt: string;
+  cervicalDilatationCm: string | null;
+  descentStation: number | null;
+  contractionsPer10Min: number | null;
+  contractionDurationSec: number | null;
+  fetalHeartRateBpm: number | null;
+  membranes: string | null;
+  liquor: string | null;
+  maternalPulseBpm: number | null;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  temperatureC: string | null;
+  oxytocin: string | null;
+  drugsGiven: string | null;
+  notes: string | null;
+}
+
+export interface PartographGuidance {
+  zone: string;
+  hoursSinceFourCm: number | null;
+  dilatationCm: number | null;
+  hoursBeyondAlert: number | null;
+  note: string;
+}
+
+export interface LabourRecord {
+  id: number;
+  pregnancyId: number;
+  patientId: number;
+  facilityId: number;
+  admittedAt: string;
+  labourOnsetAt: string | null;
+  membranesRupturedAt: string | null;
+  gestationWeeksAtAdmission: number | null;
+  status: string;
+  notes: string | null;
+  patient?: MaternityPatientRef;
+  pregnancy?: MaternityPregnancy;
+  entries?: PartographEntry[];
+  guidance?: PartographGuidance;
+}
+
+export interface DeliveryBaby {
+  id: number;
+  deliveryId: number;
+  babyNumber: number;
+  sex: string | null;
+  birthWeightGrams: number | null;
+  apgar1: number | null;
+  apgar5: number | null;
+  apgar10: number | null;
+  outcome: string;
+  resuscitation: string | null;
+  notes: string | null;
+}
+
+export interface DeliveryRecord {
+  id: number;
+  pregnancyId: number;
+  patientId: number;
+  facilityId: number;
+  deliveredAt: string;
+  deliveryMode: string;
+  bloodLossMl: number | null;
+  perineum: string | null;
+  placentaComplete: boolean | null;
+  placentaDeliveredAt: string | null;
+  oxytocinGiven: boolean;
+  complications: string | null;
+  notes: string | null;
+  conductedByCadre: string | null;
+  patient?: MaternityPatientRef;
+  babies?: DeliveryBaby[];
+}
+
+export interface MaternitySummary {
+  facilityId: number;
+  asOf: string;
+  activePregnancies: number;
+  ancVisitsThisMonth: number;
+  inLabour: number;
+  deliveriesThisMonth: number;
+  babiesThisMonth: number;
+}
+
+export interface MaternityPregnancyDetail extends MaternityPregnancy {
+  ancVisits: AncVisit[];
+  labours: LabourRecord[];
+  deliveries: Array<DeliveryRecord & { babies: DeliveryBaby[] }>;
+}
+
 export const api = {
   // ============================================================
   // ROLE-BASED ACCESS CONTROL
@@ -1089,6 +1255,133 @@ export const api = {
           }),
         }
       ),
+
+  // ============================================================
+  // MATERNITY / MCH
+  // ============================================================
+
+  getMaternitySummary: (facilityId?: number) =>
+    fetchJson<MaternitySummary>(
+      `${API_BASE}/maternity/summary${
+        facilityId ? `?facilityId=${facilityId}` : ''
+      }`
+    ),
+
+  getPregnancies: (params: {
+    facilityId?: number;
+    patientId?: number;
+    status?: string;
+  } = {}) => {
+    const query = new URLSearchParams();
+
+    if (params.facilityId) query.set('facilityId', String(params.facilityId));
+    if (params.patientId) query.set('patientId', String(params.patientId));
+    if (params.status) query.set('status', params.status);
+
+    const suffix = query.toString();
+
+    return fetchJson<MaternityPregnancy[]>(
+      `${API_BASE}/maternity/pregnancies${suffix ? `?${suffix}` : ''}`
+    );
+  },
+
+  getPregnancy: (pregnancyId: number) =>
+    fetchJson<MaternityPregnancyDetail>(
+      `${API_BASE}/maternity/pregnancies/${pregnancyId}`
+    ),
+
+  bookPregnancy: (payload: Record<string, unknown>) =>
+    fetchJson<MaternityPregnancy>(`${API_BASE}/maternity/pregnancies`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updatePregnancy: (pregnancyId: number, payload: Record<string, unknown>) =>
+    fetchJson<MaternityPregnancy>(
+      `${API_BASE}/maternity/pregnancies/${pregnancyId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }
+    ),
+
+  getAncVisits: (pregnancyId: number) =>
+    fetchJson<AncVisit[]>(
+      `${API_BASE}/maternity/pregnancies/${pregnancyId}/anc-visits`
+    ),
+
+  recordAncVisit: (payload: Record<string, unknown>) =>
+    fetchJson<AncVisit>(`${API_BASE}/maternity/anc-visits`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getLabours: (params: { facilityId?: number; status?: string } = {}) => {
+    const query = new URLSearchParams();
+
+    if (params.facilityId) query.set('facilityId', String(params.facilityId));
+    if (params.status) query.set('status', params.status);
+
+    const suffix = query.toString();
+
+    return fetchJson<LabourRecord[]>(
+      `${API_BASE}/maternity/labours${suffix ? `?${suffix}` : ''}`
+    );
+  },
+
+  getLabour: (labourRecordId: number) =>
+    fetchJson<LabourRecord>(`${API_BASE}/maternity/labours/${labourRecordId}`),
+
+  startLabour: (payload: Record<string, unknown>) =>
+    fetchJson<LabourRecord>(`${API_BASE}/maternity/labours`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateLabour: (labourRecordId: number, payload: Record<string, unknown>) =>
+    fetchJson<LabourRecord>(`${API_BASE}/maternity/labours/${labourRecordId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  recordPartograph: (payload: Record<string, unknown>) =>
+    fetchJson<PartographEntry>(`${API_BASE}/maternity/partograph`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getDeliveries: (params: {
+    facilityId?: number;
+    from?: string;
+    to?: string;
+  } = {}) => {
+    const query = new URLSearchParams();
+
+    if (params.facilityId) query.set('facilityId', String(params.facilityId));
+    if (params.from) query.set('from', params.from);
+    if (params.to) query.set('to', params.to);
+
+    const suffix = query.toString();
+
+    return fetchJson<DeliveryRecord[]>(
+      `${API_BASE}/maternity/deliveries${suffix ? `?${suffix}` : ''}`
+    );
+  },
+
+  recordDelivery: (payload: Record<string, unknown>) =>
+    fetchJson<{
+      delivery: DeliveryRecord;
+      babies: DeliveryBaby[];
+      pregnancy: MaternityPregnancy;
+    }>(`${API_BASE}/maternity/deliveries`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getDelivery: (deliveryId: number) =>
+    fetchJson<DeliveryRecord & { babies: DeliveryBaby[] }>(
+      `${API_BASE}/maternity/deliveries/${deliveryId}`
+    ),
 
   // ============================================================
   // INPATIENT WARDS, BEDS & ADMISSIONS

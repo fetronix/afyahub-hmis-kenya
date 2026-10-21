@@ -447,6 +447,34 @@ const PERMISSIONS = [
 
 
   /* ==========================================================
+     MATERNITY / MCH
+     ========================================================== */
+
+  {
+    code: 'maternity.read',
+    name: 'View Maternity Records',
+    module: 'maternity',
+    description:
+      'View antenatal visits, labour records, partographs and delivery records.',
+  },
+
+  {
+    code: 'maternity.create',
+    name: 'Record Maternity Care',
+    module: 'maternity',
+    description:
+      'Book pregnancies and record antenatal visits, labour and partograph observations.',
+  },
+
+  {
+    code: 'maternity.update',
+    name: 'Update Maternity Records',
+    module: 'maternity',
+    description:
+      'Correct or close maternity records, including recording a delivery.',
+  },
+
+  /* ==========================================================
      INPATIENT
      ========================================================== */
 

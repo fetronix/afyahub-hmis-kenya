@@ -72,6 +72,7 @@ const FACILITY_MODULES = [
   { id: "reception", label: "Reception & Appointments" },
   { id: "opd", label: "Outpatient Department (OPD)" },
   { id: "inpatient", label: "Inpatient & Admissions" },
+  { id: "maternity", label: "Maternity & MCH" },
   { id: "theatre", label: "Theatre" },
   { id: "specialty", label: "Specialty Clinics" },
   { id: "laboratory", label: "Laboratory" },

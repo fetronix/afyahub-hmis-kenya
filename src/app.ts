@@ -41,6 +41,7 @@ import { DhaError } from './integrations/dha/dha.errors.ts';
 import * as nursing from './nursing/nursing.service.ts';
 import * as reporting from './reporting/reporting.service.ts';
 import * as inventory from './inventory/inventory.service.ts';
+import * as maternity from './maternity/maternity.service.ts';
 
 import {
   createApiRateLimiter,
@@ -195,6 +196,8 @@ app.use('/api/encounters', requireFacilityModule('opd'));
 app.use('/api/observations', requireFacilityModule('opd'));
 app.use('/api/diagnoses', requireFacilityModule('opd'));
 app.use('/api/procedures', requireFacilityModule('opd'));
+
+app.use('/api/maternity', requireFacilityModule('maternity'));
 
 app.use('/api/wards', requireFacilityModule('inpatient'));
 app.use('/api/beds', requireFacilityModule('inpatient'));
@@ -369,6 +372,38 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         success: false,
         error: error.code,
         message: error.message,
+      });
+
+      return true;
+    }
+
+    return false;
+  };
+
+  /**
+   * Maps maternity domain failures onto their HTTP status.
+   *
+   *   400 invalid input, with the field errors that caused it
+   *   404 a record outside the caller's scope (indistinguishable from absent)
+   *   409 a state conflict: already delivered, labour already open, a
+   *       duplicate partograph reading
+   *
+   * Returns false for anything else so the caller keeps HTTP 500.
+   */
+  const handleMaternityError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (handleScopeError(error, res)) return true;
+
+    if (error instanceof maternity.MaternityDomainError) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+        ...(error.fields && error.fields.length > 0
+          ? { fields: error.fields }
+          : {}),
       });
 
       return true;
@@ -1315,6 +1350,449 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         res.status(500).json({
           success: false,
           error: 'OBSERVATION_CREATION_FAILED',
+        });
+      }
+    },
+  );
+
+  // =========================================================
+  // MATERNITY / MCH
+  // =========================================================
+  //
+  // The module gate sits on the mount, the permission on the route.
+  // A facility that does not deliver babies turns the module off; a
+  // clinician who may not record a delivery is stopped by the code.
+  // =========================================================
+
+  app.get(
+    '/api/maternity/summary',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+
+        const summary = await maternity.maternitySummary(context, facilityId);
+
+        res.json(summary);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Maternity summary error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'MATERNITY_SUMMARY_FAILED',
+          message: 'The maternity summary could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/pregnancies',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+        const patientId = parseOptionalPositiveId(
+          req.query.patientId,
+          'patient ID',
+        );
+
+        const list = await maternity.listPregnancies(context, {
+          facilityId,
+          patientId,
+          status:
+            typeof req.query.status === 'string' ? req.query.status : undefined,
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+        });
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Pregnancy list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'PREGNANCY_LIST_FAILED',
+          message: 'The pregnancy register could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/maternity/pregnancies',
+    requirePermission('maternity.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await maternity.bookPregnancy(context, req.body ?? {});
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Pregnancy booking error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'PREGNANCY_BOOKING_FAILED',
+          message: 'The pregnancy could not be booked.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/pregnancies/:id',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const record = await maternity.getPregnancy(
+          context,
+          Number(req.params.id),
+        );
+
+        res.json(record);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Pregnancy detail error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'PREGNANCY_FETCH_FAILED',
+          message: 'The pregnancy record could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.patch(
+    '/api/maternity/pregnancies/:id',
+    requirePermission('maternity.update'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const updated = await maternity.updatePregnancy(
+          context,
+          Number(req.params.id),
+          req.body ?? {},
+        );
+
+        res.json(updated);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Pregnancy update error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'PREGNANCY_UPDATE_FAILED',
+          message: 'The pregnancy record could not be updated.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/pregnancies/:id/anc-visits',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const visits = await maternity.listAncVisits(
+          context,
+          Number(req.params.id),
+        );
+
+        res.json(visits);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('ANC visit list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'ANC_VISIT_LIST_FAILED',
+          message: 'The antenatal visits could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/maternity/anc-visits',
+    requirePermission('maternity.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await maternity.recordAncVisit(context, req.body ?? {});
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('ANC visit creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'ANC_VISIT_CREATION_FAILED',
+          message: 'The antenatal visit could not be recorded.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/labours',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+
+        const list = await maternity.listLabours(context, {
+          facilityId,
+          status:
+            typeof req.query.status === 'string' ? req.query.status : undefined,
+        });
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Labour list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'LABOUR_LIST_FAILED',
+          message: 'The labour board could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/maternity/labours',
+    requirePermission('maternity.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await maternity.startLabour(context, req.body ?? {});
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Labour start error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'LABOUR_START_FAILED',
+          message: 'The labour record could not be opened.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/labours/:id',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const record = await maternity.getLabour(context, Number(req.params.id));
+
+        res.json(record);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Labour detail error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'LABOUR_FETCH_FAILED',
+          message: 'The labour record could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.patch(
+    '/api/maternity/labours/:id',
+    requirePermission('maternity.update'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const updated = await maternity.updateLabour(
+          context,
+          Number(req.params.id),
+          req.body ?? {},
+        );
+
+        res.json(updated);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Labour update error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'LABOUR_UPDATE_FAILED',
+          message: 'The labour record could not be updated.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/maternity/partograph',
+    requirePermission('maternity.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await maternity.recordPartographEntry(
+          context,
+          req.body ?? {},
+        );
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Partograph entry error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'PARTOGRAPH_ENTRY_FAILED',
+          message: 'The partograph reading could not be recorded.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/deliveries',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const facilityId = parseOptionalPositiveId(
+          req.query.facilityId,
+          'facility ID',
+        );
+
+        const list = await maternity.listDeliveries(context, {
+          facilityId,
+          from: typeof req.query.from === 'string' ? req.query.from : undefined,
+          to: typeof req.query.to === 'string' ? req.query.to : undefined,
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+        });
+
+        res.json(list);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Delivery list error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'DELIVERY_LIST_FAILED',
+          message: 'The delivery register could not be loaded.',
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/maternity/deliveries',
+    requirePermission('maternity.update'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await maternity.recordDelivery(context, req.body ?? {});
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Delivery creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'DELIVERY_CREATION_FAILED',
+          message: 'The delivery could not be recorded.',
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/maternity/deliveries/:id',
+    requirePermission('maternity.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const record = await maternity.getDelivery(
+          context,
+          Number(req.params.id),
+        );
+
+        res.json(record);
+      } catch (err: unknown) {
+        if (handleMaternityError(err, res)) return;
+
+        console.error('Delivery detail error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'DELIVERY_FETCH_FAILED',
+          message: 'The delivery record could not be loaded.',
         });
       }
     },

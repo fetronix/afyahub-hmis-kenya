@@ -60,6 +60,7 @@ export const ConfigurationModule: React.FC = () => {
     reception: true,
     opd: true,
     inpatient: true,
+    maternity: true,
     theatre: true,
     specialty: true,
     laboratory: true,

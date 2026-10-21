@@ -38,11 +38,14 @@ const moduleTitles: Record<ModuleId, string> = {
   inpatient:
     'Inpatient Wards & Bed Board',
 
+  maternity:
+    'Maternity, ANC & Labour Ward',
+
   theatre:
     'Operating Theatres & Surgical List',
 
   specialty:
-    'Specialist Clinics (Dental/Eye/MCH/Renal)',
+    'Specialist Clinics (Dental/Eye/ENT/Renal)',
 
   laboratory:
     'Clinical Diagnostic Laboratory',

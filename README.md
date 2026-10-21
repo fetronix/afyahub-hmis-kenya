@@ -30,7 +30,7 @@ screen was exercised, or that a clinician has accepted it.
 5. **Patient registration and records — Completed**
 6. **OPD, triage and consultations — In progress; current priority.** Queue and triage exist; the queue → triage → consultation → investigation → follow-up path has not been walked end to end.
 7. **Inpatient, wards, beds and theatre — Implemented.** Admission board, transfers, discharge authorisation and theatre cases. Covered by 48 assertions in `test:inpatient`. No user acceptance.
-8. **Maternity, MCH and preventive services — Not started.** No dedicated module; only incidental references inside `SpecialtyModule` and `ReceptionQueueModule`.
+8. **Maternity, MCH and preventive services — In progress.** Antenatal booking and visits, labour with a partograph, and delivery with one row per baby are built on six tables (§3.11). **Not built:** postnatal visits, immunisation, a plotted partograph chart (the readings and the alert-line position are stored and shown as a table), and any billing linkage — a delivery raises no invoice. The fake antenatal form that lived in `SpecialtyModule` is gone.
 9. **Laboratory and radiology — Implemented.** Result entry and verification are separate: `addLabResult` writes `Pending Verification` with `verifiedBy`/`verifiedAt` null, and `POST /api/lab-results/:id/verify` is gated on `laboratory.results.verify`. The schema column is nullable since migration 0008.
 10. **Pharmacy, inventory and procurement — In progress.** Batch tracking, expiry control and FEFO dispensing implemented (80 assertions). Procurement screens exist; no test coverage.
 11. **Tariffs, billing, payments and insurance — Implemented.** Billing spine, mobile money settlement with overpayment handling, and the claims workflow (draft → submit → adjudicate → settle). 31 + 85 + 93 assertions.
@@ -379,6 +379,54 @@ It applies the same additive rule as the endpoint. Use the screen for one tenant
 
 **Not verified:** no browser walkthrough of the panel or the dashboard, and the provisioning endpoint has not been exercised against a database. The `staff-role-catalogue` test was stale — it still expected seven roles and was not wired into `npm test` — and is fixed here.
 
+### 3.11 Maternity and MCH
+
+**The clinical order is the data model.** One pregnancy, many antenatal visits; if she labours here, one labour record carrying the partograph readings; then one delivery carrying one row per baby.
+
+| Table | Holds |
+|---|---|
+| `maternity_pregnancies` | booking, LMP, EDD and its basis, obstetric history, risk factors, status |
+| `anc_visits` | one row per antenatal visit: gestation, weight, BP, fundal height, FHR, presentation, urine, Hb, TT dose, IFAS, danger signs, next visit |
+| `labour_records` | admission, labour onset, membrane rupture, gestation at admission, status |
+| `partograph_entries` | the time series: dilatation, descent, contractions and their duration, FHR, membranes, liquor, maternal pulse, BP, temperature |
+| `deliveries` | mode, blood loss, perineum, placenta, oxytocin, complications |
+| `delivery_babies` | one row per baby: sex, weight, Apgar at 1/5/10, outcome, resuscitation |
+
+**Three decisions worth knowing about.**
+
+1. **ANC is not folded into the delivery.** Most antenatal care does not end in a delivery at this facility — referrals, caesareans booked elsewhere, women who move. Storing ANC on the delivery record would delete it in all those cases.
+2. **The partograph is a series, not a form.** Twelve readings in six hours each need their own timestamp. The database refuses two readings at the same timestamp (`partograph_entries_labour_time_idx`), because on a partograph a double entry moves the plotted line.
+3. **Twins are one delivery and two babies.** `baby1_*` / `baby2_*` columns stop working at the third baby and cannot be counted; the baby is the row.
+
+**What the code refuses to do.**
+
+- **No invented measurements.** Every clinical column is nullable and carries no default: an absent blood pressure is stored as NULL, not as a plausible number. `test:maternity` asserts this column by column.
+- **No EDD that contradicts its own arithmetic.** With an LMP and a basis of `LMP`, the EDD must be LMP + 280 days. A scan may re-date, which is why `edd_basis` is stored and `Ultrasound` / `Other` are allowed to disagree.
+- **No hidden defaults in the ward forms.** Empty inputs are sent as absent, so the server stores NULL.
+- **No obstetric advice.** The partograph reports where the latest reading sits against the alert and action lines — a geometric fact about the plot — and says so in the payload: *"A plotting aid only. It does not recommend an intervention."*
+
+**Scoping.** Every table carries tenant and facility. A record belonging to another facility answers **404**, not 403, so the response cannot be used to confirm which IDs exist. The facility lookup converts `getFacilityByIdScoped`'s denial into "not found" for exactly that reason.
+
+**Permissions.** `maternity.read`, `maternity.create`, `maternity.update`. `DOCTOR`, `CLINICAL_OFFICER` and `NURSE` hold all three (nurse-midwives conduct deliveries in Kenya); `RECEPTIONIST` holds `maternity.read` only. New codes need two commands after pulling:
+
+```
+npm run db:seed:permissions                                   # insert the codes
+npx tsx scripts/repair-tenant-staff-roles.ts --all --apply     # grant them to roles
+```
+
+Without the second, existing roles hold no maternity permission and the module answers 403 to everyone except a superadmin. The role catalogue panel in §3.10 reports the drift if this is skipped.
+
+**The module gate is new.** `maternity` is a facility module like `theatre` or `radiology`. Existing facilities do not have it in `enabled_modules`, so it must be switched on in **Configuration → Modules** (or Super Admin → Facility → Modules) after deploying. Until then the API answers `403 FACILITY_MODULE_DISABLED`.
+
+**Validation completed:**
+
+- `npm run test:maternity` — 130 assertions: date arithmetic (including 30 February and leap years), Naegele's rule, gestation from the EDD, absent-is-not-zero, every partograph zone, the migration's additive guarantees, no default on any clinical measurement, route permissions, and that the screen ships no sample patient.
+- **Live against PostgreSQL 16** — the scratch database was built by applying all sixteen migrations, then the service was exercised end to end: 24 checks covering EDD derivation, the one-active-pregnancy rule, ANC gestation computation, values stored versus left NULL, labour admission, three partograph readings, the duplicate-timestamp refusal, the dilatation range, the delivery with its baby, the pregnancy and labour closing to `Delivered`, refusal of a second delivery, refusal of a reading after delivery, the summary counts, and cross-facility isolation. Two defects were found this way and fixed: Drizzle wraps driver errors so the SQLSTATE sits on `cause` (every unique violation was returning 500), and a facility denial was surfacing as 403 instead of 404.
+- `npm test` — **1,696 assertions across thirteen suites**.
+- `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care and immunisation are not started.
+
 ## 4. Existing backups and modified files to preserve
 
 ### Backups created during the latest session
@@ -671,11 +719,11 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 
 ## 4. Next actions — in priority order
 
-1. **Finish Step 6 in a browser.** Walk queue → triage → consultation → investigation → follow-up with seeded data and record what breaks. The clinical writes are scoped and tested; the screens have not been exercised.
+1. **Walk the maternity screens in a browser.** The service was exercised against PostgreSQL, but nobody has clicked through booking → ANC → labour → delivery.
 2. **Apply migrations 0012–0014, then run `npm run db:status:all`.** Additive only, `IF NOT EXISTS`, no destructive statements. This is a facility action — the commands and failure guidance are in §10.3 and §10.6.
 3. **Audit the remaining query functions** for the pattern closed in §3.9: a route that passes a client-supplied `facilityId` or a bare record ID where a scope check belongs.
 4. **Verify effective permissions.** Test doctor, triage/reception and laboratory access, including facility overrides.
-5. **Begin maternity/MCH** — milestone 8, the largest untouched module. Nothing exists in the schema yet, so it starts with a design, not a patch.
+5. **Finish maternity/MCH** — postnatal visits and immunisation are still missing, and no clinician has checked the field set against the MOH 405 card. The partograph is stored and read as a table; a plotted chart is a separate piece of work.
 6. **Update the tracker with evidence.** Mark a task Verified only when its own checks pass; "the test suite passes" is not evidence that a screen works.
 
 ## 5. Current status summary

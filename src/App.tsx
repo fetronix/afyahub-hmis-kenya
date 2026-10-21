@@ -15,6 +15,7 @@ import { PatientRegistrationModule } from './components/modules/PatientRegistrat
 import { ReceptionQueueModule } from './components/modules/ReceptionQueueModule.tsx';
 import { OutpatientModule } from './components/modules/OutpatientModule.tsx';
 import { InpatientModule } from './components/modules/InpatientModule.tsx';
+import { MaternityModule } from './components/modules/MaternityModule.tsx';
 import { TheatreModule } from './components/modules/TheatreModule.tsx';
 import { SpecialtyModule } from './components/modules/SpecialtyModule.tsx';
 import { LaboratoryModule } from './components/modules/LaboratoryModule.tsx';
@@ -112,6 +113,9 @@ const AppContent: React.FC = () => {
 
       case 'inpatient':
         return <InpatientModule />;
+
+      case 'maternity':
+        return <MaternityModule />;
 
       case 'theatre':
         return <TheatreModule />;

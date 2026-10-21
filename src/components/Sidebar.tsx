@@ -1,4 +1,4 @@
-﻿import { Building2 } from 'lucide-react';
+﻿import { Baby, Building2 } from 'lucide-react';
 import React from 'react';
 import { useHmis, ModuleId } from '../context/HmisContext.tsx';
 import {
@@ -64,6 +64,7 @@ const navSections: NavSection[] = [
       { id: 'reception', label: 'Reception & Queue', icon: Users },
       { id: 'opd', label: 'Outpatient & Triage', icon: Stethoscope },
       { id: 'inpatient', label: 'Inpatient & Wards', icon: BedDouble },
+      { id: 'maternity', label: 'Maternity & MCH', icon: Baby },
       { id: 'theatre', label: 'Operating Theatre', icon: Scissors },
       { id: 'specialty', label: 'Specialty Clinics', icon: Eye },
     ],
@@ -144,7 +145,7 @@ export const Sidebar: React.FC = () => {
     // Dashboard is available when at least one operational module is enabled.
     if (id === 'dashboard') {
       return [
-        'registration', 'reception', 'opd', 'inpatient', 'theatre',
+        'registration', 'reception', 'opd', 'inpatient', 'maternity', 'theatre',
         'specialty', 'laboratory', 'radiology', 'pharmacy', 'inventory',
         'procurement', 'finance', 'insurance', 'claims', 'public_health',
         'analytics', 'interoperability', 'configuration', 'audit'
@@ -176,6 +177,7 @@ export const Sidebar: React.FC = () => {
       reception: ['appointments.read', 'clinical.read', 'patients.read'],
       opd: ['clinical.read'],
       inpatient: ['inpatient.read'],
+      maternity: ['maternity.read'],
       theatre: ['clinical.read', 'inpatient.read'],
       specialty: ['clinical.read'],
       laboratory: ['laboratory.read'],

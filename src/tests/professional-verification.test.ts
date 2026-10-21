@@ -392,7 +392,18 @@ function testMigration(): void {
     journal.entries.some((entry) => entry.tag === '0014_professional_verification'),
     'the journal lists 0014',
   );
-  assertEqual(journal.entries.length, 15, 'fifteen migrations are journaled');
+
+  /*
+   * The count was pinned at fifteen here, which meant every later
+   * migration broke this suite for no clinical reason. What matters is
+   * that 0014 is the fourteenth entry and that nothing follows it out of
+   * order — the ordering itself is checked by test:migrations.
+   */
+  const entry = journal.entries.find(
+    (candidate) => candidate.tag === '0014_professional_verification',
+  );
+
+  assertEqual(entry?.idx, 14, '0014 is the fourteenth migration');
 }
 
 /* ============================================================

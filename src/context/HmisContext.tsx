@@ -50,6 +50,7 @@ export type ModuleId =
   | 'reception'
   | 'opd'
   | 'inpatient'
+  | 'maternity'
   | 'theatre'
   | 'specialty'
   | 'laboratory'

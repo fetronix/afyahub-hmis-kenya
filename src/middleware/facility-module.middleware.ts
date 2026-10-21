@@ -11,6 +11,7 @@ export type FacilityModuleId =
   | 'reception'
   | 'opd'
   | 'inpatient'
+  | 'maternity'
   | 'theatre'
   | 'specialty'
   | 'laboratory'

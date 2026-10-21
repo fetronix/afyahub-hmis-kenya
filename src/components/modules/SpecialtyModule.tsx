@@ -2,18 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { Patient } from '../../types/index.ts';
-import {
-  Eye,
-  Smile,
-  Baby,
-  Activity,
-  CheckCircle2,
-  Stethoscope,
-  Sparkles,
-  ClipboardCheck
-} from 'lucide-react';
+import { Activity, Eye, Smile, Stethoscope } from 'lucide-react';
 
-type SpecialtyType = 'Dental' | 'Optical' | 'ENT' | 'MCH' | 'Renal';
+type SpecialtyType = 'Dental' | 'Optical' | 'ENT' | 'Renal';
 
 export const SpecialtyModule: React.FC = () => {
   const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey } = useHmis();
@@ -39,17 +30,6 @@ export const SpecialtyModule: React.FC = () => {
     fundusExam: 'Normal disc, cup-to-disc ratio 0.3, clear macula',
     prescribedLenses: 'OD: -0.50 DS / OS: -0.75 DS',
     costKes: '2000',
-  });
-
-  // MCH / Antenatal State
-  const [mchForm, setMchForm] = useState({
-    gravidaPara: 'G2 P1 + 0',
-    gestationWeeks: '28 Weeks',
-    fundalHeightCm: '28 cm',
-    fetalHeartRateBpm: '142 bpm',
-    presentation: 'Cephalic',
-    tetanusToxoidDose: 'TT3 Administered',
-    ironFolateDispensed: true,
   });
 
   // Renal / Dialysis State
@@ -92,7 +72,7 @@ export const SpecialtyModule: React.FC = () => {
         <div>
           <h1 className="text-lg font-bold text-slate-900 tracking-tight">Specialized Clinical Framework</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Configurable clinical documentation suites for Dental, Optical, ENT, MCH / Antenatal, and Renal Dialysis.
+            Clinical documentation suites for Dental, Optical, ENT and Renal Dialysis.
           </p>
         </div>
 
@@ -114,7 +94,6 @@ export const SpecialtyModule: React.FC = () => {
         {[
           { id: 'Dental', label: 'Dental & Oral Health', icon: Smile },
           { id: 'Optical', label: 'Ophthalmology & Optical', icon: Eye },
-          { id: 'MCH', label: 'MCH / Antenatal Clinic (ANC)', icon: Baby },
           { id: 'Renal', label: 'Renal & Haemodialysis', icon: Activity },
           { id: 'ENT', label: 'Ear, Nose & Throat (ENT)', icon: Stethoscope },
         ].map((tab) => {
@@ -309,87 +288,6 @@ export const SpecialtyModule: React.FC = () => {
               className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
             >
               Save Optical Prescription
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MCH / ANC VIEW */}
-      {activeSpecialty === 'MCH' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-5 text-xs">
-          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 uppercase">
-              Maternal & Child Health — Antenatal Care (ANC) Log
-            </h2>
-            <span className="text-2xs text-slate-500">Kenya MOH 405 ANC Card Standard</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Parity & Gravida</label>
-              <input
-                type="text"
-                value={mchForm.gravidaPara}
-                onChange={(e) => setMchForm({ ...mchForm, gravidaPara: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Gestation Age</label>
-              <input
-                type="text"
-                value={mchForm.gestationWeeks}
-                onChange={(e) => setMchForm({ ...mchForm, gestationWeeks: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Fundal Height (cm)</label>
-              <input
-                type="text"
-                value={mchForm.fundalHeightCm}
-                onChange={(e) => setMchForm({ ...mchForm, fundalHeightCm: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Fetal Heart Rate (bpm)</label>
-              <input
-                type="text"
-                value={mchForm.fetalHeartRateBpm}
-                onChange={(e) => setMchForm({ ...mchForm, fetalHeartRateBpm: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-semibold text-teal-800"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Fetal Presentation</label>
-              <input
-                type="text"
-                value={mchForm.presentation}
-                onChange={(e) => setMchForm({ ...mchForm, presentation: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Tetanus Toxoid (TT)</label>
-              <input
-                type="text"
-                value={mchForm.tetanusToxoidDose}
-                onChange={(e) => setMchForm({ ...mchForm, tetanusToxoidDose: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end">
-            <button
-              onClick={handleSaveSpecialtyEncounter}
-              className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
-            >
-              Save ANC Encounter & Issue IFAS Supplements
             </button>
           </div>
         </div>
