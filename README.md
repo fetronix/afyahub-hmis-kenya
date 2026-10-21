@@ -30,7 +30,7 @@ screen was exercised, or that a clinician has accepted it.
 4. **PUCHE facility overview — Completed**
 5. **Patient registration and records — Completed**
 6. **OPD, triage and consultations — In progress; current priority.** Queue and triage exist; the queue → triage → consultation → investigation → follow-up path has not been walked end to end.
-7. **Inpatient, wards, beds and theatre — Implemented.** Admission board, transfers, discharge authorisation and theatre cases. Covered by 48 assertions in `test:inpatient`. No user acceptance.
+7. **Inpatient, wards, beds and theatre — Implemented.** Ward and bed set-up (create, rename, retire, delete), admission board with an empty state that leads to the first ward, transfers, discharge authorisation and theatre cases. Covered by 97 assertions in `test:inpatient`. No user acceptance.
 8. **Maternity, MCH and preventive services — Implemented.** Antenatal booking and visits, labour with a partograph, delivery with one row per baby, postnatal contacts and the childhood immunisation register, on eight tables (§3.11 and §3.12). The partograph is drawn as a chart from the stored readings, with the alert and action lines computed by the same function the table uses. A delivery raises an invoice line only through a real `facility_service_tariffs` price; with none configured the screen says **recorded, not billed** rather than inventing a figure. 131 + 151 assertions. No user acceptance.
 9. **Laboratory and radiology — Implemented.** Result entry and verification are separate: `addLabResult` writes `Pending Verification` with `verifiedBy`/`verifiedAt` null, and `POST /api/lab-results/:id/verify` is gated on `laboratory.results.verify`. The schema column is nullable since migration 0008.
 10. **Pharmacy, inventory and procurement — In progress.** Batch tracking, expiry control and FEFO dispensing implemented (80 assertions). Procurement screens exist; no test coverage.
@@ -423,7 +423,7 @@ Without the second, existing roles hold no maternity permission and the module a
 
 - `npm run test:maternity` — 130 assertions: date arithmetic (including 30 February and leap years), Naegele's rule, gestation from the EDD, absent-is-not-zero, every partograph zone, the migration's additive guarantees, no default on any clinical measurement, route permissions, and that the screen ships no sample patient.
 - **Live against PostgreSQL 16** — the scratch database was built by applying all sixteen migrations, then the service was exercised end to end: 24 checks covering EDD derivation, the one-active-pregnancy rule, ANC gestation computation, values stored versus left NULL, labour admission, three partograph readings, the duplicate-timestamp refusal, the dilatation range, the delivery with its baby, the pregnancy and labour closing to `Delivered`, refusal of a second delivery, refusal of a reading after delivery, the summary counts, and cross-facility isolation. Two defects were found this way and fixed: Drizzle wraps driver errors so the SQLSTATE sits on `cause` (every unique violation was returning 500), and a facility denial was surfacing as 403 instead of 404.
-- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.12).
+- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.13).
 - `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
 
 **Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care, immunisation and the plotted chart were still outstanding at the end of that round; they are in §3.12.
@@ -476,6 +476,46 @@ Verified against PostgreSQL 16:
 
 **Not verified:** the screens were still not walked in a browser — no browser was available in this environment, so the tabs, the chart and the billing banner have been type-checked and built but not clicked. No clinician has reviewed the field set against the MOH 405 card, and no one has confirmed the KEPI ages against the current chart.
 
+### 3.13 Ward and bed set-up — the empty dropdowns
+
+**What was missing.** The inpatient screen could be read and never filled. `GET /api/wards`, `GET /api/beds`, `PUT /api/beds/:id/status` and `PUT /api/beds/:id/release` were the only ward or bed routes in `src/app.ts` — there was no POST, no edit and no delete for either. Wards and beds existed only if `src/db/seed.ts` had been run, and that seed also creates demo patients and a demo admission. A real facility therefore opened **Admit patient** to two empty dropdowns with no screen anywhere to fill them. This was not a bug in the dropdowns; it was the absence of a write path.
+
+**The write path** (`src/inpatient/ward-bed.service.ts`) adds six operations, each behind its own permission:
+
+| Endpoint | Permission |
+|---|---|
+| `POST /api/wards` | `inpatient.wards.create` |
+| `PUT /api/wards/:id` | `inpatient.wards.update` |
+| `DELETE /api/wards/:id` | `inpatient.wards.delete` |
+| `POST /api/beds` | `inpatient.beds.create` |
+| `PUT /api/beds/:id` | `inpatient.beds.update` |
+| `DELETE /api/beds/:id` | `inpatient.beds.delete` |
+
+Reading stays on `inpatient.read`. All six mutate paths are audited, and every one resolves the facility through `resolveFacilityScope` — the facility is taken from the session, never from the request body. Another facility's ward or bed answers **404**, not 403, as everywhere else.
+
+**Beds are created in a batch.** A ward is set up in one sitting, so `POST /api/beds` takes either `{ wardId, prefix, startNumber, count, bedType, dailyCharge? }` — which produces `FMW-BED-01 … FMW-BED-04` — or an explicit `{ wardId, bedNumbers: [...] }`. At most 60 at a time. If any number already exists the whole batch is refused (`BED_NUMBER_EXISTS`, naming the numbers) and nothing is inserted, so a failed attempt cannot leave half a ward behind.
+
+**No invented numbers.**
+
+- A rate or charge left blank is stored **NULL**. The columns carry historical defaults of 1500.00 and 1800.00; a bed billed at a price nobody entered is a bill waiting to happen, so the service never falls back to them and the screen says *not priced*.
+- A ward's `total_beds` is **counted**, not typed. It is written as 0 on creation and recounted after every bed change, because the old default of 20 made a six-bed ward advertise twenty.
+- A new bed is `Available`; `Occupied` is only ever set by admitting a patient. An edit cannot set it.
+- A ward with a patient in it cannot be retired (`WARD_OCCUPIED`); a retired ward accepts no new beds (`WARD_RETIRED`).
+
+**History is not deleted.** A ward or bed with admission rows cannot be deleted — the admission would lose the place it happened in. `deleteWard`/`deleteBed` refuse with `WARD_HAS_HISTORY` / `BED_HAS_HISTORY` and name the alternative: retire the ward, or set the bed to Maintenance. A bed with a patient currently in it is refused sooner and more bluntly (`BED_OCCUPIED`). Only a ward with no admissions and no occupied beds may be deleted, and its unused beds go with it in one transaction.
+
+**Reachable on the screen** (`src/components/modules/InpatientModule.tsx`). *Add ward* and *Add beds* buttons appear on the ward strip when the signed-in user holds the matching permission. A facility with no wards at all is shown a first-run card — *"Create the first ward"* — rather than an empty grey panel. Bed tiles carry edit and delete icons. Three modals cover the ward form, the batch bed form and the bed edit; the admit modal offers only active wards and beds that are `Available`, and disables submit when either is empty. Retiring is a checkbox on the ward form, not a second screen. Users without a permission see the count and the reason (`Adding beds needs inpatient.beds.create`) instead of a button that would fail.
+
+**Where the permissions are granted.** All six codes carry `module: 'inpatient'`, so they appear in **Administration → Facility roles** under the existing *inpatient* heading alongside `inpatient.read`, `.admit` and `.discharge`. No role receives them by default — a facility decides who configures the ward versus who admits into it. The seeder is idempotent: it inserts what is missing and updates the label and description of what exists.
+
+**Validation completed**
+
+- `npm test` — **1,955 assertions** across thirteen counting suites; `test:inpatient` is now **97** (was 48). The new assertions cover the six permission codes being seeded and the six routes being guarded, no money literal standing in for a blank rate, capacity starting at zero, the batch contract, the history refusals, the scope rules, and the screen wiring.
+- `npm run build` — passed (573 ms). `npm run lint` — only the pre-existing `firebase.ts` error.
+- **Live against PostgreSQL 16**, all 17 migrations applied to a scratch database: 33 checks. A new facility starts with **0** wards; the first ward is created from nothing; a blank rate is stored `NULL`; capacity is 0 until beds exist; four beds are generated and the dropdown is no longer empty; a duplicate ward code and a colliding bed number are both refused by name; a refused batch adds nothing; a patient is admitted into a generated bed and that bed becomes `Occupied`; retiring and deleting are refused while the patient is there; after discharge the bed's history still blocks deletion; a retired ward leaves the admit list and accepts no new beds; another facility sees a 404 and an empty board; an entered rate is normalised to two decimals; a ward with no patients deletes with its beds.
+
+**Not verified:** the screen was not walked in a browser — none is available in this environment, so the buttons, empty state and modals are type-checked and built but not clicked. No facility user has set up a real ward yet.
+
 ## 4. Existing backups and modified files to preserve
 
 ### Backups created during the latest session
@@ -489,6 +529,11 @@ Verified against PostgreSQL 16:
 - `scripts/migrate.ts.before-timestamp-skip-20261021.bak`
 - `drizzle/0002_friendly_lady_deathstrike.sql.before-using-cast-20261021.bak`
 - `README.md.before-postnatal-20261021.bak`
+- `src/app.ts.before-ward-setup-20261021.bak`
+- `src/api/client.ts.before-ward-setup-20261021.bak`
+- `src/components/modules/InpatientModule.tsx.before-ward-setup-20261021.bak`
+- `src/db/inpatient-contracts.ts.before-ward-setup-20261021.bak`
+- `src/types/index.ts.before-ward-setup-20261021.bak`
 
 ### Earlier uncommitted changes and backups
 

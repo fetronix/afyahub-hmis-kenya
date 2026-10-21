@@ -44,6 +44,7 @@ import * as inventory from './inventory/inventory.service.ts';
 import * as maternity from './maternity/maternity.service.ts';
 import * as postnatal from './maternity/postnatal.service.ts';
 import * as immunisation from './immunisation/immunisation.service.ts';
+import * as wardBed from './inpatient/ward-bed.service.ts';
 
 import {
   createApiRateLimiter,
@@ -2402,6 +2403,232 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         res.status(500).json({
           success: false,
           error: 'WARD_LIST_FAILED',
+        });
+      }
+    },
+  );
+
+  /*
+   * Ward set-up.
+   *
+   * The board was read-only before this: wards could only exist if the
+   * demo seed had been run, so a real facility had an empty dropdown and
+   * nowhere to fill it from. These are the write paths, each with its
+   * own permission so a facility can decide who configures the ward
+   * while keeping admission rights separate.
+   */
+  app.post(
+    '/api/wards',
+    requirePermission('inpatient.wards.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const created = await wardBed.createWard(context, req.body ?? {});
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'CREATE',
+          'Ward',
+          String(created.id),
+          `Created ward ${created.code} — ${created.name}`,
+        );
+
+        res.status(201).json(created);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Ward creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'WARD_CREATION_FAILED',
+        });
+      }
+    },
+  );
+
+  app.put(
+    '/api/wards/:id',
+    requirePermission('inpatient.wards.update'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const updated = await wardBed.updateWard(
+          context,
+          req.params.id,
+          req.body ?? {},
+        );
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'UPDATE',
+          'Ward',
+          String(updated.id),
+          `Updated ward ${updated.code}`,
+        );
+
+        res.json(updated);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Ward update error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'WARD_UPDATE_FAILED',
+        });
+      }
+    },
+  );
+
+  app.delete(
+    '/api/wards/:id',
+    requirePermission('inpatient.wards.delete'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const result = await wardBed.deleteWard(context, req.params.id);
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'DELETE',
+          'Ward',
+          String(result.wardId),
+          `Deleted unused ward ${result.code}`,
+        );
+
+        res.json(result);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Ward deletion error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'WARD_DELETION_FAILED',
+        });
+      }
+    },
+  );
+
+  /*
+   * Bed set-up. Beds are created in a batch because a ward is set up in
+   * one sitting: a prefix, a first number and a count, or an explicit
+   * list of numbers.
+   */
+  app.post(
+    '/api/beds',
+    requirePermission('inpatient.beds.create'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const result = await wardBed.createBeds(context, req.body ?? {});
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'CREATE',
+          'Bed',
+          String(result.wardId),
+          `Added ${result.totalBeds} bed(s) to ward ${result.wardId}`,
+        );
+
+        res.status(201).json(result);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Bed creation error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'BED_CREATION_FAILED',
+        });
+      }
+    },
+  );
+
+  app.put(
+    '/api/beds/:id',
+    requirePermission('inpatient.beds.update'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const updated = await wardBed.updateBed(
+          context,
+          req.params.id,
+          req.body ?? {},
+        );
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'UPDATE',
+          'Bed',
+          String(updated.id),
+          `Updated bed ${updated.bedNumber}`,
+        );
+
+        res.json(updated);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Bed update error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'BED_UPDATE_FAILED',
+        });
+      }
+    },
+  );
+
+  app.delete(
+    '/api/beds/:id',
+    requirePermission('inpatient.beds.delete'),
+    async (req: AuthRequest, res: Response) => {
+      const context = requireAuthContext(req, res);
+
+      if (!context) return;
+
+      try {
+        const result = await wardBed.deleteBed(context, req.params.id);
+
+        await queries.logAuditEvent(
+          context.tenantId,
+          context.facilityId,
+          String(context.userId),
+          'DELETE',
+          'Bed',
+          String(result.bedId),
+          `Deleted unused bed ${result.bedNumber}`,
+        );
+
+        res.json(result);
+      } catch (err: unknown) {
+        if (handleInpatientError(err, res)) return;
+
+        console.error('Bed deletion error:', err);
+        res.status(500).json({
+          success: false,
+          error: 'BED_DELETION_FAILED',
         });
       }
     },

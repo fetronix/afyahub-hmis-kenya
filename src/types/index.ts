@@ -196,8 +196,10 @@ export interface Ward {
   code: string;
   wardType: string;
   genderAllocation: string;
+  /** Counted from the beds in the ward, not typed in. */
   totalBeds: number;
-  dailyRate: string;
+  /** NULL when the facility has not set a rate. Never a guess. */
+  dailyRate: string | null;
   isActive: boolean;
 }
 
@@ -207,7 +209,8 @@ export interface Bed {
   bedNumber: string;
   bedType: string;
   status: string; // Available, Occupied, Maintenance, Cleaning, Reserved
-  dailyCharge: string;
+  /** NULL when the facility has not set a charge. Never a guess. */
+  dailyCharge: string | null;
   currentPatientId?: number | null;
 }
 

@@ -27,7 +27,14 @@ export type InpatientErrorCode =
   | 'PATIENT_ALREADY_ADMITTED'
   | 'ADMISSION_ALREADY_CLOSED'
   | 'BED_STATUS_CONFLICT'
-  | 'BED_STATUS_NOT_ALLOWED';
+  | 'BED_STATUS_NOT_ALLOWED'
+  /* Ward and bed set-up (§3.13). */
+  | 'WARD_RETIRED'
+  | 'WARD_OCCUPIED'
+  | 'WARD_CODE_EXISTS'
+  | 'WARD_HAS_HISTORY'
+  | 'BED_NUMBER_EXISTS'
+  | 'BED_HAS_HISTORY';
 
 /**
  * Domain error raised by the inpatient layer.
@@ -98,3 +105,35 @@ export const BED_STATUS_SETTABLE = new Set<string>([
   'Maintenance',
   'Reserved',
 ]);
+
+/* ============================================================
+   WARD AND BED SET-UP VOCABULARY
+   ============================================================ */
+
+/**
+ * Suggestions for the ward type and bed type fields.
+ *
+ * These are offered, not enforced: a facility may call a ward anything
+ * it likes, and the server accepts any short label. They exist so the
+ * common Kenyan ward names are one click away instead of retyped.
+ */
+export const SUGGESTED_WARD_TYPES = [
+  'General',
+  'Medical',
+  'Surgical',
+  'Maternity',
+  'Paediatric',
+  'ICU/HDU',
+  'Isolation',
+  'Recovery',
+] as const;
+
+export const SUGGESTED_BED_TYPES = [
+  'Standard',
+  'Fowler Electric Bed',
+  'ICU Ventilated Unit',
+  'Cot',
+  'Isolation Bed',
+] as const;
+
+export const GENDER_ALLOCATIONS = ['Mixed', 'Male', 'Female'] as const;

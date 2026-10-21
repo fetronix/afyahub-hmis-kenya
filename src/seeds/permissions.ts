@@ -502,6 +502,65 @@ const PERMISSIONS = [
       'Discharge admitted patients.',
   },
 
+  /*
+   * Ward and bed set-up.
+   *
+   * Kept separate from `inpatient.read` and `inpatient.admit` so a
+   * facility can decide who configures the ward while the clinicians
+   * keep admitting into it. Read access stays on `inpatient.read` —
+   * a second read code would produce screens that half-work.
+   *
+   * No role receives these by default: whether a nurse-midwife or only
+   * the matron may open a ward is a facility decision, not a default.
+   */
+  {
+    code: 'inpatient.wards.create',
+    name: 'Create Wards',
+    module: 'inpatient',
+    description:
+      'Add wards to this facility. Reading wards needs inpatient.read.',
+  },
+
+  {
+    code: 'inpatient.wards.update',
+    name: 'Update Wards',
+    module: 'inpatient',
+    description:
+      'Rename a ward, change its type, allocation or daily rate, and retire or reactivate it.',
+  },
+
+  {
+    code: 'inpatient.wards.delete',
+    name: 'Delete Wards',
+    module: 'inpatient',
+    description:
+      'Delete a ward that has never held a patient. A ward with admission history can only be retired.',
+  },
+
+  {
+    code: 'inpatient.beds.create',
+    name: 'Create Beds',
+    module: 'inpatient',
+    description:
+      'Add beds to a ward, singly or in a numbered batch.',
+  },
+
+  {
+    code: 'inpatient.beds.update',
+    name: 'Update Beds',
+    module: 'inpatient',
+    description:
+      'Change a bed number, type, daily charge or housekeeping status.',
+  },
+
+  {
+    code: 'inpatient.beds.delete',
+    name: 'Delete Beds',
+    module: 'inpatient',
+    description:
+      'Delete a bed that has never held a patient. A bed with admission history can only be taken out of service.',
+  },
+
 
   /* ==========================================================
      LABORATORY

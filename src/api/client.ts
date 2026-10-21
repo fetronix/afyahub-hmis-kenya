@@ -1602,6 +1602,85 @@ export const api = {
         }`
       ),
 
+  /*
+   * Ward and bed set-up.
+   *
+   * Each write has its own permission on the server; the screen hides
+   * the buttons the user cannot use, and the server refuses anyway.
+   */
+  createWard:
+    (data: {
+      facilityId?: number;
+      name: string;
+      code: string;
+      wardType: string;
+      genderAllocation: string;
+      /** Omit or send undefined for "not priced" — never send 0. */
+      dailyRate?: string | null;
+    }) =>
+      fetchJson<Ward>(`${API_BASE}/wards`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+  updateWard:
+    (id: number, data: {
+      name?: string;
+      wardType?: string;
+      genderAllocation?: string;
+      dailyRate?: string | null;
+      isActive?: boolean;
+    }) =>
+      fetchJson<Ward>(`${API_BASE}/wards/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+
+  deleteWard:
+    (id: number) =>
+      fetchJson<{ deleted: boolean; wardId: number; code: string }>(
+        `${API_BASE}/wards/${id}`,
+        { method: 'DELETE' }
+      ),
+
+  createBeds:
+    (data: {
+      wardId: number;
+      bedNumbers?: string[];
+      prefix?: string;
+      startNumber?: number;
+      count?: number;
+      bedType: string;
+      /** Omit for "not priced" — never send 0. */
+      dailyCharge?: string | null;
+    }) =>
+      fetchJson<{ created: Bed[]; wardId: number; totalBeds: number }>(
+        `${API_BASE}/beds`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      ),
+
+  updateBed:
+    (id: number, data: {
+      bedNumber?: string;
+      bedType?: string;
+      dailyCharge?: string | null;
+      status?: string;
+    }) =>
+      fetchJson<Bed>(`${API_BASE}/beds/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+
+  deleteBed:
+    (id: number) =>
+      fetchJson<{ deleted: boolean; bedId: number; bedNumber: string }>(
+        `${API_BASE}/beds/${id}`,
+        { method: 'DELETE' }
+      ),
+
   updateBedStatus:
     (
       id: number,

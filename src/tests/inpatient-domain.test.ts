@@ -291,6 +291,221 @@ function testRouteWiring(): void {
 }
 
 /* ============================================================
+   6. WARD AND BED SET-UP
+   ============================================================ */
+
+/**
+ * The board was read-only: a facility with no demo seed had an empty
+ * ward dropdown and no way to fill it. These tests pin the write path
+ * that fixes it, and the two properties that matter most:
+ *
+ *   - a rate nobody entered is stored as NULL, never as the schema's
+ *     historical 1500.00;
+ *   - a ward or bed that has held a patient cannot be deleted.
+ */
+function testWardBedSetup(): void {
+  const appSource = readFileSync(
+    resolve(import.meta.dirname, '../app.ts'),
+    'utf8',
+  );
+
+  const service = readFileSync(
+    resolve(import.meta.dirname, '../inpatient/ward-bed.service.ts'),
+    'utf8',
+  );
+
+  const seed = readFileSync(
+    resolve(import.meta.dirname, '../seeds/permissions.ts'),
+    'utf8',
+  );
+
+  const screen = readFileSync(
+    resolve(import.meta.dirname, '../components/modules/InpatientModule.tsx'),
+    'utf8',
+  );
+
+  const client = readFileSync(
+    resolve(import.meta.dirname, '../api/client.ts'),
+    'utf8',
+  );
+
+  /* ---- permissions ---- */
+  const requiredPermissions = [
+    'inpatient.wards.create',
+    'inpatient.wards.update',
+    'inpatient.wards.delete',
+    'inpatient.beds.create',
+    'inpatient.beds.update',
+    'inpatient.beds.delete',
+  ];
+
+  for (const permission of requiredPermissions) {
+    assert(
+      seed.includes(`'${permission}'`),
+      `${permission} is in the permission seed`,
+    );
+  }
+
+  /*
+   * Reading stays on `inpatient.read`. A second read code would give a
+   * user the board but not the ward list.
+   */
+  assert(
+    !seed.includes("'inpatient.wards.read'") &&
+      !seed.includes("'inpatient.beds.read'"),
+    'reading wards and beds uses the existing inpatient.read',
+  );
+
+  /* ---- routes ---- */
+  const routes: Array<{ route: string; method: string; permission: string }> = [
+    { route: "'/api/wards'", method: 'app.post', permission: 'inpatient.wards.create' },
+    { route: "'/api/wards/:id'", method: 'app.put', permission: 'inpatient.wards.update' },
+    { route: "'/api/wards/:id'", method: 'app.delete', permission: 'inpatient.wards.delete' },
+    { route: "'/api/beds'", method: 'app.post', permission: 'inpatient.beds.create' },
+    { route: "'/api/beds/:id'", method: 'app.put', permission: 'inpatient.beds.update' },
+    { route: "'/api/beds/:id'", method: 'app.delete', permission: 'inpatient.beds.delete' },
+  ];
+
+  for (const { route, method, permission } of routes) {
+    const marker = `${method}(\n    ${route},`;
+
+    assert(
+      appSource.includes(marker),
+      `${method} ${route} is registered`,
+    );
+
+    const index = appSource.indexOf(marker);
+    const block = appSource.slice(index, index + 250);
+
+    assert(
+      block.includes(`requirePermission('${permission}')`),
+      `${method} ${route} enforces ${permission}`,
+    );
+  }
+
+  /* ---- no invented prices ---- */
+  assert(
+    !service.includes("?? '1500.00'") && !service.includes("?? '1800.00'"),
+    'the service never invents a ward or bed price',
+  );
+
+  assert(
+    service.includes('optionalMoney('),
+    'rates go through a validator that can return NULL',
+  );
+
+  assert(
+    service.includes('dailyRate,') && service.includes('dailyCharge,'),
+    'the create paths pass the rate explicitly so the column default never applies',
+  );
+
+  assert(
+    service.includes('totalBeds: 0,'),
+    'a new ward starts with a counted capacity of zero, not the column default of 20',
+  );
+
+  assert(
+    service.includes('syncWardCapacity('),
+    "a ward's capacity is recounted from its beds",
+  );
+
+  /* ---- duplicate and history handling ---- */
+  assert(
+    service.includes("pgErrorCode(error) === '23505'"),
+    'a duplicate ward code or bed number is recognised from the unique index',
+  );
+
+  assert(
+    service.includes("'WARD_CODE_EXISTS'") &&
+      service.includes("'BED_NUMBER_EXISTS'"),
+    'duplicates are reported by name rather than as a 500',
+  );
+
+  assert(
+    service.includes("'WARD_HAS_HISTORY'") &&
+      service.includes("'BED_HAS_HISTORY'"),
+    'a ward or bed with admission history refuses deletion',
+  );
+
+  assert(
+    service.includes('Retire it instead') ||
+      service.includes('Set it to Maintenance instead'),
+    'the refusal tells the user what to do instead',
+  );
+
+  assert(
+    service.includes('db.transaction('),
+    'deleting a ward removes its beds in one transaction',
+  );
+
+  /* ---- scope ---- */
+  assert(
+    service.includes('resolveFacilityScope('),
+    'the facility is resolved from the session scope',
+  );
+
+  assert(
+    !service.includes('req.body'),
+    'the service reads no request object',
+  );
+
+  assert(
+    !appSource.includes('req.body.facilityId)'),
+    'ward creation never trusts a facility from the body as the scope',
+  );
+
+  /* ---- the screen ---- */
+  for (const call of [
+    'api.createWard(',
+    'api.updateWard(',
+    'api.deleteWard(',
+    'api.createBeds(',
+    'api.updateBed(',
+    'api.deleteBed(',
+  ]) {
+    assert(screen.includes(call), `the screen calls ${call}`);
+  }
+
+  assert(
+    screen.includes("can('inpatient.wards.create')"),
+    'the Add Ward button is gated on its permission',
+  );
+
+  assert(
+    screen.includes('No wards have been set up for this facility yet'),
+    'an empty facility is told why the dropdown is empty',
+  );
+
+  assert(
+    screen.includes('Create the first ward'),
+    'and is given the way out of it',
+  );
+
+  assert(
+    screen.includes('activeWards') && screen.includes("b.status === 'Available'"),
+    'the admit modal offers only active wards and available beds',
+  );
+
+  assert(
+    !screen.includes("Severe community acquired pneumonia"),
+    'the admission form ships no pre-filled diagnosis',
+  );
+
+  for (const method of [
+    'createWard:',
+    'updateWard:',
+    'deleteWard:',
+    'createBeds:',
+    'updateBed:',
+    'deleteBed:',
+  ]) {
+    assert(client.includes(method), `the API client exposes ${method}`);
+  }
+
+  console.log('  ✓ Ward and bed set-up passed');
+}
+
+/* ============================================================
    RUNNER
    ============================================================ */
 
@@ -306,6 +521,7 @@ function run(): void {
   testDomainErrors();
   testRolePermissions();
   testRouteWiring();
+  testWardBedSetup();
 
   console.log('');
   console.log('==============================================');
