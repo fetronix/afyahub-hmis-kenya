@@ -588,7 +588,9 @@ export const StaffRolesPanel: React.FC = () => {
 
             <footer className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[11px] text-slate-500">
-                Saving replaces the roles above. The change is recorded in the audit log.
+                {selectedRoleIds.length === 0
+                  ? "Choose at least one role. Leaving an active account with no role would give it nothing to open, so it is not allowed."
+                  : "Saving replaces the roles above. The change is recorded in the audit log."}
               </p>
               <div className="flex gap-2">
                 <button
