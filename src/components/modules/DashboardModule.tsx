@@ -80,7 +80,7 @@ type KpiCellProps = {
  * card can never look more certain than the data behind it.
  */
 const KpiCell: React.FC<KpiCellProps> = ({ label, icon: Icon, value, unit, footer }) => (
-  <div className="px-5 py-4">
+  <div className="bg-surface px-5 py-4">
     <div className="flex items-start justify-between gap-3">
       <span className="eyebrow">{label}</span>
       <Icon className="h-4 w-4 shrink-0 text-pine-500" />
@@ -308,7 +308,9 @@ export const DashboardModule: React.FC = () => {
             <span className="text-2xs text-slate-400">Live from this facility only</span>
           </div>
 
-          <div className="grid grid-cols-1 divide-y divide-hair sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-4 xl:divide-x">
+          {/* Tracks fit however many metrics this session may read; the
+              1px gap over the hairline colour draws the dividers. */}
+          <div className="grid gap-px bg-hair [grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))]">
             {can('appointments.read') && (
               <KpiCell
                 label="Waiting in queues"
@@ -359,28 +361,6 @@ export const DashboardModule: React.FC = () => {
               />
             )}
 
-            {can('billing.read') && (
-              <KpiCell
-                label="Paid to date"
-                icon={Wallet}
-                value={
-                  summary
-                    ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}`
-                    : '\u2014'
-                }
-                footer={
-                  <span className="flex items-center justify-between gap-2">
-                    <span>Outstanding</span>
-                    <strong className="font-mono font-semibold text-clay-700">
-                      {summary
-                        ? `KES ${Number(summary.outstandingBillsKes).toLocaleString()}`
-                        : '\u2014'}
-                    </strong>
-                  </span>
-                }
-              />
-            )}
-
             {canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read') && (
               <KpiCell
                 label="Theatre, lab & stores"
@@ -425,6 +405,28 @@ export const DashboardModule: React.FC = () => {
                 }
               />
             )}
+            {can('billing.read') && (
+              <KpiCell
+                label="Paid to date"
+                icon={Wallet}
+                value={
+                  summary
+                    ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}`
+                    : '\u2014'
+                }
+                footer={
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Outstanding</span>
+                    <strong className="font-mono font-semibold text-clay-700">
+                      {summary
+                        ? `KES ${Number(summary.outstandingBillsKes).toLocaleString()}`
+                        : '\u2014'}
+                    </strong>
+                  </span>
+                }
+              />
+            )}
+
           </div>
         </section>
       )}

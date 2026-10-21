@@ -264,7 +264,7 @@ export const LoginScreen: React.FC = () => {
                 Welcome back.
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                Sign in with the account your facility administrator issued to you.
+                Sign in with the credentials your administrator issued to you.
               </p>
 
               {error && (

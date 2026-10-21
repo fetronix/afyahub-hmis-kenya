@@ -629,7 +629,7 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 
 **Validation**
 
-- `npm run build` — **654 ms**.
+- `npm run build` — **561 ms**.
 - `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
 - `npm test` — **2,109 assertions across sixteen suites**, all green. The nursing contract now asserts the ward table's columns (`Last vitals`, `Notes today`, `Ward / bed`) rather than only the old heading string, so the redesign could not quietly drop them: 83 assertions, three more than before.
 
