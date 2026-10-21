@@ -3,6 +3,12 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { BillingInvoice, BillingItem, Patient } from '../../types/index.ts';
 import {
+  classifySettlement,
+  isMobileMoney,
+  parseMoneyToCents,
+  validateTransactionCode,
+} from '../../billing/settlement.ts';
+import {
   Receipt,
   CheckCircle2,
   DollarSign,
@@ -11,7 +17,9 @@ import {
   Printer,
   Search,
   Eye,
-  Plus
+  Plus,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 
 export const BillingCashierModule: React.FC = () => {
@@ -24,11 +32,12 @@ export const BillingCashierModule: React.FC = () => {
 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'M-Pesa' | 'Cash' | 'Card' | 'SHA/NHIF'>('M-Pesa');
+  const [paymentMethod, setPaymentMethod] = useState<'M-Pesa' | 'Airtel Money' | 'Cash' | 'Card'>('M-Pesa');
   const [paymentAmount, setPaymentAmount] = useState('0');
-  const [mpesaPhone, setMpesaPhone] = useState('+254 700 000 000');
-  const [referenceCode, setReferenceCode] = useState('');
-  const [isSimulatingStk, setIsSimulatingStk] = useState(false);
+  /* The code printed on the customer's confirmation SMS. Never generated here. */
+  const [transactionCode, setTransactionCode] = useState('');
+  const [confirmOverpay, setConfirmOverpay] = useState<number | null>(null);
+  const [isPostingPayment, setIsPostingPayment] = useState(false);
 
   useEffect(() => {
     async function loadBilling() {
@@ -65,39 +74,66 @@ export const BillingCashierModule: React.FC = () => {
   const openPaymentModal = (inv: BillingInvoice) => {
     setSelectedInvoice(inv);
     setPaymentAmount(inv.balanceAmount || inv.totalAmount || '0');
-    setReferenceCode(`MPESA-${Math.random().toString(36).substring(2, 9).toUpperCase()}`);
+    setTransactionCode('');
+    setConfirmOverpay(null);
     setIsPaymentModalOpen(true);
-  };
-
-  const handleSimulateStkPush = () => {
-    setIsSimulatingStk(true);
-    setTimeout(() => {
-      setIsSimulatingStk(false);
-      showToast('Safaricom STK Push received on customer handset! PIN verified.');
-    }, 1500);
   };
 
   const handleRecordPayment = async () => {
     if (!selectedInvoice) return;
 
+    setIsPostingPayment(true);
+
     try {
-      const receiptNo = `REC-${Date.now().toString().slice(-6)}`;
-      await api.recordPayment({
+      const result = await api.recordPayment({
         invoiceId: selectedInvoice.id,
-        receiptNumber: receiptNo,
         paymentMethod,
         amount: paymentAmount,
-        referenceCode: paymentMethod === 'M-Pesa' ? referenceCode : undefined,
-        cashierName: currentUser.name,
+        transactionCode: isMobileMoney(paymentMethod) ? transactionCode.trim() : undefined,
+        allowOverpayment: confirmOverpay !== null,
       });
 
-      showToast(`Payment of KES ${Number(paymentAmount).toLocaleString()} recorded. Receipt: ${receiptNo}`);
+      showToast(`${result.settlement.summary} Receipt ${result.payment.receiptNumber}.`);
       setIsPaymentModalOpen(false);
+      setConfirmOverpay(null);
       triggerRefresh();
     } catch (err: any) {
+      /*
+       * The server refuses an overpayment unless it is confirmed. Ask
+       * once, then resend with the flag set.
+       */
+      if (err?.code === 'PAYMENT_EXCEEDS_BALANCE') {
+        const excess = Number(err?.detail?.excessCents ?? 0);
+        setConfirmOverpay(excess);
+        return;
+      }
+
       showToast(`Payment failed: ${err.message}`);
+    } finally {
+      setIsPostingPayment(false);
     }
   };
+
+  /*
+   * Preview uses the same pure functions the server uses, so the number
+   * on screen cannot disagree with the receipt.
+   */
+  const codeCheck = validateTransactionCode(paymentMethod, transactionCode);
+
+  const settlementPreview = (() => {
+    if (!selectedInvoice) return null;
+
+    const amountCents = parseMoneyToCents(paymentAmount);
+    const totalCents = parseMoneyToCents(selectedInvoice.totalAmount);
+
+    if (amountCents === null || amountCents <= 0 || totalCents === null) return null;
+
+    return classifySettlement({
+      invoiceTotalCents: totalCents,
+      paidBeforeCents: parseMoneyToCents(selectedInvoice.paidAmount) ?? 0,
+      amountCents,
+    });
+  })();
 
   const getPatient = (patientId: number) => {
     return patients.find(p => p.id === patientId);
@@ -356,9 +392,9 @@ export const BillingCashierModule: React.FC = () => {
             <div className="grid grid-cols-4 gap-2">
               {[
                 { id: 'M-Pesa', label: 'M-Pesa', icon: Smartphone },
+                { id: 'Airtel Money', label: 'Airtel', icon: Smartphone },
                 { id: 'Cash', label: 'Cash', icon: DollarSign },
                 { id: 'Card', label: 'Visa/MC', icon: CreditCard },
-                { id: 'SHA/NHIF', label: 'SHA Claim', icon: Receipt },
               ].map((pm) => {
                 const Icon = pm.icon;
                 const isSelected = paymentMethod === pm.id;
@@ -382,56 +418,133 @@ export const BillingCashierModule: React.FC = () => {
 
             <div className="space-y-3 pt-2">
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Amount to Pay (KES) *</label>
+                <label className="block font-medium text-slate-700 mb-1">Amount Paid (KES) *</label>
                 <input
                   type="text"
+                  inputMode="decimal"
                   required
                   value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  onChange={(e) => {
+                    setPaymentAmount(e.target.value);
+                    setConfirmOverpay(null);
+                  }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold text-base text-slate-900"
                 />
               </div>
 
-              {paymentMethod === 'M-Pesa' && (
-                <div className="p-3 bg-emerald-50/50 border border-emerald-200 rounded-lg space-y-2">
-                  <div className="font-semibold text-emerald-950 flex items-center justify-between">
-                    <span>Safaricom M-Pesa Express / STK Push</span>
-                    <span className="font-mono text-2xs text-emerald-800">Paybill: 883921</span>
-                  </div>
+              {isMobileMoney(paymentMethod) && (
+                <div className="space-y-2">
                   <div>
-                    <label className="block text-2xs text-slate-600 mb-0.5">Customer Mobile Number</label>
+                    <label className="block font-medium text-slate-700 mb-1">
+                      {paymentMethod} Transaction Code *
+                    </label>
                     <input
                       type="text"
-                      value={mpesaPhone}
-                      onChange={(e) => setMpesaPhone(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-white border border-emerald-300 rounded font-mono font-semibold"
+                      value={transactionCode}
+                      onChange={(e) => {
+                        setTransactionCode(e.target.value.toUpperCase());
+                        setConfirmOverpay(null);
+                      }}
+                      placeholder={paymentMethod === 'M-Pesa' ? 'e.g. QGH4XYZ123' : 'e.g. MP1234567890'}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold tracking-widest uppercase"
+                      maxLength={16}
+                      autoComplete="off"
                     />
+                    <p className="text-2xs text-slate-500 mt-1">
+                      Copy the code from the customer&apos;s confirmation SMS. It is checked against
+                      the statement at reconciliation, so it must be the real code.
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      disabled={isSimulatingStk}
-                      onClick={handleSimulateStkPush}
-                      className="px-3 py-1.5 bg-emerald-700 text-white rounded text-2xs font-semibold hover:bg-emerald-800 transition-colors shadow-xs"
+                  {transactionCode.trim() !== '' && (
+                    <div
+                      className={`text-2xs rounded-md p-2 border ${
+                        codeCheck.valid
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                          : 'bg-rose-50 border-rose-200 text-rose-800'
+                      }`}
                     >
-                      {isSimulatingStk ? 'Sending STK Push...' : 'Send STK Prompt to Phone'}
-                    </button>
-                    <span className="font-mono text-2xs text-slate-500">Ref: {referenceCode}</span>
+                      {codeCheck.valid ? 'Code format looks right.' : codeCheck.reason}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* What this payment will do, computed with the server's rules */}
+              {settlementPreview && (
+                <div
+                  className={`rounded-lg border p-3 space-y-1 ${
+                    settlementPreview.outcome === 'OVERPAID'
+                      ? 'bg-amber-50 border-amber-300'
+                      : settlementPreview.outcome === 'FULLY_PAID'
+                        ? 'bg-emerald-50 border-emerald-300'
+                        : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-semibold">
+                    <span
+                      className={
+                        settlementPreview.outcome === 'OVERPAID'
+                          ? 'text-amber-900'
+                          : settlementPreview.outcome === 'FULLY_PAID'
+                            ? 'text-emerald-900'
+                            : 'text-slate-700'
+                      }
+                    >
+                      {settlementPreview.outcome === 'FULLY_PAID' && 'Fully paid'}
+                      {settlementPreview.outcome === 'BALANCE_REMAINING' && 'Balance remaining'}
+                      {settlementPreview.outcome === 'OVERPAID' && 'Overpayment'}
+                    </span>
+                    <span className="font-mono text-2xs">
+                      {settlementPreview.outcome === 'OVERPAID'
+                        ? `+KES ${(settlementPreview.creditCents / 100).toLocaleString()} credit`
+                        : `KES ${(settlementPreview.balanceAfterCents / 100).toLocaleString()} left`}
+                    </span>
                   </div>
+                  <div className="text-2xs text-slate-600 font-mono">
+                    Bill {(settlementPreview.invoiceTotalCents / 100).toLocaleString()} · already paid{' '}
+                    {(settlementPreview.paidBeforeCents / 100).toLocaleString()} · this payment{' '}
+                    {(settlementPreview.amountCents / 100).toLocaleString()}
+                  </div>
+                  {settlementPreview.outcome === 'OVERPAID' && (
+                    <div className="text-2xs text-amber-900 flex items-start gap-1">
+                      <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                      <span>
+                        The excess is held as patient credit, not a negative balance. Confirm
+                        below to record it.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {confirmOverpay !== null && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-2xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    This payment is <strong>KES {(confirmOverpay / 100).toLocaleString()}</strong> more
+                    than the outstanding balance. Press <strong>Record overpayment</strong> to post it
+                    as patient credit, or correct the amount.
+                  </span>
                 </div>
               )}
 
               {paymentMethod === 'Cash' && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-2xs text-slate-600">
-                  Physical currency counted at Cashier Station. Automatic change calculation and receipt printing.
+                  Physical currency counted at the cashier station. Change is given from the drawer;
+                  the receipt records only what was received.
                 </div>
               )}
 
-              {paymentMethod === 'SHA/NHIF' && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-2xs text-blue-900">
-                  Covered under Social Health Authority (SHA) benefits. Direct electronic claim will be submitted to the SHA portal.
+              {paymentMethod === 'Card' && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-2xs text-slate-600">
+                  Record the slip reference against the card terminal batch for end-of-day reconciliation.
                 </div>
               )}
+
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-2xs text-blue-900">
+                <strong>SHA claims are not payments.</strong> A SHA-covered balance is raised as a
+                claim in the Insurance module and settled when SHA remits. Do not receipt it here.
+              </div>
             </div>
 
             <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
@@ -444,9 +557,22 @@ export const BillingCashierModule: React.FC = () => {
               </button>
               <button
                 onClick={handleRecordPayment}
-                className="px-4 py-1.5 bg-teal-700 text-white rounded-md font-semibold hover:bg-teal-800 transition-colors shadow-xs"
+                disabled={
+                  isPostingPayment ||
+                  (isMobileMoney(paymentMethod) && !codeCheck.valid) ||
+                  !settlementPreview
+                }
+                className={`px-4 py-1.5 rounded-md font-semibold transition-colors shadow-xs ${
+                  confirmOverpay !== null
+                    ? 'bg-amber-600 text-white hover:bg-amber-700'
+                    : 'bg-teal-700 text-white hover:bg-teal-800'
+                } disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed`}
               >
-                Confirm Payment & Issue Official Receipt
+                {isPostingPayment
+                  ? 'Posting…'
+                  : confirmOverpay !== null
+                    ? 'Record overpayment'
+                    : 'Confirm Payment & Issue Receipt'}
               </button>
             </div>
           </div>

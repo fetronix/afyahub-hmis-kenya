@@ -3782,6 +3782,20 @@ export const billingInvoices = pgTable(
     status: text('status')
       .default('Pending'),
 
+    /*
+     * Money received beyond the invoice total. Kept as its own column
+     * instead of letting balance_amount go negative, because a negative
+     * balance silently cancels out other patients' debts whenever the
+     * facility totals what it is owed.
+     */
+    creditBalance: numeric(
+      'credit_balance',
+      {
+        precision: 10,
+        scale: 2,
+      },
+    ).default('0'),
+
     payerType: text('payer_type')
       .default('Self-Pay'),
 
@@ -3900,6 +3914,16 @@ export const billingPayments = pgTable(
     ).notNull(),
 
     referenceCode: text('reference_code'),
+
+    /*
+     * The code printed on the customer's M-Pesa or Airtel confirmation
+     * message. Distinct from reference_code so reconciliation can match
+     * against a mobile money statement without parsing free text.
+     */
+    transactionCode: text('transaction_code'),
+
+    /* FULLY_PAID | BALANCE_REMAINING | OVERPAID at the moment of posting. */
+    settlementStatus: text('settlement_status'),
 
     cashierName: text('cashier_name')
       .notNull(),

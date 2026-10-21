@@ -35,6 +35,8 @@ import {
   BillingItem,
   ServiceTariff,
   BillingPayment,
+  RecordPaymentResult,
+  PaymentLedgerRow,
   InsuranceClaim,
   PublicHealthReport,
   AuditLog,
@@ -122,6 +124,32 @@ interface ApiErrorResponse {
   success?: boolean;
   error?: string;
   message?: string;
+  detail?: Record<string, unknown>;
+}
+
+/**
+ * Error thrown for a non-2xx response.
+ *
+ * `code` carries the server's machine-readable error code (for example
+ * PAYMENT_EXCEEDS_BALANCE) so callers can branch without parsing prose.
+ */
+export class ApiError extends Error {
+  readonly code?: string;
+  readonly status: number;
+  readonly detail?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    detail?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+  }
 }
 
 /**
@@ -200,10 +228,13 @@ async function fetchJson<T>(
       clearSessionToken();
     }
 
-    throw new Error(
+    throw new ApiError(
       errorData.message ||
-      errorData.error ||
-      `HTTP error ${res.status}`
+        errorData.error ||
+        `HTTP error ${res.status}`,
+      res.status,
+      errorData.error,
+      errorData.detail,
     );
   }
 
@@ -1807,8 +1838,11 @@ export const api = {
     ),
 
   recordPayment:
-    (payment: Partial<BillingPayment>) =>
-      fetchJson<BillingPayment>(
+    (payment: Partial<BillingPayment> & {
+      transactionCode?: string;
+      allowOverpayment?: boolean;
+    }) =>
+      fetchJson<RecordPaymentResult>(
         `${API_BASE}/billing/payments`,
         {
           method: 'POST',
@@ -1817,6 +1851,23 @@ export const api = {
           ),
         }
       ),
+
+  /** Payments received at a facility, newest first, for reconciliation. */
+  getPayments:
+    (facilityId?: number, options?: { invoiceId?: number; method?: string; limit?: number }) => {
+      const params = new URLSearchParams();
+
+      if (facilityId !== undefined) params.set('facilityId', String(facilityId));
+      if (options?.invoiceId !== undefined) params.set('invoiceId', String(options.invoiceId));
+      if (options?.method) params.set('method', options.method);
+      if (options?.limit !== undefined) params.set('limit', String(options.limit));
+
+      const suffix = params.toString();
+
+      return fetchJson<PaymentLedgerRow[]>(
+        `${API_BASE}/billing/payments${suffix ? `?${suffix}` : ''}`,
+      );
+    },
 
   // ============================================================
   // INSURANCE CLAIMS

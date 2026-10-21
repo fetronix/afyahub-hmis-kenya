@@ -337,21 +337,31 @@ export async function recalculateInvoiceTotals(
   const paidCents = toCents(invoice.paidAmount);
   const balanceCents = Math.max(0, totalCents - paidCents);
 
+  /*
+   * Money beyond the total is patient credit, not a negative balance.
+   * balanceAmount stays at zero so the facility-wide outstanding figure
+   * cannot be quietly reduced by one patient's overpayment.
+   */
+  const creditCents = Math.max(0, paidCents - totalCents);
+
   /* A voided invoice keeps its status and must not be resurrected. */
   const status =
     invoice.status === 'Void'
       ? 'Void'
-      : balanceCents === 0 && totalCents > 0
-        ? 'Paid'
-        : paidCents > 0
-          ? 'Partially Paid'
-          : 'Pending';
+      : totalCents > 0 && paidCents > totalCents
+        ? 'Overpaid'
+        : balanceCents === 0 && totalCents > 0
+          ? 'Paid'
+          : paidCents > 0
+            ? 'Partially Paid'
+            : 'Pending';
 
   const [updated] = await executor
     .update(schema.billingInvoices)
     .set({
       totalAmount: fromCents(totalCents),
       balanceAmount: fromCents(balanceCents),
+      creditBalance: fromCents(creditCents),
       status,
       updatedAt: new Date(),
     })

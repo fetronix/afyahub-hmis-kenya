@@ -71,6 +71,13 @@
             "when": 1792600000000,
             "tag": "0009_billing_provenance_and_inpatient",
             "breakpoints": true
+        },
+        {
+            "idx": 10,
+            "version": "7",
+            "when": 1792700000000,
+            "tag": "0010_mobile_money_settlement",
+            "breakpoints": true
         }
     ]
 }

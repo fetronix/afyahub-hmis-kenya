@@ -470,6 +470,8 @@ export interface BillingInvoice {
   totalAmount: string;
   paidAmount: string;
   balanceAmount: string;
+  /** Money received beyond the total, held as patient credit. */
+  creditBalance?: string;
   status: string;
   payerType: string;
   payerName?: string;
@@ -512,6 +514,52 @@ export interface BillingPayment {
   paymentMethod: string;
   amount: string;
   referenceCode?: string;
+  /** Code from the customer's M-Pesa / Airtel confirmation message. */
+  transactionCode?: string;
+  settlementStatus?: SettlementOutcome;
+  cashierName: string;
+  paymentDate: string;
+}
+
+export type SettlementOutcome = 'FULLY_PAID' | 'BALANCE_REMAINING' | 'OVERPAID';
+
+export interface PaymentSettlement {
+  invoiceTotalCents: number;
+  paidBeforeCents: number;
+  balanceBeforeCents: number;
+  amountCents: number;
+  paidAfterCents: number;
+  balanceAfterCents: number;
+  creditCents: number;
+  outcome: SettlementOutcome;
+  invoiceStatus: 'Paid' | 'Partially Paid' | 'Unpaid' | 'Overpaid';
+  summary: string;
+}
+
+export interface RecordPaymentResult {
+  payment: BillingPayment;
+  settlement: PaymentSettlement;
+  invoice: {
+    id: number;
+    invoiceNumber: string;
+    totalAmount: string;
+    paidAmount: string;
+    balanceAmount: string;
+    creditBalance: string;
+    status: string;
+  };
+}
+
+export interface PaymentLedgerRow {
+  id: number;
+  invoiceId: number;
+  invoiceNumber: string;
+  patientId: number;
+  receiptNumber: string;
+  paymentMethod: string;
+  amount: string;
+  transactionCode: string | null;
+  settlementStatus: SettlementOutcome | null;
   cashierName: string;
   paymentDate: string;
 }

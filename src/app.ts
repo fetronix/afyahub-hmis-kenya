@@ -33,6 +33,7 @@ import {
 } from './auth/scope.service.ts';
 
 import * as billing from './billing/billing.service.ts';
+import * as billingPayments from './billing/payments.service.ts';
 import * as nursing from './nursing/nursing.service.ts';
 import * as reporting from './reporting/reporting.service.ts';
 import * as inventory from './inventory/inventory.service.ts';
@@ -204,6 +205,32 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         success: false,
         error: error.code,
         message: error.message,
+      });
+
+      return true;
+    }
+
+    return false;
+  };
+
+  /**
+   * Maps payment settlement failures onto their intended HTTP status.
+   *
+   * A duplicate M-Pesa code is a 409, not a 500: the record already
+   * exists and the clerk needs to know that, not to see a stack trace.
+   */
+  const handlePaymentError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    if (handleScopeError(error, res)) return true;
+
+    if (error instanceof billingPayments.PaymentDomainError) {
+      res.status(error.status).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+        ...(Object.keys(error.detail).length > 0 ? { detail: error.detail } : {}),
       });
 
       return true;
@@ -4129,101 +4156,15 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           });
         }
 
-        const input = req.body;
-        const invoiceId = Number(input?.invoiceId);
-        const amount = Number(input?.amount);
-        const receiptNumber =
-          typeof input?.receiptNumber === 'string'
-            ? input.receiptNumber.trim()
-            : '';
-        const paymentMethod =
-          typeof input?.paymentMethod === 'string'
-            ? input.paymentMethod.trim()
-            : '';
-
-        if (
-          !Number.isSafeInteger(invoiceId) ||
-          invoiceId <= 0 ||
-          !Number.isFinite(amount) ||
-          amount <= 0 ||
-          !/^\d+(\.\d{1,2})?$/.test(String(input?.amount)) ||
-          !receiptNumber ||
-          receiptNumber.length > 100 ||
-          !paymentMethod ||
-          paymentMethod.length > 40
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'INVALID_PAYMENT',
-            message: 'Invoice, receipt, payment method, and amount must be valid.',
-          });
-        }
-
-        const [invoice] = await db
-          .select()
-          .from(schema.billingInvoices)
-          .where(eq(schema.billingInvoices.id, invoiceId))
-          .limit(1);
-
-        if (!invoice) {
-          return res.status(404).json({
-            success: false,
-            error: 'INVOICE_NOT_FOUND',
-            message: 'Invoice not found.',
-          });
-        }
-
-        const facility = await queries.getFacilityByIdScoped(
+        const result = await billingPayments.recordSettledPayment(
           req.authContext,
-          invoice.facilityId,
+          req.body,
+          req.user.fullName,
         );
 
-        if (!facility || facility.tenantId !== invoice.tenantId) {
-          return res.status(404).json({
-            success: false,
-            error: 'INVOICE_NOT_FOUND',
-            message: 'Invoice not found.',
-          });
-        }
-
-        if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance')) {
-          return res.status(403).json({
-            success: false,
-            error: 'FACILITY_MODULE_DISABLED',
-            module: 'finance',
-            message: 'The finance module is disabled for this facility.',
-          });
-        }
-
-        const balanceCents = Math.round(Number(invoice.balanceAmount ?? 0) * 100);
-        const paymentCents = Math.round(amount * 100);
-
-        if (
-          !Number.isSafeInteger(balanceCents) ||
-          balanceCents <= 0 ||
-          paymentCents > balanceCents
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'PAYMENT_EXCEEDS_BALANCE',
-            message: 'Payment must be positive and cannot exceed the invoice balance.',
-          });
-        }
-
-        const payment = await queries.recordPayment({
-          invoiceId,
-          receiptNumber,
-          paymentMethod,
-          amount: (paymentCents / 100).toFixed(2),
-          referenceCode:
-            typeof input.referenceCode === 'string'
-              ? input.referenceCode.trim().slice(0, 150)
-              : null,
-          cashierName: req.user.fullName,
-        });
-
-        return res.status(201).json(payment);
+        return res.status(201).json(result);
       } catch (err: unknown) {
+        if (handlePaymentError(err, res)) return;
         if (handleScopeError(err, res)) return;
 
         console.error('Failed to record payment:', err);
@@ -4231,6 +4172,51 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           success: false,
           error: 'PAYMENT_RECORD_FAILED',
           message: 'Failed to record payment.',
+        });
+      }
+    },
+  );
+
+  /*
+   * Payment ledger for shift reconciliation: what came in, by which
+   * method, under which transaction code.
+   */
+  app.get(
+    '/api/billing/payments',
+    requirePermission('billing.payments.record'),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (!req.authContext) {
+          return res.status(401).json({
+            success: false,
+            error: 'AUTHORIZATION_CONTEXT_MISSING',
+            message: 'Authorization context is required.',
+          });
+        }
+
+        const queryParam = (value: unknown): string | null =>
+          typeof value === 'string' && value.trim() ? value.trim() : null;
+
+        const payments = await billingPayments.getPaymentLedgerScoped(
+          req.authContext,
+          {
+            facilityId: queryParam(req.query.facilityId),
+            invoiceId: queryParam(req.query.invoiceId),
+            method: queryParam(req.query.method),
+            limit: queryParam(req.query.limit),
+          },
+        );
+
+        return res.json(payments);
+      } catch (err: unknown) {
+        if (handlePaymentError(err, res)) return;
+        if (handleScopeError(err, res)) return;
+
+        console.error('Failed to load payment ledger:', err);
+        return res.status(500).json({
+          success: false,
+          error: 'PAYMENT_LEDGER_FAILED',
+          message: 'Failed to load payments.',
         });
       }
     },
