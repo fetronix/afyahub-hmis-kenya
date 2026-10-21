@@ -8,6 +8,7 @@ import { StaffInvitationAcceptance } from './components/StaffInvitationAcceptanc
 import FacilityAdminInvitationAcceptance from './components/FacilityAdminInvitationAcceptance.tsx';
 import { PlatformAdministrationModule } from "./components/modules/PlatformAdministrationModule";
 import { PatientJourneyModal } from './components/PatientJourneyModal.tsx';
+import { NotificationDialog } from './components/NotificationDialog.tsx';
 
 import { DashboardModule } from './components/modules/DashboardModule.tsx';
 import { SuperAdminDashboardModule } from './components/modules/SuperAdminDashboardModule.tsx';
@@ -31,14 +32,13 @@ import { InteroperabilityModule } from './components/modules/InteroperabilityMod
 import { ConfigurationModule } from './components/modules/ConfigurationModule.tsx';
 import { AuditLogModule } from './components/modules/AuditLogModule.tsx';
 
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const {
     activeModule,
     authenticatedUser,
     setActiveModule,
-    toastMessage,
     loading,
     isAuthenticated,
     authLoading,
@@ -190,18 +190,17 @@ const AppContent: React.FC = () => {
       {/* Longitudinal Patient Journey Modal */}
       <PatientJourneyModal />
 
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-xl border border-brand-800 bg-brand-900 px-4 py-3 text-xs text-white shadow-lift animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+      {/*
+        One notification surface for the whole product, centred and
+        animated. Every `showToast(...)` call in every module lands
+        here; nothing in a module renders its own banner.
+      */}
+      <NotificationDialog />
 
       {/* Global Loading Indicator */}
       {loading && (
         <div className="fixed inset-0 z-[100] bg-slate-950/10 backdrop-blur-[1px] pointer-events-none">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-teal-500 animate-pulse" />
+          <div className="absolute top-0 left-0 right-0 h-1 bg-brand-500 animate-pulse" />
         </div>
       )}
     </div>

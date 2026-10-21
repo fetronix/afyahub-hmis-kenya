@@ -338,12 +338,15 @@ export const ConfigurationModule: React.FC = () => {
       showToast(
         parts.length > 0
           ? `Modules saved: ${parts.join('; ')}. The navigation has been updated.`
-          : 'Modules saved. Nothing changed.'
+          : 'Modules saved. Nothing changed.',
+        { tone: 'success' }
       );
     } catch (error) {
-      setModuleError(
-        error instanceof Error ? error.message : 'Could not save the module list.'
-      );
+      const message =
+        error instanceof Error ? error.message : 'Could not save the module list.';
+
+      setModuleError(message);
+      showToast(message, { tone: 'error' });
     } finally {
       setModuleSaving(false);
     }

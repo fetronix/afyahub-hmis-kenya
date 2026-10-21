@@ -24,7 +24,7 @@
     "test:pharmacy-batches": "tsx src/tests/pharmacy-batches.test.ts",
     "test:payments": "tsx src/tests/payments.test.ts",
     "test:claims": "tsx src/tests/claims.test.ts",
-    "test": "npm run test:inpatient && npm run test:opd && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:roles && npm run test:staff-roles && npm run test:design && npm run test:modules && npm run test:maternity && npm run test:postnatal && npm run test:security && npm run test:migrations",
+    "test": "npm run test:inpatient && npm run test:opd && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:roles && npm run test:staff-roles && npm run test:design && npm run test:modules && npm run test:notifications && npm run test:maternity && npm run test:postnatal && npm run test:security && npm run test:migrations",
     "db:status:all": "tsx scripts/migration-status.ts --expect-all",
     "test:dha": "tsx src/tests/dha.test.ts",
     "test:verification": "tsx src/tests/professional-verification.test.ts",
@@ -37,7 +37,8 @@
     "test:opd": "tsx src/tests/opd-journey.test.ts",
     "test:staff-roles": "tsx src/tests/staff-roles.test.ts",
     "test:design": "tsx src/tests/design-tokens.test.ts",
-    "test:modules": "tsx src/tests/facility-modules.test.ts"
+    "test:modules": "tsx src/tests/facility-modules.test.ts",
+    "test:notifications": "tsx src/tests/notifications.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

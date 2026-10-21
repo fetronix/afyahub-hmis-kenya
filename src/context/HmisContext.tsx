@@ -1,7 +1,9 @@
 ﻿import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -28,6 +30,35 @@ import type {
 | The browser must never be trusted to determine permissions.
 |
 */
+
+/* ============================================================
+   Notifications
+   ============================================================
+
+   One queue, rendered once, at the centre of the screen. Every
+   existing `showToast(...)` call keeps working; a caller that knows
+   the outcome can pass a tone so a refused save does not wear a
+   green tick.
+   ============================================================ */
+
+export type NotificationTone = 'info' | 'success' | 'warning' | 'error';
+
+export interface ShowToastOptions {
+  tone?: NotificationTone;
+}
+
+export interface AppNotification {
+  id: number;
+  message: string;
+  tone: NotificationTone;
+  createdAt: number;
+}
+
+/** How long a single notification stays on screen. */
+export const NOTIFICATION_LIFETIME_MS = 5200;
+
+/** How many are shown at once before the oldest is dropped. */
+export const NOTIFICATION_QUEUE_LIMIT = 4;
 
 export type UserRole = string;
 
@@ -200,11 +231,16 @@ interface HmisContextType {
   |--------------------------------------------------------------------------
   */
 
-  toastMessage: string | null;
+  notifications: AppNotification[];
 
   showToast: (
-    msg: string
+    msg: string,
+    options?: ShowToastOptions
   ) => void;
+
+  dismissNotification: (id: number) => void;
+
+  dismissAllNotifications: () => void;
 
   /*
   |--------------------------------------------------------------------------
@@ -400,12 +436,9 @@ export const HmisProvider: React.FC<{
     useState(false);
 
   const [
-    toastMessage,
-    setToastMessage,
-  ] =
-    useState<string | null>(
-      null
-    );
+    notifications,
+    setNotifications,
+  ] = useState<AppNotification[]>([]);
 
   const [
     refreshKey,
@@ -423,15 +456,110 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const showToast = (
-    msg: string
-  ) => {
-    setToastMessage(msg);
+  const notificationSequence = useRef(0);
+  const notificationTimers = useRef(new Map<number, number>());
 
-    window.setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  };
+  const dismissNotification = useCallback(
+    (id: number) => {
+      const timer = notificationTimers.current.get(id);
+
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        notificationTimers.current.delete(id);
+      }
+
+      setNotifications((current) =>
+        current.filter((notification) => notification.id !== id)
+      );
+    },
+    []
+  );
+
+  const dismissAllNotifications = useCallback(() => {
+    for (const timer of notificationTimers.current.values()) {
+      window.clearTimeout(timer);
+    }
+
+    notificationTimers.current.clear();
+    setNotifications([]);
+  }, []);
+
+  /*
+   * Clear every pending timer when the provider unmounts. The previous
+   * implementation kept one global timer, so a second toast raised
+   * within four seconds could be wiped by the first toast's timer.
+   * Timers are per notification now.
+   */
+  useEffect(
+    () => () => {
+      for (const timer of notificationTimers.current.values()) {
+        window.clearTimeout(timer);
+      }
+
+      notificationTimers.current.clear();
+    },
+    []
+  );
+
+  const showToast = useCallback(
+    (msg: string, options?: ShowToastOptions) => {
+      const message = msg.trim();
+
+      if (!message) return;
+
+      const tone = options?.tone ?? 'info';
+
+      setNotifications((current) => {
+        /*
+         * The same sentence twice is the same notification refreshed,
+         * not two dialogs. A screen can report one server message from
+         * two paths, and a queue of identical rows is noise.
+         */
+        const duplicate = current.find(
+          (notification) =>
+            notification.message === message && notification.tone === tone
+        );
+
+        if (duplicate) {
+          const existingTimer = notificationTimers.current.get(duplicate.id);
+
+          if (existingTimer !== undefined) {
+            window.clearTimeout(existingTimer);
+          }
+
+          notificationTimers.current.set(
+            duplicate.id,
+            window.setTimeout(
+              () => dismissNotification(duplicate.id),
+              NOTIFICATION_LIFETIME_MS
+            )
+          );
+
+          return current;
+        }
+
+        const id = (notificationSequence.current += 1);
+
+        const next = [
+          ...current,
+          { id, message, tone, createdAt: Date.now() },
+        ];
+
+        notificationTimers.current.set(
+          id,
+          window.setTimeout(
+            () => dismissNotification(id),
+            NOTIFICATION_LIFETIME_MS
+          )
+        );
+
+        return next.length > NOTIFICATION_QUEUE_LIMIT
+          ? next.slice(next.length - NOTIFICATION_QUEUE_LIMIT)
+          : next;
+      });
+    },
+    [dismissNotification]
+  );
 
   /*
   |--------------------------------------------------------------------------
@@ -1381,9 +1509,13 @@ export const HmisProvider: React.FC<{
         |--------------------------------------------------------------------------
         */
 
-        toastMessage,
+        notifications,
 
         showToast,
+
+        dismissNotification,
+
+        dismissAllNotifications,
 
         /*
         |--------------------------------------------------------------------------

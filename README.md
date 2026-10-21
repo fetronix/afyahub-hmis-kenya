@@ -845,6 +845,52 @@ Both are additive: nothing is deleted, no clinical row is touched, and switching
 - `package.json.before-module-tests-20261021.bak`
 - `README.md.before-bright-palette-20261021.bak`
 
+### 3.19 One notification dialog, centred and animated
+
+**What was asked.** A pop-up dialog for notifications, appearing in the centre of the screen with animation, showing every message.
+
+**What was there.** A single `toastMessage` string rendered as a dark pill in the bottom-right corner for four seconds. It had two defects that were invisible until you hit them:
+
+- **One string, one timer.** A second message raised inside four seconds overwrote the first, but the first message's `setTimeout` still ran and cleared the *new* message early. The second notification could disappear almost immediately.
+- **Always a green tick.** The banner rendered `CheckCircle2` unconditionally, so "Could not save the module list." arrived with a success icon.
+
+**What replaced it**
+
+| Piece | Detail |
+|---|---|
+| Queue | `notifications: AppNotification[]` in `HmisContext`, each with its own id, tone and timer. The same sentence twice refreshes the existing row rather than stacking a duplicate. |
+| One surface | `src/components/NotificationDialog.tsx`, rendered once in `App.tsx`. All **145** existing `showToast(...)` call sites reach it unchanged. |
+| Centre | `fixed inset-0 flex items-center justify-center` — the card is centred in the viewport at every size. Multiple notifications are stacked in the one card with a count. |
+| Motion | `@keyframes jali-notification-dialog` (260 ms, rise + scale from 94%), a 180 ms backdrop wash and a 45 ms stagger per row. `prefers-reduced-motion: reduce` removes all three. |
+| Dismissal | Each row has its own close button; a **Dismiss** button and the <kbd>Esc</kbd> key close the queue; every message closes itself after **5.2 s**. |
+| Honesty | Four tones — *Notification*, *Saved*, *Check this*, *Did not go through* — each with its own word, colour and icon. A caller that knows the outcome passes `{ tone: 'success' \| 'error' \| 'warning' }`; a caller that does not gets the neutral *Notification*, which claims nothing. The module save uses success and error tones. |
+| Accessibility | `role="status"` with `aria-live="polite"`, `aria-label` on every close control, and no focus trap. |
+| Not modal | The backdrop is a light wash with `pointer-events-none`. A message cannot lock an operator out of the screen for five seconds; clicking straight through it works. |
+
+**The animation, concretely**
+
+```css
+@keyframes jali-notification-dialog {
+  0%   { opacity: 0; transform: translateY(12px) scale(0.94); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+```
+
+**Validation.** `npm run build` — **618 ms** (the emitted stylesheet contains `jali-notification-dialog` and the reduced-motion rule). `npm test` — **19 suites green, 2,265 assertions**; the new `test:notifications` suite adds **28** assertions covering the queue, per-message timers, the neutral default tone, the centred surface, the four tones, Escape and row dismissal, the absence of the old banner, and the reduced-motion rule.
+
+**Not verified.** No browser here, so the entrance was not watched — it is verified only as far as "the keyframes are in the emitted CSS and the bundle builds". The timing (260 ms entrance, 5.2 s lifetime) is a judgement call that has not been seen at 60 fps.
+
+**If you wanted a blocking dialog** — one that dims the app and waits for **OK** before you can continue — say so: it is a two-line change (make the backdrop `pointer-events-auto` and remove the auto-dismiss). It was left non-blocking because every validation message in the product would otherwise interrupt the form that raised it.
+
+**Backups created during this round**
+
+- `src/context/HmisContext.tsx.before-notification-dialog-20261021.bak`
+- `src/App.tsx.before-notification-dialog-20261021.bak`
+- `src/index.css.before-notification-dialog-20261021.bak`
+- `package.json.before-notification-tests-20261021.bak`
+- `README.md.before-notification-dialog-20261021.bak`
+
 
 ## 4. Existing backups and modified files to preserve
 
@@ -1191,6 +1237,7 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 | HTTP hardening (headers, CORS, rate limits) | Implemented and probed against a running server |
 | Maternity, postnatal care and immunisation | Implemented; 131 + 151 assertions and 40 live checks; not walked in a browser, no clinical review |
 | Maternity/ANC visibility | Was hidden by the facility module list and a decorative switch; catalogue, endpoint and screen now wired (53 assertions); not exercised against a live database |
+| Notifications | One centred, animated dialog for all 145 `showToast` call sites; queued, toned, dismissible; not watched in a browser |
 | End-to-end OPD/triage verification | In progress — no browser walkthrough yet |
 | Independent security testing, load test, restore drill | Not started |
 | Comprehensive regression testing and user acceptance | Not started |
