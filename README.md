@@ -618,9 +618,9 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 
 **What changed**
 
-- **One palette, defined once.** `src/index.css` now owns a JaliCare palette in Tailwind's `@theme`: pine for primary actions and identity, a warm clay accent used sparingly, warm stone neutrals, and semantic tokens (`canvas`, `surface`, `ink`, `hair`), one card recipe, one focus ring and a display face for headings. The *existing* `blue`, `teal` and `slate` ramps are re-pointed at those colours at the same luminance, so several thousand utility classes already written across twenty modules inherit the new look without a class-by-class rewrite. Status colours — emerald, amber, rose — are deliberately **not** re-pointed: a warning must keep looking like a warning.
-- **Login.** A split card on a warm canvas: a deep pine brand panel carrying the product's promise and three product statements (protected sessions, one encounter for every stage, tenant/facility isolation), beside a quiet sign-in panel. The same submit contract, the same error and info regions, the same MFA and password-change messages. The logo falls back to a typographic wordmark if `public/logo.jpg` is missing. There are **no statistics, facility names, bed counts or "trusted by" claims** on it, and none were added.
-- **Shell.** The sidebar became a dark pine rail with a clay marker on the active row, keeping its order (arrival → diagnostics → pharmacy → revenue → intelligence → admin, and the existing permission map unchanged). The header now renders the module title it always had in its map, shows the facility marker and opens a click-away user menu.
+- **One palette, defined once.** `src/index.css` took ownership of colour in Tailwind's `@theme` and re-pointed the *existing* `blue`, `teal` and `slate` ramps, so several thousand utility classes already written across twenty modules inherited the new look without a class-by-class rewrite. Status colours — emerald, amber, rose — were deliberately **not** re-pointed: a warning must keep looking like a warning. *The palette chosen in this round was a green/clay scheme. It was replaced the same day — the product's own logo is blue and orange — and §3.17 records the replacement; the mechanism above is what that round still uses.*
+- **Login.** A split card on a warm canvas: a deep hospital-blue brand panel carrying the product's promise and three product statements (protected sessions, one encounter for every stage, tenant/facility isolation), beside a quiet sign-in panel. The same submit contract, the same error and info regions, the same MFA and password-change messages. The logo falls back to a typographic wordmark if `public/logo.jpg` is missing. There are **no statistics, facility names, bed counts or "trusted by" claims** on it, and none were added.
+- **Shell.** The sidebar became a dark rail with an orange marker on the active row, keeping its order (arrival → diagnostics → pharmacy → revenue → intelligence → admin, and the existing permission map unchanged). The header now renders the module title it always had in its map, shows the facility marker and opens a click-away user menu.
 - **Dashboard.** Reorganised as the day's clinical path: **01 arrival & queues**, **02 ward round**, **03 surveillance & reporting**, under a single "shift in four numbers" strip. The four parallel fetches, the four permission gates, the em-dash rule and the "not tracked" caveat are unchanged; a panel the session may not read is still not rendered, and no figure is invented. Queue stations are named for the people who use them (*Triage desk*, *Pharmacy counter*), not for tills.
 - **Every facility screen.** Eighteen modules already shared the same hand-copied header block; they now share one recipe — warm surface, hairline, card shadow, display face — so moving from laboratory to pharmacy to billing no longer changes the type or the frame. Copy, buttons and behaviour are untouched.
 - **Invitation screens.** Restyled to the same language, and the duplicated error alert removed.
@@ -634,6 +634,84 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 - `npm test` — **2,109 assertions across sixteen suites**, all green. The nursing contract now asserts the ward table's columns (`Last vitals`, `Notes today`, `Ward / bed`) rather than only the old heading string, so the redesign could not quietly drop them: 83 assertions, three more than before.
 
 **Not verified:** no screen was clicked — there is no browser in this environment, so nothing here is a visual acceptance. The palette is verified only as far as "Tailwind emitted the utilities and the bundle builds"; whether the layout pleases a clinician is a question for a person looking at it.
+
+### 3.17 Blue and orange, the staff switch, and tasks inside a role
+
+**What was asked, in three parts.** The theme had to keep the blue and orange of the brand — the previous round changed colours but not enough of the design; a staff account needed to be switchable off and on; and a role needed to be able to hold *specific tasks* (a doctor who may read bills or manage service tariffs) without being changed into an administrator.
+
+**The brand is the logo.** `public/logo.jpg` reads *JALI CARE — Healthcare. Empowered.* in deep blue and orange. The palette in §3.16 (green/clay) was therefore wrong for this product and has been replaced, not layered over.
+
+**The palette now**
+
+| Token | Value | Used for |
+|---|---|---|
+| `navy-*` | deep hospital blue (`#0b2038` …) | the rail, the login panel, headings, the avatar |
+| `brand-*` | sky/hospital blue (`#145588` primary) | links, active navigation, primary buttons |
+| `ember-*` | bright orange (`#f97316`) | the one call to action, the active marker, the logo notch |
+| `copper-*` | dark orange (`#a63f1f`) | the sign-in button, emphasis that must stay legible |
+| `canvas` / `surface` / `hair` | `#f3f7fc` / white / `#dce6f2` | the page, the cards, every border |
+
+The `blue`, `teal` and `slate` ramps resolve to those values, so every existing module is blue rather than teal without being rewritten. Type is one sans family (the serif display face is gone), with tabular mono for figures.
+
+**What changed structurally, not just in colour**
+
+- **Login** — a two-column card: a navy brand panel with the real logo, the product promise and three statements about the system (protected sessions, one encounter per stage, tenant/facility isolation), beside a white sign-in panel. The submit is the orange button. Mobile drops the panel and keeps the logo. No statistics, facility names or counts were invented, before or after.
+- **Header** — a real breadcrumb: *overview › department › screen*, with the department read from the same navigation structure the rail uses (`Sidebar.tsx` exports its sections), so the two cannot disagree. The rail's previous "current section" label was replaced by this.
+- **Sidebar** — still grouped by the visit, now collapsible to an icon rail with tooltips. The folded/unfolded choice is a local preference (`localStorage`), not a permission. Width, active marker and hover states all changed.
+- **Dashboard** — the day's clinical path (01 arrival & queues, 02 ward round, 03 surveillance) now sits under a personalised greeting, a strip of *real* alerts derived from server figures (critical observations, observations overdue, pending laboratory orders, low stock, expiring batches) and a **Your workspace** card of quick actions. Every action is filtered twice: the permission the rail requires *and* the module being enabled for this facility. No action can open a screen the account could not already open.
+- **Recent activity** — the newest audit entries, rendered only for accounts holding `audit.read` and only when the facility's `audit` module is enabled. Action and resource only; the free-text `details` column is not shown on the dashboard.
+
+**What was deliberately *not* built**
+
+- **No "remember me" checkbox.** Sessions are already stored in `localStorage` and survive a browser restart. A checkbox that changed nothing would be a lie on the sign-in screen.
+- **No self-service password reset.** `src/auth/password-reset.service.ts` is an empty file and no reset route exists; there is no mail transport in the project. The screen therefore offers a *Trouble signing in?* disclosure that says password reset is not self-service in this build and that a system administrator must reset the account. It does not pretend to send an email.
+
+**Deactivate and activate a staff account**
+
+| Endpoint | What it does |
+|---|---|
+| `PUT /api/staff-roles/:userId/status` | Body `{ active: boolean, reason?: string }`. One transaction: the account row is locked, the state is written, an audit row is added. |
+
+- **On deactivation** the account gets `is_active = false`, `account_status = 'DISABLED'`, `deactivated_at`, an optional reason, and `security_version + 1`. Sign-in is refused by `login.service` (`!user.isActive`), and every authenticated request is refused by `auth.middleware` (which re-reads the account), so an open session stops at its next call.
+- **On activation** the account returns to `ACTIVE`, the deactivation fields are cleared, a lockout from failed passwords is cleared, and the security version is bumped again.
+- **Guards:** nobody can change their own status; an account holding an administrator role is refused (`ADMINISTRATOR_ACCOUNT_PROTECTED`); an account that has not yet accepted its invitation is refused (`ACCOUNT_PENDING_INVITATION`) because acceptance would switch it back on — the invitation itself must be revoked; an account in another facility or tenant is **404**, not 403; the caller must hold an administrator role *and* the staff permission. Both directions write an audit row (`ACTIVATE` / `DEACTIVATE`).
+
+**Tasks inside a role**
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/staff-roles/roles/:roleId/permissions` | The role's current tasks and the catalogue this facility may grant it — one response, so the picker cannot offer a checkbox the save would refuse. |
+| `PUT /api/staff-roles/roles/:roleId/permissions` | Body `{ permissionIds: number[] }`. Replaces the task set in one transaction and writes an audit row listing what was added and removed. |
+
+- **The boundary is a module allowlist**, not "you may only grant what you hold". A freshly seeded `FACILITY_ADMIN` holds staff and tariff permissions but not `billing.read`, so a caller-ceiling rule would refuse the exact example that was asked for. What may be delegated is operational work: `patients`, `appointments`, `clinical`, `inpatient`, `maternity`, `laboratory`, `pharmacy`, `inventory`, `procurement`, `billing`, `insurance`, `reports`, `public_health`, `interop`, `practitioners`.
+- **What may never be delegated:** anything under `users.`, `roles.`, `audit.`, `facilities.`, `system.`, `auth.`, `platform.`, `tenants.`, `subscriptions.`, `security.`, `rbac.` or `permissions.`, plus anything whose module is not on the allowlist. An unknown module fails closed.
+- **Administrator roles are not editable here** — the same policy that decides which roles a facility may hand out (§3.15) decides which roles may be edited. A role that grants nothing cannot be saved; at least one task remains.
+- **A role belongs to the tenant, not one facility.** The screen states this before saving, and the audit row names the role. Staff who hold the role may need to sign in again for the *sidebar* to show a newly granted module; the server enforces the change on the next request.
+- **The screen:** *Configuration → Staff* now carries a **Role tasks** section (count per role, **Edit tasks** opening a grouped checkbox editor) beside the directory, which gained an **Active / Deactivated** pill and a **Deactivate / Activate** button with a confirmation dialog and optional reason.
+
+**No migration.** Both features use columns that already exist (`users.is_active`, `users.account_status`, `users.deactivated_at`, `users.deactivation_reason`, `users.security_version`, `role_permissions`, `audit_logs`). Updating an installation is `git pull`, `npm install` if the lockfile changed, `npm run build`; `npm run db:status` should report nothing pending.
+
+**Validation**
+
+- `npm run build` — **541 ms**.
+- `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
+- `npm test` — **2,149 assertions across sixteen suites**, all green. `test:staff-roles` grew from 93 to **133**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring.
+
+**Not verified:** no browser exists in this environment, so no screen in this round was clicked — the palette is verified only as far as "Tailwind emitted the utilities and the bundle builds". The two new features were **not** exercised against a live PostgreSQL database: the assertions are contract/source checks plus type-checking, and the earlier live run (§3.15, 49 checks) covered only the role-assignment routes. Treat the new SQL paths as untested against a real database until they are walked.
+
+**Backups created during this round**
+
+- `src/index.css.before-blue-revamp-20261021.bak`
+- `src/components/LoginScreen.tsx.before-blue-revamp-20261021.bak`
+- `src/components/Header.tsx.before-blue-revamp-20261021.bak`
+- `src/components/Sidebar.tsx.before-blue-revamp-20261021.bak`
+- `src/components/modules/DashboardModule.tsx.before-blue-revamp-20261021.bak`
+- `src/auth/staff-role-policy.ts.before-task-permissions-20261021.bak`
+- `src/auth/staff-roles.service.ts.before-task-permissions-20261021.bak`
+- `src/auth/staff-roles.routes.ts.before-task-permissions-20261021.bak`
+- `src/components/modules/StaffRolesPanel.tsx.before-task-permissions-20261021.bak`
+- `src/tests/staff-roles.test.ts.before-task-permissions-20261021.bak`
+- `README.md.before-blue-revamp-20261021.bak`
 
 **Backups created during this round**
 

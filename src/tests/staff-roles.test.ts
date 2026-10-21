@@ -25,6 +25,7 @@ import { dirname, resolve } from 'node:path';
 import {
   MAX_ROLES_PER_STAFF_MEMBER,
   isAdministratorRoleName,
+  isDelegablePermission,
   isRestrictedRolePermission,
 } from '../auth/staff-role-policy.ts';
 
@@ -66,6 +67,8 @@ const configuration = source('src/components/modules/ConfigurationModule.tsx');
 const sidebar = source('src/components/Sidebar.tsx');
 const verificationModal = source('src/components/modules/StaffVerificationModal.tsx');
 const schema = source('src/db/schema.ts');
+const loginService = source('src/auth/login.service.ts');
+const authMiddleware = source('src/auth/auth.middleware.ts');
 
 /* ============================================================
    1. Which roles a facility may hand out
@@ -191,8 +194,8 @@ function testScope(): void {
   const permissionGates = rolesRoutes.split('requirePermission("users.invite")').length - 1;
   assertEqual(
     permissionGates,
-    3,
-    'All three routes are gated on the staff-management permission',
+    6,
+    'All six routes — directory, roles, role assignment, role tasks (two verbs) and account status — are gated on the staff-management permission',
   );
 
   assert(
@@ -542,6 +545,190 @@ function testScreen(): void {
   );
 }
 
+
+/* ============================================================
+   9. Task-level permissions — delegable work, never administration
+   ============================================================ */
+
+function testTaskDelegationBoundary(): void {
+  /*
+   * The two examples from the request: a doctor seeing bills, and a
+   * facility managing service tariffs. If either of these is refused
+   * the feature does not do what was asked.
+   */
+  assert(
+    isDelegablePermission({ code: 'billing.read', module: 'billing' }),
+    'A doctor can be given read access to bills',
+  );
+  assert(
+    isDelegablePermission({ code: 'tariffs.manage', module: 'billing' }),
+    'A role can be given service-tariff management',
+  );
+  assert(
+    isDelegablePermission({ code: 'patients.read', module: 'patients' }),
+    'Clinical tasks remain delegable',
+  );
+  assert(
+    isDelegablePermission({
+      code: 'laboratory.results.verify',
+      module: 'laboratory',
+    }),
+    'Verification of laboratory results is an operational task',
+  );
+
+  for (const permission of [
+    { code: 'users.invite', module: 'users' },
+    { code: 'users.roles.manage', module: 'users' },
+    { code: 'roles.permissions.manage', module: 'roles' },
+    { code: 'audit.read', module: 'audit' },
+    { code: 'audit.security.read', module: 'audit' },
+    { code: 'facilities.update', module: 'facilities' },
+    { code: 'platform.manage', module: 'platform' },
+    { code: 'system.settings.manage', module: 'system' },
+    { code: 'auth.password.reset', module: 'authentication' },
+    { code: 'tenants.update', module: 'tenants' },
+  ]) {
+    assert(
+      !isDelegablePermission(permission),
+      `${permission.code} stays with the administrator`,
+    );
+  }
+
+  assert(
+    !isDelegablePermission({ code: 'billing.read', module: 'made_up' }),
+    'An unknown module is refused rather than assumed safe',
+  );
+
+  assert(
+    policy.includes('DELEGABLE_PERMISSION_MODULES') &&
+      policy.includes('PROTECTED_PERMISSION_PREFIXES'),
+    'The boundary is a named allowlist, not an inline condition',
+  );
+
+  assert(
+    rolesService.includes('PERMISSION_NOT_DELEGABLE'),
+    'The service refuses a permission outside the allowlist',
+  );
+  assert(
+    rolesService.includes('ROLE_NOT_EDITABLE'),
+    'An administrator role cannot be edited from the facility',
+  );
+  assert(
+    rolesService.includes('MIN_PERMISSIONS_PER_ROLE') ||
+      rolesService.includes('INVALID_PERMISSION_SELECTION'),
+    'A role cannot be saved with no tasks at all',
+  );
+  assert(
+    rolesService.includes('delete(rolePermissions)'),
+    'Revoking a task removes the grant row',
+  );
+  assert(
+    rolesService.includes('resource: "ROLE_PERMISSIONS"'),
+    'A task change writes an audit row naming the role',
+  );
+  assert(
+    rolesService.includes('.for("update")'),
+    'The role row is locked for the duration of the change',
+  );
+
+  assert(
+    rolesRoutes.includes('"/roles/:roleId/permissions"'),
+    'The task routes are registered',
+  );
+  assert(
+    rolesRoutes.includes('requirePermission("users.invite")'),
+    'The task routes keep the staff permission guard',
+  );
+
+  assert(
+    !schema.includes('facility_role_permission_edits'),
+    'No new table was invented for this feature',
+  );
+}
+
+/* ============================================================
+   10. Deactivate and activate a staff account
+   ============================================================ */
+
+function testAccountStatus(): void {
+  assert(
+    rolesService.includes('export async function setStaffAccountStatus'),
+    'The service exposes one status change',
+  );
+  assert(
+    rolesService.includes('SELF_STATUS_CHANGE_NOT_ALLOWED'),
+    'Nobody can deactivate their own account',
+  );
+  assert(
+    rolesService.includes('ADMINISTRATOR_ACCOUNT_PROTECTED'),
+    'An administrator account is protected from this screen',
+  );
+  assert(
+    rolesService.includes('STAFF_NOT_FOUND'),
+    'An account outside the facility is not found, not forbidden',
+  );
+  assert(
+    rolesService.includes('ACCOUNT_PENDING_INVITATION'),
+    'A pending invitation is revoked, not deactivated — acceptance would undo it',
+  );
+  assert(
+    rolesService.includes('accountStatus: "DISABLED"') &&
+      rolesService.includes('isActive: false'),
+    'Deactivation disables the account rather than deleting it',
+  );
+  assert(
+    rolesService.includes('securityVersion: target.securityVersion + 1'),
+    'Deactivation invalidates the sessions already issued',
+  );
+  assert(
+    rolesService.includes('deactivatedAt: now') &&
+      rolesService.includes('deactivationReason'),
+    'The time and reason are stored on the account',
+  );
+  assert(
+    rolesService.includes('input.active ? "ACTIVATE" : "DEACTIVATE"'),
+    'Both directions are written to the audit log',
+  );
+
+  assert(
+    loginService.includes('!user.isActive') &&
+      loginService.includes('accountStatus === \'DISABLED\''),
+    'A deactivated account cannot sign in',
+  );
+  assert(
+    authMiddleware.includes('!user.isActive') &&
+      authMiddleware.includes('accountStatus === "DISABLED"'),
+    'An open session stops at its next request',
+  );
+
+  assert(
+    rolesRoutes.includes('"/:userId/status"'),
+    'The status route is registered',
+  );
+  assert(
+    rolesRoutes.includes('typeof body.active !== "boolean"'),
+    'The route refuses a body that is not true or false',
+  );
+
+  assert(
+    panel.includes('Deactivate') &&
+      panel.includes('Activate') &&
+      panel.includes('/status`'),
+    'The screen offers both directions and calls the route',
+  );
+
+  /*
+   * The capability has to be reachable. A tab nobody can open is not a
+   * capability, and a button nobody can see is not one either.
+   */
+  assert(
+    panel.includes('Role tasks') &&
+      panel.includes('Edit tasks') &&
+      panel.includes('/permissions`'),
+    'The role-task editor is on the same screen and calls its routes',
+  );
+}
+
 /* ============================================================
    RUN
    ============================================================ */
@@ -568,6 +755,10 @@ function run(): void {
   console.log('  7. Invitations and the directory share one rule');
   testScreen();
   console.log('  8. The capability is on the screen');
+  testTaskDelegationBoundary();
+  console.log('  9. Tasks are delegable, administration is not');
+  testAccountStatus();
+  console.log('  10. A staff account can be switched off and on');
 
   console.log('');
   console.log('==============================================');

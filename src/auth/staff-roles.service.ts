@@ -51,8 +51,11 @@ import {
 
 import {
   isAdministratorRoleName,
+  isDelegablePermission,
   isRestrictedRolePermission,
+  MAX_PERMISSIONS_PER_ROLE,
   MAX_ROLES_PER_STAFF_MEMBER,
+  MIN_PERMISSIONS_PER_ROLE,
 } from "./staff-role-policy";
 import {
   regulatorForStaffRole,
@@ -80,8 +83,10 @@ export class StaffRoleError extends Error {
 
 export {
   isAdministratorRoleName,
+  isDelegablePermission,
   isRestrictedRolePermission,
   MAX_ROLES_PER_STAFF_MEMBER,
+  MIN_PERMISSIONS_PER_ROLE,
 } from "./staff-role-policy";
 
 export type AssignableRole = {
@@ -809,6 +814,569 @@ export async function assignStaffRoles(input: {
       roles: Array.from(new Set(finalRoleIds)),
       added: addedNames,
       removed: removedNames,
+    };
+  });
+}
+
+
+/* ============================================================
+   TASK-LEVEL PERMISSIONS ON A ROLE
+   ============================================================ */
+
+/**
+ * Who may administer staff access.
+ *
+ * The route already requires the staff-invitation permission; inviting
+ * someone and re-scoping an existing account are not the same act, so
+ * the administrator role is checked again here. A permission alone is
+ * never enough.
+ */
+function assertActorIsAdministrator(input: {
+  actorRoleNames: string[];
+  isSuperAdmin: boolean;
+}): void {
+  const isAdministrator =
+    input.isSuperAdmin ||
+    input.actorRoleNames.some((name) => isAdministratorRoleName(name));
+
+  if (!isAdministrator) {
+    throw new StaffRoleError(
+      "Only a facility or platform administrator can change staff access.",
+      403,
+      "ADMINISTRATOR_ROLE_REQUIRED",
+    );
+  }
+}
+
+export type RoleTaskGroup = {
+  module: string;
+  permissions: {
+    id: number;
+    code: string;
+    name: string;
+    description: string | null;
+  }[];
+};
+
+export type RoleTaskCatalogue = {
+  role: {
+    id: number;
+    name: string;
+    description: string | null;
+    requiresVerification: boolean;
+  };
+  granted: string[];
+  groups: RoleTaskGroup[];
+};
+
+/**
+ * What one staff role is allowed to do, plus everything this facility
+ * may hand it. Both halves come from the same request so the editor
+ * cannot offer a task the save would refuse.
+ */
+export async function getRoleTaskCatalogue(input: {
+  tenantId: number;
+  roleId: number;
+}): Promise<RoleTaskCatalogue> {
+  if (!Number.isSafeInteger(input.roleId) || input.roleId <= 0) {
+    throw new StaffRoleError("A valid role is required.", 400, "INVALID_ROLE_ID");
+  }
+
+  const [role] = await db
+    .select({
+      id: roles.id,
+      name: roles.name,
+      description: roles.description,
+      isActive: roles.isActive,
+    })
+    .from(roles)
+    .where(and(eq(roles.id, input.roleId), eq(roles.tenantId, input.tenantId)))
+    .limit(1);
+
+  if (!role) {
+    throw new StaffRoleError(
+      "That role was not found at this tenant.",
+      404,
+      "ROLE_NOT_FOUND",
+    );
+  }
+
+  if (!role.isActive) {
+    throw new StaffRoleError(
+      "That role has been deactivated. Activate it before editing its tasks.",
+      409,
+      "ROLE_INACTIVE",
+    );
+  }
+
+  const catalogue = await loadAssignableRoleCatalogue(db, input.tenantId);
+  const described = catalogue.offered.get(role.id);
+
+  if (!described) {
+    throw new StaffRoleError(
+      "This is an administrator role. Task-level changes here would let it reach the platform, so it is not editable from the facility.",
+      403,
+      "ROLE_NOT_EDITABLE",
+    );
+  }
+
+  const permissionRows = await db
+    .select({
+      id: permissions.id,
+      code: permissions.code,
+      name: permissions.name,
+      description: permissions.description,
+      module: permissions.module,
+    })
+    .from(permissions)
+    .orderBy(asc(permissions.module), asc(permissions.code));
+
+  const grantedRows = await db
+    .select({ code: permissions.code })
+    .from(rolePermissions)
+    .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+    .where(eq(rolePermissions.roleId, role.id));
+
+  const groups = new Map<string, RoleTaskGroup>();
+
+  for (const row of permissionRows) {
+    if (!isDelegablePermission({ code: row.code, module: row.module })) {
+      continue;
+    }
+
+    let group = groups.get(row.module);
+
+    if (!group) {
+      group = { module: row.module, permissions: [] };
+      groups.set(row.module, group);
+    }
+
+    group.permissions.push({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+    });
+  }
+
+  return {
+    role: {
+      id: role.id,
+      name: role.name,
+      description: role.description,
+      requiresVerification: described.requiresVerification,
+    },
+    granted: grantedRows.map((row) => row.code).sort(),
+    groups: Array.from(groups.values()),
+  };
+}
+
+/**
+ * Replace the task list of one staff role.
+ *
+ * `permissionIds` is the complete desired set. Removing a task takes it
+ * away from every account holding the role the next time a request
+ * arrives, which is why the audit row names both sides of the change.
+ *
+ * The role itself is tenant-wide; the staff who hold it are not. The
+ * screen says so before the save, and this comment is the same fact for
+ * whoever reads the database later.
+ */
+export async function updateRolePermissions(input: {
+  tenantId: number;
+  facilityId: number;
+  actorUserId: number;
+  actorRoleNames: string[];
+  isSuperAdmin: boolean;
+  roleId: number;
+  permissionIds: number[];
+}) {
+  if (!Number.isSafeInteger(input.roleId) || input.roleId <= 0) {
+    throw new StaffRoleError("A valid role is required.", 400, "INVALID_ROLE_ID");
+  }
+
+  if (!Array.isArray(input.permissionIds)) {
+    throw new StaffRoleError(
+      "A list of tasks is required.",
+      400,
+      "INVALID_PERMISSION_SELECTION",
+    );
+  }
+
+  const uniqueIds = Array.from(new Set(input.permissionIds));
+
+  if (
+    uniqueIds.length < MIN_PERMISSIONS_PER_ROLE ||
+    uniqueIds.length > MAX_PERMISSIONS_PER_ROLE ||
+    uniqueIds.some((id) => !Number.isSafeInteger(id) || id <= 0)
+  ) {
+    throw new StaffRoleError(
+      `Choose between ${MIN_PERMISSIONS_PER_ROLE} and ${MAX_PERMISSIONS_PER_ROLE} tasks.`,
+      400,
+      "INVALID_PERMISSION_SELECTION",
+    );
+  }
+
+  assertActorIsAdministrator(input);
+
+  const actor = String(input.actorUserId);
+
+  return db.transaction(async (tx) => {
+    const [target] = await tx
+      .select({
+        id: roles.id,
+        name: roles.name,
+        isActive: roles.isActive,
+      })
+      .from(roles)
+      .where(and(eq(roles.id, input.roleId), eq(roles.tenantId, input.tenantId)))
+      .limit(1)
+      .for("update");
+
+    if (!target) {
+      throw new StaffRoleError(
+        "That role was not found at this tenant.",
+        404,
+        "ROLE_NOT_FOUND",
+      );
+    }
+
+    if (!target.isActive) {
+      throw new StaffRoleError(
+        "That role has been deactivated. Activate it before editing its tasks.",
+        409,
+        "ROLE_INACTIVE",
+      );
+    }
+
+    const catalogue = await loadAssignableRoleCatalogue(tx, input.tenantId);
+
+    if (!catalogue.offered.has(target.id)) {
+      throw new StaffRoleError(
+        "This is an administrator role. Task-level changes here would let it reach the platform, so it is not editable from the facility.",
+        403,
+        "ROLE_NOT_EDITABLE",
+      );
+    }
+
+    const wanted = await tx
+      .select({
+        id: permissions.id,
+        code: permissions.code,
+        module: permissions.module,
+      })
+      .from(permissions)
+      .where(inArray(permissions.id, uniqueIds));
+
+    if (wanted.length !== uniqueIds.length) {
+      throw new StaffRoleError(
+        "One of the selected tasks no longer exists. Reload the screen and try again.",
+        400,
+        "UNKNOWN_PERMISSION",
+      );
+    }
+
+    for (const permission of wanted) {
+      if (!isDelegablePermission(permission)) {
+        throw new StaffRoleError(
+          `"${permission.code}" belongs to administration and cannot be granted from the facility.`,
+          403,
+          "PERMISSION_NOT_DELEGABLE",
+        );
+      }
+    }
+
+    const currentRows = await tx
+      .select({ permissionId: rolePermissions.permissionId })
+      .from(rolePermissions)
+      .where(eq(rolePermissions.roleId, target.id));
+
+    const currentIds = new Set(currentRows.map((row) => row.permissionId));
+    const wantedIds = new Set(uniqueIds);
+
+    const toAdd = uniqueIds.filter((id) => !currentIds.has(id));
+    const toRemove = Array.from(currentIds).filter((id) => !wantedIds.has(id));
+
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      return {
+        roleId: target.id,
+        roleName: target.name,
+        changed: false,
+        added: [] as string[],
+        removed: [] as string[],
+        permissions: wanted.map((row) => row.code).sort(),
+      };
+    }
+
+    if (toRemove.length > 0) {
+      await tx
+        .delete(rolePermissions)
+        .where(
+          and(
+            eq(rolePermissions.roleId, target.id),
+            inArray(rolePermissions.permissionId, toRemove),
+          ),
+        );
+    }
+
+    if (toAdd.length > 0) {
+      await tx.insert(rolePermissions).values(
+        toAdd.map((permissionId) => ({
+          roleId: target.id,
+          permissionId,
+        })),
+      );
+    }
+
+    const codeById = new Map(wanted.map((row) => [row.id, row.code]));
+
+    // A removed permission is no longer in `wanted`; name it from the
+    // table itself. An empty IN () is not valid SQL, so skip the query.
+    const removedRows =
+      toRemove.length > 0
+        ? await tx
+            .select({ code: permissions.code })
+            .from(permissions)
+            .where(inArray(permissions.id, toRemove))
+        : [];
+
+    const removedCodes = removedRows.map((row) => row.code).sort();
+    const addedCodes = toAdd.map((id) => codeById.get(id) ?? String(id)).sort();
+
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId,
+      facilityId: input.facilityId,
+      userId: actor,
+      action: "UPDATE",
+      resource: "ROLE_PERMISSIONS",
+      resourceId: String(target.id),
+      details: `Changed tasks for role ${target.name}: added ${
+        addedCodes.length > 0 ? addedCodes.join(", ") : "none"
+      }; removed ${
+        removedCodes.length > 0 ? removedCodes.join(", ") : "none"
+      }.`,
+      severity: "WARNING",
+    });
+
+    return {
+      roleId: target.id,
+      roleName: target.name,
+      changed: true,
+      added: addedCodes,
+      removed: removedCodes,
+      permissions: Array.from(wantedIds)
+        .map((id) => codeById.get(id) ?? String(id))
+        .sort(),
+    };
+  });
+}
+
+/* ============================================================
+   ACTIVATE / DEACTIVATE A STAFF ACCOUNT
+   ============================================================ */
+
+/**
+ * Turn one staff account off, or back on.
+ *
+ * Deactivation is not a soft hint: `requireAuth` re-reads the account
+ * on every request and refuses an inactive or DISABLED user, so an open
+ * session stops working at its next call as well as at its next login.
+ * `security_version` is incremented too, which invalidates the session
+ * records themselves.
+ */
+export async function setStaffAccountStatus(input: {
+  tenantId: number;
+  facilityId: number;
+  actorUserId: number;
+  actorRoleNames: string[];
+  isSuperAdmin: boolean;
+  targetUserId: number;
+  active: boolean;
+  reason?: string | null;
+}) {
+  if (!Number.isSafeInteger(input.targetUserId) || input.targetUserId <= 0) {
+    throw new StaffRoleError(
+      "A valid staff account is required.",
+      400,
+      "INVALID_STAFF_ID",
+    );
+  }
+
+  if (typeof input.active !== "boolean") {
+    throw new StaffRoleError(
+      "active must be true or false.",
+      400,
+      "INVALID_STATUS",
+    );
+  }
+
+  const reason = (input.reason ?? "").trim();
+
+  if (reason.length > 200) {
+    throw new StaffRoleError(
+      "Keep the reason under 200 characters.",
+      400,
+      "INVALID_REASON",
+    );
+  }
+
+  assertActorIsAdministrator(input);
+
+  const actor = String(input.actorUserId);
+
+  return db.transaction(async (tx) => {
+    const [target] = await tx
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+        tenantId: users.tenantId,
+        facilityId: users.facilityId,
+        isActive: users.isActive,
+        accountStatus: users.accountStatus,
+        securityVersion: users.securityVersion,
+      })
+      .from(users)
+      .where(eq(users.id, input.targetUserId))
+      .limit(1)
+      .for("update");
+
+    /*
+     * An account in another facility or another tenant is reported as
+     * not found, not forbidden: a 403 would confirm it exists.
+     */
+    if (
+      !target ||
+      target.tenantId !== input.tenantId ||
+      target.facilityId !== input.facilityId
+    ) {
+      throw new StaffRoleError(
+        "That staff account was not found at this facility.",
+        404,
+        "STAFF_NOT_FOUND",
+      );
+    }
+
+    if (target.id === input.actorUserId) {
+      throw new StaffRoleError(
+        "You cannot deactivate your own account. Another administrator must do it.",
+        403,
+        "SELF_STATUS_CHANGE_NOT_ALLOWED",
+      );
+    }
+
+    /*
+     * A pending account has not accepted its invitation yet, and
+     * acceptance sets the account active. Switching it off here would
+     * be undone by the person clicking the link, so it is refused and
+     * the invitation is named as the thing to revoke.
+     */
+    if (target.accountStatus === "PENDING") {
+      throw new StaffRoleError(
+        "This person has not accepted their invitation yet. Revoke the invitation instead of deactivating the account.",
+        409,
+        "ACCOUNT_PENDING_INVITATION",
+      );
+    }
+
+    const heldRows = await tx
+      .select({
+        roleName: roles.name,
+        permissionCode: permissions.code,
+        permissionModule: permissions.module,
+      })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+      .leftJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(
+        and(
+          eq(userRoles.userId, target.id),
+          eq(userRoles.isActive, true),
+          isNull(userRoles.revokedAt),
+        ),
+      );
+
+    const holdsAdministratorRole = heldRows.some(
+      (row) =>
+        isAdministratorRoleName(row.roleName) ||
+        (row.permissionCode !== null &&
+          isRestrictedRolePermission({
+            code: row.permissionCode,
+            module: row.permissionModule,
+          })),
+    );
+
+    if (holdsAdministratorRole) {
+      throw new StaffRoleError(
+        "This account holds an administrator role. Only a platform administrator can change its status here.",
+        403,
+        "ADMINISTRATOR_ACCOUNT_PROTECTED",
+      );
+    }
+
+    if (target.isActive === input.active) {
+      return {
+        userId: target.id,
+        fullName: target.fullName,
+        active: input.active,
+        accountStatus: target.accountStatus,
+        changed: false,
+      };
+    }
+
+    const now = new Date();
+
+    const [updated] = await tx
+      .update(users)
+      .set(
+        input.active
+          ? {
+              isActive: true,
+              accountStatus: "ACTIVE",
+              deactivatedAt: null,
+              deactivationReason: null,
+              failedLoginAttempts: 0,
+              lastFailedLoginAt: null,
+              lockedUntil: null,
+              securityVersion: target.securityVersion + 1,
+              updatedAt: now,
+            }
+          : {
+              isActive: false,
+              accountStatus: "DISABLED",
+              deactivatedAt: now,
+              deactivationReason: reason || null,
+              securityVersion: target.securityVersion + 1,
+              updatedAt: now,
+            },
+      )
+      .where(eq(users.id, target.id))
+      .returning({
+        accountStatus: users.accountStatus,
+        isActive: users.isActive,
+      });
+
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId,
+      facilityId: input.facilityId,
+      userId: actor,
+      action: input.active ? "ACTIVATE" : "DEACTIVATE",
+      resource: "USER",
+      resourceId: String(target.id),
+      details: input.active
+        ? `Reactivated the account for ${target.fullName}.`
+        : `Deactivated the account for ${target.fullName}${
+            reason ? `: ${reason}` : "."
+          }`,
+      severity: input.active ? "INFO" : "WARNING",
+    });
+
+    return {
+      userId: target.id,
+      fullName: target.fullName,
+      active: input.active,
+      accountStatus: updated?.accountStatus ?? (input.active ? "ACTIVE" : "DISABLED"),
+      changed: true,
     };
   });
 }

@@ -68,3 +68,90 @@ export function isRestrictedRolePermission(
 
 /** A staff member may hold a handful of roles, not the whole catalogue. */
 export const MAX_ROLES_PER_STAFF_MEMBER = 20;
+
+/*
+ * ============================================================
+ * TASK-LEVEL DELEGATION
+ * ============================================================
+ *
+ * A facility administrator may give a staff role a task it did not
+ * have — "let a doctor read bills", "let the receptionist manage
+ * service tariffs" — without turning that role into an administrator.
+ *
+ * The boundary is a module allowlist, not a caller-ceiling. The
+ * facility administrator does not hold `billing.read` themselves on a
+ * fresh install (they hold staff and tariff permissions), so a
+ * "you may only grant what you hold" rule would make the feature
+ * useless for exactly the case it was requested for.
+ *
+ * What is allowed is therefore operational work: seeing and recording
+ * what happens to a patient, a specimen, a prescription, an invoice or
+ * a report. What is never allowed is the machinery that decides who
+ * may do any of it — accounts, roles, permissions, facilities, the
+ * platform, the audit trail and authentication.
+ */
+
+export const DELEGABLE_PERMISSION_MODULES = [
+  "patients",
+  "appointments",
+  "clinical",
+  "inpatient",
+  "maternity",
+  "laboratory",
+  "pharmacy",
+  "inventory",
+  "procurement",
+  "billing",
+  "insurance",
+  "reports",
+  "public_health",
+  "interop",
+  "practitioners",
+] as const;
+
+/**
+ * Prefixes that stay with the administrator, whatever module they sit
+ * in. The list is deliberately broader than `isRestrictedRolePermission`:
+ * that function answers "is this an administrator role?", while this
+ * one answers "may a facility hand this task to a staff role at all?".
+ */
+export const PROTECTED_PERMISSION_PREFIXES = [
+  "users.",
+  "roles.",
+  "audit.",
+  "facilities.",
+  "system.",
+  "auth.",
+  "platform.",
+  "tenants.",
+  "subscriptions.",
+  "security.",
+  "rbac.",
+  "permissions.",
+] as const;
+
+export function isDelegablePermission(permission: {
+  code: string;
+  module?: string | null;
+}): boolean {
+  const code = permission.code.trim().toLowerCase();
+  const module = (permission.module ?? "").trim().toLowerCase();
+
+  if (!code) return false;
+
+  if (isRestrictedRolePermission({ code, module })) return false;
+
+  if (
+    PROTECTED_PERMISSION_PREFIXES.some((prefix) => code.startsWith(prefix))
+  ) {
+    return false;
+  }
+
+  return (DELEGABLE_PERMISSION_MODULES as readonly string[]).includes(module);
+}
+
+/** A role that grants nothing is not a role; keep at least one task. */
+export const MIN_PERMISSIONS_PER_ROLE = 1;
+
+/** A guard against a careless "select all" on a very large catalogue. */
+export const MAX_PERMISSIONS_PER_ROLE = 200;
