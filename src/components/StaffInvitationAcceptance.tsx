@@ -144,20 +144,20 @@ export const StaffInvitationAcceptance: React.FC = () => {
   return (
     <main className="min-h-screen bg-canvas px-4 py-10 sm:px-6 flex items-center justify-center">
       <section className="w-full max-w-lg overflow-hidden rounded-card border border-hair bg-surface shadow-lift">
-        <div className="bg-pine-900 px-6 py-7 text-white sm:px-8">
+        <div className="bg-navy-900 px-6 py-7 text-white sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-clay-500">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-ember-500">
               <HeartPulse className="h-6 w-6" />
             </div>
             <div>
               <h1 className="font-display text-xl">JaliCare HMIS</h1>
-              <p className="text-sm text-pine-200">Secure staff account setup</p>
+              <p className="text-sm text-navy-200">Secure staff account setup</p>
             </div>
           </div>
           <h2 className="mt-7 font-display text-2xl">
             {success ? "Account created" : "Accept your invitation"}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-pine-100">
+          <p className="mt-2 text-sm leading-relaxed text-navy-100">
             {success
               ? "Your staff account has been created successfully."
               : "Set up your username and password to access your healthcare workspace."}
@@ -187,8 +187,8 @@ export const StaffInvitationAcceptance: React.FC = () => {
             </div>
           ) : invitation ? (
             <>
-              <div className="mb-6 rounded-xl border border-pine-100 bg-pine-50 p-4">
-                <div className="text-sm font-semibold text-pine-900">{invitation.fullName}</div>
+              <div className="mb-6 rounded-xl border border-brand-100 bg-brand-50 p-4">
+                <div className="text-sm font-semibold text-brand-900">{invitation.fullName}</div>
                 <div className="mt-1 break-all text-sm text-muted">{invitation.email}</div>
                 {(invitation.facilityName || invitation.roleName || invitation.designation) && (
                   <div className="mt-3 space-y-1 text-xs text-muted">

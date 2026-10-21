@@ -693,15 +693,20 @@ The `blue`, `teal` and `slate` ramps resolve to those values, so every existing 
 
 **Validation**
 
-- `npm run build` — **541 ms**.
+- `npm run build` — **598 ms**.
 - `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
-- `npm test` — **2,149 assertions across sixteen suites**, all green. `test:staff-roles` grew from 93 to **133**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring.
+- `npm test` — **2,177 assertions across seventeen suites**, all green. `test:staff-roles` grew from 93 to **133**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring. A new `test:design` suite (28 assertions) fails the build if a screen references a colour family the theme no longer defines, or if a semantic class it uses disappears.
 
 **Not verified:** no browser exists in this environment, so no screen in this round was clicked — the palette is verified only as far as "Tailwind emitted the utilities and the bundle builds". The two new features were **not** exercised against a live PostgreSQL database: the assertions are contract/source checks plus type-checking, and the earlier live run (§3.15, 49 checks) covered only the role-assignment routes. Treat the new SQL paths as untested against a real database until they are walked.
+
+**A regression the new test caught immediately.** The two invitation-acceptance screens had been restyled in §3.16 to `bg-pine-900` / `bg-clay-500`. When this round replaced the palette, those families stopped existing and both screens would have rendered a transparent header and an uncoloured icon tile — a failure no domain test could see. They are now `bg-navy-900` / `bg-ember-500`, and `test:design` scans every source file for the retired families so it cannot happen quietly again.
 
 **Backups created during this round**
 
 - `src/index.css.before-blue-revamp-20261021.bak`
+- `src/components/StaffInvitationAcceptance.tsx.before-blue-token-fix-20261021.bak`
+- `src/components/FacilityAdminInvitationAcceptance.tsx.before-blue-token-fix-20261021.bak`
+- `package.json.before-design-test-20261021.bak`
 - `src/components/LoginScreen.tsx.before-blue-revamp-20261021.bak`
 - `src/components/Header.tsx.before-blue-revamp-20261021.bak`
 - `src/components/Sidebar.tsx.before-blue-revamp-20261021.bak`

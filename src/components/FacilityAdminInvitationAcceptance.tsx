@@ -118,20 +118,20 @@ export default function FacilityAdminInvitationAcceptance() {
   return (
     <main className="min-h-screen bg-canvas px-4 py-10 flex items-center justify-center">
       <section className="w-full max-w-lg overflow-hidden rounded-card border border-hair bg-surface shadow-lift">
-        <header className="bg-pine-900 px-6 py-7 text-white sm:px-8">
+        <header className="bg-navy-900 px-6 py-7 text-white sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-clay-500">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-ember-500">
               <HeartPulse className="h-6 w-6" />
             </div>
             <div>
               <h1 className="font-display text-xl">JaliCare HMIS</h1>
-              <p className="text-sm text-pine-200">Facility administrator setup</p>
+              <p className="text-sm text-navy-200">Facility administrator setup</p>
             </div>
           </div>
           <h2 className="mt-6 font-display text-2xl">
             {success ? "Account created" : "Accept your invitation"}
           </h2>
-          <p className="mt-2 text-sm text-pine-100">
+          <p className="mt-2 text-sm text-navy-100">
             {success
               ? "Your facility administrator account has been created."
               : "Choose your own username and password to get started."}
@@ -160,8 +160,8 @@ export default function FacilityAdminInvitationAcceptance() {
             </div>
           ) : invitation ? (
             <>
-              <div className="mb-5 rounded-xl border border-pine-100 bg-pine-50 p-4">
-                <p className="font-semibold text-pine-900">{invitation.fullName}</p>
+              <div className="mb-5 rounded-xl border border-brand-100 bg-brand-50 p-4">
+                <p className="font-semibold text-brand-900">{invitation.fullName}</p>
                 <p className="mt-1 break-all text-sm text-muted">{invitation.email}</p>
                 {invitation.facilityName && (
                   <p className="mt-3 text-sm text-slate-700">Facility: {invitation.facilityName}</p>
