@@ -2798,6 +2798,59 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
       };
     });
 
+    /*
+     * Catalogue coverage.
+     *
+     * Roles are tenant-scoped, so a tenant created before a role was
+     * added to the catalogue simply does not have it: the role exists in
+     * the code, is offered by the invitation form, and cannot be granted
+     * to anyone. That is a silent hole, so the editor asks for it
+     * explicitly instead of hoping someone reads a script header.
+     *
+     * Drift is reported separately from absence. A role that exists but
+     * lacks catalogue permissions may have been trimmed on purpose, so
+     * nothing is re-granted without the admin asking for it by name.
+     */
+    const permissionIdByCode = new Map(
+      permissionRows.map((permission) => [permission.code, permission.id]),
+    );
+
+    const roleRowByName = new Map(
+      roleRows.map((role) => [role.name.trim().toUpperCase(), role]),
+    );
+
+    const catalogueCoverage = STAFF_ROLE_CATALOGUE.map((entry) => {
+      const existingRole = roleRowByName.get(entry.name);
+      const assignedIds = existingRole
+        ? new Set(defaultsByRole.get(existingRole.id) ?? [])
+        : new Set<number>();
+
+      const unknownPermissionCodes = entry.permissions.filter(
+        (permissionCode) => !permissionIdByCode.has(permissionCode),
+      );
+
+      const missingPermissionCodes = existingRole
+        ? entry.permissions.filter((permissionCode) => {
+            const permissionId = permissionIdByCode.get(permissionCode);
+
+            return (
+              permissionId !== undefined && !assignedIds.has(permissionId)
+            );
+          })
+        : [...entry.permissions];
+
+      return {
+        name: entry.name,
+        description: entry.description,
+        permissionCount: entry.permissions.length,
+        permissions: [...entry.permissions],
+        exists: existingRole !== undefined,
+        isActive: existingRole ? existingRole.isActive : null,
+        missingPermissionCodes,
+        unknownPermissionCodes,
+      };
+    });
+
     res.status(200).json({
       success: true,
       data: {
@@ -2811,6 +2864,282 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
           assignable: context.isSuperAdmin === true ||
             !isRestrictedForFacilityAdmin(permission),
         })),
+        catalogue: {
+          roleCount: STAFF_ROLE_CATALOGUE.length,
+          roles: catalogueCoverage,
+          missingCount: catalogueCoverage.filter((entry) => !entry.exists).length,
+          driftCount: catalogueCoverage.filter(
+            (entry) => entry.exists && entry.missingPermissionCodes.length > 0,
+          ).length,
+        },
+      },
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+/**
+ * POST /api/platform/rbac/catalogue/apply
+ * Create the catalogue roles this tenant does not have yet.
+ *
+ * Additive only. It never deletes a role, never removes a permission,
+ * and never touches a role's facility override. Existing roles are
+ * topped up only when the caller names them explicitly, because a
+ * permission removed on purpose must not quietly come back.
+ */
+router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
+  const context = getContext(req);
+
+  if (!context || (
+    context.isSuperAdmin !== true &&
+    !isFacilityAdminContext(context)
+  )) {
+    res.status(403).json({
+      error: 'FORBIDDEN',
+      message: 'You are not authorized to manage role permissions.',
+    });
+    return;
+  }
+
+  const body = (req.body ?? {}) as {
+    facilityId?: unknown;
+    roleNames?: unknown;
+    topUpExisting?: unknown;
+  };
+
+  const facilityId = Number(body.facilityId);
+
+  if (!Number.isSafeInteger(facilityId) || facilityId < 1) {
+    res.status(400).json({
+      error: 'INVALID_FACILITY_ID',
+      message: 'A valid facilityId is required.',
+    });
+    return;
+  }
+
+  const topUpExisting = body.topUpExisting === true;
+
+  let requestedNames: string[] | null = null;
+
+  if (body.roleNames !== undefined) {
+    if (
+      !Array.isArray(body.roleNames) ||
+      body.roleNames.some((name) => typeof name !== 'string')
+    ) {
+      res.status(400).json({
+        error: 'INVALID_ROLE_NAMES',
+        message: 'roleNames must be an array of catalogue role names.',
+      });
+      return;
+    }
+
+    requestedNames = body.roleNames.map((name: string) => name.trim().toUpperCase());
+  }
+
+  try {
+    const [facility] = await db
+      .select()
+      .from(schema.facilities)
+      .where(eq(schema.facilities.id, facilityId))
+      .limit(1);
+
+    if (!facility) {
+      res.status(404).json({
+        error: 'FACILITY_NOT_FOUND',
+        message: 'The selected facility was not found.',
+      });
+      return;
+    }
+
+    if (
+      context.isSuperAdmin !== true &&
+      (
+        facility.tenantId !== context.tenantId ||
+        (context.facilityId !== null && context.facilityId !== facility.id)
+      )
+    ) {
+      res.status(403).json({
+        error: 'FACILITY_OUT_OF_SCOPE',
+        message: 'You are not authorized to manage this facility.',
+      });
+      return;
+    }
+
+    const catalogueNames = new Set<string>(
+      STAFF_ROLE_CATALOGUE.map((entry) => entry.name),
+    );
+
+    const unknownNames = (requestedNames ?? []).filter(
+      (name) => !catalogueNames.has(name),
+    );
+
+    if (unknownNames.length > 0) {
+      res.status(400).json({
+        error: 'UNKNOWN_ROLE_NAMES',
+        message: `Not in the catalogue: ${unknownNames.join(', ')}.`,
+      });
+      return;
+    }
+
+    const targets = STAFF_ROLE_CATALOGUE.filter((entry) =>
+      requestedNames === null
+        ? true
+        : requestedNames.includes(entry.name),
+    );
+
+    /*
+     * Every permission a catalogue role needs must already exist. They are
+     * seeded, not created on the fly: inventing a permission row here
+     * would produce a role that holds something no route checks.
+     */
+    const requiredCodes = [
+      ...new Set(targets.flatMap((entry) => [...entry.permissions])),
+    ];
+
+    const permissionRows = requiredCodes.length > 0
+      ? await db
+          .select({
+            id: schema.permissions.id,
+            code: schema.permissions.code,
+          })
+          .from(schema.permissions)
+          .where(inArray(schema.permissions.code, requiredCodes))
+      : [];
+
+    const permissionIdByCode = new Map(
+      permissionRows.map((permission) => [permission.code, permission.id]),
+    );
+
+    const absentCodes = requiredCodes.filter(
+      (code) => !permissionIdByCode.has(code),
+    );
+
+    if (absentCodes.length > 0) {
+      res.status(409).json({
+        error: 'CATALOGUE_PERMISSIONS_MISSING',
+        message:
+          'These permission codes are not seeded in this database, so the catalogue roles cannot be created: '
+          + absentCodes.join(', ')
+          + '. Seed the permission catalogue before retrying.',
+      });
+      return;
+    }
+
+    const existingRoleRows = await db
+      .select({
+        id: schema.roles.id,
+        name: schema.roles.name,
+      })
+      .from(schema.roles)
+      .where(eq(schema.roles.tenantId, facility.tenantId));
+
+    const existingByName = new Map(
+      existingRoleRows.map((role) => [role.name.trim().toUpperCase(), role]),
+    );
+
+    const result = await db.transaction(async (tx) => {
+      const createdRoles: string[] = [];
+      const toppedUpRoles: Array<{ name: string; granted: number }> = [];
+      const skippedRoles: string[] = [];
+      let addedPermissionLinks = 0;
+
+      for (const entry of targets) {
+        const existing = existingByName.get(entry.name);
+
+        if (!existing) {
+          const [createdRole] = await tx
+            .insert(schema.roles)
+            .values({
+              tenantId: facility.tenantId,
+              name: entry.name,
+              description: entry.description,
+              isSystem: false,
+              isActive: true,
+            })
+            .returning({ id: schema.roles.id });
+
+          const values = entry.permissions.map((code) => ({
+            roleId: createdRole.id,
+            permissionId: permissionIdByCode.get(code)!,
+          }));
+
+          await tx.insert(schema.rolePermissions).values(values);
+
+          addedPermissionLinks += values.length;
+          createdRoles.push(entry.name);
+
+          continue;
+        }
+
+        if (!topUpExisting) {
+          skippedRoles.push(entry.name);
+          continue;
+        }
+
+        const currentLinks = await tx
+          .select({ permissionId: schema.rolePermissions.permissionId })
+          .from(schema.rolePermissions)
+          .where(eq(schema.rolePermissions.roleId, existing.id));
+
+        const currentIds = new Set(
+          currentLinks.map((link) => link.permissionId),
+        );
+
+        const missingValues = entry.permissions
+          .map((code) => permissionIdByCode.get(code)!)
+          .filter((permissionId) => !currentIds.has(permissionId))
+          .map((permissionId) => ({
+            roleId: existing.id,
+            permissionId,
+          }));
+
+        if (missingValues.length > 0) {
+          await tx.insert(schema.rolePermissions).values(missingValues);
+
+          addedPermissionLinks += missingValues.length;
+          toppedUpRoles.push({
+            name: entry.name,
+            granted: missingValues.length,
+          });
+        }
+      }
+
+      return { createdRoles, toppedUpRoles, skippedRoles, addedPermissionLinks };
+    });
+
+    if (result.createdRoles.length > 0 || result.toppedUpRoles.length > 0) {
+      await queries.logAuditEvent(
+        facility.tenantId,
+        facility.id,
+        auditActor(context),
+        'CREATE',
+        'ROLE',
+        null,
+        [
+          result.createdRoles.length > 0
+            ? `Created catalogue roles: ${result.createdRoles.join(', ')}`
+            : null,
+          result.toppedUpRoles.length > 0
+            ? `Granted missing catalogue permissions: ${
+                result.toppedUpRoles
+                  .map((entry) => `${entry.name} (+${entry.granted})`)
+                  .join(', ')
+              }`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('. '),
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        createdRoles: result.createdRoles,
+        toppedUpRoles: result.toppedUpRoles,
+        skippedRoles: result.skippedRoles,
+        addedPermissionLinks: result.addedPermissionLinks,
       },
     });
   } catch (error) {

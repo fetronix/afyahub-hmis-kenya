@@ -340,6 +340,36 @@ The legacy `getDiagnoses`, `recordDiagnosis`, `getProcedures` and `recordProcedu
 
 **Not verified:** no penetration test, no load test, and the screens were not walked in a browser after the change.
 
+### 3.10 Role catalogue coverage, and a dashboard that says what it knows
+
+**The hole.** `STAFF_ROLE_CATALOGUE` gained `CLINICAL_OFFICER` in 3.8, but roles are *tenant-scoped*: a tenant created before that change has no such role, the invitation form offers it, and nobody can be granted it. The same is true of `inpatient.admit` and `inpatient.discharge` added to `DOCTOR` and `NURSE` — the permission exists, the role predates it, and the new ward routes answer 403. A CLI script (`scripts/repair-tenant-staff-roles.ts`) covered tenants 7 and 8 and nothing else, and the editor showed only roles that already existed, so the gap was invisible from the screen.
+
+**What the editor shows now.** `GET /api/platform/rbac/roles` returns a `catalogue` block alongside the roles: for each of the eight catalogue roles, whether the tenant has it, and which catalogue permissions it lacks. The panel at the top of *Super Admin → Facilities → Facility Role Permissions* then reads one of three ways:
+
+- **All present** — a green line and nothing to do.
+- **Missing roles** — an amber list of the roles this tenant does not have, with their descriptions and permission counts, and one button to create them.
+- **Drift** — a separate list of existing roles that sit below the catalogue, naming the exact permission codes. Granting those is a second, explicit button.
+
+**Why drift is not automatic.** A permission may have been removed from a role deliberately, and a provisioning step that tops up every role on every visit would keep undoing that decision. Creation is safe to do in bulk; re-granting is not.
+
+**What the apply endpoint does.** `POST /api/platform/rbac/catalogue/apply` creates missing roles for the facility's tenant with their catalogue permissions and writes one audit entry. It is additive only: no delete, no update of an existing role, no touch of any facility override. If a catalogue permission code is not seeded in the database it refuses with `409 CATALOGUE_PERMISSIONS_MISSING` and names the codes, rather than creating a role that holds permissions no route checks. Roles belong to the tenant, so creating one from any facility makes it available in all of them.
+
+**Dashboard.** Two defects, one cosmetic and one not:
+
+- `text-2xs` and `text-3xs` were used **359 times across 23 files** and had never been defined, so Tailwind emitted nothing and every one of those labels inherited its parent's size. They are now defined once in `src/index.css` under `@theme`.
+- The KPI cards were four hand-written blocks with different numbers of rows, so their baselines drifted; hidden cards also left holes in a fixed four-column grid. They are now one `KpiCard` with a fixed label / value / footer shape, rendered from a filtered list, so the grid closes up when a permission hides a card. The second row drops to a single column when only one of its two panels is visible, instead of leaving two thirds empty.
+
+**The figure that is not zero.** When a dashboard request fails, the cards now show an em dash and a warning banner, not `0`. A zero is a measurement; a failed request is the absence of one. `loading` also stopped being a dead variable — it drives a *Refreshing* chip in the header.
+
+**Validation completed:**
+
+- `npm run test:roles` — 13 assertions, now part of `npm test`: the catalogue has the eight expected roles, every permission code is well formed, and the provisioning route never deletes, never updates an existing role and tops up only on request.
+- `npm test` — **1,556 assertions across twelve suites**, all passing.
+- `npm run build` — passed (`✓ built in 620ms`).
+- `npm run lint` — only the pre-existing `src/lib/firebase.ts` missing-config error.
+
+**Not verified:** no browser walkthrough of the panel or the dashboard, and the provisioning endpoint has not been exercised against a database. The `staff-role-catalogue` test was stale — it still expected seven roles and was not wired into `npm test` — and is fixed here.
+
 ## 4. Existing backups and modified files to preserve
 
 ### Backups created during the latest session

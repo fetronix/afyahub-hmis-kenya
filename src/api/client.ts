@@ -339,9 +339,40 @@ export interface RbacRole {
   canEdit: boolean;
 }
 
+/**
+ * One entry from the server's staff role catalogue, with whether this
+ * tenant has it yet. `exists: false` is the case the editor surfaces —
+ * a role the application knows about but nobody can be granted.
+ */
+export interface RbacCatalogueRole {
+  name: string;
+  description: string;
+  permissionCount: number;
+  permissions: string[];
+  exists: boolean;
+  isActive: boolean | null;
+  missingPermissionCodes: string[];
+  unknownPermissionCodes: string[];
+}
+
+export interface RbacCatalogueCoverage {
+  roleCount: number;
+  roles: RbacCatalogueRole[];
+  missingCount: number;
+  driftCount: number;
+}
+
 export interface RbacRolesResponse {
   roles: RbacRole[];
   permissions: RbacPermission[];
+  catalogue?: RbacCatalogueCoverage;
+}
+
+export interface RbacCatalogueApplyResult {
+  createdRoles: string[];
+  toppedUpRoles: Array<{ name: string; granted: number }>;
+  skippedRoles: string[];
+  addedPermissionLinks: number;
 }
 /**
  * Main API client.
@@ -390,6 +421,42 @@ export const api = {
         body: JSON.stringify({ facilityId, permissionIds }),
       }
     ),
+
+  /**
+   * Create the catalogue roles this tenant does not have yet.
+   *
+   * Additive only: it never removes a permission and never touches a
+   * facility override. `topUpExisting` must be asked for explicitly.
+   */
+  applyRbacCatalogue: async (
+    facilityId: number,
+    options: { roleNames?: string[]; topUpExisting?: boolean } = {},
+  ): Promise<RbacCatalogueApplyResult> => {
+    const response = await fetchJson<{
+      success: boolean;
+      data?: RbacCatalogueApplyResult;
+      message?: string;
+      error?: string;
+    }>(`${API_BASE}/platform/rbac/catalogue/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        facilityId,
+        roleNames: options.roleNames,
+        topUpExisting: options.topUpExisting === true,
+      }),
+    });
+
+    if (!response.success || !response.data) {
+      throw new Error(
+        response.message ||
+        response.error ||
+        'The catalogue roles could not be created.',
+      );
+    }
+
+    return response.data;
+  },
 
   // ============================================================
   // AUTHENTICATION

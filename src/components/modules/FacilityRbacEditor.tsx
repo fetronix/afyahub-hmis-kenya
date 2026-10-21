@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type RbacPermission, type RbacRole } from "../../api/client.ts";
+import { AlertTriangle, CheckCircle2, RefreshCw, UserPlus } from "lucide-react";
+import {
+  api,
+  type RbacCatalogueCoverage,
+  type RbacPermission,
+  type RbacRole,
+} from "../../api/client.ts";
 
 type Props = {
   facilityId: number;
@@ -12,6 +18,8 @@ export const FacilityRbacEditor: React.FC<Props> = ({
 }) => {
   const [roles, setRoles] = useState<RbacRole[]>([]);
   const [permissions, setPermissions] = useState<RbacPermission[]>([]);
+  const [catalogue, setCatalogue] = useState<RbacCatalogueCoverage | null>(null);
+  const [applying, setApplying] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
   const [draftPermissionIds, setDraftPermissionIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
@@ -28,6 +36,7 @@ export const FacilityRbacEditor: React.FC<Props> = ({
       const result = await api.getRbacRoles(facilityId);
       setRoles(result.roles);
       setPermissions(result.permissions);
+      setCatalogue(result.catalogue ?? null);
       setSelectedRoleId((current) =>
         current !== null && result.roles.some((role) => role.id === current)
           ? current
@@ -109,6 +118,57 @@ export const FacilityRbacEditor: React.FC<Props> = ({
     }
   };
 
+  const missingRoles = (catalogue?.roles ?? []).filter((role) => !role.exists);
+
+  const driftedRoles = (catalogue?.roles ?? []).filter(
+    (role) => role.exists && role.missingPermissionCodes.length > 0,
+  );
+
+  const applyCatalogue = async (options: {
+    roleNames?: string[];
+    topUpExisting?: boolean;
+  }) => {
+    if (applying) return;
+
+    setApplying(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await api.applyRbacCatalogue(facilityId, options);
+
+      const parts: string[] = [];
+
+      if (result.createdRoles.length > 0) {
+        parts.push(
+          `Created ${result.createdRoles.length} role${
+            result.createdRoles.length === 1 ? "" : "s"
+          }: ${result.createdRoles.join(", ")}.`,
+        );
+      }
+
+      if (result.toppedUpRoles.length > 0) {
+        parts.push(
+          `Granted missing permissions: ${result.toppedUpRoles
+            .map((entry) => `${entry.name} (+${entry.granted})`)
+            .join(", ")}.`,
+        );
+      }
+
+      setNotice(parts.length > 0 ? parts.join(" ") : "Nothing to change.");
+
+      await loadRoles();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The catalogue roles could not be created.",
+      );
+    } finally {
+      setApplying(false);
+    }
+  };
+
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -129,8 +189,11 @@ export const FacilityRbacEditor: React.FC<Props> = ({
           type="button"
           onClick={() => void loadRoles()}
           disabled={loading || saving}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
         >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+          />
           {loading ? "Refreshing..." : "Refresh roles"}
         </button>
       </div>
@@ -150,6 +213,132 @@ export const FacilityRbacEditor: React.FC<Props> = ({
           className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
         >
           {notice}
+        </div>
+      )}
+
+      {catalogue && (
+        <div className="rounded-lg border border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+            <h3 className="text-sm font-bold text-slate-800">
+              Staff role catalogue
+            </h3>
+            <span className="text-xs text-slate-600">
+              {catalogue.roleCount - catalogue.missingCount} of{" "}
+              {catalogue.roleCount} roles present
+            </span>
+          </div>
+
+          <div className="space-y-4 p-4">
+            {missingRoles.length === 0 && driftedRoles.length === 0 ? (
+              <p className="flex items-center gap-2 text-sm text-emerald-800">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                Every role in the catalogue is available to this tenant.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-600">
+                Roles belong to the tenant, so adding one here makes it
+                available at every facility in it. Additions are additive:
+                nothing is removed and no existing override is touched.
+              </p>
+            )}
+
+            {missingRoles.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                    <UserPlus className="h-4 w-4 flex-shrink-0" />
+                    {missingRoles.length} catalogue role
+                    {missingRoles.length === 1 ? "" : "s"} not in this tenant
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={applying}
+                    onClick={() => void applyCatalogue({})}
+                    className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
+                  >
+                    {applying
+                      ? "Adding..."
+                      : `Add ${missingRoles.length} role${
+                          missingRoles.length === 1 ? "" : "s"
+                        }`}
+                  </button>
+                </div>
+
+                <ul className="mt-3 space-y-2">
+                  {missingRoles.map((role) => (
+                    <li
+                      key={role.name}
+                      className="rounded border border-amber-200 bg-white/70 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="font-mono text-xs font-bold text-slate-900">
+                          {role.name}
+                        </span>
+                        <span className="text-2xs text-slate-600">
+                          {role.permissionCount} permissions
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {role.description}
+                      </p>
+                      {role.unknownPermissionCodes.length > 0 && (
+                        <p className="mt-1 text-2xs font-semibold text-rose-700">
+                          Not seeded in this database:{" "}
+                          {role.unknownPermissionCodes.join(", ")}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {driftedRoles.length > 0 && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-600" />
+                    {driftedRoles.length} existing role
+                    {driftedRoles.length === 1 ? "" : "s"} below catalogue
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={applying}
+                    onClick={() =>
+                      void applyCatalogue({
+                        roleNames: driftedRoles.map((role) => role.name),
+                        topUpExisting: true,
+                      })
+                    }
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    {applying ? "Granting..." : "Grant missing permissions"}
+                  </button>
+                </div>
+
+                <ul className="mt-3 space-y-1.5">
+                  {driftedRoles.map((role) => (
+                    <li key={role.name} className="text-xs text-slate-700">
+                      <span className="font-mono font-semibold">
+                        {role.name}
+                      </span>
+                      <span className="text-slate-500"> lacks </span>
+                      <span className="font-mono text-2xs text-slate-600">
+                        {role.missingPermissionCodes.join(", ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <p className="mt-2 text-2xs text-slate-500">
+                  A permission may have been removed deliberately. This button
+                  is here so the grant is a decision, not a side effect.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -18,7 +18,56 @@ import {
   TrendingUp,
   HeartPulse,
   Stethoscope,
+  RefreshCw,
 } from 'lucide-react';
+
+type KpiCardProps = {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconClassName?: string;
+  value: React.ReactNode;
+  unit?: React.ReactNode;
+  footer?: React.ReactNode;
+};
+
+/**
+ * One figure per card, one footer per card, footers pinned to the bottom.
+ *
+ * The previous cards each carried a different number of rows, so their
+ * baselines drifted apart once two of them wrapped differently. A fixed
+ * label / value / footer structure keeps a grid of them aligned whatever
+ * text ends up inside.
+ */
+const KpiCard: React.FC<KpiCardProps> = ({
+  label,
+  icon: Icon,
+  iconClassName = 'text-slate-400',
+  value,
+  unit,
+  footer,
+}) => (
+  <div className="flex h-full flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-2xs font-semibold uppercase tracking-wider text-slate-500">
+          {label}
+        </span>
+        <Icon className={`h-4 w-4 flex-shrink-0 ${iconClassName}`} />
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+        <span className="font-mono text-2xl font-bold tabular-nums text-slate-900">
+          {value}
+        </span>
+        {unit && <span className="text-2xs text-slate-500">{unit}</span>}
+      </div>
+    </div>
+
+    <div className="mt-3 border-t border-slate-100 pt-2 text-2xs text-slate-500">
+      {footer}
+    </div>
+  </div>
+);
 
 export const DashboardModule: React.FC = () => {
   const {
@@ -44,12 +93,21 @@ export const DashboardModule: React.FC = () => {
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [inpatientBoard, setInpatientBoard] = useState<InpatientBoard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  /*
+   * A figure the server has not reported is unknown, not zero. Rendering
+   * "0" when the request failed would be an assertion nobody made.
+   */
+  const metric = (value: number | null | undefined): string =>
+    summary ? String(value ?? 0) : '\u2014';
 
   useEffect(() => {
     let active = true;
 
     async function loadDashboard() {
       setLoading(true);
+      setLoadError(null);
 
       const tasks: Promise<void>[] = [];
 
@@ -59,7 +117,10 @@ export const DashboardModule: React.FC = () => {
             .then((value) => { if (active) setSummary(value); })
             .catch((err) => {
               console.error('Failed to load analytics summary:', err);
-              if (active) setSummary(null);
+              if (active) {
+                setSummary(null);
+                setLoadError('Some figures could not be loaded.');
+              }
             })
         );
 
@@ -82,7 +143,10 @@ export const DashboardModule: React.FC = () => {
             .then((value) => { if (active) setQueues(value); })
             .catch((err) => {
               console.error('Failed to load queues:', err);
-              if (active) setQueues([]);
+              if (active) {
+                setQueues([]);
+                setLoadError('The patient queue could not be loaded.');
+              }
             })
         );
       } else {
@@ -95,7 +159,10 @@ export const DashboardModule: React.FC = () => {
             .then((value) => { if (active) setInpatientBoard(value); })
             .catch((err) => {
               console.error('Failed to load inpatient board:', err);
-              if (active) setInpatientBoard(null);
+              if (active) {
+                setInpatientBoard(null);
+                setLoadError('The ward board could not be loaded.');
+              }
             })
         );
       } else {
@@ -126,6 +193,12 @@ export const DashboardModule: React.FC = () => {
             <span className="font-mono text-xs px-2 py-0.5 bg-blue-50 text-blue-900 rounded font-bold border border-blue-200/80">
               {currentFacility?.mflCode || 'Not configured'}
             </span>
+            {loading && (
+              <span className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-white px-2 py-0.5 text-2xs font-medium text-slate-600">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Refreshing
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-1">
             {currentFacility?.level} · {currentFacility?.county} County
@@ -143,131 +216,134 @@ export const DashboardModule: React.FC = () => {
         </div>
       </div>
 
+      {loadError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"
+        >
+          {loadError} Figures shown as an em dash are unknown, not zero. Use
+          Refresh to try again.
+        </div>
+      )}
+
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-{can('appointments.read') && (
-        <>
-        {/* Card 1: Outpatient Activity */}
-        <div className="group relative overflow-hidden bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Active Queues</span>
-            <Users className="w-4 h-4 text-blue-700" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {summary?.activeQueuesCount ?? 0}
-            </span>
-            <span className="text-2xs text-slate-500">Patients waiting</span>
-          </div>
-          <div className="mt-2 text-2xs text-slate-500 flex items-center gap-1">
-            <span>Avg triage wait: </span>
-            <strong className="font-mono text-blue-900">Not available</strong>
-          </div>
-        </div>
-
-
-        </>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {can('appointments.read') && (
+          <KpiCard
+            label="Active queues"
+            icon={Users}
+            iconClassName="text-blue-700"
+            value={metric(summary?.activeQueuesCount)}
+            unit="waiting"
+            footer={
+              <span className="flex items-center justify-between gap-2">
+                <span>Average triage wait</span>
+                <strong className="font-mono text-slate-600">not tracked</strong>
+              </span>
+            }
+          />
         )}
 
-{can('inpatient.read') && (
-        <>
-        {/* Card 2: Inpatient Occupancy */}
-        <div className="group relative overflow-hidden bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Bed Occupancy</span>
-            <BedDouble className="w-4 h-4 text-orange-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {summary?.bedOccupancyRate ?? 0}%
-            </span>
-            <span className="text-2xs text-slate-500">{summary?.currentAdmissions ?? 0} Admitted</span>
-          </div>
-          <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div
-              className="bg-orange-500 h-1.5 rounded-full"
-              style={{ width: `${Math.min(100, summary?.bedOccupancyRate ?? 0)}%` }}
-            />
-          </div>
-          <div className="mt-2 flex items-center justify-between text-2xs">
-            <span className="text-slate-500">Vitals overdue:</span>
-            <strong
-              className={`font-mono ${
-                (inpatientBoard?.vitalsOverdueCount ?? 0) > 0
-                  ? 'text-orange-700'
-                  : 'text-emerald-700'
-              }`}
-            >
-              {inpatientBoard?.vitalsOverdueCount ?? 0}
-            </strong>
-          </div>
-        </div>
-
-
-        </>
+        {can('inpatient.read') && (
+          <KpiCard
+            label="Bed occupancy"
+            icon={BedDouble}
+            iconClassName="text-orange-600"
+            value={
+              summary ? `${summary.bedOccupancyRate ?? 0}%` : '\u2014'
+            }
+            unit={summary ? `${summary.currentAdmissions ?? 0} admitted` : undefined}
+            footer={
+              <div className="space-y-1.5">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-1.5 rounded-full bg-orange-500"
+                    style={{
+                      width: `${Math.min(100, summary?.bedOccupancyRate ?? 0)}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span>Vitals overdue</span>
+                  <strong
+                    className={`font-mono ${
+                      (inpatientBoard?.vitalsOverdueCount ?? 0) > 0
+                        ? 'text-orange-700'
+                        : 'text-emerald-700'
+                    }`}
+                  >
+                    {inpatientBoard ? inpatientBoard.vitalsOverdueCount : '\u2014'}
+                  </strong>
+                </div>
+              </div>
+            }
+          />
         )}
 
-{can('billing.read') && (
-        <>
-        {/* Card 3: Revenue Today */}
-        <div className="group relative overflow-hidden bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Recorded paid amount (KES)</span>
-            <DollarSign className="w-4 h-4 text-blue-700" />
-          </div>
-          <div className="mt-2">
-            <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              KES {summary ? Number(summary.totalRevenueKes).toLocaleString() : '0'}
-            </span>
-          </div>
-          <div className="mt-2 text-2xs text-orange-800 flex items-center justify-between">
-            <span>Outstanding:</span>
-            <strong className="font-mono">KES {summary ? Number(summary.outstandingBillsKes).toLocaleString() : '0'}</strong>
-          </div>
-        </div>
-
-
-        </>
+        {can('billing.read') && (
+          <KpiCard
+            label="Recorded paid amount"
+            icon={DollarSign}
+            iconClassName="text-blue-700"
+            value={summary ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}` : '\u2014'}
+            unit={summary ? undefined : 'KES'}
+            footer={
+              <span className="flex items-center justify-between gap-2">
+                <span>Outstanding</span>
+                <strong className="font-mono text-orange-800">
+                  {summary
+                    ? `KES ${Number(summary.outstandingBillsKes).toLocaleString()}`
+                    : '\u2014'}
+                </strong>
+              </span>
+            }
+          />
         )}
 
-        {/* Card 4: Clinical Diagnostics & OT */}
         {canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read') && (
-        <>
-        <div className="group relative overflow-hidden bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Theatre & Lab</span>
-            <Activity className="w-4 h-4 text-blue-700" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-3">
-            <div>
-              <span className="text-xl font-bold font-mono text-slate-900 tabular-nums">{summary?.scheduledSurgeries ?? 0}</span>
-              <span className="text-2xs text-slate-500 ml-1">Surgeries</span>
-            </div>
-            <span className="text-slate-300">Â·</span>
-            <div>
-              <span className="text-xl font-bold font-mono text-slate-900 tabular-nums">{summary?.pendingLabOrders ?? 0}</span>
-              <span className="text-2xs text-slate-500 ml-1">Pending Labs</span>
-            </div>
-          </div>
-          <div className="mt-2 text-2xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span>
-              Low drug stocks:{' '}
-              <strong className="font-mono text-rose-600">{summary?.lowStockAlerts ?? 0} items</strong>
-            </span>
-            <span className="text-slate-300">·</span>
-            <span>
-              Expiring ≤30d:{' '}
-              <strong
-                className={`font-mono ${
-                  (summary?.expiringStockAlerts ?? 0) > 0 ? 'text-amber-700' : 'text-slate-600'
-                }`}
-              >
-                {summary?.expiringStockAlerts ?? 0} batches
-              </strong>
-            </span>
-          </div>
-        </div>
-        </>
+          <KpiCard
+            label="Theatre & lab"
+            icon={Activity}
+            iconClassName="text-blue-700"
+            value={
+              <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span>
+                  {metric(summary?.scheduledSurgeries)}
+                  <span className="ml-1 font-sans text-2xs font-medium text-slate-500">
+                    surgeries
+                  </span>
+                </span>
+                <span>
+                  {metric(summary?.pendingLabOrders)}
+                  <span className="ml-1 font-sans text-2xs font-medium text-slate-500">
+                    pending labs
+                  </span>
+                </span>
+              </span>
+            }
+            footer={
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <span>
+                  Low stock{' '}
+                  <strong className="font-mono text-rose-600">
+                    {metric(summary?.lowStockAlerts)}
+                  </strong>
+                </span>
+                <span>
+                  Expiring ≤30d{' '}
+                  <strong
+                    className={`font-mono ${
+                      (summary?.expiringStockAlerts ?? 0) > 0
+                        ? 'text-amber-700'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    {metric(summary?.expiringStockAlerts)}
+                  </strong>
+                </span>
+              </div>
+            }
+          />
         )}
       </div>
 
@@ -431,12 +507,20 @@ export const DashboardModule: React.FC = () => {
         </div>
       )}
 
-      {/* Main Grid: Real-Time Patient Queue & Disease Surveillance */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 items-start">
+      {/*
+        * Two panels, one of them twice as wide. When either is missing the
+        * grid drops to a single column, so the remaining panel does not sit
+        * in a third of the width with two thirds of empty space beside it.
+        */}
+      <div
+        className={`grid grid-cols-1 items-start gap-5 lg:gap-6 ${
+          canReadQueues && canReadReports ? 'lg:grid-cols-3' : 'lg:grid-cols-1'
+        }`}
+      >
 {can('appointments.read') && (
         <>
         {/* Real-time OPD Queue Station (2 cols) */}
-        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm lg:col-span-2">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-blue-700" />
@@ -559,7 +643,7 @@ export const DashboardModule: React.FC = () => {
                   <div>
                     <div className="font-semibold text-slate-900">{rep.diseaseName}</div>
                     <div className="text-2xs text-slate-500 font-mono">
-                      ICD-10: {rep.diseaseCode} Â· Age: {rep.ageGroup}
+                      ICD-10: {rep.diseaseCode} · Age: {rep.ageGroup}
                     </div>
                   </div>
                   <div className="text-right">
