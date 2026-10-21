@@ -5,6 +5,10 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import { StaffRolesPanel } from './StaffRolesPanel.tsx';
 import {
+  FACILITY_MODULES,
+  resolveFacilityModules,
+} from '../../config/facility-modules.ts';
+import {
   Sliders,
   Building2,
   Layers,
@@ -17,11 +21,21 @@ import {
   ToggleLeft,
   ToggleRight,
   Plus,
-  UserPlus
+  UserPlus,
+  Lock,
+  AlertTriangle,
+  Save,
 } from 'lucide-react';
 
 export const ConfigurationModule: React.FC = () => {
-  const { currentFacility, currentTenant, showToast, authenticatedUser } = useHmis();
+  const {
+    currentFacility,
+    currentTenant,
+    showToast,
+    authenticatedUser,
+    setCurrentFacility,
+    setActiveModule,
+  } = useHmis();
   const isFacilityAdmin = Boolean(
     authenticatedUser?.roles?.includes('FACILITY_ADMIN') &&
     !authenticatedUser?.isSuperAdmin &&
@@ -63,47 +77,71 @@ export const ConfigurationModule: React.FC = () => {
   );
 
   const [activeTab, setActiveTab] = useState<'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'>(
-    isFacilityAdmin || staffOnly ? 'staff' : 'facility'
+    staffOnly ? 'staff' : 'facility'
   );
 
   useEffect(() => {
-    if (isFacilityAdmin || staffOnly) {
+    /*
+     * An account that holds only staff permissions has one honest
+     * landing place. A facility administrator now sees the profile and
+     * the module switches as well, so they are not forced to Staff.
+     */
+    if (staffOnly) {
       setActiveTab('staff');
     }
-  }, [isFacilityAdmin, staffOnly]);
+  }, [staffOnly]);
 
-  // Facility Info Form
-  const [facilityData, setFacilityData] = useState({
-    name: currentFacility?.name || 'Nairobi Central Referral Hospital',
-    code: currentFacility?.code || 'NRB-CENTRAL',
-    level: currentFacility?.level || 'Level 5 Hospital',
-    county: currentFacility?.county || 'Nairobi',
-    subCounty: currentFacility?.subCounty || 'Westlands',
-    mflCode: currentFacility?.mflCode || 'MFL-12845',
-    phone: currentFacility?.phone || '+254 703 082 000',
-    email: currentFacility?.email || 'admin@nairobihospital.ke',
-  });
+  /*
+   * Facility module provisioning.
+   *
+   * This used to be a hard-coded map of seventeen modules that all
+   * read `true`, rendered as switches that flipped local state and
+   * toasted "updated". It had no connection to
+   * `currentFacility.enabledModules`, which is the list the navigation
+   * rail and the server-side module guard actually read — so a
+   * facility whose row omitted `maternity` showed Maternity as ON
+   * here and hid the antenatal register in the rail.
+   *
+   * The draft now starts from the facility row and is written back
+   * through PATCH /api/facilities/:id/modules.
+   */
+  const [moduleDraft, setModuleDraft] = useState<string[]>(() =>
+    resolveFacilityModules(currentFacility?.enabledModules)
+  );
+  const [moduleSaving, setModuleSaving] = useState(false);
+  const [moduleError, setModuleError] = useState('');
 
-  // Enabled Modules Toggles
-  const [enabledModules, setEnabledModules] = useState<Record<string, boolean>>({
-    registration: true,
-    reception: true,
-    opd: true,
-    inpatient: true,
-    maternity: true,
-    theatre: true,
-    specialty: true,
-    laboratory: true,
-    radiology: true,
-    pharmacy: true,
-    inventory: true,
-    procurement: true,
-    finance: true,
-    insurance: true,
-    public_health: true,
-    analytics: true,
-    interoperability: true,
-  });
+  useEffect(() => {
+    setModuleDraft(resolveFacilityModules(currentFacility?.enabledModules));
+    setModuleError('');
+  }, [currentFacility?.id, currentFacility?.enabledModules]);
+
+  /*
+   * Mirrors the server rule in facility-modules.routes.ts. The server
+   * decides; this only decides whether to offer the control.
+   */
+  const canProvisionModules = Boolean(
+    isSuperAdmin ||
+      isFacilityAdmin ||
+      permissions.has('facilities.modules.manage') ||
+      permissions.has('system.settings.manage')
+  );
+
+  const savedModules = resolveFacilityModules(currentFacility?.enabledModules);
+  const moduleChanges = [
+    ...moduleDraft.filter((id) => !savedModules.includes(id)),
+    ...savedModules.filter((id) => !moduleDraft.includes(id)),
+  ];
+  const moduleDirty = moduleChanges.length > 0;
+
+  const moduleGroups = Array.from(
+    FACILITY_MODULES.reduce((groups, module) => {
+      const list = groups.get(module.group) ?? [];
+      list.push(module);
+      groups.set(module.group, list);
+      return groups;
+    }, new Map<string, (typeof FACILITY_MODULES)[number][]>())
+  ).map(([group, modules]) => ({ group, modules }));
 
   // Facility-scoped service tariff management.
   const [tariffs, setTariffs] = useState<ServiceTariff[]>([]);
@@ -255,14 +293,60 @@ export const ConfigurationModule: React.FC = () => {
       showToast(error instanceof Error ? error.message : 'Could not deactivate the tariff.');
     }
   };
-  const toggleModule = (key: string) => {
-    setEnabledModules(prev => ({ ...prev, [key]: !prev[key] }));
-    showToast(`Updated module "${key}" state.`);
+  const toggleModule = (moduleId: string) => {
+    if (!canProvisionModules) return;
+
+    const definition = FACILITY_MODULES.find((module) => module.id === moduleId);
+
+    if (definition?.alwaysOn) return;
+
+    setModuleError('');
+    setModuleDraft((current) =>
+      current.includes(moduleId)
+        ? current.filter((id) => id !== moduleId)
+        : [...current, moduleId]
+    );
   };
 
-  const handleSaveFacility = (e: React.FormEvent) => {
-    e.preventDefault();
-    showToast('Facility configuration updated successfully.');
+  const handleSaveModules = async () => {
+    if (!currentFacility) return;
+
+    setModuleSaving(true);
+    setModuleError('');
+
+    try {
+      const result = await api.updateFacilityModules(currentFacility.id, moduleDraft);
+
+      setCurrentFacility({
+        ...currentFacility,
+        enabledModules: result.enabledModules,
+      });
+      setModuleDraft(result.enabledModules);
+
+      const enabledLabels = result.added
+        .map((id) => FACILITY_MODULES.find((module) => module.id === id)?.label ?? id)
+        .join(', ');
+      const disabledLabels = result.removed
+        .map((id) => FACILITY_MODULES.find((module) => module.id === id)?.label ?? id)
+        .join(', ');
+
+      const parts = [
+        enabledLabels ? `${enabledLabels} enabled` : '',
+        disabledLabels ? `${disabledLabels} disabled` : '',
+      ].filter(Boolean);
+
+      showToast(
+        parts.length > 0
+          ? `Modules saved: ${parts.join('; ')}. The navigation has been updated.`
+          : 'Modules saved. Nothing changed.'
+      );
+    } catch (error) {
+      setModuleError(
+        error instanceof Error ? error.message : 'Could not save the module list.'
+      );
+    } finally {
+      setModuleSaving(false);
+    }
   };
 
   return (
@@ -294,7 +378,14 @@ export const ConfigurationModule: React.FC = () => {
         ].filter((tab) => {
           if (tab.id === 'staff') return canManageStaff;
           if (staffOnly) return false;
-          if (isFacilityAdmin) return tab.id === 'tariffs';
+          /*
+           * A facility administrator runs the facility: profile, module
+           * provisioning, staff and tariffs. Payment credentials stay
+           * with the platform. This used to return only `tariffs`,
+           * which is why a facility administrator could never reach the
+           * module switches at all.
+           */
+          if (isFacilityAdmin) return tab.id !== 'payments';
           return tab.id !== 'tariffs' && (!isSuperAdmin || tab.id !== 'staff');
         }).map((tab) => {
           const Icon = tab.icon;
@@ -326,153 +417,213 @@ export const ConfigurationModule: React.FC = () => {
       )}
       {/* FACILITY PROFILE TAB */}
       {activeTab === 'facility' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs text-xs space-y-5">
-          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 uppercase">
-              Facility Information & KMFL Registration
-            </h2>
-            <span className="text-2xs text-slate-400 font-mono">Tenant ID: {currentTenant?.slug}</span>
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Facility profile</p>
+              <h2 className="mt-1 text-sm font-bold text-ink">
+                {currentFacility?.name ?? 'No facility selected'}
+              </h2>
+            </div>
+            <span className="chip font-mono">{currentFacility?.code ?? '—'}</span>
           </div>
 
-          <form onSubmit={handleSaveFacility} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Facility Name</label>
-                <input
-                  type="text"
-                  value={facilityData.name}
-                  onChange={(e) => setFacilityData({ ...facilityData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md font-semibold text-slate-900"
-                />
+          <dl className="grid grid-cols-1 gap-px bg-hair sm:grid-cols-2">
+            {[
+              { label: 'Facility level', value: currentFacility?.level },
+              { label: 'KMFL / MFL code', value: currentFacility?.mflCode },
+              { label: 'County', value: currentFacility?.county },
+              { label: 'Sub-county', value: currentFacility?.subCounty },
+              { label: 'Contact phone', value: currentFacility?.phone },
+              { label: 'Official email', value: currentFacility?.email },
+              { label: 'Tenant', value: currentTenant?.name },
+              { label: 'Physical address', value: currentFacility?.address },
+            ].map((field) => (
+              <div key={field.label} className="bg-surface px-5 py-3">
+                <dt className="eyebrow">{field.label}</dt>
+                <dd className="mt-1 text-sm font-semibold text-ink">
+                  {field.value || (
+                    <span className="font-normal text-slate-400">Not recorded</span>
+                  )}
+                </dd>
               </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Facility Code</label>
-                <input
-                  type="text"
-                  value={facilityData.code}
-                  onChange={(e) => setFacilityData({ ...facilityData, code: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-                />
-              </div>
-            </div>
+            ))}
+          </dl>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Facility Level</label>
-                <select
-                  value={facilityData.level}
-                  onChange={(e) => setFacilityData({ ...facilityData, level: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                >
-                  <option value="Level 2 Clinic">Level 2 Clinic</option>
-                  <option value="Level 3 Medical Center">Level 3 Medical Center</option>
-                  <option value="Level 4 Sub-County Hospital">Level 4 Sub-County Hospital</option>
-                  <option value="Level 5 County Referral Hospital">Level 5 County Referral Hospital</option>
-                  <option value="Level 6 National Teaching Hospital">Level 6 National Referral Hospital</option>
-                </select>
-              </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">County</label>
-                <input
-                  type="text"
-                  value={facilityData.county}
-                  onChange={(e) => setFacilityData({ ...facilityData, county: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Sub-County</label>
-                <input
-                  type="text"
-                  value={facilityData.subCounty}
-                  onChange={(e) => setFacilityData({ ...facilityData, subCounty: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                />
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hair px-5 py-3">
+            <p className="flex max-w-xl items-start gap-2 text-2xs leading-relaxed text-muted">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+              Facility identity fields are changed by a platform administrator. This table
+              shows what the facility row currently holds; there is no edit form here because
+              this screen has no facility-profile endpoint to call.
+            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Kenya Master Facility Code (KMFL)</label>
-                <input
-                  type="text"
-                  value={facilityData.mflCode}
-                  onChange={(e) => setFacilityData({ ...facilityData, mflCode: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold text-teal-800"
-                />
-              </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Contact Phone</label>
-                <input
-                  type="text"
-                  value={facilityData.phone}
-                  onChange={(e) => setFacilityData({ ...facilityData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-                />
-              </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Official Email</label>
-                <input
-                  type="email"
-                  value={facilityData.email}
-                  onChange={(e) => setFacilityData({ ...facilityData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                />
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
+            {isSuperAdmin && (
               <button
-                type="submit"
-                className="px-5 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
+                type="button"
+                onClick={() => setActiveModule('platform_administration')}
+                className="btn-quiet"
               >
-                Save Facility Settings
+                Open Platform Administration
               </button>
-            </div>
-          </form>
+            )}
+          </div>
         </div>
       )}
 
       {/* MODULAR FEATURES ENGINE TAB */}
       {activeTab === 'modules' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs text-xs space-y-4">
-          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase">
-                Facility Module Provisioning Engine
-              </h2>
-              <p className="text-2xs text-slate-500">
-                Tailor system complexity: Enable or disable specific departments according to clinic or hospital size.
-              </p>
+        <div className="space-y-4">
+          <div className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Provisioning</p>
+                <h2 className="mt-1 text-sm font-bold text-ink">Facility modules</h2>
+                <p className="mt-1 max-w-2xl text-2xs leading-relaxed text-muted">
+                  A switch here decides two things: whether the module appears in the
+                  navigation rail, and whether the server answers that module's API. Records
+                  already stored are kept when a module is switched off.
+                </p>
+              </div>
+
+              <span className="chip font-mono">
+                {moduleDraft.length} / {FACILITY_MODULES.length} enabled
+              </span>
             </div>
-            <span className="text-2xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-semibold">
-              Live Reconfiguration Active
-            </span>
+
+            {moduleError && (
+              <div
+                role="alert"
+                className="mx-5 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-2xs text-red-800"
+              >
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{moduleError}</span>
+              </div>
+            )}
+
+            {!canProvisionModules && (
+              <div className="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-2xs text-amber-900">
+                This account can see the module list but cannot change it. Module
+                provisioning needs the <span className="font-mono">facilities.modules.manage</span>{' '}
+                permission or a facility administrator account.
+              </div>
+            )}
+
+            {currentFacility?.id === undefined && (
+              <div className="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-2xs text-amber-900">
+                No facility is selected, so there is nothing to provision.
+              </div>
+            )}
+
+            <div className="space-y-5 p-5">
+              {moduleGroups.map((group) => (
+                <section key={group.group}>
+                  <h3 className="eyebrow">{group.group}</h3>
+
+                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {group.modules.map((module) => {
+                      const on = moduleDraft.includes(module.id);
+                      const locked = !canProvisionModules || Boolean(module.alwaysOn);
+
+                      return (
+                        <button
+                          key={module.id}
+                          type="button"
+                          role="switch"
+                          aria-checked={on}
+                          aria-label={`${module.label} module`}
+                          disabled={locked || moduleSaving}
+                          onClick={() => toggleModule(module.id)}
+                          className={`flex w-full items-start justify-between gap-3 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed ${
+                            on
+                              ? 'border-brand-300 bg-brand-50/70'
+                              : 'border-hair bg-surface hover:border-brand-200'
+                          } disabled:opacity-80`}
+                        >
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className={`text-xs font-semibold ${
+                                  on ? 'text-brand-900' : 'text-ink-soft'
+                                }`}
+                              >
+                                {module.label}
+                              </span>
+                              {module.alwaysOn && (
+                                <Lock
+                                  className="h-3 w-3 text-slate-400"
+                                  aria-label="always available"
+                                />
+                              )}
+                            </span>
+                            <span className="mt-1 block text-2xs leading-relaxed text-muted">
+                              {module.description}
+                            </span>
+                          </span>
+
+                          <span
+                            aria-hidden="true"
+                            className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition ${
+                              on ? 'bg-brand-500' : 'bg-slate-300'
+                            }`}
+                          >
+                            <span
+                              className={`h-4 w-4 rounded-full bg-white shadow-sm transition ${
+                                on ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hair px-5 py-3">
+              <p className="text-2xs text-muted">
+                {moduleDirty
+                  ? `${moduleChanges.length} unsaved change${moduleChanges.length === 1 ? '' : 's'}.`
+                  : 'Every change here is written to the facility row and recorded in the audit log.'}
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModuleDraft(savedModules);
+                    setModuleError('');
+                  }}
+                  disabled={!moduleDirty || moduleSaving}
+                  className="btn-quiet"
+                >
+                  Discard
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleSaveModules()}
+                  disabled={!moduleDirty || moduleSaving || !canProvisionModules}
+                  className="btn-primary"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {moduleSaving ? 'Saving…' : 'Save modules'}
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {Object.entries(enabledModules).map(([modKey, isEnabled]) => (
-              <div
-                key={modKey}
-                onClick={() => toggleModule(modKey)}
-                className={`p-3.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-                  isEnabled
-                    ? 'border-teal-700 bg-teal-50/30'
-                    : 'border-slate-200 bg-slate-50/50 opacity-60'
-                }`}
-              >
-                <div>
-                  <div className="font-semibold text-slate-900 capitalize">{modKey.replace('_', ' ')}</div>
-                  <div className="text-3xs text-slate-500">
-                    {isEnabled ? 'Active in navigation & API' : 'Disabled for this facility'}
-                  </div>
-                </div>
-
-                <div className={`text-base font-bold ${isEnabled ? 'text-teal-700' : 'text-slate-400'}`}>
-                  {isEnabled ? 'ON' : 'OFF'}
-                </div>
-              </div>
-            ))}
+          <div className="rounded-xl border border-brand-200 bg-brand-50 p-4">
+            <p className="text-xs font-semibold text-brand-900">
+              Where the antenatal register lives
+            </p>
+            <p className="mt-1 max-w-3xl text-2xs leading-relaxed text-brand-800">
+              It is inside <strong>Maternity &amp; MCH</strong> &rarr;{' '}
+              <strong>Antenatal register</strong>, the first of five tabs (labour, deliveries,
+              postnatal and immunisation follow). When Maternity is switched on above it is
+              added to the Clinical care section of the navigation immediately, with no reload.
+            </p>
           </div>
         </div>
       )}

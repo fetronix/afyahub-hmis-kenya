@@ -934,6 +934,49 @@ export const api = {
         }`
       ),
 
+  /**
+   * Facility module provisioning.
+   *
+   * The switch grid used to be local React state; these two calls are
+   * what make it a setting the server enforces.
+   */
+  getFacilityModules:
+    (facilityId: number) =>
+      fetchJson<{
+        success: boolean;
+        facilityId: number;
+        enabledModules: string[];
+        alwaysEnabled: string[];
+        canManage: boolean;
+        catalogue: Array<{
+          id: string;
+          label: string;
+          group: string;
+          description: string;
+          alwaysOn?: boolean;
+        }>;
+      }>(
+        `${API_BASE}/facilities/${facilityId}/modules`
+      ),
+
+  updateFacilityModules:
+    (facilityId: number, enabledModules: string[]) =>
+      fetchJson<{
+        success: boolean;
+        facilityId: number;
+        enabledModules: string[];
+        added: string[];
+        removed: string[];
+        alwaysEnabled: string[];
+        changed: boolean;
+      }>(
+        `${API_BASE}/facilities/${facilityId}/modules`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ enabledModules }),
+        }
+      ),
+
   getDepartments:
     (facilityId?: number) =>
       fetchJson<Department[]>(

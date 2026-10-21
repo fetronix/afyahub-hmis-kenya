@@ -423,7 +423,7 @@ Without the second, existing roles hold no maternity permission and the module a
 
 - `npm run test:maternity` — 130 assertions: date arithmetic (including 30 February and leap years), Naegele's rule, gestation from the EDD, absent-is-not-zero, every partograph zone, the migration's additive guarantees, no default on any clinical measurement, route permissions, and that the screen ships no sample patient.
 - **Live against PostgreSQL 16** — the scratch database was built by applying all sixteen migrations, then the service was exercised end to end: 24 checks covering EDD derivation, the one-active-pregnancy rule, ANC gestation computation, values stored versus left NULL, labour admission, three partograph readings, the duplicate-timestamp refusal, the dilatation range, the delivery with its baby, the pregnancy and labour closing to `Delivered`, refusal of a second delivery, refusal of a reading after delivery, the summary counts, and cross-facility isolation. Two defects were found this way and fixed: Drizzle wraps driver errors so the SQLSTATE sits on `cause` (every unique violation was returning 500), and a facility denial was surfacing as 403 instead of 404.
-- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.16).
+- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.18).
 - `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
 
 **Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care, immunisation and the plotted chart were still outstanding at the end of that round; they are in §3.12.
@@ -641,7 +641,7 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 
 **The brand is the logo.** `public/logo.jpg` reads *JALI CARE — Healthcare. Empowered.* in deep blue and orange. The palette in §3.16 (green/clay) was therefore wrong for this product and has been replaced, not layered over.
 
-**The palette now**
+**The palette now** *(superseded later the same day — see §3.18 for the current values)*
 
 | Token | Value | Used for |
 |---|---|---|
@@ -733,6 +733,117 @@ The `blue`, `teal` and `slate` ramps resolve to those values, so every existing 
 - `src/components/modules/*.tsx.before-page-headers-20261021.bak` (the eighteen page-header edits)
 - `README.md.before-design-overhaul-20261021.bak`
 
+
+### 3.18 Brighter blue, and the module switch that was not connected
+
+**What was asked.** Two things in one message: move the theme to brighter colours (*"sky blue and bright orange"*), and answer whether the maternity and antenatal screens exist, because *"I cannot see it"*.
+
+The second question turned out to be the more serious one, and the honest answer is in §2 below.
+
+---
+
+#### 1. The palette is lighter, and the contrast is checked
+
+The blue and orange identity is unchanged; the blue moved from a deep hospital navy to sky and the orange is used at full strength for the one action that matters.
+
+| Token | Value | Used for |
+|---|---|---|
+| `brand-500` | `#0ea5e9` | active navigation, active tab, primary switch, links, focus ring |
+| `brand-600` | `#0284c7` | hover on the above |
+| `brand-700` | `#0369a1` | primary button, headings that need weight |
+| `navy-800/900` | `#0d3a56` / `#0b2f46` | the rail and the login panel only — no longer near-black |
+| `ember-500` | `#f97316` | the single call to action (sign-in, book pregnancy, save) |
+| `copper-600` | `#a63f1f` | emphasis text that must stay legible on white |
+| `canvas` / `surface` / `hair` | `#f3f7fc` / white / `#dce6f2` | the page, the cards, every border |
+
+`blue`, `teal` and `slate` still resolve to the same values, so the thirty-odd screens written before the token file inherit the brighter blue without being rewritten. Status colours (emerald, amber, rose) remain untouched: a warning must keep looking like a warning.
+
+**One change was forced by legibility, not taste.** `ember-500` (`#f97316`) against white is about 3.0:1 — below the 4.5:1 needed for body-size text. The orange call to action therefore carries a **near-black label** (`text-navy-950`) instead of white, and the design test asserts it. Anything that needs white text on orange uses `copper-600`.
+
+`test:design` now pins `brand-500`, `brand-600`, `brand-700`, `navy-900` and `ember-500`, so "brighten it" and "quietly put white back on the orange button" cannot drift apart.
+
+---
+
+#### 2. Maternity and antenatal: the screen was built, the switch was decorative
+
+**The screen exists, and it is complete.** `src/components/modules/MaternityModule.tsx` is 2,439 lines with five tabs — **Antenatal register** (the default), labour with a plotted partograph, deliveries and billing, postnatal care, and immunisation — backed by `/api/maternity/*`. `App.tsx` routes the `maternity` navigation id to it.
+
+**Why it could not be seen.** The rail draws a module only when `currentFacility.enabledModules` contains it (`Sidebar.tsx`). Three separate faults conspired:
+
+1. **The demo seed omitted it.** `schema.ts` defaults `enabled_modules` to a list that *includes* `maternity`, but the seed writes its own explicit list for each facility, and that list replaced the default without maternity. On any seeded database the rail therefore never drew the module — and `requireFacilityModule('maternity')` would have refused its API even if it had.
+2. **Configuration lied about it.** *Configuration → Modular Features* rendered 17 switches from a hard-coded `useState` map — `maternity: true` among them. It never read the facility row, never called an API, and toasted *"Updated module state"* when clicked. A facility administrator could see Maternity marked **ON** on one screen while it was absent from the navigation on another.
+3. **The person who could fix it could not reach the tab.** The tab filter returned only `tariffs` for a facility administrator, and the only endpoint that could write `enabledModules` was `PATCH /api/platform/facilities/:id`, gated to the platform super-admin.
+
+That is the defect that has now been fixed, rather than papered over with a colour change.
+
+**The fix, in four parts**
+
+| Part | File | What it does |
+|---|---|---|
+| One catalogue | `src/config/facility-modules.ts` (new) | 19 modules with a label, group and one-sentence description each. `configuration` is **always-on**: the screen that provisions modules cannot be hidden by the list it controls. Pure module, no imports — the browser and the server read the same list. |
+| A real endpoint | `src/config/facility-modules.routes.ts` (new) | `GET` and `PATCH /api/facilities/:id/modules`. Scoped through `getFacilityByIdScoped`, so a facility account can only reach its own facility and a tenant account only its own tenant. Unknown ids are **rejected by name**, not silently dropped. Every save writes an audit row listing what was added and removed. |
+| A working screen | `ConfigurationModule.tsx` | The grid is grouped by department, starts from the facility row, has Save/Discard, an error banner and a dirty count. A successful save calls `setCurrentFacility`, so the rail updates **without a reload**. The false *"Live Reconfiguration Active"* badge is gone. |
+| Reachable tabs | `ConfigurationModule.tsx`, `Sidebar.tsx` | A facility administrator now sees Facility profile, Modular Features, Staff and Tariffs (payment credentials stay with the platform). The rail can no longer hide Configuration itself. |
+
+**Who may change the list.** `facilities.modules.manage` (a new permission, granted to tenant `FACILITY_ADMIN` roles by `db:seed:permissions`), `system.settings.manage`, or the `FACILITY_ADMIN` role for that tenant. The role check is a deliberate belt-and-braces measure: a database seeded before the new permission existed still has an administrator who can switch a module on. The facility's tenant id is read from the database, never from the request.
+
+**Where antenatal lives.** *Maternity & MCH → Antenatal register*, the first of five tabs. The tab now carries the count of booked pregnancies, and the screen states the path in its header so nobody has to guess. The maternity screen itself also picked up the new palette: sky-blue active tabs, an orange **Book pregnancy** action, and token surfaces instead of raw greys.
+
+**A second lie removed.** The Facility profile tab had a **Save Facility Settings** button wired to a function that displayed a success toast and wrote nothing; its fields were pre-filled with a hard-coded hospital name and MFL number when no facility was loaded. There is no facility-profile endpoint for a facility account to call, so the tab is now an honest read-only record of the facility row, with a note saying who can change it and, for a platform administrator, a link to Platform Administration.
+
+---
+
+#### 3. For an existing database — commands only, nothing run here
+
+No migration is needed: `enabled_modules` is an existing `jsonb` column.
+
+```bash
+# 1. The permission (idempotent; adds the code and grants it to tenant FACILITY_ADMIN roles)
+npm run db:seed:permissions
+```
+
+Then either flip the switch in the UI —
+
+> **Configuration → Modular Features → Maternity & MCH → Save modules**
+
+— or, if you would rather do it in SQL (replace `<facility-id>`):
+
+```sql
+UPDATE facilities
+SET enabled_modules = enabled_modules || '["maternity"]'::jsonb,
+    updated_at = now()
+WHERE id = <facility-id>
+  AND NOT enabled_modules @> '["maternity"]'::jsonb;
+```
+
+Both are additive: nothing is deleted, no clinical row is touched, and switching a module off later keeps every record it holds.
+
+---
+
+#### 4. Validation
+
+- `npm run build` — **521 ms**.
+- `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
+- `npm test` — **18 suites green**, **2,237 assertions** across the 17 suites that print a count (the role-catalogue suite reports ten `PASS` lines instead). The new `test:modules` suite adds **53 assertions** covering: the catalogue (19 unique ids, Configuration always-on), the resolver (order, de-duplication, unknown ids), the server guard and the provisioning route, the seeded data, and the two screens (`updateFacilityModules`, no hard-coded map, facility-admin tab filter, no *"Live Reconfiguration Active"*, no fake save button).
+- `test:design` grew from 28 to **33** assertions with the sky-blue pins and the CTA-contrast rule.
+- `test:staff-roles` grew from 134 to **135** with the tab-reachability assertion.
+
+**Not verified.** There is no browser in this environment, so no screen in this round was clicked: the palette is verified only as far as "Tailwind emitted the utilities and the bundle builds". The `PATCH /api/facilities/:id/modules` route was **not** exercised against PostgreSQL — the checks are source/contract assertions plus type-checking. Treat module provisioning as untested against a live database until it has been walked once.
+
+---
+
+**Backups created during this round**
+
+- `src/index.css.before-bright-palette-20261021.bak`
+- `src/components/modules/MaternityModule.tsx.before-bright-palette-20261021.bak`
+- `src/components/modules/ConfigurationModule.tsx.before-real-module-switches-20261021.bak`
+- `src/components/Sidebar.tsx.before-config-always-on-20261021.bak`
+- `src/db/seed.ts.before-maternity-enabled-20261021.bak`
+- `src/seeds/permissions.ts.before-module-permission-20261021.bak`
+- `src/tests/design-tokens.test.ts.before-sky-palette-20261021.bak`
+- `src/tests/staff-roles.test.ts.before-module-tabs-20261021.bak`
+- `package.json.before-module-tests-20261021.bak`
+- `README.md.before-bright-palette-20261021.bak`
 
 
 ## 4. Existing backups and modified files to preserve
@@ -1079,12 +1190,13 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 | Laboratory verification/publication workflow | Resolved (migration 0008) |
 | HTTP hardening (headers, CORS, rate limits) | Implemented and probed against a running server |
 | Maternity, postnatal care and immunisation | Implemented; 131 + 151 assertions and 40 live checks; not walked in a browser, no clinical review |
+| Maternity/ANC visibility | Was hidden by the facility module list and a decorative switch; catalogue, endpoint and screen now wired (53 assertions); not exercised against a live database |
 | End-to-end OPD/triage verification | In progress — no browser walkthrough yet |
 | Independent security testing, load test, restore drill | Not started |
 | Comprehensive regression testing and user acceptance | Not started |
 | Production deployment and handover | Not started |
 
-**Immediate focus:** finish the OPD/triage workflow in a browser, then start maternity/MCH. Avoid reopening completed work unless a specific defect is demonstrated.
+**Immediate focus:** walk two things in a browser against a live database, because neither has been clicked in this environment — **Configuration → Modular Features → Maternity → Save**, then **Maternity & MCH → Antenatal register** — and then continue the OPD/triage walkthrough. Avoid reopening completed work unless a specific defect is demonstrated.
 
 ## 10. Migrations and full sync
 

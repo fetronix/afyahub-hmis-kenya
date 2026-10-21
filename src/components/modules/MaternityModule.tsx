@@ -771,12 +771,15 @@ export const MaternityModule: React.FC = () => {
             Antenatal care, labour with a partograph, and delivery — recorded
             against one pregnancy.
           </p>
+          <p className="mt-2 text-2xs font-semibold uppercase tracking-[0.12em] text-brand-700">
+            Maternity &rarr; Antenatal register is the first tab below
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <SummaryChip label="Booked" value={summary?.activePregnancies} tone="teal" />
+          <SummaryChip label="Booked" value={summary?.activePregnancies} tone="brand" />
           <SummaryChip label="ANC this month" value={summary?.ancVisitsThisMonth} />
-          <SummaryChip label="In labour" value={summary?.inLabour} tone="amber" />
+          <SummaryChip label="In labour" value={summary?.inLabour} tone="ember" />
           <SummaryChip label="Delivered" value={summary?.deliveriesThisMonth} />
           <button
             type="button"
@@ -822,14 +825,24 @@ export const MaternityModule: React.FC = () => {
             key={id}
             type="button"
             onClick={() => setTab(id)}
+            aria-pressed={tab === id}
             className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-semibold ${
               tab === id
-                ? 'border-teal-700 bg-teal-50 text-teal-900'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                ? 'border-brand-500 bg-brand-500 text-white shadow-sm'
+                : 'border-brand-100 bg-white text-brand-900 hover:border-brand-300 hover:bg-brand-50'
             }`}
           >
             <Icon className="h-4 w-4" />
             {label}
+            {id === 'anc' && activePregnancies.length > 0 && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 font-mono text-2xs font-bold ${
+                  tab === id ? 'bg-white/20 text-white' : 'bg-brand-100 text-brand-800'
+                }`}
+              >
+                {activePregnancies.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -841,15 +854,15 @@ export const MaternityModule: React.FC = () => {
       {/* ---------------- ANTENATAL ---------------- */}
       {tab === 'anc' && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <section className="overflow-hidden rounded-xl border border-hair bg-surface">
+            <div className="flex items-center justify-between border-b border-hair bg-canvas px-4 py-3">
               <h2 className="text-sm font-bold text-slate-800">
                 Booked pregnancies
               </h2>
               <button
                 type="button"
                 onClick={() => setBookingOpen((open) => !open)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ember-500 px-3 py-1.5 text-xs font-bold text-navy-950 shadow-sm hover:bg-ember-400"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Book pregnancy
@@ -857,7 +870,7 @@ export const MaternityModule: React.FC = () => {
             </div>
 
             {bookingOpen && (
-              <form onSubmit={submitBooking} className="border-b border-slate-100 p-4">
+              <form onSubmit={submitBooking} className="border-b border-hair p-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <label className={labelClass}>Patient *</label>
@@ -1051,7 +1064,7 @@ export const MaternityModule: React.FC = () => {
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section className="rounded-xl border border-hair bg-surface p-4">
             {!selectedPregnancy ? (
               <p className="text-sm text-slate-500">
                 Select a pregnancy to see antenatal visits and record a new one.
@@ -1220,8 +1233,8 @@ export const MaternityModule: React.FC = () => {
       {/* ---------------- LABOUR ---------------- */}
       {tab === 'labour' && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <section className="overflow-hidden rounded-xl border border-hair bg-surface">
+            <div className="flex items-center justify-between border-b border-hair bg-canvas px-4 py-3">
               <h2 className="text-sm font-bold text-slate-800">Labour ward</h2>
               <button
                 type="button"
@@ -1234,7 +1247,7 @@ export const MaternityModule: React.FC = () => {
             </div>
 
             {labourOpen && (
-              <form onSubmit={submitLabour} className="space-y-2 border-b border-slate-100 p-4">
+              <form onSubmit={submitLabour} className="space-y-2 border-b border-hair p-4">
                 <Field label="Pregnancy *">
                   <select
                     required
@@ -1297,7 +1310,7 @@ export const MaternityModule: React.FC = () => {
             </ul>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section className="rounded-xl border border-hair bg-surface p-4">
             {!selectedLabour ? (
               <p className="text-sm text-slate-500">
                 Select a woman in labour to see and extend the partograph.
@@ -1482,7 +1495,7 @@ export const MaternityModule: React.FC = () => {
           </div>
 
           {deliveryOpen && (
-            <form onSubmit={submitDelivery} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+            <form onSubmit={submitDelivery} className="space-y-3 rounded-xl border border-hair bg-surface p-4">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Pregnancy *">
                   <select required value={delivery.pregnancyId} onChange={(e) => setDelivery({ ...delivery, pregnancyId: e.target.value })} className={fieldClass}>
@@ -1634,8 +1647,8 @@ export const MaternityModule: React.FC = () => {
             </div>
           )}
 
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <section className="overflow-hidden rounded-xl border border-hair bg-surface">
+            <div className="border-b border-hair bg-canvas px-4 py-3">
               <h2 className="text-sm font-bold text-slate-800">Delivery register</h2>
             </div>
             <div className="overflow-x-auto">
@@ -1695,15 +1708,15 @@ export const MaternityModule: React.FC = () => {
       {/* ---------------- POSTNATAL ---------------- */}
       {tab === 'postnatal' && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <section className="overflow-hidden rounded-xl border border-hair bg-surface">
+            <div className="flex items-center justify-between border-b border-hair bg-canvas px-4 py-3">
               <h2 className="text-sm font-bold text-slate-800">Postnatal contacts</h2>
               <span className="text-2xs text-slate-500">
                 {postnatalRegister.length} recent
               </span>
             </div>
 
-            <div className="border-b border-slate-100 p-4">
+            <div className="border-b border-hair p-4">
               <Field label="Open a mother's record">
                 <select
                   value={postnatalPregnancy?.id ?? ''}
@@ -1779,7 +1792,7 @@ export const MaternityModule: React.FC = () => {
             </ul>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section className="rounded-xl border border-hair bg-surface p-4">
             {!postnatalPregnancy ? (
               <p className="text-sm text-slate-500">
                 Select a mother on the left to see her postnatal contacts and
@@ -2065,15 +2078,15 @@ export const MaternityModule: React.FC = () => {
       {/* ---------------- IMMUNISATION ---------------- */}
       {tab === 'immunisation' && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <section className="overflow-hidden rounded-xl border border-hair bg-surface">
+            <div className="flex items-center justify-between border-b border-hair bg-canvas px-4 py-3">
               <h2 className="text-sm font-bold text-slate-800">Doses outstanding</h2>
               <span className="text-2xs text-slate-500">
                 {immunisationAsOf ? `as of ${immunisationAsOf}` : '—'}
               </span>
             </div>
 
-            <div className="border-b border-slate-100 p-4">
+            <div className="border-b border-hair p-4">
               <Field label="Open a child's card">
                 <select
                   value={immunisationCard?.patient.id ?? ''}
@@ -2140,7 +2153,7 @@ export const MaternityModule: React.FC = () => {
             </ul>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section className="rounded-xl border border-hair bg-surface p-4">
             {!immunisationCard ? (
               <p className="text-sm text-slate-500">
                 Select a child on the left to see the doses given and what the
@@ -2402,15 +2415,15 @@ const Reading: React.FC<{ label: string; value: string | number | null }> = ({
 const SummaryChip: React.FC<{
   label: string;
   value?: number;
-  tone?: 'teal' | 'amber';
+  tone?: 'brand' | 'ember';
 }> = ({ label, value, tone }) => (
   <span
     className={`rounded-lg border px-2.5 py-1.5 text-2xs ${
-      tone === 'teal'
-        ? 'border-teal-200 bg-teal-50 text-teal-900'
-        : tone === 'amber'
-          ? 'border-amber-200 bg-amber-50 text-amber-900'
-          : 'border-slate-200 bg-white text-slate-700'
+      tone === 'brand'
+        ? 'border-brand-200 bg-brand-50 text-brand-900'
+        : tone === 'ember'
+          ? 'border-ember-300 bg-ember-50 text-ember-900'
+          : 'border-hair bg-surface text-ink'
     }`}
   >
     <span className="block font-semibold uppercase tracking-wider">{label}</span>

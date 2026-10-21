@@ -126,6 +126,14 @@ const PERMISSIONS = [
   },
 
   {
+    code: 'facilities.modules.manage',
+    name: 'Manage Facility Modules',
+    module: 'facilities',
+    description:
+      'Turn a facility module on or off, which also opens or closes that module\'s API.',
+  },
+
+  {
     code: 'facilities.approve',
     name: 'Approve Facilities',
     module: 'facilities',
@@ -1022,6 +1030,13 @@ async function seedPermissions(): Promise<void> {
     'users.invitations.reissue',
     'tariffs.read',
     'tariffs.manage',
+    /*
+     * A facility administrator is the person who decides whether this
+     * facility runs a maternity unit, a theatre list or a laboratory.
+     * The provisioning route also admits the FACILITY_ADMIN role so a
+     * database seeded before this permission existed still works.
+     */
+    'facilities.modules.manage',
   ] as const;
 
   const staffInvitationPermissions = [];

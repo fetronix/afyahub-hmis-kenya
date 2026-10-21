@@ -81,16 +81,40 @@ function testPalette(): void {
   }
 
   /*
-   * The logo is deep blue and orange. A green or clay ramp would be a
-   * different product.
+   * The logo is blue and orange. A green or clay ramp would be a
+   * different product. The blue is sky, not navy: brand-500 is the
+   * colour a primary button and an active tab actually show.
    */
   assert(
-    /--color-brand-700:\s*#145588;/i.test(css),
-    'The primary is the hospital blue of the logo',
+    /--color-brand-500:\s*#0ea5e9;/i.test(css),
+    'The primary is sky blue',
+  );
+  assert(
+    /--color-brand-600:\s*#0284c7;/i.test(css),
+    'The primary hover is one step deeper than sky',
+  );
+  assert(
+    /--color-brand-700:\s*#0369a1;/i.test(css),
+    'The deep primary is still blue, not navy',
+  );
+  assert(
+    /--color-navy-900:\s*#0b2f46;/i.test(css),
+    'The rail is deep blue rather than near-black',
   );
   assert(
     /--color-ember-500:\s*#f97316;/i.test(css),
     'The bright orange is the orange of the logo',
+  );
+
+  /*
+   * Orange 500 does not carry white text at AA. The call to action is
+   * therefore orange with a navy label, and this assertion keeps a
+   * later edit from putting white back on it.
+   */
+  const accentRule = css.slice(css.indexOf('.btn-accent'), css.indexOf('}', css.indexOf('.btn-accent')));
+  assert(
+    accentRule.includes('bg-ember-500') && accentRule.includes('text-navy-950'),
+    'The orange call to action uses a dark label for contrast',
   );
 
   /*
@@ -170,6 +194,13 @@ function testComponentClasses(): void {
   assert(
     source('src/components/LoginScreen.tsx').includes('Show password'),
     'The login still offers show/hide password',
+  );
+
+  assert(
+    source('src/components/modules/ConfigurationModule.tsx').includes(
+      'api.updateFacilityModules'
+    ),
+    'The module switches save to the API',
   );
 }
 

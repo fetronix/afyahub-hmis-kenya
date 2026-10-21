@@ -161,6 +161,15 @@ export const Sidebar: React.FC = () => {
     // Platform administration is not an operational facility module.
     if (id === 'platform_administration') return true;
 
+    /*
+     * Configuration is where a facility switches its modules on and
+     * off, so it cannot itself depend on the list it controls. A
+     * facility row that omits `configuration` would otherwise hide the
+     * only screen able to add it back. The permission list in
+     * `isModuleVisible` still decides who gets in.
+     */
+    if (id === 'configuration') return true;
+
     const enabledModules = new Set(currentFacility?.enabledModules ?? []);
 
     // Do not expose operational modules until a facility is resolved.

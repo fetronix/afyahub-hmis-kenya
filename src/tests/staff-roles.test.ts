@@ -494,8 +494,12 @@ function testScreen(): void {
     'An account with only staff permissions sees only the staff tab',
   );
   assert(
-    configuration.includes('isFacilityAdmin || staffOnly ? \'staff\' : \'facility\''),
+    configuration.includes("staffOnly ? 'staff' : 'facility'"),
     'A staff-only account lands on the staff tab instead of an empty one',
+  );
+  assert(
+    configuration.includes("if (isFacilityAdmin) return tab.id !== 'payments'"),
+    'A facility administrator can reach the profile and module tabs',
   );
 
   assert(

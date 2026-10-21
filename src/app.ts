@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 
 
 import platformRoutes from './routes/platform.routes.ts';
+import facilityModuleRoutes from './config/facility-modules.routes.ts';
 
 
 
@@ -195,6 +196,13 @@ app.use('/api', requireAuthorization);
 app.use('/api/platform', platformRoutes);
 app.use("/api/staff-invitations", staffInvitationRoutes);
 app.use("/api/staff-roles", staffRolesRoutes);
+
+/*
+ * Facility module provisioning. Deliberately outside the
+ * `requireFacilityModule` guards: this is the route that turns those
+ * guards on and off, so it cannot depend on a module being enabled.
+ */
+app.use('/api/facilities', facilityModuleRoutes);
 
 // Facility module enforcement. Keep platform administration, invitations,
 // tenants, and facility-context endpoints outside these operational guards.

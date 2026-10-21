@@ -50,31 +50,31 @@
   --color-muted: #64748b;
   --color-hair: #dce6f2;
 
-  /* Deep hospital blue — the frame. */
-  --color-navy-50: #eef3f9;
-  --color-navy-100: #d8e4f1;
-  --color-navy-200: #b0c7e0;
-  --color-navy-300: #7fa3c8;
-  --color-navy-400: #4d7aa8;
-  --color-navy-500: #2f5d8a;
-  --color-navy-600: #214a72;
-  --color-navy-700: #17395b;
-  --color-navy-800: #102b47;
-  --color-navy-900: #0b2038;
-  --color-navy-950: #061527;
+  /* Deep hospital blue — the frame. Bright enough to read as blue. */
+  --color-navy-50: #eef6fb;
+  --color-navy-100: #d6eaf5;
+  --color-navy-200: #a9d3e8;
+  --color-navy-300: #74b5d6;
+  --color-navy-400: #3f90bd;
+  --color-navy-500: #1f6f9e;
+  --color-navy-600: #155a84;
+  --color-navy-700: #10486a;
+  --color-navy-800: #0d3a56;
+  --color-navy-900: #0b2f46;
+  --color-navy-950: #061d2e;
 
-  /* Sky / hospital blue — the primary. */
-  --color-brand-50: #eef6fd;
-  --color-brand-100: #d8ebfa;
-  --color-brand-200: #b3d8f4;
-  --color-brand-300: #7fbfec;
-  --color-brand-400: #46a1e0;
-  --color-brand-500: #2384c9;
-  --color-brand-600: #186aa9;
-  --color-brand-700: #145588;
-  --color-brand-800: #12456e;
-  --color-brand-900: #103a5c;
-  --color-brand-950: #0a253c;
+  /* Sky blue — the primary. */
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0284c7;
+  --color-brand-700: #0369a1;
+  --color-brand-800: #075985;
+  --color-brand-900: #0c4a6e;
+  --color-brand-950: #082f49;
 
   /* Bright orange — the one call to action. */
   --color-ember-50: #fff7ed;
@@ -100,31 +100,31 @@
   --color-copper-800: #652818;
   --color-copper-900: #4b2014;
 
-  /* Hospital blue for every `blue-*` utility. */
-  --color-blue-50: #eef6fd;
-  --color-blue-100: #d8ebfa;
-  --color-blue-200: #b3d8f4;
-  --color-blue-300: #7fbfec;
-  --color-blue-400: #46a1e0;
-  --color-blue-500: #2384c9;
-  --color-blue-600: #186aa9;
-  --color-blue-700: #145588;
-  --color-blue-800: #12456e;
-  --color-blue-900: #103a5c;
-  --color-blue-950: #0a253c;
+  /* `blue-*` is the same sky blue, so existing utilities brighten too. */
+  --color-blue-50: #f0f9ff;
+  --color-blue-100: #e0f2fe;
+  --color-blue-200: #bae6fd;
+  --color-blue-300: #7dd3fc;
+  --color-blue-400: #38bdf8;
+  --color-blue-500: #0ea5e9;
+  --color-blue-600: #0284c7;
+  --color-blue-700: #0369a1;
+  --color-blue-800: #075985;
+  --color-blue-900: #0c4a6e;
+  --color-blue-950: #082f49;
 
-  /* `teal` was the old clinical accent; it is the same blue now. */
-  --color-teal-50: #eef6fd;
-  --color-teal-100: #d8ebfa;
-  --color-teal-200: #b3d8f4;
-  --color-teal-300: #7fbfec;
-  --color-teal-400: #46a1e0;
-  --color-teal-500: #2384c9;
-  --color-teal-600: #186aa9;
-  --color-teal-700: #145588;
-  --color-teal-800: #12456e;
-  --color-teal-900: #103a5c;
-  --color-teal-950: #0a253c;
+  /* `teal` was the old clinical accent; it is the same sky blue now. */
+  --color-teal-50: #f0f9ff;
+  --color-teal-100: #e0f2fe;
+  --color-teal-200: #bae6fd;
+  --color-teal-300: #7dd3fc;
+  --color-teal-400: #38bdf8;
+  --color-teal-500: #0ea5e9;
+  --color-teal-600: #0284c7;
+  --color-teal-700: #0369a1;
+  --color-teal-800: #075985;
+  --color-teal-900: #0c4a6e;
+  --color-teal-950: #082f49;
 
   /* Cool blue-grey neutrals. */
   --color-slate-50: #f8fafc;
@@ -218,7 +218,7 @@
   }
 
   .btn-accent {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-copper-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-700 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-ember-500 px-4 py-2.5 text-sm font-bold text-navy-950 shadow-sm transition-colors hover:bg-ember-400 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-quiet {

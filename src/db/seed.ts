@@ -55,10 +55,19 @@ export async function seedInitialData() {
       address: 'Argwings Kodhek Rd, Hurlingham, Nairobi',
       phone: '+254 703 082 000',
       email: 'info@nairobihospital.ke',
+      /*
+       * A facility's module list is what the navigation rail and the
+       * server-side module guard read. This demo hospital runs a
+       * maternity unit, so the module is on — the schema default also
+       * includes it, but an explicit list here replaces that default.
+       * Facility administrators can change this list in
+       * Configuration -> Modular Features.
+       */
       enabledModules: [
-        'registration', 'reception', 'opd', 'inpatient', 'theatre', 'specialty',
-        'laboratory', 'radiology', 'pharmacy', 'inventory', 'procurement',
-        'finance', 'insurance', 'public_health', 'analytics', 'configuration'
+        'registration', 'reception', 'opd', 'inpatient', 'maternity', 'theatre',
+        'specialty', 'laboratory', 'radiology', 'pharmacy', 'inventory',
+        'procurement', 'finance', 'insurance', 'public_health', 'analytics',
+        'configuration'
       ],
     }).returning();
 
