@@ -19,7 +19,7 @@
  *     never described as an automated verification.
  */
 
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
@@ -33,6 +33,7 @@ import { loadDhaConfig, type DhaConfig } from '../dha/dha.config.ts';
 import { DhaError } from '../dha/dha.errors.ts';
 import {
   HWR_ENDPOINTS,
+  INVITABLE_STATUSES,
   REGULATORS,
   PRACTITIONER_IDENTIFICATION_TYPES,
   isInvitableStatus,
@@ -53,6 +54,54 @@ export class ProfessionalVerificationError extends Error {
     super(message);
     this.name = 'ProfessionalVerificationError';
   }
+}
+
+/**
+ * A verification record may name the staff account it belongs to. That
+ * id comes from the request body, so it is resolved against the same
+ * facility the caller is scoped to. Without this check a facility
+ * administrator could attach a credential to a user in another
+ * facility or tenant by guessing an id.
+ */
+async function resolveScopedStaffUser(
+  facility: { id: number; tenantId: number },
+  userId: number | string | null | undefined,
+): Promise<number | null> {
+  if (userId === null || userId === undefined || userId === '') {
+    return null;
+  }
+
+  const parsed = Number(userId);
+
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new ProfessionalVerificationError(
+      'A valid staff account is required.',
+      400,
+      'INVALID_USER',
+    );
+  }
+
+  const [user] = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(
+      and(
+        eq(schema.users.id, parsed),
+        eq(schema.users.tenantId, facility.tenantId),
+        eq(schema.users.facilityId, facility.id),
+      ),
+    )
+    .limit(1);
+
+  if (!user) {
+    throw new ProfessionalVerificationError(
+      'That staff account does not belong to this facility.',
+      404,
+      'STAFF_USER_NOT_FOUND',
+    );
+  }
+
+  return user.id;
 }
 
 async function resolveScope(
@@ -135,6 +184,7 @@ export async function verifyPractitionerScoped(
   options: { config?: DhaConfig } = {},
 ): Promise<VerificationOutcome> {
   const facility = await resolveScope(context, input.facilityId);
+  const scopedUserId = await resolveScopedStaffUser(facility, input.userId);
 
   const regulator = regulatorByCode(input.regulator);
 
@@ -296,7 +346,7 @@ export async function verifyPractitionerScoped(
   const values = {
     tenantId: facility.tenantId,
     facilityId: facility.id,
-    userId: input.userId ?? existing?.userId ?? null,
+    userId: scopedUserId ?? existing?.userId ?? null,
     invitationId: input.invitationId ?? null,
     regulator: regulator.code,
     registrationNumber: identificationNumber,
@@ -339,7 +389,7 @@ export async function verifyPractitionerScoped(
     tenantId: facility.tenantId,
     facilityId: facility.id,
     credentialId,
-    userId: input.userId ?? null,
+    userId: scopedUserId ?? null,
     invitationId: input.invitationId ?? null,
     action: 'VERIFY',
     statusBefore: existing?.status ?? null,
@@ -397,10 +447,12 @@ export async function recordManualVerificationScoped(
     notes?: string | null;
     status?: string | null;
     licenceExpiry?: string | null;
+    userId?: number | string | null;
     facilityId?: number | string | null;
   },
 ) {
   const facility = await resolveScope(context, input.facilityId);
+  const scopedUserId = await resolveScopedStaffUser(facility, input.userId);
   const regulator = regulatorByCode(input.regulator);
 
   if (!regulator) {
@@ -470,7 +522,7 @@ export async function recordManualVerificationScoped(
   const values = {
     tenantId: facility.tenantId,
     facilityId: facility.id,
-    userId: existing?.userId ?? null,
+    userId: scopedUserId ?? existing?.userId ?? null,
     invitationId: existing?.invitationId ?? null,
     regulator: regulator.code,
     registrationNumber,
@@ -507,6 +559,7 @@ export async function recordManualVerificationScoped(
     tenantId: facility.tenantId,
     facilityId: facility.id,
     credentialId,
+    userId: scopedUserId ?? existing?.userId ?? null,
     action: 'MANUAL_VERIFICATION',
     statusBefore: existing?.status ?? null,
     statusAfter: status,
@@ -717,5 +770,183 @@ export async function assertInvitationCredential(
     credentialId: credential.id,
     regulator: credential.regulator,
     registrationNumber: credential.registrationNumber,
+  };
+}
+/* ============================================================
+   USABLE CREDENTIALS FOR AN EXISTING STAFF ACCOUNT
+   ============================================================ */
+
+export type UsableCredential = {
+  credentialId: number;
+  ownerUserId: number;
+  regulator: string;
+  status: string;
+};
+
+/**
+ * The credential rows owned by the given staff members, written by
+ * either an automated check or a manual one.
+ *
+ * A credential is owned by the user it was checked for. Older rows
+ * carry only the invitation that created the account, so the accepted
+ * invitation is followed as a fallback rather than re-checking the
+ * person. Test-fixture (`mock`) rows are never usable, and a row for a
+ * non-invitable status is never usable either.
+ */
+async function loadUsableCredentials(input: {
+  tenantId: number;
+  facilityId: number;
+  userIds: number[];
+}): Promise<UsableCredential[]> {
+  if (input.userIds.length === 0) {
+    return [];
+  }
+
+  const acceptedInvitations = await db
+    .select({
+      id: schema.userInvitations.id,
+      acceptedUserId: schema.userInvitations.acceptedUserId,
+    })
+    .from(schema.userInvitations)
+    .where(
+      and(
+        eq(schema.userInvitations.tenantId, input.tenantId),
+        eq(schema.userInvitations.facilityId, input.facilityId),
+        inArray(schema.userInvitations.acceptedUserId, input.userIds),
+      ),
+    );
+
+  const invitationOwner = new Map<number, number>();
+
+  for (const invitation of acceptedInvitations) {
+    if (invitation.acceptedUserId !== null) {
+      invitationOwner.set(invitation.id, invitation.acceptedUserId);
+    }
+  }
+
+  const invitationIds = Array.from(invitationOwner.keys());
+
+  const ownership =
+    invitationIds.length > 0
+      ? or(
+          inArray(schema.staffProfessionalCredentials.userId, input.userIds),
+          inArray(schema.staffProfessionalCredentials.invitationId, invitationIds),
+        )
+      : inArray(schema.staffProfessionalCredentials.userId, input.userIds);
+
+  const rows = await db
+    .select({
+      id: schema.staffProfessionalCredentials.id,
+      userId: schema.staffProfessionalCredentials.userId,
+      invitationId: schema.staffProfessionalCredentials.invitationId,
+      regulator: schema.staffProfessionalCredentials.regulator,
+      status: schema.staffProfessionalCredentials.status,
+    })
+    .from(schema.staffProfessionalCredentials)
+    .where(
+      and(
+        eq(schema.staffProfessionalCredentials.tenantId, input.tenantId),
+        eq(schema.staffProfessionalCredentials.facilityId, input.facilityId),
+        ownership,
+        inArray(schema.staffProfessionalCredentials.status, INVITABLE_STATUSES),
+        sql`${schema.staffProfessionalCredentials.mode} is distinct from 'mock'`,
+      ),
+    )
+    .orderBy(desc(schema.staffProfessionalCredentials.updatedAt));
+
+  const usable: UsableCredential[] = [];
+
+  for (const row of rows) {
+    const ownerUserId =
+      row.userId ??
+      (row.invitationId !== null
+        ? invitationOwner.get(row.invitationId) ?? null
+        : null);
+
+    if (ownerUserId !== null && input.userIds.includes(ownerUserId)) {
+      usable.push({
+        credentialId: row.id,
+        ownerUserId,
+        regulator: row.regulator,
+        status: row.status,
+      });
+    }
+  }
+
+  return usable;
+}
+
+/**
+ * Usable regulators per staff member, for the role picker. This is a
+ * display of what is already on file; it grants nothing.
+ */
+export async function listUsableCredentialsForStaff(input: {
+  tenantId: number;
+  facilityId: number;
+  userIds: number[];
+}): Promise<Map<number, { regulator: string; status: string }[]>> {
+  const byUser = new Map<number, { regulator: string; status: string }[]>();
+  const rows = await loadUsableCredentials(input);
+
+  for (const row of rows) {
+    const list = byUser.get(row.ownerUserId) ?? [];
+
+    if (!list.some((item) => item.regulator === row.regulator)) {
+      list.push({ regulator: row.regulator, status: row.status });
+    }
+
+    byUser.set(row.ownerUserId, list);
+  }
+
+  return byUser;
+}
+
+/**
+ * The credential that permits a clinical role on an existing account,
+ * or null when there is none.
+ *
+ * Returns null rather than throwing so the caller can word the refusal
+ * for its own screen (assigning a role, not issuing an invitation).
+ * A mock row never satisfies the gate, and neither does a credential
+ * issued for a different regulator than the role requires.
+ */
+export async function findVerifiedCredentialForUser(input: {
+  tenantId: number;
+  facilityId: number;
+  userId: number;
+  roleName: string;
+}): Promise<{ credentialId: number; regulator: string; status: string } | null> {
+  if (!requiresProfessionalVerification(input.roleName)) {
+    return null;
+  }
+
+  const expectedRegulator = regulatorForStaffRole(input.roleName);
+
+  if (!expectedRegulator) {
+    throw new ProfessionalVerificationError(
+      `No regulator is mapped to ${input.roleName}, so it cannot be assigned until one is configured.`,
+      400,
+      'REGULATOR_NOT_MAPPED',
+    );
+  }
+
+  const rows = await loadUsableCredentials({
+    tenantId: input.tenantId,
+    facilityId: input.facilityId,
+    userIds: [input.userId],
+  });
+
+  const credential = rows.find(
+    (row) => row.regulator === expectedRegulator.code,
+  );
+
+  if (!credential) {
+    return null;
+  }
+
+  return {
+    credentialId: credential.credentialId,
+    regulator: credential.regulator,
+    status: credential.status,
   };
 }

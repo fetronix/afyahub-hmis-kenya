@@ -111,9 +111,15 @@ async function readJson<T>(response: Response): Promise<T> {
 export const StaffVerificationModal: React.FC<{
   roleName: string;
   fullName: string;
+  /**
+   * Set when the check is made for an existing staff account. The
+   * server records the credential against that account, so a clinical
+   * role can later be assigned to it without re-checking the person.
+   */
+  subjectUserId?: number | null;
   onClose: () => void;
   onVerified: (credentialId: number, summary: string) => void;
-}> = ({ roleName, fullName, onClose, onVerified }) => {
+}> = ({ roleName, fullName, subjectUserId = null, onClose, onVerified }) => {
   const [regulators, setRegulators] = useState<Regulator[]>([]);
   const [regulator, setRegulator] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
@@ -165,6 +171,7 @@ export const StaffVerificationModal: React.FC<{
           regulator,
           registrationNumber: registrationNumber.trim(),
           fullName: fullName.trim() || null,
+          userId: subjectUserId,
         }),
       });
 
@@ -204,6 +211,7 @@ export const StaffVerificationModal: React.FC<{
           fullName: fullName.trim() || null,
           source: manualSource.trim(),
           notes: manualNotes.trim() || null,
+          userId: subjectUserId,
         }),
       });
 

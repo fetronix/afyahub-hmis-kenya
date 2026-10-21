@@ -2,12 +2,12 @@
 import { Router } from "express";
 import {
   createStaffInvitation,
-  listAssignableStaffRoles,
   listStaffInvitations,
   revokeStaffInvitation,
   reissueStaffInvitation,
   StaffInvitationError,
 } from "./staff-invitation.service";
+import { listAssignableStaffRoles } from "./staff-roles.service";
 import { requireAuth, type AuthRequest } from "./auth.middleware";
 import { requirePermission } from "./authorization.middleware";
 
@@ -180,6 +180,9 @@ router.post(
         notes: body.notes ?? null,
         status: body.status ?? null,
         licenceExpiry: body.licenceExpiry ?? null,
+        // Only used when the check is made for an existing staff account;
+        // the service confirms that account belongs to this facility.
+        userId: body.userId ?? null,
         facilityId: scope.facilityId,
       });
 

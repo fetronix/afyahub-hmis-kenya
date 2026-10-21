@@ -11,11 +11,16 @@ import {
   tenants,
   users,
   userRoles,
-  rolePermissions,
   staffProfessionalCredentials,
 } from "../db/schema";
 
 import { assertInvitationCredential } from "../integrations/professional/professional-verification.service.ts";
+import {
+  assertStaffRoleAssignable,
+  StaffRoleError,
+  type AssignableRole,
+  type StaffRoleExecutor,
+} from "./staff-roles.service";
 
 export class StaffInvitationError extends Error {
   constructor(
@@ -91,6 +96,31 @@ function assertTokenUsable(invitation: {
 }
 
 /**
+ * The assignability rules live in staff-roles.service so the invitation
+ * screen and the staff directory cannot drift apart. This adapter keeps
+ * the invitation error vocabulary for the invitation routes.
+ */
+async function assertInvitationRole(
+  executor: StaffRoleExecutor,
+  tenantId: number,
+  roleId: number,
+): Promise<AssignableRole> {
+  try {
+    return await assertStaffRoleAssignable(executor, tenantId, roleId);
+  } catch (error) {
+    if (error instanceof StaffRoleError) {
+      throw new StaffInvitationError(
+        error.message,
+        error.statusCode,
+        error.code,
+      );
+    }
+
+    throw error;
+  }
+}
+
+/**
  * Creates a staff invitation.
  *
  * The caller must obtain tenantId and facilityId from the
@@ -152,43 +182,9 @@ export async function createStaffInvitation(
     );
   }
 
-  const [role] = await db
-    .select({
-      id: roles.id,
-      tenantId: roles.tenantId,
-      name: roles.name,
-      isActive: roles.isActive,
-    })
-    .from(roles)
-    .where(eq(roles.id, input.roleId))
-    .limit(1);
-
-  if (
-    !role ||
-    !role.isActive ||
-    role.tenantId !== input.tenantId
-  ) {
-    throw new StaffInvitationError(
-      "Choose an active role belonging to this tenant.",
-      400,
-      "INVALID_STAFF_ROLE",
-    );
-  }
-
-  // Staff invitations must not be used to grant platform or
-  // administrator privileges.
-  if (
-    role.name.trim().toUpperCase().includes("SUPER_ADMIN") ||
-    role.name.trim().toUpperCase().includes("PLATFORM_ADMIN") ||
-    role.name.trim().toUpperCase().includes("FACILITY_ADMIN") ||
-    role.name.trim().toUpperCase().includes("TENANT_ADMIN")
-  ) {
-    throw new StaffInvitationError(
-      "This role cannot be assigned through staff invitations.",
-      403,
-      "ROLE_NOT_ASSIGNABLE",
-    );
-  }
+  // Active, in this tenant, and judged on the permissions it carries:
+  // an administrator role or a role that grants nothing is refused.
+  const role = await assertInvitationRole(db, input.tenantId, input.roleId);
 
   /*
    * A clinical invitation needs a professional registration that was
@@ -686,32 +682,24 @@ export async function acceptStaffInvitation(input: {
         );
       }
 
-      const normalizedRoleName = role.name.trim().toUpperCase();
-      if (
-        normalizedRoleName.includes("SUPER_ADMIN") ||
-        normalizedRoleName.includes("PLATFORM_ADMIN") ||
-        normalizedRoleName.includes("FACILITY_ADMIN") ||
-        normalizedRoleName.includes("TENANT_ADMIN")
-      ) {
-        throw new StaffInvitationError(
-          "This role cannot be assigned through a staff invitation.",
-          403,
-          "ROLE_NOT_ASSIGNABLE",
-        );
-      }
+      /*
+       * Re-check the role at acceptance: its permissions may have
+       * changed between the invitation and this moment, and a role
+       * that has since become administrative must not be granted by
+       * an invitation issued earlier.
+       */
+      try {
+        await assertInvitationRole(tx, invitation.tenantId, invitation.roleId);
+      } catch (error) {
+        if (error instanceof StaffInvitationError) {
+          throw new StaffInvitationError(
+            "The invited role is no longer available. Contact your facility administrator.",
+            409,
+            "ROLE_UNAVAILABLE",
+          );
+        }
 
-      const [permission] = await tx
-        .select({ id: rolePermissions.id })
-        .from(rolePermissions)
-        .where(eq(rolePermissions.roleId, role.id))
-        .limit(1);
-
-      if (!permission) {
-        throw new StaffInvitationError(
-          "The invited role has no permissions configured. Contact the platform administrator.",
-          409,
-          "ROLE_PERMISSIONS_NOT_CONFIGURED",
-        );
+        throw error;
       }
 
       const [newUser] = await tx
@@ -757,6 +745,22 @@ export async function acceptStaffInvitation(input: {
         isActive: true,
       });
 
+      /*
+       * The registration checked before the invitation now belongs to
+       * a real account. Without this the credential stayed attached
+       * only to the invitation, and a later role change could not see
+       * that this person had already been verified.
+       */
+      await tx
+        .update(staffProfessionalCredentials)
+        .set({ userId: newUser.id, updatedAt: now })
+        .where(
+          and(
+            eq(staffProfessionalCredentials.invitationId, invitation.id),
+            isNull(staffProfessionalCredentials.userId),
+          ),
+        );
+
       const acceptedRows = await tx
         .update(userInvitations)
         .set({
@@ -799,33 +803,4 @@ export async function acceptStaffInvitation(input: {
       "STAFF_ACCOUNT_CREATION_FAILED",
     );
   }
-}
-
-
-// Returns only active tenant roles that are safe to assign through staff invitations.
-// The create/accept service performs its own authorization and permission checks.
-export async function listAssignableStaffRoles(tenantId: number) {
-  assertPositiveId(tenantId, "tenant");
-
-  const rows = await db
-    .select({
-      id: roles.id,
-      name: roles.name,
-      description: roles.description,
-    })
-    .from(roles)
-    .where(
-      and(
-        eq(roles.tenantId, tenantId),
-        eq(roles.isActive, true),
-      ),
-    )
-    .orderBy(roles.name);
-
-  return rows.filter(
-    (role) =>
-      !/(SUPER[_ ]?ADMIN|PLATFORM[_ ]?ADMIN|FACILITY[_ ]?ADMIN|TENANT[_ ]?ADMIN)/i.test(
-        role.name,
-      ),
-  );
 }

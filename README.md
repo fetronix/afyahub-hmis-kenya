@@ -25,7 +25,7 @@ means contract or unit assertions run in CI (`npm test`); it does **not** mean t
 screen was exercised, or that a clinician has accepted it.
 
 1. **Foundation and project structure — Completed**
-2. **Authentication, permissions and onboarding — Completed** (staff invitations, role catalogue, permission seed)
+2. **Authentication, permissions and onboarding — Completed** (staff invitations, staff role assignment, role catalogue, permission seed)
 3. **Multi-tenant and facility security — In progress.** Most queries are scoped through `resolveFacilityScope` and `getFacilityByIdScoped`. The clinical paths named in §5 — observations, diagnoses and procedures — now resolve the encounter before reading or writing and refuse a request that names neither an encounter nor a patient; the laboratory routes pass `authContext` into `resolveFacilityScope`. The unscoped functions still exist in `queries.ts`, but no route calls them and `test:security` fails if one starts to. This is not a clean bill of health: the remaining query functions have not been audited one by one.
 4. **PUCHE facility overview — Completed**
 5. **Patient registration and records — Completed**
@@ -553,7 +553,7 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 
 **Validation completed**
 
-- `npm test` — **2,013 assertions** across fourteen counting suites, all green. The new `test:opd` suite (58 assertions) asserts the batch endpoint prices every order and returns the result, that radiology uses `procedure_name` and no longer mentions `testName`, that every stage's route carries its source type, that a completed visit is stamped by the server, that neither screen calls `Math.random()`, that the queue update is scoped, and that the tariff panel names all seven code patterns.
+- `npm test` — **2,102 assertions** across sixteen suites, all green. The new `test:opd` suite (58 assertions) asserts the batch endpoint prices every order and returns the result, that radiology uses `procedure_name` and no longer mentions `testName`, that every stage's route carries its source type, that a completed visit is stamped by the server, that neither screen calls `Math.random()`, that the queue update is scoped, and that the tariff panel names all seven code patterns.
 - **Live against PostgreSQL 16**, all 17 migrations applied to a scratch database: **55 checks**. A patient is registered, given a Triage token, called, seen, diagnosed, given a procedure, a laboratory batch, a radiology study and a dispensed prescription; the five charges land on **one invoice totalling 3,025.00**; 1,000.00 cash leaves it Partially Paid; the balance is settled by M-Pesa with a real-format code; the same code is refused; the visit is completed; a second visit bills a new consultation on a new invoice; that invoice is paid; the patient is admitted, billed an admission fee, discharged after two nights with two bed-day lines (5,000.00) and a repeat discharge cannot double-bill; another facility cannot move the token and an unknown status is refused; dispensing closes the pharmacy token.
 - `npm run build` — passed (551 ms). `npm run lint` — only the pre-existing `firebase.ts` error.
 
@@ -561,9 +561,68 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 
 **Not verified:** no screen was clicked — there is no browser in this environment. The payment and dispensing *forms* are type-checked and built, not exercised. The live check calls the same functions the routes call, not the routes themselves.
 
+### 3.15 Staff roles — the missing half of staff management
+
+**What was asked.** Whether the facility can assign roles to its own staff, the way the platform administrator does, and if so to update the code.
+
+**What already worked.** Inviting a new staff member already assigned a role: *Configuration → Staff* called `GET /api/staff-invitations/roles`, and accepting the invitation wrote the `user_roles` row. Every invitation is scoped to the caller's own tenant and facility.
+
+**What did not exist.** There was no endpoint anywhere that listed the staff already at a facility, and nothing that changed a role on an existing account. `user_roles` was written in exactly three places — staff-invitation acceptance, facility-admin invitation acceptance and the bootstrap script. A wrong role could only be corrected in SQL by a platform administrator, or by inviting the person again, which their existing email address prevents.
+
+**What was added**
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/staff-roles` | The staff at the caller's facility, the roles each holds, which registrations are already verified, and the assignable roles — one response, so the picker and the list cannot disagree. |
+| `GET /api/staff-roles/roles` | The assignable roles alone. |
+| `PUT /api/staff-roles/:userId/roles` | Replaces the assignable roles on one account in one transaction, and writes an audit row. |
+
+*Configuration → Staff & Roles* now renders the directory above the invitation form: every staff account with its role chips, a search box, and **Change roles**. The tab was renamed from *Staff Invitations* because it now holds both halves.
+
+**The guardrails, and why each one is there**
+
+- **Scope comes from the session.** No route accepts a facility id. An account in another facility, or another tenant, is **404 not found** — a 403 would confirm the account exists somewhere the caller cannot see.
+- **Administrator roles are judged two ways.** The four names the application creates (`SUPER_ADMIN`, `PLATFORM_ADMIN`, `FACILITY_ADMIN`, `TENANT_ADMIN`) are refused, and so is any role carrying a platform, tenant, subscription, security, RBAC or `users.roles.*` permission. The second check is what stops a tenant role called *System Administrator* from being handed out; the name alone would miss it. A role that grants nothing is not offered either.
+- **An administrator account is read-only here.** If the person already holds an administrator role, the change is refused (`ADMINISTRATOR_ACCOUNT_PROTECTED`). Nobody can change their own roles (`SELF_ROLE_CHANGE_NOT_ALLOWED`): self-service escalation is impossible anyway, but locking yourself out of the screen is not.
+- **Holding `users.invite` is not enough to assign.** The route requires it, as the invitation routes do, and the service additionally requires the caller to hold an administrator role (`ADMINISTRATOR_ROLE_REQUIRED`).
+- **A clinical role still needs a verified registration** — the same gate invitations have used since §3.8, with the rule in one place (`findVerifiedCredentialForUser`). A `mock` verification never satisfies it, and an NCK registration does not satisfy a KMPDC role. The picker says which regulator is missing and opens the existing check; the result is recorded against the staff account.
+- **Revoking keeps history.** The `user_roles` row is set `isActive = false` with `revokedAt`, not deleted. Re-adding reactivates that row, because the unique index on `(user_id, role_id)` would reject a second one.
+- **Roles the facility no longer offers are left alone.** Saving changes only the roles in the offered set; a deactivated role someone still holds is displayed as *not changed on this screen* rather than silently stripped.
+
+**Invitation hardening in the same change**
+
+- The invitation picker now uses the same permission-based rule. It previously filtered by role name only.
+- Acceptance re-checks the role as it stands at that moment, so a role edited into an administrative one after the invitation was sent cannot be granted by accepting it.
+- Accepting an invitation now sets `staff_professional_credentials.user_id`, which the schema comment promised but no code ever wrote. Rows created before this change are still found through the accepted invitation, so no backfill is needed.
+
+**No migration.** No table, column or permission was added. `user_roles.is_active`/`revoked_at` and `audit_logs` already existed. Updating an installation is `git pull`, `npm install` if the lockfile changed, `npm run build`; `npm run db:status` should report nothing pending.
+
+**Validation completed**
+
+- `npm test` — **2,102 assertions** across sixteen suites, all green. The new `test:staff-roles` suite (89 assertions) exercises the real policy functions and asserts the scope checks, the two administrator rules, the verification gate, the audit row, the single transaction, that no table is declared, and that the screen calls these endpoints.
+- **Live against PostgreSQL 16**, all 17 migrations on a scratch database: **49 checks**. Two facilities in one tenant and a third in another; the directory lists only facility A; the invitation-role list excludes the administrator role, the role carrying platform permissions and the empty role; cross-facility and cross-tenant targets return `STAFF_NOT_FOUND`; self and administrator accounts are refused; a staff member cannot assign roles; CASHIER is added, an identical save changes nothing and writes no audit row; NURSE is refused without a registration and still refused with a `mock` one; after a manual NCK verification it is granted; removing it leaves an inactive row with a timestamp; re-adding it reactivates the same row; four successful changes produce exactly four audit rows.
+- `npm run build` — passed. `npm run lint` — only the pre-existing `src/lib/firebase.ts` error.
+- Live checks found two defects in the first draft, both fixed before commit: the permission joins were missing from the held-roles query inside the transaction, and the "held but not requested" set was being computed against the requested roles instead of the whole offered catalogue, so a revoked role was preserved instead of removed.
+
+**Not verified:** no screen was clicked — there is no browser in this environment. The live check calls the same service functions the routes call, not the HTTP routes themselves.
+
+**One behaviour to know.** If no verified registration is on file for a nurse, the facility cannot put them into the NURSE role until the registration is checked. That is the existing invitation rule, not a new restriction; the screen says which regulator is missing and offers the check in place.
+
+
 ## 4. Existing backups and modified files to preserve
 
-### Backups created during the latest session
+### Backups created during the staff-roles session
+
+- `src/app.ts.before-staff-roles-20261021.bak`
+- `src/auth/staff-invitation.service.ts.before-staff-roles-20261021.bak`
+- `src/auth/staff-invitation.routes.ts.before-staff-roles-20261021.bak`
+- `src/integrations/professional/professional-verification.service.ts.before-staff-roles-20261021.bak`
+- `src/components/modules/StaffVerificationModal.tsx.before-staff-roles-20261021.bak`
+- `src/components/modules/ConfigurationModule.tsx.before-staff-roles-20261021.bak`
+- `package.json.before-staff-roles-20261021.bak`
+- `README.md.before-staff-roles-20261021.bak`
+
+### Backups created during the previous session
 
 - `src/app.ts.backup-permissions-20261020-121641`
 - `src/auth/staff-role-catalogue.ts.backup-permissions-20261020-121641`

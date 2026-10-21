@@ -1,4 +1,5 @@
 import staffInvitationRoutes from "./auth/staff-invitation.routes";
+import staffRolesRoutes from "./auth/staff-roles.routes";
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -193,6 +194,7 @@ app.use('/api', requireAuthorization);
 
 app.use('/api/platform', platformRoutes);
 app.use("/api/staff-invitations", staffInvitationRoutes);
+app.use("/api/staff-roles", staffRolesRoutes);
 
 // Facility module enforcement. Keep platform administration, invitations,
 // tenants, and facility-context endpoints outside these operational guards.

@@ -3,6 +3,7 @@ import { api } from '../../api/client.ts';
 import type { ServiceTariff } from '../../types/index.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
+import { StaffRolesPanel } from './StaffRolesPanel.tsx';
 import {
   Sliders,
   Building2,
@@ -258,7 +259,7 @@ export const ConfigurationModule: React.FC = () => {
         {[
           { id: 'facility', label: 'Facility Profile', icon: Building2 },
           { id: 'modules', label: 'Modular Features Engine', icon: Layers },
-          { id: 'staff', label: 'Staff Invitations', icon: UserPlus },
+          { id: 'staff', label: 'Staff & Roles', icon: UserPlus },
           { id: 'payments', label: 'M-Pesa & Payment Channels', icon: CreditCard },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
         ].filter((tab) => isFacilityAdmin ? (tab.id === 'staff' || tab.id === 'tariffs') : tab.id !== 'tariffs' && (!isSuperAdmin || tab.id !== 'staff')).map((tab) => {
@@ -282,8 +283,13 @@ export const ConfigurationModule: React.FC = () => {
         })}
       </div>
 
-      {/* STAFF INVITATIONS TAB */}
-      {activeTab === 'staff' && <StaffInvitationsPanel />}
+      {/* STAFF & ROLES TAB — the directory comes before the invitation form */}
+      {activeTab === 'staff' && (
+        <div className="space-y-6">
+          <StaffRolesPanel />
+          <StaffInvitationsPanel />
+        </div>
+      )}
       {/* FACILITY PROFILE TAB */}
       {activeTab === 'facility' && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs text-xs space-y-5">
