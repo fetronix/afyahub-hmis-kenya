@@ -354,6 +354,15 @@ The legacy `getDiagnoses`, `recordDiagnosis`, `getProcedures` and `recordProcedu
 
 **What the apply endpoint does.** `POST /api/platform/rbac/catalogue/apply` creates missing roles for the facility's tenant with their catalogue permissions and writes one audit entry. It is additive only: no delete, no update of an existing role, no touch of any facility override. If a catalogue permission code is not seeded in the database it refuses with `409 CATALOGUE_PERMISSIONS_MISSING` and names the codes, rather than creating a role that holds permissions no route checks. Roles belong to the tenant, so creating one from any facility makes it available in all of them.
 
+**Bulk backfill.** `scripts/repair-tenant-staff-roles.ts` now takes `--tenant 12,15` or `--all` instead of the two hardcoded IDs, and is still a dry run unless `--apply` is passed:
+
+```
+npx tsx scripts/repair-tenant-staff-roles.ts --all          # report only
+npx tsx scripts/repair-tenant-staff-roles.ts --all --apply  # write
+```
+
+It applies the same additive rule as the endpoint. Use the screen for one tenant you can see, the script for every tenant at once.
+
 **Dashboard.** Two defects, one cosmetic and one not:
 
 - `text-2xs` and `text-3xs` were used **359 times across 23 files** and had never been defined, so Tailwind emitted nothing and every one of those labels inherited its parent's size. They are now defined once in `src/index.css` under `@theme`.

@@ -1,8 +1,52 @@
 import { pool } from "../src/db/index.ts";
 import { STAFF_ROLE_CATALOGUE } from "../src/auth/staff-role-catalogue.ts";
 
+/*
+ * JaliCare HMIS
+ * Backfill the staff role catalogue into existing tenants.
+ *
+ * Roles are tenant-scoped and were only created at tenant creation, so a
+ * tenant that predates a catalogue change has a role in the invitation
+ * form that nobody can hold. The Super Admin facility screen now does
+ * this per tenant; this script does it in bulk.
+ *
+ * DRY RUN BY DEFAULT. Nothing is written unless --apply is passed.
+ *
+ *   npx tsx scripts/repair-tenant-staff-roles.ts            # tenants 7 and 8
+ *   npx tsx scripts/repair-tenant-staff-roles.ts --tenant 12,15
+ *   npx tsx scripts/repair-tenant-staff-roles.ts --all
+ *   npx tsx scripts/repair-tenant-staff-roles.ts --all --apply
+ *
+ * Additive only: it creates missing roles and adds permission links whose
+ * row is absent. It never deletes a role, never removes a link and never
+ * touches a facility override.
+ */
+
 const APPLY = process.argv.includes("--apply");
-const TARGET_TENANTS = [7, 8];
+
+function parseTenantTargets(): number[] | "all" {
+  const index = process.argv.indexOf("--tenant");
+
+  if (index > -1) {
+    const raw = process.argv[index + 1] ?? "";
+    const ids = raw
+      .split(",")
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isSafeInteger(value) && value > 0);
+
+    if (ids.length === 0) {
+      throw new Error("--tenant needs a comma-separated list of tenant IDs.");
+    }
+
+    return ids;
+  }
+
+  if (process.argv.includes("--all")) return "all";
+
+  return [7, 8];
+}
+
+const TENANT_TARGET = parseTenantTargets();
 
 
 
@@ -12,20 +56,28 @@ async function main() {
   try {
     await client.query("BEGIN");
 
-    const tenantResult = await client.query(
-      `SELECT id, name FROM tenants WHERE id = ANY($1::int[]) ORDER BY id`,
-      [TARGET_TENANTS],
-    );
+    const tenantResult = TENANT_TARGET === "all"
+      ? await client.query(`SELECT id, name FROM tenants ORDER BY id`)
+      : await client.query(
+          `SELECT id, name FROM tenants WHERE id = ANY($1::int[]) ORDER BY id`,
+          [TENANT_TARGET],
+        );
 
-    const foundIds = new Set(
-      tenantResult.rows.map((row: { id: number }) => Number(row.id)),
-    );
-    const missingTenants = TARGET_TENANTS.filter((id) => !foundIds.has(id));
+    if (tenantResult.rowCount === 0) {
+      throw new Error("Aborting: no tenant matched the requested target.");
+    }
 
-    if (missingTenants.length) {
-      throw new Error(
-        `Aborting: target tenant IDs not found: ${missingTenants.join(", ")}`,
+    if (TENANT_TARGET !== "all") {
+      const foundIds = new Set(
+        tenantResult.rows.map((row: { id: number }) => Number(row.id)),
       );
+      const missingTenants = TENANT_TARGET.filter((id) => !foundIds.has(id));
+
+      if (missingTenants.length) {
+        throw new Error(
+          `Aborting: target tenant IDs not found: ${missingTenants.join(", ")}`,
+        );
+      }
     }
 
     console.log(APPLY ? "\nAPPLY MODE" : "\nDRY-RUN MODE — no changes will be committed");
