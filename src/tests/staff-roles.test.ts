@@ -63,6 +63,7 @@ const verificationService = source(
 const app = source('src/app.ts');
 const panel = source('src/components/modules/StaffRolesPanel.tsx');
 const configuration = source('src/components/modules/ConfigurationModule.tsx');
+const sidebar = source('src/components/Sidebar.tsx');
 const verificationModal = source('src/components/modules/StaffVerificationModal.tsx');
 const schema = source('src/db/schema.ts');
 
@@ -464,6 +465,34 @@ function testScreen(): void {
   assert(
     configuration.includes('{activeTab === \'staff\' && ('),
     'The directory is on the staff tab, where invitations already live',
+  );
+
+  /*
+   * A tab nobody can open is not a capability. On a fresh install the
+   * facility administrator holds users.invite and none of the four
+   * permissions the Configuration nav used to require.
+   */
+  const configurationNavStart = sidebar.indexOf('configuration: [');
+  const configurationNavEnd = sidebar.indexOf('],', configurationNavStart);
+  const configurationNav = sidebar.slice(configurationNavStart, configurationNavEnd);
+
+  assert(
+    configurationNav.includes("'users.invite'"),
+    'The Configuration nav opens for an account that can manage staff',
+  );
+  assert(
+    configuration.includes('const canManageStaff') &&
+      configuration.includes("permissions.has('users.invite')"),
+    'The staff tab is gated on the same permission its API requires',
+  );
+  assert(
+    configuration.includes('const staffOnly') &&
+      configuration.includes('if (staffOnly) return false;'),
+    'An account with only staff permissions sees only the staff tab',
+  );
+  assert(
+    configuration.includes('isFacilityAdmin || staffOnly ? \'staff\' : \'facility\''),
+    'A staff-only account lands on the staff tab instead of an empty one',
   );
 
   assert(

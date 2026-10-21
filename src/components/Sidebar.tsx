@@ -192,7 +192,14 @@ export const Sidebar: React.FC = () => {
       interoperability: ['interop.fhir.patient.read'],
       configuration: [
         'system.settings.manage', 'users.roles.manage',
-        'roles.permissions.manage', 'facilities.update'
+        'roles.permissions.manage', 'facilities.update',
+        /*
+         * A facility administrator holds none of the four above on a
+         * fresh install; they hold users.invite, which is what the
+         * staff screen needs. Without this the Staff tab — and the
+         * invitation screen that was already there — had no way in.
+         */
+        'users.invite'
       ],
       audit: ['audit.read', 'audit.security.read']
     };

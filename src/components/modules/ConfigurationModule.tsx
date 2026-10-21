@@ -33,15 +33,44 @@ export const ConfigurationModule: React.FC = () => {
     authenticatedUser?.roles?.includes('SUPER_ADMIN')
   );
 
+  const permissions = new Set(authenticatedUser?.permissions ?? []);
+
+  /*
+   * The staff screen is gated on the same permission its API requires.
+   * A facility administrator holds users.invite on a fresh install, so
+   * this is also the condition that gives them a way into this module.
+   */
+  const canManageStaff = Boolean(
+    !isSuperAdmin &&
+    (isFacilityAdmin ||
+      permissions.has('users.invite') ||
+      permissions.has('users.roles.manage'))
+  );
+
+  /*
+   * An account that holds only staff permissions came here for the
+   * staff screen. Showing it the facility profile, the module switches
+   * or the payment channels would be a wider surface than its
+   * permissions allow.
+   */
+  const staffOnly = Boolean(
+    !isSuperAdmin &&
+    !isFacilityAdmin &&
+    canManageStaff &&
+    !permissions.has('facilities.update') &&
+    !permissions.has('system.settings.manage') &&
+    !permissions.has('roles.permissions.manage')
+  );
+
   const [activeTab, setActiveTab] = useState<'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'>(
-    isFacilityAdmin ? 'staff' : 'facility'
+    isFacilityAdmin || staffOnly ? 'staff' : 'facility'
   );
 
   useEffect(() => {
-    if (isFacilityAdmin) {
+    if (isFacilityAdmin || staffOnly) {
       setActiveTab('staff');
     }
-  }, [isFacilityAdmin]);
+  }, [isFacilityAdmin, staffOnly]);
 
   // Facility Info Form
   const [facilityData, setFacilityData] = useState({
@@ -262,7 +291,12 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'staff', label: 'Staff & Roles', icon: UserPlus },
           { id: 'payments', label: 'M-Pesa & Payment Channels', icon: CreditCard },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
-        ].filter((tab) => isFacilityAdmin ? (tab.id === 'staff' || tab.id === 'tariffs') : tab.id !== 'tariffs' && (!isSuperAdmin || tab.id !== 'staff')).map((tab) => {
+        ].filter((tab) => {
+          if (tab.id === 'staff') return canManageStaff;
+          if (staffOnly) return false;
+          if (isFacilityAdmin) return tab.id === 'tariffs';
+          return tab.id !== 'tariffs' && (!isSuperAdmin || tab.id !== 'staff');
+        }).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
 

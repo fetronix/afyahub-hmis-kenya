@@ -553,7 +553,7 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 
 **Validation completed**
 
-- `npm test` — **2,102 assertions** across sixteen suites, all green. The new `test:opd` suite (58 assertions) asserts the batch endpoint prices every order and returns the result, that radiology uses `procedure_name` and no longer mentions `testName`, that every stage's route carries its source type, that a completed visit is stamped by the server, that neither screen calls `Math.random()`, that the queue update is scoped, and that the tariff panel names all seven code patterns.
+- `npm test` — **2,013 assertions** across fourteen counting suites, all green at the time of this round. The `test:opd` suite (58 assertions) asserts the batch endpoint prices every order and returns the result, that radiology uses `procedure_name` and no longer mentions `testName`, that every stage's route carries its source type, that a completed visit is stamped by the server, that neither screen calls `Math.random()`, that the queue update is scoped, and that the tariff panel names all seven code patterns.
 - **Live against PostgreSQL 16**, all 17 migrations applied to a scratch database: **55 checks**. A patient is registered, given a Triage token, called, seen, diagnosed, given a procedure, a laboratory batch, a radiology study and a dispensed prescription; the five charges land on **one invoice totalling 3,025.00**; 1,000.00 cash leaves it Partially Paid; the balance is settled by M-Pesa with a real-format code; the same code is refused; the visit is completed; a second visit bills a new consultation on a new invoice; that invoice is paid; the patient is admitted, billed an admission fee, discharged after two nights with two bed-day lines (5,000.00) and a repeat discharge cannot double-bill; another facility cannot move the token and an unknown status is refused; dispensing closes the pharmacy token.
 - `npm run build` — passed (551 ms). `npm run lint` — only the pre-existing `firebase.ts` error.
 
@@ -589,6 +589,8 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 - **Revoking keeps history.** The `user_roles` row is set `isActive = false` with `revokedAt`, not deleted. Re-adding reactivates that row, because the unique index on `(user_id, role_id)` would reject a second one.
 - **Roles the facility no longer offers are left alone.** Saving changes only the roles in the offered set; a deactivated role someone still holds is displayed as *not changed on this screen* rather than silently stripped.
 
+**A tab nobody can open is not a capability.** The *Configuration* item in the sidebar required `system.settings.manage`, `users.roles.manage`, `roles.permissions.manage` or `facilities.update`. A freshly seeded `FACILITY_ADMIN` holds none of the four — the permission seed gives it `users.invite`, the invitation permissions and the tariff permissions — so the invitation screen that already existed was unreachable for the role it was built for. `users.invite` now opens the module, an account holding only staff permissions sees only the staff tab, and it lands on that tab instead of an empty one.
+
 **Invitation hardening in the same change**
 
 - The invitation picker now uses the same permission-based rule. It previously filtered by role name only.
@@ -599,7 +601,7 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 
 **Validation completed**
 
-- `npm test` — **2,102 assertions** across sixteen suites, all green. The new `test:staff-roles` suite (89 assertions) exercises the real policy functions and asserts the scope checks, the two administrator rules, the verification gate, the audit row, the single transaction, that no table is declared, and that the screen calls these endpoints.
+- `npm test` — **2,106 assertions** across sixteen suites, all green. The new `test:staff-roles` suite (93 assertions) exercises the real policy functions and asserts the scope checks, the two administrator rules, the verification gate, the audit row, the single transaction, that no table is declared, and that the screen calls these endpoints.
 - **Live against PostgreSQL 16**, all 17 migrations on a scratch database: **49 checks**. Two facilities in one tenant and a third in another; the directory lists only facility A; the invitation-role list excludes the administrator role, the role carrying platform permissions and the empty role; cross-facility and cross-tenant targets return `STAFF_NOT_FOUND`; self and administrator accounts are refused; a staff member cannot assign roles; CASHIER is added, an identical save changes nothing and writes no audit row; NURSE is refused without a registration and still refused with a `mock` one; after a manual NCK verification it is granted; removing it leaves an inactive row with a timestamp; re-adding it reactivates the same row; four successful changes produce exactly four audit rows.
 - `npm run build` — passed. `npm run lint` — only the pre-existing `src/lib/firebase.ts` error.
 - Live checks found two defects in the first draft, both fixed before commit: the permission joins were missing from the held-roles query inside the transaction, and the "held but not requested" set was being computed against the requested roles instead of the whole offered catalogue, so a revoked role was preserved instead of removed.
@@ -619,6 +621,7 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 - `src/integrations/professional/professional-verification.service.ts.before-staff-roles-20261021.bak`
 - `src/components/modules/StaffVerificationModal.tsx.before-staff-roles-20261021.bak`
 - `src/components/modules/ConfigurationModule.tsx.before-staff-roles-20261021.bak`
+- `src/components/Sidebar.tsx.before-staff-roles-20261021.bak`
 - `package.json.before-staff-roles-20261021.bak`
 - `README.md.before-staff-roles-20261021.bak`
 
