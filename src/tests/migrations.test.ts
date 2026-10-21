@@ -115,6 +115,57 @@ function testTimestampsIncreasing(): void {
   }
 }
 
+/**
+ * A text column converted to a date, timestamp or numeric needs an
+ * explicit USING clause. Without one PostgreSQL raises 42804 and the
+ * whole run rolls back — which is exactly what happened to 0002 on every
+ * fresh database, and only on a fresh database, so nobody noticed for
+ * months. The cast is harmless on an empty table and required on a
+ * populated one.
+ */
+function testDataTypeCasts(): void {
+  const files = readdirSync(DRIZZLE_DIR).filter((name) => name.endsWith('.sql'));
+
+  const needsCast = /SET DATA TYPE (date|timestamp|timestamptz|numeric)/i;
+
+  for (const file of files) {
+    const sql = readFileSync(resolve(DRIZZLE_DIR, file), 'utf8');
+
+    const statements = sql.split('--> statement-breakpoint');
+
+    for (const statement of statements) {
+      if (!needsCast.test(statement)) continue;
+
+      assert(
+        /USING/i.test(statement),
+        `${file}: "${statement.trim().slice(0, 80)}…" converts a column type without USING, so a fresh install fails with 42804`,
+      );
+    }
+  }
+}
+
+/**
+ * Two behaviours in the runner that a fresh install depends on:
+ * an edited migration that has already been applied must not run again,
+ * and a failed migration must exit rather than hang.
+ */
+function testRunnerSafety(): void {
+  const runner = readFileSync(
+    resolve(process.cwd(), 'scripts/migrate.ts'),
+    'utf8',
+  );
+
+  assert(
+    runner.includes('appliedMillis'),
+    'the runner skips an applied migration by journal timestamp, so editing 0002 does not re-run it',
+  );
+
+  assert(
+    runner.includes('client.release(true)'),
+    'the runner releases its client before ending the pool, so a failed migration exits instead of hanging',
+  );
+}
+
 function testStatementsTerminated(): void {
   const journal = readJournal();
 
@@ -163,6 +214,12 @@ function run(): void {
 
   testStatementsTerminated();
   console.log('  4. Every statement is terminated');
+
+  testDataTypeCasts();
+  console.log('  5. No column type change is missing its USING cast');
+
+  testRunnerSafety();
+  console.log('  6. The runner cannot re-run an applied migration or hang on failure');
 
   console.log('');
   console.log('==============================================');

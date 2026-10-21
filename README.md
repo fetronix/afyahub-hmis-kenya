@@ -449,11 +449,20 @@ Without the second, existing roles hold no maternity permission and the module a
 **Validation completed**
 
 - `npm run test:postnatal` — 151 assertions: the schedule's uniqueness and ages, `Due`/`Overdue` boundaries at 0/4 weeks, an early dose still recorded, the plot's geometry including a late 4 cm start and the axis covering the action line, the additive migration and its guards, the service refusals, the delivery charge carrying no fallback price and no money literal, and that every capability is on the screen.
-- `npm test` — **1,845 assertions** across thirteen counting suites, plus the staff-role-catalogue suite (which reports pass/fail without a count). All green.
+- `npm test` — **1,849 assertions** across thirteen counting suites, plus the staff-role-catalogue suite (which reports pass/fail without a count). All green.
 - **Live against PostgreSQL 16.** All 17 migrations applied to a scratch database, then 40 checks: plot geometry from real rows (alert at hour 2, action at hour 6, axis 13 h), chart and table agreeing on the zone, no tariff → `TARIFF_NOT_CONFIGURED`, a 12,000 tariff → billed with invoice `INV-000001`, a repeat → `DUPLICATE`, exactly one invoice line, day postpartum 3 from the delivery date, an unmeasured temperature stored NULL, cross-facility 404, duplicate dose refused, future/before-birth/unknown-antigen refusals, a 19-antigen card, and the facility due list.
 - `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
 
-**A defect found and deliberately NOT fixed.** A freshly built database cannot get past migration `0002`: two `ALTER COLUMN … SET DATA TYPE date` statements have no `USING` clause, so PostgreSQL raises `42804` and the runner rolls back. Adding `USING "col"::date` fixes it — verified on the scratch database, where all 17 then applied. It is not committed because it changes the file's hash, and a database that has already applied `0002` has that hash recorded; editing it would make the runner want to re-apply a migration that is not idempotent. Existing databases are unaffected, and the user's database has already applied `0002`. **Fix it only alongside a plan for re-recording that hash.** A second, smaller defect: `scripts/migrate.ts` prints its failure but does not exit — the process stays alive holding the pool open. It is harmless for a human at a terminal but would hang a CI job.
+**Two migration defects found and fixed.** A freshly built database could not get past migration `0002`: two `ALTER COLUMN … SET DATA TYPE date` statements had no `USING` clause, so PostgreSQL raised `42804` and the whole run rolled back. The cast is harmless on an empty table and required on a populated one. Because `0002` has already been applied on existing databases, editing it alone was not safe — the runner matched **only** on the file's SHA-256, so a changed file would look pending and be re-applied on the one database that must not see it run again.
+
+The fix has two halves, and both were verified against PostgreSQL 16:
+
+1. `0002` now carries `USING "col"::date`. A fresh database applies all 17 migrations and exits 0.
+2. `scripts/migrate.ts` treats a migration as applied when **either** its hash **or** its journal timestamp is recorded — the same rule `scripts/migration-status.ts` already used, so the two no longer disagree. When an applied file has changed on disk the runner says so, by name, and does not run it: *"applied migration(s) have changed on disk … the change reaches only databases that have not applied them yet."* A database that has applied `0002` — including the development one — is therefore unaffected: `npm run db:migrate` reports nothing pending and touches nothing.
+
+The same round fixed a second defect in the runner: it printed its failure and then **hung**, because it awaited `pool.end()` while still holding the failed client. It now releases the client first and exits 1. Measured: the failing run that previously sat until killed at 300 s now prints the failing statement and exits in **1 s**, with the database unchanged (0 tables — the whole run is one transaction).
+
+Two regression guards were added to `test:migrations` (598 assertions now): no migration may convert a column to `date`/`timestamp`/`numeric` without `USING`, and the runner must keep both the timestamp skip and the client release. Removing the cast from `0002` makes the suite fail by name.
 
 **Not verified:** the screens were still not walked in a browser — no browser was available in this environment, so the tabs, the chart and the billing banner have been type-checked and built but not clicked. No clinician has reviewed the field set against the MOH 405 card, and no one has confirmed the KEPI ages against the current chart.
 
@@ -467,6 +476,8 @@ Without the second, existing roles hold no maternity permission and the module a
 - `src/app.ts.before-postnatal-20261021.bak`
 - `src/api/client.ts.before-postnatal-20261021.bak`
 - `src/components/modules/MaternityModule.tsx.before-postnatal-20261021.bak`
+- `scripts/migrate.ts.before-timestamp-skip-20261021.bak`
+- `drizzle/0002_friendly_lady_deathstrike.sql.before-using-cast-20261021.bak`
 - `README.md.before-postnatal-20261021.bak`
 
 ### Earlier uncommitted changes and backups

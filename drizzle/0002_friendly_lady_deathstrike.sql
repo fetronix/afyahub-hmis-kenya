@@ -177,9 +177,9 @@ ALTER TABLE "encounters" ALTER COLUMN "encounter_type" SET NOT NULL;--> statemen
 ALTER TABLE "encounters" ALTER COLUMN "status" SET DEFAULT 'ACTIVE';--> statement-breakpoint
 ALTER TABLE "encounters" ALTER COLUMN "status" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "encounters" ALTER COLUMN "triage_category" DROP DEFAULT;--> statement-breakpoint
-ALTER TABLE "encounters" ALTER COLUMN "follow_up_date" SET DATA TYPE date;--> statement-breakpoint
+ALTER TABLE "encounters" ALTER COLUMN "follow_up_date" SET DATA TYPE date USING "follow_up_date"::date;--> statement-breakpoint
 ALTER TABLE "patient_identifiers" ALTER COLUMN "issuing_authority" DROP DEFAULT;--> statement-breakpoint
-ALTER TABLE "patients" ALTER COLUMN "date_of_birth" SET DATA TYPE date;--> statement-breakpoint
+ALTER TABLE "patients" ALTER COLUMN "date_of_birth" SET DATA TYPE date USING "date_of_birth"::date;--> statement-breakpoint
 ALTER TABLE "patients" ALTER COLUMN "county" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "patients" ALTER COLUMN "sub_county" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "patients" ALTER COLUMN "allergies" DROP DEFAULT;--> statement-breakpoint

@@ -156,15 +156,57 @@ async function main(): Promise<void> {
   );
 
   const appliedHashes = new Set(rows.map((row) => row.hash));
+  const appliedMillis = new Set(
+    rows.map((row) => Number(row.created_at ?? 0)),
+  );
+
   const newestRecorded = rows.reduce(
     (max, row) => Math.max(max, Number(row.created_at ?? 0)),
     0,
   );
 
-  const pending = plans.filter((plan) => !appliedHashes.has(plan.hash));
+  /*
+   * "Applied" means one of two things:
+   *
+   *   - this exact file has run here (hash match), or
+   *   - a migration with this journal timestamp has run here.
+   *
+   * The second test exists because a migration file that is edited after
+   * it was applied — to add a missing USING cast, say — keeps its journal
+   * timestamp but changes its hash. Matching only on hash would make this
+   * runner try to re-run an already-applied migration that is not
+   * idempotent, on the one database that must not see it run again.
+   *
+   * Matching on the timestamp makes the edit visible only to databases
+   * that have not applied the migration yet, which is exactly where a
+   * fresh-install fix belongs. The drift is reported below, never hidden.
+   */
+  const editedAfterApply = plans.filter(
+    (plan) =>
+      !appliedHashes.has(plan.hash) && appliedMillis.has(plan.folderMillis),
+  );
+
+  const pending = plans.filter(
+    (plan) =>
+      !appliedHashes.has(plan.hash) && !appliedMillis.has(plan.folderMillis),
+  );
 
   console.log(`Recorded : ${rows.length} migration(s)`);
   console.log(`Pending  : ${pending.length}`);
+
+  if (editedAfterApply.length > 0) {
+    console.log('');
+    console.log(
+      `\x1b[33m!\x1b[0m ${editedAfterApply.length} applied migration(s) have changed on disk:`,
+    );
+    console.log(`  ${editedAfterApply.map((plan) => plan.tag).join(', ')}`);
+    console.log(
+      '  They keep their recorded timestamp, so they will not run again here.',
+    );
+    console.log(
+      '  The change reaches only databases that have not applied them yet.',
+    );
+  }
 
   if (pending.length === 0) {
     console.log('');
@@ -188,7 +230,7 @@ async function main(): Promise<void> {
       `\x1b[33m!\x1b[0m ${behind.length} pending migration(s) are older than the newest recorded timestamp.`,
     );
     console.log(
-      '  drizzle-kit migrate would skip these silently. This runner matches on hash instead.',
+      '  drizzle-kit migrate would skip these silently. This runner matches on hash or journal timestamp.',
     );
     console.log(`  Affected: ${behind.map((plan) => plan.tag).join(', ')}`);
   }
@@ -252,6 +294,13 @@ async function main(): Promise<void> {
           console.error('Nothing was committed. The database is unchanged.');
           console.error('');
 
+          /*
+           * Release the client before ending the pool. `pool.end()` waits
+           * for every checked-out client to come back, and this one never
+           * would: the process used to print its failure and then hang
+           * instead of exiting.
+           */
+          client.release(true);
           await pool.end();
           process.exit(1);
         }
