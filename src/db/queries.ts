@@ -2243,6 +2243,31 @@ export async function getTheatreCases(facilityId?: number) {
   }
 }
 
+/**
+ * Read one theatre case inside a facility.
+ *
+ * `updateTheatreCase` takes only an id. Without this check, any caller
+ * who reached the route could rewrite a case belonging to another
+ * facility by guessing its number.
+ */
+export async function getTheatreCaseScoped(
+  id: number,
+  facilityId: number,
+) {
+  const [row] = await db
+    .select()
+    .from(schema.theatreCases)
+    .where(
+      and(
+        eq(schema.theatreCases.id, id),
+        eq(schema.theatreCases.facilityId, facilityId),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
+}
+
 export async function createTheatreCase(data: typeof schema.theatreCases.$inferInsert) {
   try {
     const res = await db.insert(schema.theatreCases).values(data).returning();
@@ -2599,6 +2624,28 @@ export async function getRadiologyOrders(facilityId?: number, patientId?: number
     console.error('Error fetching radiology orders:', error);
     throw new Error('Failed to fetch imaging requests', { cause: error });
   }
+}
+
+/**
+ * Read one radiology order inside a facility, for the same reason as
+ * `getTheatreCaseScoped`: reporting a study is a facility-bound act.
+ */
+export async function getRadiologyOrderScoped(
+  id: number,
+  facilityId: number,
+) {
+  const [row] = await db
+    .select()
+    .from(schema.radiologyOrders)
+    .where(
+      and(
+        eq(schema.radiologyOrders.id, id),
+        eq(schema.radiologyOrders.facilityId, facilityId),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
 }
 
 export async function createRadiologyOrder(data: typeof schema.radiologyOrders.$inferInsert) {

@@ -53,10 +53,15 @@ export const ProcurementModule: React.FC = () => {
     e.preventDefault();
     if (!poForm.supplierId) return;
 
+    if (!currentFacility?.id) {
+      showToast('Select a facility before saving this record.', { tone: 'warning' });
+      return;
+    }
+
     try {
       await api.createPurchaseOrder({
-        tenantId: currentTenant?.id || 1,
-        facilityId: currentFacility?.id || 1,
+        tenantId: currentFacility?.tenantId,
+        facilityId: currentFacility.id,
         supplierId: Number(poForm.supplierId),
         poNumber: poForm.poNumber,
         totalAmount: poForm.totalAmount,

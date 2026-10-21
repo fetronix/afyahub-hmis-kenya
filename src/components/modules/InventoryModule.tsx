@@ -82,9 +82,14 @@ export const InventoryModule: React.FC = () => {
 
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentFacility?.id) {
+      showToast('Select a facility before saving this record.', { tone: 'warning' });
+      return;
+    }
+
     try {
       await api.createInventoryItem({
-        facilityId: currentFacility?.id || 1,
+        facilityId: currentFacility.id,
         ...newItem,
         currentStock: Number(newItem.currentStock),
         reorderLevel: Number(newItem.reorderLevel),

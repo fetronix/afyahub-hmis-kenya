@@ -2733,6 +2733,56 @@ export const api = {
         }`
       ),
 
+  /**
+   * DHA self-assessment, computed server-side from the requirements
+   * register. Read-only: there is no endpoint that edits a score.
+   */
+  getDhaCompliance:
+    () =>
+      fetchJson<{
+        success: boolean;
+        generatedAt: string;
+        categories: Array<{
+          category: string;
+          label: string;
+          weight: number;
+          assessed: number;
+          verified: number;
+          score: number;
+          contribution: number;
+        }>;
+        weightedAverage: number;
+        overallScore: number;
+        criticalGateTriggered: boolean;
+        criticalGaps: Array<{
+          id: string;
+          title: string;
+          status: string;
+          severity: string;
+          dependency?: string;
+        }>;
+        readyForSubmission: boolean;
+        counts: Record<string, number>;
+        totalRequirements: number;
+        certification: false;
+        disclaimer: string;
+        requirements: Array<{
+          id: string;
+          category: string;
+          title: string;
+          requirement: string;
+          module: string;
+          status: string;
+          severity: string;
+          evidence: string;
+          verification: string;
+          externalDependency?: string;
+          note?: string;
+        }>;
+      }>(
+        `${API_BASE}/compliance/dha`
+      ),
+
   // ============================================================
   // DHA / AFYACONNECT
   // ============================================================

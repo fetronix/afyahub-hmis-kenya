@@ -71,10 +71,15 @@ export const ReceptionQueueModule: React.FC = () => {
     e.preventDefault();
     if (!apptForm.patientId) return;
 
+    if (!currentFacility?.id) {
+      showToast('Select a facility before saving this record.', { tone: 'warning' });
+      return;
+    }
+
     try {
       await api.createAppointment({
-        tenantId: currentFacility?.tenantId || 1,
-        facilityId: currentFacility?.id || 1,
+        tenantId: currentFacility?.tenantId,
+        facilityId: currentFacility.id,
         patientId: Number(apptForm.patientId),
         scheduledTime: apptForm.scheduledTime,
         durationMinutes: Number(apptForm.durationMinutes),

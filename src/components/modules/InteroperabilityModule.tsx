@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { Patient } from '../../types/index.ts';
+import { DhaCompliancePanel } from './DhaCompliancePanel.tsx';
 import type {
   DhaCallLog,
   DhaEligibilityResult,
@@ -233,6 +234,13 @@ export const InteroperabilityModule: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/*
+        The self-assessment comes before the connection report: whether
+        the system is ready to be reviewed is a different question from
+        whether it can reach DHA today.
+      */}
+      <DhaCompliancePanel />
 
       {readinessError && (
         <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl p-4 flex items-start gap-2">

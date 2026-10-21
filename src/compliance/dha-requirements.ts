@@ -1,0 +1,763 @@
+/**
+ * JaliCare HMIS
+ * DHA readiness — requirement register
+ *
+ * Why this file exists
+ * ====================
+ *
+ * The DHA assessment supplied for this audit arrives with four
+ * percentages (96 / 84 / 100 / 74) and an overall of about 90. No code
+ * in this repository produced those numbers. Before this register, the
+ * only readiness surface in the product was the DHA configuration
+ * report (`src/integrations/dha/dha.readiness.ts`), which answers a
+ * different question — *can this installation reach DHA right now* —
+ * and deliberately publishes no score at all.
+ *
+ * A percentage without a per-requirement status is the exact failure
+ * mode this audit is meant to prevent: a high average conceals a
+ * missing legal control. So every figure shown to an administrator is
+ * now computed from this register, and every row carries:
+ *
+ *   - what the requirement is,
+ *   - where it lives,
+ *   - how it was verified,
+ *   - what evidence exists in this repository,
+ *   - how severe the gap is,
+ *   - and what external party, if any, must act.
+ *
+ * STATUS VOCABULARY
+ * =================
+ *
+ *   VERIFIED              exercised by a test that runs in this repo,
+ *                         and the code path was read during the audit.
+ *   IMPLEMENTED_UNTESTED  the code exists and compiles; no test walks it.
+ *   PARTIAL               part of the requirement is met.
+ *   MISSING               not built.
+ *   BLOCKED               built as far as this repository can go, but an
+ *                         external party or credential is required.
+ *   NOT_APPLICABLE        the requirement does not apply, and the reason
+ *                         is recorded rather than assumed.
+ *
+ * VERIFIED here means "verified in this repository". It is not a DHA
+ * certification, and the UI and the audit documents say so.
+ */
+
+export type RequirementStatus =
+  | 'VERIFIED'
+  | 'IMPLEMENTED_UNTESTED'
+  | 'PARTIAL'
+  | 'MISSING'
+  | 'BLOCKED'
+  | 'NOT_APPLICABLE';
+
+export type RequirementCategory =
+  | 'functionality'
+  | 'security'
+  | 'reporting'
+  | 'interoperability';
+
+export type GapSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+export interface DhaRequirement {
+  id: string;
+  category: RequirementCategory;
+  title: string;
+  /** The DHA expectation, in one sentence. */
+  requirement: string;
+  /** Where the capability lives, or where it is absent. */
+  module: string;
+  status: RequirementStatus;
+  severity: GapSeverity;
+  /** Exact evidence: test file, endpoint, table, or document. */
+  evidence: string;
+  /** How it was checked. Never "assumed". */
+  verification: string;
+  /** Who must act when the gap is not purely technical. */
+  externalDependency?: string;
+  /** Anything a reader must not misread. */
+  note?: string;
+}
+
+export const DHA_CATEGORY_WEIGHTS: Record<RequirementCategory, number> = {
+  functionality: 0.35,
+  security: 0.3,
+  reporting: 0.2,
+  interoperability: 0.15,
+};
+
+export const DHA_CATEGORY_LABELS: Record<RequirementCategory, string> = {
+  functionality: 'Clinical functionality',
+  security: 'Security & privacy',
+  reporting: 'Public health reporting',
+  interoperability: 'Interoperability',
+};
+
+export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
+  /* ==========================================================
+     CLINICAL FUNCTIONALITY — 35%
+     ========================================================== */
+  {
+    id: 'FN-01',
+    category: 'functionality',
+    title: 'Patient registration and MRN',
+    requirement:
+      'Every patient is registered once with a unique medical record number.',
+    module: 'Patient Directory · src/components/modules/PatientRegistrationModule.tsx',
+    status: 'VERIFIED',
+    severity: 'critical',
+    evidence:
+      'patients.mrn (schema.ts), POST /api/patients, src/tests/opd-journey.test.ts, src/tests/migrations.test.ts',
+    verification: 'Automated test suite plus code inspection.',
+  },
+  {
+    id: 'FN-02',
+    category: 'functionality',
+    title: 'Demographics',
+    requirement:
+      'Sex, date of birth, age, residence and contact details are captured and validated.',
+    module: 'Patient Directory · src/db/schema.ts',
+    status: 'VERIFIED',
+    severity: 'critical',
+    evidence:
+      'patients.gender, date_of_birth, county, sub_county, residential_address, phone; src/tests/opd-journey.test.ts',
+    verification: 'Automated test plus column inspection.',
+  },
+  {
+    id: 'FN-03',
+    category: 'functionality',
+    title: 'Next of kin and guardian',
+    requirement:
+      'A next of kin or guardian is recorded, including relationship and contact.',
+    module: 'Patient Directory',
+    status: 'VERIFIED',
+    severity: 'high',
+    evidence:
+      'patients.guardian_name, guardian_relationship, guardian_phone, emergency_contact_*',
+    verification: 'Schema inspection and registration form review.',
+  },
+  {
+    id: 'FN-04',
+    category: 'functionality',
+    title: 'National identifiers',
+    requirement:
+      'National ID, SHA number and the DHA client-registry reference are held where applicable.',
+    module: 'Patient Directory · DHA eligibility',
+    status: 'VERIFIED',
+    severity: 'high',
+    evidence:
+      'patients.national_id, sha_number, dha_client_registry_id; eligibility service',
+    verification: 'Schema and DHA eligibility code inspection.',
+  },
+  {
+    id: 'FN-05',
+    category: 'functionality',
+    title: 'Duplicate patient detection',
+    requirement:
+      'A likely duplicate is detected before a second record is created, and records can be reconciled.',
+    module: 'Patient Directory',
+    status: 'PARTIAL',
+    severity: 'high',
+    evidence:
+      'duplicateWarning in PatientRegistrationModule.tsx; no merge or reconciliation endpoint',
+    verification:
+      'Source inspection. The warning is client-side; no server-side duplicate rule or merge path was found.',
+    note:
+      'A warning without a reconciliation workflow leaves the duplicate in place. Not counted as met.',
+  },
+  {
+    id: 'FN-06',
+    category: 'functionality',
+    title: 'Patient consent capture',
+    requirement:
+      'Consent is recorded with version, method and evidence, and access is restricted accordingly.',
+    module: 'patient_consents (schema only)',
+    status: 'MISSING',
+    severity: 'critical',
+    evidence:
+      'schema.ts defines patient_consents; no route, service or screen reads or writes it',
+    verification:
+      'Exhaustive search for patient_consents across src/: only the table declaration and DHA consent placeholders use it.',
+    note:
+      'DHA consent authorisation (OTP) is separately blocked; this row concerns the facility-level consent record.',
+  },
+  {
+    id: 'FN-07',
+    category: 'functionality',
+    title: 'Computerised medication orders',
+    requirement:
+      'A clinician can order medication, and the order reaches dispensing.',
+    module: 'Outpatient · Pharmacy',
+    status: 'VERIFIED',
+    severity: 'critical',
+    evidence:
+      'prescriptions routes; src/tests/pharmacy-batches.test.ts (80 assertions)',
+    verification: 'Automated test plus route inspection.',
+  },
+  {
+    id: 'FN-08',
+    category: 'functionality',
+    title: 'Laboratory orders and specimen tracking',
+    requirement:
+      'A lab order is created, tracked through specimen collection, resulted, verified and published.',
+    module: 'Laboratory',
+    status: 'VERIFIED',
+    severity: 'critical',
+    evidence:
+      'lab_orders, lab_results, migrations 0008; laboratory routes; src/tests/nursing-contracts.test.ts',
+    verification: 'Automated tests and migration inspection.',
+  },
+  {
+    id: 'FN-09',
+    category: 'functionality',
+    title: 'Radiology orders and reports',
+    requirement:
+      'An imaging order is created, reported by a radiologist, and returned to the record.',
+    module: 'Radiology',
+    status: 'IMPLEMENTED_UNTESTED',
+    severity: 'high',
+    evidence:
+      'GET/POST /api/radiology-orders, PUT /api/radiology-orders/:id/report',
+    verification:
+      'Routes inspected and scoped during this audit; no automated test exercises them.',
+    note:
+      'Before this audit these routes had no permission check and no facility scope.',
+  },
+  {
+    id: 'FN-10',
+    category: 'functionality',
+    title: 'Physiotherapy, occupational therapy, nutrition, social work, counselling',
+    requirement:
+      'Allied-health orders and notes are captured as part of the encounter.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'medium',
+    evidence: 'No table, route, screen or test for any of the five disciplines.',
+    verification: 'Repository-wide search for each discipline returned zero matches.',
+  },
+  {
+    id: 'FN-11',
+    category: 'functionality',
+    title: 'Family history',
+    requirement: 'Family history is recorded against the patient.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'medium',
+    evidence: 'No family-history table, field, route or screen.',
+    verification: 'Repository-wide search returned zero matches.',
+  },
+  {
+    id: 'FN-12',
+    category: 'functionality',
+    title: 'Vital signs and growth',
+    requirement:
+      'Vital signs are recorded per encounter; BMI and growth are derived for children.',
+    module: 'Outpatient · observations',
+    status: 'PARTIAL',
+    severity: 'high',
+    evidence:
+      'observations routes and table; no BMI or growth-chart derivation found',
+    verification: 'Route and schema inspection.',
+  },
+  {
+    id: 'FN-13',
+    category: 'functionality',
+    title: 'Diagnoses and problem list',
+    requirement:
+      'Primary and secondary diagnoses are coded, retained over time, and correctable without erasing history.',
+    module: 'Outpatient · diagnoses',
+    status: 'PARTIAL',
+    severity: 'high',
+    evidence:
+      'GET/POST /api/diagnoses, diagnoses table; no persistent problem list and no code-system validation',
+    verification: 'Route inspection; ICD-10 codes are free text, not constrained.',
+  },
+  {
+    id: 'FN-14',
+    category: 'functionality',
+    title: 'Medication catalogue',
+    requirement:
+      'A maintained catalogue supplies the products that can be prescribed.',
+    module: 'Pharmacy',
+    status: 'VERIFIED',
+    severity: 'high',
+    evidence:
+      'medications table; GET/POST /api/medications; PUT /api/medications/:id/status',
+    verification: 'Route inspection and pharmacy test suite.',
+  },
+  {
+    id: 'FN-15',
+    category: 'functionality',
+    title: 'Allergy and interaction checking',
+    requirement:
+      'Known allergies and clinically significant interactions warn the prescriber.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'critical',
+    evidence:
+      'The only allergy field is a boolean in the theatre safety checklist; no allergy registry, no interaction engine.',
+    verification: 'Repository-wide search for allergy/interaction.',
+    note:
+      'A prescribing system without an allergy record is a patient-safety gap, not a cosmetic one.',
+  },
+  {
+    id: 'FN-16',
+    category: 'functionality',
+    title: 'Clinical decision support',
+    requirement:
+      'Rules evaluate clinical inputs and surface prioritised, non-disappearing alerts.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'high',
+    evidence: 'No rules engine, threshold table or alert queue.',
+    verification: 'Repository-wide search returned zero matches.',
+  },
+  {
+    id: 'FN-17',
+    category: 'functionality',
+    title: 'Clinical summary',
+    requirement:
+      'A summary assembles demographics, encounters, diagnoses, medication, vitals and results for one patient only.',
+    module: 'PatientJourneyModal · OPD',
+    status: 'PARTIAL',
+    severity: 'high',
+    evidence:
+      'src/components/PatientJourneyModal.tsx; per-patient queries scoped by patient id',
+    verification:
+      'Source inspection. No automated test asserts the full summary or its cross-patient isolation.',
+  },
+  {
+    id: 'FN-18',
+    category: 'functionality',
+    title: 'Electronic prescribing lifecycle',
+    requirement:
+      'A prescription can be created, authorised, amended or cancelled, dispensed and audited.',
+    module: 'Outpatient · Pharmacy',
+    status: 'VERIFIED',
+    severity: 'critical',
+    evidence:
+      'src/tests/pharmacy-batches.test.ts; prescription and dispensing routes',
+    verification: 'Automated test plus route inspection.',
+  },
+  {
+    id: 'FN-19',
+    category: 'functionality',
+    title: 'Quality measures',
+    requirement:
+      'Indicators are calculated from real, period-filtered facility data.',
+    module: 'Reports & revenue',
+    status: 'PARTIAL',
+    severity: 'medium',
+    evidence:
+      'GET /api/analytics/summary, GET /api/analytics/revenue; facility scoping enforced',
+    verification:
+      'Route inspection. Operational aggregates exist; no defined quality-indicator set or denominator rules.',
+  },
+  {
+    id: 'FN-20',
+    category: 'functionality',
+    title: 'Maternal and child health',
+    requirement:
+      'Antenatal, labour, delivery, postnatal and immunisation encounters are recorded.',
+    module: 'Maternity & MCH',
+    status: 'VERIFIED',
+    severity: 'high',
+    evidence:
+      'src/tests/maternity.test.ts (131), src/tests/postnatal-immunisation.test.ts (151); migrations 0015, 0016',
+    verification: 'Automated tests and migration inspection.',
+  },
+
+  /* ==========================================================
+     SECURITY & PRIVACY — 30%
+     ========================================================== */
+  {
+    id: 'SP-01',
+    category: 'security',
+    title: 'ODPC registration',
+    requirement:
+      'The responsible legal entity is registered as a data controller/processor with the ODPC.',
+    module: 'Organisational — not software',
+    status: 'BLOCKED',
+    severity: 'critical',
+    evidence:
+      'No registration certificate, number or entity record exists in the repository.',
+    verification:
+      'Repository search. A registration cannot be inferred from source code, and none was fabricated.',
+    externalDependency:
+      'The facility/company must register with the Office of the Data Protection Commissioner and supply the certificate.',
+  },
+  {
+    id: 'SP-02',
+    category: 'security',
+    title: 'Data Protection Impact Assessment',
+    requirement:
+      'A DPIA covering the actual deployment and processing is documented, reviewed and approved.',
+    module: 'Organisational — not software',
+    status: 'BLOCKED',
+    severity: 'critical',
+    evidence:
+      'No DPIA exists in the repository. A populated draft template is delivered with this audit.',
+    verification:
+      'Repository search. The draft is prepared from verified system facts and is explicitly not approved.',
+    externalDependency:
+      'Data protection officer or responsible officer must review, sign and date the DPIA.',
+  },
+  {
+    id: 'SP-03',
+    category: 'security',
+    title: 'Authentication',
+    requirement:
+      'Passwords are hashed with a memory-hard function; sessions are random, hashed at rest, expiring and revocable.',
+    module: 'src/auth · src/utils/password.ts',
+    status: 'VERIFIED',
+    severity: 'critical',
+    evidence:
+      'argon2 hashing; 48-byte session tokens stored as SHA-256; 8-hour expiry; security_version invalidation; src/tests/auth-service.test.ts',
+    verification: 'Automated tests and code inspection.',
+  },
+  {
+    id: 'SP-04',
+    category: 'security',
+    title: 'Role-based access control',
+    requirement:
+      'Every sensitive endpoint enforces a permission, not merely a session.',
+    module: 'src/auth/authorization.middleware.ts',
+    status: 'PARTIAL',
+    severity: 'critical',
+    evidence:
+      '13 /api routes had no permission check at the start of this audit; 8 were closed in this pass (theatre, radiology, suppliers, purchase orders).',
+    verification:
+      'Static enumeration of all 133 /api routes and manual reading of the unguarded ones.',
+    note:
+      'Five unguarded routes remain to be reviewed, and 33 id-addressed routes have not been checked for object-level ownership.',
+  },
+  {
+    id: 'SP-05',
+    category: 'security',
+    title: 'Tenant and facility isolation',
+    requirement:
+      'A facility cannot read or modify another facility’s records, including by guessing an id.',
+    module: 'src/auth/scope.service.ts · src/db/queries.ts',
+    status: 'PARTIAL',
+    severity: 'critical',
+    evidence:
+      'Theatre cases, radiology orders, suppliers and purchase orders were readable across facilities before this audit; now scoped. Object-level checks added for theatre and radiology updates.',
+    verification:
+      'Route-by-route inspection. Remaining id-addressed routes are listed in the audit documents as unaudited.',
+    note:
+      'This is the most serious finding of the audit and is only partly closed.',
+  },
+  {
+    id: 'SP-06',
+    category: 'security',
+    title: 'Audit trail',
+    requirement:
+      'Sensitive actions are recorded with actor, action, target, time and outcome, and ordinary users cannot alter the history.',
+    module: 'audit_logs · Audit Trail screen',
+    status: 'PARTIAL',
+    severity: 'high',
+    evidence:
+      'audit_logs table with tenant/facility/user indexes; logAuditEvent on sensitive writes; GET /api/audit-logs requires audit.read',
+    verification:
+      'Schema, query and route inspection. No database trigger or privilege revokes UPDATE/DELETE on audit_logs; patient-record *views* are not logged.',
+  },
+  {
+    id: 'SP-07',
+    category: 'security',
+    title: 'Encryption in transit',
+    requirement:
+      'Client traffic and database traffic use TLS with certificate verification.',
+    module: 'src/config/env.ts · deployment',
+    status: 'PARTIAL',
+    severity: 'critical',
+    evidence:
+      'Helmet and CORS are configured; the database connection previously hard-coded ssl:false and is now SQL_SSL-controlled with verification on by default. The application itself terminates no TLS.',
+    verification:
+      'Configuration inspection. TLS termination must be proven at the deployment layer, which is not in this repository.',
+    externalDependency:
+      'Deployment/operations must terminate TLS 1.2+ and set SQL_SSL=true for any non-local database.',
+  },
+  {
+    id: 'SP-08',
+    category: 'security',
+    title: 'Encryption at rest',
+    requirement:
+      'The database, its backups and any object storage are encrypted, with keys managed and rotated.',
+    module: 'Deployment',
+    status: 'MISSING',
+    severity: 'critical',
+    evidence:
+      'No storage-encryption configuration, key-management integration or encrypted-backup procedure exists in the repository.',
+    verification:
+      'Repository-wide search. HTTPS does not encrypt a database file, and no such claim is made.',
+    externalDependency:
+      'Hosting provider or DBA must enable storage encryption and document key custody.',
+  },
+  {
+    id: 'SP-09',
+    category: 'security',
+    title: 'Backup and disaster recovery',
+    requirement:
+      'Backups are automated, encrypted, retained, access-controlled and restoration-tested.',
+    module: 'Operations',
+    status: 'MISSING',
+    severity: 'critical',
+    evidence:
+      'No backup script, schedule, retention policy or restoration runbook in the repository.',
+    verification: 'Repository search. Nothing was executed against a database.',
+    externalDependency:
+      'Operations must implement and test a restore; the recovery document supplied with this audit is a template, not evidence.',
+  },
+  {
+    id: 'SP-10',
+    category: 'security',
+    title: 'Brute-force protection',
+    requirement:
+      'Repeated failed sign-ins are rate limited and lock the account.',
+    module: 'src/middleware · src/auth/auth.service.ts',
+    status: 'VERIFIED',
+    severity: 'high',
+    evidence:
+      'express-rate-limit (15-minute auth window, 60-second API window); failed_login_attempts, locked_until; src/tests/http-security.test.ts (54 assertions)',
+    verification: 'Automated test and code inspection.',
+  },
+  {
+    id: 'SP-11',
+    category: 'security',
+    title: 'Multi-factor authentication',
+    requirement:
+      'A second factor protects privileged and remote access where the risk assessment requires it.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'medium',
+    evidence: 'No TOTP, WebAuthn or SMS second factor anywhere in the codebase.',
+    verification: 'Repository-wide search returned zero matches.',
+  },
+  {
+    id: 'SP-12',
+    category: 'security',
+    title: 'Secrets handling',
+    requirement:
+      'Credentials are not committed, and production secrets are managed and rotated.',
+    module: '.gitignore · .env.example',
+    status: 'PARTIAL',
+    severity: 'high',
+    evidence:
+      '.env and firebase-applet-config.json are ignored; .env.example carries names only; DHA credentials are read from the environment and never returned by the readiness endpoint.',
+    verification:
+      'git ls-files and grep for literal secrets. No rotation mechanism or secret manager is present.',
+  },
+
+  /* ==========================================================
+     PUBLIC HEALTH REPORTING — 20%
+     ========================================================== */
+  {
+    id: 'PH-01',
+    category: 'reporting',
+    title: 'Immediate reportable disease capture',
+    requirement:
+      'A suspected reportable disease is captured immediately with condition, counts, age group and epi-week.',
+    module: 'Public health · POST /api/public-health/reports',
+    status: 'PARTIAL',
+    severity: 'critical',
+    evidence:
+      'Validated route (ICD-10 code, epi-week pattern, counts), scoped to the facility; screen rewritten in this audit to stop claiming national transmission',
+    verification:
+      'Route inspection and validation review. No submission channel, no acknowledgement, no retry.',
+  },
+  {
+    id: 'PH-02',
+    category: 'reporting',
+    title: 'IDSR weekly reporting',
+    requirement:
+      'A weekly IDSR return is generated for the reporting period and submitted.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'critical',
+    evidence:
+      'No IDSR aggregate, period table or return generator. The MOH 705 endpoint returns 501 by design.',
+    verification: 'Route inventory and repository search.',
+  },
+  {
+    id: 'PH-03',
+    category: 'reporting',
+    title: 'Public health events and IHR',
+    requirement:
+      'Events of international concern can be recorded, classified and notified under IHR processes.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'high',
+    evidence: 'No event, risk-assessment or notification entity exists.',
+    verification: 'Repository search returned zero matches.',
+  },
+  {
+    id: 'PH-04',
+    category: 'reporting',
+    title: 'MOH 705 routine return',
+    requirement:
+      'The outpatient morbidity return is produced from encounter data for a stated period.',
+    module: 'GET /api/interop/dha/moh-705',
+    status: 'MISSING',
+    severity: 'high',
+    evidence:
+      'The endpoint deliberately returns 501 MOH705_REPORT_NOT_IMPLEMENTED; the screen now shows that reason.',
+    verification: 'Route inspection and UI review.',
+    note:
+      'The previous screen displayed an empty table, a hard-coded period and an export button that downloaded JSON null.',
+  },
+  {
+    id: 'PH-05',
+    category: 'reporting',
+    title: 'Reporting-period correctness',
+    requirement:
+      'Reports are bound to a computed period, not a constant.',
+    module: 'Public health · Maternity',
+    status: 'PARTIAL',
+    severity: 'medium',
+    evidence:
+      'The epi-week was hard-coded as 2026-W40 in the screen and is now derived (currentEpiWeek); the server validates the pattern.',
+    verification:
+      'Source inspection before and after the fix. No server-side period table exists.',
+  },
+  {
+    id: 'PH-06',
+    category: 'reporting',
+    title: 'Submission, retry and duplicate handling',
+    requirement:
+      'Failed submissions are recorded and retried safely; duplicates are prevented and history preserved.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'high',
+    evidence:
+      'No outbox, submission status, retry counter or idempotency key for public-health reporting.',
+    verification: 'Repository search returned zero matches.',
+  },
+
+  /* ==========================================================
+     INTEROPERABILITY — 15%
+     ========================================================== */
+  {
+    id: 'IO-01',
+    category: 'interoperability',
+    title: 'DHA authentication and configuration',
+    requirement:
+      'The system authenticates to DHA with client credentials and separates mock, sandbox and production.',
+    module: 'src/integrations/dha/dha.config.ts · dha.client.ts',
+    status: 'IMPLEMENTED_UNTESTED',
+    severity: 'high',
+    evidence:
+      'Three explicit modes; production disabled unless DHA_ALLOW_PRODUCTION=true; token cache and retry; src/tests/dha.test.ts (176 assertions) against fixtures',
+    verification:
+      'Automated fixture tests. No sandbox credential was available, so no live token exchange was attempted.',
+    externalDependency:
+      'DHA must issue a client id, secret and facility registry code.',
+  },
+  {
+    id: 'IO-02',
+    category: 'interoperability',
+    title: 'SHA eligibility and benefits',
+    requirement:
+      'Eligibility, benefits, interventions and POMSF balances are retrieved for a patient.',
+    module: 'src/integrations/dha/dha.eligibility.ts',
+    status: 'IMPLEMENTED_UNTESTED',
+    severity: 'high',
+    evidence:
+      'Six implemented operations in DHA_OPERATIONS; mock fixtures; readiness endpoint reports them',
+    verification:
+      'Fixture tests only. Contracts were taken from the published DHA reference pages listed in the audit.',
+    externalDependency: 'Sandbox credentials and an approved facility.',
+  },
+  {
+    id: 'IO-03',
+    category: 'interoperability',
+    title: 'Claims, authorisation and consent',
+    requirement:
+      'Claim creation, line items, diagnoses, pre-authorisation and remittance are exchanged with DHA.',
+    module: 'src/integrations/dha/dha.readiness.ts',
+    status: 'MISSING',
+    severity: 'high',
+    evidence:
+      'Declared not implemented, with the reason recorded per operation; consent capture has no OTP or biometric channel.',
+    verification:
+      'The readiness register is explicit rather than optimistic.',
+  },
+  {
+    id: 'IO-04',
+    category: 'interoperability',
+    title: 'FHIR Patient',
+    requirement: 'A patient can be exported as a FHIR Patient resource.',
+    module: 'GET /api/interop/fhir/patient/:id',
+    status: 'PARTIAL',
+    severity: 'medium',
+    evidence:
+      'One read-only Patient resource with an identifier and managing organization; access is audited.',
+    verification:
+      'Route inspection. No validator was run, and no other resource exists.',
+  },
+  {
+    id: 'IO-05',
+    category: 'interoperability',
+    title: 'FHIR clinical resources',
+    requirement:
+      'Encounter, Condition, Observation, MedicationRequest, DiagnosticReport and related resources are exchanged.',
+    module: 'Not implemented',
+    status: 'MISSING',
+    severity: 'medium',
+    evidence: 'No builder or endpoint for any resource other than Patient.',
+    verification: 'Repository search for resourceType.',
+  },
+  {
+    id: 'IO-06',
+    category: 'interoperability',
+    title: 'Terminology and coding',
+    requirement:
+      'Diagnoses, medicines, laboratory tests and procedures use agreed code systems with mappings.',
+    module: 'Partial — ICD-10 text only',
+    status: 'PARTIAL',
+    severity: 'high',
+    evidence:
+      'ICD-10 codes are captured as free text in the public-health form; no KNHTS, LOINC or ATC mapping table exists.',
+    verification: 'Schema and form inspection.',
+    externalDependency:
+      'KNHTS release files and the DHA terminology service.',
+  },
+  {
+    id: 'IO-07',
+    category: 'interoperability',
+    title: 'Integration reliability',
+    requirement:
+      'Integrations have timeouts, retries, idempotency, logging and reconciliation.',
+    module: 'src/integrations/dha/dha.client.ts',
+    status: 'PARTIAL',
+    severity: 'medium',
+    evidence:
+      'Timeout and retry settings (DHA_TIMEOUT_MS, DHA_MAX_RETRIES); structured errors; readiness probe',
+    verification:
+      'Code inspection. No outbound message store, idempotency key or reconciliation job.',
+  },
+  {
+    id: 'IO-08',
+    category: 'interoperability',
+    title: 'SDMX / statistical exchange',
+    requirement:
+      'Statistical exchange is implemented only where a reporting requirement demands it.',
+    module: 'Not applicable',
+    status: 'NOT_APPLICABLE',
+    severity: 'low',
+    evidence:
+      'No supplied DHA requirement or specification calls for SDMX in this deployment.',
+    verification:
+      'The audit did not invent a standard to raise a score.',
+    note:
+      'Re-open if the certification scope names SDMX explicitly.',
+  },
+] as const);
+
+export function requirementsByCategory(
+  category: RequirementCategory,
+): DhaRequirement[] {
+  return DHA_REQUIREMENTS.filter((item) => item.category === category);
+}
+
+export function findRequirement(id: string): DhaRequirement | undefined {
+  return DHA_REQUIREMENTS.find((item) => item.id === id);
+}

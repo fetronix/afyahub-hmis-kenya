@@ -891,6 +891,108 @@ Both are additive: nothing is deleted, no clinical row is touched, and switching
 - `package.json.before-notification-tests-20261021.bak`
 - `README.md.before-notification-dialog-20261021.bak`
 
+### 3.20 DHA readiness audit — what the code actually supports
+
+**What was asked.** A full read of Jalicare against a DHA readiness brief that
+arrives with 96% clinical functionality, 84% security, 100% public health
+reporting, 74% interoperability and about 90% overall.
+
+**What was found.** None of those figures is produced by this repository. The only
+readiness surface before this round was the DHA configuration report in
+`src/integrations/dha/dha.readiness.ts`, which answers *can this installation reach
+DHA right now* and deliberately publishes no percentage. A score had been asserted
+elsewhere; nothing in the code could support or contradict it.
+
+**Three critical defects were found and fixed in this round.**
+
+1. **Cross-facility exposure.** `GET /api/theatre-cases`, `/api/radiology-orders`,
+   `/api/suppliers` and `/api/purchase-orders` required only a session. With no
+   `facilityId`, each query returned **every facility's rows**, across tenants. Their
+   write counterparts inserted `req.body` with no permission and no ownership check.
+   All nine routes now carry a specific permission, resolve the facility from the
+   authenticated scope, overwrite `facilityId`/`tenantId` from that facility, and —
+   for theatre updates and radiology reports — prove the row belongs to it first.
+2. **Records filed against facility 1.** Six screens sent
+   `facilityId: currentFacility?.id || 1`. With no facility selected, a clinical or
+   financial record was written to facility 1. The fallback is gone; a warning is
+   shown instead.
+3. **A surveillance screen that claimed integrations it did not have.** It said
+   *"Integrated with Kenya Digital Health Agency (DHA) national disease surveillance
+   network"*, *"DHIS2 Auto-Push"*, *"queued for KHIS submission"*, and labelled every
+   row *"Epidemic Threshold: Normal Trend"* from no data. It also hard-coded
+   *2026-W40* and *October 2026*, and its export button downloaded JSON `null` and
+   reported success. The screen now states that a report is stored locally and not
+   transmitted, shows the server's 501 reason for MOH 705, computes the epi-week,
+   and disables export without a real payload.
+
+**Two hygiene defects.** `npm run lint` could never pass: `src/lib/firebase.ts`
+imported a git-ignored JSON file that does not exist, and both Firebase modules were
+dead code (the product authenticates with argon2 and database sessions). They are
+removed and `tsc --noEmit` is clean. Database TLS was hard-coded `ssl: false`; it is
+now `SQL_SSL`, with certificate verification on by default.
+
+**The score is now computed, not asserted.**
+
+| Piece | File |
+|---|---|
+| 46 requirements, each with module, evidence, verification and severity | `src/compliance/dha-requirements.ts` |
+| Weighted score, published formula, critical-gap ceiling | `src/compliance/dha-score.ts` |
+| Read-only endpoint (`GET /api/compliance/dha`) | `src/compliance/compliance.routes.ts` |
+| Panel on the DHA screen, showing the working | `DhaCompliancePanel.tsx` |
+| Traceability matrix, regenerated from the register | `scripts/dha-traceability.ts` → `docs/dha-audit/` |
+
+The published formula is the one in the brief: (functionality × 0.35) + (security ×
+0.30) + (reporting × 0.20) + (interoperability × 0.15). Two rules make it honest:
+`NOT_APPLICABLE` is excluded from the denominator, and any **critical** requirement
+that is `MISSING` or `BLOCKED` caps the whole figure at 59.9%.
+
+**The result at this commit:**
+
+| Category | Weight | Verified / assessed | Score |
+|---|---:|---:|---:|
+| Clinical functionality | 35% | 9 / 20 | 61.3% |
+| Security & privacy | 30% | 2 / 12 | 37.5% |
+| Public health reporting | 20% | 0 / 6 | 16.7% |
+| Interoperability | 15% | 0 / 7 | 42.9% |
+| **Overall** | | 11 / 46 | **42.5%** |
+
+Seven critical gaps remain: consent capture, allergy checking, ODPC registration,
+the DPIA, encryption at rest, backup and disaster recovery, and IDSR weekly
+reporting. `readyForSubmission` is false, and the endpoint always returns
+`certification: false`.
+
+**Audit documents** in `docs/dha-audit/`: readiness audit, requirement
+traceability, security and privacy gap register, interoperability audit, database
+and migration audit, test results, remediation plan, deployment and recovery, and a
+**draft DPIA that is explicitly not approved**.
+
+**Validation.** `npm run lint` passes (first time in this repository's recent
+history). `npm run build` — **716 ms**, 1,702 modules. `npm test` — **21 suites,
+2,553 assertions**, no failures. `test:compliance` adds 222 assertions and
+`test:route-scope` adds 66.
+
+**Not verified.** No database and no browser: `npm run db:status` fails with
+`Missing required environment variable: SQL_HOST`. Every SQL path is
+contract-checked, not executed; no screen was clicked; no DHA sandbox call was made.
+Five unguarded routes and 33 id-addressed routes remain unaudited — the largest
+residual risk, recorded as P1-1.
+
+**Backups created during this round**
+
+- `src/app.ts.before-dha-audit-scope-20261021.bak`
+- `src/db/queries.ts.before-dha-audit-scope-20261021.bak`
+- `src/config/env.ts.before-sql-tls-20261021.bak`
+- `src/api/client.ts.before-dha-audit-20261021.bak`
+- `.env.example.before-sql-tls-20261021.bak`
+- `src/components/modules/PublicHealthModule.tsx.before-rewrite-20261021.bak` (written before the rewrite)
+- `src/components/modules/{Inventory,Procurement,Radiology,ReceptionQueue,Theatre}Module.tsx.before-facility-guard-20261021.bak`
+- `src/components/modules/InteroperabilityModule.tsx.before-compliance-panel-20261021.bak`
+- `src/lib/firebase.ts.before-removal-20261021.bak`
+- `src/lib/firebase-admin.ts.before-removal-20261021.bak`
+- `src/tests/opd-journey.test.ts.before-route-format-20261021.bak`
+- `package.json.before-dha-audit-tests-20261021.bak`
+- `README.md.before-dha-audit-20261021.bak`
+
 
 ## 4. Existing backups and modified files to preserve
 
@@ -1238,6 +1340,8 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 | Maternity, postnatal care and immunisation | Implemented; 131 + 151 assertions and 40 live checks; not walked in a browser, no clinical review |
 | Maternity/ANC visibility | Was hidden by the facility module list and a decorative switch; catalogue, endpoint and screen now wired (53 assertions); not exercised against a live database |
 | Notifications | One centred, animated dialog for all 145 `showToast` call sites; queued, toned, dismissible; not watched in a browser |
+| DHA readiness | Evidence-based register of 46 requirements, critical-gap gating, read-only API and panel. Self-assessment **42.5%**, not ready to submit; no live database, browser or DHA sandbox |
+| Cross-facility exposure | Nine operational routes were unguarded and unscoped; fixed and regression-tested. Five unguarded and 33 id-addressed routes remain unaudited |
 | End-to-end OPD/triage verification | In progress — no browser walkthrough yet |
 | Independent security testing, load test, restore drill | Not started |
 | Comprehensive regression testing and user acceptance | Not started |

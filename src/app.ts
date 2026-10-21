@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 
 import platformRoutes from './routes/platform.routes.ts';
 import facilityModuleRoutes from './config/facility-modules.routes.ts';
+import complianceRoutes from './compliance/compliance.routes.ts';
 
 
 
@@ -204,6 +205,12 @@ app.use("/api/staff-roles", staffRolesRoutes);
  */
 app.use('/api/facilities', facilityModuleRoutes);
 
+/*
+ * DHA self-assessment. Read-only and compiled from the register, so the
+ * figure cannot be edited in the browser or stored out of date.
+ */
+app.use('/api/compliance', complianceRoutes);
+
 // Facility module enforcement. Keep platform administration, invitations,
 // tenants, and facility-context endpoints outside these operational guards.
 app.use('/api/patients', requireFacilityModule('registration'));
@@ -271,7 +278,18 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     if (
       error instanceof ScopeAccessError
     ) {
-      res.status(403).json({
+      /*
+       * A missing target facility is the caller's omission, not a
+       * refusal: a superadmin who did not choose a facility gets 400,
+       * not 403, so the client can prompt for one.
+       */
+      const status =
+        error.code === 'FACILITY_REQUIRED' ||
+        error.code === 'INVALID_SCOPE_ID'
+          ? 400
+          : 403;
+
+      res.status(status).json({
         success: false,
         error: error.code,
         message: error.message,
@@ -281,6 +299,88 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
 
     return false;
+  };
+
+  /**
+   * Resolve the one facility a request is allowed to touch.
+   *
+   * The older operational routes accepted `facilityId` from the query
+   * string or the body and passed it straight to a query. When it was
+   * absent, the query returned every facility's rows; when it pointed
+   * somewhere else, the request read or wrote another facility. This
+   * helper closes both directions: the id is checked against the
+   * authenticated scope, and the database row is re-read through the
+   * scoped query before anything is returned.
+   *
+   * Returns null after writing the response when the request must stop.
+   */
+  const requireScopedFacility = async (
+    req: AuthRequest,
+    res: Response,
+    rawFacilityId: unknown,
+  ): Promise<{ id: number; tenantId: number } | null> => {
+    const context = req.authContext;
+
+    if (!context) {
+      res.status(401).json({
+        success: false,
+        error: 'AUTHORIZATION_CONTEXT_MISSING',
+        message: 'Authorization context is required.',
+      });
+
+      return null;
+    }
+
+    const isEmpty =
+      rawFacilityId === undefined ||
+      rawFacilityId === null ||
+      rawFacilityId === '';
+
+    const parsed = isEmpty ? undefined : Number(rawFacilityId);
+
+    if (
+      parsed !== undefined &&
+      (!Number.isSafeInteger(parsed) || parsed <= 0)
+    ) {
+      res.status(400).json({
+        success: false,
+        error: 'INVALID_FACILITY_ID',
+        message: 'facilityId must be a positive integer.',
+      });
+
+      return null;
+    }
+
+    try {
+      const facilityId = resolveFacilityScope(context, parsed);
+
+      const facility = await queries.getFacilityByIdScoped(
+        context,
+        facilityId,
+      );
+
+      if (!facility) {
+        res.status(404).json({
+          success: false,
+          error: 'FACILITY_NOT_FOUND',
+          message: 'The requested facility was not found.',
+        });
+
+        return null;
+      }
+
+      return { id: facility.id, tenantId: facility.tenantId };
+    } catch (error) {
+      if (!handleScopeError(error, res)) {
+        res.status(500).json({
+          success: false,
+          error: 'FACILITY_SCOPE_RESOLUTION_FAILED',
+          message: 'The facility scope could not be resolved.',
+        });
+      }
+
+      return null;
+    }
   };
 
   /**
@@ -3320,56 +3420,124 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // THEATRE CASES
   // =========================================================
 
-  app.get('/api/theatre-cases', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
+  app.get(
+    '/api/theatre-cases',
+    requireAnyPermission('clinical.read', 'inpatient.read'),
+    async (req: AuthRequest, res: Response) => {
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        req.query.facilityId,
+      );
 
-      const list =
-        await queries.getTheatreCases(
-          facilityId
+      if (!facility) return;
+
+      try {
+        const list = await queries.getTheatreCases(facility.id);
+
+        res.json(list);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/theatre-cases',
+    requirePermission('clinical.create'),
+    async (req: AuthRequest, res: Response) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        body.facilityId ?? req.query.facilityId,
+      );
+
+      if (!facility) return;
+
+      try {
+        /*
+         * Required columns are enforced by the table, and the two
+         * identifiers are taken from the resolved facility rather than
+         * from the payload, so the record cannot be filed elsewhere.
+         */
+        const payload = {
+          ...body,
+          facilityId: facility.id,
+          tenantId: facility.tenantId,
+        } as Parameters<typeof queries.createTheatreCase>[0];
+
+        const tc = await queries.createTheatreCase(payload);
+
+        res.status(201).json(tc);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
+
+  app.put(
+    '/api/theatre-cases/:id',
+    requirePermission('clinical.update'),
+    async (req: AuthRequest, res: Response) => {
+      const caseId = Number(req.params.id);
+
+      if (!Number.isSafeInteger(caseId) || caseId <= 0) {
+        res.status(400).json({
+          success: false,
+          error: 'INVALID_THEATRE_CASE_ID',
+        });
+
+        return;
+      }
+
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        req.query.facilityId ?? (req.body ?? {}).facilityId,
+      );
+
+      if (!facility) return;
+
+      try {
+        const existing = await queries.getTheatreCaseScoped(
+          caseId,
+          facility.id,
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!existing) {
+          res.status(404).json({
+            success: false,
+            error: 'THEATRE_CASE_NOT_FOUND',
+            message: 'The theatre case was not found in this facility.',
+          });
 
-  app.post('/api/theatre-cases', async (req, res) => {
-    try {
-      const tc =
-        await queries.createTheatreCase(
-          req.body
-        );
+          return;
+        }
 
-      res.status(201).json(tc);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        const body = (req.body ?? {}) as Record<string, unknown>;
 
-  app.put('/api/theatre-cases/:id', async (req, res) => {
-    try {
-      const tc =
-        await queries.updateTheatreCase(
-          Number(req.params.id),
-          req.body
-        );
+        const payload = {
+          ...body,
+          facilityId: facility.id,
+          tenantId: facility.tenantId,
+        } as Parameters<typeof queries.updateTheatreCase>[1];
 
-      res.json(tc);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        const tc = await queries.updateTheatreCase(caseId, payload);
+
+        res.json(tc);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
 
   // =========================================================
   // LABORATORY
@@ -3509,7 +3677,8 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         error: err.message,
       });
     }
-  });
+    },
+  );
 
   app.put('/api/lab-orders/:id/status', requirePermission('laboratory.results.enter'), async (req: AuthRequest, res) => {
     try {
@@ -3650,38 +3819,60 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // RADIOLOGY
   // =========================================================
 
-  app.get('/api/radiology-orders', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
+  app.get(
+    '/api/radiology-orders',
+    requireAnyPermission('clinical.read', 'laboratory.read'),
+    async (req: AuthRequest, res: Response) => {
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        req.query.facilityId,
+      );
+
+      if (!facility) return;
 
       const patientId =
         req.query.patientId
           ? Number(req.query.patientId)
           : undefined;
 
-      const list =
-        await queries.getRadiologyOrders(
-          facilityId,
-          patientId
+      try {
+        const list = await queries.getRadiologyOrders(
+          facility.id,
+          patientId,
         );
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        res.json(list);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
 
-  app.post('/api/radiology-orders', async (req, res) => {
+  app.post(
+    '/api/radiology-orders',
+    requirePermission('clinical.create'),
+    async (req: AuthRequest, res: Response) => {
     try {
-      const order =
-        await queries.createRadiologyOrder(
-          req.body
-        );
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        body.facilityId ?? req.query.facilityId,
+      );
+
+      if (!facility) return;
+
+      const payload = {
+        ...body,
+        facilityId: facility.id,
+        tenantId: facility.tenantId,
+      } as Parameters<typeof queries.createRadiologyOrder>[0];
+
+      const order = await queries.createRadiologyOrder(payload);
 
       /*
        * The table has `procedure_name`, not `test_name`. Reading a field
@@ -3715,29 +3906,66 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
   });
 
-  app.put('/api/radiology-orders/:id/report', async (req, res) => {
-    try {
-      const {
-        findings,
-        impression,
-        reportedBy,
-      } = req.body;
+  app.put(
+    '/api/radiology-orders/:id/report',
+    requireAnyPermission('clinical.update', 'laboratory.results.enter'),
+    async (req: AuthRequest, res: Response) => {
+      const orderId = Number(req.params.id);
 
-      const order =
-        await queries.updateRadiologyReport(
-          Number(req.params.id),
-          findings,
-          impression,
-          reportedBy
+      if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+        res.status(400).json({
+          success: false,
+          error: 'INVALID_RADIOLOGY_ORDER_ID',
+        });
+
+        return;
+      }
+
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        req.query.facilityId ?? (req.body ?? {}).facilityId,
+      );
+
+      if (!facility) return;
+
+      try {
+        const existing = await queries.getRadiologyOrderScoped(
+          orderId,
+          facility.id,
         );
 
-      res.json(order);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        if (!existing) {
+          res.status(404).json({
+            success: false,
+            error: 'RADIOLOGY_ORDER_NOT_FOUND',
+            message: 'The order was not found in this facility.',
+          });
+
+          return;
+        }
+
+        const {
+          findings,
+          impression,
+          reportedBy,
+        } = req.body;
+
+        const order = await queries.updateRadiologyReport(
+          orderId,
+          findings,
+          impression,
+          reportedBy,
+        );
+
+        res.json(order);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
 
   // =========================================================
   // PHARMACY & INVENTORY
@@ -4013,60 +4241,131 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // PROCUREMENT
   // =========================================================
 
-  app.get('/api/suppliers', async (req, res) => {
-    try {
-      const tenantId =
-        req.query.tenantId
-          ? Number(req.query.tenantId)
-          : undefined;
+  app.get(
+    '/api/suppliers',
+    requirePermission('procurement.read'),
+    async (req: AuthRequest, res: Response) => {
+      const context = req.authContext;
 
-      const list =
-        await queries.getSuppliers(
-          tenantId
-        );
+      if (!context) {
+        res.status(401).json({
+          success: false,
+          error: 'AUTHORIZATION_CONTEXT_MISSING',
+          message: 'Authorization context is required.',
+        });
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+        return;
+      }
 
-  app.get('/api/purchase-orders', async (req, res) => {
-    try {
-      const facilityId =
-        req.query.facilityId
-          ? Number(req.query.facilityId)
-          : undefined;
+      const rawTenantId = req.query.tenantId;
 
-      const list =
-        await queries.getPurchaseOrders(
-          facilityId
-        );
+      let tenantId: number | undefined;
 
-      res.json(list);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+      if (rawTenantId !== undefined && rawTenantId !== '') {
+        tenantId = Number(rawTenantId);
 
-  app.post('/api/purchase-orders', async (req, res) => {
-    try {
-      const po =
-        await queries.createPurchaseOrder(
-          req.body
-        );
+        if (!Number.isSafeInteger(tenantId) || tenantId <= 0) {
+          res.status(400).json({
+            success: false,
+            error: 'INVALID_TENANT_ID',
+            message: 'tenantId must be a positive integer.',
+          });
 
-      res.status(201).json(po);
-    } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
-    }
-  });
+          return;
+        }
+      }
+
+      if (!context.isSuperAdmin) {
+        if (context.tenantId === null) {
+          res.status(403).json({
+            success: false,
+            error: 'TENANT_SCOPE_REQUIRED',
+            message: 'Your account is not attached to a tenant.',
+          });
+
+          return;
+        }
+
+        if (tenantId !== undefined && tenantId !== context.tenantId) {
+          res.status(403).json({
+            success: false,
+            error: 'TENANT_ACCESS_DENIED',
+            message: 'You are not authorized to access this tenant.',
+          });
+
+          return;
+        }
+
+        tenantId = context.tenantId;
+      }
+
+      try {
+        const list = await queries.getSuppliers(tenantId);
+
+        res.json(list);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
+
+  app.get(
+    '/api/purchase-orders',
+    requirePermission('procurement.read'),
+    async (req: AuthRequest, res: Response) => {
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        req.query.facilityId,
+      );
+
+      if (!facility) return;
+
+      try {
+        const list = await queries.getPurchaseOrders(facility.id);
+
+        res.json(list);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/purchase-orders',
+    requirePermission('procurement.create'),
+    async (req: AuthRequest, res: Response) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      const facility = await requireScopedFacility(
+        req,
+        res,
+        body.facilityId ?? req.query.facilityId,
+      );
+
+      if (!facility) return;
+
+      try {
+        const payload = {
+          ...body,
+          facilityId: facility.id,
+          tenantId: facility.tenantId,
+        } as Parameters<typeof queries.createPurchaseOrder>[0];
+
+        const po = await queries.createPurchaseOrder(payload);
+
+        res.status(201).json(po);
+      } catch (err: any) {
+        res.status(500).json({
+          error: err.message,
+        });
+      }
+    },
+  );
 
   // =========================================================
   // FACILITY SERVICE TARIFFS

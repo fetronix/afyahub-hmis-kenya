@@ -74,10 +74,15 @@ export const TheatreModule: React.FC = () => {
     e.preventDefault();
     if (!caseForm.patientId) return;
 
+    if (!currentFacility?.id) {
+      showToast('Select a facility before saving this record.', { tone: 'warning' });
+      return;
+    }
+
     try {
       await api.createTheatreCase({
-        tenantId: currentFacility?.tenantId || 1,
-        facilityId: currentFacility?.id || 1,
+        tenantId: currentFacility?.tenantId,
+        facilityId: currentFacility.id,
         patientId: Number(caseForm.patientId),
         procedureName: caseForm.procedureName,
         theatreRoom: caseForm.theatreRoom,

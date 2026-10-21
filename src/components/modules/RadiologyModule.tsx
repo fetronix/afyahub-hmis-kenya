@@ -67,10 +67,15 @@ export const RadiologyModule: React.FC = () => {
     e.preventDefault();
     if (!reqForm.patientId) return;
 
+    if (!currentFacility?.id) {
+      showToast('Select a facility before saving this record.', { tone: 'warning' });
+      return;
+    }
+
     try {
       await api.createRadiologyOrder({
-        tenantId: currentFacility?.tenantId || 1,
-        facilityId: currentFacility?.id || 1,
+        tenantId: currentFacility?.tenantId,
+        facilityId: currentFacility.id,
         patientId: Number(reqForm.patientId),
         modality: reqForm.modality,
         procedureName: reqForm.procedureName,

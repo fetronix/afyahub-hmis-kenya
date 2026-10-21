@@ -1,0 +1,100 @@
+# DHA Requirement Traceability Matrix
+
+Generated from `src/compliance/dha-requirements.ts` by `scripts/dha-traceability.ts`. Generated 2026-10-21T16:44:46.272Z.
+
+> A status of **VERIFIED** means "exercised by a test in this repository and read during the audit". It does not mean certified, and it is not a DHA finding.
+
+## Summary
+
+| Category | Weight | Assessed | Verified | Score |
+|---|---:|---:|---:|---:|
+| Clinical functionality | 35% | 20 | 9 | 61.3% |
+| Security & privacy | 30% | 12 | 2 | 37.5% |
+| Public health reporting | 20% | 6 | 0 | 16.7% |
+| Interoperability | 15% | 7 | 0 | 42.9% |
+| **Reported overall** | 100% | 46 | 11 | **42.5%** |
+
+Critical gaps: FN-06, FN-15, SP-01, SP-02, SP-08, SP-09, PH-02.
+
+Ready for submission: **no**.
+
+Status credit used by the score: VERIFIED 1.0 · IMPLEMENTED_UNTESTED 0.75 · PARTIAL 0.5 · MISSING 0 · BLOCKED 0 · NOT_APPLICABLE excluded.
+
+## Clinical functionality (weight 35%)
+
+| ID | Requirement | Module | Status | Severity | Evidence | Verification | External dependency |
+|---|---|---|---|---|---|---|---|
+| FN-01 | **Patient registration and MRN**<br>Every patient is registered once with a unique medical record number. | Patient Directory · src/components/modules/PatientRegistrationModule.tsx | VERIFIED | critical | patients.mrn (schema.ts), POST /api/patients, src/tests/opd-journey.test.ts, src/tests/migrations.test.ts | Automated test suite plus code inspection. | — |
+| FN-02 | **Demographics**<br>Sex, date of birth, age, residence and contact details are captured and validated. | Patient Directory · src/db/schema.ts | VERIFIED | critical | patients.gender, date_of_birth, county, sub_county, residential_address, phone; src/tests/opd-journey.test.ts | Automated test plus column inspection. | — |
+| FN-03 | **Next of kin and guardian**<br>A next of kin or guardian is recorded, including relationship and contact. | Patient Directory | VERIFIED | high | patients.guardian_name, guardian_relationship, guardian_phone, emergency_contact_* | Schema inspection and registration form review. | — |
+| FN-04 | **National identifiers**<br>National ID, SHA number and the DHA client-registry reference are held where applicable. | Patient Directory · DHA eligibility | VERIFIED | high | patients.national_id, sha_number, dha_client_registry_id; eligibility service | Schema and DHA eligibility code inspection. | — |
+| FN-05 | **Duplicate patient detection**<br>A likely duplicate is detected before a second record is created, and records can be reconciled. | Patient Directory | PARTIAL | high | duplicateWarning in PatientRegistrationModule.tsx; no merge or reconciliation endpoint | Source inspection. The warning is client-side; no server-side duplicate rule or merge path was found. | — |
+| FN-06 | **Patient consent capture**<br>Consent is recorded with version, method and evidence, and access is restricted accordingly. | patient_consents (schema only) | MISSING | critical | schema.ts defines patient_consents; no route, service or screen reads or writes it | Exhaustive search for patient_consents across src/: only the table declaration and DHA consent placeholders use it. | — |
+| FN-07 | **Computerised medication orders**<br>A clinician can order medication, and the order reaches dispensing. | Outpatient · Pharmacy | VERIFIED | critical | prescriptions routes; src/tests/pharmacy-batches.test.ts (80 assertions) | Automated test plus route inspection. | — |
+| FN-08 | **Laboratory orders and specimen tracking**<br>A lab order is created, tracked through specimen collection, resulted, verified and published. | Laboratory | VERIFIED | critical | lab_orders, lab_results, migrations 0008; laboratory routes; src/tests/nursing-contracts.test.ts | Automated tests and migration inspection. | — |
+| FN-09 | **Radiology orders and reports**<br>An imaging order is created, reported by a radiologist, and returned to the record. | Radiology | IMPLEMENTED_UNTESTED | high | GET/POST /api/radiology-orders, PUT /api/radiology-orders/:id/report | Routes inspected and scoped during this audit; no automated test exercises them. | — |
+| FN-10 | **Physiotherapy, occupational therapy, nutrition, social work, counselling**<br>Allied-health orders and notes are captured as part of the encounter. | Not implemented | MISSING | medium | No table, route, screen or test for any of the five disciplines. | Repository-wide search for each discipline returned zero matches. | — |
+| FN-11 | **Family history**<br>Family history is recorded against the patient. | Not implemented | MISSING | medium | No family-history table, field, route or screen. | Repository-wide search returned zero matches. | — |
+| FN-12 | **Vital signs and growth**<br>Vital signs are recorded per encounter; BMI and growth are derived for children. | Outpatient · observations | PARTIAL | high | observations routes and table; no BMI or growth-chart derivation found | Route and schema inspection. | — |
+| FN-13 | **Diagnoses and problem list**<br>Primary and secondary diagnoses are coded, retained over time, and correctable without erasing history. | Outpatient · diagnoses | PARTIAL | high | GET/POST /api/diagnoses, diagnoses table; no persistent problem list and no code-system validation | Route inspection; ICD-10 codes are free text, not constrained. | — |
+| FN-14 | **Medication catalogue**<br>A maintained catalogue supplies the products that can be prescribed. | Pharmacy | VERIFIED | high | medications table; GET/POST /api/medications; PUT /api/medications/:id/status | Route inspection and pharmacy test suite. | — |
+| FN-15 | **Allergy and interaction checking**<br>Known allergies and clinically significant interactions warn the prescriber. | Not implemented | MISSING | critical | The only allergy field is a boolean in the theatre safety checklist; no allergy registry, no interaction engine. | Repository-wide search for allergy/interaction. | — |
+| FN-16 | **Clinical decision support**<br>Rules evaluate clinical inputs and surface prioritised, non-disappearing alerts. | Not implemented | MISSING | high | No rules engine, threshold table or alert queue. | Repository-wide search returned zero matches. | — |
+| FN-17 | **Clinical summary**<br>A summary assembles demographics, encounters, diagnoses, medication, vitals and results for one patient only. | PatientJourneyModal · OPD | PARTIAL | high | src/components/PatientJourneyModal.tsx; per-patient queries scoped by patient id | Source inspection. No automated test asserts the full summary or its cross-patient isolation. | — |
+| FN-18 | **Electronic prescribing lifecycle**<br>A prescription can be created, authorised, amended or cancelled, dispensed and audited. | Outpatient · Pharmacy | VERIFIED | critical | src/tests/pharmacy-batches.test.ts; prescription and dispensing routes | Automated test plus route inspection. | — |
+| FN-19 | **Quality measures**<br>Indicators are calculated from real, period-filtered facility data. | Reports & revenue | PARTIAL | medium | GET /api/analytics/summary, GET /api/analytics/revenue; facility scoping enforced | Route inspection. Operational aggregates exist; no defined quality-indicator set or denominator rules. | — |
+| FN-20 | **Maternal and child health**<br>Antenatal, labour, delivery, postnatal and immunisation encounters are recorded. | Maternity & MCH | VERIFIED | high | src/tests/maternity.test.ts (131), src/tests/postnatal-immunisation.test.ts (151); migrations 0015, 0016 | Automated tests and migration inspection. | — |
+
+## Security & privacy (weight 30%)
+
+| ID | Requirement | Module | Status | Severity | Evidence | Verification | External dependency |
+|---|---|---|---|---|---|---|---|
+| SP-01 | **ODPC registration**<br>The responsible legal entity is registered as a data controller/processor with the ODPC. | Organisational — not software | BLOCKED | critical | No registration certificate, number or entity record exists in the repository. | Repository search. A registration cannot be inferred from source code, and none was fabricated. | The facility/company must register with the Office of the Data Protection Commissioner and supply the certificate. |
+| SP-02 | **Data Protection Impact Assessment**<br>A DPIA covering the actual deployment and processing is documented, reviewed and approved. | Organisational — not software | BLOCKED | critical | No DPIA exists in the repository. A populated draft template is delivered with this audit. | Repository search. The draft is prepared from verified system facts and is explicitly not approved. | Data protection officer or responsible officer must review, sign and date the DPIA. |
+| SP-03 | **Authentication**<br>Passwords are hashed with a memory-hard function; sessions are random, hashed at rest, expiring and revocable. | src/auth · src/utils/password.ts | VERIFIED | critical | argon2 hashing; 48-byte session tokens stored as SHA-256; 8-hour expiry; security_version invalidation; src/tests/auth-service.test.ts | Automated tests and code inspection. | — |
+| SP-04 | **Role-based access control**<br>Every sensitive endpoint enforces a permission, not merely a session. | src/auth/authorization.middleware.ts | PARTIAL | critical | 13 /api routes had no permission check at the start of this audit; 8 were closed in this pass (theatre, radiology, suppliers, purchase orders). | Static enumeration of all 133 /api routes and manual reading of the unguarded ones. | — |
+| SP-05 | **Tenant and facility isolation**<br>A facility cannot read or modify another facility’s records, including by guessing an id. | src/auth/scope.service.ts · src/db/queries.ts | PARTIAL | critical | Theatre cases, radiology orders, suppliers and purchase orders were readable across facilities before this audit; now scoped. Object-level checks added for theatre and radiology updates. | Route-by-route inspection. Remaining id-addressed routes are listed in the audit documents as unaudited. | — |
+| SP-06 | **Audit trail**<br>Sensitive actions are recorded with actor, action, target, time and outcome, and ordinary users cannot alter the history. | audit_logs · Audit Trail screen | PARTIAL | high | audit_logs table with tenant/facility/user indexes; logAuditEvent on sensitive writes; GET /api/audit-logs requires audit.read | Schema, query and route inspection. No database trigger or privilege revokes UPDATE/DELETE on audit_logs; patient-record *views* are not logged. | — |
+| SP-07 | **Encryption in transit**<br>Client traffic and database traffic use TLS with certificate verification. | src/config/env.ts · deployment | PARTIAL | critical | Helmet and CORS are configured; the database connection previously hard-coded ssl:false and is now SQL_SSL-controlled with verification on by default. The application itself terminates no TLS. | Configuration inspection. TLS termination must be proven at the deployment layer, which is not in this repository. | Deployment/operations must terminate TLS 1.2+ and set SQL_SSL=true for any non-local database. |
+| SP-08 | **Encryption at rest**<br>The database, its backups and any object storage are encrypted, with keys managed and rotated. | Deployment | MISSING | critical | No storage-encryption configuration, key-management integration or encrypted-backup procedure exists in the repository. | Repository-wide search. HTTPS does not encrypt a database file, and no such claim is made. | Hosting provider or DBA must enable storage encryption and document key custody. |
+| SP-09 | **Backup and disaster recovery**<br>Backups are automated, encrypted, retained, access-controlled and restoration-tested. | Operations | MISSING | critical | No backup script, schedule, retention policy or restoration runbook in the repository. | Repository search. Nothing was executed against a database. | Operations must implement and test a restore; the recovery document supplied with this audit is a template, not evidence. |
+| SP-10 | **Brute-force protection**<br>Repeated failed sign-ins are rate limited and lock the account. | src/middleware · src/auth/auth.service.ts | VERIFIED | high | express-rate-limit (15-minute auth window, 60-second API window); failed_login_attempts, locked_until; src/tests/http-security.test.ts (54 assertions) | Automated test and code inspection. | — |
+| SP-11 | **Multi-factor authentication**<br>A second factor protects privileged and remote access where the risk assessment requires it. | Not implemented | MISSING | medium | No TOTP, WebAuthn or SMS second factor anywhere in the codebase. | Repository-wide search returned zero matches. | — |
+| SP-12 | **Secrets handling**<br>Credentials are not committed, and production secrets are managed and rotated. | .gitignore · .env.example | PARTIAL | high | .env and firebase-applet-config.json are ignored; .env.example carries names only; DHA credentials are read from the environment and never returned by the readiness endpoint. | git ls-files and grep for literal secrets. No rotation mechanism or secret manager is present. | — |
+
+## Public health reporting (weight 20%)
+
+| ID | Requirement | Module | Status | Severity | Evidence | Verification | External dependency |
+|---|---|---|---|---|---|---|---|
+| PH-01 | **Immediate reportable disease capture**<br>A suspected reportable disease is captured immediately with condition, counts, age group and epi-week. | Public health · POST /api/public-health/reports | PARTIAL | critical | Validated route (ICD-10 code, epi-week pattern, counts), scoped to the facility; screen rewritten in this audit to stop claiming national transmission | Route inspection and validation review. No submission channel, no acknowledgement, no retry. | — |
+| PH-02 | **IDSR weekly reporting**<br>A weekly IDSR return is generated for the reporting period and submitted. | Not implemented | MISSING | critical | No IDSR aggregate, period table or return generator. The MOH 705 endpoint returns 501 by design. | Route inventory and repository search. | — |
+| PH-03 | **Public health events and IHR**<br>Events of international concern can be recorded, classified and notified under IHR processes. | Not implemented | MISSING | high | No event, risk-assessment or notification entity exists. | Repository search returned zero matches. | — |
+| PH-04 | **MOH 705 routine return**<br>The outpatient morbidity return is produced from encounter data for a stated period. | GET /api/interop/dha/moh-705 | MISSING | high | The endpoint deliberately returns 501 MOH705_REPORT_NOT_IMPLEMENTED; the screen now shows that reason. | Route inspection and UI review. | — |
+| PH-05 | **Reporting-period correctness**<br>Reports are bound to a computed period, not a constant. | Public health · Maternity | PARTIAL | medium | The epi-week was hard-coded as 2026-W40 in the screen and is now derived (currentEpiWeek); the server validates the pattern. | Source inspection before and after the fix. No server-side period table exists. | — |
+| PH-06 | **Submission, retry and duplicate handling**<br>Failed submissions are recorded and retried safely; duplicates are prevented and history preserved. | Not implemented | MISSING | high | No outbox, submission status, retry counter or idempotency key for public-health reporting. | Repository search returned zero matches. | — |
+
+## Interoperability (weight 15%)
+
+| ID | Requirement | Module | Status | Severity | Evidence | Verification | External dependency |
+|---|---|---|---|---|---|---|---|
+| IO-01 | **DHA authentication and configuration**<br>The system authenticates to DHA with client credentials and separates mock, sandbox and production. | src/integrations/dha/dha.config.ts · dha.client.ts | IMPLEMENTED_UNTESTED | high | Three explicit modes; production disabled unless DHA_ALLOW_PRODUCTION=true; token cache and retry; src/tests/dha.test.ts (176 assertions) against fixtures | Automated fixture tests. No sandbox credential was available, so no live token exchange was attempted. | DHA must issue a client id, secret and facility registry code. |
+| IO-02 | **SHA eligibility and benefits**<br>Eligibility, benefits, interventions and POMSF balances are retrieved for a patient. | src/integrations/dha/dha.eligibility.ts | IMPLEMENTED_UNTESTED | high | Six implemented operations in DHA_OPERATIONS; mock fixtures; readiness endpoint reports them | Fixture tests only. Contracts were taken from the published DHA reference pages listed in the audit. | Sandbox credentials and an approved facility. |
+| IO-03 | **Claims, authorisation and consent**<br>Claim creation, line items, diagnoses, pre-authorisation and remittance are exchanged with DHA. | src/integrations/dha/dha.readiness.ts | MISSING | high | Declared not implemented, with the reason recorded per operation; consent capture has no OTP or biometric channel. | The readiness register is explicit rather than optimistic. | — |
+| IO-04 | **FHIR Patient**<br>A patient can be exported as a FHIR Patient resource. | GET /api/interop/fhir/patient/:id | PARTIAL | medium | One read-only Patient resource with an identifier and managing organization; access is audited. | Route inspection. No validator was run, and no other resource exists. | — |
+| IO-05 | **FHIR clinical resources**<br>Encounter, Condition, Observation, MedicationRequest, DiagnosticReport and related resources are exchanged. | Not implemented | MISSING | medium | No builder or endpoint for any resource other than Patient. | Repository search for resourceType. | — |
+| IO-06 | **Terminology and coding**<br>Diagnoses, medicines, laboratory tests and procedures use agreed code systems with mappings. | Partial — ICD-10 text only | PARTIAL | high | ICD-10 codes are captured as free text in the public-health form; no KNHTS, LOINC or ATC mapping table exists. | Schema and form inspection. | KNHTS release files and the DHA terminology service. |
+| IO-07 | **Integration reliability**<br>Integrations have timeouts, retries, idempotency, logging and reconciliation. | src/integrations/dha/dha.client.ts | PARTIAL | medium | Timeout and retry settings (DHA_TIMEOUT_MS, DHA_MAX_RETRIES); structured errors; readiness probe | Code inspection. No outbound message store, idempotency key or reconciliation job. | — |
+| IO-08 | **SDMX / statistical exchange**<br>Statistical exchange is implemented only where a reporting requirement demands it. | Not applicable | NOT_APPLICABLE | low | No supplied DHA requirement or specification calls for SDMX in this deployment. | The audit did not invent a standard to raise a score. | — |
+
+## Notes carried from individual requirements
+
+- **FN-05 Duplicate patient detection** — A warning without a reconciliation workflow leaves the duplicate in place. Not counted as met.
+- **FN-06 Patient consent capture** — DHA consent authorisation (OTP) is separately blocked; this row concerns the facility-level consent record.
+- **FN-09 Radiology orders and reports** — Before this audit these routes had no permission check and no facility scope.
+- **FN-15 Allergy and interaction checking** — A prescribing system without an allergy record is a patient-safety gap, not a cosmetic one.
+- **SP-04 Role-based access control** — Five unguarded routes remain to be reviewed, and 33 id-addressed routes have not been checked for object-level ownership.
+- **SP-05 Tenant and facility isolation** — This is the most serious finding of the audit and is only partly closed.
+- **PH-04 MOH 705 routine return** — The previous screen displayed an empty table, a hard-coded period and an export button that downloaded JSON null.
+- **IO-08 SDMX / statistical exchange** — Re-open if the certification scope names SDMX explicitly.
+
+_This is a technical self-assessment computed from the requirements register in this repository. It is not a DHA assessment, an approval or a certification, and no score here may be presented as one._

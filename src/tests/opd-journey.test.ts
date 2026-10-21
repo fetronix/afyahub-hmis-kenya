@@ -172,10 +172,21 @@ function testRadiology(): void {
   assertEqual(request.encounterId, null, 'an order without an encounter is allowed');
 
   const app = source('src/app.ts');
-  const route = app.slice(
-    app.indexOf("app.post('/api/radiology-orders'"),
-    app.indexOf("app.put('/api/radiology-orders/:id/report'"),
+  /*
+   * The route is matched by shape rather than by exact formatting: it
+   * was reformatted onto several lines when the audit added permission
+   * and scope guards, and this assertion is about the charge request,
+   * not about where the line breaks fell.
+   */
+  const routeStart = app.search(/app\.post\(\s*'\/api\/radiology-orders'/);
+  const routeEnd = app.search(
+    /app\.put\(\s*'\/api\/radiology-orders\/:id\/report'/,
   );
+
+  const route =
+    routeStart === -1 || routeEnd === -1
+      ? ''
+      : app.slice(routeStart, routeEnd);
 
   assert(route.includes('radiologyChargeRequest'), 'the radiology route uses the shared request');
   assert(!route.includes('testName'), 'the radiology route no longer looks for testName');
