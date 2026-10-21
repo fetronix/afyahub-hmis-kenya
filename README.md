@@ -25,7 +25,7 @@ screen was exercised, or that a clinician has accepted it.
 
 1. **Foundation and project structure — Completed**
 2. **Authentication, permissions and onboarding — Completed** (staff invitations, role catalogue, permission seed)
-3. **Multi-tenant and facility security — In progress.** Most queries are scoped through `resolveFacilityScope` and `getFacilityByIdScoped`. Three clinical paths are still unscoped: `getObservations`, `getDiagnoses`, `recordDiagnosis`. This is the last known cross-facility read in the codebase.
+3. **Multi-tenant and facility security — In progress.** Most queries are scoped through `resolveFacilityScope` and `getFacilityByIdScoped`. The clinical paths named in §5 — observations, diagnoses and procedures — now resolve the encounter before reading or writing and refuse a request that names neither an encounter nor a patient; the laboratory routes pass `authContext` into `resolveFacilityScope`. The unscoped functions still exist in `queries.ts`, but no route calls them and `test:security` fails if one starts to. This is not a clean bill of health: the remaining query functions have not been audited one by one.
 4. **PUCHE facility overview — Completed**
 5. **Patient registration and records — Completed**
 6. **OPD, triage and consultations — In progress; current priority.** Queue and triage exist; the queue → triage → consultation → investigation → follow-up path has not been walked end to end.
@@ -36,7 +36,7 @@ screen was exercised, or that a clinician has accepted it.
 11. **Tariffs, billing, payments and insurance — Implemented.** Billing spine, mobile money settlement with overpayment handling, and the claims workflow (draft → submit → adjudicate → settle). 31 + 85 + 93 assertions.
 12. **Reports, analytics and public-health reporting — Implemented.** Analytics summary and the reporting dashboard (216 assertions).
 13. **Interoperability and integrations — Implemented to the published contract.** DHA/AfyaConnect client, readiness report, member eligibility, coverage and service-area mapping. Professional registration verification against the Health Worker Registry (§3.8). **No live credential exists, so nothing has been exercised against DHA.** 176 + 100 assertions.
-14. **Security, regression and user acceptance testing — Not started.**
+14. **Security, regression and user acceptance testing — In progress.** HTTP hardening is implemented and was exercised against a running server (§3.9): security headers, an origin allowlist, and per-IP rate limits on sign-in and the API. Still absent: independent review or penetration testing, a load test, a restore drill, monitoring and alerting, and any user acceptance.
 15. **Production deployment and handover — Not started.**
 
 **Status definitions:** Completed means implementation progress has been reported. Verified requires relevant implementation and test evidence. Do not mark a milestone Verified solely because the TypeScript check and production build pass.
@@ -298,6 +298,48 @@ Mock fixtures are keyed on the identifier so a demo is reproducible: `11111111` 
 
 **Not verified:** no request has been made to the real Health Worker Registry (no credentials), and the screens were not opened in a browser. The response key mapping is unconfirmed until the first sandbox call.
 
+### 3.9 HTTP hardening, and the clinical paths closed in §5
+
+**Why now.** The API sent no security headers, had no CORS policy at all, and placed no limit on sign-in attempts. None of that requires a database migration or a design decision, and all three are things a reviewer would flag on the first afternoon.
+
+**What is mounted, and in what order.** In `src/app.ts`, before the body is parsed:
+
+1. `app.disable('x-powered-by')` — the framework is not advertised.
+2. `helmet()` — `nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: same-origin`, COOP/CORP, and, **in production only**, a content security policy (`frame-ancestors 'none'`, no inline script) and HSTS (`max-age=15552000; includeSubDomains`). The CSP is off in development because Vite's HMR injects inline scripts; a policy loose enough for HMR is not worth shipping.
+3. `cors()` — an allowlist built from `APP_BASE_URL` plus any `CORS_ALLOWED_ORIGINS`, with the localhost dev origins added only when `NODE_ENV` is not `production`. A refused origin is answered **without** CORS headers rather than with an error, so the browser blocks the response and the server says nothing about which routes exist. There is no wildcard and no origin reflection.
+4. `express-rate-limit` on `/api/auth` — 10 **failed** attempts per IP per 15 minutes. `skipSuccessfulRequests` is on: a busy reception desk that signs in correctly all day must not be locked out by its own success. Answers `429 RATE_LIMITED` with a plain message.
+5. `express-rate-limit` on `/api` — 300 requests per minute per IP.
+6. `express.json({ limit: '1mb' })` — the largest body this application receives is a claim or an invoice.
+
+**Configuration.** `TRUST_PROXY=true` behind a reverse proxy (nginx, cPanel, Cloudflare); without it every request appears to come from the proxy and one client can exhaust the facility's budget. `CORS_ALLOWED_ORIGINS` takes a comma-separated list. Both are documented in `.env.example`.
+
+**Exercised against a running server** (production mode, `APP_BASE_URL=https://hmis.example.co.ke`):
+
+- Response headers included `Content-Security-Policy` with `frame-ancestors 'none'`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: same-origin`, and `RateLimit: limit=300, remaining=299, reset=60`. `X-Powered-By` was absent.
+- `Origin: https://hmis.example.co.ke` → `Access-Control-Allow-Origin: https://hmis.example.co.ke`.
+- `Origin: https://evil.example` → no `Access-Control-Allow-Origin` header at all.
+- Twelve wrong-password sign-ins → `401` ten times, then `429` with `{"success":false,"error":"RATE_LIMITED", ...}`.
+
+**What this does not do.** The limiter keeps its counters in process memory: they reset on restart and are not shared between processes, so a multi-process deployment needs a shared store. There is no CSRF token — the API authenticates with a bearer token rather than a cookie, and the origin allowlist is the control in place; that reasoning stops holding the day a cookie is introduced. There is still no penetration test, no load test and no monitoring.
+
+**The clinical paths.** `GET/POST /api/diagnoses` and `GET/POST /api/procedures` were the three unscoped reads and writes listed in §5. They now call `getDiagnosesScoped`, `recordDiagnosisScoped`, `getProceduresScoped` and `recordProcedureScoped`, which:
+
+- resolve the encounter once, through `loadEncounterInScope`, and reject an encounter that belongs to another tenant or facility with `ENCOUNTER_NOT_FOUND` — the same answer as an encounter that does not exist, so the response does not confirm that a record exists elsewhere;
+- refuse a read that supplies neither `encounterId` nor `patientId` (`SCOPE_FILTER_REQUIRED`) instead of returning the table;
+- reject a body whose patient does not match the encounter patient (`PATIENT_ENCOUNTER_MISMATCH`);
+- for a patient-only read, accept a patient who is registered at the caller's facility **or** has been seen there. A patient's registration facility is not the facility where they are receiving care, and requiring the two to match would hide a genuine record.
+
+The legacy `getDiagnoses`, `recordDiagnosis`, `getProcedures` and `recordProcedure` remain in `queries.ts` — other code may still reference them — but no route calls them.
+
+**Validation completed:**
+
+- `npm run test:security` — 54 assertions: the allowlist (exact match, scheme, look-alike domain, malformed config, localhost only outside production), the limits and their windows, `skipSuccessfulRequests`, the absence of any wildcard or reflection, mount order, the production-only CSP and HSTS, the four routes' use of the scoped functions, and the refusal of an unfiltered read.
+- `npm test` — **1,543 assertions across eleven suites**, all passing.
+- `npm run build` — passed (`✓ built in 595ms`; the bundle-size warning is pre-existing).
+- `npm run lint` — only the pre-existing `src/lib/firebase.ts` missing-config error.
+
+**Not verified:** no penetration test, no load test, and the screens were not walked in a browser after the change.
+
 ## 4. Existing backups and modified files to preserve
 
 ### Backups created during the latest session
@@ -331,7 +373,9 @@ The latest inspection confirmed that `src/auth/auth.middleware.ts` defines `Auth
 - `authContext?: AuthorizationContext`
 - session information
 
-`requireAuth` loads the authorization context and attaches the authenticated user. The inspected output did not include the remaining lines showing whether `req.authContext` is actually assigned, so this must be confirmed from the existing implementation before wiring scoped operations.
+`requireAuth` loads the authorization context and attaches it to the request (`src/auth/auth.middleware.ts:144`). Routes read it through `requireAuthContext`, which answers `401 AUTHORIZATION_CONTEXT_MISSING` rather than continuing with an undefined context.
+
+**Status of this section, 21 October 2026.** The clinical paths are closed. `GET/POST /api/diagnoses` and `GET/POST /api/procedures` call `getDiagnosesScoped`, `recordDiagnosisScoped`, `getProceduresScoped` and `recordProcedureScoped`; observations already went through `nursing.getObservationsScoped`; the laboratory functions take `authContext` and apply `resolveFacilityScope`. Details and the tests are in §3.9. The generic functions below are still in `queries.ts`, unreferenced by any route. The rule that follows is not retrospective — it is the rule any new route must satisfy.
 
 Existing scope helpers are available in `src/db/queries.ts`, including:
 
@@ -342,16 +386,16 @@ Existing scope helpers are available in `src/db/queries.ts`, including:
 - `createEncounterScoped`
 - `updateEncounterScoped`
 
-The clinical and laboratory query functions currently include generic operations that may trust client-supplied filters or IDs. Examples include:
+These generic functions accept filters or record IDs and, on their own, do not establish scope:
 
-- `getObservations`, `recordObservation`
-- `getDiagnoses`, `recordDiagnosis`
-- `getProcedures`, `recordProcedure`
-- `getLabOrders`, `createLabOrder`
-- `updateLabOrderStatus`
-- `getLabResults`, `addLabResult`
+| Function | Who calls it now |
+|---|---|
+| `getObservations`, `recordObservation` | superseded by `nursing.getObservationsScoped` for reads; **no route** |
+| `getDiagnoses`, `recordDiagnosis` | **no route** — replaced by the `*Scoped` variants |
+| `getProcedures`, `recordProcedure` | **no route** — replaced by the `*Scoped` variants |
+| `getLabOrders`, `createLabOrder`, `updateLabOrderStatus`, `getLabResults`, `addLabResult` | the routes, passing `authContext`; reads scope through `resolveFacilityScope`, writes go through the parent order |
 
-Some of these functions can return records without a facility filter, and certain writes update by record ID alone. Do not assume the new route permissions solve these data-isolation problems.
+Some of these functions can still return records without a facility filter if called directly, and some writes update by record ID alone. Do not assume the new route permissions solve these data-isolation problems.
 
 **Required security rule:** Authorisation and data scope must both be enforced. Resolve the authenticated user's permitted tenant/facility scope from trusted server-side context, validate the actual database relationships, and reject cross-scope reads and writes. Never rely on a client-provided `facilityId` as proof of access.
 
@@ -359,22 +403,22 @@ For clinical observations, diagnoses and procedures, validate the encounter's te
 
 For laboratory results, validate access through the parent order and its patient, tenant and facility relationships.
 
-## 6. Laboratory workflow concern
+## 6. Laboratory workflow concern — resolved
 
-The current `addLabResult` implementation inserts a result and then immediately updates the corresponding laboratory order to `Published`. This does not safely separate result entry from result verification/publication.
+**This concern is closed.** Migration `0008` made `lab_results.verified_by` and `verified_at` nullable, `addLabResult` now writes `Pending Verification` with both columns null, and `POST /api/lab-results/:id/verify` publishes a result only when the caller holds `laboratory.results.verify`. See milestone 9 in §2. The text below is kept as the record of the problem and the workflow it had to satisfy; read it in the past tense.
 
-The existing schema also has `labResults.verifiedAt` as a non-null field with a default timestamp. This makes it unsuitable for accurately representing an unverified result without revisiting the data model.
+**What was wrong at the time.** `addLabResult` inserted a result and immediately moved the laboratory order to `Published`, so an entered result was indistinguishable from a verified one. `labResults.verifiedAt` was non-null with a default timestamp, which could not represent an unverified result at all.
 
-Required workflow:
+**The workflow the implementation had to satisfy** (all six steps are now possible):
 
 1. Clinician orders an investigation.
 2. Laboratory staff receive the order and collect/process the sample.
 3. Authorised laboratory staff enter the result.
-4. An authorised verifier reviews and verifies the result, where required by facility policy.
+4. An authorised verifier reviews and verifies the result.
 5. The result is published and made available to the clinician.
-6. The clinician reviews the result and records the appropriate follow-up.
+6. The clinician reviews the result and records the follow-up.
 
-**Outstanding:** Inspect the existing lab-result schema and UI, then implement the smallest safe distinction between result entry and verification/publication. Determine whether a migration is needed. If required, create and review a minimal migration and take a verified backup first. Never reset the database or silently treat an entered result as verified.
+The rule that produced this split still holds: never reset the database and never silently treat an entered result as verified.
 
 The existing laboratory facility-module middleware must remain in place. Do not remove it to make the routes work.
 
@@ -542,19 +586,17 @@ Following the latest permissions changes:
 
 ## 2. Outstanding risks and unverified areas
 
-### High priority — Tenant and facility isolation
-- Some clinical and laboratory query functions still use generic reads or writes.
-- Certain operations may rely on client-provided IDs or filters without validating the associated encounter, patient, tenant and facility.
-- Route-level permission middleware alone does not prevent cross-facility data access.
-- The authenticated request's `authContext` property is declared, but its assignment in the complete middleware flow still needs confirmation.
+### Tenant and facility isolation — clinical paths closed, audit incomplete
+- **Closed 21 October 2026:** the diagnoses and procedures routes resolve the encounter through `loadEncounterInScope` and refuse a read with no encounter or patient filter; observations went through `nursing.getObservationsScoped` earlier; the laboratory routes pass `authContext` into `resolveFacilityScope`. `req.authContext` is assigned at `src/auth/auth.middleware.ts:144` — this was confirmed, not assumed. Covered by `test:security` (54 assertions). Details in §3.9.
+- **Still open:** the generic functions remain in `queries.ts` and would still return an unfiltered set if a future route called them; the remaining query functions have not been audited one by one; route-level permission middleware alone does not prevent cross-facility access.
 
-**Required outcome:** Every affected read and write must enforce the authenticated user's actual scope using trusted server-side context and database relationships.
+**Standing rule:** every read and write must enforce the authenticated user's actual scope using trusted server-side context and database relationships.
 
-### High priority — Laboratory result lifecycle
-- `addLabResult` currently marks an order `Published` immediately after inserting a result.
-- `verifiedAt` is non-null and defaults to the current timestamp, complicating the distinction between entered and verified results.
-- A safe verification/publication workflow has not yet been implemented or verified.
-- A minimal schema migration may be necessary; this must be decided after inspecting the current schema and UI.
+### Laboratory result lifecycle — resolved
+- `addLabResult` writes `Pending Verification` with `verified_by`/`verified_at` null; publication is a separate, permission-gated step (`laboratory.results.verify`).
+- Migration `0008` made both columns nullable, so an unverified result is representable.
+- Covered by assertions in `test:nursing` and `test:migrations`. §6 keeps the original problem statement.
+
 
 ### Permissions
 - The doctor default role catalogue has been updated, but effective permissions for existing database role assignments and facility-specific overrides remain unverified.
@@ -571,7 +613,8 @@ Following the latest permissions changes:
 - This is a performance optimisation concern, not a build failure.
 
 ### Production readiness
-- Comprehensive security testing, regression testing, client acceptance and production deployment remain outstanding.
+- HTTP hardening is in place: security headers, an origin allowlist and per-IP rate limits (§3.9). This is configuration, not a security review.
+- Independent security testing, a load test, a restore drill, monitoring, regression testing with users, client acceptance and production deployment all remain outstanding.
 - No claim of full DHA or regulatory compliance has been established by these changes.
 
 ## 3. Work preservation
@@ -589,12 +632,12 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 
 ## 4. Next actions — in priority order
 
-1. **Finish clinical and laboratory scope enforcement.** Validate authenticated context, resolve the permitted facility, and scope observations, diagnoses, procedures, laboratory orders, status updates and results.
-2. **Separate laboratory result entry from verification and publication.** Implement the smallest safe change and migration, if required.
-3. **Verify effective permissions.** Test doctor, triage/reception and laboratory staff access, including existing facility overrides.
-4. **Finish Step 6.** Validate the queue → triage → consultation → investigation/follow-up workflow.
-5. **Run focused checks.** Execute TypeScript, production build, whitespace checks and runtime tests for the changed paths.
-6. **Update the tracker with evidence.** Mark individual tasks Verified only when their relevant checks pass, then advance to Step 7.
+1. **Finish Step 6 in a browser.** Walk queue → triage → consultation → investigation → follow-up with seeded data and record what breaks. The clinical writes are scoped and tested; the screens have not been exercised.
+2. **Apply migrations 0012–0014, then run `npm run db:status:all`.** Additive only, `IF NOT EXISTS`, no destructive statements. This is a facility action — the commands and failure guidance are in §10.3 and §10.6.
+3. **Audit the remaining query functions** for the pattern closed in §3.9: a route that passes a client-supplied `facilityId` or a bare record ID where a scope check belongs.
+4. **Verify effective permissions.** Test doctor, triage/reception and laboratory access, including facility overrides.
+5. **Begin maternity/MCH** — milestone 8, the largest untouched module. Nothing exists in the schema yet, so it starts with a design, not a patch.
+6. **Update the tracker with evidence.** Mark a task Verified only when its own checks pass; "the test suite passes" is not evidence that a screen works.
 
 ## 5. Current status summary
 
@@ -605,13 +648,15 @@ Do not reset the branch, delete backups, drop tables, truncate data or run destr
 | Patient registration changes | Implemented; prior build and type checks passed |
 | Analytics summary endpoint | Implemented; prior build and type checks passed |
 | Latest API permission middleware | Implemented; type check and build passed |
-| Tenant/facility scope for affected clinical and lab queries | Outstanding |
-| Laboratory verification/publication workflow | Outstanding |
-| End-to-end OPD/triage verification | In progress |
-| Comprehensive security and regression testing | Not started |
+| Tenant/facility scope for clinical and lab queries | Clinical paths closed and tested; remaining queries not audited |
+| Laboratory verification/publication workflow | Resolved (migration 0008) |
+| HTTP hardening (headers, CORS, rate limits) | Implemented and probed against a running server |
+| End-to-end OPD/triage verification | In progress — no browser walkthrough yet |
+| Independent security testing, load test, restore drill | Not started |
+| Comprehensive regression testing and user acceptance | Not started |
 | Production deployment and handover | Not started |
 
-**Immediate focus:** Complete and validate tenant/facility scope enforcement for clinical and laboratory operations, then finish the OPD/triage workflow. Avoid reopening completed work unless a specific defect is demonstrated.
+**Immediate focus:** finish the OPD/triage workflow in a browser, then start maternity/MCH. Avoid reopening completed work unless a specific defect is demonstrated.
 
 ## 10. Migrations and full sync
 

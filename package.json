@@ -24,23 +24,27 @@
     "test:pharmacy-batches": "tsx src/tests/pharmacy-batches.test.ts",
     "test:payments": "tsx src/tests/payments.test.ts",
     "test:claims": "tsx src/tests/claims.test.ts",
-    "test": "npm run test:inpatient && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:migrations",
+    "test": "npm run test:inpatient && npm run test:billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:security && npm run test:migrations",
     "db:status:all": "tsx scripts/migration-status.ts --expect-all",
     "test:dha": "tsx src/tests/dha.test.ts",
     "test:verification": "tsx src/tests/professional-verification.test.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "test:security": "tsx src/tests/http-security.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "argon2": "^0.45.1",
+    "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.11",
     "drizzle-orm": "^0.45.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.1",
     "firebase": "^12.19.0",
     "firebase-admin": "^14.5.0",
+    "helmet": "^8.3.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "pg": "^8.23.1",
@@ -49,6 +53,7 @@
     "vite": "^8.3.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/pg": "^8.23.1",

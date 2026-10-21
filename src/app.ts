@@ -42,6 +42,13 @@ import * as nursing from './nursing/nursing.service.ts';
 import * as reporting from './reporting/reporting.service.ts';
 import * as inventory from './inventory/inventory.service.ts';
 
+import {
+  createApiRateLimiter,
+  createAuthRateLimiter,
+  createCorsMiddleware,
+  createHelmetMiddleware,
+} from './middleware/http-security.middleware.ts';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -55,7 +62,36 @@ export async function createApp() {
 
   const app = express();
 
-  app.use(express.json());
+  /*
+   * =========================================================
+   * HTTP SECURITY
+   * =========================================================
+   *
+   * Headers, origin allowlist and rate limits run before the body is
+   * parsed, so a refused request costs nothing and never reaches a route.
+   *
+   * TRUST_PROXY must be set when the app sits behind a reverse proxy,
+   * otherwise every request appears to come from the proxy address and a
+   * single busy client would rate-limit the whole facility.
+   */
+  app.disable('x-powered-by');
+  app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+
+  app.use(createHelmetMiddleware());
+  app.use(createCorsMiddleware());
+
+  /* Sign-in and invitation acceptance: counted on failures only. */
+  app.use('/api/auth', createAuthRateLimiter());
+
+  /* Everything else: a broad per-IP ceiling. */
+  app.use('/api', createApiRateLimiter());
+
+  /*
+   * 1 MB is generous for this application (the largest body is a
+   * claim or an invoice) and stops a single request from pinning the
+   * process while it parses.
+   */
+  app.use(express.json({ limit: '1mb' }));
 
   /*
    * =========================================================
@@ -1288,79 +1324,93 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   // DIAGNOSES & PROCEDURES
   // =========================================================
 
-  app.get('/api/diagnoses', requirePermission('clinical.read'), async (req, res) => {
+  app.get('/api/diagnoses', requirePermission('clinical.read'), async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+
+    if (!context) return;
+
     try {
-      const encounterId =
-        req.query.encounterId
-          ? Number(req.query.encounterId)
-          : undefined;
+      const encounterId = parseOptionalPositiveId(req.query.encounterId, 'encounterId');
+      const patientId = parseOptionalPositiveId(req.query.patientId, 'patientId');
 
-      const patientId =
-        req.query.patientId
-          ? Number(req.query.patientId)
-          : undefined;
-
-      const list =
-        await queries.getDiagnoses(
-          encounterId,
-          patientId
-        );
+      /*
+       * Scoped: no filter is refused rather than answered with every
+       * diagnosis in the database.
+       */
+      const list = await queries.getDiagnosesScoped(context, {
+        encounterId,
+        patientId,
+      });
 
       res.json(list);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (handleInpatientError(err, res)) return;
+
+      console.error('Diagnosis list error:', err);
       res.status(500).json({
-        error: err.message,
+        success: false,
+        error: 'DIAGNOSIS_LIST_FAILED',
       });
     }
   });
 
-  app.post('/api/diagnoses', requirePermission('clinical.create'), async (req, res) => {
+  app.post('/api/diagnoses', requirePermission('clinical.create'), async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+
+    if (!context) return;
+
     try {
-      const diag =
-        await queries.recordDiagnosis(
-          req.body
-        );
+      /*
+       * The encounter decides the patient, not the request body. A caller
+       * cannot file a diagnosis against another facility's encounter.
+       */
+      const diag = await queries.recordDiagnosisScoped(context, req.body);
 
       res.status(201).json(diag);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (handleInpatientError(err, res)) return;
+
+      console.error('Diagnosis creation error:', err);
       res.status(500).json({
-        error: err.message,
+        success: false,
+        error: 'DIAGNOSIS_CREATE_FAILED',
       });
     }
   });
 
-  app.get('/api/procedures', requirePermission('clinical.read'), async (req, res) => {
+  app.get('/api/procedures', requirePermission('clinical.read'), async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+
+    if (!context) return;
+
     try {
-      const encounterId =
-        req.query.encounterId
-          ? Number(req.query.encounterId)
-          : undefined;
+      const encounterId = parseOptionalPositiveId(req.query.encounterId, 'encounterId');
+      const patientId = parseOptionalPositiveId(req.query.patientId, 'patientId');
 
-      const patientId =
-        req.query.patientId
-          ? Number(req.query.patientId)
-          : undefined;
-
-      const list =
-        await queries.getProcedures(
-          encounterId,
-          patientId
-        );
+      const list = await queries.getProceduresScoped(context, {
+        encounterId,
+        patientId,
+      });
 
       res.json(list);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (handleInpatientError(err, res)) return;
+
+      console.error('Procedure list error:', err);
       res.status(500).json({
-        error: err.message,
+        success: false,
+        error: 'PROCEDURE_LIST_FAILED',
       });
     }
   });
 
   app.post('/api/procedures', requirePermission('clinical.create'), async (req: AuthRequest, res) => {
+    const context = requireAuthContext(req, res);
+
+    if (!context) return;
+
     try {
-      const proc =
-        await queries.recordProcedure(
-          req.body
-        );
+      const proc = await queries.recordProcedureScoped(context, req.body);
 
       let charge: billing.ChargeResult | null = null;
 
@@ -1383,9 +1433,13 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
       }
 
       res.status(201).json({ ...proc, billing: charge });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (handleInpatientError(err, res)) return;
+
+      console.error('Procedure creation error:', err);
       res.status(500).json({
-        error: err.message,
+        success: false,
+        error: 'PROCEDURE_CREATE_FAILED',
       });
     }
   });

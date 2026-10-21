@@ -1039,6 +1039,202 @@ export async function recordDiagnosis(data: typeof schema.diagnoses.$inferInsert
   }
 }
 
+
+/* ============================================================
+   CLINICAL RECORD SCOPING
+   ============================================================ */
+
+/**
+ * Diagnoses and procedures hang off an encounter, and an encounter
+ * carries the tenant, facility and patient. Neither table has a facility
+ * column, so a bare `select * from diagnoses` is a cross-facility read by
+ * construction. These helpers resolve the encounter first and refuse the
+ * request when it is outside the caller's scope.
+ *
+ * Observations are scoped in the nursing service; the equivalents here
+ * cover the two paths that were still open.
+ */
+
+async function loadEncounterInScope(
+  context: AuthorizationContext,
+  encounterId: number,
+) {
+  if (!Number.isSafeInteger(encounterId) || encounterId <= 0) {
+    throw new ScopeAccessError('A valid encounter is required.', 'ENCOUNTER_REQUIRED');
+  }
+
+  const [encounter] = await db
+    .select()
+    .from(schema.encounters)
+    .where(eq(schema.encounters.id, encounterId))
+    .limit(1);
+
+  if (!encounter) {
+    throw new ScopeAccessError('Encounter not found.', 'ENCOUNTER_NOT_FOUND');
+  }
+
+  if (encounter.tenantId !== context.tenantId) {
+    throw new ScopeAccessError('Encounter not found.', 'ENCOUNTER_NOT_FOUND');
+  }
+
+  const facility = await getFacilityByIdScoped(context, encounter.facilityId);
+
+  if (!facility || facility.tenantId !== encounter.tenantId) {
+    throw new ScopeAccessError(
+      'Encounter not found in the authorized facility.',
+      'ENCOUNTER_NOT_FOUND',
+    );
+  }
+
+  return encounter;
+}
+
+async function loadPatientInScope(
+  context: AuthorizationContext,
+  patientId: number,
+) {
+  if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+    throw new ScopeAccessError('A valid patient is required.', 'PATIENT_REQUIRED');
+  }
+
+  const [patient] = await db
+    .select()
+    .from(schema.patients)
+    .where(eq(schema.patients.id, patientId))
+    .limit(1);
+
+  if (!patient || patient.tenantId !== context.tenantId) {
+    throw new ScopeAccessError('Patient not found.', 'PATIENT_NOT_FOUND');
+  }
+
+  /*
+   * A patient registered elsewhere in the tenant is still treatable here,
+   * so the registration facility is not the test. The test is whether this
+   * caller can see the patient at all: either they are a tenant-level user,
+   * or the patient has been seen at — or registered at — their facility.
+   */
+  if (context.facilityId) {
+    const [seen] = await db
+      .select({ id: schema.encounters.id })
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.patientId, patient.id),
+          eq(schema.encounters.facilityId, context.facilityId),
+        ),
+      )
+      .limit(1);
+
+    if (!seen && patient.registrationFacilityId !== context.facilityId) {
+      throw new ScopeAccessError('Patient not found.', 'PATIENT_NOT_FOUND');
+    }
+  }
+
+  return patient;
+}
+
+export async function getDiagnosesScoped(
+  context: AuthorizationContext,
+  input: { encounterId?: number; patientId?: number } = {},
+) {
+  const conditions = [];
+
+  if (input.encounterId) {
+    const encounter = await loadEncounterInScope(context, input.encounterId);
+
+    conditions.push(eq(schema.diagnoses.encounterId, encounter.id));
+  } else if (input.patientId) {
+    const patient = await loadPatientInScope(context, input.patientId);
+
+    conditions.push(eq(schema.diagnoses.patientId, patient.id));
+  } else {
+    /*
+     * Refusing an unfiltered read is the point. Returning "everything"
+     * would leak every facility's clinical record to any signed-in user.
+     */
+    throw new ScopeAccessError(
+      'Supply an encounterId or patientId.',
+      'SCOPE_FILTER_REQUIRED',
+    );
+  }
+
+  return db
+    .select()
+    .from(schema.diagnoses)
+    .where(and(...conditions))
+    .orderBy(desc(schema.diagnoses.diagnosedAt));
+}
+
+export async function recordDiagnosisScoped(
+  context: AuthorizationContext,
+  data: typeof schema.diagnoses.$inferInsert,
+) {
+  const encounter = await loadEncounterInScope(context, Number(data.encounterId));
+
+  if (Number(data.patientId) !== encounter.patientId) {
+    throw new ScopeAccessError(
+      'The diagnosis patient does not match the encounter patient.',
+      'PATIENT_ENCOUNTER_MISMATCH',
+    );
+  }
+
+  const [created] = await db
+    .insert(schema.diagnoses)
+    .values({ ...data, encounterId: encounter.id, patientId: encounter.patientId })
+    .returning();
+
+  return created;
+}
+
+export async function getProceduresScoped(
+  context: AuthorizationContext,
+  input: { encounterId?: number; patientId?: number } = {},
+) {
+  const conditions = [];
+
+  if (input.encounterId) {
+    const encounter = await loadEncounterInScope(context, input.encounterId);
+
+    conditions.push(eq(schema.clinicalProcedures.encounterId, encounter.id));
+  } else if (input.patientId) {
+    const patient = await loadPatientInScope(context, input.patientId);
+
+    conditions.push(eq(schema.clinicalProcedures.patientId, patient.id));
+  } else {
+    throw new ScopeAccessError(
+      'Supply an encounterId or patientId.',
+      'SCOPE_FILTER_REQUIRED',
+    );
+  }
+
+  return db
+    .select()
+    .from(schema.clinicalProcedures)
+    .where(and(...conditions))
+    .orderBy(desc(schema.clinicalProcedures.id));
+}
+
+export async function recordProcedureScoped(
+  context: AuthorizationContext,
+  data: typeof schema.clinicalProcedures.$inferInsert,
+) {
+  const encounter = await loadEncounterInScope(context, Number(data.encounterId));
+
+  if (Number(data.patientId) !== encounter.patientId) {
+    throw new ScopeAccessError(
+      'The procedure patient does not match the encounter patient.',
+      'PATIENT_ENCOUNTER_MISMATCH',
+    );
+  }
+
+  const [created] = await db
+    .insert(schema.clinicalProcedures)
+    .values({ ...data, encounterId: encounter.id, patientId: encounter.patientId })
+    .returning();
+
+  return created;
+}
+
 // Clinical Procedures
 export async function getProcedures(encounterId?: number, patientId?: number) {
   try {
