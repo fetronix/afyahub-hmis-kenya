@@ -142,22 +142,22 @@ export const StaffInvitationAcceptance: React.FC = () => {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-10 sm:px-6 flex items-center justify-center">
-      <section className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-        <div className="bg-blue-950 px-6 py-7 text-white sm:px-8">
+    <main className="min-h-screen bg-canvas px-4 py-10 sm:px-6 flex items-center justify-center">
+      <section className="w-full max-w-lg overflow-hidden rounded-card border border-hair bg-surface shadow-lift">
+        <div className="bg-pine-900 px-6 py-7 text-white sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-600">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-clay-500">
               <HeartPulse className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">JaliCare HMIS</h1>
-              <p className="text-sm text-blue-200">Secure staff account setup</p>
+              <h1 className="font-display text-xl">JaliCare HMIS</h1>
+              <p className="text-sm text-pine-200">Secure staff account setup</p>
             </div>
           </div>
-          <h2 className="mt-7 text-2xl font-bold">
+          <h2 className="mt-7 font-display text-2xl">
             {success ? "Account created" : "Accept your invitation"}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-blue-100">
+          <p className="mt-2 text-sm leading-relaxed text-pine-100">
             {success
               ? "Your staff account has been created successfully."
               : "Set up your username and password to access your healthcare workspace."}
@@ -166,32 +166,32 @@ export const StaffInvitationAcceptance: React.FC = () => {
 
         <div className="p-6 sm:p-8">
           {checking ? (
-            <div className="flex items-center justify-center gap-3 py-12 text-slate-600">
+            <div className="flex items-center justify-center gap-3 py-12 text-muted">
               <Loader2 className="h-5 w-5 animate-spin" />
               Checking your invitation…
             </div>
           ) : success ? (
             <div className="text-center">
-              <CheckCircle2 className="mx-auto h-14 w-14 text-green-600" />
-              <h3 className="mt-4 text-lg font-bold text-slate-900">You're ready to sign in</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" />
+              <h3 className="mt-4 font-display text-xl text-ink">You're ready to sign in</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
                 Return to the JaliCare staff portal and sign in with your new username and password.
               </p>
               <button
                 type="button"
                 onClick={() => window.location.assign("/")}
-                className="mt-6 flex h-12 w-full items-center justify-center rounded-lg bg-blue-700 px-4 font-semibold text-white transition hover:bg-blue-800"
+                className="btn-primary mt-6 h-12 w-full"
               >
                 Go to sign in
               </button>
             </div>
           ) : invitation ? (
             <>
-              <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                <div className="text-sm font-semibold text-blue-950">{invitation.fullName}</div>
-                <div className="mt-1 break-all text-sm text-slate-600">{invitation.email}</div>
+              <div className="mb-6 rounded-xl border border-pine-100 bg-pine-50 p-4">
+                <div className="text-sm font-semibold text-pine-900">{invitation.fullName}</div>
+                <div className="mt-1 break-all text-sm text-muted">{invitation.email}</div>
                 {(invitation.facilityName || invitation.roleName || invitation.designation) && (
-                  <div className="mt-3 space-y-1 text-xs text-slate-600">
+                  <div className="mt-3 space-y-1 text-xs text-muted">
                     {invitation.facilityName && <p>Facility: {invitation.facilityName}</p>}
                     {invitation.roleName && <p>Role: {invitation.roleName}</p>}
                     {invitation.designation && <p>Designation: {invitation.designation}</p>}
@@ -200,14 +200,14 @@ export const StaffInvitationAcceptance: React.FC = () => {
               </div>
 
               {error && (
-                <div role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-800">
                   {error}
                 </div>
               )}
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <label htmlFor="staff-username" className="mb-2 block text-sm font-semibold text-slate-700">
+                  <label htmlFor="staff-username" className="field-label">
                     Choose a username
                   </label>
                   <input
@@ -219,13 +219,13 @@ export const StaffInvitationAcceptance: React.FC = () => {
                     minLength={3}
                     maxLength={40}
                     disabled={submitting}
-                    className="h-12 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
+                    className="field-input h-12"
                     placeholder="e.g. jane.mwangi"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="staff-password" className="mb-2 block text-sm font-semibold text-slate-700">
+                  <label htmlFor="staff-password" className="field-label">
                     Create password
                   </label>
                   <div className="relative">
@@ -239,7 +239,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
                       minLength={12}
                       maxLength={256}
                       disabled={submitting}
-                      className="h-12 w-full rounded-lg border border-slate-300 px-4 pr-12 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
+                      className="field-input h-12 pr-12"
                       placeholder="At least 12 characters"
                     />
                     <button
@@ -254,7 +254,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="staff-confirm-password" className="mb-2 block text-sm font-semibold text-slate-700">
+                  <label htmlFor="staff-confirm-password" className="field-label">
                     Confirm password
                   </label>
                   <input
@@ -267,21 +267,15 @@ export const StaffInvitationAcceptance: React.FC = () => {
                     minLength={12}
                     maxLength={256}
                     disabled={submitting}
-                    className="h-12 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
+                    className="field-input h-12"
                     placeholder="Enter the same password again"
                   />
                 </div>
 
-                {error && (
-                  <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    {error}
-                  </div>
-                )}
-
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 font-semibold text-white shadow transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="btn-primary h-12 w-full"
                 >
                   {submitting ? (
                     <>
@@ -294,7 +288,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
                 </button>
               </form>
 
-              <div className="mt-6 flex items-start gap-3 border-t border-slate-100 pt-5">
+              <div className="mt-6 flex items-start gap-3 border-t border-hair pt-5">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
                 <p className="text-xs leading-relaxed text-slate-500">
                   Your invitation is intended for you alone. Choose a strong password and keep your sign-in details private.
@@ -303,13 +297,13 @@ export const StaffInvitationAcceptance: React.FC = () => {
             </>
           ) : (
             <div>
-              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-relaxed text-red-700">
+              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-relaxed text-rose-800">
                 {error || "This invitation could not be verified."}
               </div>
               <button
                 type="button"
                 onClick={() => window.location.assign("/")}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className="btn-quiet mt-5 w-full py-3 text-sm"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Return to sign in

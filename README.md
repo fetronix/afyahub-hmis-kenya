@@ -423,7 +423,7 @@ Without the second, existing roles hold no maternity permission and the module a
 
 - `npm run test:maternity` — 130 assertions: date arithmetic (including 30 February and leap years), Naegele's rule, gestation from the EDD, absent-is-not-zero, every partograph zone, the migration's additive guarantees, no default on any clinical measurement, route permissions, and that the screen ships no sample patient.
 - **Live against PostgreSQL 16** — the scratch database was built by applying all sixteen migrations, then the service was exercised end to end: 24 checks covering EDD derivation, the one-active-pregnancy rule, ANC gestation computation, values stored versus left NULL, labour admission, three partograph readings, the duplicate-timestamp refusal, the dilatation range, the delivery with its baby, the pregnancy and labour closing to `Delivered`, refusal of a second delivery, refusal of a reading after delivery, the summary counts, and cross-facility isolation. Two defects were found this way and fixed: Drizzle wraps driver errors so the SQLSTATE sits on `cause` (every unique violation was returning 500), and a facility denial was surfacing as 403 instead of 404.
-- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.14).
+- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.16).
 - `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
 
 **Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care, immunisation and the plotted chart were still outstanding at the end of that round; they are in §3.12.
@@ -609,6 +609,46 @@ Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four 
 **Not verified:** no screen was clicked — there is no browser in this environment. The live check calls the same service functions the routes call, not the HTTP routes themselves.
 
 **One behaviour to know.** If no verified registration is on file for a nurse, the facility cannot put them into the NURSE role until the registration is checked. That is the existing invitation rule, not a new restriction; the screen says which regulator is missing and offers the check in place.
+
+### 3.16 The visual overhaul — one language from the door to the ward
+
+**What was asked.** A clean, classy redesign from the login screen through the shell to the dashboard, with the dashboard organised by clinical workflow rather than as a wall of cards.
+
+**What was wrong.** The product had no palette. Each screen had chosen its own: `blue-700` beside `teal-600`, `slate-100` under both, a different card radius on every page. The header carried a `moduleTitles` map that nothing rendered, so the top bar never said which screen you were on. The dashboard's queue column read *"Triage Counter"*, which is a till, not a desk. The two invitation-acceptance screens — the first thing a new staff member ever sees — rendered the same error message twice, once above the form and once inside it.
+
+**What changed**
+
+- **One palette, defined once.** `src/index.css` now owns a JaliCare palette in Tailwind's `@theme`: pine for primary actions and identity, a warm clay accent used sparingly, warm stone neutrals, and semantic tokens (`canvas`, `surface`, `ink`, `hair`), one card recipe, one focus ring and a display face for headings. The *existing* `blue`, `teal` and `slate` ramps are re-pointed at those colours at the same luminance, so several thousand utility classes already written across twenty modules inherit the new look without a class-by-class rewrite. Status colours — emerald, amber, rose — are deliberately **not** re-pointed: a warning must keep looking like a warning.
+- **Login.** A split card on a warm canvas: a deep pine brand panel carrying the product's promise and three product statements (protected sessions, one encounter for every stage, tenant/facility isolation), beside a quiet sign-in panel. The same submit contract, the same error and info regions, the same MFA and password-change messages. The logo falls back to a typographic wordmark if `public/logo.jpg` is missing. There are **no statistics, facility names, bed counts or "trusted by" claims** on it, and none were added.
+- **Shell.** The sidebar became a dark pine rail with a clay marker on the active row, keeping its order (arrival → diagnostics → pharmacy → revenue → intelligence → admin, and the existing permission map unchanged). The header now renders the module title it always had in its map, shows the facility marker and opens a click-away user menu.
+- **Dashboard.** Reorganised as the day's clinical path: **01 arrival & queues**, **02 ward round**, **03 surveillance & reporting**, under a single "shift in four numbers" strip. The four parallel fetches, the four permission gates, the em-dash rule and the "not tracked" caveat are unchanged; a panel the session may not read is still not rendered, and no figure is invented. Queue stations are named for the people who use them (*Triage desk*, *Pharmacy counter*), not for tills.
+- **Every facility screen.** Sixteen modules already shared the same hand-copied header block; they now share one recipe — warm surface, hairline, card shadow, display face — so moving from laboratory to pharmacy to billing no longer changes the type or the frame. Copy, buttons and behaviour are untouched.
+- **Invitation screens.** Restyled to the same language, and the duplicated error alert removed.
+
+**What did not change.** No module, tab, route, permission, query or migration was touched. The backend is byte-for-byte unchanged. No screen gained access it did not have: the dashboard's permission checks are the same checks, in the same order.
+
+**Validation**
+
+- `npm run build` — **654 ms**.
+- `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
+- `npm test` — **2,109 assertions across sixteen suites**, all green. The nursing contract now asserts the ward table's columns (`Last vitals`, `Notes today`, `Ward / bed`) rather than only the old heading string, so the redesign could not quietly drop them: 83 assertions, three more than before.
+
+**Not verified:** no screen was clicked — there is no browser in this environment, so nothing here is a visual acceptance. The palette is verified only as far as "Tailwind emitted the utilities and the bundle builds"; whether the layout pleases a clinician is a question for a person looking at it.
+
+**Backups created during this round**
+
+- `src/index.css.before-theme-overhaul-20261021.bak`
+- `src/App.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/LoginScreen.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/Header.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/Sidebar.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/modules/DashboardModule.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/StaffInvitationAcceptance.tsx.before-overhaul-20261021.bak`
+- `src/components/FacilityAdminInvitationAcceptance.tsx.before-overhaul-20261021.bak`
+- `src/tests/nursing-contracts.test.ts.before-overhaul-20261021.bak`
+- `src/components/modules/*.tsx.before-page-headers-20261021.bak` (the eighteen page-header edits)
+- `README.md.before-design-overhaul-20261021.bak`
+
 
 
 ## 4. Existing backups and modified files to preserve

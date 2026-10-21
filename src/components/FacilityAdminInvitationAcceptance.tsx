@@ -116,22 +116,22 @@ export default function FacilityAdminInvitationAcceptance() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-10 flex items-center justify-center">
-      <section className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-        <header className="bg-blue-950 px-6 py-7 text-white sm:px-8">
+    <main className="min-h-screen bg-canvas px-4 py-10 flex items-center justify-center">
+      <section className="w-full max-w-lg overflow-hidden rounded-card border border-hair bg-surface shadow-lift">
+        <header className="bg-pine-900 px-6 py-7 text-white sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-600">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-clay-500">
               <HeartPulse className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">JaliCare HMIS</h1>
-              <p className="text-sm text-blue-200">Facility administrator setup</p>
+              <h1 className="font-display text-xl">JaliCare HMIS</h1>
+              <p className="text-sm text-pine-200">Facility administrator setup</p>
             </div>
           </div>
-          <h2 className="mt-6 text-2xl font-bold">
+          <h2 className="mt-6 font-display text-2xl">
             {success ? "Account created" : "Accept your invitation"}
           </h2>
-          <p className="mt-2 text-sm text-blue-100">
+          <p className="mt-2 text-sm text-pine-100">
             {success
               ? "Your facility administrator account has been created."
               : "Choose your own username and password to get started."}
@@ -140,29 +140,29 @@ export default function FacilityAdminInvitationAcceptance() {
 
         <div className="p-6 sm:p-8">
           {checking ? (
-            <div className="flex items-center justify-center gap-3 py-10 text-slate-600">
+            <div className="flex items-center justify-center gap-3 py-10 text-muted">
               <Loader2 className="h-5 w-5 animate-spin" /> Checking invitation…
             </div>
           ) : success ? (
             <div className="text-center">
-              <CheckCircle2 className="mx-auto h-14 w-14 text-green-600" />
-              <h3 className="mt-4 text-lg font-bold">You're ready to sign in</h3>
-              <p className="mt-2 text-sm text-slate-600">
+              <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" />
+              <h3 className="mt-4 font-display text-xl text-ink">You're ready to sign in</h3>
+              <p className="mt-2 text-sm text-muted">
                 Return to JaliCare and sign in using your new username and password.
               </p>
               <button
                 type="button"
                 onClick={() => window.location.assign("/")}
-                className="mt-6 w-full rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800"
+                className="btn-primary mt-6 w-full"
               >
                 Go to sign in
               </button>
             </div>
           ) : invitation ? (
             <>
-              <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                <p className="font-semibold text-blue-950">{invitation.fullName}</p>
-                <p className="mt-1 break-all text-sm text-slate-600">{invitation.email}</p>
+              <div className="mb-5 rounded-xl border border-pine-100 bg-pine-50 p-4">
+                <p className="font-semibold text-pine-900">{invitation.fullName}</p>
+                <p className="mt-1 break-all text-sm text-muted">{invitation.email}</p>
                 {invitation.facilityName && (
                   <p className="mt-3 text-sm text-slate-700">Facility: {invitation.facilityName}</p>
                 )}
@@ -190,7 +190,7 @@ export default function FacilityAdminInvitationAcceptance() {
                   <input id="facility-admin-username" autoComplete="username"
                     value={username} onChange={(e) => setUsername(e.target.value)}
                     minLength={3} maxLength={50} required disabled={submitting}
-                    className="h-12 w-full rounded-lg border border-slate-300 px-4 text-sm"
+                    className="field-input h-12"
                     placeholder="e.g. jane.mwangi" />
                 </div>
                 <div>
@@ -200,7 +200,7 @@ export default function FacilityAdminInvitationAcceptance() {
                   <input id="facility-admin-password" type="password" autoComplete="new-password"
                     value={password} onChange={(e) => setPassword(e.target.value)}
                     minLength={12} maxLength={256} required disabled={submitting}
-                    className="h-12 w-full rounded-lg border border-slate-300 px-4 text-sm"
+                    className="field-input h-12"
                     placeholder="At least 12 characters" />
                 </div>
                 <div>
@@ -210,10 +210,10 @@ export default function FacilityAdminInvitationAcceptance() {
                   <input id="facility-admin-confirm-password" type="password" autoComplete="new-password"
                     value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                     minLength={12} maxLength={256} required disabled={submitting}
-                    className="h-12 w-full rounded-lg border border-slate-300 px-4 text-sm" />
+                    className="field-input h-12" />
                 </div>
                 <button type="submit" disabled={submitting}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 font-semibold text-white hover:bg-blue-800 disabled:opacity-60">
+                  className="btn-primary h-12 w-full">
                   {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {submitting ? "Creating account…" : "Create administrator account"}
                 </button>
@@ -224,7 +224,7 @@ export default function FacilityAdminInvitationAcceptance() {
               {error || "This invitation cannot be used."}
               <p className="mt-2">Contact your platform administrator to request a new invitation.</p>
               <button type="button" onClick={() => window.location.assign("/")}
-                className="mt-4 rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white">
+                className="btn-primary mt-4">
                 Return to sign in
               </button>
             </div>
