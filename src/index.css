@@ -1,32 +1,328 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --hospital-blue: #1d4ed8;
-    --hospital-blue-dark: #1e40af;
-    --hospital-orange: #ea580c;
-    --hospital-orange-light: #fff7ed;
-  }
+/*
+ * JaliCare — the design language
+ * ------------------------------------------------------------------
+ *
+ * The brand is the logo: a deep hospital blue frame, a sky-blue arc and
+ * an orange arrow. Healthcare. Empowered. Everything below is that
+ * logo, restated as tokens:
+ *
+ *   navy    the deep hospital blue — the rail, the login panel, headings
+ *   brand   sky/hospital blue — links, active navigation, primary actions
+ *   ember   bright orange — one call to action per screen, sparingly
+ *   copper  dark orange — emphasis, selected indicators, warning-adjacent
+ *   canvas  light blue-grey — the page behind the cards
+ *
+ * Tailwind's own `blue`, `teal` and `slate` ramps are re-pointed at this
+ * palette. The application already writes thousands of `bg-blue-700`,
+ * `text-slate-500` and `border-slate-200` classes; re-pointing the ramp
+ * restyles every module consistently without a class-by-class rewrite
+ * that would drift within a week.
+ *
+ * Status colours (emerald, amber, rose) are deliberately NOT re-pointed:
+ * a warning must keep looking like a warning.
+ */
 
-  /* Smooth clinical scrolling */
+@theme {
+  /* Small type, under Tailwind's xs — used throughout the tables. */
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-2xs--line-height: 1rem;
+  --text-3xs: 0.625rem; /* 10px */
+  --text-3xs--line-height: 0.875rem;
+
+  /* Type. One family, two weights of voice: UI sans and tabular mono. */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Surfaces */
+  --color-canvas: #f3f7fc;
+  --color-surface: #ffffff;
+  --color-ink: #0d2033;
+  --color-ink-soft: #3b4d61;
+  --color-muted: #64748b;
+  --color-hair: #dce6f2;
+
+  /* Deep hospital blue — the frame. Bright enough to read as blue. */
+  --color-navy-50: #eef6fb;
+  --color-navy-100: #d6eaf5;
+  --color-navy-200: #a9d3e8;
+  --color-navy-300: #74b5d6;
+  --color-navy-400: #3f90bd;
+  --color-navy-500: #1f6f9e;
+  --color-navy-600: #155a84;
+  --color-navy-700: #10486a;
+  --color-navy-800: #0d3a56;
+  --color-navy-900: #0b2f46;
+  --color-navy-950: #061d2e;
+
+  /* Sky blue — the primary. */
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0284c7;
+  --color-brand-700: #0369a1;
+  --color-brand-800: #075985;
+  --color-brand-900: #0c4a6e;
+  --color-brand-950: #082f49;
+
+  /* Bright orange — the one call to action. */
+  --color-ember-50: #fff7ed;
+  --color-ember-100: #ffedd5;
+  --color-ember-200: #fed7aa;
+  --color-ember-300: #fdba74;
+  --color-ember-400: #fb923c;
+  --color-ember-500: #f97316;
+  --color-ember-600: #ea580c;
+  --color-ember-700: #c2410c;
+  --color-ember-800: #9a3412;
+  --color-ember-900: #7c2d12;
+
+  /* Dark orange — emphasis, markers, selected state. */
+  --color-copper-50: #fdf3ec;
+  --color-copper-100: #fae2d0;
+  --color-copper-200: #f3c2a3;
+  --color-copper-300: #e79b70;
+  --color-copper-400: #d97545;
+  --color-copper-500: #c4532a;
+  --color-copper-600: #a63f1f;
+  --color-copper-700: #85321c;
+  --color-copper-800: #652818;
+  --color-copper-900: #4b2014;
+
+  /* `blue-*` is the same sky blue, so existing utilities brighten too. */
+  --color-blue-50: #f0f9ff;
+  --color-blue-100: #e0f2fe;
+  --color-blue-200: #bae6fd;
+  --color-blue-300: #7dd3fc;
+  --color-blue-400: #38bdf8;
+  --color-blue-500: #0ea5e9;
+  --color-blue-600: #0284c7;
+  --color-blue-700: #0369a1;
+  --color-blue-800: #075985;
+  --color-blue-900: #0c4a6e;
+  --color-blue-950: #082f49;
+
+  /* `teal` was the old clinical accent; it is the same sky blue now. */
+  --color-teal-50: #f0f9ff;
+  --color-teal-100: #e0f2fe;
+  --color-teal-200: #bae6fd;
+  --color-teal-300: #7dd3fc;
+  --color-teal-400: #38bdf8;
+  --color-teal-500: #0ea5e9;
+  --color-teal-600: #0284c7;
+  --color-teal-700: #0369a1;
+  --color-teal-800: #075985;
+  --color-teal-900: #0c4a6e;
+  --color-teal-950: #082f49;
+
+  /* Cool blue-grey neutrals. */
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  --radius-card: 0.875rem;
+  --shadow-card:
+    0 1px 2px rgba(13, 32, 51, 0.05),
+    0 10px 24px -18px rgba(13, 32, 51, 0.35);
+  --shadow-lift:
+    0 2px 4px rgba(13, 32, 51, 0.06),
+    0 22px 44px -24px rgba(13, 32, 51, 0.45);
+}
+
+@layer base {
   html {
     color-scheme: light;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
-  /* Custom subtle hospital scrollbars */
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+  }
+
+  ::selection {
+    background-color: var(--color-brand-100);
+    color: var(--color-brand-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: #cbd5e1;
-    border-radius: 3px;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* A quiet card: hairline, soft lift, generous radius. */
+  .panel {
+    @apply rounded-card border border-hair bg-surface shadow-card;
+  }
+
+  .panel-header {
+    @apply flex flex-col gap-1 border-b border-hair px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  /* Small caps label above a section or a value. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.16em] text-muted;
+  }
+
+  .display-title {
+    @apply text-2xl font-semibold leading-tight tracking-tight text-ink;
+  }
+
+  .stat-value {
+    @apply font-mono text-3xl font-semibold tabular-nums tracking-tight text-ink;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-ember-500 px-4 py-2.5 text-sm font-bold text-navy-950 shadow-sm transition-colors hover:bg-ember-400 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-quiet {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-hair bg-surface px-3.5 py-2 text-xs font-semibold text-ink-soft transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-xs font-semibold text-ink-soft;
+  }
+
+  .field-input {
+    @apply h-11 w-full rounded-lg border border-slate-300 bg-surface px-3.5 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-hair bg-slate-50 px-2 py-0.5 text-2xs font-semibold text-ink-soft;
+  }
+
+  .table-quiet {
+    @apply w-full text-left text-xs;
+  }
+
+  .table-quiet thead th {
+    @apply border-b border-hair bg-slate-50/80 px-4 py-2.5 text-2xs font-semibold uppercase tracking-[0.08em] text-muted;
+  }
+
+  .table-quiet tbody td {
+    @apply border-b border-slate-100 px-4 py-3 align-middle;
+  }
+
+  .table-quiet tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .table-quiet tbody tr:hover {
+    @apply bg-brand-50/40;
+  }
+}
+
+/* ============================================================
+   Notification dialog
+   ============================================================
+
+   The dialog is centred on the viewport and rises into place. The
+   motion is short (260 ms) so it reads as an answer to the click that
+   caused it, not as a page transition. `prefers-reduced-motion`
+   removes it entirely — a operator who asked the system not to move
+   still gets the message.
+   ============================================================ */
+
+@keyframes jali-notification-scrim {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes jali-notification-dialog {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.94);
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes jali-notification-item {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notification-scrim {
+  animation: jali-notification-scrim 180ms ease-out both;
+}
+
+.notification-dialog {
+  animation: jali-notification-dialog 260ms cubic-bezier(0.16, 0.9, 0.3, 1.15) both;
+}
+
+.notification-item {
+  animation: jali-notification-item 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-scrim,
+  .notification-dialog,
+  .notification-item {
+    animation: none;
   }
 }

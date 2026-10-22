@@ -1,315 +1,492 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PublicHealthReport } from '../../types/index.ts';
 import {
   Activity,
   AlertTriangle,
-  CheckCircle2,
-  Plus,
   Download,
-  Calendar,
+  FileWarning,
+  Plus,
   ShieldAlert,
-  BarChart3
 } from 'lucide-react';
+
+/*
+ * Public health surveillance
+ * ==========================
+ *
+ * This screen used to make four claims that were not true:
+ *
+ *   1. "Integrated with Kenya Digital Health Agency (DHA) national
+ *      disease surveillance network" — there is no such integration.
+ *   2. "DHIS2 Auto-Push" — nothing is pushed anywhere.
+ *   3. "queued for KHIS submission" — the report is stored locally and
+ *      no queue exists.
+ *   4. "Epidemic Threshold: Normal Trend" on every row — no threshold
+ *      data is held, so the label was invented.
+ *
+ * It also POSTed `facilityId: currentFacility?.id || 1`, which filed a
+ * notifiable disease report against facility 1 when no facility was
+ * selected.
+ *
+ * The MOH 705 endpoint returns 501 with an explicit reason. That is the
+ * honest state of the feature, and this screen now shows it instead of
+ * rendering an empty table and letting the export button download
+ * `null`.
+ */
+
+/** ISO-8601 epidemiological week, e.g. 2026-W43. */
+export function currentEpiWeek(date: Date = new Date()): string {
+  const target = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+
+  const day = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - day);
+
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(
+    ((target.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
+  );
+
+  return `${target.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+const NOTIFIABLE_CONDITIONS: Record<string, string> = {
+  A00: 'Cholera (suspected)',
+  A20: 'Plague (suspected)',
+  A80: 'Acute flaccid paralysis (polio sentinel)',
+  B05: 'Measles (suspected)',
+  B50: 'Malaria (confirmed)',
+  J09: 'Severe acute respiratory infection (SARI)',
+};
 
 export const PublicHealthModule: React.FC = () => {
   const { currentFacility, showToast, refreshKey, triggerRefresh } = useHmis();
+
   const [reports, setReports] = useState<PublicHealthReport[]>([]);
-  const [mohSummary, setMohSummary] = useState<any>(null);
+  const [reportsError, setReportsError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // New Sentinel Alert Modal
+  /*
+   * The MOH 705 aggregate is a separate question from the sentinel
+   * ledger: one can be listed while the other is unavailable. Its
+   * failure is kept apart so a 501 does not blank the page.
+   */
+  const [mohSummary, setMohSummary] = useState<unknown>(null);
+  const [mohError, setMohError] = useState('');
+
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
   const [alertForm, setAlertForm] = useState({
     diseaseCode: 'A00',
-    diseaseName: 'Cholera (Suspected/Alert)',
     casesCount: 1,
     mortalityCount: 0,
     ageGroup: 'Over 5 Years',
-    epiWeek: '2026-W40',
+    epiWeek: currentEpiWeek(),
   });
 
   useEffect(() => {
     async function loadPublicHealth() {
-      setLoading(true);
-      try {
-        const [reps, summary] = await Promise.all([
-          api.getPublicHealthReports(currentFacility?.id),
-          api.getMoh705Summary(currentFacility?.id),
-        ]);
-        setReports(reps);
-        setMohSummary(summary);
-      } catch (err) {
-        console.error('Failed to load public health surveillance:', err);
-      } finally {
+      if (!currentFacility?.id) {
         setLoading(false);
+        return;
       }
+
+      setLoading(true);
+      setReportsError('');
+      setMohError('');
+
+      const [reportsResult, mohResult] = await Promise.allSettled([
+        api.getPublicHealthReports(currentFacility.id),
+        api.getMoh705Summary(currentFacility.id),
+      ]);
+
+      if (reportsResult.status === 'fulfilled') {
+        setReports(reportsResult.value);
+      } else {
+        const reason = reportsResult.reason;
+        setReportsError(
+          reason instanceof Error
+            ? reason.message
+            : 'The sentinel ledger could not be read.',
+        );
+      }
+
+      if (mohResult.status === 'fulfilled') {
+        setMohSummary(mohResult.value);
+      } else {
+        const reason = mohResult.reason;
+        setMohSummary(null);
+        setMohError(
+          reason instanceof Error
+            ? reason.message
+            : 'The MOH 705 aggregate is not available.',
+        );
+      }
+
+      setLoading(false);
     }
-    loadPublicHealth();
-  }, [currentFacility, refreshKey]);
+
+    void loadPublicHealth();
+  }, [currentFacility?.id, refreshKey]);
+
+  const totals = useMemo(
+    () =>
+      reports.reduce(
+        (sum, report) => ({
+          cases: sum.cases + report.casesCount,
+          deaths: sum.deaths + report.mortalityCount,
+        }),
+        { cases: 0, deaths: 0 },
+      ),
+    [reports],
+  );
 
   const handleRecordAlert = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!currentFacility?.id) {
+      showToast('Select a facility before recording a notifiable case.', {
+        tone: 'warning',
+      });
+      return;
+    }
+
     try {
       await api.recordPublicHealthReport({
-        facilityId: currentFacility?.id || 1,
+        facilityId: currentFacility.id,
         diseaseCode: alertForm.diseaseCode,
-        diseaseName: alertForm.diseaseName,
+        diseaseName:
+          NOTIFIABLE_CONDITIONS[alertForm.diseaseCode] ?? 'Notifiable condition',
         casesCount: Number(alertForm.casesCount),
         mortalityCount: Number(alertForm.mortalityCount),
         ageGroup: alertForm.ageGroup,
         epiWeek: alertForm.epiWeek,
       });
 
-      showToast('Public Health sentinel case logged and queued for KHIS submission.');
+      showToast(
+        `Case recorded at ${currentFacility.name}. It has not been transmitted to KHIS or DHIS2.`,
+        { tone: 'success' },
+      );
+
       setIsAlertModalOpen(false);
       triggerRefresh();
-    } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'The case could not be recorded.';
+
+      showToast(message, { tone: 'error' });
     }
   };
 
-  const downloadMoh705 = () => {
+  const exportSummary = () => {
+    if (mohSummary === null) return;
+
     const dataStr = JSON.stringify(mohSummary, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+
     a.href = url;
-    a.download = `MOH-705-Outpatient-Return-${currentFacility?.mflCode || 'MFL'}-2026-W40.json`;
+    a.download = `MOH-705-${currentFacility?.mflCode || 'facility'}-${currentEpiWeek()}.json`;
     a.click();
-    showToast('Downloaded Kenya MOH 705 Outpatient Return dataset.');
+    URL.revokeObjectURL(url);
+
+    showToast('Downloaded the MOH 705 payload returned by the server.');
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col gap-4 rounded-card border border-hair bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Public Health Surveillance & MOH 705 Reporting</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Routine disease reporting (MOH 705A & 705B), notifiable epidemic alerts, and Kenya Health Information System (KHIS) export.
+          <p className="eyebrow">Public health</p>
+          <h1 className="mt-1 font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Surveillance &amp; MOH 705
+          </h1>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted">
+            Notifiable disease reports recorded at this facility, and the MOH 705
+            outpatient return. Nothing on this screen is transmitted automatically.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={downloadMoh705}
-            className="px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-xs flex items-center gap-1.5"
+            type="button"
+            onClick={exportSummary}
+            disabled={mohSummary === null}
+            title={
+              mohSummary === null
+                ? 'The MOH 705 aggregate is not produced by this build'
+                : 'Download the server payload'
+            }
+            className="btn-quiet disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5 text-teal-700" />
-            <span>Export MOH 705 JSON</span>
+            <Download className="h-3.5 w-3.5" />
+            Export MOH 705 JSON
           </button>
+
           <button
+            type="button"
             onClick={() => setIsAlertModalOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold text-white bg-rose-700 hover:bg-rose-800 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+            className="btn-accent"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Report Sentinel Event</span>
+            <Plus className="h-3.5 w-3.5" />
+            Record notifiable case
           </button>
         </div>
       </div>
 
-      {/* Sentinel Alert Banner */}
-      <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 flex items-center justify-between text-xs text-amber-900 shadow-xs">
-        <div className="flex items-center gap-3">
-          <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0" />
+      {/* Standing caveat — the screen must not imply a national connection. */}
+      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+        <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+        <div>
+          <p className="font-bold">Local record only — not a national submission</p>
+          <p className="mt-0.5 max-w-3xl text-2xs leading-relaxed text-amber-800">
+            Reports are stored in this facility&apos;s database. This build has no
+            connection to KHIS, DHIS2 or the DHA surveillance network, and no queue
+            that would send them later. Immediate notification of a reportable
+            disease remains a manual duty of the facility.
+          </p>
+        </div>
+      </div>
+
+      {loading && (
+        <p className="text-sm text-slate-500">Loading the surveillance ledger…</p>
+      )}
+
+      {!currentFacility?.id && !loading && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          No facility is selected, so there is nothing to report against.
+        </div>
+      )}
+
+      {/* MOH 705 aggregate */}
+      <section className="panel overflow-hidden">
+        <div className="panel-header">
           <div>
-            <span className="font-bold">Epi-Week Surveillance Active: 2026-W40</span>
-            <p className="text-2xs text-amber-800 mt-0.5">
-              Integrated with Kenya Digital Health Agency (DHA) national disease surveillance network. Immediate reporting mandated for suspected Cholera, Yellow Fever, Measles, and Viral Haemorrhagic Fevers.
-            </p>
+            <p className="eyebrow">MOH 705 · outpatient return</p>
+            <h2 className="mt-1 text-sm font-bold text-ink">Top morbidity</h2>
+          </div>
+          <span className="chip font-mono">{currentEpiWeek()}</span>
+        </div>
+
+        {mohError ? (
+          <div className="flex items-start gap-3 px-5 py-4">
+            <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="text-xs">
+              <p className="font-semibold text-ink">
+                This report is not produced by this build
+              </p>
+              <p className="mt-1 max-w-3xl leading-relaxed text-muted">{mohError}</p>
+              <p className="mt-1 text-2xs text-muted">
+                The server returns this message deliberately rather than an empty
+                table. No figures are shown because no figures exist.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="px-5 py-4 text-xs text-muted">
+            The server returned a payload that this screen does not interpret yet.
+          </p>
+        )}
+      </section>
+
+      {/* Sentinel ledger */}
+      <section className="panel overflow-hidden">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Notifiable conditions</p>
+            <h2 className="mt-1 text-sm font-bold text-ink">
+              Sentinel ledger
+              <span className="ml-2 font-mono text-2xs text-muted">
+                {reports.length} record{reports.length === 1 ? '' : 's'}
+              </span>
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="chip">cases {totals.cases}</span>
+            <span className="chip">deaths {totals.deaths}</span>
           </div>
         </div>
 
-        <span className="px-2.5 py-1 bg-amber-100 text-amber-900 font-semibold rounded text-2xs font-mono uppercase">
-          Sentinel Monitoring
-        </span>
-      </div>
-
-      {/* MOH 705 Top Morbidity Indicators Grid */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-          <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
-            <BarChart3 className="w-4 h-4 text-teal-700" />
-            <span>Top Outpatient Morbidity (MOH 705 Summary)</span>
-          </h2>
-          <span className="text-2xs text-slate-400 font-mono">Period: October 2026</span>
-        </div>
+        {reportsError && (
+          <div
+            role="alert"
+            className="mx-5 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-2xs text-red-800"
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{reportsError}</span>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
+          <table className="table-quiet">
+            <thead>
               <tr>
-                <th className="px-4 py-2.5 font-medium">ICD-10 Code</th>
-                <th className="px-4 py-2.5 font-medium">Disease / Condition (MOH Description)</th>
-                <th className="px-4 py-2.5 font-medium text-right">Under 5 Years</th>
-                <th className="px-4 py-2.5 font-medium text-right">Over 5 Years</th>
-                <th className="px-4 py-2.5 font-medium text-right">Total Cases</th>
-                <th className="px-4 py-2.5 font-medium">Epidemic Threshold</th>
+                <th>Condition</th>
+                <th>ICD-10</th>
+                <th>Age group</th>
+                <th className="text-right">Cases</th>
+                <th className="text-right">Deaths</th>
+                <th>Epi-week</th>
+                <th className="text-right">Recorded</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-mono">
-              {mohSummary?.indicators?.topMorbidityByIcd10?.map((row: any, idx: number) => (
-                <tr key={idx} className="hover:bg-slate-50/70">
-                  <td className="px-4 py-3 font-bold text-teal-800">{row.code}</td>
-                  <td className="px-4 py-3 font-sans font-semibold text-slate-900">{row.disease}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{row.under5}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{row.over5}</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900">{row.total}</td>
-                  <td className="px-4 py-3 font-sans">
-                    <span className="px-2 py-0.5 rounded text-2xs bg-emerald-50 text-emerald-800 font-medium">
-                      Normal Trend
-                    </span>
+            <tbody>
+              {reports.length === 0 && !reportsError && (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-xs text-muted">
+                    No notifiable condition has been recorded at this facility.
+                  </td>
+                </tr>
+              )}
+
+              {reports.map((report) => (
+                <tr key={report.id}>
+                  <td className="font-semibold text-ink">{report.diseaseName}</td>
+                  <td className="font-mono text-brand-800">{report.diseaseCode}</td>
+                  <td className="text-muted">{report.ageGroup}</td>
+                  <td className="text-right font-mono font-bold">{report.casesCount}</td>
+                  <td
+                    className={`text-right font-mono ${
+                      report.mortalityCount > 0 ? 'text-rose-700 font-bold' : 'text-muted'
+                    }`}
+                  >
+                    {report.mortalityCount}
+                  </td>
+                  <td className="font-mono text-muted">{report.epiWeek}</td>
+                  <td className="text-right text-2xs text-muted">
+                    {new Date(report.reportedAt).toLocaleString('en-KE')}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      {/* Sentinel Event Surveillance Ledger */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-          <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
-            <Activity className="w-4 h-4 text-teal-700" />
-            <span>Notifiable Epidemic Sentinel Log ({reports.length})</span>
-          </h2>
-          <span className="text-2xs text-slate-400 font-mono">DHIS2 Auto-Push</span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Disease Name</th>
-                <th className="px-4 py-2.5 font-medium">ICD-10 Code</th>
-                <th className="px-4 py-2.5 font-medium">Age Group</th>
-                <th className="px-4 py-2.5 font-medium text-right">Cases</th>
-                <th className="px-4 py-2.5 font-medium text-right">Mortality</th>
-                <th className="px-4 py-2.5 font-medium">Epi-Week</th>
-                <th className="px-4 py-2.5 font-medium text-right">Reported Timestamp</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-mono">
-              {reports.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50/70">
-                  <td className="px-4 py-3 font-sans font-semibold text-slate-900">{r.diseaseName}</td>
-                  <td className="px-4 py-3 font-bold text-teal-800">{r.diseaseCode}</td>
-                  <td className="px-4 py-3 font-sans text-slate-600">{r.ageGroup}</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900">{r.casesCount}</td>
-                  <td className="px-4 py-3 text-right text-rose-600">{r.mortalityCount}</td>
-                  <td className="px-4 py-3 text-slate-600">{r.epiWeek}</td>
-                  <td className="px-4 py-3 text-right text-slate-400 text-2xs">
-                    {new Date(r.reportedAt).toLocaleString('en-KE')}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* REPORT SENTINEL MODAL */}
+      {/* Report modal */}
       {isAlertModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
-            <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Log Public Health Sentinel Alert</h3>
-              <p className="text-2xs text-slate-500">Record notifiable infectious condition for epidemic tracking.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/50 p-3">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-xl border border-hair bg-surface p-5 shadow-lift">
+            <div className="flex items-start gap-3 border-b border-hair pb-3">
+              <Activity className="mt-0.5 h-4 w-4 text-brand-600" />
+              <div>
+                <h3 className="text-sm font-bold text-ink">Record a notifiable case</h3>
+                <p className="mt-0.5 text-2xs text-muted">
+                  Stored at this facility. Not submitted to any national system.
+                </p>
+              </div>
             </div>
 
-            <form onSubmit={handleRecordAlert} className="space-y-4">
+            <form onSubmit={handleRecordAlert} className="mt-4 space-y-3">
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Notifiable Disease Condition *</label>
+                <label className="field-label" htmlFor="notifiable-condition">
+                  Condition
+                </label>
                 <select
+                  id="notifiable-condition"
                   value={alertForm.diseaseCode}
-                  onChange={(e) => {
-                    const code = e.target.value;
-                    const nameMap: Record<string, string> = {
-                      'A00': 'Cholera (Suspected/Alert)',
-                      'B05': 'Measles (Suspected)',
-                      'B50': 'Malaria (Confirmed)',
-                      'A20': 'Plague (Suspected)',
-                      'A80': 'Acute Flaccid Paralysis (Polio Sentinel)',
-                      'J09': 'Severe Acute Respiratory Infection (SARI)',
-                    };
-                    setAlertForm({
-                      ...alertForm,
-                      diseaseCode: code,
-                      diseaseName: nameMap[code] || 'Notifiable Condition',
-                    });
-                  }}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                  onChange={(e) =>
+                    setAlertForm({ ...alertForm, diseaseCode: e.target.value })
+                  }
+                  className="field-input"
                 >
-                  <option value="A00">A00 — Cholera (Suspected/Alert)</option>
-                  <option value="B05">B05 — Measles (Suspected)</option>
-                  <option value="B50">B50 — Malaria (Confirmed)</option>
-                  <option value="A20">A20 — Plague (Suspected)</option>
-                  <option value="A80">A80 — Acute Flaccid Paralysis (Polio)</option>
-                  <option value="J09">J09 — Severe Acute Respiratory Infection (SARI)</option>
+                  {Object.entries(NOTIFIABLE_CONDITIONS).map(([code, name]) => (
+                    <option key={code} value={code}>
+                      {code} — {name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Cases Count *</label>
+                  <label className="field-label" htmlFor="cases-count">
+                    Cases
+                  </label>
                   <input
+                    id="cases-count"
                     type="number"
+                    min={1}
                     required
                     value={alertForm.casesCount}
-                    onChange={(e) => setAlertForm({ ...alertForm, casesCount: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+                    onChange={(e) =>
+                      setAlertForm({ ...alertForm, casesCount: Number(e.target.value) })
+                    }
+                    className="field-input font-mono"
                   />
                 </div>
+
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Mortality Count</label>
+                  <label className="field-label" htmlFor="deaths-count">
+                    Deaths
+                  </label>
                   <input
+                    id="deaths-count"
                     type="number"
+                    min={0}
+                    max={alertForm.casesCount}
                     value={alertForm.mortalityCount}
-                    onChange={(e) => setAlertForm({ ...alertForm, mortalityCount: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+                    onChange={(e) =>
+                      setAlertForm({
+                        ...alertForm,
+                        mortalityCount: Number(e.target.value),
+                      })
+                    }
+                    className="field-input font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Age Stratification</label>
+                  <label className="field-label" htmlFor="age-group">
+                    Age group
+                  </label>
                   <select
+                    id="age-group"
                     value={alertForm.ageGroup}
-                    onChange={(e) => setAlertForm({ ...alertForm, ageGroup: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                    onChange={(e) =>
+                      setAlertForm({ ...alertForm, ageGroup: e.target.value })
+                    }
+                    className="field-input"
                   >
-                    <option value="Under 5 Years">Under 5 Years (MOH 705A)</option>
-                    <option value="Over 5 Years">Over 5 Years (MOH 705B)</option>
+                    <option value="Under 5 Years">Under 5 years</option>
+                    <option value="Over 5 Years">5 years and over</option>
                   </select>
                 </div>
+
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Epidemiological Week</label>
+                  <label className="field-label" htmlFor="epi-week">
+                    Epi-week
+                  </label>
                   <input
+                    id="epi-week"
                     type="text"
+                    required
+                    pattern="\d{4}-W(0[1-9]|[1-4]\d|5[0-3])"
                     value={alertForm.epiWeek}
-                    onChange={(e) => setAlertForm({ ...alertForm, epiWeek: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+                    onChange={(e) =>
+                      setAlertForm({ ...alertForm, epiWeek: e.target.value })
+                    }
+                    className="field-input font-mono"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 border-t border-hair pt-3">
                 <button
                   type="button"
                   onClick={() => setIsAlertModalOpen(false)}
-                  className="px-3.5 py-1.5 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
+                  className="btn-quiet"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-rose-700 text-white rounded-md font-semibold hover:bg-rose-800"
-                >
-                  Submit Sentinel Case
+                <button type="submit" className="btn-accent">
+                  Record case
                 </button>
               </div>
             </form>

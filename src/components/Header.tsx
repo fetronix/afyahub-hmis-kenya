@@ -5,77 +5,71 @@ import {
   type ModuleId,
 } from '../context/HmisContext.tsx';
 
+import { navSections, superAdminNavSections } from './Sidebar.tsx';
+
 import {
-  Building2,
-  ShieldCheck,
   ChevronDown,
-  Layers,
+  ChevronRight,
+  LogOut,
   Menu,
   X,
-  LogOut,
   UserCircle,
+  ShieldCheck,
+  LayoutDashboard,
 } from 'lucide-react';
 
 /*
 |--------------------------------------------------------------------------
 | Module Titles
 |--------------------------------------------------------------------------
+|
+| One place that names where the user is. Rendered as the last crumb of
+| the breadcrumb so the rail can stay quiet.
+|
 */
 
 const moduleTitles: Record<ModuleId, string> = {
-  dashboard:
-    'Executive & Clinical Overview',
+  dashboard: 'Executive & Clinical Overview',
+  registration: 'Patient Registration & Identity',
+  reception: 'Reception, Queue & Appointments',
+  opd: 'Outpatient Triage & Consultation',
+  inpatient: 'Inpatient Wards & Bed Board',
+  maternity: 'Maternity, ANC & Labour Ward',
+  theatre: 'Operating Theatres & Surgical List',
+  specialty: 'Specialist Clinics (Dental/Eye/ENT/Renal)',
+  laboratory: 'Clinical Diagnostic Laboratory',
+  radiology: 'Radiology & Medical Imaging',
+  pharmacy: 'Central Pharmacy & Dispensing',
+  inventory: 'Inventory, Batches & Stores',
+  procurement: 'Procurement & Purchase Orders',
+  finance: 'Billing, Invoicing & Cashier POS',
+  claims: 'Social Health Authority (SHA) E-Claims',
+  public_health: 'MOH 705 & Disease Surveillance',
+  analytics: 'Reports, Revenue & Bed Utilisation',
+  interoperability: 'DHA Certification Readiness & HL7 FHIR',
+  platform_administration: 'Platform Administration',
+  configuration: 'Facility & System Configuration Engine',
+  patient_portal: 'Patient Portal Management',
+  audit: 'Immutable Security Audit Trail',
+};
 
-  registration:
-    'Patient Registration & Identity',
+/*
+ * The group a module belongs to comes from the rail itself, so the two
+ * cannot disagree about where "Laboratory" lives.
+ */
+const sectionLabel = (id: ModuleId, isSuperAdmin: boolean): string | null => {
+  const sections = isSuperAdmin
+    ? [...superAdminNavSections, ...navSections]
+    : [...navSections, ...superAdminNavSections];
 
-  reception:
-    'Reception, Queue & Appointments',
+  const match = sections.find((section) =>
+    section.items.some((item) => item.id === id)
+  );
 
-  opd:
-    'Outpatient Triage & Consultation',
+  if (!match) return null;
 
-  inpatient:
-    'Inpatient Wards & Bed Board',
-
-  theatre:
-    'Operating Theatres & Surgical List',
-
-  specialty:
-    'Specialist Clinics (Dental/Eye/MCH/Renal)',
-
-  laboratory:
-    'Clinical Diagnostic Laboratory',
-
-  radiology:
-    'Radiology & Medical Imaging',
-
-  pharmacy:
-    'Central Pharmacy & Dispensing',
-
-  inventory:
-    'Inventory, Batches & Stores',
-
-  procurement:
-    'Procurement & Purchase Orders',
-
-  finance:
-    'Billing, Invoicing & Cashier POS',
-
-  claims:
-    'Social Health Authority (SHA) E-Claims',
-
-  public_health:
-    'MOH 705 & Disease Surveillance',
-
-  interoperability:
-    'DHA Certification Readiness & HL7 FHIR',
-
-  configuration:
-    'Facility & System Configuration Engine',
-
-  audit:
-    'Immutable Security Audit Trail',
+  const words = match.title.toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
 /*
@@ -86,63 +80,26 @@ const moduleTitles: Record<ModuleId, string> = {
 
 export const Header: React.FC = () => {
   const {
-    tenants,
-    currentTenant,
-    setCurrentTenant,
-
-    facilities,
-    currentFacility,
-    setCurrentFacility,
-
     authenticatedUser,
     currentUser,
-
     activeModule,
     setActiveModule,
-
     isMobileMenuOpen,
     setIsMobileMenuOpen,
-
     logout,
-    showToast,
   } = useHmis();
 
-  /*
-  |--------------------------------------------------------------------------
-  | Dropdown State
-  |--------------------------------------------------------------------------
-  */
-
-  const [
-    tenantDropdownOpen,
-    setTenantDropdownOpen,
-  ] = useState(false);
-
-  const [
-    facilityDropdownOpen,
-    setFacilityDropdownOpen,
-  ] = useState(false);
-
-  const [
-    userDropdownOpen,
-    setUserDropdownOpen,
-  ] = useState(false);
-
-  /*
-  |--------------------------------------------------------------------------
-  | Logout State
-  |--------------------------------------------------------------------------
-  */
-
-  const [
-    loggingOut,
-    setLoggingOut,
-  ] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   /*
   |--------------------------------------------------------------------------
   | Authoritative User Identity
   |--------------------------------------------------------------------------
+  |
+  | The role displayed here is NOT an authorization mechanism. The backend
+  | RBAC decides what a session may do; this is a label for the human.
+  |
   */
 
   const displayName =
@@ -150,72 +107,28 @@ export const Header: React.FC = () => {
     currentUser?.name ||
     'Authenticated User';
 
-  const username =
-    authenticatedUser?.username ||
-    '';
+  const username = authenticatedUser?.username || '';
+  const email = authenticatedUser?.email || '';
+  const displayRole = currentUser?.role || 'Authenticated User';
+  const department = currentUser?.department || 'JaliCare HMIS';
+  const professionalId = currentUser?.license || '';
 
-  const email =
-    authenticatedUser?.email ||
-    '';
+  const isSuperAdmin = Boolean(
+    authenticatedUser?.isSuperAdmin ||
+    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
 
-  /*
-  |--------------------------------------------------------------------------
-  | Temporary Display Role
-  |--------------------------------------------------------------------------
-  |
-  | The role displayed here is NOT an authorization mechanism.
-  | Backend RBAC will become authoritative.
-  |
-  */
-
-  const displayRole =
-    currentUser?.role ||
-    'Authenticated User';
-
-  const department =
-    currentUser?.department ||
-    'JaliCare HMIS';
-
-  const professionalId =
-    currentUser?.license ||
-    '';
-
-  /*
-  |--------------------------------------------------------------------------
-  | User Initials
-  |--------------------------------------------------------------------------
-  */
+  const group = sectionLabel(activeModule, isSuperAdmin);
 
   const userInitials =
     displayName
       .trim()
       .split(/\s+/)
       .filter(Boolean)
-      .map(
-        (name) =>
-          name.charAt(0)
-      )
+      .map((name) => name.charAt(0))
       .slice(0, 2)
       .join('')
       .toUpperCase() || 'JC';
-
-  /*
-  |--------------------------------------------------------------------------
-  | Close Dropdowns
-  |--------------------------------------------------------------------------
-  */
-
-  const closeDropdowns = () => {
-    setTenantDropdownOpen(false);
-    setFacilityDropdownOpen(false);
-    setUserDropdownOpen(false);
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | Logout
-  |--------------------------------------------------------------------------
-  */
 
   const handleLogout = async () => {
     if (loggingOut) {
@@ -228,1016 +141,228 @@ export const Header: React.FC = () => {
       await logout();
     } finally {
       setLoggingOut(false);
-      closeDropdowns();
+      setUserDropdownOpen(false);
     }
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | Render
-  |--------------------------------------------------------------------------
-  */
-
   return (
-    <header
-      className="
-        h-14
-        border-b
-        border-slate-200
-        bg-white
-        px-3
-        sm:px-5
-        flex
-        items-center
-        justify-between
-        z-30
-        shrink-0
-        relative
-      "
-    >
-      {/* ------------------------------------------------------------------
-          Zone 1: Mobile Menu + Brand + Breadcrumb
-      ------------------------------------------------------------------ */}
+    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-hair bg-surface px-3 sm:px-5">
+      {/* ---------------------------------------------------------------
+          Brand + breadcrumb
+      --------------------------------------------------------------- */}
 
-      <div
-        className="
-          flex
-          items-center
-          gap-2
-          sm:gap-4
-          min-w-0
-        "
-      >
-        {/* Mobile Menu */}
-
+      <div className="flex min-w-0 items-center gap-2.5 sm:gap-4">
         <button
           type="button"
-          onClick={() =>
-            setIsMobileMenuOpen(
-              !isMobileMenuOpen
-            )
-          }
-          className="
-            p-2
-            -ml-1
-            text-slate-600
-            hover:text-slate-900
-            rounded-lg
-            md:hidden
-            hover:bg-slate-100
-            transition-colors
-          "
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="-ml-1 rounded-lg p-2 text-ink-soft transition-colors hover:bg-slate-100 hover:text-ink md:hidden"
           aria-label="Toggle navigation menu"
         >
           {isMobileMenuOpen ? (
-            <X className="w-5 h-5 text-slate-800" />
+            <X className="h-5 w-5" />
           ) : (
-            <Menu className="w-5 h-5 text-slate-800" />
+            <Menu className="h-5 w-5" />
           )}
         </button>
 
-        {/* JaliCare Brand */}
-
         <div className="flex items-center gap-2.5">
-          <div
-            className="
-              w-7
-              h-7
-              sm:w-8
-              sm:h-8
-              rounded-lg
-              bg-blue-700
-              text-white
-              flex
-              items-center
-              justify-center
-              font-bold
-              text-sm
-              sm:text-base
-              shadow-xs
-              shrink-0
-              relative
-              overflow-hidden
-            "
-          >
-            <span className="font-black tracking-tight text-white">
-              Jc
-            </span>
-
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-700 text-white shadow-sm">
+            <span className="text-base font-bold leading-none tracking-tight">J</span>
             <span
-              className="
-                absolute
-                bottom-0
-                right-0
-                w-2
-                h-2
-                sm:w-2.5
-                sm:h-2.5
-                bg-orange-500
-                rounded-tl-xs
-              "
+              aria-hidden="true"
+              className="absolute bottom-0 right-0 h-2 w-2 rounded-tl-[4px] bg-ember-500"
               title="Care Indicator"
             />
           </div>
 
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1 sm:gap-1.5">
-              <span
-                className="
-                  font-bold
-                  text-slate-900
-                  text-sm
-                  sm:text-base
-                  tracking-tight
-                  leading-none
-                  whitespace-nowrap
-                "
-              >
-                JaliCare
+          <div className="flex flex-col leading-none">
+            <span className="flex items-center gap-1.5">
+              <span className="text-[15px] font-bold tracking-tight text-navy-900 whitespace-nowrap">
+                Jali<span className="text-ember-600">Care</span>
               </span>
-
-              <span
-                className="
-                  px-1.5
-                  py-0.5
-                  rounded
-                  text-3xs
-                  font-bold
-                  uppercase
-                  tracking-wider
-                  bg-orange-100
-                  text-orange-800
-                  leading-none
-                "
-              >
-                Care
+              <span className="hidden rounded bg-navy-50 px-1.5 py-0.5 text-3xs font-bold uppercase leading-none tracking-[0.14em] text-navy-600 sm:inline">
+                HMIS
               </span>
-            </div>
-
-            <span
-              className="
-                text-3xs
-                text-slate-400
-                font-medium
-                tracking-wide
-                leading-tight
-                hidden
-                xs:inline
-              "
-            >
-              Kenya HMIS
+            </span>
+            <span className="mt-1 hidden text-3xs font-medium tracking-wide text-muted sm:inline">
+              Healthcare. Empowered.
             </span>
           </div>
         </div>
 
-        <span
-          className="
-            text-slate-300
-            font-light
-            hidden
-            lg:inline
-          "
-          aria-hidden="true"
+        <span aria-hidden="true" className="hidden h-8 w-px bg-hair md:block" />
+
+        {/* Breadcrumb: home › department › screen */}
+        <nav
+          aria-label="Breadcrumb"
+          className="hidden min-w-0 items-center gap-1.5 text-xs md:flex"
         >
-          /
-        </span>
-
-        {/* Breadcrumb */}
-
-        <div
-          className="
-            hidden
-            lg:flex
-            items-center
-            gap-2
-            text-xs
-            font-medium
-            text-slate-600
-            truncate
-          "
-        >
-          <span
-            className="
-              text-slate-500
-              truncate
-              max-w-40
-            "
+          <button
+            type="button"
+            onClick={() => setActiveModule('dashboard')}
+            className="flex items-center gap-1 rounded px-1 py-0.5 text-muted transition-colors hover:bg-brand-50 hover:text-brand-700"
+            aria-label="Go to overview"
           >
-            {currentFacility?.name ||
-              'Facility'}
-          </span>
+            <LayoutDashboard className="h-3.5 w-3.5" />
+          </button>
 
-          <span
-            className="text-slate-300"
-            aria-hidden="true"
-          >
-            ·
-          </span>
+          {group && (
+            <>
+              <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" />
+              <span className="whitespace-nowrap text-muted">{group}</span>
+            </>
+          )}
 
+          <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" />
           <span
-            className="
-              text-blue-900
-              font-semibold
-              truncate
-            "
+            className="truncate font-semibold text-navy-800"
+            aria-current="page"
+            title={moduleTitles[activeModule]}
           >
             {moduleTitles[activeModule]}
           </span>
-        </div>
+        </nav>
       </div>
 
-      {/* ------------------------------------------------------------------
-          Zone 2: Tenant / Facility / DHA / User
-      ------------------------------------------------------------------ */}
+      {/* ---------------------------------------------------------------
+          Interoperability marker + user menu
+      --------------------------------------------------------------- */}
 
-      <div
-        className="
-          flex
-          items-center
-          gap-1.5
-          sm:gap-3
-        "
-      >
-        {/* Tenant Selector */}
-
-        <div className="relative hidden sm:block">
-          <button
-            type="button"
-            onClick={() => {
-              setTenantDropdownOpen(
-                !tenantDropdownOpen
-              );
-
-              setFacilityDropdownOpen(false);
-              setUserDropdownOpen(false);
-            }}
-            className="
-              flex
-              items-center
-              gap-1.5
-              px-2
-              sm:px-2.5
-              py-1.5
-              rounded-md
-              border
-              border-slate-200
-              bg-slate-50
-              text-slate-700
-              text-xs
-              font-medium
-              hover:bg-slate-100
-              transition-colors
-              whitespace-nowrap
-            "
-            title="Switch Healthcare Tenant"
-          >
-            <Layers
-              className="
-                w-3.5
-                h-3.5
-                text-slate-500
-                shrink-0
-              "
-            />
-
-            <span
-              className="
-                max-w-24
-                sm:max-w-32
-                truncate
-              "
-            >
-              {currentTenant?.name ||
-                'Tenant'}
-            </span>
-
-            <ChevronDown
-              className="
-                w-3
-                h-3
-                text-slate-400
-                shrink-0
-              "
-            />
-          </button>
-
-          {tenantDropdownOpen && (
-            <div
-              className="
-                absolute
-                top-full
-                left-0
-                mt-1
-                w-64
-                bg-white
-                border
-                border-slate-200
-                rounded-lg
-                shadow-lg
-                py-1.5
-                z-50
-                text-xs
-                animate-in
-                fade-in
-                zoom-in-95
-                duration-100
-              "
-            >
-              <div
-                className="
-                  px-3
-                  py-1
-                  text-2xs
-                  uppercase
-                  tracking-wider
-                  text-slate-400
-                  font-semibold
-                "
-              >
-                Healthcare Organization
-              </div>
-
-              {tenants.length === 0 ? (
-                <div
-                  className="
-                    px-3
-                    py-3
-                    text-slate-400
-                  "
-                >
-                  No organizations available.
-                </div>
-              ) : (
-                tenants.map((tenant) => (
-                  <button
-                    type="button"
-                    key={tenant.id}
-                    onClick={async () => {
-                      try {
-                        await setCurrentTenant(
-                          tenant
-                        );
-
-                        setTenantDropdownOpen(
-                          false
-                        );
-
-                        showToast(
-                          `Switched tenant to: ${tenant.name}`
-                        );
-                      } catch {
-                        showToast(
-                          'Unable to switch organization.'
-                        );
-                      }
-                    }}
-                    className={`
-                      w-full
-                      text-left
-                      px-3
-                      py-2
-                      hover:bg-slate-50
-                      flex
-                      items-center
-                      justify-between
-                      ${
-                        currentTenant?.id ===
-                        tenant.id
-                          ? 'bg-blue-50/70 text-blue-900 font-semibold'
-                          : 'text-slate-700'
-                      }
-                    `}
-                  >
-                    <span className="truncate">
-                      {tenant.name}
-                    </span>
-
-                    <span
-                      className="
-                        text-2xs
-                        text-slate-400
-                        font-mono
-                      "
-                    >
-                      {tenant.currency}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
+      <div className="flex items-center gap-1.5 sm:gap-3">
+        <div className="hidden items-center gap-1.5 rounded-full border border-hair bg-canvas py-1 pl-2 pr-2.5 lg:flex">
+          <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
+          <span className="text-2xs font-semibold text-ink-soft">DHA ready</span>
+          <span className="text-2xs text-slate-300">·</span>
+          <span className="font-mono text-2xs text-muted">FHIR R4</span>
         </div>
-
-        {/* Facility Selector */}
 
         <div className="relative">
           <button
             type="button"
-            onClick={() => {
-              setFacilityDropdownOpen(
-                !facilityDropdownOpen
-              );
-
-              setTenantDropdownOpen(false);
-              setUserDropdownOpen(false);
-            }}
-            className="
-              flex
-              items-center
-              gap-1.5
-              px-2
-              sm:px-2.5
-              py-1.5
-              rounded-md
-              border
-              border-blue-200/80
-              bg-blue-50/50
-              text-blue-900
-              text-xs
-              font-medium
-              hover:bg-blue-50
-              transition-colors
-              whitespace-nowrap
-            "
-            title="Switch Facility"
-          >
-            <Building2
-              className="
-                w-3.5
-                h-3.5
-                text-blue-700
-                shrink-0
-              "
-            />
-
-            <span
-              className="
-                max-w-24
-                sm:max-w-36
-                truncate
-                font-semibold
-              "
-            >
-              {currentFacility?.name ||
-                'Facility'}
-            </span>
-
-            <span
-              className="
-                font-mono
-                text-2xs
-                text-orange-700
-                font-bold
-                hidden
-                xl:inline
-              "
-            >
-              {currentFacility?.mflCode}
-            </span>
-
-            <ChevronDown
-              className="
-                w-3
-                h-3
-                text-blue-500
-                shrink-0
-              "
-            />
-          </button>
-
-          {facilityDropdownOpen && (
-            <div
-              className="
-                absolute
-                top-full
-                right-0
-                sm:right-auto
-                sm:left-0
-                mt-1
-                w-72
-                bg-white
-                border
-                border-slate-200
-                rounded-lg
-                shadow-lg
-                py-1.5
-                z-50
-                text-xs
-                animate-in
-                fade-in
-                zoom-in-95
-                duration-100
-              "
-            >
-              <div
-                className="
-                  px-3
-                  py-1
-                  text-2xs
-                  uppercase
-                  tracking-wider
-                  text-slate-400
-                  font-semibold
-                "
-              >
-                Branches & Health Facilities
-              </div>
-
-              {facilities.length === 0 ? (
-                <div
-                  className="
-                    px-3
-                    py-3
-                    text-slate-400
-                  "
-                >
-                  No facilities available.
-                </div>
-              ) : (
-                facilities.map(
-                  (facility) => (
-                    <button
-                      type="button"
-                      key={facility.id}
-                      onClick={() => {
-                        setCurrentFacility(
-                          facility
-                        );
-
-                        setFacilityDropdownOpen(
-                          false
-                        );
-
-                        showToast(
-                          `Switched facility to: ${facility.name} (${facility.mflCode})`
-                        );
-                      }}
-                      className={`
-                        w-full
-                        text-left
-                        px-3
-                        py-2
-                        hover:bg-slate-50
-                        flex
-                        flex-col
-                        ${
-                          currentFacility?.id ===
-                          facility.id
-                            ? 'bg-blue-50/70 text-blue-900 font-semibold'
-                            : 'text-slate-700'
-                        }
-                      `}
-                    >
-                      <div
-                        className="
-                          flex
-                          items-center
-                          justify-between
-                        "
-                      >
-                        <span className="truncate">
-                          {facility.name}
-                        </span>
-
-                        <span
-                          className="
-                            font-mono
-                            text-2xs
-                            text-orange-600
-                            font-semibold
-                          "
-                        >
-                          {facility.mflCode}
-                        </span>
-                      </div>
-
-                      <span
-                        className="
-                          text-2xs
-                          text-slate-400
-                        "
-                      >
-                        {facility.level} ·{' '}
-                        {facility.county}
-                      </span>
-                    </button>
-                  )
-                )
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* DHA Indicator */}
-
-        <button
-          type="button"
-          onClick={() =>
-            setActiveModule(
-              'interoperability'
-            )
-          }
-          className="
-            hidden
-            xl:flex
-            items-center
-            gap-1.5
-            px-2.5
-            py-1
-            text-xs
-            text-blue-900
-            bg-blue-50/60
-            border
-            border-blue-200
-            rounded-md
-            hover:bg-blue-100/60
-            transition-colors
-          "
-          title="Digital Health Agency & FHIR Readiness Matrix"
-        >
-          <ShieldCheck
-            className="
-              w-3.5
-              h-3.5
-              text-blue-700
-            "
-          />
-
-          <span className="font-medium">
-            DHA Ready
-          </span>
-
-          <span
-            className="
-              font-mono
-              text-2xs
-              text-orange-600
-              font-semibold
-            "
-          >
-            FHIR R4
-          </span>
-        </button>
-
-        {/* ----------------------------------------------------------------
-            Authenticated User Menu
-        ---------------------------------------------------------------- */}
-
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => {
-              setUserDropdownOpen(
-                !userDropdownOpen
-              );
-
-              setTenantDropdownOpen(false);
-              setFacilityDropdownOpen(false);
-            }}
-            className="
-              flex
-              items-center
-              gap-1.5
-              sm:gap-2
-              pl-1.5
-              sm:pl-2
-              pr-2
-              sm:pr-3
-              py-1
-              rounded-md
-              border
-              border-slate-200
-              hover:border-blue-400
-              transition-colors
-              bg-white
-              text-left
-            "
+            onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+            className="flex items-center gap-2 rounded-lg border border-hair bg-surface py-1 pl-1 pr-2.5 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/40 sm:pr-3"
             aria-haspopup="menu"
-            aria-expanded={
-              userDropdownOpen
-            }
+            aria-expanded={userDropdownOpen}
           >
-            {/* Avatar */}
-
-            <div
-              className="
-                w-6
-                h-6
-                rounded-full
-                bg-blue-800
-                text-white
-                flex
-                items-center
-                justify-center
-                text-xs
-                font-semibold
-                shrink-0
-              "
-            >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-navy-800 text-2xs font-semibold text-white">
               {userInitials}
-            </div>
+            </span>
 
-            {/* Name + Role */}
-
-            <div
-              className="
-                hidden
-                sm:flex
-                flex-col
-                min-w-0
-              "
-            >
-              <span
-                className="
-                  text-xs
-                  font-medium
-                  text-slate-900
-                  leading-tight
-                  truncate
-                  max-w-28
-                  sm:max-w-32
-                "
-              >
+            <span className="hidden min-w-0 flex-col sm:flex">
+              <span className="max-w-28 truncate text-xs font-semibold leading-tight text-navy-900 sm:max-w-32">
                 {displayName}
               </span>
-
-              <span
-                className="
-                  text-2xs
-                  text-orange-700
-                  font-semibold
-                  leading-tight
-                  truncate
-                  max-w-28
-                  sm:max-w-32
-                "
-              >
+              <span className="max-w-28 truncate text-2xs font-medium leading-tight text-brand-700 sm:max-w-32">
                 {displayRole}
               </span>
-            </div>
+            </span>
 
             <ChevronDown
-              className="
-                w-3
-                h-3
-                text-slate-400
-                shrink-0
-              "
+              className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${
+                userDropdownOpen ? 'rotate-180' : ''
+              }`}
             />
           </button>
 
           {userDropdownOpen && (
-            <div
-              className="
-                absolute
-                top-full
-                right-0
-                mt-1
-                w-80
-                bg-white
-                border
-                border-slate-200
-                rounded-lg
-                shadow-lg
-                py-1.5
-                z-50
-                text-xs
-                animate-in
-                fade-in
-                zoom-in-95
-                duration-100
-              "
-              role="menu"
-            >
-              {/* Identity */}
+            <>
+              {/* Click-away layer: the menu must not trap the page. */}
+              <div
+                className="fixed inset-0 z-40"
+                aria-hidden="true"
+                onClick={() => setUserDropdownOpen(false)}
+              />
 
               <div
-                className="
-                  px-3
-                  py-3
-                  border-b
-                  border-slate-100
-                "
+                className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-hair bg-surface py-1.5 text-xs shadow-lift animate-in fade-in zoom-in-95 duration-100"
+                role="menu"
               >
-                <div
-                  className="
-                    flex
-                    items-center
-                    gap-3
-                  "
-                >
-                  <div
-                    className="
-                      w-10
-                      h-10
-                      rounded-full
-                      bg-blue-800
-                      text-white
-                      flex
-                      items-center
-                      justify-center
-                      text-sm
-                      font-semibold
-                      shrink-0
-                    "
-                  >
-                    {userInitials}
-                  </div>
-
-                  <div className="min-w-0">
-                    <div
-                      className="
-                        font-semibold
-                        text-slate-900
-                        truncate
-                      "
-                    >
-                      {displayName}
-                    </div>
-
-                    {username && (
-                      <div
-                        className="
-                          text-2xs
-                          text-slate-500
-                          mt-0.5
-                          truncate
-                        "
-                      >
-                        @{username}
-                      </div>
-                    )}
-
-                    <div
-                      className="
-                        text-2xs
-                        text-orange-700
-                        font-semibold
-                        mt-0.5
-                      "
-                    >
-                      {displayRole}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Account Details */}
-
-              <div className="px-3 py-2.5 space-y-2">
-                <div>
-                  <div
-                    className="
-                      text-2xs
-                      uppercase
-                      tracking-wider
-                      text-slate-400
-                      font-semibold
-                    "
-                  >
-                    Email
-                  </div>
-
-                  <div
-                    className="
-                      text-xs
-                      text-slate-600
-                      mt-0.5
-                      truncate
-                    "
-                  >
-                    {email ||
-                      'No email available'}
-                  </div>
-                </div>
-
-                <div>
-                  <div
-                    className="
-                      text-2xs
-                      uppercase
-                      tracking-wider
-                      text-slate-400
-                      font-semibold
-                    "
-                  >
-                    Work Area
-                  </div>
-
-                  <div
-                    className="
-                      flex
-                      items-center
-                      gap-2
-                      text-xs
-                      text-slate-600
-                      mt-0.5
-                    "
-                  >
-                    <UserCircle className="w-3.5 h-3.5 shrink-0" />
-
-                    <span className="truncate">
-                      {department}
+                <div className="border-b border-hair px-3 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-navy-800 text-sm font-semibold text-white">
+                      {userInitials}
                     </span>
+
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-navy-900">
+                        {displayName}
+                      </div>
+
+                      {username && (
+                        <div className="mt-0.5 truncate text-2xs text-muted">
+                          @{username}
+                        </div>
+                      )}
+
+                      <div className="mt-0.5 text-2xs font-semibold text-brand-700">
+                        {displayRole}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {professionalId && (
+                <div className="space-y-2.5 px-3 py-3">
                   <div>
-                    <div
-                      className="
-                        text-2xs
-                        uppercase
-                        tracking-wider
-                        text-slate-400
-                        font-semibold
-                      "
-                    >
-                      Professional ID
+                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Email
                     </div>
-
-                    <div
-                      className="
-                        text-xs
-                        text-slate-600
-                        mt-0.5
-                        font-mono
-                      "
-                    >
-                      {professionalId}
+                    <div className="mt-0.5 truncate text-xs text-ink-soft">
+                      {email || 'No email available'}
                     </div>
                   </div>
-                )}
 
-                {authenticatedUser && (
                   <div>
-                    <div
-                      className="
-                        text-2xs
-                        uppercase
-                        tracking-wider
-                        text-slate-400
-                        font-semibold
-                      "
-                    >
-                      Account Status
+                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Work area
                     </div>
-
-                    <div
-                      className="
-                        text-xs
-                        text-slate-600
-                        mt-0.5
-                      "
-                    >
-                      {authenticatedUser.accountStatus}
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-soft">
+                      <UserCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{department}</span>
                     </div>
                   </div>
-                )}
+
+                  {professionalId && (
+                    <div>
+                      <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
+                        Professional ID
+                      </div>
+                      <div className="mt-0.5 font-mono text-xs text-ink-soft">
+                        {professionalId}
+                      </div>
+                    </div>
+                  )}
+
+                  {authenticatedUser && (
+                    <div>
+                      <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
+                        Account status
+                      </div>
+                      <div className="mt-0.5 text-xs text-ink-soft">
+                        {authenticatedUser.accountStatus}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-1 border-t border-hair pt-1">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      void handleLogout();
+                    }}
+                    disabled={loggingOut}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+
+                    <span className="font-semibold">
+                      {loggingOut ? 'Signing out...' : 'Sign out'}
+                    </span>
+                  </button>
+                </div>
               </div>
-
-              {/* Logout */}
-
-              <div
-                className="
-                  border-t
-                  border-slate-100
-                  mt-1
-                  pt-1
-                "
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    void handleLogout();
-                  }}
-                  disabled={loggingOut}
-                  className="
-                    w-full
-                    flex
-                    items-center
-                    gap-2
-                    px-3
-                    py-2.5
-                    text-left
-                    text-red-700
-                    hover:bg-red-50
-                    disabled:opacity-50
-                    disabled:cursor-not-allowed
-                    transition-colors
-                  "
-                >
-                  <LogOut className="w-4 h-4" />
-
-                  <span className="font-medium">
-                    {loggingOut
-                      ? 'Signing out...'
-                      : 'Sign out'}
-                  </span>
-                </button>
-              </div>
-            </div>
+            </>
           )}
         </div>
       </div>

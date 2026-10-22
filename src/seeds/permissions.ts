@@ -21,6 +21,7 @@ import {
   and,
   eq,
   isNull,
+  isNotNull,
 } from 'drizzle-orm';
 
 
@@ -125,6 +126,14 @@ const PERMISSIONS = [
   },
 
   {
+    code: 'facilities.modules.manage',
+    name: 'Manage Facility Modules',
+    module: 'facilities',
+    description:
+      'Turn a facility module on or off, which also opens or closes that module\'s API.',
+  },
+
+  {
     code: 'facilities.approve',
     name: 'Approve Facilities',
     module: 'facilities',
@@ -175,6 +184,37 @@ const PERMISSIONS = [
     module: 'users',
     description:
       'Deactivate user accounts.',
+  },
+
+  {
+    code: 'users.invite',
+    name: 'Invite Staff',
+    module: 'users',
+    description:
+      'Invite staff to an authorized facility using a secure invitation link.',
+  },
+
+  {
+    code: 'users.invitations.read',
+    name: 'View Staff Invitations',
+    module: 'users',
+    description:
+      'View staff invitations within the authorized scope.',
+  },
+
+  {
+    code: 'users.invitations.revoke',
+    name: 'Revoke Staff Invitations',
+    module: 'users',
+    description:
+      'Revoke unused staff invitations within the authorized scope.',
+  },
+  {
+    code: 'users.invitations.reissue',
+    name: 'Reissue Staff Invitations',
+    module: 'users',
+    description:
+      'Generate a replacement link for an unused staff invitation within the authorized scope.',
   },
 
   {
@@ -335,6 +375,73 @@ const PERMISSIONS = [
 
 
   /* ==========================================================
+     PATIENT PORTAL
+     ========================================================== */
+
+  /*
+   * Deliberately five codes rather than one.
+   *
+   * Inviting a patient and suspending an account are different levels
+   * of trust: the desk does the first all day, the second is a
+   * decision about someone's access to their own record. Splitting them
+   * means a receptionist can be productive without being able to
+   * withdraw anybody's access.
+   */
+  {
+    code: 'portal.invite',
+    name: 'Invite Patients to the Portal',
+    module: 'portal',
+    description:
+      'Issue an activation invitation to a patient at this facility and see its delivery status.',
+  },
+
+  {
+    code: 'portal.invites.manage',
+    name: 'Revoke Portal Invitations',
+    module: 'portal',
+    description:
+      'Revoke an invitation that has not yet been used, and resend one within the facility limit.',
+  },
+
+  {
+    code: 'portal.accounts.manage',
+    name: 'Manage Patient Portal Accounts',
+    module: 'portal',
+    description:
+      'Search portal accounts, view activation status, suspend, reactivate, revoke and force a password reset.',
+  },
+
+  {
+    code: 'portal.audit.read',
+    name: 'Review Portal Audit Events',
+    module: 'portal',
+    description:
+      'Read portal invitation, activation and account-administration events for this facility.',
+  },
+
+  {
+    code: 'portal.settings.manage',
+    name: 'Manage Patient Portal Settings',
+    module: 'portal',
+    description:
+      'Configure invitation expiry, resend limits, delivery channels and which record sections the portal releases.',
+  },
+
+  /* ==========================================================
+     FHIR INTEROPERABILITY
+     ========================================================== */
+
+  {
+    code: 'interop.fhir.patient.read',
+    name: 'Export FHIR Patient Resource',
+    module: 'interop',
+    description:
+      'Read and export patient demographics through the FHIR interoperability endpoint.',
+  },
+
+
+
+  /* ==========================================================
      CLINICAL
      ========================================================== */
 
@@ -401,6 +508,34 @@ const PERMISSIONS = [
 
 
   /* ==========================================================
+     MATERNITY / MCH
+     ========================================================== */
+
+  {
+    code: 'maternity.read',
+    name: 'View Maternity Records',
+    module: 'maternity',
+    description:
+      'View antenatal visits, labour records, partographs and delivery records.',
+  },
+
+  {
+    code: 'maternity.create',
+    name: 'Record Maternity Care',
+    module: 'maternity',
+    description:
+      'Book pregnancies and record antenatal visits, labour and partograph observations.',
+  },
+
+  {
+    code: 'maternity.update',
+    name: 'Update Maternity Records',
+    module: 'maternity',
+    description:
+      'Correct or close maternity records, including recording a delivery.',
+  },
+
+  /* ==========================================================
      INPATIENT
      ========================================================== */
 
@@ -426,6 +561,65 @@ const PERMISSIONS = [
     module: 'inpatient',
     description:
       'Discharge admitted patients.',
+  },
+
+  /*
+   * Ward and bed set-up.
+   *
+   * Kept separate from `inpatient.read` and `inpatient.admit` so a
+   * facility can decide who configures the ward while the clinicians
+   * keep admitting into it. Read access stays on `inpatient.read` —
+   * a second read code would produce screens that half-work.
+   *
+   * No role receives these by default: whether a nurse-midwife or only
+   * the matron may open a ward is a facility decision, not a default.
+   */
+  {
+    code: 'inpatient.wards.create',
+    name: 'Create Wards',
+    module: 'inpatient',
+    description:
+      'Add wards to this facility. Reading wards needs inpatient.read.',
+  },
+
+  {
+    code: 'inpatient.wards.update',
+    name: 'Update Wards',
+    module: 'inpatient',
+    description:
+      'Rename a ward, change its type, allocation or daily rate, and retire or reactivate it.',
+  },
+
+  {
+    code: 'inpatient.wards.delete',
+    name: 'Delete Wards',
+    module: 'inpatient',
+    description:
+      'Delete a ward that has never held a patient. A ward with admission history can only be retired.',
+  },
+
+  {
+    code: 'inpatient.beds.create',
+    name: 'Create Beds',
+    module: 'inpatient',
+    description:
+      'Add beds to a ward, singly or in a numbered batch.',
+  },
+
+  {
+    code: 'inpatient.beds.update',
+    name: 'Update Beds',
+    module: 'inpatient',
+    description:
+      'Change a bed number, type, daily charge or housekeeping status.',
+  },
+
+  {
+    code: 'inpatient.beds.delete',
+    name: 'Delete Beds',
+    module: 'inpatient',
+    description:
+      'Delete a bed that has never held a patient. A bed with admission history can only be taken out of service.',
   },
 
 
@@ -553,7 +747,24 @@ const PERMISSIONS = [
   },
 
 
-  /* ==========================================================
+    /* ==========================================================
+     FACILITY SERVICE TARIFFS
+     ========================================================== */
+
+  {
+    code: 'tariffs.read',
+    name: 'View Service Tariffs',
+    module: 'billing',
+    description: 'View service tariffs within the authorized facility.',
+  },
+
+  {
+    code: 'tariffs.manage',
+    name: 'Manage Service Tariffs',
+    module: 'billing',
+    description: 'Create, update, and deactivate facility service tariffs.',
+  },
+/* ==========================================================
      INSURANCE / SHA
      ========================================================== */
 
@@ -623,12 +834,21 @@ const PERMISSIONS = [
      REPORTS
      ========================================================== */
 
+
   {
     code: 'reports.read',
     name: 'View Reports',
     module: 'reports',
     description:
       'View authorized reports.',
+  },
+
+  {
+    code: 'public_health.reports.create',
+    name: 'Create Public Health Reports',
+    module: 'public_health',
+    description:
+      'Record disease surveillance reports for an authorized facility.',
   },
 
   {
@@ -809,6 +1029,10 @@ async function seedPermissions(): Promise<void> {
 
 
   for (const permission of allPermissions) {
+    // Facility tariffs are managed only by tenant-level Facility Admins.
+    if (permission.code === 'tariffs.read' || permission.code === 'tariffs.manage') {
+      continue;
+    }
 
     const existingAssignment = await db
       .select()
@@ -844,6 +1068,82 @@ async function seedPermissions(): Promise<void> {
       );
     }
   }
+
+  /* ==========================================================
+     3B. ASSIGN STAFF INVITATION PERMISSIONS TO FACILITY ADMINS
+     ========================================================== */
+
+  console.log('');
+  console.log('Synchronizing facility-admin invitation permissions...');
+
+  const staffInvitationPermissionCodes = [
+    'users.invite',
+    'users.invitations.read',
+    'users.invitations.revoke',
+    'users.invitations.reissue',
+    'tariffs.read',
+    'tariffs.manage',
+    /*
+     * A facility administrator is the person who decides whether this
+     * facility runs a maternity unit, a theatre list or a laboratory.
+     * The provisioning route also admits the FACILITY_ADMIN role so a
+     * database seeded before this permission existed still works.
+     */
+    'facilities.modules.manage',
+  ] as const;
+
+  const staffInvitationPermissions = [];
+
+  for (const code of staffInvitationPermissionCodes) {
+    const [permission] = await db
+      .select()
+      .from(permissions)
+      .where(eq(permissions.code, code))
+      .limit(1);
+
+    if (!permission) {
+      throw new Error(`Required permission was not seeded: ${code}`);
+    }
+
+    staffInvitationPermissions.push(permission);
+  }
+
+  const facilityAdminRoles = await db
+    .select()
+    .from(roles)
+    .where(
+      and(
+        eq(roles.name, 'FACILITY_ADMIN'),
+        eq(roles.isActive, true),
+        isNotNull(roles.tenantId),
+      ),
+    );
+
+  for (const facilityAdminRole of facilityAdminRoles) {
+    for (const permission of staffInvitationPermissions) {
+      const [existingAssignment] = await db
+        .select()
+        .from(rolePermissions)
+        .where(
+          and(
+            eq(rolePermissions.roleId, facilityAdminRole.id),
+            eq(rolePermissions.permissionId, permission.id),
+          ),
+        )
+        .limit(1);
+
+      if (!existingAssignment) {
+        await db.insert(rolePermissions).values({
+          roleId: facilityAdminRole.id,
+          permissionId: permission.id,
+        });
+      }
+    }
+  }
+
+  console.log(
+    `Synchronized invitation permissions for ${facilityAdminRoles.length} tenant facility-admin roles.`,
+  );
 
 
   /* ==========================================================

@@ -12,7 +12,7 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 /* ============================================================
    JALICARE HMIS
@@ -117,6 +117,7 @@ export const facilities = pgTable(
       'reception',
       'opd',
       'inpatient',
+      'maternity',
       'theatre',
       'specialty',
       'laboratory',
@@ -423,6 +424,42 @@ export const rolePermissions = pgTable(
     rolePermissionIdx: uniqueIndex(
       'role_permissions_role_permission_idx',
     ).on(table.roleId, table.permissionId),
+  }),
+);
+export const facilityRolePermissionOverrides = pgTable(
+  'facility_role_permission_overrides',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id').references(() => tenants.id).notNull(),
+    facilityId: integer('facility_id').references(() => facilities.id).notNull(),
+    roleId: integer('role_id').references(() => roles.id).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    facilityRoleIdx: uniqueIndex(
+      'facility_role_permission_overrides_facility_role_idx',
+    ).on(table.facilityId, table.roleId),
+    tenantFacilityIdx: index(
+      'facility_role_permission_overrides_tenant_facility_idx',
+    ).on(table.tenantId, table.facilityId),
+  }),
+);
+
+export const facilityRolePermissionOverridePermissions = pgTable(
+  'facility_role_permission_override_permissions',
+  {
+    id: serial('id').primaryKey(),
+    overrideId: integer('override_id')
+      .references(() => facilityRolePermissionOverrides.id, { onDelete: 'cascade' })
+      .notNull(),
+    permissionId: integer('permission_id').references(() => permissions.id).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    overridePermissionIdx: uniqueIndex(
+      'facility_role_permission_override_permissions_override_permission_idx',
+    ).on(table.overrideId, table.permissionId),
   }),
 );
 
@@ -1091,8 +1128,7 @@ export const patients = pgTable(
     gender: text('gender')
       .notNull(),
 
-    phone: text('phone')
-      .notNull(),
+    phone: text('phone'),
 
     email: text('email'),
 
@@ -1104,7 +1140,36 @@ export const patients = pgTable(
     */
     nationalId: text('national_id'),
 
+    /*
+      Blind index for `national_id`.
+
+      An encrypted column cannot be searched with ILIKE, so an exact
+      match is found through this HMAC. Set by `sealPatientIdentifiers`
+      in src/security/patient-identifiers.ts; null when field
+      encryption is not configured.
+    */
+    nationalIdBlindIndex: text('national_id_bidx'),
+
     shaNumber: text('sha_number'),
+
+    /* Blind index for `sha_number`; see national_id_bidx above. */
+    shaNumberBlindIndex: text('sha_number_bidx'),
+
+    /* Client Registry id used by every DHA eligibility and claim call. */
+    dhaClientRegistryId: text('dha_client_registry_id'),
+
+    /* Minimal cache of the last eligibility result (no demographics). */
+    dhaEligibilityStatus: text('dha_eligibility_status'),
+    dhaEligibilityCheckedAt: timestamp('dha_eligibility_checked_at'),
+    dhaEligibilitySchemes: jsonb('dha_eligibility_schemes'),
+
+    guardianName: text('guardian_name'),
+
+    guardianRelationship: text('guardian_relationship'),
+
+    guardianPhone: text('guardian_phone'),
+
+    guardianShaNumber: text('guardian_sha_number'),
 
     bloodGroup: text('blood_group'),
 
@@ -1216,6 +1281,92 @@ export const patients = pgTable(
     ).on(table.mergedIntoPatientId),
   }),
 );
+/* ============================================================
+   PATIENT ALLERGIES
+   ============================================================
+
+   A structured allergy registry, not a free-text summary.
+
+   `patients.allergies` already existed but nothing wrote to it: a
+   prescribing system with no allergy record cannot warn anyone. This
+   table records what the reaction was, how severe it was, and who
+   recorded it, which is what a warning needs in order to be credible
+   and auditable.
+
+   A resolved allergy is kept, not deleted: "the patient reacted to
+   penicillin in 2019" remains clinically relevant after the episode.
+   Entered-in-error is a distinct status so a mistake can be withdrawn
+   without erasing the fact that someone recorded it.
+   ============================================================ */
+
+export const patientAllergies = pgTable(
+  'patient_allergies',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    /* DRUG / FOOD / ENVIRONMENTAL / OTHER */
+    allergenType: text('allergen_type')
+      .default('DRUG')
+      .notNull(),
+
+    allergen: text('allergen')
+      .notNull(),
+
+    reaction: text('reaction'),
+
+    /* MILD / MODERATE / SEVERE / LIFE_THREATENING */
+    severity: text('severity')
+      .default('MODERATE')
+      .notNull(),
+
+    /* ACTIVE / RESOLVED / ENTERED_IN_ERROR */
+    status: text('status')
+      .default('ACTIVE')
+      .notNull(),
+
+    notes: text('notes'),
+
+    recordedByUserId: integer('recorded_by_user_id')
+      .references(() => users.id),
+
+    recordedAt: timestamp('recorded_at')
+      .defaultNow()
+      .notNull(),
+
+    resolvedAt: timestamp('resolved_at'),
+
+    createdAt: timestamp('created_at')
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    patientIdx: index('patient_allergies_patient_idx').on(
+      table.patientId,
+      table.status,
+    ),
+
+    tenantIdx: index('patient_allergies_tenant_idx').on(table.tenantId),
+
+    facilityIdx: index('patient_allergies_facility_idx').on(table.facilityId),
+  }),
+);
+
 
 
 /* ============================================================
@@ -2971,6 +3122,16 @@ export const admissions = pgTable(
       'discharge_summary',
     ),
 
+    dischargedBy: text('discharged_by'),
+
+    /*
+     * Recovered | Improved | Referred | Absconded | Deceased |
+     * Against Medical Advice
+     */
+    dischargeDisposition: text(
+      'discharge_disposition',
+    ),
+
     createdAt: timestamp('created_at')
       .defaultNow()
       .notNull(),
@@ -2979,6 +3140,130 @@ export const admissions = pgTable(
       .defaultNow()
       .notNull(),
   },
+);
+
+
+/* ============================================================
+   28b. INPATIENT TRANSFERS
+   ============================================================ */
+
+export const admissionTransfers = pgTable(
+  'admission_transfers',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    admissionId: integer('admission_id')
+      .references(() => admissions.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    fromWardId: integer('from_ward_id')
+      .references(() => wards.id),
+
+    fromBedId: integer('from_bed_id')
+      .references(() => beds.id),
+
+    toWardId: integer('to_ward_id')
+      .references(() => wards.id)
+      .notNull(),
+
+    toBedId: integer('to_bed_id')
+      .references(() => beds.id)
+      .notNull(),
+
+    reason: text('reason'),
+
+    transferredBy: text('transferred_by')
+      .notNull(),
+
+    transferredByUserId: integer(
+      'transferred_by_user_id',
+    ).references(() => users.id),
+
+    transferredAt: timestamp('transferred_at')
+      .defaultNow()
+      .notNull(),
+
+    createdAt: timestamp('created_at')
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('admission_transfers_admission_idx')
+      .on(table.admissionId, table.transferredAt),
+  ],
+);
+
+
+/* ============================================================
+   28c. NURSING NOTES
+   ============================================================ */
+
+export const nursingNotes = pgTable(
+  'nursing_notes',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    admissionId: integer('admission_id')
+      .references(() => admissions.id),
+
+    encounterId: integer('encounter_id')
+      .references(() => encounters.id),
+
+    /* Progress | Observation | Handover | Medication | Incident */
+    noteType: text('note_type')
+      .default('Progress')
+      .notNull(),
+
+    /* Morning | Afternoon | Night */
+    shift: text('shift'),
+
+    note: text('note').notNull(),
+
+    recordedBy: text('recorded_by')
+      .notNull(),
+
+    recordedByUserId: integer(
+      'recorded_by_user_id',
+    ).references(() => users.id),
+
+    recordedAt: timestamp('recorded_at')
+      .defaultNow()
+      .notNull(),
+
+    createdAt: timestamp('created_at')
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('nursing_notes_admission_idx')
+      .on(table.admissionId, table.recordedAt),
+    index('nursing_notes_patient_idx')
+      .on(table.patientId, table.recordedAt),
+  ],
 );
 
 
@@ -3133,6 +3418,14 @@ export const labOrders = pgTable(
 
     status: text('status')
       .default('Ordered'),
+    clinicalIndication: text('clinical_indication'),
+
+    specimenType: text('specimen_type'),
+
+    priority: text('priority')
+      .default('Routine'),
+
+    clinicalNotes: text('clinical_notes'),
 
     sampleCollectedAt: timestamp(
       'sample_collected_at',
@@ -3183,11 +3476,10 @@ export const labResults = pgTable(
 
     notes: text('notes'),
 
+    status: text('status').notNull().default('Pending Verification'),
     verifiedBy: text('verified_by'),
 
-    verifiedAt: timestamp('verified_at')
-      .defaultNow()
-      .notNull(),
+    verifiedAt: timestamp('verified_at'),
   },
 );
 
@@ -3418,6 +3710,7 @@ export const pharmacyDispensations = pgTable(
     ).defaultNow().notNull(),
 
     notes: text('notes'),
+
   },
 );
 
@@ -3516,6 +3809,66 @@ export const purchaseOrders = pgTable(
    39. BILLING INVOICES
    ============================================================ */
 
+export const facilityServiceTariffs = pgTable(
+  'facility_service_tariffs',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    code: text('code').notNull(),
+    description: text('description').notNull(),
+    department: text('department').notNull(),
+    unit: text('unit').notNull().default('Service'),
+    fee: numeric('fee', { precision: 10, scale: 2 }).notNull(),
+    shaStatus: text('sha_status').notNull().default('Not Assessed'),
+    shaNotes: text('sha_notes'),
+    /*
+     * Which automatic charge this tariff answers, if any.
+     *
+     * Facilities number their tariffs (`OPD-001`, `LAB-006`) rather than
+     * using the codes the billing engine looks for, so a price list can
+     * exist and still bill nothing. This column records the link the
+     * facility makes, once, instead of the engine guessing between
+     * OPD-001 (150) and OPD-002 (300).
+     *
+     * NULL means "not linked"; the tariff is still reachable by code.
+     * See migration 0019 and `src/billing/tariff-codes.ts` for the
+     * vocabulary.
+     */
+    billingKey: text('billing_key'),
+
+    /*
+     * When this price applies. Both nullable: NULL means "always", so
+     * every existing row keeps working and no date had to be invented
+     * for it. A resolver checks today's date against the pair.
+     */
+    effectiveFrom: date('effective_from'),
+    effectiveTo: date('effective_to'),
+
+    /*
+     * Whether automatic billing may use this tariff. Default true, so
+     * behaviour is unchanged; a facility can keep a tariff for manual
+     * pricing while excluding it from automatic charging.
+     */
+    autoBill: boolean('auto_bill').notNull().default(true),
+
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('facility_service_tariffs_facility_code_unique')
+      .on(table.facilityId, table.code),
+    index('facility_service_tariffs_tenant_facility_idx')
+      .on(table.tenantId, table.facilityId),
+    index('facility_service_tariffs_active_idx')
+      .on(table.facilityId, table.isActive),
+  ],
+);
 export const billingInvoices = pgTable(
   'billing_invoices',
   {
@@ -3567,12 +3920,30 @@ export const billingInvoices = pgTable(
     status: text('status')
       .default('Pending'),
 
+    /*
+     * Money received beyond the invoice total. Kept as its own column
+     * instead of letting balance_amount go negative, because a negative
+     * balance silently cancels out other patients' debts whenever the
+     * facility totals what it is owed.
+     */
+    creditBalance: numeric(
+      'credit_balance',
+      {
+        precision: 10,
+        scale: 2,
+      },
+    ).default('0'),
+
     payerType: text('payer_type')
       .default('Self-Pay'),
 
     payerName: text('payer_name'),
 
     memberNumber: text('member_number'),
+
+    voidedAt: timestamp('voided_at'),
+
+    voidReason: text('void_reason'),
 
     createdAt: timestamp('created_at')
       .defaultNow()
@@ -3597,6 +3968,28 @@ export const billingItems = pgTable(
     invoiceId: integer('invoice_id')
       .references(() => billingInvoices.id)
       .notNull(),
+
+    tariffId: integer('tariff_id')
+      .references(() => facilityServiceTariffs.id, { onDelete: 'set null' }),
+
+    tariffCode: text('tariff_code'),
+
+    /*
+     * Provenance: which clinical event produced this line item.
+     *
+     *   CONSULTATION | LAB_ORDER | PROCEDURE | RADIOLOGY | PHARMACY
+     *   ADMISSION | BED_DAY | MANUAL
+     */
+    sourceType: text('source_type'),
+
+    sourceId: integer('source_id'),
+
+    /*
+     * Idempotency key for engine-generated charges, enforced by a UNIQUE
+     * partial index in migration 0009. Replaying a clinical event can
+     * never create a second charge. Manual items leave this NULL.
+     */
+    idempotencyKey: text('idempotency_key'),
 
     itemType: text('item_type')
       .notNull(),
@@ -3629,6 +4022,167 @@ export const billingItems = pgTable(
   },
 );
 
+/**
+ * The link between a catalogue service and the price that answers it.
+ *
+ * `service_id` is the stable id of the catalogue row — `lab_tests.id`
+ * for a laboratory test — not a code someone can rename. `NULL` means
+ * the link covers every service of that type.
+ *
+ * Why a table instead of comparing strings: the engine used to ask for
+ * `LAB-BLOOD` when the facility's row was `LAB-001`, and every failure
+ * mode (missing, inactive, expired, another facility, ambiguous) looked
+ * identical from the outside. A link by id cannot be ambiguous, and a
+ * link can be validated field by field.
+ *
+ * The composite foreign key to `(facility_id, id)` means a link can
+ * only reference a tariff of the same facility: isolation is a
+ * constraint, not a convention.
+ *
+ * See migration 0021.
+ */
+export const serviceTariffLinks = pgTable(
+  'service_tariff_links',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    /** LAB_TEST | CONSULTATION | RADIOLOGY | … (see migration 0021). */
+    serviceType: text('service_type').notNull(),
+
+    /** Catalogue row id; NULL links the whole family. */
+    serviceId: integer('service_id'),
+
+    /** Snapshot of the catalogue code and name at link time. */
+    serviceCode: text('service_code'),
+    serviceName: text('service_name'),
+
+    tariffId: integer('tariff_id').notNull(),
+
+    autoBill: boolean('auto_bill').notNull().default(true),
+
+    note: text('note'),
+    createdBy: text('created_by'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('service_tariff_links_service_unique')
+      .on(table.facilityId, table.serviceType, table.serviceId)
+      .where(sql`${table.isActive} AND ${table.serviceId} is not null`),
+    uniqueIndex('service_tariff_links_family_unique')
+      .on(table.facilityId, table.serviceType)
+      .where(sql`${table.isActive} AND ${table.serviceId} is null`),
+    index('service_tariff_links_facility_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.serviceType,
+    ),
+    index('service_tariff_links_tariff_idx').on(table.tariffId),
+  ],
+);
+
+/**
+ * A charge the billing engine could not price.
+ *
+ * The clinical action succeeded but no invoice line exists, so the
+ * money owed is invisible. This row keeps the original request so the
+ * charge can be replayed once the facility configures a tariff — and so
+ * the configuration screen can say what is waiting.
+ *
+ * See migration 0020. Status: PENDING | BILLED | DUPLICATE | VOID.
+ */
+export const billingChargeAttempts = pgTable(
+  'billing_charge_attempts',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    encounterId: integer('encounter_id'),
+
+    sourceType: text('source_type').notNull(),
+    sourceId: integer('source_id'),
+    itemType: text('item_type').notNull(),
+    description: text('description'),
+
+    /** Candidates the engine tried, in priority order. */
+    codes: text('codes').array().notNull().default([]),
+    /** Linked keys the facility can set (`CONSULTATION`). */
+    serviceKeys: text('service_keys').array().notNull().default([]),
+
+    family: text('family'),
+    serviceName: text('service_name'),
+    encounterType: text('encounter_type'),
+    aliases: text('aliases').array().notNull().default([]),
+
+    /*
+     * Which occurrence of the source this is: the bed-night date for a
+     * ward charge (`BED_DAY:12:2026-10-20`), null when the source is
+     * billed once. Without it, a five-night stay with no tariff would
+     * collapse into a single queue row and only one night could ever be
+     * reprocessed.
+     */
+    idempotencySuffix: text('idempotency_suffix'),
+
+    /** Bed category at accrual time, so a replay prices the same bed. */
+    wardType: text('ward_type'),
+    wardName: text('ward_name'),
+
+    quantity: integer('quantity').notNull().default(1),
+    fallbackUnitPrice: numeric('fallback_unit_price', { precision: 10, scale: 2 }),
+
+    reason: text('reason').notNull(),
+    detail: text('detail'),
+    codesTried: text('codes_tried').array().notNull().default([]),
+
+    status: text('status').notNull().default('PENDING'),
+    attempts: integer('attempts').notNull().default(1),
+    lastAttemptAt: timestamp('last_attempt_at').defaultNow().notNull(),
+
+    resolvedItemId: integer('resolved_item_id'),
+    resolvedInvoiceId: integer('resolved_invoice_id'),
+    resolvedTariffCode: text('resolved_tariff_code'),
+    resolvedUnitPrice: numeric('resolved_unit_price', { precision: 10, scale: 2 }),
+    resolvedAt: timestamp('resolved_at'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('billing_charge_attempts_pending_unique')
+      .on(
+        table.facilityId,
+        table.sourceType,
+        table.sourceId,
+        table.itemType,
+        sql`coalesce(${table.idempotencySuffix}, '')`,
+      )
+      .where(sql`${table.status} = 'PENDING' AND ${table.sourceId} is not null`),
+    index('billing_charge_attempts_facility_status_idx')
+      .on(table.tenantId, table.facilityId, table.status),
+    index('billing_charge_attempts_patient_idx').on(table.patientId),
+  ],
+);
+
 
 /* ============================================================
    41. BILLING PAYMENTS
@@ -3659,6 +4213,16 @@ export const billingPayments = pgTable(
     ).notNull(),
 
     referenceCode: text('reference_code'),
+
+    /*
+     * The code printed on the customer's M-Pesa or Airtel confirmation
+     * message. Distinct from reference_code so reconciliation can match
+     * against a mobile money statement without parsing free text.
+     */
+    transactionCode: text('transaction_code'),
+
+    /* FULLY_PAID | BALANCE_REMAINING | OVERPAID at the moment of posting. */
+    settlementStatus: text('settlement_status'),
 
     cashierName: text('cashier_name')
       .notNull(),
@@ -3735,6 +4299,17 @@ export const insuranceClaims = pgTable(
       'adjudication_notes',
     ),
 
+    /*
+     * The payment that settled this claim. Set when an approved amount
+     * is posted against the invoice; null while the money is outstanding.
+     */
+    settledPaymentId: integer('settled_payment_id')
+      .references(() => billingPayments.id, { onDelete: 'set null' }),
+
+    settledAt: timestamp('settled_at'),
+
+    createdByUserId: integer('created_by_user_id'),
+
     createdAt: timestamp('created_at')
       .defaultNow()
       .notNull(),
@@ -3742,6 +4317,35 @@ export const insuranceClaims = pgTable(
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .notNull(),
+  },
+);
+
+
+/* ============================================================
+   42b. INSURANCE CLAIM ITEMS
+   ============================================================ */
+
+export const insuranceClaimItems = pgTable(
+  'insurance_claim_items',
+  {
+    id: serial('id').primaryKey(),
+
+    claimId: integer('claim_id')
+      .references(() => insuranceClaims.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    billingItemId: integer('billing_item_id')
+      .references(() => billingItems.id, { onDelete: 'set null' }),
+
+    /*
+     * Snapshot of the line at claim time. The invoice may be edited or
+     * voided later; the claim must still say what it asked for.
+     */
+    description: text('description').notNull(),
+
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
 );
 
@@ -3869,6 +4473,768 @@ export const auditLogs = pgTable(
   }),
 );
 
+
+
+/* ============================================================
+   FACILITY SUBSCRIPTIONS
+   Separate from patient billing and facilities.is_active.
+   ============================================================ */
+
+export const facilitySubscriptionAccess = pgTable(
+  'facility_subscription_access',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    accessStatus: text('access_status').default('ACTIVE').notNull(),
+    suspendedAt: timestamp('suspended_at'),
+    suspendedBy: text('suspended_by'),
+    suspensionReason: text('suspension_reason'),
+    reactivatedAt: timestamp('reactivated_at'),
+    reactivatedBy: text('reactivated_by'),
+
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    facilityUnique: uniqueIndex('facility_subscription_access_facility_uidx')
+      .on(table.facilityId),
+    tenantIdx: index('facility_subscription_access_tenant_idx')
+      .on(table.tenantId),
+    statusIdx: index('facility_subscription_access_status_idx')
+      .on(table.accessStatus),
+  }),
+);
+export const facilitySubscriptionPeriods = pgTable(
+  'facility_subscription_periods',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    subscriptionName: text('subscription_name').notNull(),
+    amountDue: numeric('amount_due', { precision: 12, scale: 2 }).notNull(),
+    currency: text('currency').default('KES').notNull(),
+
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    dueDate: date('due_date').notNull(),
+    gracePeriodEnd: date('grace_period_end'),
+
+    status: text('status').default('PENDING').notNull(),
+    notes: text('notes'),
+    createdBy: text('created_by').notNull(),
+    updatedBy: text('updated_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    facilityIdx: index('facility_subscription_periods_facility_idx')
+      .on(table.facilityId),
+    tenantIdx: index('facility_subscription_periods_tenant_idx')
+      .on(table.tenantId),
+    statusIdx: index('facility_subscription_periods_status_idx')
+      .on(table.status),
+    periodStartIdx: index('facility_subscription_periods_start_idx')
+      .on(table.periodStart),
+  }),
+);
+
+export const facilitySubscriptionPayments = pgTable(
+  'facility_subscription_payments',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    subscriptionPeriodId: integer('subscription_period_id')
+      .references(() => facilitySubscriptionPeriods.id)
+      .notNull(),
+
+    transactionCode: text('transaction_code').notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    paymentMethod: text('payment_method').default('MPESA').notNull(),
+    paymentDate: timestamp('payment_date').defaultNow().notNull(),
+
+    verificationStatus: text('verification_status').default('PENDING').notNull(),
+    verifiedBy: text('verified_by'),
+    verifiedAt: timestamp('verified_at'),
+    verificationNotes: text('verification_notes'),
+
+    createdBy: text('created_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    transactionCodeUnique: uniqueIndex(
+      'facility_subscription_payments_transaction_code_uidx',
+    ).on(table.transactionCode),
+    periodIdx: index('facility_subscription_payments_period_idx')
+      .on(table.subscriptionPeriodId),
+    facilityIdx: index('facility_subscription_payments_facility_idx')
+      .on(table.facilityId),
+    verificationIdx: index('facility_subscription_payments_verification_idx')
+      .on(table.verificationStatus),
+  }),
+);
+
+export const facilitySubscriptionPriceChanges = pgTable(
+  'facility_subscription_price_changes',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    subscriptionPeriodId: integer('subscription_period_id')
+      .references(() => facilitySubscriptionPeriods.id)
+      .notNull(),
+
+    previousAmount: numeric('previous_amount', {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+    newAmount: numeric('new_amount', {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+
+    effectiveTiming: text('effective_timing').notNull(),
+    reason: text('reason').notNull(),
+    changedBy: text('changed_by').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    periodIdx: index('facility_subscription_price_changes_period_idx')
+      .on(table.subscriptionPeriodId),
+    facilityIdx: index('facility_subscription_price_changes_facility_idx')
+      .on(table.facilityId),
+  }),
+);
+/* ============================================================
+   44b. MATERNITY / MCH
+   ============================================================
+
+   One pregnancy, many antenatal visits. If the patient labours with us,
+   the pregnancy gets one labour record, which carries the partograph
+   rows, and one delivery, which carries one row per baby.
+
+   Why the split:
+
+   - ANC happens months before labour and must survive a labour that is
+     never recorded here (a referral, a home birth, a caesarean booked
+     elsewhere).
+   - A partograph is a time series, not a form. Six hours of labour is
+     twelve observations at half-hourly intervals, and each has to keep
+     its own timestamp.
+   - Twins are one delivery and two babies. A single delivery row with
+     `baby1_*`/`baby2_*` columns cannot express a third baby, and cannot
+     be aggregated.
+
+   Every table carries tenant and facility, because every one of these
+   rows is a clinical record that must be scoped on read.
+
+   No clinical values are seeded. Fields are nullable where a real
+   encounter may genuinely not have the measurement, and the service
+   refuses to invent one.
+   ============================================================ */
+
+export const maternityPregnancies = pgTable(
+  'maternity_pregnancies',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    /* Booking date and the dating that everything else is measured from. */
+    bookedAt: text('booked_at').notNull(),
+
+    lmpDate: text('lmp_date'),
+
+    eddDate: text('edd_date').notNull(),
+
+    /*
+     * LMP | Ultrasound | Other. An EDD from the last menstrual period and
+     * an EDD from a scan legitimately disagree; recording which one is in
+     * use stops the next clinician silently "correcting" it.
+     */
+    eddBasis: text('edd_basis').default('LMP').notNull(),
+
+    /* Obstetric history at booking. */
+    gravida: integer('gravida'),
+    para: integer('para'),
+    abortions: integer('abortions'),
+    livingChildren: integer('living_children'),
+
+    heightCm: numeric('height_cm', { precision: 5, scale: 1 }),
+    bloodGroup: text('blood_group'),
+    rhesus: text('rhesus'),
+    haemoglobinGdl: numeric('haemoglobin_gdl', { precision: 4, scale: 1 }),
+
+    /* Free text on purpose: risk is a clinical judgement, not a checkbox. */
+    riskFactors: text('risk_factors'),
+
+    /* Active | Delivered | Closed | Transferred */
+    status: text('status').default('Active').notNull(),
+
+    closedAt: text('closed_at'),
+    closedReason: text('closed_reason'),
+
+    createdBy: integer('created_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    patientIdx: index('maternity_pregnancies_patient_idx').on(
+      table.tenantId,
+      table.patientId,
+      table.status,
+    ),
+
+    facilityIdx: index('maternity_pregnancies_facility_idx').on(
+      table.facilityId,
+      table.status,
+    ),
+
+    /*
+     * A patient cannot be booked twice for the same pregnancy. Two active
+     * records would split the ANC history and make the EDD ambiguous, so
+     * the database refuses the second one rather than the screen.
+     */
+    oneActiveIdx: uniqueIndex('maternity_pregnancies_one_active_idx')
+      .on(table.tenantId, table.patientId)
+      .where(sql`status = 'Active'`),
+  }),
+);
+
+export const ancVisits = pgTable(
+  'anc_visits',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    pregnancyId: integer('pregnancy_id')
+      .references(() => maternityPregnancies.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    visitDate: text('visit_date').notNull(),
+
+    /*
+     * Recorded by hand rather than derived from the count of rows: the
+     * MOH 405 card numbers visits in order and a woman may arrive having
+     * attended elsewhere.
+     */
+    visitNumber: integer('visit_number'),
+
+    gestationWeeks: integer('gestation_weeks'),
+    gestationDays: integer('gestation_days'),
+
+    weightKg: numeric('weight_kg', { precision: 5, scale: 1 }),
+    bpSystolic: integer('bp_systolic'),
+    bpDiastolic: integer('bp_diastolic'),
+    pulseBpm: integer('pulse_bpm'),
+    temperatureC: numeric('temperature_c', { precision: 4, scale: 1 }),
+
+    fundalHeightCm: numeric('fundal_height_cm', { precision: 4, scale: 1 }),
+    fetalHeartRateBpm: integer('fetal_heart_rate_bpm'),
+    presentation: text('presentation'),
+    fetalMovements: text('fetal_movements'),
+
+    /* Negative | Trace | + | ++ | +++ */
+    urineProtein: text('urine_protein'),
+    urineGlucose: text('urine_glucose'),
+
+    haemoglobinGdl: numeric('haemoglobin_gdl', { precision: 4, scale: 1 }),
+
+    /* Tetanus-toxoid dose number: 1 to 5. */
+    ttDose: integer('tt_dose'),
+    ifasDispensed: boolean('ifas_dispensed').default(false).notNull(),
+
+    /* Danger signs seen today, in the words of whoever saw them. */
+    dangerSigns: text('danger_signs'),
+    notes: text('notes'),
+    nextVisitDate: text('next_visit_date'),
+
+    recordedBy: integer('recorded_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    pregnancyIdx: index('anc_visits_pregnancy_idx').on(
+      table.pregnancyId,
+      table.visitDate,
+    ),
+
+    facilityIdx: index('anc_visits_facility_idx').on(
+      table.facilityId,
+      table.visitDate,
+    ),
+  }),
+);
+
+export const labourRecords = pgTable(
+  'labour_records',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    pregnancyId: integer('pregnancy_id')
+      .references(() => maternityPregnancies.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    encounterId: integer('encounter_id')
+      .references(() => encounters.id),
+
+    admittedAt: text('admitted_at').notNull(),
+
+    labourOnsetAt: text('labour_onset_at'),
+    membranesRupturedAt: text('membranes_ruptured_at'),
+
+    gestationWeeksAtAdmission: integer('gestation_weeks_at_admission'),
+
+    /* In Labour | Delivered | Referred | Closed */
+    status: text('status').default('In Labour').notNull(),
+
+    notes: text('notes'),
+
+    createdBy: integer('created_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    pregnancyIdx: index('labour_records_pregnancy_idx').on(
+      table.pregnancyId,
+      table.admittedAt,
+    ),
+
+    facilityStatusIdx: index('labour_records_facility_status_idx').on(
+      table.facilityId,
+      table.status,
+    ),
+  }),
+);
+
+export const partographEntries = pgTable(
+  'partograph_entries',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    labourRecordId: integer('labour_record_id')
+      .references(() => labourRecords.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    /*
+     * Minutes matter on a partograph: the alert and action lines are read
+     * against time since admission, so this is a timestamp, not a date.
+     */
+    recordedAt: text('recorded_at').notNull(),
+
+    cervicalDilatationCm: numeric('cervical_dilatation_cm', {
+      precision: 4,
+      scale: 1,
+    }),
+
+    /*
+     * Station of the presenting part, -3 to +3. Zero is at the ischial
+     * spines; negative is above them.
+     */
+    descentStation: integer('descent_station'),
+
+    contractionsPer10Min: integer('contractions_per_10_min'),
+
+    /* Seconds. Recorded separately: 3 in 10 of 40 s is not 4 in 10 of 20 s. */
+    contractionDurationSec: integer('contraction_duration_sec'),
+
+    fetalHeartRateBpm: integer('fetal_heart_rate_bpm'),
+
+    /* Intact | Ruptured */
+    membranes: text('membranes'),
+
+    /* Clear | Meconium I | Meconium II | Meconium III | Bloody | Absent */
+    liquor: text('liquor'),
+
+    maternalPulseBpm: integer('maternal_pulse_bpm'),
+    bpSystolic: integer('bp_systolic'),
+    bpDiastolic: integer('bp_diastolic'),
+    temperatureC: numeric('temperature_c', { precision: 4, scale: 1 }),
+
+    oxytocin: text('oxytocin'),
+    drugsGiven: text('drugs_given'),
+    notes: text('notes'),
+
+    recordedBy: integer('recorded_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    labourIdx: index('partograph_entries_labour_idx').on(
+      table.labourRecordId,
+      table.recordedAt,
+    ),
+
+    /*
+     * Two observations claiming the same moment is a double entry, and on
+     * a partograph it moves the plotted line. Refuse it.
+     */
+    uniqueReadingIdx: uniqueIndex('partograph_entries_labour_time_idx').on(
+      table.labourRecordId,
+      table.recordedAt,
+    ),
+  }),
+);
+
+export const deliveries = pgTable(
+  'deliveries',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    pregnancyId: integer('pregnancy_id')
+      .references(() => maternityPregnancies.id)
+      .notNull(),
+
+    labourRecordId: integer('labour_record_id')
+      .references(() => labourRecords.id),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    deliveredAt: text('delivered_at').notNull(),
+
+    /*
+     * Spontaneous Vertex | Assisted Vaginal | Breech | Vacuum |
+     * Forceps | Caesarean Section
+     */
+    deliveryMode: text('delivery_mode').notNull(),
+
+    bloodLossMl: integer('blood_loss_ml'),
+
+    /* Intact | 1st Degree | 2nd Degree | 3rd Degree | 4th Degree | Episiotomy */
+    perineum: text('perineum'),
+
+    placentaComplete: boolean('placenta_complete'),
+    placentaDeliveredAt: text('placenta_delivered_at'),
+    oxytocinGiven: boolean('oxytocin_given').default(false).notNull(),
+
+    complications: text('complications'),
+    notes: text('notes'),
+
+    deliveredBy: integer('delivered_by'),
+    conductedByCadre: text('conducted_by_cadre'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    pregnancyIdx: index('deliveries_pregnancy_idx').on(
+      table.pregnancyId,
+      table.deliveredAt,
+    ),
+
+    facilityIdx: index('deliveries_facility_idx').on(
+      table.facilityId,
+      table.deliveredAt,
+    ),
+  }),
+);
+
+export const deliveryBabies = pgTable(
+  'delivery_babies',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    deliveryId: integer('delivery_id')
+      .references(() => deliveries.id)
+      .notNull(),
+
+    /* 1 for a singleton, 1 and 2 for twins. */
+    babyNumber: integer('baby_number').notNull(),
+
+    /* Male | Female | Ambiguous | Not recorded */
+    sex: text('sex'),
+
+    birthWeightGrams: integer('birth_weight_grams'),
+
+    /*
+     * Apgar is nullable at each minute because a resuscitation may mean
+     * the score was never taken. A zero is a real score; null is not.
+     */
+    apgar1: integer('apgar1'),
+    apgar5: integer('apgar5'),
+    apgar10: integer('apgar10'),
+
+    /* Live Birth | Stillbirth Fresh | Stillbirth Macerated | Neonatal Death */
+    outcome: text('outcome').notNull(),
+
+    resuscitation: text('resuscitation'),
+    notes: text('notes'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    deliveryIdx: uniqueIndex('delivery_babies_delivery_number_idx').on(
+      table.deliveryId,
+      table.babyNumber,
+    ),
+  }),
+);
+
+/* ============================================================
+   44c. POSTNATAL CARE
+   ============================================================
+
+   One row per postnatal contact. The mother is the subject; the baby is
+   noted on the same row because at this stage the two are seen together
+   and a separate baby record would be empty for most visits.
+
+   Postnatal visits hang off the pregnancy, not the delivery: a woman who
+   delivered elsewhere still attends here for her six-week check.
+   ============================================================ */
+
+export const postnatalVisits = pgTable(
+  'postnatal_visits',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    pregnancyId: integer('pregnancy_id')
+      .references(() => maternityPregnancies.id)
+      .notNull(),
+
+    deliveryId: integer('delivery_id')
+      .references(() => deliveries.id),
+
+    visitDate: text('visit_date').notNull(),
+
+    /* 1..n within this pregnancy, and the day counted from delivery. */
+    visitNumber: integer('visit_number'),
+    dayPostpartum: integer('day_postpartum'),
+
+    bpSystolic: integer('bp_systolic'),
+    bpDiastolic: integer('bp_diastolic'),
+    pulseBpm: integer('pulse_bpm'),
+    temperatureC: numeric('temperature_c', { precision: 4, scale: 1 }),
+
+    /* Involution: how far the fundus has descended, in cm. */
+    fundalHeightCm: numeric('fundal_height_cm', { precision: 4, scale: 1 }),
+
+    /* Normal | Subinvolution | Not examined */
+    involution: text('involution'),
+
+    /* Rubra | Serosa | Alba | Abnormal | Not examined */
+    lochia: text('lochia'),
+
+    /* Intact | Healing | Infected | Dehisced | Episiotomy healing */
+    perineum: text('perineum'),
+
+    /* Normal | Engorged | Cracked nipples | Mastitis */
+    breasts: text('breasts'),
+
+    /* Exclusive | Mixed | Formula | Not breastfeeding */
+    breastfeeding: text('breastfeeding'),
+
+    /*
+     * Not a diagnosis. A recorded screening outcome, so the next
+     * clinician knows whether anyone asked.
+     */
+    moodScreening: text('mood_screening'),
+
+    haemoglobinGdl: numeric('haemoglobin_gdl', { precision: 4, scale: 1 }),
+
+    dangerSigns: text('danger_signs'),
+    notes: text('notes'),
+    nextVisitDate: text('next_visit_date'),
+
+    babyWeightGrams: integer('baby_weight_grams'),
+    babyNotes: text('baby_notes'),
+
+    recordedBy: integer('recorded_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    pregnancyIdx: index('postnatal_visits_pregnancy_idx').on(
+      table.pregnancyId,
+      table.visitDate,
+    ),
+
+    facilityIdx: index('postnatal_visits_facility_idx').on(
+      table.facilityId,
+      table.visitDate,
+    ),
+  }),
+);
+
+/* ============================================================
+   44d. IMMUNISATION
+   ============================================================
+
+   The antigen and dose are stored as administered. The schedule lives in
+   code (`immunisation-contracts.ts`), not in this table: a schedule
+   changes, a record of what was given does not.
+
+   The unique index is the safety property that matters most here. Two
+   doses of the same antigen on the same child at the same dose number is
+   a double administration, and it is refused by the database rather than
+   by a screen that someone may not be looking at.
+   ============================================================ */
+
+export const immunisationRecords = pgTable(
+  'immunisation_records',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    /* Set when the child was born here and the link is known. */
+    deliveryId: integer('delivery_id')
+      .references(() => deliveries.id),
+
+    deliveryBabyId: integer('delivery_baby_id')
+      .references(() => deliveryBabies.id),
+
+    pregnancyId: integer('pregnancy_id')
+      .references(() => maternityPregnancies.id),
+
+    /* BCG | OPV | PENTA | PCV | ROTA | IPV | MR | YF | HPV | Td */
+    antigenCode: text('antigen_code').notNull(),
+
+    doseNumber: integer('dose_number').default(1).notNull(),
+
+    administeredOn: text('administered_on').notNull(),
+
+    batchNumber: text('batch_number'),
+    site: text('site'),
+
+    /* Intradermal | Subcutaneous | Intramuscular | Oral */
+    route: text('route'),
+
+    administeredBy: integer('administered_by'),
+    notes: text('notes'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    patientIdx: index('immunisation_records_patient_idx').on(
+      table.tenantId,
+      table.patientId,
+      table.administeredOn,
+    ),
+
+    facilityIdx: index('immunisation_records_facility_idx').on(
+      table.facilityId,
+      table.administeredOn,
+    ),
+
+    /*
+     * A child cannot receive the same dose twice. This is the one
+     * constraint a paper card cannot enforce.
+     */
+    uniqueDoseIdx: uniqueIndex('immunisation_records_dose_idx').on(
+      table.tenantId,
+      table.patientId,
+      table.antigenCode,
+      table.doseNumber,
+    ),
+  }),
+);
 
 /* ============================================================
    45. RELATIONS
@@ -4983,3 +6349,514 @@ export const publicHealthReportsRelations =
 /* ============================================================
    END OF JALICARE SCHEMA
    ============================================================ */
+
+
+/* ============================================================
+   DHA / AFYACONNECT INTEGRATION AUDIT
+   ============================================================ */
+
+/**
+ * One row per outbound call to the national health exchange.
+ *
+ * No request body, response body, token or patient identifier is stored
+ * here. The path is templated at the call site.
+ */
+/* ============================================================
+   PROFESSIONAL CREDENTIAL VERIFICATION
+   ============================================================ */
+
+/**
+ * A professional registration, as verified against a regulator source.
+ *
+ * Independent of `users`, `userInvitations` and role assignment: losing a
+ * licence does not delete an account, and a verified licence does not
+ * grant a privilege. The status here is one of the values in
+ * practitioner.contracts.ts.
+ *
+ * Data minimisation: no national ID, no date of birth, no contact
+ * details. The registration number is retained because the whole point is
+ * to be able to show, later, what was checked.
+ */
+export const staffProfessionalCredentials = pgTable(
+  'staff_professional_credentials',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id').notNull(),
+    facilityId: integer('facility_id').notNull(),
+
+    /** Set once the person accepts an invitation and has a user row. */
+    userId: integer('user_id'),
+    invitationId: integer('invitation_id'),
+
+    regulator: text('regulator').notNull(),
+    registrationNumber: text('registration_number').notNull(),
+
+    licenceNumber: text('licence_number'),
+    professionalCategory: text('professional_category'),
+    specialty: text('specialty'),
+
+    status: text('status').default('NOT_VERIFIED').notNull(),
+
+    /** Raw regulator wording, kept separate from the licence fields. */
+    registrationStatus: text('registration_status'),
+    licenceStatus: text('licence_status'),
+
+    licenceExpiry: date('licence_expiry'),
+    lastVerifiedAt: timestamp('last_verified_at'),
+
+    verificationSource: text('verification_source'),
+    externalReference: text('external_reference'),
+    responseReference: text('response_reference'),
+    mode: text('mode'),
+
+    verifiedBy: integer('verified_by'),
+
+    manualReviewReason: text('manual_review_reason'),
+    manualSource: text('manual_source'),
+    manualCheckedAt: timestamp('manual_checked_at'),
+
+    /** Concerns raised by the normaliser, in plain language. */
+    warnings: jsonb('warnings'),
+    /** Candidate keys that matched; no values are stored here. */
+    matchedFields: jsonb('matched_fields'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+);
+
+/**
+ * Append-only history. Every verification attempt, manual check and
+ * administrative decision is recorded here, including the failures, so a
+ * gap in the audit trail cannot be mistaken for a clean record.
+ */
+export const professionalVerificationEvents = pgTable(
+  'professional_verification_events',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id').notNull(),
+    facilityId: integer('facility_id').notNull(),
+
+    credentialId: integer('credential_id'),
+    userId: integer('user_id'),
+    invitationId: integer('invitation_id'),
+
+    action: text('action').notNull(),
+    statusBefore: text('status_before'),
+    statusAfter: text('status_after'),
+
+    source: text('source'),
+    mode: text('mode'),
+    httpStatus: integer('http_status'),
+    errorCode: text('error_code'),
+
+    performedBy: integer('performed_by'),
+    notes: text('notes'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+);
+
+/* ============================================================
+   DHA SERVICE-AREA MAPPINGS
+   ============================================================ */
+
+/**
+ * Which DHA intervention code covers each service area at this facility.
+ *
+ * The code is entered by an administrator from the DHA portal. It is
+ * never seeded, generated or inferred: an invented intervention code
+ * produces a rejected claim, and a wrong one tells the authority
+ * something untrue about the care that was delivered.
+ *
+ * A unique index on (facility_id, service_area) lives in migration 0013,
+ * so a claim line can never resolve to two codes.
+ */
+export const dhaServiceMappings = pgTable(
+  'dha_service_mappings',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id').notNull(),
+    facilityId: integer('facility_id').notNull(),
+
+    /* One of DhaServiceAreaId, validated in dha.service-areas.ts. */
+    serviceArea: text('service_area').notNull(),
+
+    interventionCode: text('intervention_code').notNull(),
+
+    /* Documented DHA enums. Null until the administrator records them. */
+    accessPoint: text('access_point'),
+    paymentMechanism: text('payment_mechanism'),
+    fund: text('fund'),
+    needsPreauth: boolean('needs_preauth'),
+
+    notes: text('notes'),
+    createdBy: integer('created_by'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+);
+
+export const dhaApiCalls = pgTable(
+  'dha_api_calls',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id'),
+    facilityId: integer('facility_id'),
+    userId: integer('user_id'),
+
+    mode: text('mode').notNull(),
+    operation: text('operation').notNull(),
+    method: text('method').notNull(),
+    path: text('path').notNull(),
+
+    status: integer('status'),
+    durationMs: integer('duration_ms').default(0).notNull(),
+    outcome: text('outcome').notNull(),
+    errorCode: text('error_code'),
+    requestId: text('request_id'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+);
+
+
+/* ============================================================
+   PATIENT DIGITAL HEALTH RECORD PORTAL
+   ============================================================
+ *
+ * These tables hold a *patient-facing identity*, deliberately separate
+ * from `users`. A portal account has no role, no permission and no
+ * reach into the staff API surface; it can only read the record of the
+ * one patient it is linked to.
+ *
+ * The companion migration is `drizzle/0018_patient_portal.sql`.
+ */
+
+export const patientPortalAccounts = pgTable(
+  'patient_portal_accounts',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    loginIdentifier: text('login_identifier').notNull(),
+
+    loginType: text('login_type').default('PHONE').notNull(),
+
+    passwordHash: text('password_hash').notNull(),
+
+    /*
+      PENDING_VERIFICATION | ACTIVE | SUSPENDED | REVOKED
+    */
+    status: text('status').default('ACTIVE').notNull(),
+
+    mustChangePassword: boolean('must_change_password')
+      .default(false)
+      .notNull(),
+
+    failedLoginAttempts: integer('failed_login_attempts')
+      .default(0)
+      .notNull(),
+
+    lockedUntil: timestamp('locked_until'),
+
+    activatedAt: timestamp('activated_at'),
+
+    lastLoginAt: timestamp('last_login_at'),
+
+    suspendedAt: timestamp('suspended_at'),
+
+    suspendedByUserId: integer('suspended_by_user_id')
+      .references(() => users.id),
+
+    suspendedReason: text('suspended_reason'),
+
+    revokedAt: timestamp('revoked_at'),
+
+    revokedByUserId: integer('revoked_by_user_id')
+      .references(() => users.id),
+
+    revokedReason: text('revoked_reason'),
+
+    qrTokenHash: text('qr_token_hash'),
+
+    qrTokenSealed: text('qr_token_sealed'),
+
+    qrIssuedAt: timestamp('qr_issued_at'),
+
+    securityVersion: integer('security_version').default(1).notNull(),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    patientIdx: uniqueIndex(
+      'patient_portal_accounts_patient_idx',
+    ).on(table.patientId),
+
+    loginIdx: uniqueIndex(
+      'patient_portal_accounts_login_idx',
+    ).on(table.loginIdentifier),
+
+    scopeIdx: index(
+      'patient_portal_accounts_scope_idx',
+    ).on(table.tenantId, table.facilityId, table.status),
+  }),
+);
+
+export const patientPortalInvitations = pgTable(
+  'patient_portal_invitations',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    tokenHash: text('token_hash').notNull(),
+
+    deliveryChannel: text('delivery_channel')
+      .default('MANUAL')
+      .notNull(),
+
+    deliveryStatus: text('delivery_status')
+      .default('PENDING')
+      .notNull(),
+
+    status: text('status').default('PENDING').notNull(),
+
+    purpose: text('purpose').default('ACTIVATION').notNull(),
+
+    contactHint: text('contact_hint'),
+
+    deliveryAttempts: integer('delivery_attempts')
+      .default(0)
+      .notNull(),
+
+    lastDeliveryError: text('last_delivery_error'),
+
+    expiresAt: timestamp('expires_at').notNull(),
+
+    createdByUserId: integer('created_by_user_id')
+      .references(() => users.id),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+
+    sentAt: timestamp('sent_at'),
+
+    handedOverAt: timestamp('handed_over_at'),
+
+    activatedAt: timestamp('activated_at'),
+
+    revokedAt: timestamp('revoked_at'),
+
+    revokedByUserId: integer('revoked_by_user_id')
+      .references(() => users.id),
+
+    revokedReason: text('revoked_reason'),
+
+    supersededBy: integer('superseded_by'),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex(
+      'patient_portal_invitations_token_idx',
+    ).on(table.tokenHash),
+
+    patientIdx: index(
+      'patient_portal_invitations_patient_idx',
+    ).on(table.patientId, table.createdAt),
+
+    scopeIdx: index(
+      'patient_portal_invitations_scope_idx',
+    ).on(table.tenantId, table.facilityId, table.status),
+  }),
+);
+
+export const patientPortalInvitationEvents = pgTable(
+  'patient_portal_invitation_events',
+  {
+    id: serial('id').primaryKey(),
+
+    invitationId: integer('invitation_id')
+      .references(() => patientPortalInvitations.id)
+      .notNull(),
+
+    eventType: text('event_type').notNull(),
+
+    detail: text('detail'),
+
+    actorUserId: integer('actor_user_id')
+      .references(() => users.id),
+
+    ipAddress: text('ip_address'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    invitationIdx: index(
+      'patient_portal_events_invitation_idx',
+    ).on(table.invitationId, table.createdAt),
+  }),
+);
+
+export const patientPortalSessions = pgTable(
+  'patient_portal_sessions',
+  {
+    id: serial('id').primaryKey(),
+
+    accountId: integer('account_id')
+      .references(() => patientPortalAccounts.id)
+      .notNull(),
+
+    sessionTokenHash: text('session_token_hash').notNull(),
+
+    ipAddress: text('ip_address'),
+
+    userAgent: text('user_agent'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+
+    lastActivityAt: timestamp('last_activity_at')
+      .defaultNow()
+      .notNull(),
+
+    expiresAt: timestamp('expires_at').notNull(),
+
+    revokedAt: timestamp('revoked_at'),
+
+    revokeReason: text('revoke_reason'),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex(
+      'patient_portal_sessions_token_idx',
+    ).on(table.sessionTokenHash),
+
+    accountIdx: index(
+      'patient_portal_sessions_account_idx',
+    ).on(table.accountId, table.expiresAt),
+  }),
+);
+
+export const patientPortalSettings = pgTable(
+  'patient_portal_settings',
+  {
+    id: serial('id').primaryKey(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    invitationExpiryHours: integer('invitation_expiry_hours')
+      .default(72)
+      .notNull(),
+
+    maxResends: integer('max_resends').default(3).notNull(),
+
+    allowManualDelivery: boolean('allow_manual_delivery')
+      .default(true)
+      .notNull(),
+
+    allowSms: boolean('allow_sms').default(false).notNull(),
+
+    allowEmail: boolean('allow_email').default(false).notNull(),
+
+    showLabResults: boolean('show_lab_results').default(true).notNull(),
+
+    showAppointments: boolean('show_appointments').default(true).notNull(),
+
+    showPrescriptions: boolean('show_prescriptions').default(true).notNull(),
+
+    showAllergies: boolean('show_allergies').default(true).notNull(),
+
+    showDischargeSummaries: boolean('show_discharge_summaries')
+      .default(true)
+      .notNull(),
+
+    allowDownloads: boolean('allow_downloads').default(true).notNull(),
+
+    updatedByUserId: integer('updated_by_user_id')
+      .references(() => users.id),
+
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    facilityIdx: uniqueIndex(
+      'patient_portal_settings_facility_idx',
+    ).on(table.facilityId),
+  }),
+);
+
+export const patientRecordSharingGrants = pgTable(
+  'patient_record_sharing_grants',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    createdByAccountId: integer('created_by_account_id')
+      .references(() => patientPortalAccounts.id)
+      .notNull(),
+
+    codeHash: text('code_hash').notNull(),
+
+    recipientName: text('recipient_name').notNull(),
+
+    purpose: text('purpose').notNull(),
+
+    categories: jsonb('categories').default([]).notNull(),
+
+    expiresAt: timestamp('expires_at').notNull(),
+
+    revokedAt: timestamp('revoked_at'),
+
+    redeemedAt: timestamp('redeemed_at'),
+
+    redeemedByUserId: integer('redeemed_by_user_id')
+      .references(() => users.id),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex(
+      'patient_record_sharing_grants_code_idx',
+    ).on(table.codeHash),
+
+    patientIdx: index(
+      'patient_record_sharing_grants_patient_idx',
+    ).on(table.patientId, table.createdAt),
+  }),
+);

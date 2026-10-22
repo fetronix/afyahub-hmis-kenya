@@ -1,329 +1,1289 @@
-import React, { useState, useEffect } from 'react';
-import { useHmis } from '../../context/HmisContext.tsx';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useHmis, type ModuleId } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { AnalyticsSummary, PublicHealthReport, QueueItem } from '../../types/index.ts';
+import {
+  AnalyticsSummary,
+  AuditLog,
+  InpatientBoard,
+  InventoryBatchRow,
+  PublicHealthReport,
+  QueueItem,
+} from '../../types/index.ts';
+import ExpiryCountdown from '../ExpiryCountdown.tsx';
 import {
   Users,
   BedDouble,
   Activity,
-  DollarSign,
-  FlaskConical,
-  Scissors,
+  Wallet,
   AlertTriangle,
   ArrowUpRight,
+  CalendarClock,
   Clock,
-  CheckCircle2,
-  Calendar,
-  Building2,
+  HeartPulse,
+  RefreshCw,
   ShieldCheck,
-  TrendingUp,
+  ChevronRight,
+  UserPlus,
+  Stethoscope,
+  FlaskConical,
+  Pill,
+  Package,
+  Receipt,
+  FileCheck2,
+  BarChart3,
+  Baby,
+  Scissors,
+  Eye,
+  Building2,
+  type LucideIcon,
 } from 'lucide-react';
 
+/*
+|--------------------------------------------------------------------------
+| The dashboard is a walk through the day
+|--------------------------------------------------------------------------
+|
+| The panels are not a grid of unrelated numbers: they follow the
+| patient. Arrival and queues, then the ward round, then the public
+| health return the facility owes the county. Each section is numbered
+| so the eye can move straight down the clinical path.
+|
+| Two rules hold for every figure here:
+|
+|   * a figure the server did not report is an em dash, never a zero;
+|   * a panel the session may not read is not rendered at all.
+|
+*/
+
+/* Days of shelf life that count as "act now" on the overview. */
+const EXPIRY_ALERT_DAYS = 10;
+
+/* ----------------------------------------------------------------
+   Small building blocks
+   ---------------------------------------------------------------- */
+
+type SectionProps = {
+  step: string;
+  title: string;
+  subtitle: string;
+  icon: LucideIcon;
+  action?: React.ReactNode;
+};
+
+const SectionHeading: React.FC<SectionProps> = ({
+  step,
+  title,
+  subtitle,
+  icon: Icon,
+  action,
+}) => (
+  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-brand-100 bg-brand-50 font-mono text-2xs font-semibold text-brand-700">
+        {step}
+      </span>
+      <div>
+        <h2 className="flex items-center gap-1.5 text-base font-semibold leading-tight tracking-tight text-navy-900">
+          <Icon className="h-4 w-4 text-brand-600" />
+          {title}
+        </h2>
+        <p className="mt-0.5 text-2xs text-muted">{subtitle}</p>
+      </div>
+    </div>
+
+    {action}
+  </div>
+);
+
+type KpiCellProps = {
+  label: string;
+  icon: LucideIcon;
+  value: React.ReactNode;
+  unit?: React.ReactNode;
+  footer: React.ReactNode;
+};
+
+/**
+ * One figure, one honest footer. The footer carries the caveat, so a
+ * card can never look more certain than the data behind it.
+ */
+const KpiCell: React.FC<KpiCellProps> = ({ label, icon: Icon, value, unit, footer }) => (
+  <div className="bg-surface px-5 py-4">
+    <div className="flex items-start justify-between gap-3">
+      <span className="eyebrow">{label}</span>
+      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-50">
+        <Icon className="h-3.5 w-3.5 text-brand-600" />
+      </span>
+    </div>
+
+    <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+      <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight text-navy-900">
+        {value}
+      </span>
+      {unit && <span className="text-2xs text-muted">{unit}</span>}
+    </div>
+
+    <div className="mt-3 border-t border-hair pt-2 text-2xs text-muted">{footer}</div>
+  </div>
+);
+
+/*
+ * Queue stations are named, not numbered. "Triage Counter" reads like a
+ * till; the desk the patient actually walks to is the triage desk.
+ */
+const queueStationLabel = (queueType: string): string => {
+  const known: Record<string, string> = {
+    triage: 'Triage desk',
+    doctor: 'Clinician consultation',
+    consultation: 'Clinician consultation',
+    laboratory: 'Laboratory bench',
+    lab: 'Laboratory bench',
+    pharmacy: 'Pharmacy counter',
+  };
+
+  return known[queueType.trim().toLowerCase()] ?? `${queueType} queue`;
+};
+
+const timeGreeting = (): string => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+const localeDate = (): string =>
+  new Date().toLocaleDateString('en-KE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+/* ----------------------------------------------------------------
+   Quick actions — one entry per real module, gated twice
+   ---------------------------------------------------------------- */
+
+type QuickAction = {
+  module: ModuleId;
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+  permissions: string[];
+};
+
+/*
+ * Ordered by the visit, not alphabetically. `permissions` mirrors the
+ * sidebar's map; the module must also be enabled for the facility.
+ */
+const QUICK_ACTIONS: QuickAction[] = [
+  { module: 'registration', label: 'Register or find a patient', hint: 'Patient directory', icon: UserPlus, permissions: ['patients.read'] },
+  { module: 'reception', label: 'Work the queue', hint: 'Reception & appointments', icon: Users, permissions: ['appointments.read'] },
+  { module: 'opd', label: 'Start a consultation', hint: 'Outpatient & triage', icon: Stethoscope, permissions: ['clinical.read'] },
+  { module: 'laboratory', label: 'Review laboratory work', hint: 'Orders, results, verification', icon: FlaskConical, permissions: ['laboratory.read'] },
+  { module: 'pharmacy', label: 'Dispense a prescription', hint: 'Pharmacy & stock', icon: Pill, permissions: ['pharmacy.read'] },
+  { module: 'inventory', label: 'Check stock levels', hint: 'Inventory & batches', icon: Package, permissions: ['inventory.read'] },
+  { module: 'inpatient', label: 'Open the ward board', hint: 'Admissions & beds', icon: BedDouble, permissions: ['inpatient.read'] },
+  { module: 'maternity', label: 'Maternity & MCH', hint: 'ANC, labour, postnatal', icon: Baby, permissions: ['maternity.read'] },
+  { module: 'theatre', label: 'Theatre list', hint: 'Surgical cases', icon: Scissors, permissions: ['clinical.read', 'inpatient.read'] },
+  { module: 'specialty', label: 'Specialty clinics', hint: 'Dental, eye, ENT, renal', icon: Eye, permissions: ['clinical.read'] },
+  { module: 'finance', label: 'Bill and take payment', hint: 'Billing & cashier', icon: Receipt, permissions: ['billing.read'] },
+  { module: 'claims', label: 'Work the claim queue', hint: 'SHA e-claims', icon: FileCheck2, permissions: ['insurance.read'] },
+  { module: 'analytics', label: 'Open reports', hint: 'Revenue & utilisation', icon: BarChart3, permissions: ['reports.read'] },
+  { module: 'configuration', label: 'Manage staff', hint: 'Staff, roles and settings', icon: Building2, permissions: ['users.invite', 'users.roles.manage'] },
+];
+
+/* ----------------------------------------------------------------
+   Dashboard
+   ---------------------------------------------------------------- */
+
 export const DashboardModule: React.FC = () => {
-  const { currentFacility, setActiveModule, setSelectedPatient, setIsJourneyModalOpen, refreshKey, showToast } = useHmis();
+  const {
+    currentFacility,
+    setActiveModule,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    refreshKey,
+    authenticatedUser,
+    currentUser,
+  } = useHmis();
+
+  const permissions = new Set(authenticatedUser?.permissions ?? []);
+  const isSuperAdmin = Boolean(
+    authenticatedUser?.isSuperAdmin ||
+    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
+  const can = (permission: string) =>
+    isSuperAdmin || permissions.has(permission);
+  const canAny = (...required: string[]) =>
+    isSuperAdmin || required.some((permission) => permissions.has(permission));
+
+  const canReadReports = can('reports.read');
+  const canReadQueues = can('appointments.read');
+  const canReadInpatient = can('inpatient.read');
+  const canReadAudit = can('audit.read');
+  const canReadInventory = can('inventory.read');
+
+  const facilityModules = useMemo(
+    () => new Set(currentFacility?.enabledModules ?? []),
+    [currentFacility]
+  );
+
+  /* The same enablement rule the sidebar uses, for the same reason. */
+  const moduleEnabled = (id: ModuleId): boolean => {
+    if (id === 'platform_administration') return true;
+    if (isSuperAdmin) return true;
+    if (!currentFacility) return false;
+    if (id === 'claims') {
+      return facilityModules.has('insurance') || facilityModules.has('claims');
+    }
+    return facilityModules.has(id);
+  };
+
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [surveillance, setSurveillance] = useState<PublicHealthReport[]>([]);
   const [queues, setQueues] = useState<QueueItem[]>([]);
+  const [inpatientBoard, setInpatientBoard] = useState<InpatientBoard | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  /**
+   * Lots inside the ten-day window, per batch rather than per item, so
+   * the overview can name the batch, the quantity and the money at
+   * stake. Ten days is the facility's operating lead time: a lot needs
+   * to be used, transferred or written off before it becomes waste.
+   */
+  const [expiringBatches, setExpiringBatches] = useState<InventoryBatchRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  /*
+   * A figure the server has not reported is unknown, not zero. Rendering
+   * "0" when the request failed would be an assertion nobody made.
+   */
+  const metric = (value: number | null | undefined): string =>
+    summary ? String(value ?? 0) : '\u2014';
 
   useEffect(() => {
+    let active = true;
+
     async function loadDashboard() {
+      setLoading(true);
+      setLoadError(null);
+
+      const tasks: Promise<void>[] = [];
+
+      if (canReadReports) {
+        tasks.push(
+          api.getAnalyticsSummary(currentFacility?.id)
+            .then((value) => { if (active) setSummary(value); })
+            .catch((err) => {
+              console.error('Failed to load analytics summary:', err);
+              if (active) {
+                setSummary(null);
+                setLoadError('Some figures could not be loaded.');
+              }
+            })
+        );
+
+        tasks.push(
+          api.getPublicHealthReports(currentFacility?.id)
+            .then((value) => { if (active) setSurveillance(value); })
+            .catch((err) => {
+              console.error('Failed to load surveillance reports:', err);
+              if (active) setSurveillance([]);
+            })
+        );
+      } else {
+        setSummary(null);
+        setSurveillance([]);
+      }
+
+      if (canReadQueues) {
+        tasks.push(
+          api.getQueues(currentFacility?.id)
+            .then((value) => { if (active) setQueues(value); })
+            .catch((err) => {
+              console.error('Failed to load queues:', err);
+              if (active) {
+                setQueues([]);
+                setLoadError('The patient queue could not be loaded.');
+              }
+            })
+        );
+      } else {
+        setQueues([]);
+      }
+
+      if (canReadInpatient) {
+        tasks.push(
+          api.getInpatientBoard(currentFacility?.id)
+            .then((value) => { if (active) setInpatientBoard(value); })
+            .catch((err) => {
+              console.error('Failed to load inpatient board:', err);
+              if (active) {
+                setInpatientBoard(null);
+                setLoadError('The ward board could not be loaded.');
+              }
+            })
+        );
+      } else {
+        setInpatientBoard(null);
+      }
+
+      /*
+       * Expiry is a stock fact, not a billing one: it is loaded with a
+       * ten-day horizon and shown as its own panel. A missing list
+       * leaves the panel out rather than claiming the store is clean.
+       */
+      if (canReadInventory) {
+        tasks.push(
+          api.getInventoryBatches(currentFacility?.id, { horizonDays: EXPIRY_ALERT_DAYS })
+            .then((value) => {
+              if (!active) return;
+
+              setExpiringBatches(
+                value.filter(
+                  (batch) =>
+                    batch.quantityRemaining > 0 &&
+                    batch.daysToExpiry !== null &&
+                    batch.daysToExpiry <= EXPIRY_ALERT_DAYS,
+                ),
+              );
+            })
+            .catch((err) => {
+              console.error('Failed to load expiring stock:', err);
+              if (active) setExpiringBatches([]);
+            })
+        );
+      } else {
+        setExpiringBatches([]);
+      }
+
+      /*
+       * Recent activity is secondary. If the audit module is switched
+       * off for this facility the endpoint answers 403; that is not a
+       * dashboard failure and must not raise the page-level alert.
+       */
+      if (canReadAudit && facilityModules.has('audit')) {
+        tasks.push(
+          api.getAuditLogs(currentFacility?.id)
+            .then((value) => { if (active) setAuditLogs(value.slice(0, 6)); })
+            .catch((err) => {
+              console.error('Failed to load recent activity:', err);
+              if (active) setAuditLogs([]);
+            })
+        );
+      } else {
+        setAuditLogs([]);
+      }
+
       try {
-        setLoading(true);
-        const [sum, rep, q] = await Promise.all([
-          api.getAnalyticsSummary(currentFacility?.id),
-          api.getPublicHealthReports(currentFacility?.id),
-          api.getQueues(currentFacility?.id),
-        ]);
-        setSummary(sum);
-        setSurveillance(rep);
-        setQueues(q);
-      } catch (err) {
-        console.error('Failed to load dashboard metrics:', err);
+        await Promise.all(tasks);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
-    loadDashboard();
-  }, [currentFacility, refreshKey]);
+
+    void loadDashboard();
+
+    return () => { active = false; };
+  }, [currentFacility, refreshKey, canReadReports, canReadQueues, canReadInpatient, canReadAudit, canReadInventory, facilityModules]);
+
+  /* ----------------------------------------------------------------
+     Derived view data — every number below came from the server
+     ---------------------------------------------------------------- */
+
+  const alerts: Array<{
+    key: string;
+    tone: 'danger' | 'warning' | 'info';
+    label: string;
+    module: ModuleId;
+  }> = [];
+
+  if (inpatientBoard && inpatientBoard.criticalVitalsCount > 0) {
+    alerts.push({
+      key: 'critical-vitals',
+      tone: 'danger',
+      label: `${inpatientBoard.criticalVitalsCount} critical observation${inpatientBoard.criticalVitalsCount === 1 ? '' : 's'} on the ward`,
+      module: 'inpatient',
+    });
+  }
+
+  if (inpatientBoard && inpatientBoard.vitalsOverdueCount > 0) {
+    alerts.push({
+      key: 'vitals-overdue',
+      tone: 'warning',
+      label: `${inpatientBoard.vitalsOverdueCount} patient${inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} with no observation in 8 hours`,
+      module: 'inpatient',
+    });
+  }
+
+  if (summary && summary.pendingLabOrders > 0) {
+    alerts.push({
+      key: 'labs-pending',
+      tone: 'info',
+      label: `${summary.pendingLabOrders} laboratory order${summary.pendingLabOrders === 1 ? '' : 's'} pending`,
+      module: 'laboratory',
+    });
+  }
+
+  if (summary && summary.lowStockAlerts > 0) {
+    alerts.push({
+      key: 'low-stock',
+      tone: 'warning',
+      label: `${summary.lowStockAlerts} item${summary.lowStockAlerts === 1 ? '' : 's'} at or below reorder level`,
+      module: 'inventory',
+    });
+  }
+
+  const expiredBatchCount = expiringBatches.filter(
+    (batch) => (batch.daysToExpiry ?? 0) < 0,
+  ).length;
+
+  if (expiringBatches.length > 0) {
+    alerts.push({
+      key: 'expiring-stock-10d',
+      tone: expiredBatchCount > 0 ? 'danger' : 'warning',
+      label: `${expiringBatches.length} batch${
+        expiringBatches.length === 1 ? '' : 'es'
+      } ${
+        expiredBatchCount > 0
+          ? `${expiredBatchCount} already expired · `
+          : ''
+      }expiring within ${EXPIRY_ALERT_DAYS} days`,
+      module: 'inventory',
+    });
+  }
+
+  if (summary && summary.expiringStockAlerts > 0) {
+    alerts.push({
+      key: 'expiring-stock',
+      tone: 'warning',
+      label: `${summary.expiringStockAlerts} batch${summary.expiringStockAlerts === 1 ? '' : 'es'} expiring within 30 days`,
+      module: 'inventory',
+    });
+  }
+
+  const expiringUnits = expiringBatches.reduce(
+    (sum, batch) => sum + batch.quantityRemaining,
+    0,
+  );
+
+  const expiringValueKes = expiringBatches.reduce(
+    (sum, batch) =>
+      sum + Number(batch.costPerUnit || 0) * batch.quantityRemaining,
+    0,
+  );
+
+  /* Earliest expiry first — it is the lot that must move first. */
+  const expiringRows = [...expiringBatches].sort((left, right) =>
+    left.expiryDate < right.expiryDate ? -1 : left.expiryDate > right.expiryDate ? 1 : 0,
+  );
+
+  const quickActions = QUICK_ACTIONS.filter(
+    (action) => moduleEnabled(action.module) && canAny(...action.permissions)
+  ).slice(0, 6);
+
+  const firstName = (authenticatedUser?.fullName || currentUser?.name || '')
+    .trim()
+    .split(/\s+/)[0];
+
+  const hasAnyKpi =
+    can('appointments.read') ||
+    can('inpatient.read') ||
+    can('billing.read') ||
+    canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read');
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner with Facility & Compliance Status */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              {currentFacility?.name || 'JaliCare Kenya Facility'}
+    <div className="space-y-7">
+      {/* ---------------------------------------------------------------
+          Welcome
+      --------------------------------------------------------------- */}
+
+      <section className="relative overflow-hidden rounded-card border border-hair bg-surface p-5 shadow-card sm:p-6">
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-brand-600 via-brand-500 to-ember-500"
+        />
+
+        <div className="flex flex-col gap-5 pl-2 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+              {localeDate()}
+            </p>
+
+            <h1 className="mt-1.5 text-[1.6rem] font-bold leading-tight tracking-tight text-navy-900">
+              {timeGreeting()}
+              {firstName ? `, ${firstName}` : ''}.
             </h1>
-            <span className="font-mono text-xs px-2 py-0.5 bg-blue-50 text-blue-900 rounded font-bold border border-blue-200/80">
-              {currentFacility?.mflCode || 'MFL-12845'}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            {currentFacility?.level} · {currentFacility?.county} County · Master Facility Registry Synchronized
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto">
-          <button
-            onClick={() => setActiveModule('registration')}
-            className="flex-1 md:flex-none px-4 py-2 text-xs font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 active:bg-orange-800 transition-colors shadow-xs flex items-center justify-center gap-1.5"
-          >
-            <span>+ Register Patient</span>
-          </button>
-          <button
-            onClick={() => setActiveModule('reception')}
-            className="flex-1 md:flex-none px-3.5 py-2 text-xs font-semibold text-blue-900 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors"
-          >
-            Queue Board
-          </button>
-          <button
-            onClick={() => setActiveModule('interoperability')}
-            className="px-3.5 py-2 text-xs font-semibold text-blue-900 bg-blue-50/70 border border-blue-200 hover:bg-blue-100/70 rounded-lg transition-colors flex items-center gap-1.5"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-blue-700" />
-            <span>DHA Spec</span>
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Card 1: Outpatient Activity */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Active Queues</span>
-            <Users className="w-4 h-4 text-blue-700" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {summary?.activeQueuesCount ?? 0}
-            </span>
-            <span className="text-2xs text-slate-500">Patients waiting</span>
-          </div>
-          <div className="mt-2 text-2xs text-slate-500 flex items-center gap-1">
-            <span>Avg triage wait: </span>
-            <strong className="font-mono text-blue-900">12 mins</strong>
-          </div>
-        </div>
-
-        {/* Card 2: Inpatient Occupancy */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Bed Occupancy</span>
-            <BedDouble className="w-4 h-4 text-orange-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {summary?.bedOccupancyRate ?? 0}%
-            </span>
-            <span className="text-2xs text-slate-500">{summary?.currentAdmissions ?? 0} Admitted</span>
-          </div>
-          <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div
-              className="bg-orange-500 h-1.5 rounded-full"
-              style={{ width: `${Math.min(100, summary?.bedOccupancyRate ?? 0)}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Card 3: Revenue Today */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Collections (KES)</span>
-            <DollarSign className="w-4 h-4 text-blue-700" />
-          </div>
-          <div className="mt-2">
-            <span className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              KES {summary ? Number(summary.totalRevenueKes).toLocaleString() : '0'}
-            </span>
-          </div>
-          <div className="mt-2 text-2xs text-orange-800 flex items-center justify-between">
-            <span>Outstanding:</span>
-            <strong className="font-mono">KES {summary ? Number(summary.outstandingBillsKes).toLocaleString() : '0'}</strong>
-          </div>
-        </div>
-
-        {/* Card 4: Clinical Diagnostics & OT */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-2xs font-semibold tracking-wider uppercase text-slate-500">Theatre & Lab</span>
-            <Activity className="w-4 h-4 text-blue-700" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-3">
-            <div>
-              <span className="text-xl font-bold font-mono text-slate-900 tabular-nums">{summary?.scheduledSurgeries ?? 0}</span>
-              <span className="text-2xs text-slate-500 ml-1">Surgeries</span>
-            </div>
-            <span className="text-slate-300">·</span>
-            <div>
-              <span className="text-xl font-bold font-mono text-slate-900 tabular-nums">{summary?.pendingLabOrders ?? 0}</span>
-              <span className="text-2xs text-slate-500 ml-1">Pending Labs</span>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-muted">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 font-semibold text-brand-800">
+                {currentUser?.role || 'Authenticated user'}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                {currentFacility?.name || 'JaliCare Kenya Facility'}
+              </span>
+              <span className="font-mono text-2xs text-slate-400">
+                MFL {currentFacility?.mflCode || 'not configured'}
+              </span>
+              {loading && (
+                <span className="inline-flex items-center gap-1.5 text-2xs text-brand-700">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  Refreshing
+                </span>
+              )}
             </div>
           </div>
-          <div className="mt-2 text-2xs text-slate-500">
-            <span>Low drug stocks: </span>
-            <strong className="font-mono text-rose-600">{summary?.lowStockAlerts ?? 0} items</strong>
-          </div>
-        </div>
-      </div>
 
-      {/* Main Grid: Real-Time Patient Queue & Disease Surveillance */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Real-time OPD Queue Station (2 cols) */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-          <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-blue-700" />
-              <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-                Active Hospital Patient Queues
-              </h2>
-            </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
-              onClick={() => setActiveModule('reception')}
-              className="text-xs text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1"
+              onClick={() => setActiveModule('interoperability')}
+              className="btn-quiet"
             >
-              <span>Manage All Queues</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
+              <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
+              DHA readiness
+              <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
             </button>
           </div>
+        </div>
+      </section>
 
-          <div className="divide-y divide-slate-100 overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
+      {loadError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"
+        >
+          {loadError} Figures shown as an em dash are unknown, not zero. Reload
+          the page to try again.
+        </div>
+      )}
+
+      {/* ---------------------------------------------------------------
+          Alerts the server reported, not a notification system
+      --------------------------------------------------------------- */}
+
+      {alerts.length > 0 && (
+        <section aria-label="Alerts" className="flex flex-wrap gap-2">
+          {alerts.map((alert) => {
+            const tone =
+              alert.tone === 'danger'
+                ? 'border-rose-200 bg-rose-50 text-rose-900 hover:border-rose-300'
+                : alert.tone === 'warning'
+                ? 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300'
+                : 'border-brand-200 bg-brand-50 text-brand-900 hover:border-brand-300';
+
+            return (
+              <button
+                key={alert.key}
+                onClick={() => setActiveModule(alert.module)}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-2xs font-semibold transition-colors ${tone}`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                {alert.label}
+                <ArrowUpRight className="h-3 w-3 opacity-60" />
+              </button>
+            );
+          })}
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          The shift in four numbers
+      --------------------------------------------------------------- */}
+
+      {hasAnyKpi && (
+        <section className="panel overflow-hidden">
+          <div className="flex items-center justify-between border-b border-hair px-5 py-3">
+            <span className="eyebrow">The shift in numbers</span>
+            <span className="text-2xs text-slate-400">Live from this facility only</span>
+          </div>
+
+          {/* Tracks fit however many metrics this session may read; the
+              1px gap over the hairline colour draws the dividers. */}
+          <div className="grid gap-px bg-hair [grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))]">
+            {can('appointments.read') && (
+              <KpiCell
+                label="Waiting in queues"
+                icon={Users}
+                value={metric(summary?.activeQueuesCount)}
+                unit="tickets open"
+                footer={
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Average triage wait</span>
+                    <strong className="font-mono font-semibold text-slate-600">
+                      not tracked
+                    </strong>
+                  </span>
+                }
+              />
+            )}
+
+            {can('inpatient.read') && (
+              <KpiCell
+                label="Beds occupied"
+                icon={BedDouble}
+                value={summary ? `${summary.bedOccupancyRate ?? 0}%` : '\u2014'}
+                unit={summary ? `${summary.currentAdmissions ?? 0} admitted` : undefined}
+                footer={
+                  <div className="space-y-1.5">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-1.5 rounded-full bg-brand-600"
+                        style={{
+                          width: `${Math.min(100, summary?.bedOccupancyRate ?? 0)}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Vitals overdue</span>
+                      <strong
+                        className={`font-mono font-semibold ${
+                          (inpatientBoard?.vitalsOverdueCount ?? 0) > 0
+                            ? 'text-ember-700'
+                            : 'text-emerald-700'
+                        }`}
+                      >
+                        {inpatientBoard ? inpatientBoard.vitalsOverdueCount : '\u2014'}
+                      </strong>
+                    </div>
+                  </div>
+                }
+              />
+            )}
+
+            {canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read') && (
+              <KpiCell
+                label="Theatre, lab & stores"
+                icon={Activity}
+                value={
+                  <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span>
+                      {metric(summary?.scheduledSurgeries)}
+                      <span className="ml-1 font-sans text-2xs font-medium text-muted">
+                        surgeries
+                      </span>
+                    </span>
+                    <span>
+                      {metric(summary?.pendingLabOrders)}
+                      <span className="ml-1 font-sans text-2xs font-medium text-muted">
+                        labs pending
+                      </span>
+                    </span>
+                  </span>
+                }
+                footer={
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <span>
+                      Low stock{' '}
+                      <strong className="font-mono font-semibold text-rose-600">
+                        {metric(summary?.lowStockAlerts)}
+                      </strong>
+                    </span>
+                    <span>
+                      Expiring ≤30d{' '}
+                      <strong
+                        className={`font-mono font-semibold ${
+                          (summary?.expiringStockAlerts ?? 0) > 0
+                            ? 'text-amber-700'
+                            : 'text-slate-600'
+                        }`}
+                      >
+                        {metric(summary?.expiringStockAlerts)}
+                      </strong>
+                    </span>
+                  </div>
+                }
+              />
+            )}
+
+            {can('billing.read') && (
+              <KpiCell
+                label="Paid to date"
+                icon={Wallet}
+                value={
+                  summary
+                    ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}`
+                    : '\u2014'
+                }
+                footer={
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Outstanding</span>
+                    <strong className="font-mono font-semibold text-ember-700">
+                      {summary
+                        ? `KES ${Number(summary.outstandingBillsKes).toLocaleString()}`
+                        : '\u2014'}
+                    </strong>
+                  </span>
+                }
+              />
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          Stock about to expire — the record behind the alert
+      --------------------------------------------------------------- */}
+
+      {expiringRows.length > 0 && (
+        <section className="panel overflow-hidden" aria-label="Stock expiring soon">
+          <div className="flex flex-col gap-2 border-b border-hair px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
+                <CalendarClock className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="eyebrow">Stores · next {EXPIRY_ALERT_DAYS} days</p>
+                <h2 className="mt-0.5 text-sm font-semibold tracking-tight text-navy-900">
+                  {expiringRows.length} batch
+                  {expiringRows.length === 1 ? '' : 'es'} to use, move or write off
+                </h2>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted">
+              <span>
+                <strong className="font-mono font-semibold text-slate-700">
+                  {expiringUnits.toLocaleString()}
+                </strong>{' '}
+                units
+              </span>
+              <span>
+                <strong className="font-mono font-semibold text-slate-700">
+                  KES {expiringValueKes.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </strong>{' '}
+                at cost
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveModule('inventory')}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Open inventory
+                <ArrowUpRight className="h-3 w-3 opacity-60" />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/80 text-2xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-4 py-2.5 font-medium">Token #</th>
-                  <th className="px-4 py-2.5 font-medium">Queue Station</th>
-                  <th className="px-4 py-2.5 font-medium">Priority</th>
-                  <th className="px-4 py-2.5 font-medium">Wait Time</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Action</th>
+                  <th className="px-5 py-2 font-medium">Item</th>
+                  <th className="px-4 py-2 font-medium">Batch</th>
+                  <th className="px-4 py-2 text-right font-medium">Quantity</th>
+                  <th className="px-4 py-2 font-medium">Expiry</th>
+                  <th className="px-4 py-2 font-medium">Time left</th>
+                  <th className="px-5 py-2 text-right font-medium">Value at cost</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
-                {queues.slice(0, 5).map((q) => (
-                  <tr key={q.id} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-3 font-bold text-slate-900">{q.tokenNumber}</td>
-                    <td className="px-4 py-3 font-sans text-slate-700">
-                      <span className="font-medium">{q.queueType} Counter</span>
-                    </td>
-                    <td className="px-4 py-3 font-sans">
-                      <span className={`px-2 py-0.5 rounded text-2xs font-semibold ${
-                        q.priority === 'Emergency'
-                          ? 'bg-rose-50 text-rose-700'
-                          : q.priority === 'Priority'
-                          ? 'bg-orange-50 text-orange-800 border border-orange-200'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {q.priority}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{q.waitingTimeMinutes} mins</td>
-                    <td className="px-4 py-3 font-sans">
-                      <span className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                        q.status === 'In-Progress' ? 'bg-blue-50 text-blue-800' : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {q.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-sans">
-                      <button
-                        onClick={() => {
-                          api.getPatient(q.patientId).then(p => {
-                            setSelectedPatient(p);
-                            setIsJourneyModalOpen(true);
-                          });
-                        }}
-                        className="px-2.5 py-1 text-2xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
-                      >
-                        Patient Journey
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-slate-100">
+                {expiringRows.map((batch) => {
+                  const expired = (batch.daysToExpiry ?? 0) < 0;
+                  const critical = !expired && (batch.daysToExpiry ?? 99) <= 3;
+
+                  return (
+                    <tr
+                      key={batch.id}
+                      className={expired ? 'bg-rose-50/40' : critical ? 'bg-amber-50/30' : ''}
+                    >
+                      <td className="px-5 py-2.5">
+                        <span className="font-semibold text-slate-900">{batch.itemName}</span>
+                        <span className="ml-1.5 font-mono text-2xs text-slate-400">
+                          {batch.itemCode}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-700">
+                        {batch.batchNumber}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-slate-700">
+                        {batch.quantityRemaining}
+                        <span className="ml-1 text-2xs text-slate-400">
+                          {batch.unit ?? ''}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-700">
+                        {batch.expiryDate}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <ExpiryCountdown expiryDate={batch.expiryDate} short />
+                      </td>
+                      <td className="px-5 py-2.5 text-right font-mono text-slate-700">
+                        KES{' '}
+                        {(
+                          Number(batch.costPerUnit || 0) * batch.quantityRemaining
+                        ).toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
 
-        {/* Public Health & Kenya Surveillance Card (1 col) */}
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs flex flex-col">
-          <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-orange-600" />
-              <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-                MOH 705 Surveillance
+          <p className="border-t border-hair px-5 py-2.5 text-2xs leading-relaxed text-muted">
+            Expired lots are never dispensed and are excluded from available stock. A lot
+            expiring today is still usable until the end of that day.
+          </p>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          Your workspace — only modules this session can actually open
+      --------------------------------------------------------------- */}
+
+      {quickActions.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-navy-900">
+                Your workspace
               </h2>
+              <p className="mt-0.5 text-2xs text-muted">
+                The tasks that match your role. Everything here is already
+                permitted to this account.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={action.module}
+                  onClick={() => setActiveModule(action.module)}
+                  className="group flex items-center gap-3 rounded-card border border-hair bg-surface px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 transition-colors group-hover:bg-brand-600 group-hover:text-white">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-semibold text-navy-900">
+                      {action.label}
+                    </span>
+                    <span className="block truncate text-2xs text-muted">
+                      {action.hint}
+                    </span>
+                  </span>
+                  <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-300 transition-colors group-hover:text-brand-600" />
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          01 — Arrival and queues
+      --------------------------------------------------------------- */}
+
+      {canReadQueues && (
+        <section>
+          <SectionHeading
+            step="01"
+            title="Arrival & queues"
+            subtitle="The front door: who is waiting, at which desk, and for how long."
+            icon={Clock}
+            action={
+              <button
+                onClick={() => setActiveModule('reception')}
+                className="btn-quiet self-start"
+              >
+                Manage all queues
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            }
+          />
+
+          <div className="panel overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="table-quiet">
+                <thead>
+                  <tr>
+                    <th>Ticket</th>
+                    <th>Desk</th>
+                    <th>Priority</th>
+                    <th>Waiting</th>
+                    <th>Status</th>
+                    <th className="text-right">Patient</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queues.slice(0, 5).map((q) => (
+                    <tr key={q.id}>
+                      <td className="font-mono font-semibold text-navy-900">{q.tokenNumber}</td>
+                      <td className="text-ink-soft">{queueStationLabel(q.queueType)}</td>
+                      <td>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-2xs font-semibold ${
+                            q.priority === 'Emergency'
+                              ? 'bg-rose-50 text-rose-700'
+                              : q.priority === 'Priority'
+                              ? 'border border-ember-200 bg-ember-50 text-ember-700'
+                              : 'bg-slate-100 text-ink-soft'
+                          }`}
+                        >
+                          {q.priority}
+                        </span>
+                      </td>
+                      <td className="font-mono text-ink-soft">
+                        {q.waitingTimeMinutes} min
+                      </td>
+                      <td>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-2xs font-medium ${
+                            q.status === 'In-Progress'
+                              ? 'bg-brand-50 text-brand-800'
+                              : 'bg-slate-100 text-ink-soft'
+                          }`}
+                        >
+                          {q.status}
+                        </span>
+                      </td>
+                      <td className="text-right">
+                        {can('patients.read') && (
+                          <button
+                            onClick={() => {
+                              api.getPatient(q.patientId).then((p) => {
+                                setSelectedPatient(p);
+                                setIsJourneyModalOpen(true);
+                              });
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+                          >
+                            Patient journey
+                            <ArrowUpRight className="h-3 w-3" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {queues.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                        No queue records to display. If activity is expected,
+                        verify queue data access.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {queues.length > 5 && (
+              <div className="flex items-center justify-between border-t border-hair bg-slate-50/60 px-5 py-2.5 text-2xs text-muted">
+                <span>Showing the first 5 of {queues.length} open tickets</span>
+                <button
+                  onClick={() => setActiveModule('reception')}
+                  className="font-semibold text-brand-700 hover:text-brand-900"
+                >
+                  See the whole queue
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          02 — The ward round
+      --------------------------------------------------------------- */}
+
+      {canReadInpatient && (
+        <section>
+          <SectionHeading
+            step="02"
+            title="Ward round"
+            subtitle="Observations, documentation and escalation for every admitted patient."
+            icon={HeartPulse}
+            action={
+              <button
+                onClick={() => setActiveModule('inpatient')}
+                className="btn-quiet self-start"
+              >
+                Open ward board
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            }
+          />
+
+          {inpatientBoard ? (
+            <div className="panel overflow-hidden">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-hair px-5 py-3 text-2xs text-muted">
+                <span className="chip">{(inpatientBoard.shift || 'Current') + ' shift'}</span>
+                <span>
+                  <strong className="font-mono text-sm text-navy-900">
+                    {inpatientBoard.admissionCount}
+                  </strong>{' '}
+                  admitted
+                </span>
+                <span>
+                  <strong className="font-mono text-sm text-navy-900">
+                    {inpatientBoard.occupancyRate}%
+                  </strong>{' '}
+                  occupancy
+                </span>
+                <span
+                  className={
+                    inpatientBoard.vitalsOverdueCount > 0
+                      ? 'font-semibold text-ember-700'
+                      : 'font-semibold text-emerald-700'
+                  }
+                >
+                  <strong className="font-mono">{inpatientBoard.vitalsOverdueCount}</strong>{' '}
+                  vitals overdue
+                </span>
+                {inpatientBoard.criticalVitalsCount > 0 && (
+                  <span className="flex items-center gap-1 font-semibold text-rose-700">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {inpatientBoard.criticalVitalsCount} critical
+                  </span>
+                )}
+              </div>
+
+              {inpatientBoard.rows.length === 0 ? (
+                <div className="px-5 py-8 text-xs text-slate-500">
+                  No patients are currently admitted at this facility.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table-quiet">
+                    <thead>
+                      <tr>
+                        <th>Patient</th>
+                        <th>Ward / bed</th>
+                        <th>Admitted</th>
+                        <th>Last vitals</th>
+                        <th>Flags</th>
+                        <th className="text-right">Notes today</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inpatientBoard.rows.map((row) => (
+                        <tr key={row.admissionId}>
+                          <td>
+                            <div className="font-semibold text-navy-900">{row.patientName}</div>
+                            {row.patientMrn && (
+                              <div className="font-mono text-3xs text-muted">
+                                {row.patientMrn}
+                              </div>
+                            )}
+                          </td>
+                          <td className="text-ink-soft">
+                            {row.wardName}
+                            <span className="ml-1 font-mono text-2xs text-brand-700">
+                              #{row.bedNumber}
+                            </span>
+                          </td>
+                          <td className="font-mono text-2xs text-muted">
+                            {row.admissionDate}
+                          </td>
+                          <td>
+                            {row.lastVitalsAt ? (
+                              <span
+                                className={
+                                  row.vitalsOverdue
+                                    ? 'font-semibold text-ember-700'
+                                    : 'text-ink-soft'
+                                }
+                              >
+                                {row.hoursSinceVitals}h ago
+                              </span>
+                            ) : (
+                              <span className="font-semibold text-ember-700">
+                                Never recorded
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {row.lastVitalsFlags.length === 0 ? (
+                              <span className="text-2xs text-emerald-700">Normal</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {row.lastVitalsFlags.slice(0, 3).map((flag) => (
+                                  <span
+                                    key={`${row.admissionId}-${flag.field}`}
+                                    className={`rounded px-1.5 py-0.5 text-3xs font-semibold ${
+                                      flag.severity === 'critical'
+                                        ? 'bg-rose-600 text-white'
+                                        : 'bg-amber-200 text-amber-900'
+                                    }`}
+                                  >
+                                    {flag.label} {flag.value}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="text-right font-mono">
+                            <span
+                              className={
+                                row.notesToday === 0
+                                  ? 'font-semibold text-ember-700'
+                                  : 'text-navy-900'
+                              }
+                            >
+                              {row.notesToday}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {inpatientBoard.vitalsOverdueCount > 0 && (
+                <div className="flex items-center gap-2 border-t border-ember-200 bg-ember-50 px-5 py-2.5 text-2xs text-ember-800">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    {inpatientBoard.vitalsOverdueCount} admitted patient
+                    {inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} have no
+                    observation in the last 8 hours. Record vitals from the ward
+                    screen.
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            !loading && (
+              <div className="panel flex items-center gap-3 px-5 py-6 text-xs text-muted">
+                <BedDouble className="h-4 w-4 text-slate-400" />
+                The ward board is not available for this session.
+              </div>
+            )
+          )}
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          03 — What the county is owed
+      --------------------------------------------------------------- */}
+
+      {canReadReports && (
+        <section>
+          <SectionHeading
+            step="03"
+            title="Surveillance & reporting"
+            subtitle="Notifiable disease counts this facility reports to the county."
+            icon={AlertTriangle}
+            action={
+              <button
+                onClick={() => setActiveModule('public_health')}
+                className="btn-quiet self-start"
+              >
+                Open MOH 705
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            }
+          />
+
+          <div className="panel overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hair px-5 py-3">
+              <span className="text-2xs text-muted">
+                Reports loaded:{' '}
+                <strong className="font-mono text-navy-900">{surveillance.length}</strong>
+              </span>
+              <span className="text-2xs font-medium text-ember-700">Not assessed</span>
+            </div>
+
+            {surveillance.length === 0 ? (
+              <p className="px-5 py-8 text-center text-xs text-slate-500">
+                No surveillance reports are available for this facility.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-px bg-hair sm:grid-cols-2 xl:grid-cols-3">
+                {surveillance.slice(0, 6).map((rep) => (
+                  <div key={rep.id} className="bg-surface px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-navy-900">
+                          {rep.diseaseName}
+                        </div>
+                        <div className="mt-0.5 font-mono text-3xs text-muted">
+                          ICD-10 {rep.diseaseCode} · {rep.ageGroup}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono text-lg font-semibold tabular-nums text-navy-900">
+                          {rep.casesCount}
+                        </div>
+                        <div className="text-3xs uppercase tracking-wide text-muted">
+                          cases
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          Recent activity — only for accounts allowed to read the trail
+      --------------------------------------------------------------- */}
+
+      {canReadAudit && auditLogs.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-navy-900">
+                Recent activity
+              </h2>
+              <p className="mt-0.5 text-2xs text-muted">
+                The newest entries on this facility's audit trail. Open the
+                audit screen for the full record.
+              </p>
             </div>
             <button
-              onClick={() => setActiveModule('public_health')}
-              className="text-xs text-blue-700 font-semibold hover:text-blue-900"
+              onClick={() => setActiveModule('audit')}
+              className="btn-quiet self-start"
             >
-              Full Report
+              Audit trail
+              <ArrowUpRight className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          <div className="p-4 space-y-3 flex-1">
-            <div className="text-2xs text-slate-500 font-medium">
-              Epi-Week: <strong className="text-slate-800 font-mono">2026-W40</strong> · KHIS / DHIS2 Synchronized
-            </div>
-
-            <div className="space-y-2">
-              {surveillance.map((rep) => (
-                <div key={rep.id} className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 flex items-center justify-between text-xs">
-                  <div>
-                    <div className="font-semibold text-slate-900">{rep.diseaseName}</div>
-                    <div className="text-2xs text-slate-500 font-mono">
-                      ICD-10: {rep.diseaseCode} · Age: {rep.ageGroup}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-base font-bold font-mono text-slate-900 tabular-nums">
-                      {rep.casesCount}
-                    </span>
-                    <span className="text-2xs text-slate-400 block">cases</span>
-                  </div>
+          <div className="panel divide-y divide-hair">
+            {auditLogs.map((log) => (
+              <div
+                key={log.id}
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
+                  <span className="truncate font-medium text-ink-soft">
+                    {log.action}
+                  </span>
+                  <span className="truncate font-mono text-2xs text-muted">
+                    {log.resource}
+                    {log.resourceId ? ` #${log.resourceId}` : ''}
+                  </span>
                 </div>
-              ))}
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-200 text-2xs text-slate-500 flex items-center justify-between">
-              <span>Notifiable Disease Sentinel</span>
-              <span className="text-emerald-700 font-medium flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Normal Threshold
-              </span>
-            </div>
+                <span className="font-mono text-2xs text-slate-400">
+                  {new Date(log.timestamp).toLocaleString('en-KE', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
+        </section>
+      )}
 
-      {/* Kenya Digital Health Architecture Summary */}
-      <div className="bg-slate-950 text-white rounded-xl p-5 shadow-sm border-l-4 border-orange-500">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 text-2xs font-mono font-semibold bg-orange-500/20 text-orange-300 rounded border border-orange-500/30">
-                KENYA DIGITAL HEALTH ACT COMPLIANT
-              </span>
-              <span className="text-xs text-slate-400">Interoperability Readiness</span>
-            </div>
-            <h3 className="text-base font-bold text-white mt-1">
-              JaliCare Enterprise Healthcare Interoperability Core
-            </h3>
-            <p className="text-xs text-slate-300 mt-0.5 max-w-2xl leading-relaxed">
-              Equipped with HL7 FHIR R4 schema transformations, Social Health Authority (SHA) tariff billing integration, ICD-10 diagnostic coding, and Kenya Master Facility List (KMFL) reporting standards.
-            </p>
-          </div>
-
-          <button
-            onClick={() => setActiveModule('interoperability')}
-            className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors whitespace-nowrap shadow-xs"
-          >
-            Review DHA Certification Matrix
-          </button>
-        </div>
-      </div>
+      {/* Scope note. No call to action: the rail already does that. */}
+      <p className="pt-1 text-center text-3xs leading-relaxed text-slate-400">
+        Figures cover {currentFacility?.name || 'this facility'} only and are
+        read when this page loads. A queue ticket is a place in line, not a
+        diagnosis; open the encounter for the clinical record.
+      </p>
     </div>
   );
 };

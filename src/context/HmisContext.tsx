@@ -1,7 +1,9 @@
-import React, {
+﻿import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -29,18 +31,36 @@ import type {
 |
 */
 
-export type UserRole =
-  | 'Medical Director'
-  | 'Doctor / Consultant'
-  | 'Clinical Officer'
-  | 'Nurse / Triage'
-  | 'Pharmacist'
-  | 'Laboratory Technologist'
-  | 'Radiographer'
-  | 'Cashier / Revenue'
-  | 'Storekeeper'
-  | 'Facility Administrator'
-  | 'Platform Administrator';
+/* ============================================================
+   Notifications
+   ============================================================
+
+   One queue, rendered once, at the centre of the screen. Every
+   existing `showToast(...)` call keeps working; a caller that knows
+   the outcome can pass a tone so a refused save does not wear a
+   green tick.
+   ============================================================ */
+
+export type NotificationTone = 'info' | 'success' | 'warning' | 'error';
+
+export interface ShowToastOptions {
+  tone?: NotificationTone;
+}
+
+export interface AppNotification {
+  id: number;
+  message: string;
+  tone: NotificationTone;
+  createdAt: number;
+}
+
+/** How long a single notification stays on screen. */
+export const NOTIFICATION_LIFETIME_MS = 5200;
+
+/** How many are shown at once before the oldest is dropped. */
+export const NOTIFICATION_QUEUE_LIMIT = 4;
+
+export type UserRole = string;
 
 export interface StaffUser {
   name: string;
@@ -57,10 +77,11 @@ export interface StaffUser {
 
 export type ModuleId =
   | 'dashboard'
-  | 'registration'
+  | 'platform_administration' | 'registration'
   | 'reception'
   | 'opd'
   | 'inpatient'
+  | 'maternity'
   | 'theatre'
   | 'specialty'
   | 'laboratory'
@@ -71,8 +92,10 @@ export type ModuleId =
   | 'finance'
   | 'claims'
   | 'public_health'
+  | 'analytics'
   | 'interoperability'
   | 'configuration'
+  | 'patient_portal'
   | 'audit';
 
 /*
@@ -209,11 +232,16 @@ interface HmisContextType {
   |--------------------------------------------------------------------------
   */
 
-  toastMessage: string | null;
+  notifications: AppNotification[];
 
   showToast: (
-    msg: string
+    msg: string,
+    options?: ShowToastOptions
   ) => void;
+
+  dismissNotification: (id: number) => void;
+
+  dismissAllNotifications: () => void;
 
   /*
   |--------------------------------------------------------------------------
@@ -272,38 +300,27 @@ const emptyStaffUser: StaffUser = {
 function mapAuthenticatedUserToStaffUser(
   user: AuthenticatedUser
 ): StaffUser {
-  let role: UserRole =
-    'Facility Administrator';
+  const assignedRoles = user.roles ?? [];
 
-  /*
-  |--------------------------------------------------------------------------
-  | Temporary Platform Administrator mapping
-  |--------------------------------------------------------------------------
-  |
-  | This is only for UI display.
-  |
-  | Authorization will eventually use backend RBAC.
-  |
-  */
+  let role = user.designation?.trim() ?? '';
 
-  if (
-    user.username.toLowerCase() ===
-      'admin' ||
-    user.email.toLowerCase() ===
-      'admin@jalicare.co.ke'
-  ) {
-    role =
-      'Platform Administrator';
+  if (user.isSuperAdmin || assignedRoles.includes('SUPER_ADMIN')) {
+    role = 'Platform Administrator';
+  } else if (!role && assignedRoles.length > 0) {
+    role = assignedRoles[0]
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   }
 
   return {
     name: user.fullName,
-    role,
+    role: role || 'Unassigned Role',
     license: '',
     department: '',
   };
 }
-
 /*
 |--------------------------------------------------------------------------
 | Context
@@ -420,12 +437,9 @@ export const HmisProvider: React.FC<{
     useState(false);
 
   const [
-    toastMessage,
-    setToastMessage,
-  ] =
-    useState<string | null>(
-      null
-    );
+    notifications,
+    setNotifications,
+  ] = useState<AppNotification[]>([]);
 
   const [
     refreshKey,
@@ -443,15 +457,110 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const showToast = (
-    msg: string
-  ) => {
-    setToastMessage(msg);
+  const notificationSequence = useRef(0);
+  const notificationTimers = useRef(new Map<number, number>());
 
-    window.setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  };
+  const dismissNotification = useCallback(
+    (id: number) => {
+      const timer = notificationTimers.current.get(id);
+
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        notificationTimers.current.delete(id);
+      }
+
+      setNotifications((current) =>
+        current.filter((notification) => notification.id !== id)
+      );
+    },
+    []
+  );
+
+  const dismissAllNotifications = useCallback(() => {
+    for (const timer of notificationTimers.current.values()) {
+      window.clearTimeout(timer);
+    }
+
+    notificationTimers.current.clear();
+    setNotifications([]);
+  }, []);
+
+  /*
+   * Clear every pending timer when the provider unmounts. The previous
+   * implementation kept one global timer, so a second toast raised
+   * within four seconds could be wiped by the first toast's timer.
+   * Timers are per notification now.
+   */
+  useEffect(
+    () => () => {
+      for (const timer of notificationTimers.current.values()) {
+        window.clearTimeout(timer);
+      }
+
+      notificationTimers.current.clear();
+    },
+    []
+  );
+
+  const showToast = useCallback(
+    (msg: string, options?: ShowToastOptions) => {
+      const message = msg.trim();
+
+      if (!message) return;
+
+      const tone = options?.tone ?? 'info';
+
+      setNotifications((current) => {
+        /*
+         * The same sentence twice is the same notification refreshed,
+         * not two dialogs. A screen can report one server message from
+         * two paths, and a queue of identical rows is noise.
+         */
+        const duplicate = current.find(
+          (notification) =>
+            notification.message === message && notification.tone === tone
+        );
+
+        if (duplicate) {
+          const existingTimer = notificationTimers.current.get(duplicate.id);
+
+          if (existingTimer !== undefined) {
+            window.clearTimeout(existingTimer);
+          }
+
+          notificationTimers.current.set(
+            duplicate.id,
+            window.setTimeout(
+              () => dismissNotification(duplicate.id),
+              NOTIFICATION_LIFETIME_MS
+            )
+          );
+
+          return current;
+        }
+
+        const id = (notificationSequence.current += 1);
+
+        const next = [
+          ...current,
+          { id, message, tone, createdAt: Date.now() },
+        ];
+
+        notificationTimers.current.set(
+          id,
+          window.setTimeout(
+            () => dismissNotification(id),
+            NOTIFICATION_LIFETIME_MS
+          )
+        );
+
+        return next.length > NOTIFICATION_QUEUE_LIMIT
+          ? next.slice(next.length - NOTIFICATION_QUEUE_LIMIT)
+          : next;
+      });
+    },
+    [dismissNotification]
+  );
 
   /*
   |--------------------------------------------------------------------------
@@ -861,8 +970,25 @@ export const HmisProvider: React.FC<{
       |--------------------------------------------------------------------------
       */
 
+      const sessionResult = await api.getSession();
+
+      if (!sessionResult.success || !sessionResult.user) {
+        api.clearLocalSession();
+
+        setAuthenticatedUser(null);
+        setIsAuthenticated(false);
+
+        return {
+          success: false,
+          message:
+            'Login succeeded, but your authorized session could not be loaded. Please try again.',
+        };
+      }
+
+      const authenticatedSessionUser = sessionResult.user;
+
       setAuthenticatedUser(
-        result.user
+        authenticatedSessionUser
       );
 
       setIsAuthenticated(
@@ -876,7 +1002,10 @@ export const HmisProvider: React.FC<{
       */
 
       setActiveModule(
-        'dashboard'
+        authenticatedSessionUser.isSuperAdmin ||
+        authenticatedSessionUser.roles?.includes('SUPER_ADMIN')
+          ? 'platform_administration'
+          : 'dashboard'
       );
 
       setSelectedPatient(
@@ -894,7 +1023,7 @@ export const HmisProvider: React.FC<{
       */
 
       await loadTenantAndFacilityContext(
-        result.user
+        authenticatedSessionUser
       );
 
       return {
@@ -1381,9 +1510,13 @@ export const HmisProvider: React.FC<{
         |--------------------------------------------------------------------------
         */
 
-        toastMessage,
+        notifications,
 
         showToast,
+
+        dismissNotification,
+
+        dismissAllNotifications,
 
         /*
         |--------------------------------------------------------------------------
@@ -1430,3 +1563,5 @@ export const useHmis =
 
     return context;
   };
+
+

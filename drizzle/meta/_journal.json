@@ -1,27 +1,167 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1791074954544,
-      "tag": "0000_new_vertigo",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1791226746929,
-      "tag": "0001_unknown_gambit",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1791369994876,
-      "tag": "0002_friendly_lady_deathstrike",
-      "breakpoints": true
-    }
-  ]
+    "version": "7",
+    "dialect": "postgresql",
+    "entries": [
+        {
+            "idx": 0,
+            "version": "7",
+            "when": 1791074954544,
+            "tag": "0000_new_vertigo",
+            "breakpoints": true
+        },
+        {
+            "idx": 1,
+            "version": "7",
+            "when": 1791226746929,
+            "tag": "0001_unknown_gambit",
+            "breakpoints": true
+        },
+        {
+            "idx": 2,
+            "version": "7",
+            "when": 1791369994876,
+            "tag": "0002_friendly_lady_deathstrike",
+            "breakpoints": true
+        },
+        {
+            "idx": 3,
+            "version": "7",
+            "when": 1792102214455,
+            "tag": "0003_facility_subscription_billing",
+            "breakpoints": true
+        },
+        {
+            "idx": 4,
+            "version": "7",
+            "when": 1792245851394,
+            "tag": "0004_facility_rbac_overrides",
+            "breakpoints": true
+        },
+        {
+            "idx": 5,
+            "version": "7",
+            "when": 1792262484603,
+            "tag": "0005_facility_service_tariffs",
+            "breakpoints": true
+        },
+        {
+            "idx": 6,
+            "version": "7",
+            "when": 1792409375696,
+            "tag": "0006_patient_guardian_and_optional_phone",
+            "breakpoints": true
+        },
+        {
+            "idx": 7,
+            "version": "7",
+            "when": 1792520416402,
+            "tag": "0007_lab_order_clinical_details",
+            "breakpoints": true
+        },
+        {
+            "idx": 8,
+            "version": "7",
+            "when": 1792532002706,
+            "tag": "0008_lab_result_verification_state",
+            "breakpoints": true
+        },
+        {
+            "idx": 9,
+            "version": "7",
+            "when": 1792600000000,
+            "tag": "0009_billing_provenance_and_inpatient",
+            "breakpoints": true
+        },
+        {
+            "idx": 10,
+            "version": "7",
+            "when": 1792700000000,
+            "tag": "0010_mobile_money_settlement",
+            "breakpoints": true
+        },
+        {
+            "idx": 11,
+            "version": "7",
+            "when": 1792800000000,
+            "tag": "0011_insurance_claims_workflow",
+            "breakpoints": true
+        },
+        {
+            "idx": 12,
+            "version": "7",
+            "when": 1792900000000,
+            "tag": "0012_dha_integration_audit",
+            "breakpoints": true
+        },
+        {
+            "idx": 13,
+            "version": "7",
+            "when": 1792900000001,
+            "tag": "0013_dha_service_mappings",
+            "breakpoints": true
+        },
+        {
+            "idx": 14,
+            "version": "7",
+            "when": 1792900000002,
+            "tag": "0014_professional_verification",
+            "breakpoints": true
+        },
+        {
+            "idx": 15,
+            "version": "7",
+            "when": 1792900000003,
+            "tag": "0015_maternity_mch",
+            "breakpoints": true
+        },
+        {
+            "idx": 16,
+            "version": "7",
+            "when": 1792900000004,
+            "tag": "0016_postnatal_immunisation",
+            "breakpoints": true
+        },
+        {
+            "idx": 17,
+            "version": "7",
+            "when": 1792900000005,
+            "tag": "0017_consent_allergy_audit_integrity",
+            "breakpoints": true
+        },
+        {
+            "idx": 18,
+            "version": "7",
+            "when": 1792900000006,
+            "tag": "0018_patient_portal",
+            "breakpoints": true
+        },
+        {
+            "idx": 19,
+            "version": "7",
+            "when": 1792900000007,
+            "tag": "0019_service_tariff_billing_key",
+            "breakpoints": true
+        },
+        {
+            "idx": 20,
+            "version": "7",
+            "when": 1792900000008,
+            "tag": "0020_billing_charge_attempts",
+            "breakpoints": true
+        },
+        {
+            "idx": 21,
+            "version": "7",
+            "when": 1792900000009,
+            "tag": "0021_service_tariff_links",
+            "breakpoints": true
+        },
+        {
+            "idx": 22,
+            "version": "7",
+            "when": 1792900000010,
+            "tag": "0022_bed_day_charge_attempts",
+            "breakpoints": true
+        }
+    ]
 }

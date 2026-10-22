@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
 import { QueueItem, Appointment, Patient } from '../../types/index.ts';
 import {
   Users,
@@ -11,11 +12,12 @@ import {
   PhoneCall,
   ArrowRight,
   Filter,
-  Plus
+  Plus,
+  QrCode
 } from 'lucide-react';
 
 export const ReceptionQueueModule: React.FC = () => {
-  const { currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -24,6 +26,13 @@ export const ReceptionQueueModule: React.FC = () => {
 
   // New Appointment Form Modal
   const [isApptModalOpen, setIsApptModalOpen] = useState(false);
+
+  /*
+   * Portal invitation state lives next to the queue it is triggered from.
+   * The dialog reads the patient's portal status from the server; nothing
+   * about the patient's clinical record is loaded into it.
+   */
+  const [portalPatient, setPortalPatient] = useState<{ id: number; name: string } | null>(null);
   const [apptForm, setApptForm] = useState({
     patientId: '',
     scheduledTime: '2026-10-06 10:00',
@@ -40,7 +49,7 @@ export const ReceptionQueueModule: React.FC = () => {
         const [qList, aList, pList] = await Promise.all([
           api.getQueues(currentFacility?.id, selectedStation),
           api.getAppointments(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setQueues(qList);
         setAppointments(aList);
@@ -55,7 +64,7 @@ export const ReceptionQueueModule: React.FC = () => {
       }
     }
     loadData();
-  }, [currentFacility, selectedStation, refreshKey]);
+  }, [currentTenant, currentFacility, selectedStation, refreshKey]);
 
   const updateStatus = async (id: number, status: string) => {
     try {
@@ -71,10 +80,15 @@ export const ReceptionQueueModule: React.FC = () => {
     e.preventDefault();
     if (!apptForm.patientId) return;
 
+    if (!currentFacility?.id) {
+      showToast('Select a facility before saving this record.', { tone: 'warning' });
+      return;
+    }
+
     try {
       await api.createAppointment({
-        tenantId: currentFacility?.tenantId || 1,
-        facilityId: currentFacility?.id || 1,
+        tenantId: currentFacility?.tenantId,
+        facilityId: currentFacility.id,
         patientId: Number(apptForm.patientId),
         scheduledTime: apptForm.scheduledTime,
         durationMinutes: Number(apptForm.durationMinutes),
@@ -101,10 +115,10 @@ export const ReceptionQueueModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Reception, Queues & Appointment Navigation</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Reception, Queues & Appointment Navigation</h1>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             Real-time patient flow tracking, calling station tokens, and outpatient clinic booking desk.
           </p>
         </div>
@@ -257,6 +271,21 @@ export const ReceptionQueueModule: React.FC = () => {
                                 <span>Done</span>
                               </button>
                             )}
+                            {patient ? (
+                              <button
+                                onClick={() =>
+                                  setPortalPatient({
+                                    id: patient.id,
+                                    name: `${patient.firstName} ${patient.lastName}`,
+                                  })
+                                }
+                                className="px-2.5 py-1 text-2xs font-semibold text-blue-900 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                                title="Activate patient portal / send invitation"
+                              >
+                                <QrCode className="w-3 h-3 text-blue-600" />
+                                <span>Portal</span>
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -339,6 +368,16 @@ export const ReceptionQueueModule: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {portalPatient ? (
+        <PortalInviteDialog
+          patientId={portalPatient.id}
+          patientName={portalPatient.name}
+          open
+          onClose={() => setPortalPatient(null)}
+          onChanged={() => triggerRefresh()}
+        />
+      ) : null}
 
       {/* Appointment Booking Modal */}
       {isApptModalOpen && (

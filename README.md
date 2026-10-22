@@ -1,20 +1,2324 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# JaliCare Kenya HMIS — Updated Project Handover
+**Last updated:** 21 October 2026  
+**Client:** PUCHE — Level 3B healthcare facility  
+**Current milestone:** Step 6 — OPD, triage and consultations  
+**Overall status:** In progress
 
-# Run and deploy your AI Studio app
+> **Bring the database up to date first.** Run `npm run db:status` — it prints what
+> is recorded and what is pending against the database in `.env`. If anything is
+> pending, every command, and what to do when one fails, is in
+> **[§10 Migrations and full sync](#10-migrations-and-full-sync)**.
 
-This contains everything you need to run your app locally.
+## 1. Repository and development environment
 
-View your app in AI Studio: https://ai.studio/apps/3c5a4965-5e1e-4d6d-a781-324c5a9b0592
+- **Local path:** `C:\Users\Admin\Downloads\afyahub-hmis-kenya`
+- **GitHub repository:** `fetronix/afyahub-hmis-kenya`
+- **Working branch:** `restructure/phase-2-foundation`
+- **Stack:** React, TypeScript, Express, PostgreSQL and Drizzle ORM.
+- **Development approach:** Precise PowerShell changes, minimal-risk edits, preserve existing work, implement objectively and verify with evidence.
 
-## Run Locally
+## 2. Roadmap status
 
-**Prerequisites:**  Node.js
+Status reflects what is in the repository on 21 October 2026, checked against the
+code rather than carried forward from the previous handover. "Covered by tests"
+means contract or unit assertions run in CI (`npm test`); it does **not** mean the
+screen was exercised, or that a clinician has accepted it.
+
+1. **Foundation and project structure — Completed**
+2. **Authentication, permissions and onboarding — Completed** (staff invitations, staff role assignment, role catalogue, permission seed)
+3. **Multi-tenant and facility security — In progress.** Most queries are scoped through `resolveFacilityScope` and `getFacilityByIdScoped`. The clinical paths named in §5 — observations, diagnoses and procedures — now resolve the encounter before reading or writing and refuse a request that names neither an encounter nor a patient; the laboratory routes pass `authContext` into `resolveFacilityScope`. The unscoped functions still exist in `queries.ts`, but no route calls them and `test:security` fails if one starts to. This is not a clean bill of health: the remaining query functions have not been audited one by one.
+4. **PUCHE facility overview — Completed**
+5. **Patient registration and records — Completed**
+6. **OPD, triage and consultations — In progress.** Reception registration issues a Triage token, the token appears on the clinician's screen, starting the visit moves it to In-Progress, and completing the visit closes it. The clinical → investigation → pharmacy → cashier path now runs end to end against a real database (§3.14, 55 checks). No user has walked the screens.
+7. **Inpatient, wards, beds and theatre — Implemented.** Ward and bed set-up (create, rename, retire, delete), admission board with an empty state that leads to the first ward, transfers, discharge authorisation and theatre cases. Covered by 97 assertions in `test:inpatient`. No user acceptance.
+8. **Maternity, MCH and preventive services — Implemented.** Antenatal booking and visits, labour with a partograph, delivery with one row per baby, postnatal contacts and the childhood immunisation register, on eight tables (§3.11 and §3.12). The partograph is drawn as a chart from the stored readings, with the alert and action lines computed by the same function the table uses. A delivery raises an invoice line only through a real `facility_service_tariffs` price; with none configured the screen says **recorded, not billed** rather than inventing a figure. 131 + 151 assertions. No user acceptance.
+9. **Laboratory and radiology — Implemented.** Result entry and verification are separate: `addLabResult` writes `Pending Verification` with `verifiedBy`/`verifiedAt` null, and `POST /api/lab-results/:id/verify` is gated on `laboratory.results.verify`. The schema column is nullable since migration 0008.
+10. **Pharmacy, inventory and procurement — In progress.** Batch tracking, expiry control and FEFO dispensing implemented (80 assertions). Procurement screens exist; no test coverage.
+11. **Tariffs, billing, payments and insurance — Implemented.** Billing spine, mobile money settlement with overpayment handling, and the claims workflow (draft → submit → adjudicate → settle). Every billable stage of the outpatient and inpatient journey raises its own line (§3.14). 31 + 58 + 87 + 97 assertions.
+12. **Reports, analytics and public-health reporting — Implemented.** Analytics summary and the reporting dashboard (216 assertions).
+13. **Interoperability and integrations — Implemented to the published contract.** DHA/AfyaConnect client, readiness report, member eligibility, coverage and service-area mapping. Professional registration verification against the Health Worker Registry (§3.8). **No live credential exists, so nothing has been exercised against DHA.** 176 + 100 assertions.
+14. **Security, regression and user acceptance testing — In progress.** HTTP hardening is implemented and was exercised against a running server (§3.9): security headers, an origin allowlist, and per-IP rate limits on sign-in and the API. Still absent: independent review or penetration testing, a load test, a restore drill, monitoring and alerting, and any user acceptance.
+15. **Production deployment and handover — Not started.**
+
+**Status definitions:** Completed means implementation progress has been reported. Verified requires relevant implementation and test evidence. Do not mark a milestone Verified solely because the TypeScript check and production build pass.
+
+## 3. Work completed in the latest session
+
+### 3.1 API action permissions added
+
+Targeted permission middleware was added to the following routes in `src/app.ts`:
+
+| Endpoint | Permission added |
+|---|---|
+| `GET /api/appointments` | `appointments.read` |
+| `POST /api/appointments` | `appointments.create` |
+| `GET /api/observations` | `clinical.read` |
+| `POST /api/observations` | `clinical.create` |
+| `GET /api/diagnoses` | `clinical.read` |
+| `POST /api/diagnoses` | `clinical.create` |
+| `GET /api/procedures` | `clinical.read` |
+| `POST /api/procedures` | `clinical.create` |
+| `GET /api/lab-tests` | `laboratory.read` |
+| `GET /api/lab-orders` | `laboratory.read` |
+| `POST /api/lab-orders` | `laboratory.orders.create` |
+| `PUT /api/lab-orders/:id/status` | `laboratory.results.enter` |
+| `GET /api/lab-results` | `laboratory.read` |
+| `POST /api/lab-results` | `laboratory.results.enter` |
+
+These are implemented middleware changes. Facility/tenant query isolation and end-to-end role tests for these endpoints have **not yet been verified**.
+
+### 3.2 Doctor default permissions updated
+
+In `src/auth/staff-role-catalogue.ts`, the default `DOCTOR` permissions now include:
+
+- `laboratory.read`
+- `laboratory.orders.create`
+
+This supports clinicians viewing laboratory information and ordering investigations.
+
+The doctor role was **not** granted `laboratory.results.enter` or `laboratory.results.verify`. The laboratory technician role retains its configured laboratory permissions.
+
+**Important:** Updating the default role catalogue does not automatically prove that existing database role assignments or explicit facility permission overrides have changed. Verify effective permissions for existing users before claiming the change applies universally.
+
+### 3.3 Validation completed
+
+After these permission changes:
+
+- `npx tsc --noEmit` — passed.
+- `npm run build` — passed.
+- `git diff --check` — no whitespace errors reported; normal Windows LF/CRLF warnings may appear.
+- Production build output reported a JavaScript chunk of approximately 628.90 kB and a Vite warning about chunks larger than 500 kB. This is a performance optimisation item, not a build failure.
+
+These checks establish successful compilation and bundling. They do not establish that the permissions work correctly at runtime or that facility/tenant isolation is secure.
+
+### 3.4 Pharmacy stock batches, expiry control and FEFO dispensing
+
+`inventory_batches` existed in the schema but nothing wrote to it, so every dispense deducted from `inventory_items.current_stock` with no idea which physical box left the shelf and no protection against handing out expired stock. That is now implemented.
+
+**Database:** no migration was required. The existing `inventory_batches` table is used as-is. Receiving stock writes `batch_number`, `expiry_date` (text, ISO `YYYY-MM-DD`), `quantity_remaining` and `cost_per_unit`.
+
+**Endpoints added** (all under the existing `inventory` facility module):
+
+| Endpoint | Permission | Purpose |
+|---|---|---|
+| `GET /api/inventory/batches` | `inventory.read` | Batch ledger with expiry status; filter by item, status or horizon |
+| `GET /api/inventory/expiry-summary` | `inventory.read` | Expired/expiring units and KES value at risk |
+| `POST /api/inventory/:id/batches` | `inventory.manage` | Receive stock into a batch |
+
+**Dispensing changed:** `POST /api/pharmacy/dispense` now runs inside a transaction that row-locks the candidate lots, selects usable lots ordered by `expiry_date ASC, id ASC`, and consumes the earliest expiry first. The response gained `stockTracking` (`FEFO` or `untracked`), `allocations` (batch, expiry and quantity per lot), `stockAfter` and `billing`. Dispensations record the batch numbers drawn.
+
+**Rules enforced:**
+
+- A batch expiring today is usable; it becomes `Expired` the following day.
+- Only ISO `YYYY-MM-DD` dates are accepted. Impossible dates such as `2026-02-31` are rejected rather than silently rolled forward.
+- Expired stock is never allocated. A shortfall reports requested, available and expired units separately so "we have none" is distinguishable from "ours are all out of date".
+- An item with at least one batch row is dispensed by FEFO only; a partial fill is refused rather than silently substituting. An item with no batch rows falls back to the existing `current_stock` decrement and is labelled `untracked`, so pre-existing catalogue items keep working.
+- Receiving stock that is already expired is refused. Receiving an existing batch number tops up that lot and never extends its recorded expiry; the response flags `expiryMismatch` when the supplied expiry differs.
+
+**Screens:** Inventory has an Items/Batches tab split with expired and expiring counts, a status filter, and a Receive Batch form. The pharmacy dispense dialog no longer asks the pharmacist to type a batch number — it reports which lots the server drew and warns when expired stock is on the shelf. The dashboard summary gained `expiringStockAlerts`.
+
+**Validation completed:**
+
+- `npm run test:pharmacy-batches` — passed, 80 assertions covering date parsing, expiry boundaries, FEFO ordering and tie-breaking, expired-stock exclusion, shortfall reporting, cent-based valuation and route/UI wiring.
+- `npm test` — passed: 48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 545 migration.
+- `npm run build` — passed (`✓ built in 602ms`), with the same pre-existing chunk-size warning.
+- `npm run lint` — reports only the pre-existing `src/lib/firebase.ts` missing-config error.
+- `npx tsx` runtime-shape probe — 19/19 checks confirming the service orders and locks lots the way the pure planner assumes, and that a realistic three-lot shelf draws near-expiry stock first.
+
+**Not verified:** no PostgreSQL instance was available in the working environment, so the endpoint-to-database path (transaction rollback, row locking under contention, live expiry SQL) has not been executed against a real database. No browser check of the two screens was performed. Confirm both on staging before treating this as Verified.
+
+### 3.5 Mobile money payments, overpayment handling and a migration runner that reports failures
+
+**Why the migration appeared to succeed and did nothing.** `drizzle-kit migrate` renders a spinner and calls `process.exit()` from inside its error handler, so the underlying Postgres error is never printed. Running it against an unreachable database reproduces this exactly: one spinner frame, no message, exit code 1. On Windows the spinner is not even visible, so the command looks like it worked while `__drizzle_migrations` still reports `0008` and `0009` as pending.
+
+`npm run db:migrate` is now `scripts/migrate.ts` instead of `drizzle-kit migrate`. It applies the same journal entries and writes the same tracking rows, but:
+
+- prints the plan first (`--dry-run` executes nothing);
+- names the migration and statement that failed, with the Postgres code, detail and hint;
+- rolls everything back on failure, so a half-applied migration cannot happen;
+- strips a leading UTF-8 BOM and says so, because a BOM in `0008` once blocked both `0008` and `0009`;
+- matches on the migration hash rather than on timestamps, so a tracking table that has drifted ahead of the journal cannot make it skip migrations silently.
+
+The original command is still available as `npm run db:migrate:drizzle`.
+
+**Mobile money.** The cashier records two things: the amount received and the code printed on the customer's M-Pesa or Airtel confirmation message. Everything else is arithmetic.
+
+- **Codes are real or rejected.** An M-Pesa code is validated as two letters followed by eight letters or digits. The screen no longer fills in a plausible-looking `MPESA-XXXXXXX` reference of its own, and the "Simulate STK Push" button — which reported success without contacting Safaricom — has been removed. A code that was not generated by Safaricom cannot be reconciled against the statement, so it is worse than no code at all.
+- **A code can only be receipted once.** A partial unique index on `lower(transaction_code)` means entering the same message at two counters produces one receipt, not two credits. The API returns `409 DUPLICATE_TRANSACTION_CODE`.
+- **Receipt numbers come from a Postgres sequence**, so two tills cannot mint the same number.
+- **Three outcomes, stated plainly.** Every payment is classified `FULLY_PAID`, `BALANCE_REMAINING` or `OVERPAID`, and the response carries the arithmetic behind the verdict. The cashier screen previews the outcome live using the same pure functions the server uses, so the screen and the receipt cannot disagree.
+
+**Overpayment.** A patient who rounds up, or pays a deposit before the bill is final, is a real event at a Kenyan counter. The payment is accepted, but only after confirmation:
+
+- without explicit confirmation the API returns `400 PAYMENT_EXCEEDS_BALANCE` with `{ outstandingCents, amountCents, excessCents }`, so a mistyped extra zero is caught;
+- once confirmed, the invoice is marked `Overpaid` and the excess is written to `billing_invoices.credit_balance`;
+- `balance_amount` never goes negative. A negative balance would quietly cancel out other patients' debts the moment the facility totalled what it was owed.
+
+**Payment ledger.** `GET /api/billing/payments?facilityId=&invoiceId=&method=` returns receipts newest first with the transaction code and settlement outcome, for reconciling a shift against the M-Pesa statement. It requires `billing.payments.record` and is scoped to the caller's facility.
+
+**SHA.** A SHA-covered balance is not a payment, and the cashier screen now says so. It is raised as a claim in the Insurance module and settled when SHA remits. **There is no live SHA integration.** No public SHA claims API with documented credentials was available to build against, and a facility cannot submit claims without SHA accreditation and their onboarding. Nothing in this system calls SHA, and no screen claims to have verified a member or submitted a claim.
+
+**Migration:** `0010_mobile_money_settlement` adds `billing_invoices.credit_balance`, `billing_payments.transaction_code`, `billing_payments.settlement_status`, the partial unique index and the receipt sequence. Every statement is guarded with `IF NOT EXISTS`.
+
+**Validation completed:**
+
+- `npm run test:payments` — passed, 81 assertions covering cent-accurate parsing, all three settlement outcomes, one-shilling overpayment, code validation for both networks, rejected invented references, and the migration/index wiring. It also asserts that no `.sql` file in the journal starts with a BOM.
+- **Live PostgreSQL 16 run** — the migration runner was exercised from a simulated pre-migration database (`0000`–`0007` recorded): it applied `0008`, `0009` and `0010`, `--expect-0009` returned READY, and a second run correctly reported nothing to apply.
+- **Live payment service run** — 17 checks against the same database: partial payment leaves `700.00`, duplicate code (different case) refused, exact remainder marks Paid, overpayment refused without confirmation, confirmed overpayment stores `250.00` credit with a zero balance, invented code refused, receipt numbers unique.
+- `npm test` — passed: 48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 81 payments, 552 migration.
+- `npm run build` — passed (`✓ built in 559ms`); `npm run lint` reports only the pre-existing `src/lib/firebase.ts` error.
+
+**Not verified:** no browser check of the cashier screen was performed.
+
+### 3.6 Insurance claims: draft, adjudicate, settle
+
+Claims were previously free-typed: the screen prefilled a random claim number, a made-up policy number (`SHA-KEN-2026-9921`), a made-up pre-authorisation code (`AUTH-SHA-782109`) and a fixed amount, then reported *"E-Claim submitted to SHA portal"* while contacting nothing. It also printed "API Integration Ready" and "DHA Electronic Remittance Ready". A status dropdown let anyone mark a claim `Settled` without any money moving, so the invoice balance stayed wrong.
+
+**No live SHA connection exists, and this feature does not pretend otherwise.** There is no public SHA claims API with documented credentials to build against, and a facility cannot submit claims without SHA accreditation and onboarding. The screen now says so in a banner, and the module contains no external URL of any kind.
+
+What it does:
+
+- **Draft from real lines.** Pick an invoice, and the screen loads its actual charges with checkboxes. Everything is selected by default; the clerk can untick what the payer will not cover. The claim amount is computed from the selection and capped at what the patient still owes — a claim can never exceed the outstanding balance.
+- **Lines are snapshotted.** `insurance_claim_items` stores the description and amount as they were at claim time, because invoices get edited afterwards and a claim must still say what it asked for.
+- **One open claim per invoice** (`Draft`, `Submitted`, `Approved`), enforced under an invoice row lock so two clerks cannot both draft against the same balance. A partial unique index was deliberately *not* used: it would fail to apply on a database that already holds two open claims.
+- **A real state machine.** `Draft → Submitted → Approved|Rejected → Settled`, enforced on the server. Only a submitted claim can be adjudicated; an approved amount cannot exceed the claimed amount.
+- **Settlement moves money.** `Settled` is reachable only through `settleClaimScoped`, which writes a `billing_payments` row (method `SHA`, transaction code = claim number) and updates the invoice balance in the same transaction. If a payer approves more than is still owed, only the owed amount is posted and the remainder is reported — turning the difference into patient credit would be inventing money.
+- **Claim numbers come from a sequence** (`CLM-YYYYMMDD-000123`), not from `Math.random()` in the browser.
+
+**Permissions.** Mutations keep the gates that already existed: `insurance.claims.create` to draft and submit, `insurance.claims.manage` to adjudicate and settle. The read endpoints were deliberately left on the module gate alone. No role in `STAFF_ROLE_CATALOGUE` currently holds any `insurance.*` permission, so adding `insurance.read` to the claim list would have taken the screen away from clerks who can open it today. Tighten it once roles are granted the code.
+
+**Migration:** `0011_insurance_claims_workflow` adds `insurance_claim_items`, `insurance_claims.settled_payment_id`, `settled_at`, `created_by_user_id`, an invoice/status index and `insurance_claim_number_seq`. Every statement is guarded.
+
+**Validation completed:**
+
+- `npm run test:claims` — passed, 87 assertions. Half of them are honesty checks: the fabricated policy number, pre-auth code, hardcoded amount, `Math.random()` claim numbers and every "integration ready" phrase must stay absent, and the screen must state that it does not transmit claims. It also asserts that exactly one place in the service writes `Settled`, and that a settlement is capped at the balance.
+- **Live PostgreSQL 16 run** — 26 checks against the real service: three claimable lines, draft for one selected line, policy number inherited from the invoice, server-issued claim number, second open claim refused, adjudicating a draft refused, approval above the claim refused, approval recorded, settlement posting `1800.00` with the invoice moving to `3200.00` outstanding and `Partially Paid`, cannot settle twice, and the claim line snapshot preserved.
+- `npm test` — passed: 48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 82 payments, 87 claims, 559 migration.
+- `npm run build` — passed (`✓ built in 583ms`); `npm run lint` reports only the pre-existing `src/lib/firebase.ts` error.
+
+**Not verified:** the claims screens were not opened in a browser. The legacy `PUT /api/claims/:id/status` endpoint was kept for compatibility and now delegates to the state machine, but it has not been exercised from an old client.
+
+### 3.7 DHA / AfyaConnect: a document-verified client, an honest readiness report, and service-area mapping
+
+**What was verified, and where.** Every endpoint, header, enum and query parameter in this build was read from the published reference rather than assumed:
+
+- `https://hie-docs.dha.go.ke/auth/authentication` — OAuth 2.0 client credentials, `POST /tenants/token`, `{ client_id, client_secret }` in, `{ access_token, expires_in, token_type }` out.
+- `https://hie-docs.dha.go.ke/eclaims/eligibility` — `GET /patients/eligibility`, `/patients/benefits`, `/patients/benefits/interventions`, `/patients/benefits/utilization`, `/patients/sub-benefits`, `/patients/pomsf-balances`, and the seven-value identification-type enum.
+- `https://hie-docs.dha.go.ke/eclaims/authorizations` and `/eclaims/start-visit-consent` — consent and visit contracts, captured but **not** wired (see below).
+- `https://hie-docs.dha.go.ke/docs/scenarios/overview` — the decision matrix: `accessPoint` (IP/OP), `paymentMechanism` (PER_DIEM/FEE_FOR_SERVICE), `fund` (SHIF/UHC/ECCIF), `needsPreauth`, and the ECCIF emergency window.
+
+The documented UAT base is `https://ilm-dev.dha.go.ke/uat-middleware/api/v1`. DHA publishes **no** production base URL. Every business call sends `X-Facility-Id` (the Facility Registry code) and `X-Facility-Id-Type: fr-code`.
+
+**Three modes, and production is off.**
+
+| `DHA_MODE` | What happens | Credentials needed |
+|---|---|---|
+| `mock` (default) | Deterministic local fixtures. Nothing leaves the process. Every response is marked `simulated: true` and the screen prints `SIMULATED — not a SHIF decision`. | none |
+| `sandbox` | Real HTTPS calls to the documented UAT gateway. | `DHA_CLIENT_ID`, `DHA_CLIENT_SECRET`, `DHA_FACILITY_CODE` |
+| `production` | Refuses to run unless `DHA_ALLOW_PRODUCTION=true` **and** an `https` `DHA_BASE_URL` is supplied. Both are absent by default. | all of the above |
+
+Mock fixtures are keyed on the identifier so a demo is reproducible: `11111111` returns a deceased beneficiary, `22222222` returns no schemes, anything else returns an eligible member with `POMSF-047` and `SHIF`. A ceremony is not a verification, and the label says which one you are looking at.
+
+**Two rules from the documentation are enforced in code.**
+
+- **POMSF is matched as a prefix.** Scheme names arrive suffixed (`POMSF-047`); exact equality would report a civil servant as uncovered. `TSC` and `USALAMA` are recognised the same way.
+- **`isAlive: false` blocks everything.** The verdict is `deceased`, eligibility is false regardless of schemes, the patient row is marked `DECEASED`, and no downstream call is made.
+
+**Identifiers never leave in clear.** The Client Registry id, national ID and every identification override are masked to their last four characters before they reach a log, an audit row, a response or the screen. `dha_api_calls` stores no request body and no patient identifier — only the operation, the path, the status, the duration and the outcome. No secret, token or payload is logged anywhere in the integration.
+
+**Readiness is reported as fact, not aspiration.** `GET /api/integrations/dha/readiness` returns the mode, each configuration check with `READY`/`WARNING`/`BLOCKED`, the blockers in plain language, and every operation this build knows about — implemented or not. The screen renders that report directly; it no longer shows the previous hard-coded list of eight "Compliant" items, because nothing here is certified, approved or connected to production.
+
+**Not implemented, and why:**
+
+- `consent.authorize` — an OTP must reach the patient and biometrics need a registered device. This build has neither, so wiring the call would produce a screen that cannot work.
+- `claim.startVisit` — consumes a consent token; without consent capture it cannot run end to end.
+- Claim line items, diagnoses, preauthorisation and remittance — the contracts were not captured from the published reference. They are named as missing rather than invented.
+
+**Service-area mapping, without inventing a single code.** DHA adjudicates claim lines against **intervention codes**, which belong to DHA and arrive per beneficiary. This HMIS bills against its own tariff catalogue. `dha.service-areas.ts` defines the eight areas (outpatient, inpatient, laboratory, pharmacy, imaging, theatre, maternity, emergency) and resolves each billable line from its provenance (`billing_items.source_type`) to an area, then to the documented attributes for that area. The intervention code itself is **configuration**: an administrator copies it from the DHA portal into `dha_service_mappings`, one row per facility per area. `GET /api/integrations/dha/invoices/:id/interventions` groups an invoice's lines by area and returns any line whose area has no code as `unmapped` — it refuses to fabricate, and it refuses to silently drop the line.
+
+**Migration:** `0012_dha_integration_audit` adds `dha_api_calls` and four `patients` columns (`dha_client_registry_id`, `dha_eligibility_status`, `dha_eligibility_checked_at`, `dha_eligibility_schemes`). `0013_dha_service_mappings` adds the mapping table with a unique index on `(facility_id, service_area)` so a line can never resolve to two codes. Both are additive and guarded with `IF NOT EXISTS`; neither touches existing rows.
+
+**Validation completed:**
+
+- `npm run test:dha` — passed, 176 assertions. These are mostly honesty checks: the secret never appears in the readiness output or any log statement, production refuses without the opt-in, a disabled client never reaches the network, tokens are cached, the documented paths and identification enum are exact, a mock result is marked simulated, an operation without a fixture throws rather than inventing one, `statusDesc`/`POMSF` semantics hold, all eight service areas carry only documented enum values and no code field, and the four DHA routes are registered behind the module gate.
+- `npm test` — passed, 1,379 assertions across nine suites (48 inpatient, 31 billing, 80 nursing, 216 reporting, 80 pharmacy batches, 84 payments, 91 claims, 176 DHA, 573 migrations).
+- `npm run build` — passed (`✓ built in 545ms`); `npm run lint` reports only the pre-existing `src/lib/firebase.ts` `TS2307`.
+
+**Not verified, and cannot be from here:** no call has been made to the real DHA gateway, because no credentials exist until the application is approved. The sandbox path is exercised only against a stubbed `fetch` that asserts the token exchange, the `Authorization` header, the facility headers and the URL construction. The DHA screen was not opened in a browser.
+
+**Blocked on DHA approval:** client credentials, the Facility Registry code, the enabled API products, and the production base URL. Until those arrive the integration runs in `mock` only, and the readiness report says exactly that.
+
+### 3.8 Professional verification before a staff invitation
+
+**The rule.** A clinical invitation cannot be issued until the applicant's professional registration has been checked. Selecting `DOCTOR`, `CLINICAL_OFFICER`, `NURSE` or `PHARMACIST` in the invite form opens a verification panel; the "Create invitation link" button stays disabled until a usable result exists.
+
+**What was verified against the documentation**
+
+- `https://hie-docs.dha.go.ke/registries/health-worker-registry` — `GET /professionals`, with `identification_number` (required), `identification_type` (`registration_number` | `National ID` | `Alien ID` | `Refugee ID`) and `regulator` (`KMPDC` | `COC` | `NCK` | `PPB`). The 200 response is documented as `{ message: object }`.
+- `https://hie-docs.dha.go.ke/docs/registries/process/professionalSearch` — workflow, identifier types and the three expected outcomes (found, not found, input error). This page also mentions a `license_number` identifier type that the endpoint enum does **not** list; the endpoint wins, so it is not offered.
+- `https://hie-docs.dha.go.ke/docs/goLive` — production access: Development/Testing → UAT demo → DHA Certification → production credentials. Nothing here is certified, so nothing here points at production.
+- `https://afyalink.dha.go.ke/practitioner-search-api-docs` — **unreachable** on 21 Oct 2026. No contract was taken from it, and nothing was invented to fill the gap.
+
+**Regulators genuinely supported**
+
+| Role | Regulator | Automated |
+|---|---|---|
+| `DOCTOR` | KMPDC | yes |
+| `CLINICAL_OFFICER` | COC (Clinical Officers Council) | yes |
+| `NURSE` | NCK (Nursing Council of Kenya) | yes |
+| `PHARMACIST` | PPB (Pharmacy and Poisons Board) | yes |
+| `LABORATORY_TECHNICIAN` | KMLTTB | **no** — not in the published enum; manual check only |
+
+`CLINICAL_OFFICER` was added to `STAFF_ROLE_CATALOGUE`, so newly created tenants get it. Existing tenants need the role created before it can be selected.
+
+**Registration is not a licence.** The two are separate columns and separate statuses:
+
+- `REGISTRATION_VERIFIED` — the register contains this person and the registration is live.
+- `LICENCE_CONFIRMED` — an explicit licence status said "active" and no expiry date contradicts it.
+- `LICENCE_EXPIRED`, `REGISTRATION_INACTIVE` — the register said so; both block an invitation.
+- `IDENTITY_MISMATCH` — the returned name shares no token with the name entered. Blocks, and requires human resolution.
+- `RECORD_NOT_FOUND` — the registry returned nothing. Blocks, offers a manual check.
+- `SERVICE_UNAVAILABLE` — the call failed. **This is not a failed credential check**, and it does not overwrite a credential that was verified earlier.
+- `MANUAL_REVIEW_REQUIRED` — the response could not be interpreted. Blocks, requires human resolution.
+- `MANUALLY_VERIFIED` — an administrator checked the regulator's own register; source and date are recorded.
+
+**The response mapping is provisional, and says so.** The published reference renders the response body as `message: object` and DHA publishes no machine-readable OpenAPI document at a discoverable path. Rather than invent keys, `practitioner.normalise.ts` reads a declared, ordered list of candidate keys, records which ones matched, lists unrecognised keys (names only, never values) and sends anything it cannot interpret to `MANUAL_REVIEW_REQUIRED`. Every result carries `mapping: 'provisional'`, which the screen displays. Correct the key list once against the first real sandbox record; nothing else needs to change.
+
+**Mock mode cannot appoint anyone.** Fixtures are deterministic and labelled `SIMULATED` in the result and on screen. A credential recorded in mock mode is refused at the invitation gate (`409 SIMULATED_VERIFICATION`), so a demo cannot become an employment decision.
+
+**Data minimisation.** No national ID, date of birth or contact details are stored, and no response body is retained. The credential row keeps the registration number, the returned statuses, the licence expiry, the matched key names and the warnings. `professional_verification_events` is append-only and records every attempt, including the failures.
+
+**Separation of concerns.** Credential status is independent of employment, role assignment and clinical privileges. A verified registration grants nothing; it only satisfies the pre-invitation check.
+
+**Migration:** `0014_professional_verification` adds `staff_professional_credentials` and `professional_verification_events` with four indexes, all guarded. **Run `npm run db:migrate` before using the new invitation flow** — without it, a clinical invitation fails on a missing relation.
+
+**Validation completed:**
+
+- `npm run test:verification` — 100 assertions: regulator and role mapping, every status branch, `dd/mm/yyyy` parsing, nested envelopes, multiple-match handling, unrecognised shapes, mock determinism, the outage-preserves-status rule, the mock-cannot-invite rule, and that migration 0014 contains no `DROP`, `TRUNCATE` or `DELETE`.
+- `npm test` — 1,489 assertions across ten suites. `npm run build` — passed (`✓ built in 621ms`). `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**Not verified:** no request has been made to the real Health Worker Registry (no credentials), and the screens were not opened in a browser. The response key mapping is unconfirmed until the first sandbox call.
+
+### 3.9 HTTP hardening, and the clinical paths closed in §5
+
+**Why now.** The API sent no security headers, had no CORS policy at all, and placed no limit on sign-in attempts. None of that requires a database migration or a design decision, and all three are things a reviewer would flag on the first afternoon.
+
+**What is mounted, and in what order.** In `src/app.ts`, before the body is parsed:
+
+1. `app.disable('x-powered-by')` — the framework is not advertised.
+2. `helmet()` — `nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: same-origin`, COOP/CORP, and, **in production only**, a content security policy (`frame-ancestors 'none'`, no inline script) and HSTS (`max-age=15552000; includeSubDomains`). The CSP is off in development because Vite's HMR injects inline scripts; a policy loose enough for HMR is not worth shipping.
+3. `cors()` — an allowlist built from `APP_BASE_URL` plus any `CORS_ALLOWED_ORIGINS`, with the localhost dev origins added only when `NODE_ENV` is not `production`. A refused origin is answered **without** CORS headers rather than with an error, so the browser blocks the response and the server says nothing about which routes exist. There is no wildcard and no origin reflection.
+4. `express-rate-limit` on `/api/auth` — 10 **failed** attempts per IP per 15 minutes. `skipSuccessfulRequests` is on: a busy reception desk that signs in correctly all day must not be locked out by its own success. Answers `429 RATE_LIMITED` with a plain message.
+5. `express-rate-limit` on `/api` — 300 requests per minute per IP.
+6. `express.json({ limit: '1mb' })` — the largest body this application receives is a claim or an invoice.
+
+**Configuration.** `TRUST_PROXY=true` behind a reverse proxy (nginx, cPanel, Cloudflare); without it every request appears to come from the proxy and one client can exhaust the facility's budget. `CORS_ALLOWED_ORIGINS` takes a comma-separated list. Both are documented in `.env.example`.
+
+**Exercised against a running server** (production mode, `APP_BASE_URL=https://hmis.example.co.ke`):
+
+- Response headers included `Content-Security-Policy` with `frame-ancestors 'none'`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: same-origin`, and `RateLimit: limit=300, remaining=299, reset=60`. `X-Powered-By` was absent.
+- `Origin: https://hmis.example.co.ke` → `Access-Control-Allow-Origin: https://hmis.example.co.ke`.
+- `Origin: https://evil.example` → no `Access-Control-Allow-Origin` header at all.
+- Twelve wrong-password sign-ins → `401` ten times, then `429` with `{"success":false,"error":"RATE_LIMITED", ...}`.
+
+**What this does not do.** The limiter keeps its counters in process memory: they reset on restart and are not shared between processes, so a multi-process deployment needs a shared store. There is no CSRF token — the API authenticates with a bearer token rather than a cookie, and the origin allowlist is the control in place; that reasoning stops holding the day a cookie is introduced. There is still no penetration test, no load test and no monitoring.
+
+**The clinical paths.** `GET/POST /api/diagnoses` and `GET/POST /api/procedures` were the three unscoped reads and writes listed in §5. They now call `getDiagnosesScoped`, `recordDiagnosisScoped`, `getProceduresScoped` and `recordProcedureScoped`, which:
+
+- resolve the encounter once, through `loadEncounterInScope`, and reject an encounter that belongs to another tenant or facility with `ENCOUNTER_NOT_FOUND` — the same answer as an encounter that does not exist, so the response does not confirm that a record exists elsewhere;
+- refuse a read that supplies neither `encounterId` nor `patientId` (`SCOPE_FILTER_REQUIRED`) instead of returning the table;
+- reject a body whose patient does not match the encounter patient (`PATIENT_ENCOUNTER_MISMATCH`);
+- for a patient-only read, accept a patient who is registered at the caller's facility **or** has been seen there. A patient's registration facility is not the facility where they are receiving care, and requiring the two to match would hide a genuine record.
+
+The legacy `getDiagnoses`, `recordDiagnosis`, `getProcedures` and `recordProcedure` remain in `queries.ts` — other code may still reference them — but no route calls them.
+
+**Validation completed:**
+
+- `npm run test:security` — 54 assertions: the allowlist (exact match, scheme, look-alike domain, malformed config, localhost only outside production), the limits and their windows, `skipSuccessfulRequests`, the absence of any wildcard or reflection, mount order, the production-only CSP and HSTS, the four routes' use of the scoped functions, and the refusal of an unfiltered read.
+- `npm test` — **1,543 assertions across eleven suites**, all passing.
+- `npm run build` — passed (`✓ built in 595ms`; the bundle-size warning is pre-existing).
+- `npm run lint` — only the pre-existing `src/lib/firebase.ts` missing-config error.
+
+**Not verified:** no penetration test, no load test, and the screens were not walked in a browser after the change.
+
+### 3.10 Role catalogue coverage, and a dashboard that says what it knows
+
+**The hole.** `STAFF_ROLE_CATALOGUE` gained `CLINICAL_OFFICER` in 3.8, but roles are *tenant-scoped*: a tenant created before that change has no such role, the invitation form offers it, and nobody can be granted it. The same is true of `inpatient.admit` and `inpatient.discharge` added to `DOCTOR` and `NURSE` — the permission exists, the role predates it, and the new ward routes answer 403. A CLI script (`scripts/repair-tenant-staff-roles.ts`) covered tenants 7 and 8 and nothing else, and the editor showed only roles that already existed, so the gap was invisible from the screen.
+
+**What the editor shows now.** `GET /api/platform/rbac/roles` returns a `catalogue` block alongside the roles: for each of the eight catalogue roles, whether the tenant has it, and which catalogue permissions it lacks. The panel at the top of *Super Admin → Facilities → Facility Role Permissions* then reads one of three ways:
+
+- **All present** — a green line and nothing to do.
+- **Missing roles** — an amber list of the roles this tenant does not have, with their descriptions and permission counts, and one button to create them.
+- **Drift** — a separate list of existing roles that sit below the catalogue, naming the exact permission codes. Granting those is a second, explicit button.
+
+**Why drift is not automatic.** A permission may have been removed from a role deliberately, and a provisioning step that tops up every role on every visit would keep undoing that decision. Creation is safe to do in bulk; re-granting is not.
+
+**What the apply endpoint does.** `POST /api/platform/rbac/catalogue/apply` creates missing roles for the facility's tenant with their catalogue permissions and writes one audit entry. It is additive only: no delete, no update of an existing role, no touch of any facility override. If a catalogue permission code is not seeded in the database it refuses with `409 CATALOGUE_PERMISSIONS_MISSING` and names the codes, rather than creating a role that holds permissions no route checks. Roles belong to the tenant, so creating one from any facility makes it available in all of them.
+
+**Bulk backfill.** `scripts/repair-tenant-staff-roles.ts` now takes `--tenant 12,15` or `--all` instead of the two hardcoded IDs, and is still a dry run unless `--apply` is passed:
+
+```
+npx tsx scripts/repair-tenant-staff-roles.ts --all          # report only
+npx tsx scripts/repair-tenant-staff-roles.ts --all --apply  # write
+```
+
+It applies the same additive rule as the endpoint. Use the screen for one tenant you can see, the script for every tenant at once.
+
+**Dashboard.** Two defects, one cosmetic and one not:
+
+- `text-2xs` and `text-3xs` were used **359 times across 23 files** and had never been defined, so Tailwind emitted nothing and every one of those labels inherited its parent's size. They are now defined once in `src/index.css` under `@theme`.
+- The KPI cards were four hand-written blocks with different numbers of rows, so their baselines drifted; hidden cards also left holes in a fixed four-column grid. They are now one `KpiCard` with a fixed label / value / footer shape, rendered from a filtered list, so the grid closes up when a permission hides a card. The second row drops to a single column when only one of its two panels is visible, instead of leaving two thirds empty.
+
+**The figure that is not zero.** When a dashboard request fails, the cards now show an em dash and a warning banner, not `0`. A zero is a measurement; a failed request is the absence of one. `loading` also stopped being a dead variable — it drives a *Refreshing* chip in the header.
+
+**Validation completed:**
+
+- `npm run test:roles` — 13 assertions, now part of `npm test`: the catalogue has the eight expected roles, every permission code is well formed, and the provisioning route never deletes, never updates an existing role and tops up only on request.
+- `npm test` — **1,556 assertions across twelve suites**, all passing.
+- `npm run build` — passed (`✓ built in 620ms`).
+- `npm run lint` — only the pre-existing `src/lib/firebase.ts` missing-config error.
+
+**Not verified:** no browser walkthrough of the panel or the dashboard, and the provisioning endpoint has not been exercised against a database. The `staff-role-catalogue` test was stale — it still expected seven roles and was not wired into `npm test` — and is fixed here.
+
+### 3.11 Maternity and MCH
+
+**The clinical order is the data model.** One pregnancy, many antenatal visits; if she labours here, one labour record carrying the partograph readings; then one delivery carrying one row per baby.
+
+| Table | Holds |
+|---|---|
+| `maternity_pregnancies` | booking, LMP, EDD and its basis, obstetric history, risk factors, status |
+| `anc_visits` | one row per antenatal visit: gestation, weight, BP, fundal height, FHR, presentation, urine, Hb, TT dose, IFAS, danger signs, next visit |
+| `labour_records` | admission, labour onset, membrane rupture, gestation at admission, status |
+| `partograph_entries` | the time series: dilatation, descent, contractions and their duration, FHR, membranes, liquor, maternal pulse, BP, temperature |
+| `deliveries` | mode, blood loss, perineum, placenta, oxytocin, complications |
+| `delivery_babies` | one row per baby: sex, weight, Apgar at 1/5/10, outcome, resuscitation |
+
+**Three decisions worth knowing about.**
+
+1. **ANC is not folded into the delivery.** Most antenatal care does not end in a delivery at this facility — referrals, caesareans booked elsewhere, women who move. Storing ANC on the delivery record would delete it in all those cases.
+2. **The partograph is a series, not a form.** Twelve readings in six hours each need their own timestamp. The database refuses two readings at the same timestamp (`partograph_entries_labour_time_idx`), because on a partograph a double entry moves the plotted line.
+3. **Twins are one delivery and two babies.** `baby1_*` / `baby2_*` columns stop working at the third baby and cannot be counted; the baby is the row.
+
+**What the code refuses to do.**
+
+- **No invented measurements.** Every clinical column is nullable and carries no default: an absent blood pressure is stored as NULL, not as a plausible number. `test:maternity` asserts this column by column.
+- **No EDD that contradicts its own arithmetic.** With an LMP and a basis of `LMP`, the EDD must be LMP + 280 days. A scan may re-date, which is why `edd_basis` is stored and `Ultrasound` / `Other` are allowed to disagree.
+- **No hidden defaults in the ward forms.** Empty inputs are sent as absent, so the server stores NULL.
+- **No obstetric advice.** The partograph reports where the latest reading sits against the alert and action lines — a geometric fact about the plot — and says so in the payload: *"A plotting aid only. It does not recommend an intervention."*
+
+**Scoping.** Every table carries tenant and facility. A record belonging to another facility answers **404**, not 403, so the response cannot be used to confirm which IDs exist. The facility lookup converts `getFacilityByIdScoped`'s denial into "not found" for exactly that reason.
+
+**Permissions.** `maternity.read`, `maternity.create`, `maternity.update`. `DOCTOR`, `CLINICAL_OFFICER` and `NURSE` hold all three (nurse-midwives conduct deliveries in Kenya); `RECEPTIONIST` holds `maternity.read` only. New codes need two commands after pulling:
+
+```
+npm run db:seed:permissions                                   # insert the codes
+npx tsx scripts/repair-tenant-staff-roles.ts --all --apply     # grant them to roles
+```
+
+Without the second, existing roles hold no maternity permission and the module answers 403 to everyone except a superadmin. The role catalogue panel in §3.10 reports the drift if this is skipped.
+
+**The module gate is new.** `maternity` is a facility module like `theatre` or `radiology`. Existing facilities do not have it in `enabled_modules`, so it must be switched on in **Configuration → Modules** (or Super Admin → Facility → Modules) after deploying. Until then the API answers `403 FACILITY_MODULE_DISABLED`.
+
+**Validation completed:**
+
+- `npm run test:maternity` — 130 assertions: date arithmetic (including 30 February and leap years), Naegele's rule, gestation from the EDD, absent-is-not-zero, every partograph zone, the migration's additive guarantees, no default on any clinical measurement, route permissions, and that the screen ships no sample patient.
+- **Live against PostgreSQL 16** — the scratch database was built by applying all sixteen migrations, then the service was exercised end to end: 24 checks covering EDD derivation, the one-active-pregnancy rule, ANC gestation computation, values stored versus left NULL, labour admission, three partograph readings, the duplicate-timestamp refusal, the dilatation range, the delivery with its baby, the pregnancy and labour closing to `Delivered`, refusal of a second delivery, refusal of a reading after delivery, the summary counts, and cross-facility isolation. Two defects were found this way and fixed: Drizzle wraps driver errors so the SQLSTATE sits on `cause` (every unique violation was returning 500), and a facility denial was surfacing as 403 instead of 404.
+- `npm test` — **1,696 assertions across thirteen suites** at the time of that round (the current total is in §3.18).
+- `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**Not verified:** the screens were not walked in a browser, and no clinician has reviewed the field set against the MOH 405 card. Postnatal care, immunisation and the plotted chart were still outstanding at the end of that round; they are in §3.12.
+
+### 3.12 Postnatal care, immunisation, a plotted partograph and delivery billing
+
+**What was missing.** The MCH pathway stopped at the delivery. There was no way to record the six weeks that follow, no childhood immunisation register, the partograph was a table of numbers with no chart, and a delivery raised no invoice at all — the largest single billable event in a maternity facility.
+
+**Postnatal contacts** (`postnatal_visits`). One row per contact. The mother is the subject and the baby's weight sits on the same row, because at this stage the two are seen together and a separate baby record would be empty for most visits. The contact hangs off the **pregnancy**, not the delivery, so a woman who delivered elsewhere still has a record. `day_postpartum` is counted from the recorded delivery date and stored, not recomputed on read — a contact recorded on day 3 stays day 3.
+
+**Immunisation** (`immunisation_records`). The schedule lives in `src/immunisation/immunisation-contracts.ts` — 19 KEPI reference doses — and not in a table, for the same reason the partograph alert line is computed: a schedule changes, a record of what was given must not. `immunisation_records_dose_idx` is a unique index on (tenant, patient, antigen, dose), so the same dose administered twice is refused **by the database**, which is the one guarantee a paper card cannot give. Four further refusals sit in code: an unknown antigen, a future date, a date before the child was born, and a dose number outside 1–4.
+
+**"Due" is not a diagnosis.** A dose is **Due** from its scheduled week and **Overdue** only four weeks later — a child seen a fortnight late is late, not overdue, and a list that shouts at every late attendance stops being read. The card carries the caveat in the payload: *confirm the ages against the current KEPI chart*.
+
+**The partograph is now a chart.** `buildPartographPlot` turns stored readings into geometry: hours since admission on the x axis, centimetres on the y axis, the alert line beginning at the first reading that reaches 4 cm and climbing 1 cm/h to 10 cm, the action line four hours to its right. The axis is extended to the end of the action line, because a chart that crops its own action line makes the line look as if it stopped. The same function feeds the table's zone, so the two cannot disagree. It is rendered as inline SVG (`src/components/maternity/PartographChart.tsx`): no canvas, no charting library, no network fetch — the facility laptop may have no internet. The table remains, because a clinician reading six hours of observations wants the numbers.
+
+**A delivery now bills — or says it cannot.** `POST /api/maternity/deliveries` calls `chargeForService` with candidate codes `DELIVERY`, `MATERNITY-DELIVERY` and the mode, `sourceType: 'MATERNITY'`, and `sourceId` set to the delivery. **No fallback price is passed**, so a facility with no delivery tariff gets `TARIFF_NOT_CONFIGURED` and the screen prints *"Recorded, not billed"* with the next step. One charge per delivery, not per baby: twins are one delivery. The new source type is mapped to the DHA `maternity` service area.
+
+**Reachable on the screen.** Two new tabs — *Postnatal care* and *Immunisation* — plus the chart in the labour pane and a billing banner on the delivery screen. The immunisation antigen picker is served from the same array the due-date logic uses (`GET /api/immunisation/schedule`); a second copy in the UI would be a second schedule, and the second one is always the wrong one.
+
+**Permissions.** No new codes. Postnatal and immunisation ride on `maternity.read` / `maternity.create`, and `/api/immunisation` is gated on the `maternity` module, because in Kenya the doses are given in the MCH clinic on the same visit as the mother's check. A second switch would let a facility open the child register while the mother's record stayed closed.
+
+**Validation completed**
+
+- `npm run test:postnatal` — 151 assertions: the schedule's uniqueness and ages, `Due`/`Overdue` boundaries at 0/4 weeks, an early dose still recorded, the plot's geometry including a late 4 cm start and the axis covering the action line, the additive migration and its guards, the service refusals, the delivery charge carrying no fallback price and no money literal, and that every capability is on the screen.
+- `npm test` — **1,906 assertions** across thirteen counting suites, plus the staff-role-catalogue suite (which reports pass/fail without a count). All green.
+- **Live against PostgreSQL 16.** All 17 migrations applied to a scratch database, then 40 checks: plot geometry from real rows (alert at hour 2, action at hour 6, axis 13 h), chart and table agreeing on the zone, no tariff → `TARIFF_NOT_CONFIGURED`, a 12,000 tariff → billed with invoice `INV-000001`, a repeat → `DUPLICATE`, exactly one invoice line, day postpartum 3 from the delivery date, an unmeasured temperature stored NULL, cross-facility 404, duplicate dose refused, future/before-birth/unknown-antigen refusals, a 19-antigen card, and the facility due list.
+- `npm run build` — passed. `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**Three migration defects found and fixed.** A database could not be brought up to date on 21 October 2026, and each attempt exposed a different fault.
+
+1. **`0002` blocked every fresh install.** Two `ALTER COLUMN … SET DATA TYPE date` statements had no `USING` clause, so PostgreSQL raised `42804` and the whole run rolled back. The cast is harmless on an empty table and required on a populated one.
+
+2. **`0008` blocked a database that had been built with `drizzle-kit push`.** Push writes the schema but not the migration log, so `lab_results.status` already existed while the migration row did not. `ADD COLUMN status` failed with `42701 — column "status" … already exists`, the run rolled back as a unit, and the database could not move past `0008`. The file is now guarded and re-runnable: `ADD COLUMN IF NOT EXISTS`, the default and `NOT NULL` set separately, and a backfill written so a second run changes nothing. On a drifted database the backfill still does the thing that matters — a row with a verifier recorded but a status of `Pending Verification` is promoted to `Verified`, and a row with no verifier loses a verification time it should never have carried.
+
+3. **The runner hung on failure.** It printed the failing statement and then waited, because it called `pool.end()` while still holding the failed client. It now releases the client first and exits 1. Measured: the run that previously sat until killed at 300 s now exits in **1 s**, with one transaction rolled back and 0 tables created.
+
+Editing `0002` alone would have been unsafe, because the runner decided what was applied from the file's SHA-256 only: a changed file would look pending and be re-applied on the one database that must not see it run again. The runner now treats a migration as applied when **either** its hash **or** its journal timestamp is recorded — the rule `db:status` already used, so the two no longer disagree. An applied file that has changed on disk is named in a warning and skipped.
+
+Verified against PostgreSQL 16:
+
+| Scenario | Result |
+|---|---|
+| Fresh database | all 17 migrations apply, exit 0 |
+| `0000`–`0007` applied, then `lab_results.status` added by hand (the pushed-schema state) | `0008`–`0016` apply; the verified row becomes `Verified`; the unverified row's `verified_at` is cleared; `db:status:all` says READY |
+| `0002` edited after being applied | `Pending: 0`, warning, exit 0, no SQL run |
+| Deliberately broken `0002` | fails in 1 s with exit 1, database unchanged |
+
+`test:migrations` now enforces the class rather than the instance (655 assertions): from `0007` onward no migration may add a column, table, index or sequence without `IF NOT EXISTS`, none may be destructive, no column type change may omit `USING`, and the runner must keep both the timestamp skip and the client release. Reverting `0008`'s guard fails the suite by name.
+
+**Not verified:** the screens were still not walked in a browser — no browser was available in this environment, so the tabs, the chart and the billing banner have been type-checked and built but not clicked. No clinician has reviewed the field set against the MOH 405 card, and no one has confirmed the KEPI ages against the current chart.
+
+### 3.13 Ward and bed set-up — the empty dropdowns
+
+**What was missing.** The inpatient screen could be read and never filled. `GET /api/wards`, `GET /api/beds`, `PUT /api/beds/:id/status` and `PUT /api/beds/:id/release` were the only ward or bed routes in `src/app.ts` — there was no POST, no edit and no delete for either. Wards and beds existed only if `src/db/seed.ts` had been run, and that seed also creates demo patients and a demo admission. A real facility therefore opened **Admit patient** to two empty dropdowns with no screen anywhere to fill them. This was not a bug in the dropdowns; it was the absence of a write path.
+
+**The write path** (`src/inpatient/ward-bed.service.ts`) adds six operations, each behind its own permission:
+
+| Endpoint | Permission |
+|---|---|
+| `POST /api/wards` | `inpatient.wards.create` |
+| `PUT /api/wards/:id` | `inpatient.wards.update` |
+| `DELETE /api/wards/:id` | `inpatient.wards.delete` |
+| `POST /api/beds` | `inpatient.beds.create` |
+| `PUT /api/beds/:id` | `inpatient.beds.update` |
+| `DELETE /api/beds/:id` | `inpatient.beds.delete` |
+
+Reading stays on `inpatient.read`. All six mutate paths are audited, and every one resolves the facility through `resolveFacilityScope` — the facility is taken from the session, never from the request body. Another facility's ward or bed answers **404**, not 403, as everywhere else.
+
+**Beds are created in a batch.** A ward is set up in one sitting, so `POST /api/beds` takes either `{ wardId, prefix, startNumber, count, bedType, dailyCharge? }` — which produces `FMW-BED-01 … FMW-BED-04` — or an explicit `{ wardId, bedNumbers: [...] }`. At most 60 at a time. If any number already exists the whole batch is refused (`BED_NUMBER_EXISTS`, naming the numbers) and nothing is inserted, so a failed attempt cannot leave half a ward behind.
+
+**No invented numbers.**
+
+- A rate or charge left blank is stored **NULL**. The columns carry historical defaults of 1500.00 and 1800.00; a bed billed at a price nobody entered is a bill waiting to happen, so the service never falls back to them and the screen says *not priced*.
+- A ward's `total_beds` is **counted**, not typed. It is written as 0 on creation and recounted after every bed change, because the old default of 20 made a six-bed ward advertise twenty.
+- A new bed is `Available`; `Occupied` is only ever set by admitting a patient. An edit cannot set it.
+- A ward with a patient in it cannot be retired (`WARD_OCCUPIED`); a retired ward accepts no new beds (`WARD_RETIRED`).
+
+**History is not deleted.** A ward or bed with admission rows cannot be deleted — the admission would lose the place it happened in. `deleteWard`/`deleteBed` refuse with `WARD_HAS_HISTORY` / `BED_HAS_HISTORY` and name the alternative: retire the ward, or set the bed to Maintenance. A bed with a patient currently in it is refused sooner and more bluntly (`BED_OCCUPIED`). Only a ward with no admissions and no occupied beds may be deleted, and its unused beds go with it in one transaction.
+
+**Reachable on the screen** (`src/components/modules/InpatientModule.tsx`). The page header carries *Add Ward* and *Add Beds to <code>* when the signed-in user holds the matching permission; the bed board header carries *Add beds*, *Edit ward*, *Retire*/*Reactivate* and *Delete ward*. A facility with no wards at all is shown a first-run card — *"Create the first ward"* — rather than an empty grey panel, and a ward with no beds says so with a button to add them. Bed tiles carry edit and delete icons. Three modals cover the ward form, the batch bed form and the bed edit. The admit modal offers only active wards and beds that are `Available`, and disables submit when either is empty. Users without a permission see the count and the reason (`Adding beds needs inpatient.beds.create`) instead of a button that would fail.
+
+**One vocabulary.** The ward-type and bed-type suggestions and the gender-allocation list live in `src/db/inpatient-contracts.ts`, the module the server validates against, and the screen imports them from there. A second copy in the component would be a second vocabulary, and the second one is always the wrong one.
+
+**Where the permissions are granted.** All six codes carry `module: 'inpatient'`, so they appear in **Administration → Platform Administration → Facilities → Facility Role Permissions** (the panel headed *Facility Role Permissions*, below the facility's module settings) under the existing *inpatient* heading alongside `inpatient.read`, `.admit` and `.discharge`. No role receives them by default — a facility decides who configures the ward versus who admits into it. The seeder is idempotent: it inserts what is missing and updates the label and description of what exists.
+
+**Validation completed**
+
+- `npm test` — **1,955 assertions** across thirteen counting suites; `test:inpatient` is now **97** (was 48). The new assertions cover the six permission codes being seeded and the six routes being guarded, no money literal standing in for a blank rate, capacity starting at zero, the batch contract, the history refusals, the scope rules, and the screen wiring.
+- `npm run build` — passed (553 ms). `npm run lint` — only the pre-existing `firebase.ts` error.
+- **Live against PostgreSQL 16**, all 17 migrations applied to a scratch database: 33 checks. A new facility starts with **0** wards; the first ward is created from nothing; a blank rate is stored `NULL`; capacity is 0 until beds exist; four beds are generated and the dropdown is no longer empty; a duplicate ward code and a colliding bed number are both refused by name; a refused batch adds nothing; a patient is admitted into a generated bed and that bed becomes `Occupied`; retiring and deleting are refused while the patient is there; after discharge the bed's history still blocks deletion; a retired ward leaves the admit list and accepts no new beds; another facility sees a 404 and an empty board; an entered rate is normalised to two decimals; a ward with no patients deletes with its beds.
+
+**Not verified:** the screen was not walked in a browser — none is available in this environment, so the buttons, empty state and modals are type-checked and built but not clicked. No facility user has set up a real ward yet.
+
+### 3.14 The patient journey, walked end to end
+
+**What was asked.** Whether a patient can go from the reception desk to a paid bill, whether every stage raises its own charge, and whether the patient directory, reception and queue actually work.
+
+**The answer, before any change.** Most of it worked, and three stages did not:
+
+1. **Laboratory was never billed from the screen.** `POST /api/lab-orders/batch` — the endpoint the OPD screen calls — created the orders, routed the patient to the laboratory queue and returned. Only the single-order endpoint priced anything, and nothing in the UI calls it. A consultation could order six tests and the invoice stayed at the consultation fee.
+2. **Radiology read a column that does not exist.** The route priced from `radiologyOrder.testName`; the table has `procedure_name`. `RAD-<STUDY>` could never match, so only a generic `RADIOLOGY` tariff would ever catch a study.
+3. **A visit could never end.** No screen set an encounter to `Completed`. The next visit therefore resumed the same Active encounter, the consultation charge was keyed to it, and the second visit was refused as a duplicate — a returning patient was seen and never billed.
+
+Two identifiers were also minted in the browser: the MRN (`MRN-2026-` plus four `Math.random()` digits, 9,000 values for the whole database, and a collision failed registration with a raw database error) and every queue token (`TRG-347`, `PHARM-812`), so two desks could call the same number.
+
+**What now happens, stage by stage**
+
+| Stage | What the server does |
+|---|---|
+| Register | Allocates `MRN-<year>-<000000>` (global, because `patients.mrn` is unique across the database), retrying if two registrations race. A supplied duplicate is a **409**, not a 500. |
+| Route to Triage | Allocates the next token for that facility and desk (`TRG-001`, `PHM-001`). The registration receipt names it. |
+| Call / start | `PUT /api/queues/:id/status` is scoped to the caller's facility and accepts only `Waiting`, `Called`, `In-Progress`, `Completed`, `Cancelled`. |
+| Consultation | `POST /api/encounters` charges the facility's `OPD-CONSULT` (or `CONSULTATION`/`CONSULT`). The screen says either **billed KES x on INV-y** or **not billed: <reason>**. |
+| Procedure | `PROC-<NAME>`/`PROCEDURE`. |
+| Laboratory | Every order in the batch is priced at `LAB-<TEST>`/`LAB-GENERAL`, and the result is returned per order. |
+| Radiology | `RAD-<STUDY>` from `procedure_name`, falling back to `RADIOLOGY`/`IMAGING`. |
+| Pharmacy | Prescribing records the prescription; **dispensing** charges `DRUG-<NAME>`/`PHARMACY`, with the prescription's own price only as a last resort. Dispensing also closes the patient's Pharmacy token. |
+| Admission | `ADMIT-<WARD>`/`ADMISSION` at admission. |
+| Discharge | One `BED-DAY` line per night, keyed by date, so a re-run cannot double-bill. The discharge toast reports the nights and the amount, or why nothing was billed. |
+| Cashier | One open invoice per encounter collects the lines. Cash, M-Pesa, Airtel Money and Card; a mobile-money code is required and must look like the SMS (`QGH4XYZ123`); the same code cannot be receipted twice; overpayment needs an explicit confirmation and is held as credit, never a negative balance. Every payment gets a receipt (`RCP-YYYYMMDD-000001`). |
+| Next visit | Completing the visit stamps `endedAt` **on the server** (a browser-supplied timestamp is a string Drizzle's timestamp mapper refuses). The next visit opens a new encounter and bills a new consultation; a paid invoice is never reopened. |
+
+**The queue is now the road.** The OPD screen loads the Triage queue and shows *Waiting in Triage* with each token; selecting a token selects the patient. Starting the visit moves the token to `In-Progress`, completing it moves the token to `Completed`.
+
+**The tariff screen names the codes.** Automatic billing only works when the facility's tariff codes match what the engine looks for, and a facility that prices "Consultation" rather than `OPD-CONSULT` was silently billing nothing. *Facility Configuration → Service tariffs* now carries a **Codes the automatic billing looks for** panel with every pattern, and says plainly that an unmatched service is recorded and **not** billed.
+
+**Validation completed**
+
+- `npm test` — **2,013 assertions** across fourteen counting suites, all green at the time of this round. The `test:opd` suite (58 assertions) asserts the batch endpoint prices every order and returns the result, that radiology uses `procedure_name` and no longer mentions `testName`, that every stage's route carries its source type, that a completed visit is stamped by the server, that neither screen calls `Math.random()`, that the queue update is scoped, and that the tariff panel names all seven code patterns.
+- **Live against PostgreSQL 16**, all 17 migrations applied to a scratch database: **55 checks**. A patient is registered, given a Triage token, called, seen, diagnosed, given a procedure, a laboratory batch, a radiology study and a dispensed prescription; the five charges land on **one invoice totalling 3,025.00**; 1,000.00 cash leaves it Partially Paid; the balance is settled by M-Pesa with a real-format code; the same code is refused; the visit is completed; a second visit bills a new consultation on a new invoice; that invoice is paid; the patient is admitted, billed an admission fee, discharged after two nights with two bed-day lines (5,000.00) and a repeat discharge cannot double-bill; another facility cannot move the token and an unknown status is refused; dispensing closes the pharmacy token.
+- `npm run build` — passed (551 ms). `npm run lint` — only the pre-existing `firebase.ts` error.
+
+**One behaviour to know.** A charge with no encounter — the admission fee and bed nights, because the inpatient screens do not create an encounter — attaches to the patient's open *Pending* invoice if there is one. Settle the clinic bill before admitting and the admission opens its own invoice, which is what the live check does. The lines keep their own type either way, so revenue is attributed correctly; the patient simply sees one bill instead of two.
+
+**Not verified:** no screen was clicked — there is no browser in this environment. The payment and dispensing *forms* are type-checked and built, not exercised. The live check calls the same functions the routes call, not the routes themselves.
+
+### 3.15 Staff roles — the missing half of staff management
+
+**What was asked.** Whether the facility can assign roles to its own staff, the way the platform administrator does, and if so to update the code.
+
+**What already worked.** Inviting a new staff member already assigned a role: *Configuration → Staff* called `GET /api/staff-invitations/roles`, and accepting the invitation wrote the `user_roles` row. Every invitation is scoped to the caller's own tenant and facility.
+
+**What did not exist.** There was no endpoint anywhere that listed the staff already at a facility, and nothing that changed a role on an existing account. `user_roles` was written in exactly three places — staff-invitation acceptance, facility-admin invitation acceptance and the bootstrap script. A wrong role could only be corrected in SQL by a platform administrator, or by inviting the person again, which their existing email address prevents.
+
+**What was added**
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/staff-roles` | The staff at the caller's facility, the roles each holds, which registrations are already verified, and the assignable roles — one response, so the picker and the list cannot disagree. |
+| `GET /api/staff-roles/roles` | The assignable roles alone. |
+| `PUT /api/staff-roles/:userId/roles` | Replaces the assignable roles on one account in one transaction, and writes an audit row. |
+
+*Configuration → Staff & Roles* now renders the directory above the invitation form: every staff account with its role chips, a search box, and **Change roles**. The tab was renamed from *Staff Invitations* because it now holds both halves.
+
+**The guardrails, and why each one is there**
+
+- **Scope comes from the session.** No route accepts a facility id. An account in another facility, or another tenant, is **404 not found** — a 403 would confirm the account exists somewhere the caller cannot see.
+- **Administrator roles are judged two ways.** The four names the application creates (`SUPER_ADMIN`, `PLATFORM_ADMIN`, `FACILITY_ADMIN`, `TENANT_ADMIN`) are refused, and so is any role carrying a platform, tenant, subscription, security, RBAC or `users.roles.*` permission. The second check is what stops a tenant role called *System Administrator* from being handed out; the name alone would miss it. A role that grants nothing is not offered either.
+- **An administrator account is read-only here.** If the person already holds an administrator role, the change is refused (`ADMINISTRATOR_ACCOUNT_PROTECTED`). Nobody can change their own roles (`SELF_ROLE_CHANGE_NOT_ALLOWED`): self-service escalation is impossible anyway, but locking yourself out of the screen is not.
+- **Holding `users.invite` is not enough to assign.** The route requires it, as the invitation routes do, and the service additionally requires the caller to hold an administrator role (`ADMINISTRATOR_ROLE_REQUIRED`).
+- **A clinical role still needs a verified registration** — the same gate invitations have used since §3.8, with the rule in one place (`findVerifiedCredentialForUser`). A `mock` verification never satisfies it, and an NCK registration does not satisfy a KMPDC role. The picker says which regulator is missing and opens the existing check; the result is recorded against the staff account.
+- **Revoking keeps history.** The `user_roles` row is set `isActive = false` with `revokedAt`, not deleted. Re-adding reactivates that row, because the unique index on `(user_id, role_id)` would reject a second one.
+- **Roles the facility no longer offers are left alone.** Saving changes only the roles in the offered set; a deactivated role someone still holds is displayed as *not changed on this screen* rather than silently stripped.
+
+**A tab nobody can open is not a capability.** The *Configuration* item in the sidebar required `system.settings.manage`, `users.roles.manage`, `roles.permissions.manage` or `facilities.update`. A freshly seeded `FACILITY_ADMIN` holds none of the four — the permission seed gives it `users.invite`, the invitation permissions and the tariff permissions — so the invitation screen that already existed was unreachable for the role it was built for. `users.invite` now opens the module, an account holding only staff permissions sees only the staff tab, and it lands on that tab instead of an empty one.
+
+**Invitation hardening in the same change**
+
+- The invitation picker now uses the same permission-based rule. It previously filtered by role name only.
+- Acceptance re-checks the role as it stands at that moment, so a role edited into an administrative one after the invitation was sent cannot be granted by accepting it.
+- Accepting an invitation now sets `staff_professional_credentials.user_id`, which the schema comment promised but no code ever wrote. Rows created before this change are still found through the accepted invitation, so no backfill is needed.
+
+**No migration.** No table, column or permission was added. `user_roles.is_active`/`revoked_at` and `audit_logs` already existed. Updating an installation is `git pull`, `npm install` if the lockfile changed, `npm run build`; `npm run db:status` should report nothing pending.
+
+**Validation completed**
+
+- `npm test` — **2,106 assertions** across sixteen suites, all green. The new `test:staff-roles` suite (93 assertions) exercises the real policy functions and asserts the scope checks, the two administrator rules, the verification gate, the audit row, the single transaction, that no table is declared, and that the screen calls these endpoints.
+- **Live against PostgreSQL 16**, all 17 migrations on a scratch database: **49 checks**. Two facilities in one tenant and a third in another; the directory lists only facility A; the invitation-role list excludes the administrator role, the role carrying platform permissions and the empty role; cross-facility and cross-tenant targets return `STAFF_NOT_FOUND`; self and administrator accounts are refused; a staff member cannot assign roles; CASHIER is added, an identical save changes nothing and writes no audit row; NURSE is refused without a registration and still refused with a `mock` one; after a manual NCK verification it is granted; removing it leaves an inactive row with a timestamp; re-adding it reactivates the same row; four successful changes produce exactly four audit rows.
+- `npm run build` — passed. `npm run lint` — only the pre-existing `src/lib/firebase.ts` error.
+- Live checks found two defects in the first draft, both fixed before commit: the permission joins were missing from the held-roles query inside the transaction, and the "held but not requested" set was being computed against the requested roles instead of the whole offered catalogue, so a revoked role was preserved instead of removed.
+
+**Not verified:** no screen was clicked — there is no browser in this environment. The live check calls the same service functions the routes call, not the HTTP routes themselves.
+
+**One behaviour to know.** If no verified registration is on file for a nurse, the facility cannot put them into the NURSE role until the registration is checked. That is the existing invitation rule, not a new restriction; the screen says which regulator is missing and offers the check in place.
+
+### 3.16 The visual overhaul — one language from the door to the ward
+
+**What was asked.** A clean, classy redesign from the login screen through the shell to the dashboard, with the dashboard organised by clinical workflow rather than as a wall of cards.
+
+**What was wrong.** The product had no palette. Each screen had chosen its own: `blue-700` beside `teal-600`, `slate-100` under both, a different card radius on every page. The header carried a `moduleTitles` map that nothing rendered, so the top bar never said which screen you were on. The dashboard's queue column read *"Triage Counter"*, which is a till, not a desk. The two invitation-acceptance screens — the first thing a new staff member ever sees — rendered the same error message twice, once above the form and once inside it.
+
+**What changed**
+
+- **One palette, defined once.** `src/index.css` took ownership of colour in Tailwind's `@theme` and re-pointed the *existing* `blue`, `teal` and `slate` ramps, so several thousand utility classes already written across twenty modules inherited the new look without a class-by-class rewrite. Status colours — emerald, amber, rose — were deliberately **not** re-pointed: a warning must keep looking like a warning. *The palette chosen in this round was a green/clay scheme. It was replaced the same day — the product's own logo is blue and orange — and §3.17 records the replacement; the mechanism above is what that round still uses.*
+- **Login.** A split card on a warm canvas: a deep hospital-blue brand panel carrying the product's promise and three product statements (protected sessions, one encounter for every stage, tenant/facility isolation), beside a quiet sign-in panel. The same submit contract, the same error and info regions, the same MFA and password-change messages. The logo falls back to a typographic wordmark if `public/logo.jpg` is missing. There are **no statistics, facility names, bed counts or "trusted by" claims** on it, and none were added.
+- **Shell.** The sidebar became a dark rail with an orange marker on the active row, keeping its order (arrival → diagnostics → pharmacy → revenue → intelligence → admin, and the existing permission map unchanged). The header now renders the module title it always had in its map, shows the facility marker and opens a click-away user menu.
+- **Dashboard.** Reorganised as the day's clinical path: **01 arrival & queues**, **02 ward round**, **03 surveillance & reporting**, under a single "shift in four numbers" strip. The four parallel fetches, the four permission gates, the em-dash rule and the "not tracked" caveat are unchanged; a panel the session may not read is still not rendered, and no figure is invented. Queue stations are named for the people who use them (*Triage desk*, *Pharmacy counter*), not for tills.
+- **Every facility screen.** Eighteen modules already shared the same hand-copied header block; they now share one recipe — warm surface, hairline, card shadow, display face — so moving from laboratory to pharmacy to billing no longer changes the type or the frame. Copy, buttons and behaviour are untouched.
+- **Invitation screens.** Restyled to the same language, and the duplicated error alert removed.
+
+**What did not change.** No module, tab, route, permission, query or migration was touched. The backend is byte-for-byte unchanged. No screen gained access it did not have: the dashboard's permission checks are the same checks, in the same order.
+
+**Validation**
+
+- `npm run build` — **561 ms**.
+- `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
+- `npm test` — **2,109 assertions across sixteen suites**, all green. The nursing contract now asserts the ward table's columns (`Last vitals`, `Notes today`, `Ward / bed`) rather than only the old heading string, so the redesign could not quietly drop them: 83 assertions, three more than before.
+
+**Not verified:** no screen was clicked — there is no browser in this environment, so nothing here is a visual acceptance. The palette is verified only as far as "Tailwind emitted the utilities and the bundle builds"; whether the layout pleases a clinician is a question for a person looking at it.
+
+### 3.17 Blue and orange, the staff switch, and tasks inside a role
+
+**What was asked, in three parts.** The theme had to keep the blue and orange of the brand — the previous round changed colours but not enough of the design; a staff account needed to be switchable off and on; and a role needed to be able to hold *specific tasks* (a doctor who may read bills or manage service tariffs) without being changed into an administrator.
+
+**The brand is the logo.** `public/logo.jpg` reads *JALI CARE — Healthcare. Empowered.* in deep blue and orange. The palette in §3.16 (green/clay) was therefore wrong for this product and has been replaced, not layered over.
+
+**The palette now** *(superseded later the same day — see §3.18 for the current values)*
+
+| Token | Value | Used for |
+|---|---|---|
+| `navy-*` | deep hospital blue (`#0b2038` …) | the rail, the login panel, headings, the avatar |
+| `brand-*` | sky/hospital blue (`#145588` primary) | links, active navigation, primary buttons |
+| `ember-*` | bright orange (`#f97316`) | the one call to action, the active marker, the logo notch |
+| `copper-*` | dark orange (`#a63f1f`) | the sign-in button, emphasis that must stay legible |
+| `canvas` / `surface` / `hair` | `#f3f7fc` / white / `#dce6f2` | the page, the cards, every border |
+
+The `blue`, `teal` and `slate` ramps resolve to those values, so every existing module is blue rather than teal without being rewritten. Type is one sans family (the serif display face is gone), with tabular mono for figures.
+
+**What changed structurally, not just in colour**
+
+- **Login** — a two-column card: a navy brand panel with the real logo, the product promise and three statements about the system (protected sessions, one encounter per stage, tenant/facility isolation), beside a white sign-in panel. The submit is the orange button. Mobile drops the panel and keeps the logo. No statistics, facility names or counts were invented, before or after.
+- **Header** — a real breadcrumb: *overview › department › screen*, with the department read from the same navigation structure the rail uses (`Sidebar.tsx` exports its sections), so the two cannot disagree. The rail's previous "current section" label was replaced by this.
+- **Sidebar** — still grouped by the visit, now collapsible to an icon rail with tooltips. The folded/unfolded choice is a local preference (`localStorage`), not a permission. Width, active marker and hover states all changed.
+- **Dashboard** — the day's clinical path (01 arrival & queues, 02 ward round, 03 surveillance) now sits under a personalised greeting, a strip of *real* alerts derived from server figures (critical observations, observations overdue, pending laboratory orders, low stock, expiring batches) and a **Your workspace** card of quick actions. Every action is filtered twice: the permission the rail requires *and* the module being enabled for this facility. No action can open a screen the account could not already open.
+- **Recent activity** — the newest audit entries, rendered only for accounts holding `audit.read` and only when the facility's `audit` module is enabled. Action and resource only; the free-text `details` column is not shown on the dashboard.
+
+**What was deliberately *not* built**
+
+- **No "remember me" checkbox.** Sessions are already stored in `localStorage` and survive a browser restart. A checkbox that changed nothing would be a lie on the sign-in screen.
+- **No self-service password reset.** `src/auth/password-reset.service.ts` is an empty file and no reset route exists; there is no mail transport in the project. The screen therefore offers a *Trouble signing in?* disclosure that says password reset is not self-service in this build and that a system administrator must reset the account. It does not pretend to send an email.
+
+**Deactivate and activate a staff account**
+
+| Endpoint | What it does |
+|---|---|
+| `PUT /api/staff-roles/:userId/status` | Body `{ active: boolean, reason?: string }`. One transaction: the account row is locked, the state is written, an audit row is added. |
+
+- **On deactivation** the account gets `is_active = false`, `account_status = 'DISABLED'`, `deactivated_at`, an optional reason, and `security_version + 1`. Sign-in is refused by `login.service` (`!user.isActive`), and every authenticated request is refused by `auth.middleware` (which re-reads the account), so an open session stops at its next call.
+- **On activation** the account returns to `ACTIVE`, the deactivation fields are cleared, a lockout from failed passwords is cleared, and the security version is bumped again.
+- **Guards:** nobody can change their own status; an account holding an administrator role is refused (`ADMINISTRATOR_ACCOUNT_PROTECTED`); an account that has not yet accepted its invitation is refused (`ACCOUNT_PENDING_INVITATION`) because acceptance would switch it back on — the invitation itself must be revoked; an account in another facility or tenant is **404**, not 403; the caller must hold an administrator role *and* the staff permission. Both directions write an audit row (`ACTIVATE` / `DEACTIVATE`).
+
+**Tasks inside a role**
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/staff-roles/roles/:roleId/permissions` | The role's current tasks and the catalogue this facility may grant it — one response, so the picker cannot offer a checkbox the save would refuse. |
+| `PUT /api/staff-roles/roles/:roleId/permissions` | Body `{ permissionIds: number[] }`. Replaces the task set in one transaction and writes an audit row listing what was added and removed. |
+
+- **The boundary is a module allowlist**, not "you may only grant what you hold". A freshly seeded `FACILITY_ADMIN` holds staff and tariff permissions but not `billing.read`, so a caller-ceiling rule would refuse the exact example that was asked for. What may be delegated is operational work: `patients`, `appointments`, `clinical`, `inpatient`, `maternity`, `laboratory`, `pharmacy`, `inventory`, `procurement`, `billing`, `insurance`, `reports`, `public_health`, `interop`, `practitioners`.
+- **What may never be delegated:** anything under `users.`, `roles.`, `audit.`, `facilities.`, `system.`, `auth.`, `platform.`, `tenants.`, `subscriptions.`, `security.`, `rbac.` or `permissions.`, plus anything whose module is not on the allowlist. An unknown module fails closed.
+- **Administrator roles are not editable here** — the same policy that decides which roles a facility may hand out (§3.15) decides which roles may be edited. A role that grants nothing cannot be saved; at least one task remains.
+- **A grant outside the allowlist is preserved.** If a role already holds a custom permission this screen never offers, the editor names it and a save leaves it exactly as it is. The screen may add and remove delegable work; it may not quietly strip something it never showed.
+- **A role belongs to the tenant, not one facility.** The screen states this before saving, and the audit row names the role. Staff who hold the role may need to sign in again for the *sidebar* to show a newly granted module; the server enforces the change on the next request.
+- **The screen:** *Configuration → Staff* now carries a **Role tasks** section (count per role, **Edit tasks** opening a grouped checkbox editor) beside the directory, which gained an **Active / Deactivated** pill and a **Deactivate / Activate** button with a confirmation dialog and optional reason.
+
+**No migration.** Both features use columns that already exist (`users.is_active`, `users.account_status`, `users.deactivated_at`, `users.deactivation_reason`, `users.security_version`, `role_permissions`, `audit_logs`). Updating an installation is `git pull`, `npm install` if the lockfile changed, `npm run build`; `npm run db:status` should report nothing pending.
+
+**Validation**
+
+- `npm run build` — **616 ms**.
+- `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
+- `npm test` — **2,197 assertions across seventeen suites**, all green. `test:staff-roles` grew from 93 to **134**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring. A new `test:design` suite (28 assertions) fails the build if a screen references a colour family the theme no longer defines, or if a semantic class it uses disappears.
+
+**Not verified:** no browser exists in this environment, so no screen in this round was clicked — the palette is verified only as far as "Tailwind emitted the utilities and the bundle builds". The two new features were **not** exercised against a live PostgreSQL database: the assertions are contract/source checks plus type-checking, and the earlier live run (§3.15, 49 checks) covered only the role-assignment routes. Treat the new SQL paths as untested against a real database until they are walked.
+
+**A regression the new test caught immediately.** The two invitation-acceptance screens had been restyled in §3.16 to `bg-pine-900` / `bg-clay-500`. When this round replaced the palette, those families stopped existing and both screens would have rendered a transparent header and an uncoloured icon tile — a failure no domain test could see. They are now `bg-navy-900` / `bg-ember-500`, and `test:design` scans every source file for the retired families so it cannot happen quietly again.
+
+**Backups created during this round**
+
+- `src/index.css.before-blue-revamp-20261021.bak`
+- `src/components/StaffInvitationAcceptance.tsx.before-blue-token-fix-20261021.bak`
+- `src/components/FacilityAdminInvitationAcceptance.tsx.before-blue-token-fix-20261021.bak`
+- `package.json.before-design-test-20261021.bak`
+- `src/components/LoginScreen.tsx.before-blue-revamp-20261021.bak`
+- `src/components/Header.tsx.before-blue-revamp-20261021.bak`
+- `src/components/Sidebar.tsx.before-blue-revamp-20261021.bak`
+- `src/components/modules/DashboardModule.tsx.before-blue-revamp-20261021.bak`
+- `src/auth/staff-role-policy.ts.before-task-permissions-20261021.bak`
+- `src/auth/staff-roles.service.ts.before-task-permissions-20261021.bak`
+- `src/auth/staff-roles.routes.ts.before-task-permissions-20261021.bak`
+- `src/components/modules/StaffRolesPanel.tsx.before-task-permissions-20261021.bak`
+- `src/tests/staff-roles.test.ts.before-task-permissions-20261021.bak`
+- `README.md.before-blue-revamp-20261021.bak`
+
+**Backups created during this round**
+
+- `src/index.css.before-theme-overhaul-20261021.bak`
+- `src/App.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/LoginScreen.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/Header.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/Sidebar.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/modules/DashboardModule.tsx.before-theme-overhaul-20261021.bak`
+- `src/components/StaffInvitationAcceptance.tsx.before-overhaul-20261021.bak`
+- `src/components/FacilityAdminInvitationAcceptance.tsx.before-overhaul-20261021.bak`
+- `src/tests/nursing-contracts.test.ts.before-overhaul-20261021.bak`
+- `src/components/modules/*.tsx.before-page-headers-20261021.bak` (the eighteen page-header edits)
+- `README.md.before-design-overhaul-20261021.bak`
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### 3.18 Brighter blue, and the module switch that was not connected
+
+**What was asked.** Two things in one message: move the theme to brighter colours (*"sky blue and bright orange"*), and answer whether the maternity and antenatal screens exist, because *"I cannot see it"*.
+
+The second question turned out to be the more serious one, and the honest answer is in §2 below.
+
+---
+
+#### 1. The palette is lighter, and the contrast is checked
+
+The blue and orange identity is unchanged; the blue moved from a deep hospital navy to sky and the orange is used at full strength for the one action that matters.
+
+| Token | Value | Used for |
+|---|---|---|
+| `brand-500` | `#0ea5e9` | active navigation, active tab, primary switch, links, focus ring |
+| `brand-600` | `#0284c7` | hover on the above |
+| `brand-700` | `#0369a1` | primary button, headings that need weight |
+| `navy-800/900` | `#0d3a56` / `#0b2f46` | the rail and the login panel only — no longer near-black |
+| `ember-500` | `#f97316` | the single call to action (sign-in, book pregnancy, save) |
+| `copper-600` | `#a63f1f` | emphasis text that must stay legible on white |
+| `canvas` / `surface` / `hair` | `#f3f7fc` / white / `#dce6f2` | the page, the cards, every border |
+
+`blue`, `teal` and `slate` still resolve to the same values, so the thirty-odd screens written before the token file inherit the brighter blue without being rewritten. Status colours (emerald, amber, rose) remain untouched: a warning must keep looking like a warning.
+
+**One change was forced by legibility, not taste.** `ember-500` (`#f97316`) against white is about 3.0:1 — below the 4.5:1 needed for body-size text. The orange call to action therefore carries a **near-black label** (`text-navy-950`) instead of white, and the design test asserts it. Anything that needs white text on orange uses `copper-600`.
+
+`test:design` now pins `brand-500`, `brand-600`, `brand-700`, `navy-900` and `ember-500`, so "brighten it" and "quietly put white back on the orange button" cannot drift apart.
+
+---
+
+#### 2. Maternity and antenatal: the screen was built, the switch was decorative
+
+**The screen exists, and it is complete.** `src/components/modules/MaternityModule.tsx` is 2,439 lines with five tabs — **Antenatal register** (the default), labour with a plotted partograph, deliveries and billing, postnatal care, and immunisation — backed by `/api/maternity/*`. `App.tsx` routes the `maternity` navigation id to it.
+
+**Why it could not be seen.** The rail draws a module only when `currentFacility.enabledModules` contains it (`Sidebar.tsx`). Three separate faults conspired:
+
+1. **The demo seed omitted it.** `schema.ts` defaults `enabled_modules` to a list that *includes* `maternity`, but the seed writes its own explicit list for each facility, and that list replaced the default without maternity. On any seeded database the rail therefore never drew the module — and `requireFacilityModule('maternity')` would have refused its API even if it had.
+2. **Configuration lied about it.** *Configuration → Modular Features* rendered 17 switches from a hard-coded `useState` map — `maternity: true` among them. It never read the facility row, never called an API, and toasted *"Updated module state"* when clicked. A facility administrator could see Maternity marked **ON** on one screen while it was absent from the navigation on another.
+3. **The person who could fix it could not reach the tab.** The tab filter returned only `tariffs` for a facility administrator, and the only endpoint that could write `enabledModules` was `PATCH /api/platform/facilities/:id`, gated to the platform super-admin.
+
+That is the defect that has now been fixed, rather than papered over with a colour change.
+
+**The fix, in four parts**
+
+| Part | File | What it does |
+|---|---|---|
+| One catalogue | `src/config/facility-modules.ts` (new) | 19 modules with a label, group and one-sentence description each (20 since §3.22 added `patient_portal`). `configuration` is **always-on**: the screen that provisions modules cannot be hidden by the list it controls. Pure module, no imports — the browser and the server read the same list. |
+| A real endpoint | `src/config/facility-modules.routes.ts` (new) | `GET` and `PATCH /api/facilities/:id/modules`. Scoped through `getFacilityByIdScoped`, so a facility account can only reach its own facility and a tenant account only its own tenant. Unknown ids are **rejected by name**, not silently dropped. Every save writes an audit row listing what was added and removed. |
+| A working screen | `ConfigurationModule.tsx` | The grid is grouped by department, starts from the facility row, has Save/Discard, an error banner and a dirty count. A successful save calls `setCurrentFacility`, so the rail updates **without a reload**. The false *"Live Reconfiguration Active"* badge is gone. |
+| Reachable tabs | `ConfigurationModule.tsx`, `Sidebar.tsx` | A facility administrator now sees Facility profile, Modular Features, Staff and Tariffs (payment credentials stay with the platform). The rail can no longer hide Configuration itself. |
+
+**Who may change the list.** `facilities.modules.manage` (a new permission, granted to tenant `FACILITY_ADMIN` roles by `db:seed:permissions`), `system.settings.manage`, or the `FACILITY_ADMIN` role for that tenant. The role check is a deliberate belt-and-braces measure: a database seeded before the new permission existed still has an administrator who can switch a module on. The facility's tenant id is read from the database, never from the request.
+
+**Where antenatal lives.** *Maternity & MCH → Antenatal register*, the first of five tabs. The tab now carries the count of booked pregnancies, and the screen states the path in its header so nobody has to guess. The maternity screen itself also picked up the new palette: sky-blue active tabs, an orange **Book pregnancy** action, and token surfaces instead of raw greys.
+
+**A second lie removed.** The Facility profile tab had a **Save Facility Settings** button wired to a function that displayed a success toast and wrote nothing; its fields were pre-filled with a hard-coded hospital name and MFL number when no facility was loaded. There is no facility-profile endpoint for a facility account to call, so the tab is now an honest read-only record of the facility row, with a note saying who can change it and, for a platform administrator, a link to Platform Administration.
+
+---
+
+#### 3. For an existing database — commands only, nothing run here
+
+No migration is needed: `enabled_modules` is an existing `jsonb` column.
+
+```bash
+# 1. The permission (idempotent; adds the code and grants it to tenant FACILITY_ADMIN roles)
+npm run db:seed:permissions
+```
+
+Then either flip the switch in the UI —
+
+> **Configuration → Modular Features → Maternity & MCH → Save modules**
+
+— or, if you would rather do it in SQL (replace `<facility-id>`):
+
+```sql
+UPDATE facilities
+SET enabled_modules = enabled_modules || '["maternity"]'::jsonb,
+    updated_at = now()
+WHERE id = <facility-id>
+  AND NOT enabled_modules @> '["maternity"]'::jsonb;
+```
+
+Both are additive: nothing is deleted, no clinical row is touched, and switching a module off later keeps every record it holds.
+
+---
+
+#### 4. Validation
+
+- `npm run build` — **521 ms**.
+- `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
+- `npm test` — **18 suites green**, **2,237 assertions** across the 17 suites that print a count (the role-catalogue suite reports ten `PASS` lines instead). The new `test:modules` suite adds **53 assertions** covering: the catalogue (19 unique ids, Configuration always-on), the resolver (order, de-duplication, unknown ids), the server guard and the provisioning route, the seeded data, and the two screens (`updateFacilityModules`, no hard-coded map, facility-admin tab filter, no *"Live Reconfiguration Active"*, no fake save button).
+- `test:design` grew from 28 to **33** assertions with the sky-blue pins and the CTA-contrast rule.
+- `test:staff-roles` grew from 134 to **135** with the tab-reachability assertion.
+
+**Not verified.** There is no browser in this environment, so no screen in this round was clicked: the palette is verified only as far as "Tailwind emitted the utilities and the bundle builds". The `PATCH /api/facilities/:id/modules` route was **not** exercised against PostgreSQL — the checks are source/contract assertions plus type-checking. Treat module provisioning as untested against a live database until it has been walked once.
+
+---
+
+**Backups created during this round**
+
+- `src/index.css.before-bright-palette-20261021.bak`
+- `src/components/modules/MaternityModule.tsx.before-bright-palette-20261021.bak`
+- `src/components/modules/ConfigurationModule.tsx.before-real-module-switches-20261021.bak`
+- `src/components/Sidebar.tsx.before-config-always-on-20261021.bak`
+- `src/db/seed.ts.before-maternity-enabled-20261021.bak`
+- `src/seeds/permissions.ts.before-module-permission-20261021.bak`
+- `src/tests/design-tokens.test.ts.before-sky-palette-20261021.bak`
+- `src/tests/staff-roles.test.ts.before-module-tabs-20261021.bak`
+- `package.json.before-module-tests-20261021.bak`
+- `README.md.before-bright-palette-20261021.bak`
+
+### 3.19 One notification dialog, centred and animated
+
+**What was asked.** A pop-up dialog for notifications, appearing in the centre of the screen with animation, showing every message.
+
+**What was there.** A single `toastMessage` string rendered as a dark pill in the bottom-right corner for four seconds. It had two defects that were invisible until you hit them:
+
+- **One string, one timer.** A second message raised inside four seconds overwrote the first, but the first message's `setTimeout` still ran and cleared the *new* message early. The second notification could disappear almost immediately.
+- **Always a green tick.** The banner rendered `CheckCircle2` unconditionally, so "Could not save the module list." arrived with a success icon.
+
+**What replaced it**
+
+| Piece | Detail |
+|---|---|
+| Queue | `notifications: AppNotification[]` in `HmisContext`, each with its own id, tone and timer. The same sentence twice refreshes the existing row rather than stacking a duplicate. |
+| One surface | `src/components/NotificationDialog.tsx`, rendered once in `App.tsx`. All **145** existing `showToast(...)` call sites reach it unchanged. |
+| Centre | `fixed inset-0 flex items-center justify-center` — the card is centred in the viewport at every size. Multiple notifications are stacked in the one card with a count. |
+| Motion | `@keyframes jali-notification-dialog` (260 ms, rise + scale from 94%), a 180 ms backdrop wash and a 45 ms stagger per row. `prefers-reduced-motion: reduce` removes all three. |
+| Dismissal | Each row has its own close button; a **Dismiss** button and the <kbd>Esc</kbd> key close the queue; every message closes itself after **5.2 s**. |
+| Honesty | Four tones — *Notification*, *Saved*, *Check this*, *Did not go through* — each with its own word, colour and icon. A caller that knows the outcome passes `{ tone: 'success' \| 'error' \| 'warning' }`; a caller that does not gets the neutral *Notification*, which claims nothing. The module save uses success and error tones. |
+| Accessibility | `role="status"` with `aria-live="polite"`, `aria-label` on every close control, and no focus trap. |
+| Not modal | The backdrop is a light wash with `pointer-events-none`. A message cannot lock an operator out of the screen for five seconds; clicking straight through it works. |
+
+**The animation, concretely**
+
+```css
+@keyframes jali-notification-dialog {
+  0%   { opacity: 0; transform: translateY(12px) scale(0.94); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+```
+
+**Validation.** `npm run build` — **618 ms** (the emitted stylesheet contains `jali-notification-dialog` and the reduced-motion rule). `npm test` — **19 suites green, 2,265 assertions**; the new `test:notifications` suite adds **28** assertions covering the queue, per-message timers, the neutral default tone, the centred surface, the four tones, Escape and row dismissal, the absence of the old banner, and the reduced-motion rule.
+
+**Not verified.** No browser here, so the entrance was not watched — it is verified only as far as "the keyframes are in the emitted CSS and the bundle builds". The timing (260 ms entrance, 5.2 s lifetime) is a judgement call that has not been seen at 60 fps.
+
+**If you wanted a blocking dialog** — one that dims the app and waits for **OK** before you can continue — say so: it is a two-line change (make the backdrop `pointer-events-auto` and remove the auto-dismiss). It was left non-blocking because every validation message in the product would otherwise interrupt the form that raised it.
+
+**Backups created during this round**
+
+- `src/context/HmisContext.tsx.before-notification-dialog-20261021.bak`
+- `src/App.tsx.before-notification-dialog-20261021.bak`
+- `src/index.css.before-notification-dialog-20261021.bak`
+- `package.json.before-notification-tests-20261021.bak`
+- `README.md.before-notification-dialog-20261021.bak`
+
+### 3.20 DHA readiness audit — what the code actually supports
+
+**What was asked.** A full read of Jalicare against a DHA readiness brief that
+arrives with 96% clinical functionality, 84% security, 100% public health
+reporting, 74% interoperability and about 90% overall.
+
+**What was found.** None of those figures is produced by this repository. The only
+readiness surface before this round was the DHA configuration report in
+`src/integrations/dha/dha.readiness.ts`, which answers *can this installation reach
+DHA right now* and deliberately publishes no percentage. A score had been asserted
+elsewhere; nothing in the code could support or contradict it.
+
+**Three critical defects were found and fixed in this round.**
+
+1. **Cross-facility exposure.** `GET /api/theatre-cases`, `/api/radiology-orders`,
+   `/api/suppliers` and `/api/purchase-orders` required only a session. With no
+   `facilityId`, each query returned **every facility's rows**, across tenants. Their
+   write counterparts inserted `req.body` with no permission and no ownership check.
+   All nine routes now carry a specific permission, resolve the facility from the
+   authenticated scope, overwrite `facilityId`/`tenantId` from that facility, and —
+   for theatre updates and radiology reports — prove the row belongs to it first.
+2. **Records filed against facility 1.** Six screens sent
+   `facilityId: currentFacility?.id || 1`. With no facility selected, a clinical or
+   financial record was written to facility 1. The fallback is gone; a warning is
+   shown instead.
+3. **A surveillance screen that claimed integrations it did not have.** It said
+   *"Integrated with Kenya Digital Health Agency (DHA) national disease surveillance
+   network"*, *"DHIS2 Auto-Push"*, *"queued for KHIS submission"*, and labelled every
+   row *"Epidemic Threshold: Normal Trend"* from no data. It also hard-coded
+   *2026-W40* and *October 2026*, and its export button downloaded JSON `null` and
+   reported success. The screen now states that a report is stored locally and not
+   transmitted, shows the server's 501 reason for MOH 705, computes the epi-week,
+   and disables export without a real payload.
+
+**Two hygiene defects.** `npm run lint` could never pass: `src/lib/firebase.ts`
+imported a git-ignored JSON file that does not exist, and both Firebase modules were
+dead code (the product authenticates with argon2 and database sessions). They are
+removed and `tsc --noEmit` is clean. Database TLS was hard-coded `ssl: false`; it is
+now `SQL_SSL`, with certificate verification on by default.
+
+**The score is now computed, not asserted.**
+
+| Piece | File |
+|---|---|
+| 46 requirements, each with module, evidence, verification and severity | `src/compliance/dha-requirements.ts` |
+| Weighted score, published formula, critical-gap ceiling | `src/compliance/dha-score.ts` |
+| Read-only endpoint (`GET /api/compliance/dha`) | `src/compliance/compliance.routes.ts` |
+| Panel on the DHA screen (platform owner only), showing the working | `DhaCompliancePanel.tsx` |
+| Traceability matrix, regenerated from the register | `scripts/dha-traceability.ts` → `docs/dha-audit/` |
+
+**Who can see it (changed 22 October 2026).** The DHA screen is superadmin-only. It
+left the facility rail entirely — it is not hidden behind a permission a facility
+administrator could grant — and the platform-owner rail carries it under
+*Integrations & Readiness*. On the server, `requireSuperAdmin()` guards the assessment
+router (`GET /api/compliance/dha`, `GET /api/compliance/dha/requirements/:id`) and
+`GET /api/integrations/dha/readiness`; a facility role gets `403 SUPER_ADMIN_REQUIRED`
+even if it holds `audit.read` or `system.settings.manage`. The shell refuses to render
+the screen for a non-superadmin as well, so a programmatic `activeModule` cannot open
+it. The `interoperability` facility-module toggle remains in Configuration, because it
+still gates the `/api/integrations` surface used by eligibility and claims — but the
+screen itself is no longer a facility screen.
+
+The published formula is the one in the brief: (functionality × 0.35) + (security ×
+0.30) + (reporting × 0.20) + (interoperability × 0.15). Three rules make it honest:
+`NOT_APPLICABLE` is excluded from the denominator; any **critical** requirement that
+is `MISSING`, `BLOCKED` or `PARTIAL` caps the whole figure at 59.9%; and a status is
+only `VERIFIED` when a test in this repository walks the path.
+
+**The result at this commit:**
+
+| Category | Weight | Verified / assessed | Score |
+|---|---:|---:|---:|
+| Clinical functionality | 35% | 9 / 20 | 66.3% |
+| Security & privacy | 30% | 2 / 12 | 41.7% |
+| Public health reporting | 20% | 0 / 6 | 16.7% |
+| Interoperability | 15% | 0 / 7 | 42.9% |
+| **Overall** | | 11 / 46 | **45.5%** |
+
+Eleven critical gaps remain. Several are now **partially** built — consent capture,
+allergy checking, encryption at rest, role-based access control, tenant and facility
+isolation, the audit trail and surveillance submission — and the rest are untouched:
+ODPC registration, the DPIA, encryption in transit, backup and disaster recovery, and
+IDSR weekly reporting. A partial critical control is still a gap, so the cap applies.
+`readyForSubmission` is false, and the endpoint always returns
+`certification: false`.
+
+**Patient portal round, 22 October 2026.** A patient-facing record portal was built
+and its evidence folded into nine rows of the register. **The score is unchanged at
+45.5%**, because every improvement landed inside a row that was already PARTIAL and
+remains PARTIAL: the portal adds guarded routes but does not audit the five legacy
+unguarded ones; it scopes its own reads but does not finish the object-level pass;
+it logs patient access but migration 0018 is unapplied; it seals the card code but
+the volume is still unencrypted. See `docs/patient-portal/` and §3.22.
+
+**Audit documents** in `docs/dha-audit/`: readiness audit, requirement
+traceability, security and privacy gap register, interoperability audit, database
+and migration audit, test results, remediation plan, deployment and recovery, and a
+**draft DPIA that is explicitly not approved**.
+
+**Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
+**1,708 modules / 697 ms**. `npm test` — **28 suites, 3,544 assertion statements**,
+no failures. `test:tariff-matching` 92, `test:compliance` 239,
+`test:route-scope` 66, `test:field-encryption` 48, `test:consent-allergy` 80,
+`test:tariff-resolver` 135, `test:ward-billing` 103, `test:round5` 115 (new),
+`test:patient-portal` 197, `test:migrations` 757.
+
+**Not verified.** No database and no browser: `npm run db:status` fails with
+`Missing required environment variable: SQL_HOST`. Every SQL path is
+contract-checked, not executed; no screen was clicked; no DHA sandbox call was made.
+No exhaustive pass over the id-addressed routes — every one read so far proves
+ownership before writing, but that is not the same as all of them having been read.
+The portal has never executed a query: migration 0018 is unapplied, and there is no
+SMS or email provider, so no invitation has ever been delivered.
+
+**Backups created during this round**
+
+- `src/app.ts.before-consent-allergy-20261021.bak`
+- `src/db/queries.ts.before-field-encryption-20261021.bak`
+- `src/db/schema.ts.before-allergy-consent-20261021.bak`
+- `src/api/client.ts.before-consent-allergy-20261021.bak`
+- `src/auth/staff-role-catalogue.ts.before-consent-permission-20261021.bak`
+- `src/components/PatientJourneyModal.tsx.before-consent-allergy-20261021.bak`
+- `src/components/modules/OutpatientModule.tsx.before-allergy-gate-20261021.bak`
+- `src/compliance/dha-requirements.ts.before-consent-remediation-20261021.bak`
+- `src/compliance/dha-score.ts.before-consent-remediation-20261021.bak`
+- `src/tests/dha-compliance.test.ts.before-consent-remediation-20261021.bak`
+- `docs/dha-audit/JALICARE_DHA_READINESS_AUDIT.md.before-consent-remediation-20261021.bak`
+- `docs/dha-audit/TEST_RESULTS.md.before-consent-remediation-20261021.bak`
+- `package.json.before-consent-tests-20261021.bak`
+- `README.md.before-consent-remediation-20261021.bak`
+- `src/app.ts.before-dha-audit-scope-20261021.bak`
+
+**Backups created during the portal round (2026-10-22)**
+
+- `src/compliance/dha-requirements.ts.before-portal-round-20261022.bak`
+- `docs/dha-audit/JALICARE_DHA_READINESS_AUDIT.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/SECURITY_PRIVACY_GAP_REGISTER.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/TEST_RESULTS.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/DPIA_DRAFT.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/REMEDIATION_PLAN.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/DATABASE_MIGRATION_AUDIT.md.before-portal-round-20261022.bak`
+- `README.md.before-portal-dha-refresh-20261022.bak`
+- `src/db/queries.ts.before-dha-audit-scope-20261021.bak`
+- `src/config/env.ts.before-sql-tls-20261021.bak`
+- `src/api/client.ts.before-dha-audit-20261021.bak`
+- `.env.example.before-sql-tls-20261021.bak`
+- `src/components/modules/PublicHealthModule.tsx.before-rewrite-20261021.bak` (written before the rewrite)
+- `src/components/modules/{Inventory,Procurement,Radiology,ReceptionQueue,Theatre}Module.tsx.before-facility-guard-20261021.bak`
+- `src/components/modules/InteroperabilityModule.tsx.before-compliance-panel-20261021.bak`
+- `src/lib/firebase.ts.before-removal-20261021.bak`
+- `src/lib/firebase-admin.ts.before-removal-20261021.bak`
+- `src/tests/opd-journey.test.ts.before-route-format-20261021.bak`
+- `package.json.before-dha-audit-tests-20261021.bak`
+- `README.md.before-dha-audit-20261021.bak`
+
+### 3.21 Consent, allergies and identifier encryption — the first remediation round
+
+The audit named critical gaps and then stopped, which is only half a job. This round
+built the parts that are code rather than organisational control.
+
+**Consent (FN-06, now PARTIAL).** `src/clinical/consent.service.ts` records purpose,
+method, scope, expiry and who took it, and derives `ACTIVE` / `REVOKED` / `EXPIRED`
+from the row instead of trusting a stored string. Revocation sets `revoked_at` and
+`revoked_by_user_id`; there is no DELETE route, because "the patient withdrew" is a
+fact about the record, not a reason to erase it. An empty scope is refused by the
+server, and the screen mirrors that rule rather than allowing a save the API will
+reject. A consent that covers nothing is not consent.
+
+**Allergies (FN-15, now PARTIAL).** `patient_allergies` is a real table, not the
+free-text `patients.allergies` column nothing wrote to. `POST /api/medications`
+calls `checkMedicationAllergies` before it writes; a match returns
+`409 ALLERGY_CONFLICT`, the screen shows what was recorded and why it matched, and
+retrying requires `allergyAcknowledged: true`, which is written to the audit trail
+as a `PRESCRIBE` override. The check does not block, and the UI says an empty
+result means "nothing recorded matches", never "safe". Matching is name-based, so
+penicillin does not warn for amoxicillin — asserted in a test, stated on screen.
+
+**Identifier encryption (SP-08, still PARTIAL).** National ID and SHA number are
+sealed with AES-256-GCM (`v1:` version prefix, random IV per value, tag verified on
+read) before insert, and opened on the way out. Because an encrypted column cannot
+be searched, an HMAC blind index in a separate indexed column answers exact
+lookups; `getPatients` and `getPatientsScoped` use it when the key is configured and
+fall back to `ILIKE` on plaintext rows otherwise. Rows written before a key existed
+keep working. There is **no default key**: without `FIELD_ENCRYPTION_KEY` nothing
+is encrypted and the readiness panel says so. The database volume, its snapshots
+and backups are still unencrypted — that remains a hosting control.
+
+**Access logging.** `patient_record_access_logs` existed and was written in exactly
+one place: the patient-update route, labelled `EXPORT` / `FHIR` /
+"FHIR patient resource retrieval". The FHIR endpoint itself logged nothing. That is
+now corrected: reads log `VIEW`, edits log `UPDATE`, FHIR logs an `EXPORT` on the
+`FHIR` channel, and every row carries a purpose from a fixed list. The write happens
+before the response, so a record that cannot be accounted for is not served.
+
+**Audit immutability.** Migration `0017` installs `jalicare_audit_is_append_only()`
+with row and statement triggers on `audit_logs`, plus
+`REVOKE UPDATE, DELETE, TRUNCATE`. INSERT is still accepted. This is defence in
+depth: the trigger holds even for a role that owns the table.
+
+**Routes.** Seven more endpoints gained a permission: the claims list, claimable
+lines and claim items (`insurance.read` or `billing.read`), DHA readiness, service
+mappings and the call log (`system.health.read` / `tariffs.read` /
+`audit.security.read` alongside `system.settings.manage`), and `/api/departments`,
+which now uses a new `getDepartmentsScoped` instead of returning any facility's
+departments to anyone who guessed an id.
+
+**What this round did not do.** Consent does not gate clinical reads — whether a
+clinician needs consent to treat the patient in front of them is a clinical
+governance decision, and `hasActiveConsent()` is exposed for whoever makes it. There
+is no drug-drug interaction engine. Volume and backup encryption are untouched. No
+PostgreSQL was available, so every SQL path in this round is type-checked and
+contract-tested, not executed, and migration `0017` has **not** been applied.
+
+
+### 3.22 Patient digital health record portal
+
+The brief was to reduce a patient's dependence on a physical booklet without building a second
+system beside this one. The portal therefore reuses `patients`, `encounters`, `diagnoses`,
+`lab_orders`/`lab_results`, `medications`, `appointments`, `admissions` and `patient_allergies`,
+and adds six tables of its own — accounts, invitations, invitation events, sessions, settings and
+sharing grants. There is **no second patient record and no duplicate clinical database**; every
+screen is a read of the tables the staff application already writes.
+
+**Patients are not staff users.** A portal account lives in `patient_portal_accounts`, never in
+`users`, and a patient session lives in `patient_portal_sessions`. A patient token cannot reach a
+staff route and a staff token cannot reach the portal, because each middleware reads only its own
+table. The patient surface (`/portal`, `/portal/activate`) is decided in `App.tsx` **before**
+`HmisProvider` mounts, so a phone that opens it never loads the staff session or the staff bundle.
+
+**Reception invites; the patient activates.** The desk issues a single-use invitation from the
+patient row or straight after registration, hands over a link (or, when a provider exists, sends
+one) and can mark the handover, reissue a lost link and revoke it. No code path links an account by
+matching a phone number, a name or a date of birth: an account is created by the patient from the
+link, and if the contact already belongs to another account the result is a
+`PENDING_VERIFICATION` account and a request for staff-assisted identity checks — never a merge.
+Delivery and activation are separate columns, so a message a provider accepted can never be read as
+a signed-up patient; with no provider configured, the truthful states are `NOT_CONFIGURED` and
+`HANDED_OVER`.
+
+**Facility administration is its own section.** *Patient Portal Management* has five tabs —
+overview, accounts, settings, audit, card lookup — and every figure is a query, not a constant. The
+five permissions are seeded and split on purpose: the receptionist gets `portal.invite`, which a
+facility may also delegate to a custom role; account management, audit, settings and invitation
+revocation stay with the administrator and are **not** delegable. Audit review has its own
+permission, the dashboard hides the audit strip without it, and reading the trail is itself written
+to the trail.
+
+**The patient's own screens** show recent visits with released diagnoses, upcoming appointments,
+laboratory results only where a laboratory professional has signed them off, prescriptions,
+allergies, discharge summaries, a downloadable copy generated per request (no stored file, no public
+URL), correction *requests* rather than edits, a QR card carrying only an opaque code, and
+time-limited, revocable sharing to a named recipient — which the screen states is not a national
+health information exchange.
+
+**What was verified.** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24 scripts and
+3,038 assertion statements including 197 new portal assertions. **What was not:** migration `0018` has not been
+applied to any database, no portal query has run against real rows, concurrent redemption has not
+been exercised, no SMS or email provider exists, and no browser was driven through the screens. The
+five deliverables in `docs/patient-portal/` separate those two lists line by line; the deployment
+guide's §11 lists the ten blockers that stand between this work and a production claim.
+
+
+### 3.23 Automatic billing — why a service billed nothing, and the fix
+
+Two screens reported the same thing: a visit that started but did not bill, and a
+laboratory order that was submitted but did not bill. Both were true, and neither
+was a crash: the charge step runs *after* the clinical record is written, a missing
+tariff is a normal outcome, and the record is kept. The message said so, but it
+named one code and hid the reason.
+
+**What was actually wrong.** The engine prices a service by looking for one of
+several codes in `facility_service_tariffs` for that facility. Two defects made a
+configured price invisible:
+
+1. The comparison was case-sensitive, while the tariff screen upper-cased in the
+   browser only. A row stored as `opd-consult` matched nothing.
+2. Laboratory and procedure records carry their **own code** (`LAB-CBC`,
+   `PROC-004`) — the code the facility sees on its own screens and therefore the
+   code it prices. Billing ignored it and tried only the long name, so a tariff of
+   `LAB-CBC` did not price `Full Blood Count (CBC/FBC 5-Part Diff)`. Nothing was
+   billed, and the screen's own catalogue made it look as though it should have
+   been.
+
+**What changed.**
+
+| Change | Where |
+|---|---|
+| Codes compared upper-cased, exact case preferred within one priority | `billing.service.ts` |
+| The rule is a pure function, tested without a database | `pickTariffForCodes` |
+| Tariff codes stored in capitals whatever the caller sends | `validateTariffInput` |
+| Laboratory orders carry the catalogue code into the charge | `queries.ts`, `service-charges.ts` |
+| Procedures are priced from their own code as well as their name | `app.ts` |
+| The failure names the codes tried (first three, plus a count) | `chargeForService` |
+| The tariff screen shows which services and which laboratory tests would bill nothing, and pre-fills the code when one is chosen | `FacilityServiceTariffsPanel.tsx` |
+
+Code-candidate rules live in `src/billing/tariff-codes.ts`, a module with no
+database import, so the screen that asks an administrator to type a code shows the
+same candidates the engine will try.
+
+**What is still the facility's decision.** No tariff is seeded, and no price is
+invented. A consultation bills only when the facility has priced one of
+`CONSULT-<VISIT TYPE>`, `<VISIT TYPE>`, `OPD-CONSULT`, `CONSULTATION` or `CONSULT`;
+a laboratory test bills when its catalogue code (`LAB-CBC`), that code without its
+prefix, the name-derived code, or `LAB-GENERAL` / `LABORATORY` is priced. The
+price held in the laboratory catalogue (`lab_tests.price`) is **not** used for
+billing — tariffs remain the single price list, for the same reason pharmacy
+prices come from `facility_service_tariffs` and nowhere else.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24
+suites and 3,038 assertion statements, no failures (billing 31 → 57, OPD journey
+58 → 69). **Not verified:** none of this was run against PostgreSQL — there is no
+database in this environment, and the seeded fees are examples, not this
+facility's prices.
+
+### 3.24 Patient portal activation — the link, and the gate in front of it
+
+Two things were wrong at once, and only one of them was cosmetic.
+
+**1. The activation endpoints required a staff session.** `app.use('/api', requireAuth)`
+runs before everything mounted under `/api`, and `/api/portal` was mounted after it.
+A patient opening `/portal/activate#…` with a valid invitation reached
+`POST /api/portal/auth/activate` and was told *"Authentication is required."* — by
+the staff gate, not by the portal. The portal router has always said activation and
+login are public; the mount order made that untrue. Both portal routers now sit
+**above** the staff gate. `/api/portal` still guards everything except activation and
+login with `requirePortalAuth`, and `/api/portal/admin` still applies `requireAuth`
+and `requirePermission` itself, so nothing was opened by the move.
+
+**2. The link had no domain.** `PATIENT_PORTAL_URL` was the only source, it is not
+in `.env.example`, and when unset the link came out as `/portal/activate#…` — a path
+with no host, which reads exactly like "the domain was not added". The link now
+resolves in three steps: `PATIENT_PORTAL_URL`, then `APP_BASE_URL`, then the origin
+of the request that issued the invitation. A development server therefore produces
+`http://localhost:3000/portal/activate#…`, and production produces whatever its
+public address is. Non-http(s) values are refused, and the hand-over dialog warns if
+a link still has no host.
+
+`/portal/activate/` with a trailing slash also fell through to the staff shell and
+produced the same misleading message; the path is now normalised.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24
+suites / 3,038 assertion statements, no failures (`test:patient-portal` 178 → 197,
+including the mount order, the three-step link resolution, the refusal of a
+`javascript:` value, and the trailing-slash route). **Not verified:** the flow was
+not walked in a browser — there is no browser and no database here, so the first real
+activation will be the first real test.
+
+### 3.25 Numbered price lists — why OPD-001 never billed a consultation
+
+The error was precise and the facility's data was correct:
+
+> No active tariff matched CONSULT-OUTPATIENT, OUTPATIENT, OPD-CONSULT (+2 more)
+
+Their price list is `REG-001`, `OPD-001` General outpatient consultation 150,
+`OPD-002` Follow-up consultation 300, `LAB-001` Malaria RDT 300, `RAD-001`
+Obstetric ultrasound 2,500. The engine was looking for `OPD-CONSULT`. Nothing in
+that list will ever match it, and renaming 40 codes to suit the engine is not a
+reasonable thing to ask a facility.
+
+**Why the obvious fix is the wrong one.** Matching `OPD-001` because its
+description contains "consultation" would also match `OPD-002` at 300. Picking one
+puts a price on a patient invoice that nobody chose. Same for `LAB-001` (300)
+against `LAB-002` (200): the description is the only thing separating them, and it
+is not a key.
+
+**What was built.** A tariff can now declare, once, which automatic charge it
+answers — a nullable `billing_key` on `facility_service_tariffs` (migration 0019):
+
+| Key | Answers |
+|---|---|
+| `CONSULTATION` | any outpatient consultation |
+| `LABORATORY`, `LABORATORY:<code>` | any test, or one test by catalogue code |
+| `RADIOLOGY`, `RADIOLOGY:<name>` | any study, or one by the name it is ordered under |
+| `PROCEDURE`, `PROCEDURE:<name>` | any procedure, or one |
+| `ADMISSION`, `BED_DAY`, `DELIVERY`, `PHARMACY` | the other automatic charges |
+
+- The engine tries linked keys **before** code candidates, most specific first.
+  A link the facility made always beats a code the engine guessed.
+- The vocabulary is closed and validated on write. A key the engine cannot
+  interpret would be a link that silently never fires, which is the bug class this
+  change exists to remove.
+- A partial unique index stops two **active** tariffs claiming the same charge; the
+  route turns 23505 into a sentence rather than a 500. Deactivating a tariff
+  releases its link.
+- The tariff screen has a "Used for automatic billing" select, an optional
+  "Only for one service" field, a column showing the link, and a coverage list
+  that counts links as priced.
+- If the database predates 0019, reads degrade to code matching with one warning
+  and writes answer `MIGRATION_0019_REQUIRED`. That was deliberate: a dev database
+  a migration behind must not turn every charge into a 500.
+
+**Applying it.** `npm run db:migrate` (the agent never runs migrations). Then
+Configuration → Services & Tariffs → Edit on `OPD-001` → *Used for automatic
+billing*: **Consultation** → Save. The next visit bills 150. `OPD-002` stays
+unlinked, or gets its own link if follow-up visits should price separately — but
+one price per family, not a guess.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24
+suites / 3,038 assertion statements (billing 57 → 75, OPD journey 69 → 82,
+migrations 692 → 706). **Not verified:** the migration has not been executed and no
+charge has been raised against PostgreSQL — there is no database in this
+environment, and the 150 figure above is the facility's own, not one this code
+invented.
+
+### 3.26 Why OPD-001 still failed — reading the facility's own description, and billing what was skipped
+
+§3.25 gave the facility a way to *say* which tariff answers a consultation. The
+warning came back unchanged, because the same visit reached the same engine with
+the same five codes and no link:
+
+> No active tariff matched CONSULT-OUTPATIENT, OUTPATIENT, OPD-CONSULT (+2 more)
+
+**The five codes, in full.** The message printed three. `tariffCodeCandidates`
+produces `CONSULT-OUTPATIENT`, `OUTPATIENT`, then the defaults `OPD-CONSULT`,
+`CONSULTATION`, `CONSULT`. `OPD-001` is none of them, so the charge skipped — and
+because migration 0019 had not been applied (or the link had not been set),
+nothing else could rescue it. The message was accurate and unhelpful.
+
+**The rule that was missing.** Between "a code the engine guessed" and "the
+facility told us" there is a third statement the facility already made: its own
+description. `OPD-001 General outpatient consultation` says what it is. So a
+charge may now match on description — under three constraints that make it a rule
+rather than a guess:
+
+1. **Only inside the service's departments.** A consultation is priced from OPD,
+   specialty, registration, reception or finance tariffs. A `PHA-001` row that
+   happens to say "consultation" cannot price a visit, and a pharmacy row can
+   never price a blood test. Both the module id (`opd`) and the human label
+   (`OPD / Outpatient`) resolve to one bucket.
+2. **Only when exactly one active tariff matches.** Two candidates is an
+   ambiguity: nothing is charged, and both codes are named so the facility links
+   the right one. `OPD-001` (150) versus `OPD-002` (300) is precisely the pair
+   that must never be decided by text similarity.
+3. **Only when the visit type agrees.** A general OPD visit asks for "general
+   outpatient consultation"; a follow-up asks for "follow-up consultation". A
+   one-word fallback such as "consultation" may only match a description whose
+   extra words are neutral ("Consultation fee"), so `Follow-up consultation` is
+   never used for a general visit — the bug this rule was written to avoid, and
+   the test that caught it on the first run.
+
+**Order.** `LINK` → `CODE` → `CATALOGUE`. A link the facility set always wins, so
+nothing that worked can be re-priced by the new rule. Prices are never inferred:
+the catalogue rule selects a row, and the amount is that row's `fee`, in that
+row's `unit` (`Per visit`).
+
+**One list, one place.** `codesForFamily()` in `src/billing/tariff-matching.ts` is
+now the only source of candidate codes; the seven charge sites, the laboratory
+batch, the diagnostic screen and the tests all call it. That is what stops the
+message naming a code the engine never tried.
+
+**Charges that could not be priced.** A skipped charge used to leave nothing
+behind: the result was returned to the caller, shown once, forgotten. Migration
+**0020** adds `billing_charge_attempts` — one row per charge the engine could not
+price, holding the original request, the codes tried, the link keys the facility
+would set, and the clinical source. Retry runs the ordinary charge path, so the
+ordinary idempotency key applies: retrying twice cannot produce two invoice lines,
+and a charge billed in the meantime comes back `DUPLICATE`. Statuses are
+`PENDING`, `BILLED`, `DUPLICATE`, `VOID`; a write-off keeps the row.
+
+- `GET /api/billing/charge-attempts` — what is waiting, and what was resolved.
+- `POST /api/billing/charge-attempts/:id/retry` — one charge.
+- `POST /api/billing/charge-attempts/retry` — everything pending, bounded at 100.
+- `POST /api/billing/charge-attempts/:id/void` — write off, audited.
+- `POST /api/billing/tariff-match` — read-only: every tariff in the facility with
+  a verdict (`MATCHED_DESCRIPTION`, `INACTIVE`, `WRONG_DEPARTMENT`, …), so "why
+  was OPD-001 not used?" is answered about the facility's own rows.
+
+The tariff screen shows the queue with **Retry**, **Retry all**, **Why?** and
+**Write off**; coverage now runs the engine's own matcher, so `Consultation —
+OPD-001 · 150.00 / Per visit (by description)` is the same computation the next
+visit performs. The OPD screen says where an unbilled consultation went instead of
+leaving it at "not billed".
+
+**What is still required from the facility.** Nothing has been seeded and no price
+has been invented. `OPD-001` bills at 150 through the description rule once
+migration 0020 is applied; the link remains the explicit alternative and is the
+only way to choose between two tariffs that both describe the service.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 28
+suites / 3,544 assertion statements (tariff matching 92, OPD journey 82 → 83,
+migrations 706 → 721 at the time of this section; the current migration suite is
+757). **Not verified:** no database here — migration 0020 has not
+been executed and no invoice line has been created against PostgreSQL. The 150 is
+the facility's own figure, read from its row, not one this code invented.
+
+### 3.27 Service → tariff billing, reconstructed: the laboratory order that never billed
+
+A laboratory order reached the Laboratory queue and produced no charge. The error
+named the codes: `LAB-BLOOD`, `BLOOD`, `LAB-GENERAL`. The facility's price list is
+`LAB-001` … `LAB-008` plus one row coded `LAB-BLOOD` at 800 whose description is
+literally "LAB-BLOOD".
+
+**Two root causes, both verified in the code.**
+
+1. **The order carried no catalogue identity.** The outpatient screen sends
+   laboratory tests as **free text**; `selectedLabTestIds` was declared and never
+   used, so `lab_orders.test_id` was NULL for every order placed there. A tariff
+   link has nothing to point at when the order has no id.
+2. **Resolution compared strings, and reported every failure identically.** A
+   missing row, an inactive row, an expired row, another facility's row, a row
+   excluded from automatic billing, and two plausible rows all produced the same
+   sentence — "no active tariff matched" — so none of them could be fixed.
+
+**What was built.**
+
+*A shared resolver*, `src/billing/tariff-resolver.ts`, used by every charge (the
+`chargeForService` path in `billing.service.ts` calls it; there is no second
+billing engine). The ladder, and why each step exists:
+
+| Step | Keyed on | Why it is safe |
+|---|---|---|
+| `LINK` | `service_tariff_links.service_id` = `lab_tests.id` | a database id cannot be renamed and cannot be ambiguous |
+| `FAMILY_LINK` | link row with `service_id IS NULL` | one price for a whole family, stated deliberately |
+| `ALIAS` | `facility_service_tariffs.billing_key` (0019) | the facility's own approved key |
+| `CODE` | exact code equality, trimmed and case-insensitive | what billed before still bills |
+| `CATALOGUE` | the tariff's own description, right department, exactly one match | a last resort that fails closed |
+
+A step that **finds** a row and rejects it **stops** and reports why. Falling
+through would let a deactivated link silently bill a different price.
+
+*Validation on every candidate row*: active, today inside
+`[effective_from, effective_to]`, same facility (a composite foreign key, see
+below), `auto_bill` on, a unit that can price that kind of service, and a fee
+above zero. Each produces its own diagnosis — `INACTIVE`, `EXPIRED`,
+`NOT_YET_EFFECTIVE`, `AUTOMATIC_BILLING_DISABLED`, `UNIT_INCOMPATIBLE`,
+`NO_UNIT`, `ZERO_PRICE`, `AMBIGUOUS`, `NO_TARIFF`.
+
+*Vague words are refused.* `BLOOD`, `LABORATORY`, `GENERAL`, `TEST`, `FULL`,
+`SAMPLE`, `PROFILE` name a department, not a service. They can no longer be the
+source of a **generated code** or of a **description match**. That matters
+concretely: `LAB-BLOOD` is not derived from a test called "Blood" any more, so a
+haemoglobin test priced at 300 cannot be billed at the blood tariff's 800. A real
+catalogue code `LAB-BLOOD` is still tried, and the row itself is untouched —
+same code, same 800, same unit, still reachable by code and linkable by id.
+
+*Free text is resolved to a catalogue row, server-side.* `createLabOrderBatch`
+and `createLabOrder` now match each investigation name against the facility's own
+active `lab_tests` by **exact normalised equality of code or name**. One match
+attaches `test_id`; zero or two matches leaves it NULL, keeps the order, and
+reports `unresolved` / `ambiguous` back to the caller. No fuzzy search, no
+"closest" row, no price from the client.
+
+*Migration 0021* (`drizzle/0021_service_tariff_links.sql`, **written, not
+executed**):
+
+- `service_tariff_links` — `service_type`, `service_id`, `tariff_id`,
+  `auto_bill`, `is_active`. Partial unique indexes keep one active link per
+  catalogue service and one per family; deactivating frees the slot.
+- **`FOREIGN KEY (facility_id, tariff_id) REFERENCES
+  facility_service_tariffs (facility_id, id)`** — a link physically cannot point
+  at another facility's tariff. Isolation is a constraint, not a `WHERE` clause
+  someone can forget.
+- `effective_from` / `effective_to` (nullable = always) and `auto_bill`
+  (default `true`) on `facility_service_tariffs`. Every column is additive and
+  preserves today's behaviour; no row is rewritten, nothing is dropped, no id
+  changes.
+
+*Configuration and diagnostics*, on the existing Services & Tariffs screen:
+
+- **Link a service to one of your tariffs** — service type, the laboratory test
+  by catalogue id, the tariff, and an "use automatically" switch. Retiring a link
+  keeps the row and its audit trail.
+- **What each laboratory test would bill** — every test in the facility with the
+  tariff it resolves to, the rule that matched, and for a test that bills
+  nothing, the reason and the candidates. It runs the same resolver the charger
+  runs, so the screen cannot disagree with the invoice.
+- The tariff form gained **Price valid from / to** and **Use for automatic
+  billing**.
+
+All of it sits behind `tariffs.read` / `tariffs.manage`, the existing
+`requireFacilityAdminTariffRole` guard and `resolveFacilityScope`; every change is
+written with `logAuditEvent`. Clinical users never see it.
+
+*Reprocessing.* The unpriced-charge queue (0020) is unchanged in shape, but a
+retry now re-reads the laboratory order at retry time and rebuilds the
+`serviceRef` from its `test_id`. The order is read, never re-created; the
+idempotency key is still derived from the clinical source, so a second retry
+returns `DUPLICATE` instead of writing a second invoice line.
+
+**What is still required from the facility.** Nothing is seeded and no price was
+invented. The catalogue services map to their tariffs **by description** already
+(`Malaria rapid diagnostic test` → `LAB-001` at 300, and so on, asserted in
+`test:tariff-resolver`). Making them certain rather than descriptive is one
+action per service on the tariff screen. `LAB-BLOOD` stays exactly as it is at
+800: what it represents is the facility's decision, and it can be linked to a
+catalogue test — or left alone — but it is never chosen by the word "blood".
+
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules / 697 ms,
+`npm test` **28 suites, 3,544 assertion statements**, no failures — including the
+new `test:tariff-resolver` (135), `test:ward-billing` (103, §3.28),
+`test:round5` (115, §3.29) and `test:migrations` 757. **Not verified:** no
+PostgreSQL in this environment; migration 0021 has not been executed, no link
+row exists yet, and no invoice line has been created against a database.
+
+### 3.28 Inpatient ward billing: the bed-night that never reached the invoice
+
+A patient was discharged and the message read:
+
+```
+No active tariff matched BED-FMW001, WARD-FMW001, BED-DAY (+3 more)…
+```
+
+The discharge completed, the bed went to Cleaning and the occupancy history was
+intact — but no bed-night charge reached the invoice, although the facility's price
+list holds **IP-002 "General ward bed charge" at 1,500 per day**.
+
+**Two root causes, both in the shared billing path.**
+
+1. **The night was never described.** `chargeForService` labelled the charge
+   `family: 'BED_DAY'`, but `phrasesForCharge` only built vocabulary for
+   consultations. A bed night therefore offered the six codes and the words "bed
+   day" — and no facility writes "General ward bed charge" as "bed day". The
+   resolver's description stage never ran with a phrase that could match IP-002,
+   so the row that was sitting on the price list was never considered. The fix is
+   in the resolver's vocabulary (`bedDayPhrases`), not in a new tariff.
+2. **The stay was priced from today's ward.** Both bed-day loops — discharge in
+   `app.ts` and `accrueBedDaysScoped` in `queries.ts` — read
+   `admissions.ward_id`, which the transfer updates to the **destination**. Every
+   earlier night was therefore re-priced at the ward the patient ended in, and a
+   stay that moved between wards could not keep the rate it was billed at. The
+   accrual also restarted at the last transfer date, so a nightly job and a
+   discharge disagreed about the period.
+
+**How `BED-FMW001` maps to a bed, and to IP-002.**
+
+`FMW001` is the **ward code** of the admission's ward (`wards.code`), not a
+catalogue code. `bedDayTariffCodes` turns it into `BED-FMW001` and `WARD-FMW001`,
+then adds the generic `BED-DAY`, `INPATIENT-BED-DAY`, `WARD-DAY`, `BED`. None of
+those is a row in the facility's list, and none is meant to be: they are the
+codes an administrator *may* create for a ward-specific price.
+
+The charge now also carries the bed's category. For a general ward the phrases
+are, in order: the ward's own name plus "bed charge", `general ward bed charge`,
+`general ward bed`, `ward bed charge`, `bed charge`, `bed day charge`, `bed day`.
+`IP-002`'s own description matches the first phrase, and it is the only inpatient
+row that does, so the resolver selects it by **description** (`CATALOGUE` rule):
+1,500.00 / Per day, quantity 1 per night. `test:ward-billing` asserts this against
+the real code and phrase lists.
+
+**Is IP-002 suitable?** Yes, for a **general** bed only, and under the existing
+rules: the row is in the `inpatient` department, its unit is "Per day" (a
+per-night unit; a per-admission or per-procedure unit is refused as
+`UNIT_INCOMPATIBLE`), and it is active. It is **not** suitable for an ICU, HDU,
+maternity or isolation bed. A special bed does not offer the general vocabulary at
+all, and a family-wide bed-day link is skipped for it; the night is reported as
+unconfigured rather than billed at the general rate. The facility either links
+that ward explicitly on the tariff screen or adds its own special-bed tariff.
+
+**What changed.**
+
+- `src/billing/tariff-matching.ts` — `bedDayPhrases` (category-gated vocabulary),
+  `admissionPhrases`, `isGeneralBedType`. The ward name is only ever offered as
+  "<ward> bed charge", never alone, so a ward called "Maternity" cannot reach a
+  maternity package row.
+- `src/billing/tariff-resolver.ts` — `ResolutionInput.wardType`; a family-wide
+  bed-day link no longer answers for a special bed; `ADMISSION` refuses per-day
+  and per-night units; `BED_DAY` refuses per-admission and per-procedure units.
+- `src/billing/billing.service.ts` — `ChargeRequest.wardType`/`wardName`;
+  `bedDaySegments`, the one function that splits a stay into occupancy segments.
+- `src/db/queries.ts` — `accrueBedDaysScoped` is the single bed-day engine. It
+  loads the transfer history, prices each segment from the ward that actually
+  held the patient, passes the ward's link keys, and records an unpriced night
+  through `chargeAndRecord`.
+- `src/app.ts` — the discharge route calls that engine instead of its own loop;
+  the admission fee no longer offers the ward name as an alias (it is a two-word
+  phrase that also describes IP-002).
+- `src/billing/charge-attempts.ts` + `drizzle/0022_bed_day_charge_attempts.sql` —
+  a skipped night stores its date and bed category, so it can be reprocessed
+  after the tariff is fixed, on the original idempotency key.
+- `src/components/modules/FacilityServiceTariffsPanel.tsx` — the bed-day link
+  picker asks for a **ward**, and validates that the ward belongs to the facility.
+
+**Bed-day math.** Admission date to discharge date inclusive remains the rule (a
+same-day stay is one day — unchanged, and asserted). Segments are disjoint by
+construction: a transfer takes effect on its own calendar date, the opening ward
+comes from the earliest transfer's `fromWard` (because `admissions.ward_id` is
+already the destination), two moves on one day leave the day with the last ward,
+and a nightly run stops at its `untilDate` or the discharge, whichever is earlier.
+The total number of nights therefore never changes; only who is paid for them.
+
+**Idempotency.** Keys are unchanged: `BED_DAY:<admissionId>:<date>`. Because the
+segments are disjoint, one date can only belong to one ward, so adding the ward to
+the key — which would have re-billed every already-charged night — was not needed.
+Discharge, transfer and the nightly job all produce the same key for the same
+night, so a retry is a `DUPLICATE`, not a second invoice line. Billing never
+creates an occupancy event (asserted), never re-admits anybody, and never marks an
+invoice paid.
+
+**What is still required from the facility.** Nothing is seeded and no price was
+changed. For a general ward, IP-002 at 1,500/day is selected by its own
+description as soon as this code is deployed — provided the row is **active** and
+filed in the **inpatient** department, because the bed-day family only reads that
+department's rows. No new tariff is needed. An ICU or maternity bed needs its own
+price, or an explicit ward link. Migration 0022 is only needed for the
+reprocessing queue (one row per unbilled night), not for the price itself. The
+unpriced nights are listed under Configuration → Services & Tariffs → "Charges
+that could not be priced" and can be retried there after the configuration
+changes.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules / 697 ms,
+`npm test` 26 suites / 3,429 assertion statements, including the new
+`test:ward-billing` (103 assertions: the reported warning reproduced, IP-002
+selection, IP-001/IP-002 separation, special-bed refusal, segment math, keys and
+the reprocessing path). **Not verified:** no PostgreSQL in this environment;
+migration 0022 has not been executed, and no bed-night invoice line has been
+created against a database. The 1,500 remains the facility's own figure, read from
+its row.
+
+### 3.29 Stock expiry, the revenue split, role saves, and the codes to bill with
+
+Five requests, one round. Nothing was seeded, no price was changed, and no
+migration was executed. This round adds no migration of its own: expiry lives on
+`inventory_batches`, payments already carry a method, and the role tables already
+exist. The SQL still outstanding is 0020–0022 from the previous rounds.
+
+#### 1. An expiry date on the stock item, and a countdown that can be trusted
+
+Expiry was already stored — on `inventory_batches.expiry_date`, not on
+`inventory_items`. That is the correct place: one catalogue item is received many
+times with different shelf lives, and a single date on the item would be
+overwritten by the next delivery. The gap was the **screen**: "Add Stock Item"
+created a catalogue row with a stock number and no lot, so the item appeared in
+the stock list with no expiry and no countdown.
+
+- The Add form now takes a **Batch Number** and an **Expiry Date**. When both are
+  supplied the item is created with zero stock and the opening quantity is
+  received into that lot, so `current_stock` and the batch row move together.
+  Leaving both blank keeps the old behaviour (a plain stock count, no expiry).
+  Supplying only one is refused rather than silently ignored, and an expiry in
+  the past is refused on the screen as well as by the server.
+- The stock list gained an **Expiry Countdown** column. It reads the earliest
+  batch that still has stock — the lot FEFO will hand out next — and counts down
+  live (days, hours, minutes, refreshed every minute). Colour is amber at ten
+  days or fewer and red at three or fewer; an expired lot says `expired`.
+- The countdown runs to the **end of the expiry day in local time**, which is the
+  same rule `expiryStatus()` applies on the server: a batch expiring today is
+  still dispensable. The screen and the dispensing engine cannot disagree about
+  whether a lot has expired.
+- The batches tab prints the same countdown beside each date and adds a
+  ten-day strip naming the lots inside the window.
+
+No schema change: the batch table already had everything the countdown needs.
+
+#### 2. The overview alert at ten days
+
+The dashboard now loads `/api/inventory/batches?horizonDays=10` for any session
+holding `inventory.read` and raises a chip in the alerts row:
+
+> 4 batches — 1 already expired — expiring within 10 days
+
+followed by the **record itself**, not just the number: item and item code, batch
+number, quantity, expiry date, live time left, and value at cost, with expired
+rows tinted red. The alert is `danger` when anything has already expired and
+`warning` otherwise. When there is nothing inside the window, no panel is drawn —
+the dashboard never claims the store is clean, it simply does not speak.
+
+#### 3. Revenue split: SHA, online mobile money and cash
+
+`GET /api/analytics/revenue` now returns three additions beside the existing
+figures:
+
+| Field | Meaning |
+|---|---|
+| `byChannel[]` | one row per channel: `SHA`, `MOBILE_MONEY`, `CASH`, `CARD`, `OTHER`, with `label`, `paymentCount`, `amount` |
+| `channelTotal` | sum of the channel rows |
+| `channelReconciliation` | `collected`, `difference`, `reconciled`, `unmappedMethods` |
+
+- SHA is a payer, not a till: the claims workflow writes a payment row with
+  method `SHA` when a claim is settled, and that is what appears here.
+- Online mobile money is the M-Pesa / Airtel rail, matched case- and
+  punctuation-insensitively (`M-Pesa`, `MPESA`, `m pesa` are one channel).
+- Cash is the drawer. Card is kept separate. Anything unrecognised stays
+  `OTHER` **and is named** in `unmappedMethods` — a reconciliation that hides a
+  channel is worse than one that admits it.
+- The window is the **invoice's** creation date, the same window `Collected`
+  uses, and voided invoices are excluded, so the channel lines add up to
+  `Collected`. Where they do not, the panel says so and prints the difference
+  instead of presenting a split that does not reconcile.
+- No total changed: `totals`, `byService` and `totalRevenue` are computed exactly
+  as before.
+
+The Reports module renders this as "Money In by Payment Channel" with a bar per
+channel and a one-line reconciliation foot.
+
+#### 4. Role permissions — where "Update" was going
+
+There are two role editors, and they write to two different tables:
+
+| Screen | Endpoint | Writes |
+|---|---|---|
+| Configuration → Staff & Roles → *Edit tasks* → Save tasks | `PUT /api/staff-roles/roles/:id/permissions` | tenant `role_permissions` |
+| Platform Administration → RBAC → *Apply / Save facility override* | `PUT /platform/rbac/roles/:id/permissions` | `facility_role_permission_overrides` |
+
+`authorization.service` gives a facility override **precedence** over the tenant
+rows. Two failures followed from that:
+
+1. **The facility task save could not be seen.** It wrote the tenant default. If
+   the facility already had an override for that role — created from the platform
+   screen — every user at that facility kept reading the override, so the save
+   changed nothing that anyone could observe. The task catalogue had the same
+   blind spot: it displayed the tenant default even while an override governed.
+2. **The platform override editor threw its own receipt away.** `saveOverride()`
+   set the success notice and then called `loadRoles()`, which began by clearing
+   `notice` — so the message was replaced by nothing on the next render. The
+   write had happened; the screen said otherwise.
+
+What changed:
+
+- `getRoleTaskCatalogue` now takes the acting `facilityId`, reads any override
+  for that facility and returns it as the effective `granted` set, together with
+  `facilityOverride { applies, facilityId, permissionCount }` and
+  `writeScope: 'FACILITY_OVERRIDE' | 'TENANT_DEFAULT'`.
+- `updateRolePermissions` compares and writes the **same scope the screen read**
+  and, where an override exists, brings the override to the saved set in the
+  **same transaction**. Grants outside the delegable allowlist are preserved on
+  both sides, exactly as before; the audit row (`ROLE_PERMISSIONS`, raised to
+  `HIGH` when an override is synchronized) names both what was added and removed
+  and which scope was written.
+- The task modal states which scope it is editing, disables **Save tasks** until
+  something actually changes (label: "No changes to save"), and reports the scope
+  in its success message. A server refusal is printed verbatim in the dialog.
+- The platform editor no longer clears its notice on reload and now says how many
+  tasks the override applies.
+
+**Not verified:** there is no PostgreSQL here, so neither write has been executed
+against a database. What is verified is that the read and the write now name the
+same table for the same facility, which is the defect that made a successful save
+invisible.
+
+#### 5. Codes to use in a facility, for a billing structure that works on the first try
+
+The engine tries, in order: an explicit **link** (`billing_key`), then the
+tariff's **code**, then the tariff's **description**. A link is exact and is
+always the cheapest way to make automatic billing work; the code and description
+columns are what the engine falls back to when no link exists.
+
+Two rules apply to every row below:
+
+- **File the tariff under the right module.** An automatic charge only reads
+  tariffs filed in the departments its family owns — `inpatient` for admission
+  and bed nights, `laboratory` for tests, `radiology` for imaging, `pharmacy` for
+  drugs. A correct code filed under the wrong module is invisible.
+- **Give it the right unit.** A bed night must be `Per day`, an admission fee
+  `Per admission`, a test `Per test`. The resolver refuses a contradictory unit
+  (`UNIT_INCOMPATIBLE`) rather than billing the wrong one.
+
+| Charge | Code to use | Description to write | Unit | Module | Link (`Used for automatic billing`) |
+|---|---|---|---|---|---|
+| Outpatient consultation | `OPD-001` | General outpatient consultation | Per visit | opd | `CONSULTATION` |
+| Follow-up consultation | `OPD-002` | Follow-up consultation | Per visit | opd | none — priced by code/description |
+| Laboratory test | the test's own code, e.g. `LAB-CBC` | Full blood count | Per test | laboratory | `LABORATORY:LAB-CBC`, or `LABORATORY` for one flat test price |
+| Imaging | `RAD-001` | Obstetric ultrasound | Per study | radiology | `RADIOLOGY:RAD-001`, or `RADIOLOGY` |
+| Procedure | `PROC-001` | Wound dressing | Per procedure | theatre | `PROCEDURE:PROC-001`, or `PROCEDURE` |
+| Admission (one-off) | `ADM-001` | Inpatient admission administration | Per admission | inpatient | `ADMISSION` |
+| Bed night | `BED-GEN` (or the ward's own code) | General ward bed charge | Per day | inpatient | `BED_DAY` for general wards, or `BED_DAY:<WARDCODE>` for one ward |
+| Delivery | `MAT-001` | Normal delivery | Per delivery | inpatient | `DELIVERY` |
+| Drug | `DRUG-<NAME>` | the drug name as dispensed | Per unit | pharmacy | `PHARMACY`, or `PHARMACY:DRUG-<NAME>` |
+
+Notes that save an afternoon:
+
+- **Ward codes drive bed-day codes.** A ward whose `wards.code` is `GEN` is
+  offered `BED-GEN` and `WARD-GEN` before the generic `BED-DAY`. Keep ward codes
+  short and stable (`GEN`, `ICU`, `MAT`, `PAED`).
+- **A bed-night link means one category.** A plain `BED_DAY` link is skipped for
+  ICU, HDU, maternity and isolation beds, so a special bed is reported as
+  unconfigured rather than billed at the general rate. Link that ward explicitly
+  (`BED_DAY:ICU`) or give it its own row.
+- **Codes are compared after upper-casing and normalising punctuation**, so
+  `opd-001` and `OPD-001` are the same code. The description fallback is stricter
+  on purpose: a word like "consultation" alone will not choose between `OPD-001`
+  and `OPD-002`, and an ambiguous description is reported, not guessed.
+- **Pharmacy prices from the tariff first.** A dispensed drug is matched by code
+  and description; the item's own selling price is only the fallback.
+- **Nothing here is seeded.** These are the rows to create in Configuration →
+  Services & Tariffs (and Configuration → Wards for the ward codes). The facility
+  types its own prices; this code never invents one.
+
+**Verified:** `npm run lint` clean, `npm run build` clean, `npm test` 28 suites /
+3,544 assertion statements, including the new `test:round5` (115 assertions:
+payment-channel classification, the countdown deadline, the ten-day window, the
+override-aware role read/write and the README/code contract). **Not verified:** no
+PostgreSQL and no browser in this environment; no batch has been received, no
+payment split has been run against real rows, and no role save has been executed
+against a database.
+
+## 4. Existing backups and modified files to preserve
+
+### Backups created during the round-five session
+
+Pre-edit copies taken from `HEAD` (`095d647`) before this round's edits. `.bak` is
+git-ignored:
+
+- `README.md.before-round-five-20261022.bak`
+- `package.json.before-round-five-20261022.bak`
+- `src/app.ts.before-round-five-20261022.bak`
+- `src/auth/staff-roles.routes.ts.before-round-five-20261022.bak`
+- `src/auth/staff-roles.service.ts.before-round-five-20261022.bak`
+- `src/billing/billing.service.ts.before-round-five-20261022.bak`
+- `src/billing/settlement.ts.before-round-five-20261022.bak`
+- `src/components/modules/DashboardModule.tsx.before-round-five-20261022.bak`
+- `src/components/modules/FacilityRbacEditor.tsx.before-round-five-20261022.bak`
+- `src/components/modules/InventoryModule.tsx.before-round-five-20261022.bak`
+- `src/components/modules/ReportsModule.tsx.before-round-five-20261022.bak`
+- `src/components/modules/StaffRolesPanel.tsx.before-round-five-20261022.bak`
+- `src/types/index.ts.before-round-five-20261022.bak`
+
+Two files are new, so no snapshot exists: `src/components/ExpiryCountdown.tsx`
+and `src/tests/round5.test.ts`.
+
+### Backups created during the ward-billing session
+
+Pre-edit copies (`.bak` is git-ignored) exist beside each modified file:
+
+- `src/app.ts.before-ward-billing-20261022.bak`
+- `src/billing/billing.service.ts.before-ward-billing-20261022.bak`
+- `src/billing/charge-attempts.ts.before-ward-billing-20261022.bak`
+- `src/billing/tariff-matching.ts.before-ward-billing-20261022.bak`
+- `src/billing/tariff-resolver.ts.before-ward-billing-20261022.bak`
+- `src/billing/tariff-words.ts.before-ward-billing-20261022.bak`
+- `src/db/queries.ts.before-ward-billing-20261022.bak`
+- `src/db/schema.ts.before-ward-billing-20261022.bak`
+- `src/components/modules/FacilityServiceTariffsPanel.tsx.before-ward-billing-20261022.bak`
+- `src/components/modules/InpatientModule.tsx.before-ward-billing-20261022.bak`
+- `src/tests/opd-journey.test.ts.before-ward-billing-20261022.bak`
+
+### Backups created during the staff-roles session
+
+- `src/app.ts.before-staff-roles-20261021.bak`
+- `src/auth/staff-invitation.service.ts.before-staff-roles-20261021.bak`
+- `src/auth/staff-invitation.routes.ts.before-staff-roles-20261021.bak`
+- `src/integrations/professional/professional-verification.service.ts.before-staff-roles-20261021.bak`
+- `src/components/modules/StaffVerificationModal.tsx.before-staff-roles-20261021.bak`
+- `src/components/modules/ConfigurationModule.tsx.before-staff-roles-20261021.bak`
+- `src/components/Sidebar.tsx.before-staff-roles-20261021.bak`
+- `package.json.before-staff-roles-20261021.bak`
+- `README.md.before-staff-roles-20261021.bak`
+
+### Backups created during the previous session
+
+- `src/app.ts.backup-permissions-20261020-121641`
+- `src/auth/staff-role-catalogue.ts.backup-permissions-20261020-121641`
+- `schema.ts.before-postnatal.bak` (in `src/db/`)
+- `src/app.ts.before-postnatal-20261021.bak`
+- `src/api/client.ts.before-postnatal-20261021.bak`
+- `src/components/modules/MaternityModule.tsx.before-postnatal-20261021.bak`
+- `scripts/migrate.ts.before-timestamp-skip-20261021.bak`
+- `drizzle/0002_friendly_lady_deathstrike.sql.before-using-cast-20261021.bak`
+- `README.md.before-postnatal-20261021.bak`
+- `src/app.ts.before-ward-setup-20261021.bak`
+- `src/api/client.ts.before-ward-setup-20261021.bak`
+- `src/components/modules/InpatientModule.tsx.before-ward-setup-20261021.bak`
+- `src/db/inpatient-contracts.ts.before-ward-setup-20261021.bak`
+- `src/types/index.ts.before-ward-setup-20261021.bak`
+- `src/app.ts.before-opd-journey-20261021.bak`
+- `src/api/client.ts.before-opd-journey-20261021.bak`
+- `src/components/modules/InpatientModule.tsx.before-opd-journey-20261021.bak`
+- `src/components/modules/PatientRegistrationModule.tsx.before-opd-journey-20261021.bak`
+- `src/components/modules/OutpatientModule.tsx.before-opd-journey-20261021.bak`
+- `src/components/modules/FacilityServiceTariffsPanel.tsx.before-opd-journey-20261021.bak`
+- `package.json.before-opd-journey-20261021.bak`
+- `README.md.before-opd-journey-20261021.bak`
+
+### Earlier uncommitted changes and backups
+
+- `src/components/PatientJourneyModal.tsx`
+- `src/components/modules/OutpatientModule.tsx`
+- `src/components/PatientJourneyModal.tsx.backup-lab-results-20261019-200101`
+- `src/components/modules/OutpatientModule.tsx.backup-custom-diagnosis-20261019-195003`
+- `src/components/modules/OutpatientModule.tsx.backup-eof-cleanup-20261019-200416`
+
+Previously reported backups to preserve:
+
+- `src/app.ts.analytics-backup-20261019-111633`
+- `src/app.ts.analytics-backup-20261019-112507`
+- `backups/jalicaredb-before-patient-guardian-20261019.dump`
+- `backups/jalicaredb-backup-verification.txt`
+- Patient-registration, database-schema and type-definition backups created during the October 19 changes.
+
+Do not delete, reset or overwrite existing work to simplify the patch. Do not commit local backups or database dumps unless explicitly intended.
+
+## 5. Important outstanding issue: tenant and facility scope
+
+The latest inspection confirmed that `src/auth/auth.middleware.ts` defines `AuthRequest` with:
+
+- `user?: AuthenticatedUser`
+- `authContext?: AuthorizationContext`
+- session information
+
+`requireAuth` loads the authorization context and attaches it to the request (`src/auth/auth.middleware.ts:144`). Routes read it through `requireAuthContext`, which answers `401 AUTHORIZATION_CONTEXT_MISSING` rather than continuing with an undefined context.
+
+**Status of this section, 21 October 2026.** The clinical paths are closed. `GET/POST /api/diagnoses` and `GET/POST /api/procedures` call `getDiagnosesScoped`, `recordDiagnosisScoped`, `getProceduresScoped` and `recordProcedureScoped`; observations already went through `nursing.getObservationsScoped`; the laboratory functions take `authContext` and apply `resolveFacilityScope`. Details and the tests are in §3.9. The generic functions below are still in `queries.ts`, unreferenced by any route. The rule that follows is not retrospective — it is the rule any new route must satisfy.
+
+Existing scope helpers are available in `src/db/queries.ts`, including:
+
+- `requirePatientInTenant`
+- `getFacilityByIdScoped`
+- `resolveFacilityScope`
+- `getEncountersScoped`
+- `createEncounterScoped`
+- `updateEncounterScoped`
+
+These generic functions accept filters or record IDs and, on their own, do not establish scope:
+
+| Function | Who calls it now |
+|---|---|
+| `getObservations`, `recordObservation` | superseded by `nursing.getObservationsScoped` for reads; **no route** |
+| `getDiagnoses`, `recordDiagnosis` | **no route** — replaced by the `*Scoped` variants |
+| `getProcedures`, `recordProcedure` | **no route** — replaced by the `*Scoped` variants |
+| `getLabOrders`, `createLabOrder`, `updateLabOrderStatus`, `getLabResults`, `addLabResult` | the routes, passing `authContext`; reads scope through `resolveFacilityScope`, writes go through the parent order |
+
+Some of these functions can still return records without a facility filter if called directly, and some writes update by record ID alone. Do not assume the new route permissions solve these data-isolation problems.
+
+**Required security rule:** Authorisation and data scope must both be enforced. Resolve the authenticated user's permitted tenant/facility scope from trusted server-side context, validate the actual database relationships, and reject cross-scope reads and writes. Never rely on a client-provided `facilityId` as proof of access.
+
+For clinical observations, diagnoses and procedures, validate the encounter's tenant/facility and ensure the supplied patient ID matches that encounter. Do not incorrectly require a patient's registration facility to equal the facility where the patient is receiving care.
+
+For laboratory results, validate access through the parent order and its patient, tenant and facility relationships.
+
+## 6. Laboratory workflow concern — resolved
+
+**This concern is closed.** Migration `0008` made `lab_results.verified_by` and `verified_at` nullable, `addLabResult` now writes `Pending Verification` with both columns null, and `POST /api/lab-results/:id/verify` publishes a result only when the caller holds `laboratory.results.verify`. See milestone 9 in §2. The text below is kept as the record of the problem and the workflow it had to satisfy; read it in the past tense.
+
+**What was wrong at the time.** `addLabResult` inserted a result and immediately moved the laboratory order to `Published`, so an entered result was indistinguishable from a verified one. `labResults.verifiedAt` was non-null with a default timestamp, which could not represent an unverified result at all.
+
+**The workflow the implementation had to satisfy** (all six steps are now possible):
+
+1. Clinician orders an investigation.
+2. Laboratory staff receive the order and collect/process the sample.
+3. Authorised laboratory staff enter the result.
+4. An authorised verifier reviews and verifies the result.
+5. The result is published and made available to the clinician.
+6. The clinician reviews the result and records the follow-up.
+
+The rule that produced this split still holds: never reset the database and never silently treat an entered result as verified.
+
+The existing laboratory facility-module middleware must remain in place. Do not remove it to make the routes work.
+
+## 7. Current milestone: Step 6 — OPD, triage and consultations
+
+Continue Step 6 without restarting completed foundation or patient-registration work.
+
+### Required implementation objectives
+
+1. **Patient arrival and queue**
+   - Confirm how registered and returning patients enter OPD.
+   - Ensure queue entries are facility-scoped.
+   - Review status transitions and duplicate-entry behaviour.
+
+2. **Triage**
+   - Capture supported observations, vital signs, presenting complaint, triage category, timestamp and responsible staff.
+   - Identify and prioritise urgent cases using the existing clinical design.
+   - Do not invent values or substitute arbitrary defaults for missing observations.
+
+3. **Consultation**
+   - Link consultation data to the correct encounter, patient and care facility.
+   - Reuse existing diagnosis, procedure, medication, laboratory and referral structures.
+   - Avoid creating duplicate data models or redundant screens.
+
+4. **Workflow transitions**
+   - Validate movement from queue to triage, consultation and subsequent services.
+   - Preserve the existing business rules for cancellation, completion and re-entry.
+
+5. **Permissions and scope**
+   - Enforce action permissions on reads and writes.
+   - Complete endpoint-level tenant/facility isolation for the clinical and laboratory paths already identified.
+   - Test the effective permissions of doctors, triage/reception staff and laboratory staff, including existing facility overrides.
+
+6. **User interface**
+   - Preserve the established layout, components and API client.
+   - Fix confirmed OPD workflow defects rather than performing repeated general inspections.
+
+7. **Verification**
+   - Run `npx tsc --noEmit`, `npm run build` and `git diff --check`.
+   - Perform focused runtime checks for the changed workflow and permissions.
+   - Record implementation evidence, runtime test results and remaining limitations separately.
+
+## 8. Immediate next action
+
+**Continue with one bounded implementation task: finish tenant/facility scoping for clinical records and laboratory orders/results.**
+
+Use the existing scope helpers and the authenticated request context. Make targeted, assertion-checked PowerShell edits with timestamped backups. Keep the change focused on these clinical and laboratory paths; do not broaden the task into unrelated modules.
+
+Then:
+
+1. Validate cross-facility and cross-tenant access is rejected.
+2. Verify a doctor can read and order laboratory investigations but cannot enter or verify results without the required permission.
+3. Separate laboratory result entry from verification/publication.
+4. Run TypeScript, build and whitespace checks.
+5. Record the exact checks performed and their outcomes.
+6. Return to the OPD/triage workflow and finish Step 6 before advancing to Step 7.
+
+If a required source detail is missing, request only the smallest relevant code excerpt. Do not repeatedly request broad inspections, revisit already-completed milestones without a concrete defect, or report unimplemented security work as finished.
+
+## 9. Critical development rules
+
+- Preserve all patient data, database contents, migrations, current changes and backups.
+- Never reset, drop or truncate the database as a shortcut.
+- Do not use `db:clean`, destructive schema operations or unreviewed database pushes.
+- Inspect only what is needed for the next implementation task.
+- Use exact PowerShell scripts with precondition checks and safe backups.
+- Test runtime behaviour, not only compilation.
+- Never invent patient or clinical records to populate dashboards.
+- Do not claim Kenyan regulatory or DHA compliance without evidence and assessment.
+- At the end of each work session, provide a concise progress report, validation evidence, outstanding risks and the exact next action.
+- **Be objective: finish a bounded task, validate it, and move forward instead of looping through repeated audits.**
+
+
+
+
+
+We can make meaningful progress today, but we need to be disciplined: prioritize a reliable, demonstrable end-to-end hospital workflow first, then close the most important gaps, and present unfinished capabilities honestly. We should not attempt to rewrite the entire HMIS in one day.
+
+For JaliCare, I recommend working in your existing branch, preserving the database and migrations, and using PowerShell for guarded edits. We will work in short cycles: inspect → patch → type-check → build → test the actual workflow.
+Today's delivery plan
+
+Phase 1 — Stabilize patient records and visits
+First priority
+Patient search and registration, existing history, explicit encounter creation, no fake vital signs, correct facility scope, and no duplicate patients.
+
+
+
+
+Phase 2 — Complete the core clinical journey
+
+Reception → triage → consultation → diagnosis → lab orders/results → prescriptions/dispensing → billing → follow-up or discharge.
+
+
+
+
+Phase 3 — Verify security and data integrity
+
+Role permissions, tenant/facility isolation, input validation, audit logs, error handling, and safe handling of clinical records.
+
+
+
+
+Phase 4 — Prepare the presentation
+
+Build verification, clean demo data, a rehearsed patient journey, a list of completed features, and a transparent list of remaining work.
+
+
+
+The patient portal is part of the target architecture, but if it is not already implemented, we should not rush an insecure portal into production just to meet today's presentation. We can demonstrate the existing patient record and present the portal as a clearly scoped next deliverable.
+
+
+
+
+
+
+
+
+
+
+
+
+# JaliCare Kenya HMIS — Project Status Update
+**Date:** 20 October 2026  
+**Client:** PUCHE — Level 3B healthcare facility  
+**Repository:** `fetronix/afyahub-hmis-kenya`  
+**Branch:** `restructure/phase-2-foundation`  
+**Current milestone:** Step 6 — OPD, triage and consultations
+
+> **Historical snapshot — 20 October 2026.**
+> Everything below this line was written before the billing, inpatient, reporting,
+> DHA and professional-verification work. Where it disagrees with §2, §3.7, §3.8
+> or §10, those sections are current. Two claims here are now out of date and are
+> corrected above: laboratory result entry/verification **is** separated, and
+> `req.authContext` **is** assigned in `src/auth/auth.middleware.ts:144`.
+
+## 1. Completed work
+
+### Foundation and authentication
+- Refactored the server entry point and application structure.
+- Introduced environment and database configuration.
+- Fixed initial-login session hydration so roles and modules load without requiring a browser refresh.
+- Implemented the analytics summary endpoint with facility-scoped queries and `reports.read` permission enforcement.
+
+### Patient registration and records
+- Added support for optional patient phone, national ID and personal SHA number.
+- Added DOB-based age calculation, unknown or untested blood group support, and separate guardian details for minors.
+- Generated and applied the patient schema migration for nullable phone and guardian fields.
+- Added facility-access validation and server-assigned tenant/facility scope to patient creation.
+- Restricted patient updates using tenant and registration-facility scope.
+- Created and verified a database backup before the patient migration.
+
+### Latest permissions changes — 20 October
+- Added action permission middleware to appointment, observation, diagnosis, procedure and laboratory API routes.
+- Added `laboratory.read` and `laboratory.orders.create` to the default doctor role catalogue.
+- Did not grant doctors laboratory result-entry or result-verification permissions.
+- Preserved the existing laboratory facility-module middleware.
+
+### Validation evidence
+Following the latest permissions changes:
+- `npx tsc --noEmit` — passed.
+- `npm run build` — passed.
+- `git diff --check` — no whitespace errors; Windows line-ending warnings may appear.
+
+**Interpretation:** These checks confirm compilation and bundling. They do not establish that all permissions, workflows or tenant/facility boundaries have passed runtime testing.
+
+## 2. Outstanding risks and unverified areas
+
+### Tenant and facility isolation — clinical paths closed, audit incomplete
+- **Closed 21 October 2026:** the diagnoses and procedures routes resolve the encounter through `loadEncounterInScope` and refuse a read with no encounter or patient filter; observations went through `nursing.getObservationsScoped` earlier; the laboratory routes pass `authContext` into `resolveFacilityScope`. `req.authContext` is assigned at `src/auth/auth.middleware.ts:144` — this was confirmed, not assumed. Covered by `test:security` (54 assertions). Details in §3.9.
+- **Still open:** the generic functions remain in `queries.ts` and would still return an unfiltered set if a future route called them; the remaining query functions have not been audited one by one; route-level permission middleware alone does not prevent cross-facility access.
+
+**Standing rule:** every read and write must enforce the authenticated user's actual scope using trusted server-side context and database relationships.
+
+### Laboratory result lifecycle — resolved
+- `addLabResult` writes `Pending Verification` with `verified_by`/`verified_at` null; publication is a separate, permission-gated step (`laboratory.results.verify`).
+- Migration `0008` made both columns nullable, so an unverified result is representable.
+- Covered by assertions in `test:nursing` and `test:migrations`. §6 keeps the original problem statement.
+
+
+### Permissions
+- The doctor default role catalogue has been updated, but effective permissions for existing database role assignments and facility-specific overrides remain unverified.
+- Runtime tests have not yet demonstrated that doctors can order tests while unauthorised users are prevented from entering or verifying results.
+- Permission checks and data-scope checks must both pass.
+
+### OPD and triage
+- The overall Step 6 workflow remains in progress.
+- End-to-end behaviour across queue, triage, consultation, diagnosis, laboratory orders and follow-up has not yet been fully verified.
+- Do not assume that every workflow is missing; inspect only the specific path needed for the next implementation.
+
+### Build performance
+- Vite reports a JavaScript bundle larger than 500 kB.
+- This is a performance optimisation concern, not a build failure.
+
+### Production readiness
+- HTTP hardening is in place: security headers, an origin allowlist and per-IP rate limits (§3.9). This is configuration, not a security review.
+- Independent security testing, a load test, a restore drill, monitoring, regression testing with users, client acceptance and production deployment all remain outstanding.
+- No claim of full DHA or regulatory compliance has been established by these changes.
+
+## 3. Work preservation
+
+Preserve all existing uncommitted source changes and backups, including:
+
+- `src/app.ts.backup-permissions-20261020-121641`
+- `src/auth/staff-role-catalogue.ts.backup-permissions-20261020-121641`
+- Existing analytics and patient-registration backups.
+- Existing changes to `src/components/PatientJourneyModal.tsx` and `src/components/modules/OutpatientModule.tsx`, along with their backups.
+- `backups/jalicaredb-before-patient-guardian-20261019.dump`
+- `backups/jalicaredb-backup-verification.txt`
+
+Do not reset the branch, delete backups, drop tables, truncate data or run destructive database-cleaning commands.
+
+## 4. Next actions — in priority order
+
+1. **Walk the screens in a browser.** Booking → ANC → labour → the chart → delivery → the billing banner → postnatal → immunisation. The services and the HTTP layer have been exercised; nobody has clicked through the screens, and no browser was available in the working environment.
+2. **Bring the database up to date.** `npm run db:status` first, then `npm run db:migrate` for whatever is pending, then `npm run db:status:all`. Additive only, `IF NOT EXISTS`, no destructive statements. Commands and failure guidance are in §10.3 and §10.6.
+3. **Audit the remaining query functions** for the pattern closed in §3.9: a route that passes a client-supplied `facilityId` or a bare record ID where a scope check belongs.
+4. **Verify effective permissions.** Test doctor, triage/reception and laboratory access, including facility overrides.
+5. **Have a clinician check the MCH field sets** against the MOH 405 card, and the immunisation ages against the current KEPI chart. Both are recorded as reference data, not validated clinical policy.
+6. **Update the tracker with evidence.** Mark a task Verified only when its own checks pass; "the test suite passes" is not evidence that a screen works.
+
+## 5. Current status summary
+
+| Area | Status |
+|---|---|
+| Foundation implementation | Completed; prior checks reported |
+| Authentication/session hydration | Fix implemented; previously reported working |
+| Patient registration changes | Implemented; prior build and type checks passed |
+| Analytics summary endpoint | Implemented; prior build and type checks passed |
+| Latest API permission middleware | Implemented; type check and build passed |
+| Tenant/facility scope for clinical and lab queries | Clinical paths closed and tested; remaining queries not audited |
+| Laboratory verification/publication workflow | Resolved (migration 0008) |
+| HTTP hardening (headers, CORS, rate limits) | Implemented and probed against a running server |
+| Maternity, postnatal care and immunisation | Implemented; 131 + 151 assertions and 40 live checks; not walked in a browser, no clinical review |
+| Maternity/ANC visibility | Was hidden by the facility module list and a decorative switch; catalogue, endpoint and screen now wired (53 assertions); not exercised against a live database |
+| Notifications | One centred, animated dialog for all 145 `showToast` call sites; queued, toned, dismissible; not watched in a browser |
+| DHA readiness | Evidence-based register of 46 requirements, critical-gap gating, read-only API and panel. Self-assessment **45.5%**, not ready to submit; no live database, browser or DHA sandbox |
+| Cross-facility exposure | Sixteen routes were unguarded or unscoped across two rounds; fixed and regression-tested. `departments` is now tenant-scoped as well. No exhaustive pass over the remaining id-addressed routes — each one read so far proves ownership, but that is not the same as all of them having been read |
+| Patient consent | Grant, list and revoke with purpose, method, scope and expiry; status derived, revocation recorded; visible as a tab on the patient record. **Not enforced on clinical reads** and the PostgreSQL path is untested |
+| Allergy safety | Structured registry with severity and status; the prescription route refuses to write an unacknowledged match (409), the override is audited, and the screen asks. Name matching only — **no drug-drug interaction engine** |
+| Identifier encryption | AES-256-GCM sealing of national ID and SHA number with an HMAC blind index, key from `FIELD_ENCRYPTION_KEY`, no default key, legacy plaintext passthrough. 48 assertions. **Database volume and backups remain unencrypted** |
+| Patient access logging | Every read, edit and FHIR export of a patient record writes an access row before the response goes out. The old mislabelled FHIR row in the patient-update route is removed |
+| End-to-end OPD/triage verification | In progress — no browser walkthrough yet |
+| Independent security testing, load test, restore drill | Not started |
+| Comprehensive regression testing and user acceptance | Not started |
+| Production deployment and handover | Not started |
+
+**Immediate focus:** walk two things in a browser against a live database, because neither has been clicked in this environment — **Configuration → Modular Features → Maternity → Save**, then **Maternity & MCH → Antenatal register** — and then continue the OPD/triage walkthrough. Avoid reopening completed work unless a specific defect is demonstrated.
+
+## 10. Migrations and full sync
+
+This is the end-to-end procedure for bringing a checkout and its database to the
+same state as the branch. It is written for the Windows/PowerShell development
+machine described in §1, and the same commands work on Linux.
+
+### 10.1 What is pending, and what each migration does
+
+What is pending depends on the database in front of you, not on this document.
+`npm run db:status` is the authority: it matches the journal against
+`drizzle.__drizzle_migrations` and prints `PENDING` beside anything not yet
+recorded. Migrations `0000`–`0007` form the base schema and are applied on every
+live database. The tail beyond that, and what each one adds:
+
+| Migration | What it adds | Touches existing data |
+|---|---|---|
+| `0008_lab_result_verification_state` | `lab_results.status`, and `verified_at` becomes nullable | Backfills `status` from `verified_by`; clears a verification time where there is no verifier |
+| `0009_billing_provenance_and_inpatient` | `admission_transfers`, `nursing_notes`, invoice numbering sequence, billing provenance columns, admission discharge columns | Adds columns only |
+| `0010_mobile_money_settlement` | Settlement state on `billing_payments` and the receipt sequence | Adds columns only |
+| `0011_insurance_claims_workflow` | Claim lines, adjudication and settlement columns | Adds columns only |
+| `0012_dha_integration_audit` | `dha_api_calls`, plus four `patients` columns for DHA eligibility | Adds columns only |
+| `0013_dha_service_mappings` | `dha_service_mappings` and its unique index | No |
+| `0014_professional_verification` | `staff_professional_credentials`, `professional_verification_events`, four indexes | No |
+| `0015_maternity_mch` | Six maternity tables and their indexes | No |
+| `0016_postnatal_immunisation` | `postnatal_visits`, `immunisation_records`, the unique dose index | No |
+
+From `0007` onward every `CREATE TABLE`, `CREATE INDEX`, `CREATE SEQUENCE` and
+`ADD COLUMN` is written with `IF NOT EXISTS`, none contains `DROP`, `TRUNCATE` or
+`DELETE`, and `npm run test:migrations` fails if one stops being guarded. That
+matters because a database whose schema was built with `drizzle-kit push` has the
+objects but not the migration rows: re-running a guarded migration is a no-op,
+re-running an unguarded one fails. Re-running any of the above is harmless.
+
+### 10.2 Take a backup first
+
+`0012` adds columns to `patients`. The migration does not rewrite rows, but a dump
+costs a minute and a mistake costs the clinic's records.
+
+```powershell
+New-Item -ItemType Directory -Force backups | Out-Null
+
+& "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" `
+  -h localhost -p 5432 -U postgres -Fc `
+  -f "backups\jalicaredb-before-0014-$(Get-Date -Format yyyyMMdd-HHmmss).dump" `
+  jalicaredb
+```
+
+If `pg_dump` is not at that path, `Get-ChildItem "C:\Program Files\PostgreSQL" -Recurse -Filter pg_dump.exe` will find it.
+
+### 10.3 The commands
+
+```powershell
+git pull
+npm install
+
+npm run db:status              # what the database still owes
+npm run db:migrate -- --dry-run   # the plan, executes nothing
+npm run db:migrate             # apply
+npm run db:status:all          # verify every structure exists
+```
+
+`npm run db:migrate` runs `scripts/migrate.ts`, not `drizzle-kit`. That is
+deliberate — see 10.5.
+
+After a successful migration, grant the permissions that were added since the
+last seed, then restart the server:
+
+```powershell
+npm run db:grant-inpatient-permissions
+npm run dev
+```
+
+### 10.4 Reading the output
+
+`db:status` prints each journal entry as applied (`✓`) or `PENDING`, then checks
+that the tables, columns, indexes and the invoice-number sequence that 0009
+creates actually exist. It exits `0` only when everything it checks is present, so
+it can gate a deploy.
+
+Expected result after migrating: **15 migrations recorded, 0 pending, every line
+`✓`**, and `db:status:all` reporting `READY`.
+
+### 10.5 Why not `drizzle-kit migrate`
+
+`npm run db:migrate:drizzle` is plain `drizzle-kit migrate`. It renders a spinner
+and calls `process.exit()` from inside its own error handler, so when a migration
+fails the Postgres error is never printed. On Windows the spinner is often not
+even visible: the command appears to do nothing and returns to the prompt, while
+`db:status` still says `PENDING`. That is the exact symptom that produced
+`scripts/migrate.ts`.
+
+The alternative is safe to keep for reference but should not be the one you rely
+on:
+
+```powershell
+npm run db:migrate:drizzle   # swallows errors — avoid
+```
+
+`scripts/migrate.ts` applies the same journal entries and writes the same
+tracking rows, but prints the plan first, names the migration and statement that
+failed with the Postgres code, detail and hint, and matches on the migration hash
+so a tracking table that has drifted ahead of the journal cannot make it skip
+work silently.
+
+### 10.6 When it fails
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Cannot reach the database (ECONNREFUSED)` | Postgres not running, or wrong port | Start the service; confirm `SQL_HOST`/`SQL_PORT` in `.env` |
+| `password authentication failed` | Wrong `SQL_ADMIN_PASSWORD` | Correct `.env`; the value is never printed by the scripts |
+| `Missing required environment variable: SQL_HOST` | No `.env`, or the file is not in the repo root | Copy `.env.example` to `.env` and fill it in |
+| `column "..." already exists` (`42701`) | The schema was built with `drizzle-kit push`, which writes objects but not migration rows | Fixed in `0008` on 21 October 2026 — re-run `npm run db:migrate`. Any future migration that hits this is a missing `IF NOT EXISTS`; report it rather than editing the table by hand |
+| `relation "..." does not exist` | An earlier migration was recorded but not applied (a half-run from `drizzle-kit`) | Re-run `npm run db:migrate`; the runner matches on hash **or** journal timestamp and re-applies |
+| `! N applied migration(s) have changed on disk` | A migration file was edited after this database applied it | No action. It keeps its recorded timestamp and does not run again; the change reaches only databases that have not applied it |
+| Command prints nothing and returns | You ran `db:migrate:drizzle` | Use `npm run db:migrate` |
+| BOM warning | A `.sql` file starts with a UTF-8 BOM | The runner strips it and says so; no action needed |
+
+Never run `npm run db:clean`. It exists for disposable databases only and will
+remove data.
+
+### 10.7 Verifying the application afterwards
+
+```powershell
+npm test                       # 1,489 assertions across ten suites
+npm run build
+npm run lint                   # one pre-existing Firebase TS2307 is expected
+```
+
+Then open the app and confirm three screens that depend on the new tables:
+**Interoperability** (readiness report loads), **Configuration → Staff
+Invitations** (selecting a clinical role offers *Verify registration*), and
+**Billing** (invoices still list).
+
+### 10.8 Full sync from a clean clone
+
+```powershell
+git clone https://github.com/fetronix/afyahub-hmis-kenya.git
+cd afyahub-hmis-kenya
+git checkout restructure/phase-2-foundation
+npm install
+Copy-Item .env.example .env      # then fill in the SQL_* values
+npm run db:migrate
+npm run db:seed                  # only on an empty database
+npm run dev
+```
+
+`db:seed` refuses to run against a database that already has tenants; it never
+truncates or overwrites. If you are restoring an existing clinic database, skip
+it entirely and restore the dump instead.

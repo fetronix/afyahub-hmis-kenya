@@ -74,10 +74,15 @@ export const TheatreModule: React.FC = () => {
     e.preventDefault();
     if (!caseForm.patientId) return;
 
+    if (!currentFacility?.id) {
+      showToast('Select a facility before saving this record.', { tone: 'warning' });
+      return;
+    }
+
     try {
       await api.createTheatreCase({
-        tenantId: currentFacility?.tenantId || 1,
-        facilityId: currentFacility?.id || 1,
+        tenantId: currentFacility?.tenantId,
+        facilityId: currentFacility.id,
         patientId: Number(caseForm.patientId),
         procedureName: caseForm.procedureName,
         theatreRoom: caseForm.theatreRoom,
@@ -130,10 +135,10 @@ export const TheatreModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Operating Theatre & Surgical Suite</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Operating Theatre & Surgical Suite</h1>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             Surgical list booking, WHO safety checklist compliance, theatre team allocation, and intra-operative notes.
           </p>
         </div>

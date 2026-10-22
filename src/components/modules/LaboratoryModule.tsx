@@ -15,7 +15,16 @@ import {
 } from 'lucide-react';
 
 export const LaboratoryModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh, authenticatedUser } = useHmis();
+
+  const permissions = new Set(authenticatedUser?.permissions ?? []);
+  const isSuperAdmin = Boolean(
+    authenticatedUser?.isSuperAdmin ||
+    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+  );
+  const can = (permission: string) =>
+    isSuperAdmin || permissions.has(permission);
+  const canVerifyLabResults = can('laboratory.results.verify');
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -25,12 +34,12 @@ export const LaboratoryModule: React.FC = () => {
 
   // Result Entry Form
   const [resultParam, setResultParam] = useState({
-    parameterName: 'Haemoglobin (Hb)',
-    measuredValue: '14.2',
-    unit: 'g/dL',
-    referenceRange: '13.0 - 17.5',
-    flag: 'Normal',
-    notes: 'Adequate red cell indices',
+    parameterName: '',
+    measuredValue: '',
+    unit: '',
+    referenceRange: '',
+    flag: '',
+    notes: '',
   });
 
   useEffect(() => {
@@ -40,7 +49,7 @@ export const LaboratoryModule: React.FC = () => {
         const [tests, orders, pList] = await Promise.all([
           api.getLabTests(currentFacility?.id),
           api.getLabOrders(currentFacility?.id),
-          api.getPatients(undefined, currentFacility?.id),
+          api.getPatients(currentTenant?.id, currentFacility?.id),
         ]);
         setLabTests(tests);
         setLabOrders(orders);
@@ -55,7 +64,7 @@ export const LaboratoryModule: React.FC = () => {
       }
     }
     loadLabData();
-  }, [currentFacility, refreshKey]);
+  }, [currentTenant, currentFacility, refreshKey]);
 
   const selectOrder = async (order: LabOrder) => {
     setSelectedOrder(order);
@@ -82,6 +91,11 @@ export const LaboratoryModule: React.FC = () => {
     e.preventDefault();
     if (!selectedOrder) return;
 
+    if (!resultParam.parameterName.trim() || !resultParam.measuredValue.trim()) {
+      showToast('Enter both a parameter name and an actual measured value.');
+      return;
+    }
+
     try {
       const created = await api.addLabResult({
         orderId: selectedOrder.id,
@@ -92,17 +106,29 @@ export const LaboratoryModule: React.FC = () => {
         referenceRange: resultParam.referenceRange,
         flag: resultParam.flag,
         notes: resultParam.notes,
-        verifiedBy: `${currentUser.name} (${currentUser.role})`,
       });
 
       setOrderResults(prev => [...prev, created]);
-      showToast('Lab result parameter entered and validated against reference ranges.');
+      showToast('Lab result saved. It has not been published by this action.');
       triggerRefresh();
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
     }
   };
 
+  const handleVerifyLabResult = async (result: LabResult) => {
+    if (!selectedOrder || result.status === 'Verified') return;
+
+    try {
+      await api.verifyLabResult(result.id);
+      const refreshedResults = await api.getLabResults(selectedOrder.id);
+      setOrderResults(refreshedResults);
+      showToast('Laboratory result verified successfully.');
+      triggerRefresh();
+    } catch (err: any) {
+      showToast(`Error: ${err.message || 'Could not verify laboratory result.'}`);
+    }
+  };
   const getPatient = (patientId: number) => {
     return patients.find(p => p.id === patientId);
   };
@@ -110,10 +136,10 @@ export const LaboratoryModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Clinical Pathology & Diagnostic Laboratory</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Clinical Pathology & Diagnostic Laboratory</h1>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             Specimen accessioning, LOINC test catalog, reference ranges, critical flag validation, and report publishing.
           </p>
         </div>
@@ -248,7 +274,7 @@ export const LaboratoryModule: React.FC = () => {
                 {/* Existing Results Table */}
                 <div>
                   <h3 className="text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    Verified Test Parameters & Measured Values
+                    Recorded Test Parameters & Measured Values
                   </h3>
                   <div className="border border-slate-200 rounded-lg overflow-x-auto">
                     <table className="w-full text-xs text-left min-w-[560px]">
@@ -260,12 +286,14 @@ export const LaboratoryModule: React.FC = () => {
                           <th className="px-3 py-2 font-medium">Reference Range</th>
                           <th className="px-3 py-2 font-medium">Flag</th>
                           <th className="px-3 py-2 font-medium">Verified By</th>
+                          <th className="px-3 py-2 font-medium">Status</th>
+                          <th className="px-3 py-2 font-medium">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-mono">
                         {orderResults.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="text-center py-6 text-slate-400 font-sans">
+                            <td colSpan={8} className="text-center py-6 text-slate-400 font-sans">
                               No results entered yet for this investigation. Use form below to record results.
                             </td>
                           </tr>
@@ -289,7 +317,31 @@ export const LaboratoryModule: React.FC = () => {
                                   {r.flag}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 font-sans text-2xs text-slate-500 truncate max-w-xs">{r.verifiedBy || 'Technologist'}</td>
+                              <td className="px-3 py-2 font-sans text-2xs text-slate-500 truncate max-w-xs">{r.verifiedBy || 'Not verified'}</td>
+                              <td className="px-3 py-2 font-sans">
+                                <span className={`px-2 py-1 rounded text-2xs font-semibold ${
+                                  r.status === 'Verified'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {r.status || 'Pending Verification'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 font-sans">
+                                {canVerifyLabResults && r.status !== 'Verified' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleVerifyLabResult(r)}
+                                    className="px-2 py-1 rounded bg-teal-700 text-white font-semibold hover:bg-teal-800 whitespace-nowrap"
+                                  >
+                                    Verify Result
+                                  </button>
+                                ) : r.status === 'Verified' ? (
+                                  <span className="text-emerald-700 font-semibold">Verified</span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
                             </tr>
                           ))
                         )}
@@ -303,7 +355,7 @@ export const LaboratoryModule: React.FC = () => {
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-4">
                 <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
                   <h3 className="font-bold text-slate-900 uppercase">
-                    Enter Parameter Result & Pathologist Verification
+                    Enter Laboratory Result
                   </h3>
                   <span className="text-2xs text-slate-400">Step 2 of Clinical Workflow</span>
                 </div>
@@ -362,6 +414,7 @@ export const LaboratoryModule: React.FC = () => {
                         onChange={(e) => setResultParam({ ...resultParam, flag: e.target.value })}
                         className="w-full px-3 py-1.5 border border-slate-200 rounded-md font-medium"
                       >
+                        <option value="">Not assessed</option>
                         <option value="Normal">Normal</option>
                         <option value="High">High</option>
                         <option value="Low">Low</option>
@@ -386,7 +439,7 @@ export const LaboratoryModule: React.FC = () => {
                       type="submit"
                       className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
                     >
-                      Publish Lab Result
+                      Save Result
                     </button>
                   </div>
                 </form>

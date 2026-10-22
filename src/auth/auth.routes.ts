@@ -1,4 +1,4 @@
-
+﻿
 import { Router } from "express";
 
 import {
@@ -7,6 +7,8 @@ import {
   logoutController,
   validateFacilityAdminInvitationController,
   acceptFacilityAdminInvitationController,
+  validateStaffInvitationController,
+  acceptStaffInvitationController,
 } from "./auth.controller";
 
 import { requireAuth } from "./auth.middleware";
@@ -36,6 +38,19 @@ router.post(
 );
 
 /*
+ * Public staff invitation endpoints.
+ * Keep these public so invited staff can validate and accept their link.
+ */
+router.get(
+  "/staff-invitations/validate",
+  validateStaffInvitationController,
+);
+
+router.post(
+  "/staff-invitations/accept",
+  acceptStaffInvitationController,
+);
+/*
  * Session validation requires a valid session.
  */
 router.get(
@@ -54,3 +69,5 @@ router.post(
 );
 
 export default router;
+
+

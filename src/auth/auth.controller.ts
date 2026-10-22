@@ -1,3 +1,8 @@
+﻿import {
+  validateStaffInvitation,
+  acceptStaffInvitation,
+  StaffInvitationError,
+} from "./staff-invitation.service";
 import type { Request, Response } from "express";
 
 import {
@@ -13,6 +18,7 @@ import {
 } from "./auth.validation";
 
 import type { LoginInput } from "./auth.types";
+import { loadAuthorizationContext } from "./authorization.service";
 
 
 import {
@@ -210,6 +216,17 @@ export async function sessionController(
       return;
     }
 
+    const authorizationContext = await loadAuthorizationContext(result.user.id);
+
+    if (!authorizationContext) {
+      res.status(403).json({
+        success: false,
+        error: "AUTHORIZATION_CONTEXT_UNAVAILABLE",
+        message: "Unable to load the user's authorization context.",
+      });
+      return;
+    }
+
     res.status(200).json({
       success: true,
       user: {
@@ -227,6 +244,14 @@ export async function sessionController(
           result.user.tenantId,
         facilityId:
           result.user.facilityId,
+        designation:
+          result.user.designation ?? null,
+        roles:
+          authorizationContext.roles,
+        permissions:
+          authorizationContext.permissions,
+        isSuperAdmin:
+          authorizationContext.isSuperAdmin,
         accountStatus:
           result.user.accountStatus,
         mustChangePassword:
@@ -455,3 +480,91 @@ export async function acceptFacilityAdminInvitationController(
     });
   }
 }
+
+// Public validation endpoint for a staff invitation link.
+export async function validateStaffInvitationController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const token = req.query.token;
+
+    if (typeof token !== "string" || !token.trim()) {
+      res.status(400).json({
+        success: false,
+        error: "INVALID_INVITATION_TOKEN",
+        message: "A valid invitation token is required.",
+      });
+      return;
+    }
+
+    const invitation = await validateStaffInvitation(token.trim());
+    res.status(200).json({ success: true, invitation });
+  } catch (error) {
+    if (error instanceof StaffInvitationError) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+      });
+      return;
+    }
+
+    console.error("Staff invitation validation error:", error);
+    res.status(500).json({
+      success: false,
+      error: "INTERNAL_SERVER_ERROR",
+      message: "Unable to validate this invitation.",
+    });
+  }
+}
+
+// Public endpoint: the invited staff member sets their own credentials.
+export async function acceptStaffInvitationController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const body = req.body ?? {};
+    const { token, username, password } = body;
+
+    if (
+      typeof token !== "string" ||
+      typeof username !== "string" ||
+      typeof password !== "string"
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "INVALID_REQUEST",
+        message: "Token, username and password are required.",
+      });
+      return;
+    }
+
+    const result = await acceptStaffInvitation({
+      token,
+      username,
+      password,
+    });
+
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof StaffInvitationError) {
+      res.status(error.statusCode).json({
+        success: false,
+        error: error.code,
+        message: error.message,
+      });
+      return;
+    }
+
+    console.error("Staff invitation acceptance controller error:", error);
+    res.status(500).json({
+      success: false,
+      error: "INTERNAL_SERVER_ERROR",
+      message: "Unable to accept this invitation.",
+    });
+  }
+}
+
+

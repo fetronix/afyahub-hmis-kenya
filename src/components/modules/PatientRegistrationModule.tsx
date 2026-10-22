@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
 import { Patient } from '../../types/index.ts';
 import {
   UserPlus,
@@ -13,11 +14,61 @@ import {
   Clock,
   ArrowRight,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  QrCode
 } from 'lucide-react';
 
+function calculatePatientAge(dateOfBirth: string): number | null {
+  if (!dateOfBirth) return null;
+
+  const parts = dateOfBirth.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+
+  const [year, month, day] = parts;
+  const birthDate = new Date(year, month - 1, day);
+
+  if (
+    birthDate.getFullYear() !== year ||
+    birthDate.getMonth() !== month - 1 ||
+    birthDate.getDate() !== day
+  ) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - year;
+
+  if (
+    today.getMonth() < month - 1 ||
+    (today.getMonth() === month - 1 && today.getDate() < day)
+  ) {
+    age--;
+  }
+
+  if (age < 0) return null;
+  return age;
+}
+
 export const PatientRegistrationModule: React.FC = () => {
-  const { currentTenant, currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, authenticatedUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+
+  /*
+   * Portal invitation.
+   *
+   * Offered after a registration and from the directory, never applied
+   * automatically: an account is created by the patient from a single-use
+   * link after the desk confirms who they are. The button is hidden when
+   * the signed-in user has no `portal.invite`, but the server checks that
+   * again — hiding a button is not a control.
+   */
+  const [portalPatient, setPortalPatient] = useState<{ id: number; name: string } | null>(null);
+
+  const canInviteToPortal = Boolean(
+    authenticatedUser?.permissions?.includes('portal.invite') ||
+      authenticatedUser?.isSuperAdmin,
+  );
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -28,29 +79,35 @@ export const PatientRegistrationModule: React.FC = () => {
     firstName: '',
     middleName: '',
     lastName: '',
-    dateOfBirth: '1995-01-01',
-    gender: 'Male',
-    phone: '+254 ',
+    dateOfBirth: '',
+    gender: '',
+    phone: '',
     email: '',
     nationalId: '',
     shaNumber: '',
-    bloodGroup: 'O+',
-    maritalStatus: 'Single',
+    guardianName: '',
+    guardianRelationship: '',
+    guardianPhone: '',
+    guardianShaNumber: '',
+    bloodGroup: '',
+    maritalStatus: '',
     occupation: '',
-    county: 'Nairobi',
-    subCounty: 'Westlands',
+    county: '',
+    subCounty: '',
     residentialAddress: '',
     emergencyContactName: '',
-    emergencyContactPhone: '+254 ',
-    emergencyContactRelationship: 'Spouse',
-    allergies: 'None known',
-    chronicConditions: 'None known',
+    emergencyContactPhone: '',
+    emergencyContactRelationship: '',
+    allergies: '',
+    chronicConditions: '',
     payerType: 'Self-Pay',
     insuranceProvider: '',
     policyNumber: '',
   });
 
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const patientAge = calculatePatientAge(formData.dateOfBirth);
+  const isMinor = patientAge !== null && patientAge < 18;
 
   useEffect(() => {
     async function loadPatients() {
@@ -90,35 +147,67 @@ export const PatientRegistrationModule: React.FC = () => {
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.firstName || !formData.lastName || !formData.phone) {
-      showToast('Please fill in required fields: First Name, Last Name, Phone');
+    if (!currentTenant?.id || !currentFacility?.id) {
+      showToast('Registration unavailable: select an authorized facility first.');
+      return;
+    }
+
+    const missingRequiredFields: string[] = [];
+
+    if (!formData.firstName.trim()) missingRequiredFields.push('First Name');
+    if (!formData.lastName.trim()) missingRequiredFields.push('Last Name');
+    if (!formData.dateOfBirth) missingRequiredFields.push('Date of Birth');
+    if (!formData.gender) missingRequiredFields.push('Gender');
+
+    if (missingRequiredFields.length > 0) {
+      showToast(`Please complete required fields: ${missingRequiredFields.join(', ')}`);
       return;
     }
 
     try {
-      const randomMrn = `MRN-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+      /*
+       * No MRN is sent: the server allocates the next number for this
+       * tenant. Four random digits had 9,000 possible values for the
+       * whole database, and a collision failed the registration.
+       */
       const newPatient = await api.createPatient({
         ...formData,
-        mrn: randomMrn,
-        tenantId: currentTenant?.id || 1,
-        facilityId: currentFacility?.id || 1,
+        phone: formData.phone.trim() || null,
+        email: formData.email.trim() || null,
+        nationalId: formData.nationalId.trim() || null,
+        shaNumber: formData.shaNumber.trim() || null,
+        bloodGroup: formData.bloodGroup.trim() || null,
+        guardianName: formData.guardianName.trim() || null,
+        guardianRelationship: formData.guardianRelationship.trim() || null,
+        guardianPhone: formData.guardianPhone.trim() || null,
+        guardianShaNumber: formData.guardianShaNumber.trim() || null,
+        registrationFacilityId: currentFacility.id,
       });
 
-      // Automatically add to Triage Queue
-      await api.createQueueItem({
-        tenantId: currentTenant?.id || 1,
-        facilityId: currentFacility?.id || 1,
+      // Automatically add to Triage Queue. The token is allocated by
+      // the server, because the browser cannot see the other desks.
+      const triageEntry = await api.createQueueItem({
+        tenantId: currentTenant.id,
+        facilityId: currentFacility.id,
         patientId: newPatient.id,
         queueType: 'Triage',
-        tokenNumber: `TRG-${Math.floor(100 + Math.random() * 900)}`,
         priority: 'Normal',
         status: 'Waiting',
         waitingTimeMinutes: 0,
       });
 
-      showToast(`Patient ${newPatient.firstName} ${newPatient.lastName} registered successfully (MRN: ${newPatient.mrn}) and routed to Triage queue!`);
+      showToast(
+        `Patient ${newPatient.firstName} ${newPatient.lastName} registered (MRN: ${newPatient.mrn}) and routed to Triage — token ${triageEntry.tokenNumber}.`
+      );
       setIsRegistering(false);
       triggerRefresh();
+
+      if (canInviteToPortal) {
+        setPortalPatient({
+          id: newPatient.id,
+          name: `${newPatient.firstName} ${newPatient.lastName}`,
+        });
+      }
     } catch (err: any) {
       showToast(`Registration failed: ${err.message}`);
     }
@@ -126,19 +215,16 @@ export const PatientRegistrationModule: React.FC = () => {
 
   const sendToQueue = async (patient: Patient, queueType: string) => {
     try {
-      const tokenPrefix = queueType.slice(0, 3).toUpperCase();
-      const token = `${tokenPrefix}-${Math.floor(100 + Math.random() * 900)}`;
-      await api.createQueueItem({
+      const entry = await api.createQueueItem({
         tenantId: patient.tenantId,
         facilityId: patient.facilityId,
         patientId: patient.id,
         queueType,
-        tokenNumber: token,
         priority: 'Normal',
         status: 'Waiting',
         waitingTimeMinutes: 0,
       });
-      showToast(`Patient ${patient.firstName} ${patient.lastName} added to ${queueType} queue (Token: ${token})`);
+      showToast(`Patient ${patient.firstName} ${patient.lastName} added to ${queueType} queue (Token: ${entry.tokenNumber})`);
       triggerRefresh();
     } catch (err: any) {
       showToast(`Queue failed: ${err.message}`);
@@ -148,10 +234,10 @@ export const PatientRegistrationModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 tracking-tight">Patient Identification & Registration</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Patient Identification & Registration</h1>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
             Search central medical records, check duplicates, verify SHA eligibility, and register returning/new patients.
           </p>
         </div>
@@ -235,14 +321,22 @@ export const PatientRegistrationModule: React.FC = () => {
                     onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   />
+                  {patientAge !== null && (
+                    <p className="mt-1 text-slate-500">
+                      Age: {patientAge} years
+                      {isMinor ? ' · Guardian details recommended' : ''}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-slate-700 font-medium mb-1">Gender *</label>
                   <select
+                    required
                     value={formData.gender}
                     onChange={(e) => handleInputChange('gender', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   >
+                    <option value="" disabled>Select gender</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
@@ -255,6 +349,7 @@ export const PatientRegistrationModule: React.FC = () => {
                     onChange={(e) => handleInputChange('bloodGroup', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   >
+                    <option value="">Unknown / Not tested</option>
                     <option value="O+">O Positive (O+)</option>
                     <option value="O-">O Negative (O-)</option>
                     <option value="A+">A Positive (A+)</option>
@@ -295,10 +390,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Phone Number *</label>
+                  <label className="block text-slate-700 font-medium mb-1">Phone Number (optional)</label>
                   <input
                     type="text"
-                    required
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
                     placeholder="+254 700 000 000"
@@ -347,6 +441,71 @@ export const PatientRegistrationModule: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {isMinor && (
+              <div className="pt-4 border-t border-slate-100">
+                <div className="text-2xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Parent / Guardian Details
+                </div>
+                <p className="text-slate-500 mb-3">
+                  Patient is under 18. Record the responsible adult separately from the patient's own details.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Guardian Full Name</label>
+                    <input
+                      type="text"
+                      value={formData.guardianName}
+                      onChange={(e) => handleInputChange('guardianName', e.target.value)}
+                      placeholder="Parent or guardian's full name"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Relationship to Patient</label>
+                    <select
+                      value={formData.guardianRelationship}
+                      onChange={(e) => handleInputChange('guardianRelationship', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    >
+                      <option value="">Select relationship</option>
+                      <option value="Mother">Mother</option>
+                      <option value="Father">Father</option>
+                      <option value="Guardian">Legal / Other Guardian</option>
+                      <option value="Grandparent">Grandparent</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Guardian Phone (optional)</label>
+                    <input
+                      type="text"
+                      value={formData.guardianPhone}
+                      onChange={(e) => handleInputChange('guardianPhone', e.target.value)}
+                      placeholder="+254 700 000 000"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Guardian SHA / Member Number (optional)</label>
+                    <input
+                      type="text"
+                      value={formData.guardianShaNumber}
+                      onChange={(e) => handleInputChange('guardianShaNumber', e.target.value)}
+                      placeholder="Guardian's number, not the child's"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    />
+                    <p className="mt-1 text-slate-500">
+                      Recording a number does not verify SHA membership or coverage.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Section 3: Next of Kin & Payer */}
             <div className="pt-4 border-t border-slate-100">
@@ -529,12 +688,12 @@ export const PatientRegistrationModule: React.FC = () => {
                               setSelectedPatient(p);
                               setIsJourneyModalOpen(true);
                             }}
-                            className="font-semibold text-slate-900 hover:text-blue-700 text-left"
+                            className="block font-semibold text-slate-900 hover:text-blue-700 text-left"
                           >
                             {p.firstName} {p.middleName ? `${p.middleName} ` : ''}{p.lastName}
                           </button>
                           {p.allergies && p.allergies !== 'None known' && (
-                            <span className="block text-2xs text-rose-600 font-medium">
+                            <span className="mt-1 block max-w-[18rem] rounded-md border border-rose-100 bg-rose-50 px-2 py-1 text-2xs font-medium leading-snug text-rose-700">
                               Allergy: {p.allergies}
                             </span>
                           )}
@@ -587,6 +746,21 @@ export const PatientRegistrationModule: React.FC = () => {
                             >
                               + Doctor
                             </button>
+                            {canInviteToPortal ? (
+                              <button
+                                onClick={() =>
+                                  setPortalPatient({
+                                    id: p.id,
+                                    name: `${p.firstName} ${p.lastName}`,
+                                  })
+                                }
+                                className="px-2 py-1 text-2xs font-medium text-blue-800 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                                title="Activate patient portal / send invitation"
+                              >
+                                <QrCode className="mr-0.5 inline h-3 w-3" />
+                                Portal
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -598,6 +772,16 @@ export const PatientRegistrationModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {portalPatient ? (
+        <PortalInviteDialog
+          patientId={portalPatient.id}
+          patientName={portalPatient.name}
+          open
+          onClose={() => setPortalPatient(null)}
+          onChanged={() => triggerRefresh()}
+        />
+      ) : null}
     </div>
   );
 };
