@@ -1,10 +1,29 @@
 ﻿import 'dotenv/config';
 
+/**
+ * Where the variable has to live, in the words of the person who will
+ * read the error.
+ *
+ * This throws during module evaluation, before the server can install
+ * an error handler, so the message itself has to carry the fix. On a
+ * cPanel account "Missing required environment variable: SQL_HOST" is
+ * not enough: the same variable is set in the panel, not in the repo,
+ * and nothing in the repository says so.
+ */
+function configurationHint(name: string): string {
+  const where =
+    process.env.NODE_ENV === 'production'
+      ? 'cPanel -> Setup Node.js App -> Environment variables, then restart the application'
+      : 'the local .env file (copy .env.example)';
+
+  return `Missing required environment variable: ${name}. Set ${name} in ${where}.`;
+}
+
 function requiredString(name: string): string {
   const value = process.env[name];
 
   if (!value || value.trim().length === 0) {
-    throw new Error(`Missing required environment variable: ${name}`);
+    throw new Error(configurationHint(name));
   }
 
   return value;
@@ -15,8 +34,12 @@ function requiredPort(name: string): number {
   const port = Number(rawValue);
 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    /*
+     * The value is not echoed: a mis-pasted password or connection
+     * string must not land in a log file that support can read.
+     */
     throw new Error(
-      `${name} must be an integer between 1 and 65535.`,
+      `${name} must be an integer between 1 and 65535. Received a value that is not a port number.`,
     );
   }
 
