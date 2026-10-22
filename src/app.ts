@@ -4548,7 +4548,14 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
   };
 
   const validateTariffInput = (input: any) => {
-    const code = typeof input?.code === 'string' ? input.code.trim() : '';
+    /*
+     * Stored in capitals, always. The billing engine looks codes up in
+     * capitals; a row saved as "consultation" would be invisible to it
+     * and the visit would bill nothing.
+     */
+    const code = typeof input?.code === 'string'
+      ? input.code.trim().toUpperCase()
+      : '';
     const description = typeof input?.description === 'string'
       ? input.description.trim()
       : '';

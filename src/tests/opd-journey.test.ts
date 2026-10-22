@@ -233,6 +233,35 @@ function testEveryStageIsCharged(): void {
     billing.includes("reason: 'TARIFF_NOT_CONFIGURED'"),
     'a missing tariff is reported, not invented',
   );
+
+  /*
+   * The failure the tariff screen exists to prevent: a code that is
+   * stored in one case and looked up in another bills nothing, silently.
+   * Both ends are held here so neither can regress alone.
+   */
+  assert(
+    billing.includes("sql`upper(${schema.facilityServiceTariffs.code})`"),
+    'tariff lookup compares upper-cased codes',
+  );
+  assert(
+    billing.includes('request.codes.join'),
+    'the failure names every code that was tried',
+  );
+
+  const tariffInput = app.slice(
+    app.indexOf('const validateTariffInput'),
+    app.indexOf('const facilityHasTariffModule'),
+  );
+  assert(
+    tariffInput.includes('.trim().toUpperCase()'),
+    'tariff codes are stored in capitals, whatever the caller sends',
+  );
+
+  const panel = source('src/components/modules/FacilityServiceTariffsPanel.tsx');
+  assert(
+    panel.includes('BILLING_FAMILIES') && panel.includes('not priced'),
+    'the tariff screen shows which services will not bill',
+  );
 }
 
 /* ============================================================

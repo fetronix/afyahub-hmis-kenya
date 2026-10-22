@@ -30,6 +30,26 @@ const SHA_STATUSES = [
   "Conditional",
 ];
 
+/*
+ * The families the automatic billing prices, and the codes it tries for
+ * each. Kept beside the screen the codes are typed on, because the only
+ * way to answer "will my visit bill?" is to compare the two.
+ */
+const BILLING_FAMILIES: Array<{
+  label: string;
+  codes: string[];
+  prefixes: string[];
+}> = [
+  { label: "Consultation", codes: ["OPD-CONSULT", "CONSULTATION", "CONSULT", "OUTPATIENT"], prefixes: ["CONSULT-"] },
+  { label: "Laboratory", codes: ["LAB-GENERAL", "LABORATORY"], prefixes: ["LAB-"] },
+  { label: "Radiology", codes: ["RAD-GENERAL", "RADIOLOGY", "IMAGING"], prefixes: ["RAD-"] },
+  { label: "Procedure", codes: ["PROCEDURE", "PROC-GENERAL"], prefixes: ["PROC-"] },
+  { label: "Pharmacy", codes: ["PHARMACY", "MEDICATION"], prefixes: ["DRUG-"] },
+  { label: "Admission", codes: ["ADMISSION", "INPATIENT-ADMISSION"], prefixes: ["ADMIT-"] },
+  { label: "Bed-day", codes: ["BED-DAY", "INPATIENT-BED-DAY", "WARD-DAY", "BED"], prefixes: ["BED-"] },
+  { label: "Maternity delivery", codes: ["DELIVERY", "MATERNITY-DELIVERY"], prefixes: ["DELIVERY-"] },
+];
+
 const EMPTY_FORM = {
   code: "",
   description: "",
@@ -61,6 +81,25 @@ export const FacilityServiceTariffsPanel: React.FC<
     enabledModules.includes(id),
   );
   const financeEnabled = enabledModules.includes("finance");
+
+  /*
+   * A family is priced when at least one active tariff matches one of its
+   * codes, or starts with one of its prefixes (`LAB-CBC` prices the
+   * laboratory family even without a `LAB-GENERAL` fallback).
+   */
+  const coverage = BILLING_FAMILIES.map((family) => {
+    const match = tariffs.find(
+      (tariff) =>
+        tariff.isActive &&
+        (family.codes.includes(tariff.code.toUpperCase()) ||
+          family.prefixes.some((prefix) =>
+            tariff.code.toUpperCase().startsWith(prefix),
+          )),
+    );
+
+    return { ...family, match: match ?? null };
+  });
+  const unpriced = coverage.filter((entry) => !entry.match);
 
   const loadTariffs = useCallback(async () => {
     setLoading(true);
@@ -275,6 +314,46 @@ export const FacilityServiceTariffsPanel: React.FC<
           The first active tariff whose code matches wins. A service with no
           matching code is recorded on the clinical record and <strong>not</strong> billed.
         </p>
+
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-semibold text-slate-800">
+            This facility right now:{" "}
+            {unpriced.length === 0 ? (
+              <span className="text-emerald-700">every family below is priced</span>
+            ) : (
+              <span className="text-amber-700">
+                {unpriced.length} of {coverage.length} families have no matching tariff
+              </span>
+            )}
+          </p>
+
+          <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
+            {coverage.map((entry) => (
+              <li
+                key={entry.label}
+                className="flex items-baseline justify-between gap-2 text-xs"
+              >
+                <span className="text-slate-600">{entry.label}</span>
+                {entry.match ? (
+                  <span className="font-mono text-emerald-700">
+                    {entry.match.code} · {entry.match.fee}
+                  </span>
+                ) : (
+                  <span className="text-amber-700">not priced</span>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          {unpriced.length > 0 && (
+            <p className="mt-2 text-2xs leading-relaxed text-slate-500">
+              An unpriced service is still recorded and still reaches the
+              patient&apos;s invoice only when a code matches. Adding a fallback
+              such as <span className="font-mono">OPD-CONSULT</span> is what makes
+              a consultation bill itself.
+            </p>
+          )}
+        </div>
         <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
           <div>
             <dt className="font-semibold text-slate-700">Consultation</dt>

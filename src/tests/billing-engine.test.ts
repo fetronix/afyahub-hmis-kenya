@@ -14,6 +14,7 @@ import {
   bedDayTariffCodes,
   buildIdempotencyKey,
   fromCents,
+  pickTariffForCodes,
   toCents,
 } from '../billing/billing.service.ts';
 
@@ -193,6 +194,86 @@ function testTariffCodes(): void {
 }
 
 /* ============================================================
+   5. TARIFF MATCHING
+   ============================================================ */
+
+function testTariffMatching(): void {
+  const row = (code: string, fee = '500.00') => ({
+    id: 1,
+    code,
+    description: code,
+    fee,
+    unit: 'Service',
+  });
+
+  const consultation = ['OPD-CONSULT', 'CONSULTATION', 'CONSULT'];
+
+  assertEqual(
+    pickTariffForCodes([row('CONSULT')], consultation)?.code,
+    'CONSULT',
+    'a generic consultation tariff prices a visit',
+  );
+
+  /*
+   * Priority order is the caller's, not the database's. If both exist,
+   * the more specific code wins however the rows come back.
+   */
+  assertEqual(
+    pickTariffForCodes(
+      [row('CONSULT'), row('OPD-CONSULT')],
+      consultation,
+    )?.code,
+    'OPD-CONSULT',
+    'OPD-CONSULT beats CONSULT regardless of row order',
+  );
+
+  /*
+   * The silent-billing bug: a code saved in lower case used to match
+   * nothing, so the visit started and no invoice line appeared.
+   */
+  assertEqual(
+    pickTariffForCodes([row('opd-consult')], consultation)?.code,
+    'opd-consult',
+    'case does not hide a configured tariff',
+  );
+
+  assertEqual(
+    pickTariffForCodes([row(' Consultation ')], consultation)?.code,
+    ' Consultation ',
+    'a padded code still matches after trimming',
+  );
+
+  /*
+   * An exact-case row is preferred within one priority, so a duplicate
+   * created before the write side uppercased does not shadow the row the
+   * configuration screen wrote.
+   */
+  const exact = pickTariffForCodes(
+    [row('consult'), row('CONSULT')],
+    consultation,
+  );
+  assertEqual(exact?.code, 'CONSULT', 'exact case wins over a case variant');
+
+  assertEqual(
+    pickTariffForCodes([], consultation),
+    null,
+    'no rows is null, not an error',
+  );
+  assertEqual(
+    pickTariffForCodes([row('SOMETHING-ELSE')], consultation),
+    null,
+    'an unrelated code does not price a consultation',
+  );
+  assertEqual(
+    pickTariffForCodes([row('CONSULT')], []) ,
+    null,
+    'no candidates is null',
+  );
+
+  console.log('  ✓ Tariff matching passed');
+}
+
+/* ============================================================
    RUNNER
    ============================================================ */
 
@@ -207,6 +288,7 @@ function run(): void {
   testIdempotency();
   testBedDays();
   testTariffCodes();
+  testTariffMatching();
 
   console.log('');
   console.log('==============================================');

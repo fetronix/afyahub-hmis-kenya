@@ -185,6 +185,12 @@ export async function resolveTariff(
 
   if (candidates.length === 0) return null;
 
+  /*
+   * Compare upper-cased. Tariff codes are written in capitals by the
+   * configuration screen, but rows created by a script, an import or an
+   * older build can be lower case — and a code that differs only in case
+   * used to bill nothing without saying why.
+   */
   const rows = await executor
     .select({
       id: schema.facilityServiceTariffs.id,
@@ -198,15 +204,49 @@ export async function resolveTariff(
       and(
         eq(schema.facilityServiceTariffs.facilityId, facilityId),
         eq(schema.facilityServiceTariffs.isActive, true),
-        inArray(schema.facilityServiceTariffs.code, candidates),
+        inArray(
+          sql`upper(${schema.facilityServiceTariffs.code})`,
+          candidates.map((code) => code.toUpperCase()),
+        ),
       ),
     );
 
   if (rows.length === 0) return null;
 
-  /* Preserve the caller's priority order. */
+  return pickTariffForCodes(rows, candidates);
+}
+
+/**
+ * Choose a tariff from already-fetched rows.
+ *
+ * Split out of `resolveTariff` so the rule can be tested without a
+ * database — the ordering is the part that bites: `OPD-CONSULT` must be
+ * preferred over `CONSULT` even when the rows arrive in another order,
+ * and a row typed `opd-consult` must not be invisible.
+ *
+ * Exact case wins within one priority; otherwise case is ignored.
+ */
+export function pickTariffForCodes<T extends { code: string }>(
+  rows: readonly T[],
+  codes: readonly string[],
+): T | null {
+  const candidates = codes
+    .map((code) => code?.trim())
+    .filter((code): code is string => Boolean(code));
+
+  if (candidates.length === 0 || rows.length === 0) return null;
+
   for (const candidate of candidates) {
-    const match = rows.find((row) => row.code === candidate);
+    const exact = rows.find((row) => row.code.trim() === candidate);
+
+    if (exact) return exact;
+  }
+
+  for (const candidate of candidates) {
+    const upper = candidate.toUpperCase();
+    const match = rows.find(
+      (row) => row.code.trim().toUpperCase() === upper,
+    );
 
     if (match) return match;
   }
@@ -424,7 +464,7 @@ export async function chargeForService(
       reason: 'TARIFF_NOT_CONFIGURED',
       message: tariff
         ? `Tariff ${tariff.code} is priced at zero.`
-        : `No active tariff is configured for ${request.codes[0] ?? request.sourceType}. The service was recorded but not billed.`,
+        : `No active tariff matched ${request.codes.join(', ')} for this facility. Add one under Configuration → Services & Tariffs; the service was recorded but not billed.`,
     };
   }
 
