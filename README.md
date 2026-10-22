@@ -1602,8 +1602,9 @@ its row.
 ### 3.29 Stock expiry, the revenue split, role saves, and the codes to bill with
 
 Five requests, one round. Nothing was seeded, no price was changed, and no
-migration was executed — everything below is code plus the SQL that a database
-administrator still has to run.
+migration was executed. This round adds no migration of its own: expiry lives on
+`inventory_batches`, payments already carry a method, and the role tables already
+exist. The SQL still outstanding is 0020–0022 from the previous rounds.
 
 #### 1. An expiry date on the stock item, and a countdown that can be trusted
 
