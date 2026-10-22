@@ -70,6 +70,17 @@ export interface ChargeRequest {
    */
   codes: readonly string[];
 
+  /**
+   * Explicit links the facility made on the tariff screen, most specific
+   * first: `['LABORATORY:LAB-CBC', 'LABORATORY']`, `['CONSULTATION']`.
+   *
+   * Tried *before* `codes`. A facility that says "OPD-001 is the
+   * consultation" has answered the question the engine would otherwise
+   * have to guess at, and a guess between a 150 tariff and a 300 one is
+   * not a guess worth making.
+   */
+  serviceKeys?: readonly string[];
+
   quantity?: number;
 
   sourceType: BillingSourceType;
@@ -182,6 +193,97 @@ export interface ResolvedTariff {
   description: string;
   fee: string;
   unit: string;
+}
+
+/**
+ * True when the database predates migration 0019.
+ *
+ * A development database can be a migration behind, and a missing
+ * `billing_key` column must not turn every charge into a 500. The
+ * lookup degrades to code matching and says so once in the log; the
+ * tariff write path refuses to pretend a link was saved.
+ */
+export function isMissingBillingKeyColumn(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+
+  return code === '42703' || code === '42P01';
+}
+
+let warnedMissingBillingKey = false;
+
+/**
+ * Find the tariff the facility linked to this automatic charge.
+ *
+ * The keys are matched case-insensitively and in the caller's priority
+ * order, so `LABORATORY:LAB-CBC` beats the generic `LABORATORY` even if
+ * both rows come back together. Only active tariffs count.
+ */
+export async function resolveLinkedTariff(
+  executor: Executor,
+  facilityId: number,
+  serviceKeys: readonly string[] | undefined,
+): Promise<ResolvedTariff | null> {
+  const keys = (serviceKeys ?? [])
+    .map((key) => key?.trim())
+    .filter((key): key is string => Boolean(key));
+
+  if (keys.length === 0) return null;
+
+  try {
+    const rows = await executor
+      .select({
+        id: schema.facilityServiceTariffs.id,
+        code: schema.facilityServiceTariffs.code,
+        description: schema.facilityServiceTariffs.description,
+        fee: schema.facilityServiceTariffs.fee,
+        unit: schema.facilityServiceTariffs.unit,
+        billingKey: schema.facilityServiceTariffs.billingKey,
+      })
+      .from(schema.facilityServiceTariffs)
+      .where(
+        and(
+          eq(schema.facilityServiceTariffs.facilityId, facilityId),
+          eq(schema.facilityServiceTariffs.isActive, true),
+          inArray(
+            sql`upper(${schema.facilityServiceTariffs.billingKey})`,
+            keys.map((key) => key.toUpperCase()),
+          ),
+        ),
+      );
+
+    if (rows.length === 0) return null;
+
+    for (const key of keys) {
+      const upper = key.toUpperCase();
+      const match = rows.find(
+        (row) => (row.billingKey ?? '').trim().toUpperCase() === upper,
+      );
+
+      if (match) {
+        return {
+          id: match.id,
+          code: match.code,
+          description: match.description,
+          fee: match.fee,
+          unit: match.unit,
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    if (!isMissingBillingKeyColumn(error)) throw error;
+
+    if (!warnedMissingBillingKey) {
+      warnedMissingBillingKey = true;
+
+      console.warn(
+        'Billing: facility_service_tariffs.billing_key is missing. Run `npm run db:migrate` (migration 0019) to enable linked automatic billing. Falling back to code matching.',
+      );
+    }
+
+    return null;
+  }
 }
 
 /**
@@ -463,11 +565,14 @@ export async function chargeForService(
 
   /* ---- 1. Price it from the facility tariff ---------------------- */
 
-  const tariff = await resolveTariff(
-    executor,
-    request.facilityId,
-    request.codes,
-  );
+  /*
+   * A link the facility made beats a code the engine guessed. Try it
+   * first, then fall back to the code candidates so every tariff that
+   * worked before this column existed still works.
+   */
+  const tariff =
+    (await resolveLinkedTariff(executor, request.facilityId, request.serviceKeys))
+    ?? (await resolveTariff(executor, request.facilityId, request.codes));
 
   const unitPriceCents = tariff
     ? toCents(tariff.fee)
@@ -479,7 +584,7 @@ export async function chargeForService(
       reason: 'TARIFF_NOT_CONFIGURED',
       message: tariff
         ? `Tariff ${tariff.code} is priced at zero. The service was recorded but not billed.`
-        : `No active tariff matched ${summariseCodes(request.codes)} for this facility. Add one under Configuration → Services & Tariffs; the service was recorded but not billed.`,
+        : `No active tariff matched ${summariseCodes(request.codes)} for this facility, and no tariff is linked to this service. Add one under Configuration → Services & Tariffs, or set “Used for automatic billing” on a tariff you already have; the service was recorded but not billed.`,
     };
   }
 

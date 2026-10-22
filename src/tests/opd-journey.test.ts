@@ -302,6 +302,62 @@ function testEveryStageIsCharged(): void {
     app.includes('procedureTariffCodeCandidates({'),
     'a procedure is priced from its own code as well as its name',
   );
+
+  /*
+   * The consultation that billed nothing because the facility numbered
+   * its tariffs OPD-001. Every automatic charge now offers the link the
+   * facility made on the tariff screen, and the engine tries it before
+   * the codes.
+   */
+  for (const [label, key] of [
+    ["the consultation", "billingServiceKeys('CONSULTATION'"],
+    ["the admission", "billingServiceKeys('ADMISSION'"],
+    ["the bed-day", "billingServiceKeys('BED_DAY'"],
+    ["the delivery", "billingServiceKeys('DELIVERY'"],
+    ["the prescription", "billingServiceKeys('PHARMACY'"],
+    ["the procedure", "billingServiceKeys('PROCEDURE'"],
+  ] as const) {
+    assert(app.includes(key), `${label} offers a billing link`);
+  }
+
+  assert(
+    charges.includes("billingServiceKeys('LABORATORY'"),
+    'a laboratory order offers a billing link',
+  );
+  assert(
+    charges.includes("billingServiceKeys('RADIOLOGY'"),
+    'a radiology order offers a billing link',
+  );
+
+  assert(
+    billing.includes('resolveLinkedTariff') &&
+      billing.indexOf('resolveLinkedTariff(executor, request.facilityId') <
+        billing.indexOf('resolveTariff(executor, request.facilityId, request.codes)'),
+    'a link the facility made is tried before a code the engine guessed',
+  );
+
+  /*
+   * A development database one migration behind must not turn every
+   * charge into a 500.
+   */
+  assert(
+    billing.includes("code === '42703'") && billing.includes('warnedMissingBillingKey'),
+    'a database without migration 0019 degrades to code matching, once, with a warning',
+  );
+
+  /* The write path stores the link, and refuses a duplicate. */
+  assert(
+    app.includes('billingKey: input.billingKey'),
+    'the tariff write stores the link',
+  );
+  assert(
+    app.includes('TARIFF_BILLING_KEY_TAKEN'),
+    'two active tariffs cannot answer the same automatic charge',
+  );
+  assert(
+    app.includes('MIGRATION_0019_REQUIRED'),
+    'a database without the column says which migration is missing',
+  );
 }
 
 /* ============================================================

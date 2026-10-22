@@ -18,7 +18,7 @@ and gives the exact blocker.
 |---|---|---|
 | Type check | `npm run lint` (`tsc --noEmit`) | **PASS** — no output, exit 0 |
 | Production build | `npm run build` (`vite build`) | **PASS** — **1,707 modules**, 559–710 ms across three runs (22 Oct) |
-| Test suite | `npm test` | **PASS** — **24 suites, 2,990 assertion statements** (2,977 numbered + 13 catalogue `PASS:` lines) |
+| Test suite | `npm test` | **PASS** — **24 suites, 3,038 assertion statements** (3,025 numbered + 13 catalogue `PASS:` lines) |
 | Portal suite | `npm run test:patient-portal` | **PASS** — 197 assertions |
 | Migration files | `npm run test:migrations` | **PASS** — 692 assertions (0017 and 0018 included, still unapplied) |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
@@ -63,13 +63,14 @@ Consent and allergy: 80 assertions passed.
 Patient portal policy: 197 assertions passed.
 ```
 
-2,977 numbered assertions across 23 counting suites plus 13 catalogue `PASS:` lines = **2,990**;
+3,025 numbered assertions across 23 counting suites plus 13 catalogue `PASS:` lines = **3,038**;
 **24 suites, no failures**.
 
-The audit round counted 2,717. The increase to 2,990 is the portal suite (197),
-the billing and laboratory tariff-code suites (26), the portal mount-order and
-activation-link checks (19), and small additions elsewhere; no assertion was
-removed.
+The audit round counted 2,717. The increase to 3,038 is the portal suite (197),
+the billing and laboratory tariff-code suites (48, including the tariff-link
+vocabulary), the portal mount-order and activation-link checks (19), the
+migration-file checks for 0019 (14), and small additions elsewhere; no assertion
+was removed.
 
 **A correction to an earlier count.** Revision 4 of this document said "2,912
 numbered + 13 catalogue `PASS:` lines = 2,925". The numbered total was measured

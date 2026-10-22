@@ -18,6 +18,9 @@ import {
   toCents,
 } from '../billing/billing.service.ts';
 import {
+  billingServiceKeys,
+  buildBillingKey,
+  isValidBillingKey,
   labTariffCodeCandidates,
   normaliseTariffCode,
   procedureTariffCodeCandidates,
@@ -372,6 +375,75 @@ function testLabCodes(): void {
 }
 
 /* ============================================================
+   7. BILLING LINKS
+   ============================================================ */
+
+function testBillingLinks(): void {
+  /*
+   * The reported bug: the facility numbered its price list OPD-001 and
+   * the engine looked for OPD-CONSULT, so a 150 consultation billed
+   * nothing. The link is how that is resolved without guessing between
+   * OPD-001 (150) and OPD-002 (300).
+   */
+  assertEqual(
+    buildBillingKey('CONSULTATION'),
+    'CONSULTATION',
+    'a family with no detail is a bare key',
+  );
+  assertEqual(
+    buildBillingKey('laboratory', 'lab-cbc'),
+    'LABORATORY:LAB-CBC',
+    'the family and detail are normalised',
+  );
+  assertEqual(
+    buildBillingKey('RADIOLOGY', 'Obstetric ultrasound'),
+    'RADIOLOGY:OBSTETRIC-ULTRASOUND',
+    'a study name becomes a stable key',
+  );
+  assertEqual(buildBillingKey('', ''), null, 'no family, no key');
+  assertEqual(
+    buildBillingKey('CONSULT', ''),
+    null,
+    'an unknown family is refused rather than stored',
+  );
+
+  assert(isValidBillingKey('CONSULTATION'), 'a bare key is valid');
+  assert(isValidBillingKey('LABORATORY:LAB-CBC'), 'a key with a detail is valid');
+  assert(!isValidBillingKey('CONSULTATION:'), 'an empty detail is not');
+  assert(!isValidBillingKey('BOGUS'), 'an unknown family is not');
+  assert(!isValidBillingKey('LABORATORY:with space'), 'an unnormalised detail is not');
+  assert(!isValidBillingKey(null), 'null is not a key');
+
+  /*
+   * Order matters: the specific key must be tried before the generic one,
+   * or a facility with both a per-test price and a fallback would always
+   * get the fallback.
+   */
+  const labKeys = billingServiceKeys('LABORATORY', ['LAB-CBC', 'Full blood count']);
+
+  assertEqual(labKeys[0], 'LABORATORY:LAB-CBC', 'the code is tried first');
+  assertEqual(
+    labKeys[1],
+    'LABORATORY:FULL-BLOOD-COUNT',
+    'then the normalised name',
+  );
+  assertEqual(labKeys[labKeys.length - 1], 'LABORATORY', 'the fallback is last');
+  assertEqual(new Set(labKeys).size, labKeys.length, 'no key is repeated');
+
+  const consultKeys = billingServiceKeys('CONSULTATION');
+  assertEqual(consultKeys.length, 1, 'a consultation has one key');
+  assertEqual(consultKeys[0], 'CONSULTATION', 'and it is the bare family');
+
+  /*
+   * A duplicated detail must not produce a duplicate key.
+   */
+  const doubled = billingServiceKeys('LABORATORY', ['LAB-CBC', 'lab-cbc']);
+  assertEqual(doubled.length, 2, 'a repeated detail collapses to one key');
+
+  console.log('  ✓ Billing links passed');
+}
+
+/* ============================================================
    RUNNER
    ============================================================ */
 
@@ -388,6 +460,7 @@ function run(): void {
   testTariffCodes();
   testTariffMatching();
   testLabCodes();
+  testBillingLinks();
 
   console.log('');
   console.log('==============================================');

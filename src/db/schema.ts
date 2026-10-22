@@ -3826,6 +3826,20 @@ export const facilityServiceTariffs = pgTable(
     fee: numeric('fee', { precision: 10, scale: 2 }).notNull(),
     shaStatus: text('sha_status').notNull().default('Not Assessed'),
     shaNotes: text('sha_notes'),
+    /*
+     * Which automatic charge this tariff answers, if any.
+     *
+     * Facilities number their tariffs (`OPD-001`, `LAB-006`) rather than
+     * using the codes the billing engine looks for, so a price list can
+     * exist and still bill nothing. This column records the link the
+     * facility makes, once, instead of the engine guessing between
+     * OPD-001 (150) and OPD-002 (300).
+     *
+     * NULL means "not linked"; the tariff is still reachable by code.
+     * See migration 0019 and `src/billing/tariff-codes.ts` for the
+     * vocabulary.
+     */
+    billingKey: text('billing_key'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

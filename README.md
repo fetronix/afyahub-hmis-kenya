@@ -991,7 +991,7 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
-**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 2,990
+**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 3,038
 assertion statements**, no failures. `test:compliance` 230 assertions, `test:route-scope` 66,
 `test:field-encryption` 48, `test:consent-allergy` 80, `test:patient-portal` 197,
 `test:migrations` 692.
@@ -1145,7 +1145,7 @@ time-limited, revocable sharing to a named recipient — which the screen states
 health information exchange.
 
 **What was verified.** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24 scripts and
-2,990 assertion statements including 197 new portal assertions. **What was not:** migration `0018` has not been
+3,038 assertion statements including 197 new portal assertions. **What was not:** migration `0018` has not been
 applied to any database, no portal query has run against real rows, concurrent redemption has not
 been exercised, no SMS or email provider exists, and no browser was driven through the screens. The
 five deliverables in `docs/patient-portal/` separate those two lists line by line; the deployment
@@ -1199,7 +1199,7 @@ billing — tariffs remain the single price list, for the same reason pharmacy
 prices come from `facility_service_tariffs` and nowhere else.
 
 **Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
-suites and 2,990 assertion statements, no failures (billing 31 → 57, OPD journey
+suites and 3,038 assertion statements, no failures (billing 31 → 57, OPD journey
 58 → 69). **Not verified:** none of this was run against PostgreSQL — there is no
 database in this environment, and the seeded fees are examples, not this
 facility's prices.
@@ -1231,11 +1231,68 @@ a link still has no host.
 produced the same misleading message; the path is now normalised.
 
 **Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
-suites / 2,990 assertion statements, no failures (`test:patient-portal` 178 → 197,
+suites / 3,038 assertion statements, no failures (`test:patient-portal` 178 → 197,
 including the mount order, the three-step link resolution, the refusal of a
 `javascript:` value, and the trailing-slash route). **Not verified:** the flow was
 not walked in a browser — there is no browser and no database here, so the first real
 activation will be the first real test.
+
+### 3.25 Numbered price lists — why OPD-001 never billed a consultation
+
+The error was precise and the facility's data was correct:
+
+> No active tariff matched CONSULT-OUTPATIENT, OUTPATIENT, OPD-CONSULT (+2 more)
+
+Their price list is `REG-001`, `OPD-001` General outpatient consultation 150,
+`OPD-002` Follow-up consultation 300, `LAB-001` Malaria RDT 300, `RAD-001`
+Obstetric ultrasound 2,500. The engine was looking for `OPD-CONSULT`. Nothing in
+that list will ever match it, and renaming 40 codes to suit the engine is not a
+reasonable thing to ask a facility.
+
+**Why the obvious fix is the wrong one.** Matching `OPD-001` because its
+description contains "consultation" would also match `OPD-002` at 300. Picking one
+puts a price on a patient invoice that nobody chose. Same for `LAB-001` (300)
+against `LAB-002` (200): the description is the only thing separating them, and it
+is not a key.
+
+**What was built.** A tariff can now declare, once, which automatic charge it
+answers — a nullable `billing_key` on `facility_service_tariffs` (migration 0019):
+
+| Key | Answers |
+|---|---|
+| `CONSULTATION` | any outpatient consultation |
+| `LABORATORY`, `LABORATORY:<code>` | any test, or one test by catalogue code |
+| `RADIOLOGY`, `RADIOLOGY:<name>` | any study, or one by the name it is ordered under |
+| `PROCEDURE`, `PROCEDURE:<name>` | any procedure, or one |
+| `ADMISSION`, `BED_DAY`, `DELIVERY`, `PHARMACY` | the other automatic charges |
+
+- The engine tries linked keys **before** code candidates, most specific first.
+  A link the facility made always beats a code the engine guessed.
+- The vocabulary is closed and validated on write. A key the engine cannot
+  interpret would be a link that silently never fires, which is the bug class this
+  change exists to remove.
+- A partial unique index stops two **active** tariffs claiming the same charge; the
+  route turns 23505 into a sentence rather than a 500. Deactivating a tariff
+  releases its link.
+- The tariff screen has a "Used for automatic billing" select, an optional
+  "Only for one service" field, a column showing the link, and a coverage list
+  that counts links as priced.
+- If the database predates 0019, reads degrade to code matching with one warning
+  and writes answer `MIGRATION_0019_REQUIRED`. That was deliberate: a dev database
+  a migration behind must not turn every charge into a 500.
+
+**Applying it.** `npm run db:migrate` (the agent never runs migrations). Then
+Configuration → Services & Tariffs → Edit on `OPD-001` → *Used for automatic
+billing*: **Consultation** → Save. The next visit bills 150. `OPD-002` stays
+unlinked, or gets its own link if follow-up visits should price separately — but
+one price per family, not a guess.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
+suites / 3,038 assertion statements (billing 57 → 75, OPD journey 69 → 82,
+migrations 692 → 706). **Not verified:** the migration has not been executed and no
+charge has been raised against PostgreSQL — there is no database in this
+environment, and the 150 figure above is the facility's own, not one this code
+invented.
 
 ## 4. Existing backups and modified files to preserve
 

@@ -1,7 +1,11 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client.ts";
 import type { LabTest, ServiceTariff } from "../../types/index.ts";
-import { labTariffCodeCandidates } from "../../billing/tariff-codes.ts";
+import {
+  BILLING_FAMILIES as BILLING_LINK_FAMILIES,
+  buildBillingKey,
+  labTariffCodeCandidates,
+} from "../../billing/tariff-codes.ts";
 
 interface FacilityServiceTariffsPanelProps {
   facilityId: number;
@@ -37,18 +41,19 @@ const SHA_STATUSES = [
  * way to answer "will my visit bill?" is to compare the two.
  */
 const BILLING_FAMILIES: Array<{
+  key: string;
   label: string;
   codes: string[];
   prefixes: string[];
 }> = [
-  { label: "Consultation", codes: ["OPD-CONSULT", "CONSULTATION", "CONSULT", "OUTPATIENT"], prefixes: ["CONSULT-"] },
-  { label: "Laboratory", codes: ["LAB-GENERAL", "LABORATORY"], prefixes: ["LAB-"] },
-  { label: "Radiology", codes: ["RAD-GENERAL", "RADIOLOGY", "IMAGING"], prefixes: ["RAD-"] },
-  { label: "Procedure", codes: ["PROCEDURE", "PROC-GENERAL"], prefixes: ["PROC-"] },
-  { label: "Pharmacy", codes: ["PHARMACY", "MEDICATION"], prefixes: ["DRUG-"] },
-  { label: "Admission", codes: ["ADMISSION", "INPATIENT-ADMISSION"], prefixes: ["ADMIT-"] },
-  { label: "Bed-day", codes: ["BED-DAY", "INPATIENT-BED-DAY", "WARD-DAY", "BED"], prefixes: ["BED-"] },
-  { label: "Maternity delivery", codes: ["DELIVERY", "MATERNITY-DELIVERY"], prefixes: ["DELIVERY-"] },
+  { key: "CONSULTATION", label: "Consultation", codes: ["OPD-CONSULT", "CONSULTATION", "CONSULT", "OUTPATIENT"], prefixes: ["CONSULT-"] },
+  { key: "LABORATORY", label: "Laboratory", codes: ["LAB-GENERAL", "LABORATORY"], prefixes: ["LAB-"] },
+  { key: "RADIOLOGY", label: "Radiology", codes: ["RAD-GENERAL", "RADIOLOGY", "IMAGING"], prefixes: ["RAD-"] },
+  { key: "PROCEDURE", label: "Procedure", codes: ["PROCEDURE", "PROC-GENERAL"], prefixes: ["PROC-"] },
+  { key: "PHARMACY", label: "Pharmacy", codes: ["PHARMACY", "MEDICATION"], prefixes: ["DRUG-"] },
+  { key: "ADMISSION", label: "Admission", codes: ["ADMISSION", "INPATIENT-ADMISSION"], prefixes: ["ADMIT-"] },
+  { key: "BED_DAY", label: "Bed-day", codes: ["BED-DAY", "INPATIENT-BED-DAY", "WARD-DAY", "BED"], prefixes: ["BED-"] },
+  { key: "DELIVERY", label: "Maternity delivery", codes: ["DELIVERY", "MATERNITY-DELIVERY"], prefixes: ["DELIVERY-"] },
 ];
 
 const EMPTY_FORM = {
@@ -59,6 +64,14 @@ const EMPTY_FORM = {
   fee: "",
   shaStatus: "Not Assessed",
   shaNotes: "",
+  /*
+   * Which automatic charge this tariff answers. A facility numbers its
+   * tariffs (OPD-001, LAB-006); the engine looks for codes (OPD-CONSULT,
+   * LAB-CBC). This is where the two are connected, once, by the person
+   * who knows what OPD-001 actually is.
+   */
+  billingFamily: "",
+  billingDetail: "",
 };
 
 const fieldClass =
@@ -90,14 +103,26 @@ export const FacilityServiceTariffsPanel: React.FC<
    * laboratory family even without a `LAB-GENERAL` fallback).
    */
   const coverage = BILLING_FAMILIES.map((family) => {
-    const match = tariffs.find(
-      (tariff) =>
-        tariff.isActive &&
-        (family.codes.includes(tariff.code.toUpperCase()) ||
-          family.prefixes.some((prefix) =>
-            tariff.code.toUpperCase().startsWith(prefix),
-          )),
-    );
+    /*
+     * Two ways a family can be priced: a tariff whose *code* matches what
+     * the engine looks for, or a tariff the facility explicitly linked to
+     * this automatic charge. The second is what makes a numbered price
+     * list (OPD-001) bill at all.
+     */
+    const match =
+      tariffs.find(
+        (tariff) =>
+          tariff.isActive &&
+          (tariff.billingKey ?? "").split(":")[0] === family.key,
+      ) ??
+      tariffs.find(
+        (tariff) =>
+          tariff.isActive &&
+          (family.codes.includes(tariff.code.toUpperCase()) ||
+            family.prefixes.some((prefix) =>
+              tariff.code.toUpperCase().startsWith(prefix),
+            )),
+      );
 
     return { ...family, match: match ?? null };
   });
@@ -190,6 +215,8 @@ export const FacilityServiceTariffsPanel: React.FC<
 
   const startEdit = (tariff: ServiceTariff) => {
     setEditingId(tariff.id);
+    const [family = "", ...rest] = (tariff.billingKey ?? "").split(":");
+
     setForm({
       code: tariff.code,
       description: tariff.description,
@@ -198,6 +225,8 @@ export const FacilityServiceTariffsPanel: React.FC<
       fee: String(tariff.fee),
       shaStatus: tariff.shaStatus,
       shaNotes: tariff.shaNotes || "",
+      billingFamily: family,
+      billingDetail: rest.join(":"),
     });
     setFormOpen(true);
     setError("");
@@ -243,6 +272,7 @@ export const FacilityServiceTariffsPanel: React.FC<
         fee: fee.toFixed(2),
         shaStatus: form.shaStatus,
         shaNotes: form.shaNotes.trim() || null,
+        billingKey: buildBillingKey(form.billingFamily, form.billingDetail),
       };
 
       if (editingId !== null) {
@@ -403,10 +433,12 @@ export const FacilityServiceTariffsPanel: React.FC<
 
           {unpriced.length > 0 && (
             <p className="mt-2 text-2xs leading-relaxed text-slate-500">
-              An unpriced service is still recorded and still reaches the
-              patient&apos;s invoice only when a code matches. Adding a fallback
-              such as <span className="font-mono">OPD-CONSULT</span> is what makes
-              a consultation bill itself.
+              An unpriced service is recorded, and appears on the invoice only
+              when a price is found. Either add a fallback code such as{" "}
+              <span className="font-mono">OPD-CONSULT</span>, or edit a tariff you
+              already have and set <strong>Used for automatic billing</strong> —
+              that links <span className="font-mono">OPD-001</span> to the
+              consultation without renaming anything.
             </p>
           )}
         </div>
@@ -555,6 +587,78 @@ export const FacilityServiceTariffsPanel: React.FC<
             />
           </div>
 
+          {/*
+            The link that makes automatic billing work for a numbered price
+            list. Without it the engine can only match the code it guessed,
+            and OPD-001 never matches OPD-CONSULT.
+          */}
+          <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+            <label className={labelClass} htmlFor={`tariff-billing-${facilityId}`}>
+              Used for automatic billing
+            </label>
+
+            <select
+              id={`tariff-billing-${facilityId}`}
+              className={fieldClass}
+              value={form.billingFamily}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  billingFamily: event.target.value,
+                  billingDetail:
+                    event.target.value === "" ? "" : current.billingDetail,
+                }))
+              }
+            >
+              <option value="">Not linked — priced only when the code matches</option>
+              {BILLING_LINK_FAMILIES.map((family) => (
+                <option key={family.key} value={family.key}>
+                  {family.label}
+                </option>
+              ))}
+            </select>
+
+            {form.billingFamily !== "" && (
+              <div className="mt-2">
+                <label
+                  className="mb-1 block text-xs font-medium text-slate-600"
+                  htmlFor={`tariff-billing-detail-${facilityId}`}
+                >
+                  Only for one service (optional)
+                </label>
+                <input
+                  id={`tariff-billing-detail-${facilityId}`}
+                  className={fieldClass}
+                  value={form.billingDetail}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      billingDetail: event.target.value,
+                    }))
+                  }
+                  maxLength={80}
+                  placeholder="e.g. Full blood count, or LAB-CBC — leave empty for any"
+                />
+                <p className="mt-1 text-2xs leading-relaxed text-slate-500">
+                  Leave this empty when one price covers the whole family. Fill it
+                  in when this tariff is for one test, study or procedure. It is
+                  matched against the catalogue code or the name typed when the
+                  service is ordered:{" "}
+                  <span className="font-mono">
+                    {buildBillingKey(form.billingFamily, form.billingDetail) ??
+                      form.billingFamily}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            <p className="mt-2 text-2xs leading-relaxed text-blue-900">
+              One active tariff per family. A tariff linked here is charged
+              automatically the moment the service is recorded, so the amount on
+              the invoice is the amount you typed above.
+            </p>
+          </div>
+
           <div className="md:col-span-2">
             <label className={labelClass} htmlFor={`tariff-description-${facilityId}`}>
               Service description *
@@ -696,6 +800,7 @@ export const FacilityServiceTariffsPanel: React.FC<
                 <th className="px-3 py-3 font-semibold">Department / Unit</th>
                 <th className="px-3 py-3 text-right font-semibold">Fee (KES)</th>
                 <th className="px-3 py-3 font-semibold">SHA status</th>
+                <th className="px-3 py-3 font-semibold">Automatic billing</th>
                 <th className="px-3 py-3 font-semibold">Status</th>
                 <th className="px-3 py-3 font-semibold">Actions</th>
               </tr>
@@ -721,6 +826,15 @@ export const FacilityServiceTariffsPanel: React.FC<
                     })}
                   </td>
                   <td className="px-3 py-3">{tariff.shaStatus}</td>
+                  <td className="px-3 py-3">
+                    {tariff.billingKey ? (
+                      <span className="rounded-md bg-emerald-50 px-2 py-1 font-mono text-2xs font-semibold text-emerald-800">
+                        {tariff.billingKey}
+                      </span>
+                    ) : (
+                      <span className="text-2xs text-slate-400">Not linked</span>
+                    )}
+                  </td>
                   <td className="px-3 py-3">
                     {tariff.isActive ? "Active" : "Inactive"}
                   </td>

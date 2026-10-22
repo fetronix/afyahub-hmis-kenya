@@ -50,6 +50,10 @@ import {
   radiologyChargeRequest,
   tariffCodeCandidates,
 } from './billing/service-charges.ts';
+import {
+  billingServiceKeys,
+  isValidBillingKey,
+} from './billing/tariff-codes.ts';
 import * as insuranceClaims from './insurance/claims.service.ts';
 import * as dha from './integrations/dha/dha.service.ts';
 import { buildReadinessReport } from './integrations/dha/dha.readiness.ts';
@@ -1289,6 +1293,15 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             'CONSULTATION',
             'CONSULT',
           ]),
+          /*
+           * A facility that numbered its price list (OPD-001) links that
+           * row to CONSULTATION on the tariff screen; without the link
+           * the engine can only guess, and between a 150 consultation and
+           * a 300 follow-up a guess is a wrong charge.
+           */
+          serviceKeys: billingServiceKeys('CONSULTATION', [
+            encounter.encounterType,
+          ]),
           sourceType: 'CONSULTATION',
           sourceId: encounter.id,
           itemType: 'Consultation',
@@ -2008,6 +2021,9 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             'DELIVERY',
             'MATERNITY-DELIVERY',
           ]),
+          serviceKeys: billingServiceKeys('DELIVERY', [
+            created.delivery.deliveryMode,
+          ]),
           sourceType: 'MATERNITY',
           sourceId: created.delivery.id,
           itemType: 'Maternity',
@@ -2434,6 +2450,10 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             code: (proc as { procedureCode?: string }).procedureCode ?? null,
             name: (proc as { procedureName?: string }).procedureName ?? null,
           }),
+          serviceKeys: billingServiceKeys('PROCEDURE', [
+            (proc as { procedureCode?: string }).procedureCode ?? null,
+            (proc as { procedureName?: string }).procedureName ?? null,
+          ]),
           sourceType: 'PROCEDURE',
           sourceId: (proc as { id?: number }).id ?? 0,
           itemType: 'Procedure',
@@ -3112,6 +3132,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             'ADMISSION',
             'INPATIENT-ADMISSION',
           ]),
+          serviceKeys: billingServiceKeys('ADMISSION'),
           sourceType: 'ADMISSION',
           sourceId: admission.id,
           itemType: 'Admission',
@@ -3192,6 +3213,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
                 'WARD-DAY',
                 'BED',
               ]),
+              serviceKeys: billingServiceKeys('BED_DAY', [ward?.code]),
               sourceType: 'BED_DAY',
               sourceId: admission.id,
               idempotencySuffix: date,
@@ -3832,6 +3854,10 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
               code: labOrder.testCode ?? null,
               name: labOrder.testName,
             }),
+            serviceKeys: billingServiceKeys('LABORATORY', [
+              labOrder.testCode ?? null,
+              labOrder.testName,
+            ]),
             sourceType: 'LAB_ORDER',
             sourceId: labOrder.id,
             itemType: 'Laboratory',
@@ -4354,6 +4380,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             'PHARMACY',
             'MEDICATION',
           ]),
+          serviceKeys: billingServiceKeys('PHARMACY', [drugName]),
           quantity:
             typeof dispensation.quantityDispensed === 'number'
               ? dispensation.quantityDispensed
@@ -4595,6 +4622,20 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     const moduleId = tariffModuleForDepartment(department);
     const fee = Number(feeText);
 
+    /*
+     * Optional link to an automatic charge. Absent or empty means "not
+     * linked"; anything else must be a key the engine understands, or it
+     * would be a link that silently never fires.
+     */
+    const rawBillingKey =
+      typeof input?.billingKey === 'string' ? input.billingKey.trim() : '';
+
+    if (rawBillingKey !== '' && !isValidBillingKey(rawBillingKey)) {
+      return null;
+    }
+
+    const billingKey = rawBillingKey === '' ? null : rawBillingKey.toUpperCase();
+
     if (
       !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,49}$/.test(code) ||
       !description || description.length > 500 ||
@@ -4617,7 +4658,49 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
       shaStatus,
       shaNotes,
       moduleId,
+      billingKey,
     };
+  };
+
+  /**
+   * Turn the two database errors this write can raise into sentences.
+   *
+   *   23505  two active tariffs claim the same automatic charge. That is
+   *          refused on purpose: the amount billed would otherwise depend
+   *          on which row the database returned first.
+   *   42703  the database predates migration 0019, so a link cannot be
+   *          stored. Say so instead of reporting a generic failure and
+   *          letting the administrator believe the link was saved.
+   */
+  const sendTariffWriteError = (
+    error: unknown,
+    res: Response,
+  ): boolean => {
+    const code = (error as { code?: string } | null)?.code;
+
+    if (code === '23505') {
+      res.status(409).json({
+        success: false,
+        error: 'TARIFF_BILLING_KEY_TAKEN',
+        message:
+          'Another active tariff already answers that automatic charge. Deactivate it first, or choose a different one.',
+      });
+
+      return true;
+    }
+
+    if (code === '42703' || code === '42P01') {
+      res.status(409).json({
+        success: false,
+        error: 'MIGRATION_0019_REQUIRED',
+        message:
+          'Automatic billing links need migration 0019. Run `npm run db:migrate`, then save again. The tariff was not changed.',
+      });
+
+      return true;
+    }
+
+    return false;
   };
 
   const facilityHasTariffModule = (
@@ -4811,6 +4894,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             fee: input.fee,
             shaStatus: input.shaStatus,
             shaNotes: input.shaNotes,
+            billingKey: input.billingKey,
             isActive: true,
           })
           .returning();
@@ -4827,6 +4911,8 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
         return res.status(201).json(created);
       } catch (error: unknown) {
+        if (sendTariffWriteError(error, res)) return;
+
         console.error('Failed to create service tariff:', error);
         return res.status(500).json({
           success: false,
@@ -4925,6 +5011,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             fee: input.fee,
             shaStatus: input.shaStatus,
             shaNotes: input.shaNotes,
+            billingKey: input.billingKey,
             updatedAt: new Date(),
           })
           .where(
@@ -4948,6 +5035,8 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
         return res.json(updated);
       } catch (error: unknown) {
+        if (sendTariffWriteError(error, res)) return;
+
         console.error('Failed to update service tariff:', error);
         return res.status(500).json({
           success: false,

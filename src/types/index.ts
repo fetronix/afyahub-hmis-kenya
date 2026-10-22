@@ -505,6 +505,12 @@ export interface ServiceTariff {
   fee: string;
   shaStatus: string;
   shaNotes: string | null;
+  /**
+   * The automatic charge this tariff answers (`CONSULTATION`,
+   * `LABORATORY:LAB-CBC`, …), or null when the tariff is only reachable
+   * by code. Set on the tariff screen; see migration 0019.
+   */
+  billingKey: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

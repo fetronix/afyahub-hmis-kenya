@@ -64,6 +64,106 @@ export function tariffCodeCandidates(
 }
 
 /* ============================================================
+   BILLING LINKS
+   ============================================================ */
+
+/**
+ * The automatic charges a facility can attach a tariff to.
+ *
+ * A tariff's `billing_key` is one of these, optionally followed by a
+ * detail: `LABORATORY:LAB-CBC` prices one test, `LABORATORY` prices any
+ * test. The list is closed on purpose. A free-text key would let two
+ * tariffs claim the same charge and make the amount billed depend on
+ * which row the database returned first.
+ */
+export const BILLING_FAMILIES = [
+  { key: 'CONSULTATION', label: 'Consultation — any outpatient visit' },
+  { key: 'LABORATORY', label: 'Laboratory — any test' },
+  { key: 'RADIOLOGY', label: 'Radiology — any study' },
+  { key: 'PROCEDURE', label: 'Procedure — any procedure' },
+  { key: 'ADMISSION', label: 'Inpatient admission' },
+  { key: 'BED_DAY', label: 'Bed charge — per night' },
+  { key: 'DELIVERY', label: 'Maternity delivery' },
+  { key: 'PHARMACY', label: 'Pharmacy — dispensing' },
+] as const;
+
+export type BillingFamily = (typeof BILLING_FAMILIES)[number]['key'];
+
+const FAMILY_KEYS = new Set<string>(BILLING_FAMILIES.map((entry) => entry.key));
+
+/**
+ * Normalise the part after the colon: `Obstetric ultrasound` and
+ * `obstetric-ultrasound` must not be two different links.
+ */
+export function normaliseBillingDetail(value: string | null | undefined): string {
+  return normaliseTariffCode(value).slice(0, 80);
+}
+
+/**
+ * Build a key: `LABORATORY:LAB-CBC`, or just `CONSULTATION`.
+ * Returns null when the family is not one of the known ones.
+ */
+export function buildBillingKey(
+  family: string | null | undefined,
+  detail?: string | null,
+): string | null {
+  const key = typeof family === 'string' ? family.trim().toUpperCase() : '';
+
+  if (!FAMILY_KEYS.has(key)) return null;
+
+  const suffix = normaliseBillingDetail(detail);
+
+  return suffix ? `${key}:${suffix}` : key;
+}
+
+/**
+ * Is this a key the engine understands?
+ *
+ * Used by the write path. A stored key the engine cannot interpret is a
+ * link that silently never fires, which is the class of bug this whole
+ * change exists to remove.
+ */
+export function isValidBillingKey(value: string | null | undefined): boolean {
+  if (typeof value !== 'string') return false;
+
+  const trimmed = value.trim();
+
+  if (trimmed === '') return false;
+
+  const [family, ...rest] = trimmed.split(':');
+  const detail = rest.join(':');
+
+  if (!FAMILY_KEYS.has(family)) return false;
+
+  if (detail === '') return rest.length === 0;
+
+  return /^[A-Z0-9][A-Z0-9._/-]{0,79}$/.test(detail);
+}
+
+/**
+ * Keys the engine tries for one charge, most specific first.
+ *
+ * `CONSULTATION` produces `['CONSULTATION']`; a laboratory test produces
+ * `['LABORATORY:LAB-CBC', 'LABORATORY:FULL-BLOOD-COUNT', 'LABORATORY']`.
+ */
+export function billingServiceKeys(
+  family: BillingFamily,
+  details: ReadonlyArray<string | null | undefined> = [],
+): string[] {
+  const keys: string[] = [];
+
+  for (const detail of details) {
+    const key = buildBillingKey(family, detail);
+
+    if (key && key.includes(':')) keys.push(key);
+  }
+
+  keys.push(family);
+
+  return [...new Set(keys)];
+}
+
+/* ============================================================
    RECORDS THAT CARRY THEIR OWN CODE
    ============================================================ */
 

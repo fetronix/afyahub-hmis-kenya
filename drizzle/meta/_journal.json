@@ -134,6 +134,13 @@
             "when": 1792900000006,
             "tag": "0018_patient_portal",
             "breakpoints": true
+        },
+        {
+            "idx": 19,
+            "version": "7",
+            "when": 1792900000007,
+            "tag": "0019_service_tariff_billing_key",
+            "breakpoints": true
         }
     ]
 }

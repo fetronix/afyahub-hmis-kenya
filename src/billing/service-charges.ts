@@ -22,6 +22,7 @@ import {
   type ChargeResult,
 } from './billing.service.ts';
 import {
+  billingServiceKeys,
   labTariffCodeCandidates,
   tariffCodeCandidates,
 } from './tariff-codes.ts';
@@ -73,6 +74,10 @@ export function labOrderChargeRequest(
       code: order.testCode ?? null,
       name: order.testName,
     }),
+    serviceKeys: billingServiceKeys('LABORATORY', [
+      order.testCode ?? null,
+      order.testName,
+    ]),
     sourceType: 'LAB_ORDER',
     sourceId: order.id,
     itemType: 'Laboratory',
@@ -146,6 +151,7 @@ export function radiologyChargeRequest(
       'RAD-GENERAL',
       'IMAGING',
     ]),
+    serviceKeys: billingServiceKeys('RADIOLOGY', [order.procedureName]),
     sourceType: 'RADIOLOGY',
     sourceId: order.id,
     itemType: 'Radiology',
