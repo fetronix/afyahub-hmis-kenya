@@ -1,7 +1,7 @@
 import staffInvitationRoutes from "./auth/staff-invitation.routes";
 import staffRolesRoutes from "./auth/staff-roles.routes";
 import express, { type Request, type Response } from 'express';
-import { createServer as createViteServer } from 'vite';
+import { existsSync } from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -83,6 +83,22 @@ const __dirname = path.resolve(path.dirname(__filename), '..');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 3000;
+
+/**
+ * Where the built client lives.
+ *
+ * `src/app.ts` sits one level below the project root, and the bundle
+ * (`build/server.js`) does too, so `..` is correct in both. STATIC_DIR
+ * exists for cPanel layouts where the application root and the document
+ * root differ; it is resolved against the process working directory.
+ *
+ * Absolute, never relative: cPanel's Passenger starts the process from a
+ * directory that has nothing to do with the app, and relative paths then
+ * resolve to a folder that does not contain dist/.
+ */
+const STATIC_DIR = process.env.STATIC_DIR
+  ? path.resolve(process.cwd(), process.env.STATIC_DIR)
+  : path.resolve(__dirname, 'dist');
 
 
 export async function createApp() {
@@ -8164,6 +8180,22 @@ app.get(
   // =========================================================
 
   if (!isProduction) {
+    /*
+     * Vite is imported HERE, not at the top of the file.
+     *
+     * A static `import 'vite'` makes every production process load Vite
+     * and its whole tree — esbuild, the bundler, the CSS pipeline — into
+     * memory and spin up its service threads, only to serve a predist
+     * folder that `vite build` already wrote. On a shared cPanel account
+     * with a low thread and memory ceiling that is a real cost, and it is
+     * paid on every restart.
+     *
+     * It also removes the dev server from the production dependency
+     * graph entirely, which is the property we actually want: there is no
+     * code path in production that can start Vite.
+     */
+    const { createServer: createViteServer } = await import('vite');
+
     const vite =
       await createViteServer({
         server: {
@@ -8177,23 +8209,79 @@ app.get(
       vite.middlewares
     );
   } else {
-    app.use(
-      express.static(
-        path.resolve(
-          __dirname,
-          'dist'
-        )
-      )
-    );
+    const indexHtml = path.join(STATIC_DIR, 'index.html');
 
-    app.get('*', (req, res) => {
-      res.sendFile(
-        path.resolve(
-          __dirname,
-          'dist',
-          'index.html'
-        )
+    const hasClientBuild = existsSync(indexHtml);
+
+    if (!hasClientBuild) {
+      /*
+       * Serving nothing silently is how a deployment shows a working API
+       * and a blank page. Say exactly which path is missing and how it is
+       * produced, then keep serving the API: a missing frontend must not
+       * take the clinical endpoints down with it.
+       */
+      console.error('');
+      console.error('No client build found.');
+      console.error(`  Looked for: ${indexHtml}`);
+      console.error('  Build it with: npm run build   (vite build -> dist/)');
+      console.error('  Or point STATIC_DIR at the directory that holds index.html.');
+      console.error('');
+    } else {
+      /*
+       * Hashed assets are immutable and can be cached for a year;
+       * index.html must not be cached or a client keeps loading the old
+       * bundle after a deploy.
+       */
+      app.use(
+        express.static(STATIC_DIR, {
+          index: false,
+          etag: true,
+          lastModified: true,
+          maxAge: '1y',
+          immutable: true,
+          setHeaders(res, filePath) {
+            if (filePath.endsWith('index.html')) {
+              res.setHeader('Cache-Control', 'no-store');
+            }
+          },
+        }),
       );
+    }
+
+    /*
+     * Client-side routes fall through to the SPA. An unmatched /api
+     * path must not: answering JSON with HTML is worse than a 404, and
+     * the client cannot tell a typo from an outage.
+     */
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/')) {
+        res.status(404).json({
+          success: false,
+          error: 'NOT_FOUND',
+          message: `No API route matches ${req.method} ${req.path}.`,
+        });
+
+        return;
+      }
+
+      if (!hasClientBuild) {
+        res.status(503).type('text/plain').send(
+          'The client build is missing on this server. Run npm run build and restart the application.',
+        );
+
+        return;
+      }
+
+      /*
+       * The shell must never be cached: a client holding yesterday's
+       * index.html asks for yesterday's asset hashes, and after a deploy
+       * that is a blank page served from a cache nobody can clear.
+       */
+      res.setHeader('Cache-Control', 'no-store, must-revalidate');
+
+      res.sendFile(indexHtml, (error) => {
+        if (error) next(error);
+      });
     });
   }
 

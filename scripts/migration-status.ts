@@ -26,10 +26,14 @@
  * SQL_ADMIN_PASSWORD — the same values drizzle.config.ts uses.
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import type { Pool } from 'pg';
+
+import {
+  classifyMigrations,
+  migrationsDirectory,
+  readJournal,
+  readPlans,
+} from './migration-journal.ts';
 
 const EXPECT_0009 =
   process.argv.includes('--expect-0009') ||
@@ -44,12 +48,6 @@ const DIM = '\u001b[2m';
 const tick = `${GREEN}✓${RESET}`;
 const cross = `${RED}✗${RESET}`;
 const warn = `${YELLOW}!${RESET}`;
-
-interface JournalEntry {
-  idx: number;
-  when: number;
-  tag: string;
-}
 
 interface ColumnCheck {
   table: string;
@@ -157,84 +155,162 @@ const INDEXES: IndexCheck[] = [
   },
 ];
 
-function readJournal(): JournalEntry[] {
-  const path = resolve(process.cwd(), 'drizzle/meta/_journal.json');
-  const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
-    entries: JournalEntry[];
-  };
+/**
+ * Locate a tracking table without creating one.
+ *
+ * `pg_class` rather than `information_schema.tables`: the latter hides
+ * tables the current role has no privilege on, and a status run that
+ * cannot see the table would wrongly conclude the database is unmanaged.
+ */
+async function findMigrationTable(pool: Pool): Promise<{
+  qualified: string;
+  schema: string;
+  table: string;
+  hasHash: boolean;
+  hasCreatedAt: boolean;
+} | null> {
+  const { rows } = await pool.query<{ schema: string; table: string }>(
+    `SELECT n.nspname AS schema, c.relname AS "table"
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.relname = '__drizzle_migrations'
+        AND c.relkind = 'r'
+        AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY CASE WHEN n.nspname = 'drizzle' THEN 0
+                    WHEN n.nspname = 'public' THEN 1
+                    ELSE 2 END`,
+  );
 
-  return parsed.entries ?? [];
+  const found = rows[0];
+
+  if (!found) return null;
+
+  const columns = await pool.query<{ column_name: string }>(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = $2`,
+    [found.schema, found.table],
+  );
+
+  const names = new Set(columns.rows.map((row) => row.column_name));
+
+  return {
+    qualified: `"${found.schema}"."${found.table}"`,
+    schema: found.schema,
+    table: found.table,
+    hasHash: names.has('hash'),
+    hasCreatedAt: names.has('created_at'),
+  };
 }
 
 /**
- * Drizzle records `created_at` = the journal entry's `when` for every
- * migration it applies, so the two can be matched without hashing.
+ * Report which migrations the target database owes.
+ *
+ * The classification comes from `migration-journal.ts`, the same module
+ * `migrate.ts` uses. Before this, the status script matched only on the
+ * journal timestamp while the runner matched on hash OR timestamp, so a
+ * migration edited after it was applied showed as PENDING here and was
+ * correctly skipped there. Two answers to one question is how a healthy
+ * database gets "repaired" into a broken one.
  */
-async function findMigrationTable(pool: Pool): Promise<string | null> {
-  const { rows } = await pool.query<{ schema: string; table: string }>(
-    `SELECT table_schema AS schema, table_name AS table
-       FROM information_schema.tables
-      WHERE table_name = '__drizzle_migrations'
-      ORDER BY CASE WHEN table_schema = 'drizzle' THEN 0 ELSE 1 END`,
-  );
-
-  if (rows.length === 0) return null;
-
-  return `"${rows[0].schema}"."${rows[0].table}"`;
-}
-
 async function reportMigrations(
   pool: Pool,
 ): Promise<{ pending: string[]; applied: string[] }> {
-  const journal = readJournal();
+  const dir = migrationsDirectory();
+  const plans = readPlans(readJournal(dir), dir);
   const table = await findMigrationTable(pool);
 
   if (!table) {
+    const { rows } = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_type = 'BASE TABLE'
+          AND table_name <> '__drizzle_migrations'`,
+    );
+
+    const tableCount = Number(rows[0]?.count ?? 0);
+
     console.log('');
     console.log(`${warn} No __drizzle_migrations table found.`);
-    console.log(
-      '   This database has never had a drizzle migration applied, or',
-    );
-    console.log(
-      '   the migration user cannot see it. Running db:migrate would try',
-    );
-    console.log('   to apply every migration from 0000 upwards.');
+    console.log('');
+    console.log(`   Public tables in this database: ${tableCount}`);
+
+    if (tableCount === 0) {
+      console.log(
+        '   The database looks empty, so a migration would build it from 0000.',
+      );
+    } else {
+      console.log(
+        `${RED}   This is an unmanaged database: it has tables but no history.${RESET}`,
+      );
+      console.log(
+        '   Running db:migrate would replay 0000–0022, including 0002, which',
+      );
+      console.log(
+        '   drops patients.facility_id. Do not run it here.',
+      );
+      console.log(
+        '   Run npm run db:preflight for a read-only inventory, and record only',
+      );
+      console.log(
+        '   the migrations whose effects you have verified already exist.',
+      );
+    }
+
     console.log('');
 
     return {
-      pending: journal.map((entry) => entry.tag),
+      pending: plans.map((plan) => plan.tag),
       applied: [],
     };
   }
 
-  const { rows } = await pool.query<{ created_at: string }>(
-    `SELECT created_at FROM ${table}`,
+  const select = [
+    table.hasHash ? 'hash' : 'NULL::text AS hash',
+    table.hasCreatedAt ? 'created_at' : 'NULL::bigint AS created_at',
+  ].join(', ');
+
+  const { rows } = await pool.query<{
+    hash: string | null;
+    created_at: string | number | null;
+  }>(`SELECT ${select} FROM ${table.qualified}`);
+
+  const classification = classifyMigrations(
+    plans,
+    rows.map((row) => ({
+      hash: row.hash,
+      createdAt:
+        row.created_at === null || row.created_at === undefined
+          ? null
+          : Number(row.created_at),
+    })),
   );
 
-  const appliedMillis = new Set(rows.map((row) => Number(row.created_at)));
-
-  const applied: string[] = [];
-  const pending: string[] = [];
-
-  for (const entry of journal) {
-    if (appliedMillis.has(Number(entry.when))) {
-      applied.push(entry.tag);
-    } else {
-      pending.push(entry.tag);
-    }
-  }
-
   console.log('');
-  console.log(`${DIM}journal: ${journal.length} migrations, tracking table: ${table}${RESET}`);
+  console.log(
+    `${DIM}journal: ${plans.length} migrations, tracking table: ${table.qualified}${RESET}`,
+  );
   console.log('');
 
-  for (const tag of applied) {
-    console.log(`  ${tick} ${tag}`);
+  for (const plan of classification.applied) {
+    console.log(`  ${tick} ${plan.tag}`);
   }
 
-  for (const tag of pending) {
-    console.log(`  ${warn} ${tag}  ${YELLOW}PENDING${RESET}`);
+  for (const plan of classification.pending) {
+    console.log(`  ${warn} ${plan.tag}  ${YELLOW}PENDING${RESET}`);
   }
+
+  if (classification.editedAfterApply.length > 0) {
+    console.log('');
+    console.log(
+      `${warn} ${classification.editedAfterApply.length} applied migration(s) changed on disk:`,
+    );
+    console.log(`   ${classification.editedAfterApply.map((plan) => plan.tag).join(', ')}`);
+    console.log('   They keep their recorded timestamp and will not run again here.');
+  }
+
+  const pending = classification.pending.map((plan) => plan.tag);
 
   if (pending.length === 0) {
     console.log('');
@@ -246,7 +322,10 @@ async function reportMigrations(
     );
   }
 
-  return { pending, applied };
+  return {
+    pending,
+    applied: classification.applied.map((plan) => plan.tag),
+  };
 }
 
 async function reportStructures(pool: Pool): Promise<{ failures: string[] }> {

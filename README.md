@@ -2322,3 +2322,96 @@ npm run dev
 `db:seed` refuses to run against a database that already has tenants; it never
 truncates or overwrites. If you are restoring an existing clinic database, skip
 it entirely and restore the dump instead.
+
+## 11. Production deployment — Truehost cPanel
+
+The full runbook is [`docs/deployment/truehost-cpanel.md`](docs/deployment/truehost-cpanel.md).
+This section is the part that changes how the repository is built, and why.
+
+### 11.1 The production command is a built file
+
+cPanel's *Setup Node.js App* starts the application with plain `node`. It cannot
+execute TypeScript, so `npm start` used to fail on the host while working in
+development.
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Development. `tsx server.ts`, Vite middleware, HMR. Never used in production. |
+| `npm run build` | Client build only: `vite build` → `dist/`. |
+| `npm run build:server` | Server bundles only → `build/server.js` and `build/scripts/*.js`. |
+| `npm run build:deploy` | Both, after clearing `dist/` and `build/`. This is the artifact you upload. |
+| `npm start` | `node build/server.js`. This is what cPanel runs. |
+| `npm run verify:dry-run` | Proves `db:migrate --dry-run` writes nothing, using a fake driver. |
+| `npm run verify:deploy` | The deployment contract tests plus the dry-run proof. |
+
+`build/server.js` is one ESM file produced by `scripts/build-server.mjs`
+(esbuild, `packages: 'external'`, `target: node22`). It is generated from
+`server.ts` in under a second, and `build/` is cleared first so a failed build
+cannot leave yesterday's file in place for cPanel to start.
+
+Nothing is compiled on the hosting account. A `vite build` on a shared plan is
+the single most expensive thing this project can do, and it is also how the
+per-account process limit gets hit.
+
+### 11.2 Maintenance commands no longer start a TypeScript loader
+
+`npm run db:status` used to run `tsx scripts/migration-status.ts`. `tsx` starts
+an esbuild service beside Node, and on a shared account that is what produced
+
+```
+node: pthread_create: Resource temporarily unavailable
+```
+
+(exit 134, Truehost ticket 9707039). Maintenance commands now run
+`node scripts/run-script.mjs <name>`, which prefers the prebuilt
+`build/scripts/<name>.js` and only falls back to `tsx` in development. It prints
+which one it used:
+
+```
+[run-script] migration-status: build/scripts/migration-status.js (node)
+```
+
+The same change removed the biggest startup cost from production:
+`src/app.ts` imported `vite` at the top of the file, so every production
+process loaded Vite, esbuild and the CSS pipeline into memory. Vite is now
+`await import('vite')` inside the `if (!isProduction)` branch.
+
+None of this raises the account's limits. If `pthread_create` persists after
+uploading `build/`, it is a hosting limit; §12 of the deployment guide lists the
+exact questions to put to Truehost.
+
+### 11.3 `--dry-run` really is read-only
+
+The runner used to create the `drizzle` schema and
+`drizzle.__drizzle_migrations` **before** it checked `--dry-run`. A read-only
+status command therefore left an empty tracking table in production, and the
+next reader mistook it for migration state.
+
+`--dry-run` now exits before any write. This is verified, not asserted in prose:
+`npm run verify:dry-run` runs the built runner against a fake `pg` driver (both
+with and without the tracking table) and fails if any statement it sends is
+anything but `SELECT`. Observed result: **3 statements, all reads, 0 writes** on
+each path.
+
+### 11.4 Status and the runner agree
+
+`migration-status.ts` matched recorded migrations on timestamp only, while
+`migrate.ts` matched on hash *or* timestamp. A migration whose file was edited
+after it ran therefore showed as `PENDING` forever, and a database whose rows
+carried newer timestamps hid older pending files.
+
+Both now call `classifyMigrations()` in `scripts/migration-journal.ts`, which
+applied = hash match OR timestamp match, and reports two distinct warnings:
+`editedAfterApply` (drift, not pending) and `behindNewest` (older than the newest
+recorded row, which `drizzle-kit migrate` would skip silently).
+
+### 11.5 Database with tables but no history
+
+If the database already has application tables and no tracking table, a naive
+migration replays the journal from `0000` — including `0002`, which runs
+`ALTER TABLE "patients" DROP COLUMN "facility_id"`.
+
+The runner refuses, and `npm run db:preflight` names the condition. Recovery is
+the procedure in §8 of the deployment guide: verify each structure, record only
+the verified rows by hand, then re-check. It is never "drop the tables and start
+again", and never a bulk insert of migration rows.
