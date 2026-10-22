@@ -17,15 +17,12 @@
 import type * as schema from '../db/schema.ts';
 
 import {
-  chargeForService,
   type ChargeRequest,
   type ChargeResult,
 } from './billing.service.ts';
-import {
-  billingServiceKeys,
-  labTariffCodeCandidates,
-  tariffCodeCandidates,
-} from './tariff-codes.ts';
+import { chargeAndRecord } from './charge-attempts.ts';
+import { billingServiceKeys } from './tariff-codes.ts';
+import { codesForFamily } from './tariff-matching.ts';
 
 /* ============================================================
    TARIFF CODE CANDIDATES
@@ -70,7 +67,8 @@ export function labOrderChargeRequest(
     facilityId: order.facilityId,
     patientId: order.patientId,
     encounterId: order.encounterId ?? null,
-    codes: labTariffCodeCandidates({
+    codes: codesForFamily({
+      family: 'LABORATORY',
       code: order.testCode ?? null,
       name: order.testName,
     }),
@@ -78,6 +76,9 @@ export function labOrderChargeRequest(
       order.testCode ?? null,
       order.testName,
     ]),
+    family: 'LABORATORY',
+    serviceName: order.testName,
+    aliases: order.testCode ? [order.testCode] : [],
     sourceType: 'LAB_ORDER',
     sourceId: order.id,
     itemType: 'Laboratory',
@@ -100,7 +101,7 @@ export interface LabOrderChargeResult {
  */
 export async function chargeLabOrderBatch(
   orders: readonly ChargeableLabOrder[],
-  executor: Parameters<typeof chargeForService>[0],
+  executor: Parameters<typeof chargeAndRecord>[0],
 ): Promise<LabOrderChargeResult[]> {
   const results: LabOrderChargeResult[] = [];
 
@@ -109,7 +110,7 @@ export async function chargeLabOrderBatch(
       results.push({
         orderId: order.id,
         testName: order.testName,
-        billing: await chargeForService(executor, labOrderChargeRequest(order)),
+        billing: await chargeAndRecord(executor, labOrderChargeRequest(order)),
       });
     } catch (error) {
       console.error('Laboratory charge failed:', error);
@@ -146,12 +147,13 @@ export function radiologyChargeRequest(
     facilityId: order.facilityId,
     patientId: order.patientId,
     encounterId: order.encounterId ?? null,
-    codes: tariffCodeCandidates('RAD', order.procedureName, [
-      'RADIOLOGY',
-      'RAD-GENERAL',
-      'IMAGING',
-    ]),
+    codes: codesForFamily({
+      family: 'RADIOLOGY',
+      name: order.procedureName,
+    }),
     serviceKeys: billingServiceKeys('RADIOLOGY', [order.procedureName]),
+    family: 'RADIOLOGY',
+    serviceName: order.procedureName,
     sourceType: 'RADIOLOGY',
     sourceId: order.id,
     itemType: 'Radiology',

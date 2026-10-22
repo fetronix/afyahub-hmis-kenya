@@ -4006,6 +4006,80 @@ export const billingItems = pgTable(
   },
 );
 
+/**
+ * A charge the billing engine could not price.
+ *
+ * The clinical action succeeded but no invoice line exists, so the
+ * money owed is invisible. This row keeps the original request so the
+ * charge can be replayed once the facility configures a tariff — and so
+ * the configuration screen can say what is waiting.
+ *
+ * See migration 0020. Status: PENDING | BILLED | DUPLICATE | VOID.
+ */
+export const billingChargeAttempts = pgTable(
+  'billing_charge_attempts',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    encounterId: integer('encounter_id'),
+
+    sourceType: text('source_type').notNull(),
+    sourceId: integer('source_id'),
+    itemType: text('item_type').notNull(),
+    description: text('description'),
+
+    /** Candidates the engine tried, in priority order. */
+    codes: text('codes').array().notNull().default([]),
+    /** Linked keys the facility can set (`CONSULTATION`). */
+    serviceKeys: text('service_keys').array().notNull().default([]),
+
+    family: text('family'),
+    serviceName: text('service_name'),
+    encounterType: text('encounter_type'),
+    aliases: text('aliases').array().notNull().default([]),
+
+    quantity: integer('quantity').notNull().default(1),
+    fallbackUnitPrice: numeric('fallback_unit_price', { precision: 10, scale: 2 }),
+
+    reason: text('reason').notNull(),
+    detail: text('detail'),
+    codesTried: text('codes_tried').array().notNull().default([]),
+
+    status: text('status').notNull().default('PENDING'),
+    attempts: integer('attempts').notNull().default(1),
+    lastAttemptAt: timestamp('last_attempt_at').defaultNow().notNull(),
+
+    resolvedItemId: integer('resolved_item_id'),
+    resolvedInvoiceId: integer('resolved_invoice_id'),
+    resolvedTariffCode: text('resolved_tariff_code'),
+    resolvedUnitPrice: numeric('resolved_unit_price', { precision: 10, scale: 2 }),
+    resolvedAt: timestamp('resolved_at'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('billing_charge_attempts_pending_unique')
+      .on(table.facilityId, table.sourceType, table.sourceId, table.itemType)
+      .where(sql`${table.status} = 'PENDING' AND ${table.sourceId} is not null`),
+    index('billing_charge_attempts_facility_status_idx')
+      .on(table.tenantId, table.facilityId, table.status),
+    index('billing_charge_attempts_patient_idx').on(table.patientId),
+  ],
+);
+
 
 /* ============================================================
    41. BILLING PAYMENTS

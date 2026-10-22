@@ -21,7 +21,7 @@
 | Patient UI (`/portal`, `/portal/activate`) | **Implemented**, mobile-first, separate from the staff bundle |
 | Staff administration UI | **Implemented** as its own module, "Patient Portal Management" |
 | Reception invitation panel | **Implemented** on registration success and on the patient directory / queue rows |
-| Automated tests | **197 new assertions**, whole suite 3,038 assertion statements across 24 scripts, all passing |
+| Automated tests | **197 new assertions**, whole suite 3,149 assertion statements across 25 scripts, all passing |
 | Runtime against PostgreSQL | **Not exercised.** No database in this environment; see §9 |
 
 Nothing in this document is a claim about a running deployment. Section 9 lists, in plain
@@ -313,7 +313,7 @@ never `requireAuth`.
 
 - `npx tsc --noEmit` — clean.
 - `npm run build` — succeeded, 1,707 modules transformed.
-- `npm test` — 24 scripts, 3,038 assertion statements, all passing, including 197 new portal assertions.
+- `npm test` — 25 scripts, 3,149 assertion statements, all passing, including 197 new portal assertions.
 - The new tests exercise the real policy module (token entropy, hashing, expiry derivation, resend
   caps, masking, clamping, sharing validation, QR shape) and scan the real route and service sources
   for the properties that are easy to lose in a refactor (no patient id from the request, one generic

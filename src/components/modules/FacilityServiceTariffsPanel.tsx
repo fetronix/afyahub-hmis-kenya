@@ -1,11 +1,22 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client.ts";
-import type { LabTest, ServiceTariff } from "../../types/index.ts";
+import type {
+  BillingChargeAttempt,
+  BillingChargeAttemptList,
+  LabTest,
+  ServiceTariff,
+} from "../../types/index.ts";
 import {
   BILLING_FAMILIES as BILLING_LINK_FAMILIES,
   buildBillingKey,
   labTariffCodeCandidates,
+  type BillingFamily,
 } from "../../billing/tariff-codes.ts";
+import {
+  codesForFamily,
+  consultationPhrases,
+  matchTariff,
+} from "../../billing/tariff-matching.ts";
 
 interface FacilityServiceTariffsPanelProps {
   facilityId: number;
@@ -40,21 +51,44 @@ const SHA_STATUSES = [
  * each. Kept beside the screen the codes are typed on, because the only
  * way to answer "will my visit bill?" is to compare the two.
  */
-const BILLING_FAMILIES: Array<{
-  key: string;
+type BillingFamilyRow = {
+  key: BillingFamily;
   label: string;
-  codes: string[];
+  encounterType?: string;
+  /** Generic descriptions a family-wide tariff may legitimately carry. */
+  phrases: string[];
+  /** Code families that indicate a *specific* price, not a fallback. */
   prefixes: string[];
-}> = [
-  { key: "CONSULTATION", label: "Consultation", codes: ["OPD-CONSULT", "CONSULTATION", "CONSULT", "OUTPATIENT"], prefixes: ["CONSULT-"] },
-  { key: "LABORATORY", label: "Laboratory", codes: ["LAB-GENERAL", "LABORATORY"], prefixes: ["LAB-"] },
-  { key: "RADIOLOGY", label: "Radiology", codes: ["RAD-GENERAL", "RADIOLOGY", "IMAGING"], prefixes: ["RAD-"] },
-  { key: "PROCEDURE", label: "Procedure", codes: ["PROCEDURE", "PROC-GENERAL"], prefixes: ["PROC-"] },
-  { key: "PHARMACY", label: "Pharmacy", codes: ["PHARMACY", "MEDICATION"], prefixes: ["DRUG-"] },
-  { key: "ADMISSION", label: "Admission", codes: ["ADMISSION", "INPATIENT-ADMISSION"], prefixes: ["ADMIT-"] },
-  { key: "BED_DAY", label: "Bed-day", codes: ["BED-DAY", "INPATIENT-BED-DAY", "WARD-DAY", "BED"], prefixes: ["BED-"] },
-  { key: "DELIVERY", label: "Maternity delivery", codes: ["DELIVERY", "MATERNITY-DELIVERY"], prefixes: ["DELIVERY-"] },
-];
+  codes: string[];
+};
+
+const BILLING_FAMILIES: BillingFamilyRow[] = ([
+  {
+    key: "CONSULTATION",
+    label: "Consultation",
+    encounterType: "OUTPATIENT",
+    phrases: consultationPhrases("OUTPATIENT"),
+    prefixes: ["CONSULT-"],
+    codes: [],
+  },
+  { key: "LABORATORY", label: "Laboratory", phrases: [], prefixes: ["LAB-"], codes: [] },
+  { key: "RADIOLOGY", label: "Radiology", phrases: [], prefixes: ["RAD-"], codes: [] },
+  { key: "PROCEDURE", label: "Procedure", phrases: [], prefixes: ["PROC-"], codes: [] },
+  { key: "PHARMACY", label: "Pharmacy", phrases: [], prefixes: ["DRUG-"], codes: [] },
+  { key: "ADMISSION", label: "Admission", phrases: [], prefixes: ["ADMIT-"], codes: [] },
+  { key: "BED_DAY", label: "Bed-day", phrases: [], prefixes: ["BED-"], codes: [] },
+  { key: "DELIVERY", label: "Maternity delivery", phrases: [], prefixes: ["DELIVERY-"], codes: [] },
+] satisfies BillingFamilyRow[]).map((family) => ({
+  ...family,
+  /*
+   * The exact list the engine tries, not a copy maintained by hand. A
+   * copy is how this screen once promised codes the engine never used.
+   */
+  codes: codesForFamily({
+    family: family.key,
+    encounterType: family.encounterType ?? null,
+  }),
+}));
 
 const EMPTY_FORM = {
   code: "",
@@ -91,6 +125,20 @@ export const FacilityServiceTariffsPanel: React.FC<
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [labTests, setLabTests] = useState<LabTest[]>([]);
+  /*
+   * Charges the engine could not price. These are owed: the visit, the
+   * order or the admission happened. Keeping them on this screen is the
+   * point — a skipped charge that nobody can see is money lost quietly.
+   */
+  const [attempts, setAttempts] =
+    useState<BillingChargeAttemptList | null>(null);
+  const [attemptsUnavailable, setAttemptsUnavailable] = useState("");
+  const [attemptBusy, setAttemptBusy] = useState<number | "all" | null>(null);
+  const [attemptNotice, setAttemptNotice] = useState("");
+  const [attemptExplanation, setAttemptExplanation] = useState<{
+    id: number;
+    text: string;
+  } | null>(null);
 
   const departments = DEPARTMENTS.filter(({ id }) =>
     enabledModules.includes(id),
@@ -98,35 +146,53 @@ export const FacilityServiceTariffsPanel: React.FC<
   const financeEnabled = enabledModules.includes("finance");
 
   /*
-   * A family is priced when at least one active tariff matches one of its
-   * codes, or starts with one of its prefixes (`LAB-CBC` prices the
-   * laboratory family even without a `LAB-GENERAL` fallback).
+   * Which families this facility can actually bill.
+   *
+   * The same function the billing engine runs, over the same rows, so
+   * "Consultation — OPD-001 · 150" here means the next OPD visit really
+   * produces a 150 line. A family a tariff only covers per service
+   * (LAB-CBC prices CBC, not every test) is shown as such rather than
+   * being counted as full coverage.
    */
   const coverage = BILLING_FAMILIES.map((family) => {
-    /*
-     * Two ways a family can be priced: a tariff whose *code* matches what
-     * the engine looks for, or a tariff the facility explicitly linked to
-     * this automatic charge. The second is what makes a numbered price
-     * list (OPD-001) bill at all.
-     */
-    const match =
-      tariffs.find(
-        (tariff) =>
-          tariff.isActive &&
-          (tariff.billingKey ?? "").split(":")[0] === family.key,
-      ) ??
-      tariffs.find(
-        (tariff) =>
-          tariff.isActive &&
-          (family.codes.includes(tariff.code.toUpperCase()) ||
-            family.prefixes.some((prefix) =>
-              tariff.code.toUpperCase().startsWith(prefix),
-            )),
-      );
+    const outcome = matchTariff({
+      rows: tariffs.map((tariff) => ({
+        id: tariff.id,
+        code: tariff.code,
+        description: tariff.description,
+        fee: tariff.fee,
+        unit: tariff.unit,
+        department: tariff.department,
+        billingKey: tariff.billingKey ?? null,
+        isActive: tariff.isActive,
+      })),
+      codes: family.codes,
+      serviceKeys: [family.key],
+      family: family.key,
+      phrases: family.phrases,
+    });
 
-    return { ...family, match: match ?? null };
+    const specific = tariffs.filter(
+      (tariff) =>
+        tariff.isActive &&
+        ((tariff.billingKey ?? "").split(":")[0] === family.key ||
+          family.prefixes.some((prefix) =>
+            tariff.code.toUpperCase().startsWith(prefix),
+          )),
+    );
+
+    return {
+      ...family,
+      match: outcome.tariff,
+      rule: outcome.rule,
+      ambiguity: outcome.ambiguity,
+      specific,
+    };
   });
-  const unpriced = coverage.filter((entry) => !entry.match);
+
+  const unpriced = coverage.filter(
+    (entry) => !entry.match && entry.specific.length === 0,
+  );
 
   /*
    * The same question, one level down: which tests in this facility's own
@@ -174,6 +240,159 @@ export const FacilityServiceTariffsPanel: React.FC<
   useEffect(() => {
     void loadTariffs();
   }, [loadTariffs]);
+
+  const loadAttempts = useCallback(async () => {
+    try {
+      const result = await api.getChargeAttempts(facilityId);
+      setAttempts(result);
+      setAttemptsUnavailable("");
+    } catch (err) {
+      /*
+       * Reading the queue needs `billing.read`. A facility administrator
+       * who does not hold it should still be able to manage prices, so a
+       * refusal hides the queue with an explanation instead of breaking
+       * the screen.
+       */
+      setAttempts(null);
+      setAttemptsUnavailable(
+        err instanceof Error
+          ? err.message
+          : "Unbilled charges are not visible with your permissions.",
+      );
+    }
+  }, [facilityId]);
+
+  useEffect(() => {
+    void loadAttempts();
+  }, [loadAttempts]);
+
+  const retryAttempt = async (attempt: BillingChargeAttempt) => {
+    setAttemptBusy(attempt.id);
+    setAttemptNotice("");
+    setAttemptExplanation(null);
+
+    try {
+      const outcome = await api.retryChargeAttempt(attempt.id, facilityId);
+
+      setAttemptNotice(
+        outcome.status === "BILLED"
+          ? `Billed ${outcome.result.tariffCode ?? "tariff"} at ${
+              outcome.result.unitPrice ?? 0
+            }${outcome.result.unit ? ` / ${outcome.result.unit}` : ""} on invoice ${
+              outcome.result.invoiceNumber ?? "—"
+            }.`
+          : outcome.result.message ??
+            "Still waiting for a tariff. Nothing was billed.",
+      );
+
+      await loadAttempts();
+      await loadTariffs();
+    } catch (err) {
+      setAttemptNotice(
+        err instanceof Error ? err.message : "The retry did not complete.",
+      );
+    } finally {
+      setAttemptBusy(null);
+    }
+  };
+
+  const retryAllAttempts = async () => {
+    setAttemptBusy("all");
+    setAttemptNotice("");
+
+    try {
+      const summary = await api.retryChargeAttempts(facilityId);
+
+      setAttemptNotice(
+        `${summary.tried} retried · ${summary.billed} billed · ${summary.stillPending} still waiting for a tariff.`,
+      );
+
+      await loadAttempts();
+      await loadTariffs();
+    } catch (err) {
+      setAttemptNotice(
+        err instanceof Error ? err.message : "The retry did not complete.",
+      );
+    } finally {
+      setAttemptBusy(null);
+    }
+  };
+
+  const voidAttempt = async (attempt: BillingChargeAttempt) => {
+    setAttemptBusy(attempt.id);
+    setAttemptNotice("");
+
+    try {
+      await api.voidChargeAttempt(
+        attempt.id,
+        facilityId,
+        "Written off from the tariff screen.",
+      );
+      setAttemptNotice("Written off. The record is kept.");
+      await loadAttempts();
+    } catch (err) {
+      setAttemptNotice(
+        err instanceof Error ? err.message : "The write-off did not complete.",
+      );
+    } finally {
+      setAttemptBusy(null);
+    }
+  };
+
+  /*
+   * "Why was this not billed?" answered from the facility's own tariff
+   * rows: the server returns every row with a verdict, so the answer
+   * names OPD-001 rather than a code the facility has never typed.
+   */
+  const explainAttempt = async (attempt: BillingChargeAttempt) => {
+    setAttemptBusy(attempt.id);
+    setAttemptNotice("");
+
+    try {
+      const explanation = await api.explainTariffMatch({
+        family: attempt.family ?? "CONSULTATION",
+        ...(attempt.serviceName ? { name: attempt.serviceName } : {}),
+        ...(attempt.encounterType
+          ? { encounterType: attempt.encounterType }
+          : {}),
+        facilityId,
+      });
+
+      if (explanation.wouldBill) {
+        setAttemptExplanation({
+          id: attempt.id,
+          text: `It would bill now: ${explanation.wouldBill.code} — ${explanation.wouldBill.description}, ${explanation.wouldBill.fee} / ${explanation.wouldBill.unit} (${explanation.wouldBill.rule.toLowerCase()}).`,
+        });
+      } else if (explanation.outcome.ambiguity) {
+        setAttemptExplanation({
+          id: attempt.id,
+          text: `Two tariffs describe this service: ${explanation.outcome.ambiguity.codes.join(" and ")}. Link the right one under "Used for automatic billing".`,
+        });
+      } else {
+        const nearMisses = explanation.rows
+          .filter((row) => row.verdict !== "NO_MATCH")
+          .slice(0, 4)
+          .map((row) => `${row.code} (${row.verdict.toLowerCase().replace(/_/g, " ")})`);
+
+        setAttemptExplanation({
+          id: attempt.id,
+          text: nearMisses.length
+            ? `No tariff prices this yet. Closest rows: ${nearMisses.join(", ")}.`
+            : `No tariff in this facility describes this service. Codes tried: ${explanation.codes.join(", ")}.`,
+        });
+      }
+    } catch (err) {
+      setAttemptExplanation({
+        id: attempt.id,
+        text:
+          err instanceof Error
+            ? err.message
+            : "The explanation could not be fetched.",
+      });
+    } finally {
+      setAttemptBusy(null);
+    }
+  };
 
   /*
    * The laboratory catalogue, best effort.
@@ -421,8 +640,30 @@ export const FacilityServiceTariffsPanel: React.FC<
               >
                 <span className="text-slate-600">{entry.label}</span>
                 {entry.match ? (
-                  <span className="font-mono text-emerald-700">
-                    {entry.match.code} · {entry.match.fee}
+                  <span className="text-right">
+                    <span className="font-mono text-emerald-700">
+                      {entry.match.code} · {entry.match.fee}
+                      {entry.match.unit ? ` / ${entry.match.unit}` : ""}
+                    </span>
+                    <span className="ml-1 text-2xs text-slate-400">
+                      {entry.rule === "LINK"
+                        ? "linked"
+                        : entry.rule === "CODE"
+                          ? "by code"
+                          : "by description"}
+                    </span>
+                  </span>
+                ) : entry.ambiguity ? (
+                  <span
+                    className="text-amber-700"
+                    title={`${entry.ambiguity.codes.join(" and ")} both describe this service`}
+                  >
+                    two tariffs claim it
+                  </span>
+                ) : entry.specific.length > 0 ? (
+                  <span className="text-slate-600">
+                    {entry.specific.length} specific price
+                    {entry.specific.length === 1 ? "" : "s"} only
                   </span>
                 ) : (
                   <span className="text-amber-700">not priced</span>
@@ -548,6 +789,138 @@ export const FacilityServiceTariffsPanel: React.FC<
           <span className="font-mono"> PROC-WOUND-DRESSING</span> bills itself.
         </p>
       </details>
+
+      {/*
+        Unbilled charges.
+
+        A visit whose tariff was missing is recorded but produces no
+        invoice line. Before this list existed the skip was shown once
+        and forgotten. Retrying runs the ordinary charge path, so a
+        charge that was billed in the meantime is reported as a
+        duplicate rather than billed twice.
+      */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">
+              Charges that could not be priced
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Recorded on the clinical record, but no invoice line exists, so
+              nothing has been claimed for them. Fix the price list, then retry.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={
+                (attempts?.pending ?? 0) > 0
+                  ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                  : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800"
+              }
+            >
+              {attempts === null
+                ? "unavailable"
+                : `${attempts.pending} waiting`}
+            </span>
+            <button
+              type="button"
+              onClick={() => void retryAllAttempts()}
+              disabled={attemptBusy !== null || (attempts?.pending ?? 0) === 0}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {attemptBusy === "all" ? "Retrying…" : "Retry all"}
+            </button>
+          </div>
+        </div>
+
+        {attemptsUnavailable !== "" && (
+          <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+            {attemptsUnavailable}
+          </p>
+        )}
+
+        {attemptNotice !== "" && (
+          <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">
+            {attemptNotice}
+          </p>
+        )}
+
+        {attempts !== null && attempts.attempts.length === 0 && (
+          <p className="mt-3 text-xs text-slate-500">
+            Nothing is waiting. Every charge this facility attempted has an
+            invoice line.
+          </p>
+        )}
+
+        {attempts !== null && attempts.attempts.length > 0 && (
+          <ul className="mt-3 divide-y divide-slate-100">
+            {attempts.attempts.slice(0, 12).map((attempt) => (
+              <li key={attempt.id} className="py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">
+                      {attempt.description ?? attempt.itemType}
+                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-2xs font-normal text-slate-500">
+                        {attempt.status.toLowerCase()}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {attempt.itemType} · patient #{attempt.patientId} · tried{" "}
+                      {attempt.attempts} time{attempt.attempts === 1 ? "" : "s"}
+                      {attempt.lastAttemptAt
+                        ? ` · last ${new Date(attempt.lastAttemptAt).toLocaleString("en-KE")}`
+                        : ""}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void explainAttempt(attempt)}
+                      disabled={attemptBusy !== null}
+                      className="rounded-lg border border-slate-300 px-2 py-1 text-2xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Why?
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void retryAttempt(attempt)}
+                      disabled={attemptBusy !== null || attempt.status !== "PENDING"}
+                      className="rounded-lg bg-blue-600 px-2 py-1 text-2xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {attemptBusy === attempt.id ? "Working…" : "Retry"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void voidAttempt(attempt)}
+                      disabled={attemptBusy !== null || attempt.status !== "PENDING"}
+                      className="rounded-lg border border-slate-300 px-2 py-1 text-2xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Write off
+                    </button>
+                  </div>
+                </div>
+
+                {attempt.detail && (
+                  <p className="mt-1 text-xs text-slate-500">{attempt.detail}</p>
+                )}
+
+                {attempt.codesTried.length > 0 && (
+                  <p className="mt-1 font-mono text-2xs text-slate-400">
+                    codes tried: {attempt.codesTried.join(", ")}
+                  </p>
+                )}
+
+                {attemptExplanation?.id === attempt.id && (
+                  <p className="mt-1 rounded bg-slate-50 p-2 text-xs text-slate-700">
+                    {attemptExplanation.text}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {formOpen && (
         <form

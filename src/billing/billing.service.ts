@@ -25,6 +25,16 @@ import type { db as database } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 
 import { formatDateKey, parseLooseDate } from '../utils/dates.ts';
+import {
+  codesForFamily,
+  describeMatch,
+  explainMatch,
+  familyLabel,
+  matchTariff,
+  phrasesForCharge,
+  type MatchOutcome,
+} from './tariff-matching.ts';
+import type { BillingFamily } from './tariff-codes.ts';
 
 /* ============================================================
    TYPES
@@ -81,6 +91,22 @@ export interface ChargeRequest {
    */
   serviceKeys?: readonly string[];
 
+  /**
+   * Which automatic charge this is. Enables the catalogue rule: the
+   * facility's own description, inside the department this service
+   * belongs to, matched only when exactly one tariff claims it.
+   */
+  family?: BillingFamily;
+
+  /** The test, study, procedure or drug being priced. */
+  serviceName?: string | null;
+
+  /** Visit type, for a consultation (`OUTPATIENT`, `FOLLOW_UP`, …). */
+  encounterType?: string | null;
+
+  /** Extra phrases to look for, most specific first. */
+  aliases?: readonly string[];
+
   quantity?: number;
 
   sourceType: BillingSourceType;
@@ -120,6 +146,15 @@ export interface ChargeResult {
   quantity?: number;
   unitPrice?: string;
   totalAmount?: string;
+
+  /** The tariff's own billing unit: `Visit`, `Per day`, `Test`. */
+  unit?: string | null;
+
+  /** How the tariff was found, when one was. */
+  matchRule?: 'LINK' | 'CODE' | 'CATALOGUE';
+  matchExplanation?: string;
+  /** Codes the engine tried, shown when nothing matched. */
+  codesTried?: string[];
 
   /** Present when the charge was skipped, for UI messaging. */
   message?: string;
@@ -223,54 +258,53 @@ export async function resolveLinkedTariff(
   facilityId: number,
   serviceKeys: readonly string[] | undefined,
 ): Promise<ResolvedTariff | null> {
-  const keys = (serviceKeys ?? [])
-    .map((key) => key?.trim())
-    .filter((key): key is string => Boolean(key));
+  /*
+   * One implementation of the rule, in `resolveTariffForCharge`. This
+   * wrapper keeps the older call shape working for anything outside
+   * this module without keeping a second copy of the matching order.
+   */
+  const match = await resolveTariffForCharge(executor, {
+    facilityId,
+    codes: [],
+    serviceKeys: serviceKeys ?? [],
+  });
 
-  if (keys.length === 0) return null;
+  return match.tariff;
+}
+
+/**
+ * Every active tariff this facility has, in one query.
+ *
+ * One read rather than three: the link rule, the code rule and the
+ * catalogue rule all need the same rows, and loading them together is
+ * also what makes "why did OPD-001 not match?" answerable in one place.
+ *
+ * `billing_key` arrived in migration 0019. A database one migration
+ * behind still bills by code; the column is simply absent from the row.
+ */
+export async function loadActiveFacilityTariffs(
+  executor: Executor,
+  facilityId: number,
+): Promise<Array<ResolvedTariff & { department: string | null; billingKey: string | null }>> {
+  const base = {
+    id: schema.facilityServiceTariffs.id,
+    code: schema.facilityServiceTariffs.code,
+    description: schema.facilityServiceTariffs.description,
+    fee: schema.facilityServiceTariffs.fee,
+    unit: schema.facilityServiceTariffs.unit,
+    department: schema.facilityServiceTariffs.department,
+  };
 
   try {
-    const rows = await executor
-      .select({
-        id: schema.facilityServiceTariffs.id,
-        code: schema.facilityServiceTariffs.code,
-        description: schema.facilityServiceTariffs.description,
-        fee: schema.facilityServiceTariffs.fee,
-        unit: schema.facilityServiceTariffs.unit,
-        billingKey: schema.facilityServiceTariffs.billingKey,
-      })
+    return await executor
+      .select({ ...base, billingKey: schema.facilityServiceTariffs.billingKey })
       .from(schema.facilityServiceTariffs)
       .where(
         and(
           eq(schema.facilityServiceTariffs.facilityId, facilityId),
           eq(schema.facilityServiceTariffs.isActive, true),
-          inArray(
-            sql`upper(${schema.facilityServiceTariffs.billingKey})`,
-            keys.map((key) => key.toUpperCase()),
-          ),
         ),
       );
-
-    if (rows.length === 0) return null;
-
-    for (const key of keys) {
-      const upper = key.toUpperCase();
-      const match = rows.find(
-        (row) => (row.billingKey ?? '').trim().toUpperCase() === upper,
-      );
-
-      if (match) {
-        return {
-          id: match.id,
-          code: match.code,
-          description: match.description,
-          fee: match.fee,
-          unit: match.unit,
-        };
-      }
-    }
-
-    return null;
   } catch (error) {
     if (!isMissingBillingKeyColumn(error)) throw error;
 
@@ -278,12 +312,219 @@ export async function resolveLinkedTariff(
       warnedMissingBillingKey = true;
 
       console.warn(
-        'Billing: facility_service_tariffs.billing_key is missing. Run `npm run db:migrate` (migration 0019) to enable linked automatic billing. Falling back to code matching.',
+        'Billing: facility_service_tariffs.billing_key is missing. Run `npm run db:migrate` (migration 0019) to enable linked automatic billing. Falling back to code and description matching.',
       );
     }
 
-    return null;
+    const rows = await executor
+      .select(base)
+      .from(schema.facilityServiceTariffs)
+      .where(
+        and(
+          eq(schema.facilityServiceTariffs.facilityId, facilityId),
+          eq(schema.facilityServiceTariffs.isActive, true),
+        ),
+      );
+
+    return rows.map((row) => ({ ...row, billingKey: null }));
   }
+}
+
+export interface ChargeMatch {
+  tariff: ResolvedTariff | null;
+  rule: 'LINK' | 'CODE' | 'CATALOGUE' | null;
+  explanation: string;
+  ambiguity?: { phrase: string; codes: string[] };
+  codesTried: string[];
+  phrasesTried: string[];
+  /** Rows that were available to match against. */
+  candidateCount: number;
+}
+
+/**
+ * Resolve a charge to one of this facility's tariffs.
+ *
+ * The ladder is LINK → CODE → CATALOGUE, defined in `tariff-matching.ts`
+ * and shared with the configuration screen so the two cannot disagree
+ * about what a consultation will cost.
+ */
+export async function resolveTariffForCharge(
+  executor: Executor,
+  request: {
+    facilityId: number;
+    codes: readonly string[];
+    serviceKeys?: readonly string[];
+    family?: BillingFamily;
+    serviceName?: string | null;
+    encounterType?: string | null;
+    aliases?: readonly string[];
+  },
+): Promise<ChargeMatch> {
+  const rows = await loadActiveFacilityTariffs(executor, request.facilityId);
+
+  const phrases = request.family
+    ? phrasesForCharge({
+        family: request.family,
+        serviceName: request.serviceName ?? null,
+        encounterType: request.encounterType ?? null,
+        aliases: request.aliases ?? [],
+      })
+    : [];
+
+  const outcome: MatchOutcome<(typeof rows)[number]> = matchTariff({
+    rows,
+    codes: request.codes,
+    serviceKeys: request.serviceKeys,
+    family: request.family,
+    phrases,
+  });
+
+  return {
+    tariff: outcome.tariff
+      ? {
+          id: outcome.tariff.id,
+          code: outcome.tariff.code,
+          description: outcome.tariff.description,
+          fee: outcome.tariff.fee,
+          unit: outcome.tariff.unit,
+        }
+      : null,
+    rule: outcome.rule,
+    explanation: describeMatch(outcome),
+    ambiguity: outcome.ambiguity,
+    codesTried: outcome.triedCodes,
+    phrasesTried: outcome.triedPhrases,
+    candidateCount: rows.length,
+  };
+}
+
+/**
+ * Every tariff in the facility, active or not, with a verdict.
+ *
+ * Used by the configuration screen to answer "why was this visit not
+ * billed?": the rows are the facility's own, so the answer names their
+ * codes and their descriptions rather than codes the engine invented.
+ */
+export async function explainFacilityTariffMatch(
+  executor: Executor,
+  input: {
+    facilityId: number;
+    family: BillingFamily;
+    code?: string | null;
+    name?: string | null;
+    wardCode?: string | null;
+    encounterType?: string | null;
+    serviceKeys?: readonly string[];
+    codes?: readonly string[];
+  },
+): Promise<{
+  codes: string[];
+  phrases: string[];
+  linkedKeys: string[];
+  outcome: MatchOutcome<{
+    id: number;
+    code: string;
+    description: string;
+    fee: string;
+    unit: string;
+    department: string | null;
+    billingKey: string | null;
+    isActive: boolean;
+  }>;
+  rows: Array<{
+    id: number;
+    code: string;
+    description: string;
+    fee: string;
+    unit: string;
+    department: string | null;
+    billingKey: string | null;
+    isActive: boolean;
+    verdict: string;
+    note: string;
+  }>;
+}> {
+  const base = {
+    id: schema.facilityServiceTariffs.id,
+    code: schema.facilityServiceTariffs.code,
+    description: schema.facilityServiceTariffs.description,
+    fee: schema.facilityServiceTariffs.fee,
+    unit: schema.facilityServiceTariffs.unit,
+    department: schema.facilityServiceTariffs.department,
+    isActive: schema.facilityServiceTariffs.isActive,
+  };
+
+  interface ExplainedTariffRow {
+    id: number;
+    code: string;
+    description: string;
+    fee: string;
+    unit: string;
+    department: string | null;
+    billingKey: string | null;
+    isActive: boolean;
+  }
+
+  let rows: ExplainedTariffRow[];
+
+  try {
+    rows = await executor
+      .select({ ...base, billingKey: schema.facilityServiceTariffs.billingKey })
+      .from(schema.facilityServiceTariffs)
+      .where(eq(schema.facilityServiceTariffs.facilityId, input.facilityId));
+  } catch (error) {
+    if (!isMissingBillingKeyColumn(error)) throw error;
+
+    const fallback = await executor
+      .select(base)
+      .from(schema.facilityServiceTariffs)
+      .where(eq(schema.facilityServiceTariffs.facilityId, input.facilityId));
+
+    rows = fallback.map((row) => ({ ...row, billingKey: null }));
+  }
+
+  const codes =
+    input.codes && input.codes.length > 0
+      ? [...input.codes]
+      : codesForFamily({
+          family: input.family,
+          code: input.code ?? null,
+          name: input.name ?? null,
+          wardCode: input.wardCode ?? null,
+          encounterType: input.encounterType ?? null,
+        });
+
+  const linkedKeys =
+    input.serviceKeys && input.serviceKeys.length > 0
+      ? [...input.serviceKeys]
+      : [input.family];
+
+  const phrases = phrasesForCharge({
+    family: input.family,
+    serviceName: input.name ?? null,
+    encounterType: input.encounterType ?? null,
+    aliases: input.code ? [input.code] : [],
+  });
+
+  const explanation = explainMatch({
+    rows,
+    codes,
+    serviceKeys: linkedKeys,
+    family: input.family,
+    phrases,
+  });
+
+  return {
+    codes,
+    phrases,
+    linkedKeys,
+    outcome: explanation.outcome,
+    rows: explanation.rows.map((entry) => ({
+      ...entry.tariff,
+      verdict: entry.verdict,
+      note: entry.note,
+    })),
+  };
 }
 
 /**
@@ -296,41 +537,9 @@ export async function resolveTariff(
   facilityId: number,
   codes: readonly string[],
 ): Promise<ResolvedTariff | null> {
-  const candidates = codes
-    .map((code) => code?.trim())
-    .filter((code): code is string => Boolean(code));
+  const match = await resolveTariffForCharge(executor, { facilityId, codes });
 
-  if (candidates.length === 0) return null;
-
-  /*
-   * Compare upper-cased. Tariff codes are written in capitals by the
-   * configuration screen, but rows created by a script, an import or an
-   * older build can be lower case — and a code that differs only in case
-   * used to bill nothing without saying why.
-   */
-  const rows = await executor
-    .select({
-      id: schema.facilityServiceTariffs.id,
-      code: schema.facilityServiceTariffs.code,
-      description: schema.facilityServiceTariffs.description,
-      fee: schema.facilityServiceTariffs.fee,
-      unit: schema.facilityServiceTariffs.unit,
-    })
-    .from(schema.facilityServiceTariffs)
-    .where(
-      and(
-        eq(schema.facilityServiceTariffs.facilityId, facilityId),
-        eq(schema.facilityServiceTariffs.isActive, true),
-        inArray(
-          sql`upper(${schema.facilityServiceTariffs.code})`,
-          candidates.map((code) => code.toUpperCase()),
-        ),
-      ),
-    );
-
-  if (rows.length === 0) return null;
-
-  return pickTariffForCodes(rows, candidates);
+  return match.tariff;
 }
 
 /**
@@ -566,13 +775,27 @@ export async function chargeForService(
   /* ---- 1. Price it from the facility tariff ---------------------- */
 
   /*
-   * A link the facility made beats a code the engine guessed. Try it
-   * first, then fall back to the code candidates so every tariff that
-   * worked before this column existed still works.
+   * LINK → CODE → CATALOGUE.
+   *
+   * The link is the facility's own statement and wins outright. Code
+   * matching is unchanged, so anything that billed before still bills.
+   * The catalogue rule only runs when the caller says which service
+   * this is (`family`), and only accepts a tariff whose own description
+   * names that service inside the right department — and only when
+   * exactly one does. Two candidates is an ambiguity to report, not a
+   * coin to flip.
    */
-  const tariff =
-    (await resolveLinkedTariff(executor, request.facilityId, request.serviceKeys))
-    ?? (await resolveTariff(executor, request.facilityId, request.codes));
+  const match = await resolveTariffForCharge(executor, {
+    facilityId: request.facilityId,
+    codes: request.codes,
+    serviceKeys: request.serviceKeys,
+    family: request.family,
+    serviceName: request.serviceName,
+    encounterType: request.encounterType,
+    aliases: request.aliases,
+  });
+
+  const tariff = match.tariff;
 
   const unitPriceCents = tariff
     ? toCents(tariff.fee)
@@ -582,9 +805,13 @@ export async function chargeForService(
     return {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
-      message: tariff
-        ? `Tariff ${tariff.code} is priced at zero. The service was recorded but not billed.`
-        : `No active tariff matched ${summariseCodes(request.codes)} for this facility, and no tariff is linked to this service. Add one under Configuration → Services & Tariffs, or set “Used for automatic billing” on a tariff you already have; the service was recorded but not billed.`,
+      codesTried: match.codesTried,
+      matchExplanation: match.explanation,
+      message: match.ambiguity
+        ? `Two active tariffs describe ${request.family ? familyLabel(request.family) : 'this service'} in this facility — ${match.ambiguity.codes.join(' and ')}. JaliCare will not choose between them. Open Configuration → Services & Tariffs and set “Used for automatic billing” on the one that should price it; the service was recorded but not billed.`
+        : tariff
+          ? `Tariff ${tariff.code} is priced at zero. The service was recorded but not billed.`
+          : `No active tariff matched ${summariseCodes(request.codes)} for this facility, and no active tariff is linked to this service or describes it. Add one under Configuration → Services & Tariffs, or set “Used for automatic billing” on a tariff you already have; the service was recorded but not billed, and it is now listed under “Charges that could not be priced” so it can be billed once a price exists.`,
     };
   }
 
@@ -662,8 +889,12 @@ export async function chargeForService(
     tariffCode: tariff?.code ?? request.codes[0],
     description,
     quantity,
+    unit: tariff?.unit ?? null,
     unitPrice: fromCents(unitPriceCents),
     totalAmount: fromCents(totalCents),
+    matchRule: match.rule ?? undefined,
+    matchExplanation: match.explanation,
+    codesTried: match.codesTried,
   };
 }
 

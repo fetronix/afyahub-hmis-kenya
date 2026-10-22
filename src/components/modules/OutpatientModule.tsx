@@ -247,14 +247,26 @@ export const OutpatientModule: React.FC = () => {
       const consultBilling = (newEncounter as { billing?: ServiceCharge | null }).billing;
 
       if (consultBilling?.charged) {
+        /*
+         * The unit is what the facility priced against — "Per visit"
+         * rather than a day rate is a different promise, and it comes
+         * from the tariff row, not from this screen.
+         */
         showToast(
-          `Visit started. Consultation billed KES ${consultBilling.totalAmount} on ${consultBilling.invoiceNumber}.`
+          `Visit started. Consultation billed KES ${consultBilling.totalAmount}${
+            consultBilling.unit ? ` (${consultBilling.unit})` : ''
+          } on ${consultBilling.invoiceNumber}.`
         );
       } else {
+        /*
+         * The server has already recorded this in the retry queue, so
+         * the message says where to find it rather than implying the
+         * fee was simply lost.
+         */
         showToast(
           `Visit started, but the consultation was not billed: ${
             consultBilling?.message ?? 'the server returned no billing result'
-          }`
+          } It is listed under Configuration → Services & Tariffs → “Charges that could not be priced”, and can be billed once a price is set.`
         );
       }
     } catch (err: any) {

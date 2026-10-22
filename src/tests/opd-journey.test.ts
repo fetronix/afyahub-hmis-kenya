@@ -229,6 +229,7 @@ function testEveryStageIsCharged(): void {
    * and the screen is told what happened.
    */
   const billing = source('src/billing/billing.service.ts');
+  const matching = source('src/billing/tariff-matching.ts');
   assert(
     billing.includes("reason: 'TARIFF_NOT_CONFIGURED'"),
     'a missing tariff is reported, not invented',
@@ -240,7 +241,7 @@ function testEveryStageIsCharged(): void {
    * Both ends are held here so neither can regress alone.
    */
   assert(
-    billing.includes("sql`upper(${schema.facilityServiceTariffs.code})`"),
+    matching.includes('codeKey(row.code) === upper'),
     'tariff lookup compares upper-cased codes',
   );
   assert(
@@ -269,9 +270,20 @@ function testEveryStageIsCharged(): void {
    * the test name, so a facility that priced LAB-CBC — the code its own
    * catalogue shows — billed nothing for a full blood count.
    */
+  /*
+   * The candidate list moved to one place (`codesForFamily`) so the
+   * charge, the diagnostic screen and this test cannot disagree. The
+   * behaviour asserted here is unchanged: the charge asks for the
+   * catalogue code first, because that is the code the facility sees in
+   * its own laboratory catalogue.
+   */
   assert(
-    charges.includes('labTariffCodeCandidates'),
-    'the laboratory charge asks for the catalogue code',
+    charges.includes('codesForFamily'),
+    'the laboratory charge asks the shared rule for its candidates',
+  );
+  assert(
+    matching.includes('labTariffCodeCandidates({ code: input.code ?? null, name })'),
+    'and that rule asks for the catalogue code',
   );
 
   const queries = source('src/db/queries.ts');
@@ -285,7 +297,7 @@ function testEveryStageIsCharged(): void {
   );
 
   assert(
-    app.includes('labTariffCodeCandidates({'),
+    app.includes("codes: codesForFamily({\n              family: 'LABORATORY',"),
     'the one-by-one laboratory route prices like the batch does',
   );
 
@@ -299,7 +311,7 @@ function testEveryStageIsCharged(): void {
   );
 
   assert(
-    app.includes('procedureTariffCodeCandidates({'),
+    app.includes("codes: codesForFamily({\n            family: 'PROCEDURE',"),
     'a procedure is priced from its own code as well as its name',
   );
 
@@ -329,11 +341,19 @@ function testEveryStageIsCharged(): void {
     'a radiology order offers a billing link',
   );
 
+  /*
+   * The order is now one rule in one module: LINK → CODE → DESCRIPTION.
+   * The assertion follows the code, so the guarantee survives the move:
+   * a link the facility made still beats a code the engine guessed, and
+   * both still beat a description match.
+   */
   assert(
-    billing.includes('resolveLinkedTariff') &&
-      billing.indexOf('resolveLinkedTariff(executor, request.facilityId') <
-        billing.indexOf('resolveTariff(executor, request.facilityId, request.codes)'),
-    'a link the facility made is tried before a code the engine guessed',
+    billing.includes('resolveTariffForCharge(') &&
+      matching.indexOf('/* ---- 1. Explicit link') <
+        matching.indexOf('/* ---- 2. Exact code') &&
+      matching.indexOf('/* ---- 2. Exact code') <
+        matching.indexOf("/* ---- 3. The facility's own description"),
+    'a link the facility made is tried before a code, and a code before a description',
   );
 
   /*

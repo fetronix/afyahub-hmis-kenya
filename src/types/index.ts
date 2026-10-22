@@ -516,6 +516,111 @@ export interface ServiceTariff {
   updatedAt: string;
 }
 
+/**
+ * A charge the billing engine could not price.
+ *
+ * The clinical work exists; the invoice line does not. Holding the
+ * original request is what makes it billable once the price list is
+ * corrected — see migration 0020.
+ */
+export interface BillingChargeAttempt {
+  id: number;
+  facilityId: number;
+  patientId: number;
+  encounterId: number | null;
+  sourceType: string;
+  sourceId: number | null;
+  itemType: string;
+  description: string | null;
+  codes: string[];
+  serviceKeys: string[];
+  family: string | null;
+  serviceName: string | null;
+  encounterType: string | null;
+  quantity: number;
+  reason: string;
+  detail: string | null;
+  codesTried: string[];
+  status: "PENDING" | "BILLED" | "DUPLICATE" | "VOID";
+  attempts: number;
+  lastAttemptAt: string;
+  resolvedItemId: number | null;
+  resolvedInvoiceId: number | null;
+  resolvedTariffCode: string | null;
+  resolvedUnitPrice: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface BillingChargeAttemptList {
+  facilityId: number;
+  pending: number;
+  attempts: BillingChargeAttempt[];
+}
+
+export interface BillingChargeAttemptOutcome {
+  attemptId: number;
+  status: "BILLED" | "DUPLICATE" | "PENDING";
+  result: {
+    charged: boolean;
+    reason?: string;
+    message?: string;
+    invoiceNumber?: string;
+    tariffCode?: string;
+    unitPrice?: number;
+    unit?: string | null;
+    matchRule?: "LINK" | "CODE" | "CATALOGUE";
+    matchExplanation?: string;
+    codesTried?: string[];
+  };
+}
+
+export interface BillingChargeRetrySummary {
+  tried: number;
+  billed: number;
+  stillPending: number;
+}
+
+export interface TariffMatchRow {
+  id: number;
+  code: string;
+  description: string;
+  fee: string;
+  unit: string;
+  department: string | null;
+  billingKey: string | null;
+  isActive: boolean;
+  verdict:
+    | "MATCHED_LINK"
+    | "MATCHED_CODE"
+    | "MATCHED_DESCRIPTION"
+    | "INACTIVE"
+    | "WRONG_DEPARTMENT"
+    | "DESCRIPTION_ALSO_MATCHES"
+    | "NO_MATCH";
+  note: string;
+}
+
+export interface TariffMatchExplanation {
+  facilityId: number;
+  family: string;
+  codes: string[];
+  phrases: string[];
+  linkedKeys: string[];
+  rows: TariffMatchRow[];
+  wouldBill: {
+    code: string;
+    description: string;
+    fee: string;
+    unit: string;
+    rule: "LINK" | "CODE" | "CATALOGUE";
+  } | null;
+  outcome: {
+    rule: "LINK" | "CODE" | "CATALOGUE" | null;
+    ambiguity?: { phrase: string; codes: string[] };
+  };
+}
+
 export interface BillingPayment {
   id: number;
   invoiceId: number;

@@ -27,19 +27,22 @@ live database below is either marked UNVERIFIED or BLOCKED.
 ## 2. Schema and migration parity
 
 ```
-schema tables           82   (0017 adds patient_allergies, 0018 adds six portal tables)
-tables created by SQL   82
+schema tables           83   (0017 adds patient_allergies, 0018 adds six portal
+                             tables, 0020 adds billing_charge_attempts)
+tables created by SQL   83
 missing from migrations 0
 extra in migrations     0
-journal entries         20
-.sql files              20
+journal entries         21
+.sql files              21
 ```
 
 The figures above were 75 / 17 at audit time, 76 / 18 after migration `0017` was
-written, 82 / 19 after `0018` (patient portal), and 82 / 20 after `0019` (tariff
-billing links, which adds a column rather than a table). None of 0017, 0018 or 0019
-has been executed against any database; the parity check is static, and
-`npm run test:migrations` (706 assertions) passes against the files, not a server.
+written, 82 / 19 after `0018` (patient portal), 82 / 20 after `0019` (tariff
+billing links, which adds a column rather than a table), and 83 / 21 after `0020`
+(`billing_charge_attempts`, the queue of charges that could not be priced). None
+of 0017–0020 has been executed against any database; the parity check is static,
+and `npm run test:migrations` (721 assertions) passes against the files, not a
+server.
 
 Three tables were initially reported missing by a naive scan —
 `admission_transfers`, `dha_service_mappings`, `nursing_notes` — because they are
@@ -91,6 +94,7 @@ BLOCKED.
 | 0017 | `consent_allergy_audit_integrity` | Append-only audit triggers, `patient_allergies`, blind-index columns. **Added 2026-10-21 evening; not applied** |
 | 0018 | `patient_portal` | Six tables: `patient_portal_accounts`, `patient_portal_invitations`, `patient_portal_invitation_events`, `patient_portal_sessions`, `patient_portal_settings`, `patient_record_sharing_grants`. Correction requests and portal access history reuse `audit_logs` and `patient_record_access_logs`, so no second audit or second record store was created. **Added 2026-10-22; not applied** |
 | 0019 | `service_tariff_billing_key` | Adds `facility_service_tariffs.billing_key` and a partial unique index so one active tariff answers each automatic charge. **Added 2026-10-22; not applied** |
+| 0020 | `billing_charge_attempts` | One table: the charges the engine could not price, holding the original request so they can be retried after the tariff is fixed. Partial unique index keeps one `PENDING` row per clinical source; nothing is deleted, a write-off sets `VOID`. **Added 2026-10-22; not applied** |
 
 ### 3.1 The one destructive statement
 

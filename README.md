@@ -991,10 +991,10 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
-**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 3,038
-assertion statements**, no failures. `test:compliance` 230 assertions, `test:route-scope` 66,
-`test:field-encryption` 48, `test:consent-allergy` 80, `test:patient-portal` 197,
-`test:migrations` 692.
+**1,707 modules**. `npm test` — **25 suites, 3,149 assertion statements**, no
+failures. `test:tariff-matching` 92 (new), `test:compliance` 239,
+`test:route-scope` 66, `test:field-encryption` 48, `test:consent-allergy` 80,
+`test:patient-portal` 197, `test:migrations` 721.
 
 **Not verified.** No database and no browser: `npm run db:status` fails with
 `Missing required environment variable: SQL_HOST`. Every SQL path is
@@ -1293,6 +1293,86 @@ migrations 692 → 706). **Not verified:** the migration has not been executed a
 charge has been raised against PostgreSQL — there is no database in this
 environment, and the 150 figure above is the facility's own, not one this code
 invented.
+
+### 3.26 Why OPD-001 still failed — reading the facility's own description, and billing what was skipped
+
+§3.25 gave the facility a way to *say* which tariff answers a consultation. The
+warning came back unchanged, because the same visit reached the same engine with
+the same five codes and no link:
+
+> No active tariff matched CONSULT-OUTPATIENT, OUTPATIENT, OPD-CONSULT (+2 more)
+
+**The five codes, in full.** The message printed three. `tariffCodeCandidates`
+produces `CONSULT-OUTPATIENT`, `OUTPATIENT`, then the defaults `OPD-CONSULT`,
+`CONSULTATION`, `CONSULT`. `OPD-001` is none of them, so the charge skipped — and
+because migration 0019 had not been applied (or the link had not been set),
+nothing else could rescue it. The message was accurate and unhelpful.
+
+**The rule that was missing.** Between "a code the engine guessed" and "the
+facility told us" there is a third statement the facility already made: its own
+description. `OPD-001 General outpatient consultation` says what it is. So a
+charge may now match on description — under three constraints that make it a rule
+rather than a guess:
+
+1. **Only inside the service's departments.** A consultation is priced from OPD,
+   specialty, registration, reception or finance tariffs. A `PHA-001` row that
+   happens to say "consultation" cannot price a visit, and a pharmacy row can
+   never price a blood test. Both the module id (`opd`) and the human label
+   (`OPD / Outpatient`) resolve to one bucket.
+2. **Only when exactly one active tariff matches.** Two candidates is an
+   ambiguity: nothing is charged, and both codes are named so the facility links
+   the right one. `OPD-001` (150) versus `OPD-002` (300) is precisely the pair
+   that must never be decided by text similarity.
+3. **Only when the visit type agrees.** A general OPD visit asks for "general
+   outpatient consultation"; a follow-up asks for "follow-up consultation". A
+   one-word fallback such as "consultation" may only match a description whose
+   extra words are neutral ("Consultation fee"), so `Follow-up consultation` is
+   never used for a general visit — the bug this rule was written to avoid, and
+   the test that caught it on the first run.
+
+**Order.** `LINK` → `CODE` → `CATALOGUE`. A link the facility set always wins, so
+nothing that worked can be re-priced by the new rule. Prices are never inferred:
+the catalogue rule selects a row, and the amount is that row's `fee`, in that
+row's `unit` (`Per visit`).
+
+**One list, one place.** `codesForFamily()` in `src/billing/tariff-matching.ts` is
+now the only source of candidate codes; the seven charge sites, the laboratory
+batch, the diagnostic screen and the tests all call it. That is what stops the
+message naming a code the engine never tried.
+
+**Charges that could not be priced.** A skipped charge used to leave nothing
+behind: the result was returned to the caller, shown once, forgotten. Migration
+**0020** adds `billing_charge_attempts` — one row per charge the engine could not
+price, holding the original request, the codes tried, the link keys the facility
+would set, and the clinical source. Retry runs the ordinary charge path, so the
+ordinary idempotency key applies: retrying twice cannot produce two invoice lines,
+and a charge billed in the meantime comes back `DUPLICATE`. Statuses are
+`PENDING`, `BILLED`, `DUPLICATE`, `VOID`; a write-off keeps the row.
+
+- `GET /api/billing/charge-attempts` — what is waiting, and what was resolved.
+- `POST /api/billing/charge-attempts/:id/retry` — one charge.
+- `POST /api/billing/charge-attempts/retry` — everything pending, bounded at 100.
+- `POST /api/billing/charge-attempts/:id/void` — write off, audited.
+- `POST /api/billing/tariff-match` — read-only: every tariff in the facility with
+  a verdict (`MATCHED_DESCRIPTION`, `INACTIVE`, `WRONG_DEPARTMENT`, …), so "why
+  was OPD-001 not used?" is answered about the facility's own rows.
+
+The tariff screen shows the queue with **Retry**, **Retry all**, **Why?** and
+**Write off**; coverage now runs the engine's own matcher, so `Consultation —
+OPD-001 · 150.00 / Per visit (by description)` is the same computation the next
+visit performs. The OPD screen says where an unbilled consultation went instead of
+leaving it at "not billed".
+
+**What is still required from the facility.** Nothing has been seeded and no price
+has been invented. `OPD-001` bills at 150 through the description rule once
+migration 0020 is applied; the link remains the explicit alternative and is the
+only way to choose between two tariffs that both describe the service.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 25
+suites / 3,149 assertion statements (tariff matching 92 new, OPD journey 82 → 83,
+migrations 706 → 721). **Not verified:** no database here — migration 0020 has not
+been executed and no invoice line has been created against PostgreSQL. The 150 is
+the facility's own figure, read from its row, not one this code invented.
 
 ## 4. Existing backups and modified files to preserve
 

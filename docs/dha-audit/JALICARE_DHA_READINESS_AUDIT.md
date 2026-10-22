@@ -86,8 +86,8 @@ different number from 90%, and the difference is the point.
 | API | 226 route declarations: 134 in `src/app.ts` plus 92 in nine routers (`src/auth/*`, `src/routes/platform.routes.ts`, `src/clinical/*`, `src/compliance/*`, `src/config/facility-modules.routes.ts`, `src/portal/*`) | static scan, 22 Oct 2026 |
 | Source size | 172 `.ts`/`.tsx` files, 102,925 lines under `src/` (excluding backups) | `wc -l`, 22 Oct 2026 |
 | Schema | 82 tables (six added by migration 0018) | `src/db/schema.ts` |
-| Migrations | 20 SQL files, 20 journal entries, 82 tables — parity confirmed. 0017, 0018 and 0019 are written and **unapplied** | `drizzle/` |
-| Tests | 24 suites, 3,038 assertion statements (3,025 numbered + 13 catalogue `PASS:` lines) | `npm test` |
+| Migrations | 21 SQL files, 21 journal entries, 83 tables — parity confirmed. 0017, 0018, 0019 and 0020 are written and **unapplied** | `drizzle/` |
+| Tests | 25 suites, 3,149 assertion statements (3,136 numbered + 13 catalogue `PASS:` lines) | `npm test` |
 | Deployment | Single Node process; frontend built by Vite; no container, CI or IaC in repo | absence verified |
 
 **The brief assumed SQLite.** It is not. PostgreSQL changes two conclusions:
@@ -212,9 +212,9 @@ changed.
 |---|---|---|
 | Type check | `npm run lint` | **Passes** — previously always failed on `firebase.ts` |
 | Production build | `npm run build` | **577 ms, 1,707 modules** (audit day: 644 ms) |
-| Test suite | `npm test` | **24 suites, 3,038 assertion statements, no failures** (audit day: 23 suites, 2,717) |
+| Test suite | `npm test` | **25 suites, 3,149 assertion statements, no failures** (audit day: 23 suites, 2,717) |
 | Route inventory | static scan of `src/app.ts` and the nine routers | 226 declarations (audit day: 134); 9 previously unguarded routes now guarded; all 38 portal routes guarded |
-| Schema/migration parity | static comparison | 82 = 82; 20 journal entries = 20 files (audit day: 75 / 17) |
+| Schema/migration parity | static comparison | 83 = 83; 21 journal entries = 21 files (audit day: 75 / 17) |
 | Portal migration | `npm run test:migrations` | 692 assertions pass; **0017 and 0018 not executed against PostgreSQL** |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
 | Browser walkthrough | — | **BLOCKED** — no browser in this environment |

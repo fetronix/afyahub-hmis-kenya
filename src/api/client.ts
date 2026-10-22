@@ -35,6 +35,10 @@ import {
   BillingItem,
   ServiceTariff,
   BillingPayment,
+  BillingChargeAttemptList,
+  BillingChargeAttemptOutcome,
+  BillingChargeRetrySummary,
+  TariffMatchExplanation,
   RecordPaymentResult,
   PaymentLedgerRow,
   InsuranceClaim,
@@ -726,8 +730,14 @@ export interface ServiceCharge {
   tariffCode?: string;
   description?: string;
   quantity?: number;
+  /** The tariff's own unit: "Per visit", "Per day", "Test". */
+  unit?: string | null;
   unitPrice?: string;
   totalAmount?: string;
+  /** How the price was found, when one was. */
+  matchRule?: "LINK" | "CODE" | "CATALOGUE";
+  matchExplanation?: string;
+  codesTried?: string[];
   message?: string;
 }
 
@@ -2661,6 +2671,50 @@ export const api = {
         body: JSON.stringify({ facilityId }),
       }
     ),
+
+  /**
+   * Charges the engine could not price. They are owed, not lost: each
+   * row holds the original request so it can be billed once a tariff
+   * exists (migration 0020).
+   */
+  getChargeAttempts: (facilityId: number, status?: string) =>
+    fetchJson<BillingChargeAttemptList>(
+      `${API_BASE}/billing/charge-attempts?facilityId=${encodeURIComponent(
+        String(facilityId)
+      )}${status ? `&status=${encodeURIComponent(status)}` : ""}`
+    ),
+
+  retryChargeAttempt: (id: number, facilityId: number) =>
+    fetchJson<BillingChargeAttemptOutcome>(
+      `${API_BASE}/billing/charge-attempts/${encodeURIComponent(String(id))}/retry`,
+      { method: "POST", body: JSON.stringify({ facilityId }) }
+    ),
+
+  retryChargeAttempts: (facilityId: number) =>
+    fetchJson<BillingChargeRetrySummary>(
+      `${API_BASE}/billing/charge-attempts/retry`,
+      { method: "POST", body: JSON.stringify({ facilityId }) }
+    ),
+
+  voidChargeAttempt: (id: number, facilityId: number, reason?: string) =>
+    fetchJson<{ success: boolean; id: number; status: string }>(
+      `${API_BASE}/billing/charge-attempts/${encodeURIComponent(String(id))}/void`,
+      { method: "POST", body: JSON.stringify({ facilityId, reason }) }
+    ),
+
+  /** Read-only: which tariff would price this service, and why. */
+  explainTariffMatch: (input: {
+    family: string;
+    code?: string;
+    name?: string;
+    wardCode?: string;
+    encounterType?: string;
+    facilityId?: number;
+  }) =>
+    fetchJson<TariffMatchExplanation>(`${API_BASE}/billing/tariff-match`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 
   recordPayment:
     (payment: Partial<BillingPayment> & {
