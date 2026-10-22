@@ -54,6 +54,18 @@ export const superAdminNavSections: NavSection[] = [
       { id: 'configuration', label: 'Platform Settings', icon: Sliders },
     ],
   },
+  {
+    /*
+     * The DHA readiness assessment is a platform-owner view, not a
+     * facility screen: it scores the whole product against 46
+     * requirements and names what is missing. It used to sit in the
+     * facility rail; it is now here and nowhere else.
+     */
+    title: 'INTEGRATIONS & READINESS',
+    items: [
+      { id: 'interoperability', label: 'DHA Readiness & FHIR', icon: Network },
+    ],
+  },
 ];
 
 /*
@@ -98,11 +110,17 @@ export const navSections: NavSection[] = [
     ],
   },
   {
-    title: 'INTELLIGENCE & DHA',
+    /*
+     * `interoperability` is deliberately absent. It is a superadmin
+     * screen — it opens the readiness assessment, the DHA connection
+     * report and the FHIR preview. Ordinary staff see neither the
+     * entry nor the screen; the API refuses them as well, so hiding
+     * the rail item is not the only thing standing in the way.
+     */
+    title: 'INTELLIGENCE & REPORTING',
     items: [
       { id: 'analytics', label: 'Reports & Revenue', icon: BarChart3 },
       { id: 'public_health', label: 'MOH 705 Surveillance', icon: Activity },
-      { id: 'interoperability', label: 'DHA Readiness & FHIR', icon: Network },
     ],
   },
   {

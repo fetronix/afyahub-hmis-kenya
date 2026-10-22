@@ -151,7 +151,16 @@ const AppContent: React.FC = () => {
         return <PublicHealthModule />;
 
       case 'interoperability':
-        return <InteroperabilityModule />;
+        /*
+         * Superadmin only. The rail no longer offers this to facility
+         * users, and this guard means a restored or programmatic
+         * `activeModule` cannot open it either. The server refuses the
+         * same requests independently — see `requireSuperAdmin` on
+         * /api/compliance/dha and /api/integrations/dha/readiness.
+         */
+        return authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN')
+          ? <InteroperabilityModule />
+          : <DashboardModule />;
 
       case 'configuration':
         return <ConfigurationModule />;

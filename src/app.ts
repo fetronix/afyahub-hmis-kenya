@@ -33,6 +33,7 @@ import {
   requireAuthorization,
   requirePermission,
   requireAnyPermission,
+  requireSuperAdmin,
 } from './auth/authorization.middleware.ts';
 import type { AuthRequest } from './auth/auth.middleware.ts';
 import {
@@ -6199,9 +6200,15 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
    * what this build does not implement yet.
    */
 
+  /*
+   * Superadmin only, like the screen that reads it. The report names
+   * which DHA credentials are configured, which operations are missing
+   * and what this build cannot call — configuration state, not clinical
+   * data, but not something every facility role needs either.
+   */
   app.get(
     '/api/integrations/dha/readiness',
-    requireAnyPermission('system.health.read', 'system.settings.manage'),
+    requireSuperAdmin(),
     async (req: AuthRequest, res: Response) => {
       try {
         if (!req.authContext) {

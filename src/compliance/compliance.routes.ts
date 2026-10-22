@@ -11,7 +11,7 @@
 import { Router } from 'express';
 
 import { requireAuth, type AuthRequest } from '../auth/auth.middleware.ts';
-import { requireAnyPermission } from '../auth/authorization.middleware.ts';
+import { requireSuperAdmin } from '../auth/authorization.middleware.ts';
 import { buildDhaScore } from './dha-score.ts';
 import {
   DHA_CATEGORY_WEIGHTS,
@@ -21,7 +21,20 @@ import {
 
 const router = Router();
 
-router.use(requireAuth);
+/*
+ * Platform-owner only.
+ *
+ * This assessment scores the whole product against 46 requirements and
+ * names, in public, what it cannot do. That is the right information for
+ * the organisation running the installation and the wrong thing to hand
+ * to every facility role — not because it is unflattering, but because a
+ * facility cannot act on most of it.
+ *
+ * The guard sits on the router rather than on each route so that a route
+ * added here later is superadmin-only by default instead of open by
+ * default.
+ */
+router.use(requireAuth, requireSuperAdmin());
 
 /* ============================================================
    GET /api/compliance/dha
@@ -29,7 +42,6 @@ router.use(requireAuth);
 
 router.get(
   '/dha',
-  requireAnyPermission('audit.read', 'reports.read', 'system.settings.manage'),
   async (req: AuthRequest, res) => {
     if (!req.authContext) {
       res.status(401).json({
@@ -76,7 +88,6 @@ router.get(
 
 router.get(
   '/dha/requirements/:id',
-  requireAnyPermission('audit.read', 'reports.read', 'system.settings.manage'),
   async (req: AuthRequest, res) => {
     if (!req.authContext) {
       res.status(401).json({

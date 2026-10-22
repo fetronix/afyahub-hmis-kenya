@@ -352,8 +352,20 @@ function testWiring(): void {
   const interop = source('src/components/modules/InteroperabilityModule.tsx');
 
   assert(
-    route.includes("requireAnyPermission('audit.read', 'reports.read', 'system.settings.manage')"),
-    'The assessment requires a reporting or audit permission',
+    route.includes('requireSuperAdmin()'),
+    'The assessment is superadmin-only: no facility role can hold it',
+  );
+  assert(
+    route.includes('router.use(requireAuth, requireSuperAdmin())'),
+    'The guard is on the router, so a route added here later is closed by default',
+  );
+  assert(
+    !route.includes('requireAnyPermission'),
+    'No permission list opens the assessment',
+  );
+  assert(
+    !/router\.get\(\s*'\/dha'\s*,\s*require/.test(route),
+    'The /dha route carries no second, weaker guard',
   );
   assert(
     route.includes('buildDhaScore'),
@@ -389,6 +401,44 @@ function testWiring(): void {
   assert(
     interop.includes('<DhaCompliancePanel />'),
     'The interoperability screen renders the assessment',
+  );
+
+  /*
+   * The screen is superadmin-only. Hiding a rail item is presentation;
+   * these assertions hold the three places that make it true.
+   */
+  const sidebar = source('src/components/Sidebar.tsx');
+  const facilityRail = sidebar.slice(
+    sidebar.indexOf('export const navSections'),
+    sidebar.indexOf('const COLLAPSE_KEY'),
+  );
+
+  assert(
+    sidebar.includes('export const superAdminNavSections'),
+    'There is a separate platform-owner rail',
+  );
+  assert(
+    sidebar.indexOf('superAdminNavSections') < sidebar.indexOf("id: 'interoperability'"),
+    'The DHA entry sits in the platform-owner rail',
+  );
+  assert(
+    !facilityRail.includes("id: 'interoperability'"),
+    'The facility rail does not offer the DHA screen at all',
+  );
+
+  const appShell = source('src/App.tsx');
+  assert(
+    /case 'interoperability':[\s\S]{0,700}isSuperAdmin/.test(appShell),
+    'The screen renders nothing but a fallback for a non-superadmin',
+  );
+  assert(
+    appShell.includes('<DashboardModule />'),
+    'The fallback is the dashboard, not an empty page',
+  );
+
+  assert(
+    app.includes("'/api/integrations/dha/readiness',\n    requireSuperAdmin()"),
+    'The DHA readiness report is superadmin-only, like the screen that shows it',
   );
 }
 

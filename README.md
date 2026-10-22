@@ -938,8 +938,20 @@ now `SQL_SSL`, with certificate verification on by default.
 | 46 requirements, each with module, evidence, verification and severity | `src/compliance/dha-requirements.ts` |
 | Weighted score, published formula, critical-gap ceiling | `src/compliance/dha-score.ts` |
 | Read-only endpoint (`GET /api/compliance/dha`) | `src/compliance/compliance.routes.ts` |
-| Panel on the DHA screen, showing the working | `DhaCompliancePanel.tsx` |
+| Panel on the DHA screen (platform owner only), showing the working | `DhaCompliancePanel.tsx` |
 | Traceability matrix, regenerated from the register | `scripts/dha-traceability.ts` → `docs/dha-audit/` |
+
+**Who can see it (changed 22 October 2026).** The DHA screen is superadmin-only. It
+left the facility rail entirely — it is not hidden behind a permission a facility
+administrator could grant — and the platform-owner rail carries it under
+*Integrations & Readiness*. On the server, `requireSuperAdmin()` guards the assessment
+router (`GET /api/compliance/dha`, `GET /api/compliance/dha/requirements/:id`) and
+`GET /api/integrations/dha/readiness`; a facility role gets `403 SUPER_ADMIN_REQUIRED`
+even if it holds `audit.read` or `system.settings.manage`. The shell refuses to render
+the screen for a non-superadmin as well, so a programmatic `activeModule` cannot open
+it. The `interoperability` facility-module toggle remains in Configuration, because it
+still gates the `/api/integrations` surface used by eligibility and claims — but the
+screen itself is no longer a facility screen.
 
 The published formula is the one in the brief: (functionality × 0.35) + (security ×
 0.30) + (reporting × 0.20) + (interoperability × 0.15). Three rules make it honest:

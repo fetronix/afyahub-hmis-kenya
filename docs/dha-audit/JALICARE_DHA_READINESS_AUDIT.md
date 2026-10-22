@@ -63,6 +63,13 @@ different number from 90%, and the difference is the point.
 > No requirement was added, removed or re-weighted to make room for the portal.
 > Adding a requirement after building the thing that satisfies it is how a
 > self-assessment starts to flatter itself.
+>
+> **Access changed, 2026-10-22.** The assessment and the integration readiness
+> report are now platform-owner only: the screen left the facility rail, the shell
+> refuses to render it for a non-superadmin, and `requireSuperAdmin()` guards
+> `GET /api/compliance/dha`, `GET /api/compliance/dha/requirements/:id` and
+> `GET /api/integrations/dha/readiness`. No requirement status, weight or score
+> changed. The figure below is the same figure; fewer people can open it.
 
 ---
 

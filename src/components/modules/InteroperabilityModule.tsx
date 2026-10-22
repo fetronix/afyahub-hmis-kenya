@@ -58,6 +58,19 @@ export const InteroperabilityModule: React.FC = () => {
 
   const loadReadiness = useCallback(
     async (probe: boolean) => {
+      /*
+       * Both the connection report and the eligibility/FHIR calls are
+       * facility scoped. A platform owner with no facility selected has
+       * nothing to ask about yet, and asking would produce
+       * FACILITY_REQUIRED dressed up as a failure.
+       */
+      if (!currentFacility?.id) {
+        setReadiness(null);
+        setReadinessError('');
+        setReadinessLoading(false);
+        return;
+      }
+
       setReadinessLoading(true);
       setReadinessError('');
 
@@ -72,7 +85,7 @@ export const InteroperabilityModule: React.FC = () => {
         setReadinessLoading(false);
       }
     },
-    []
+    [currentFacility?.id]
   );
 
   useEffect(() => {
@@ -81,6 +94,12 @@ export const InteroperabilityModule: React.FC = () => {
 
   useEffect(() => {
     async function loadPatients() {
+      if (!currentFacility?.id) {
+        setPatients([]);
+        setSelectedPatientId('');
+        return;
+      }
+
       try {
         const pList = await api.getPatients(currentTenant?.id, currentFacility?.id);
         setPatients(pList);
@@ -99,6 +118,11 @@ export const InteroperabilityModule: React.FC = () => {
 
   useEffect(() => {
     async function loadCalls() {
+      if (!currentFacility?.id) {
+        setCalls([]);
+        return;
+      }
+
       try {
         setCalls(await api.getDhaCalls(currentFacility?.id, 25));
       } catch {
@@ -200,40 +224,69 @@ export const InteroperabilityModule: React.FC = () => {
         ? 'text-amber-700 bg-amber-50 border-amber-200'
         : 'text-red-700 bg-red-50 border-red-200';
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
-        <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            DHA / AfyaConnect Integration
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
-            Eligibility, benefit coverage and the FHIR patient resource. Readiness is
-            reported as it is, including what is not implemented.
+  const header = (
+  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <div>
+        <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+          DHA / AfyaConnect Integration
+        </h1>
+        <p className="mt-1 text-xs leading-relaxed text-muted">
+          Eligibility, benefit coverage and the FHIR patient resource. Readiness is
+          reported as it is, including what is not implemented.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span
+          className={`px-3 py-1.5 border text-xs font-semibold rounded-lg flex items-center gap-1.5 ${modeBadge.className}`}
+        >
+          {modeBadge.icon}
+          <span>{modeBadge.label}</span>
+        </span>
+
+        <button
+          onClick={() => void loadReadiness(true)}
+          disabled={readinessLoading}
+          className="px-3 py-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg flex items-center gap-1"
+        >
+          <RefreshCw
+            className={`w-3.5 h-3.5 ${readinessLoading ? 'animate-spin' : ''}`}
+          />
+          <span>Re-check</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  /*
+   * No facility, no facility-scoped sections. The assessment below is
+   * about the product, not about one facility, so it still renders —
+   * which is exactly what a platform owner without a facility selected
+   * needs to see.
+   */
+  if (!currentFacility?.id) {
+    return (
+      <div className="space-y-6">
+        {header}
+
+        <div className="rounded-card border border-brand-200 bg-brand-50 p-4 text-xs leading-relaxed text-navy-800">
+          <p className="font-semibold">No facility is selected.</p>
+          <p className="mt-1">
+            The connection report, eligibility checks and the FHIR preview all
+            describe one facility. Choose a facility in the header to see them.
+            The self-assessment below is not facility specific and is shown in
+            full.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`px-3 py-1.5 border text-xs font-semibold rounded-lg flex items-center gap-1.5 ${modeBadge.className}`}
-          >
-            {modeBadge.icon}
-            <span>{modeBadge.label}</span>
-          </span>
-
-          <button
-            onClick={() => void loadReadiness(true)}
-            disabled={readinessLoading}
-            className="px-3 py-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg flex items-center gap-1"
-          >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${readinessLoading ? 'animate-spin' : ''}`}
-            />
-            <span>Re-check</span>
-          </button>
-        </div>
+        <DhaCompliancePanel />
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {header}
 
       {/*
         The self-assessment comes before the connection report: whether

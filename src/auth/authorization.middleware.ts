@@ -431,3 +431,80 @@ export function requireTenantAccess(
     }
   };
 }
+
+/* ============================================================
+   REQUIRE SUPER ADMIN
+   ============================================================ */
+
+/**
+ * Platform-owner only.
+ *
+ * Used for screens and endpoints whose audience is the organisation
+ * running the installation, not the staff of one facility: the DHA
+ * readiness assessment and the integration readiness report both
+ * describe the whole product and name what it cannot do yet.
+ *
+ * This is deliberately not a permission. A permission can be granted to
+ * a role inside a facility; `isSuperAdmin` is a property of the account
+ * itself and cannot be assigned by a facility administrator.
+ */
+export function requireSuperAdmin() {
+  return async function superAdminMiddleware(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+
+    try {
+
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Authentication is required.',
+        });
+
+        return;
+      }
+
+      if (!req.authContext) {
+        const context = await loadAuthorizationContext(req.user.id);
+
+        if (!context) {
+          res.status(403).json({
+            success: false,
+            error: 'AUTHORIZATION_FAILED',
+            message: 'Your account is not authorized.',
+          });
+
+          return;
+        }
+
+        req.authContext = context;
+      }
+
+      if (!req.authContext.isSuperAdmin) {
+        res.status(403).json({
+          success: false,
+          error: 'SUPER_ADMIN_REQUIRED',
+          message:
+            'This view is restricted to the platform owner. A facility role cannot grant it.',
+        });
+
+        return;
+      }
+
+      next();
+
+    } catch (error) {
+
+      console.error('Super admin authorization error:', error);
+
+      res.status(500).json({
+        success: false,
+        error: 'AUTHORIZATION_ERROR',
+        message: 'An authorization error occurred.',
+      });
+    }
+  };
+}
