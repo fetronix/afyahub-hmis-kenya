@@ -49,6 +49,7 @@ const moduleTitles: Record<ModuleId, string> = {
   interoperability: 'DHA Certification Readiness & HL7 FHIR',
   platform_administration: 'Platform Administration',
   configuration: 'Facility & System Configuration Engine',
+  patient_portal: 'Patient Portal Management',
   audit: 'Immutable Security Audit Trail',
 };
 

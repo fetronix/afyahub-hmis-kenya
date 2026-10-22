@@ -10,6 +10,8 @@ import dotenv from 'dotenv';
 import platformRoutes from './routes/platform.routes.ts';
 import facilityModuleRoutes from './config/facility-modules.routes.ts';
 import complianceRoutes from './compliance/compliance.routes.ts';
+import portalRoutes from './portal/portal.routes.ts';
+import portalAdminRoutes from './portal/portal-admin.routes.ts';
 import clinicalRecordsRoutes from './clinical/clinical-records.routes.ts';
 import { checkMedicationAllergies } from './clinical/allergy.service.ts';
 import { logPatientAccess } from './clinical/access-log.service.ts';
@@ -213,6 +215,21 @@ app.use('/api/facilities', facilityModuleRoutes);
  * figure cannot be edited in the browser or stored out of date.
  */
 app.use('/api/compliance', complianceRoutes);
+
+/*
+ * Patient digital health record portal.
+ *
+ * `/api/portal` is the patient surface: activation and login are public,
+ * everything else needs a patient session, and no route in it accepts a
+ * staff token. `/api/portal/admin` is the staff surface and is behind
+ * `requireAuth` inside its own router.
+ *
+ * Mounted before the module gates because a patient account does not
+ * belong to a facility module — a patient must be able to reach their
+ * record even if the facility has, say, switched off the pharmacy.
+ */
+app.use('/api/portal/admin', portalAdminRoutes);
+app.use('/api/portal', portalRoutes);
 
 // Facility module enforcement. Keep platform administration, invitations,
 // tenants, and facility-context endpoints outside these operational guards.

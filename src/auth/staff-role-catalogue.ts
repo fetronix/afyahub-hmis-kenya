@@ -91,6 +91,14 @@ export const STAFF_ROLE_CATALOGUE = [
       // that registers the patient must be able to record it — and to
       // revoke it when the patient asks.
       'patients.update',
+      /*
+       * Portal invitations are a front-desk routine, not a clinical
+       * act. The receptionist can issue and hand over an invitation;
+       * revoking one, managing accounts and changing policy sit with
+       * the facility administrator, because those decisions concern
+       * someone's access to their own record.
+       */
+      'portal.invite',
       // Enough to find a booked mother and her next appointment; not
       // enough to record clinical findings.
       'maternity.read',

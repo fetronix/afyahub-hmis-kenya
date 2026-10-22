@@ -107,6 +107,13 @@ export const DELEGABLE_PERMISSION_MODULES = [
   "public_health",
   "interop",
   "practitioners",
+  /*
+   * Issuing a portal invitation is front-desk work, so a facility may
+   * give it to a custom role. Everything else in the portal module —
+   * accounts, audit, settings and revoking invitations — stays with the
+   * administrator through the protected prefixes below.
+   */
+  "portal",
 ] as const;
 
 /**
@@ -128,6 +135,10 @@ export const PROTECTED_PERMISSION_PREFIXES = [
   "security.",
   "rbac.",
   "permissions.",
+  "portal.accounts.",
+  "portal.audit.",
+  "portal.invites.",
+  "portal.settings.",
 ] as const;
 
 export function isDelegablePermission(permission: {

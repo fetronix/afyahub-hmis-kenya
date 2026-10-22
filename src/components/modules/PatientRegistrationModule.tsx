@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
 import { Patient } from '../../types/index.ts';
 import {
   UserPlus,
@@ -13,7 +14,8 @@ import {
   Clock,
   ArrowRight,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  QrCode
 } from 'lucide-react';
 
 function calculatePatientAge(dateOfBirth: string): number | null {
@@ -50,7 +52,23 @@ function calculatePatientAge(dateOfBirth: string): number | null {
 }
 
 export const PatientRegistrationModule: React.FC = () => {
-  const { currentTenant, currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentTenant, currentFacility, authenticatedUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+
+  /*
+   * Portal invitation.
+   *
+   * Offered after a registration and from the directory, never applied
+   * automatically: an account is created by the patient from a single-use
+   * link after the desk confirms who they are. The button is hidden when
+   * the signed-in user has no `portal.invite`, but the server checks that
+   * again — hiding a button is not a control.
+   */
+  const [portalPatient, setPortalPatient] = useState<{ id: number; name: string } | null>(null);
+
+  const canInviteToPortal = Boolean(
+    authenticatedUser?.permissions?.includes('portal.invite') ||
+      authenticatedUser?.isSuperAdmin,
+  );
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -183,6 +201,13 @@ export const PatientRegistrationModule: React.FC = () => {
       );
       setIsRegistering(false);
       triggerRefresh();
+
+      if (canInviteToPortal) {
+        setPortalPatient({
+          id: newPatient.id,
+          name: `${newPatient.firstName} ${newPatient.lastName}`,
+        });
+      }
     } catch (err: any) {
       showToast(`Registration failed: ${err.message}`);
     }
@@ -721,6 +746,21 @@ export const PatientRegistrationModule: React.FC = () => {
                             >
                               + Doctor
                             </button>
+                            {canInviteToPortal ? (
+                              <button
+                                onClick={() =>
+                                  setPortalPatient({
+                                    id: p.id,
+                                    name: `${p.firstName} ${p.lastName}`,
+                                  })
+                                }
+                                className="px-2 py-1 text-2xs font-medium text-blue-800 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                                title="Activate patient portal / send invitation"
+                              >
+                                <QrCode className="mr-0.5 inline h-3 w-3" />
+                                Portal
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -732,6 +772,16 @@ export const PatientRegistrationModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {portalPatient ? (
+        <PortalInviteDialog
+          patientId={portalPatient.id}
+          patientName={portalPatient.name}
+          open
+          onClose={() => setPortalPatient(null)}
+          onChanged={() => triggerRefresh()}
+        />
+      ) : null}
     </div>
   );
 };

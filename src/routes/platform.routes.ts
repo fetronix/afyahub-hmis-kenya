@@ -160,6 +160,17 @@ const FACILITY_ADMIN_PERMISSION_CODES = [
   'patients.read',
   'patients.update',
   'pharmacy.read',
+  /*
+   * Patient portal oversight. A facility administrator runs the
+   * portal; the invitation codes are included because they also run
+   * the desk when needed, but `portal.accounts.manage` is the one that
+   * matters for the administration screen.
+   */
+  'portal.accounts.manage',
+  'portal.audit.read',
+  'portal.invite',
+  'portal.invites.manage',
+  'portal.settings.manage',
   'practitioners.read',
   'procurement.read',
   'reports.export',

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
 import { QueueItem, Appointment, Patient } from '../../types/index.ts';
 import {
   Users,
@@ -11,7 +12,8 @@ import {
   PhoneCall,
   ArrowRight,
   Filter,
-  Plus
+  Plus,
+  QrCode
 } from 'lucide-react';
 
 export const ReceptionQueueModule: React.FC = () => {
@@ -24,6 +26,13 @@ export const ReceptionQueueModule: React.FC = () => {
 
   // New Appointment Form Modal
   const [isApptModalOpen, setIsApptModalOpen] = useState(false);
+
+  /*
+   * Portal invitation state lives next to the queue it is triggered from.
+   * The dialog reads the patient's portal status from the server; nothing
+   * about the patient's clinical record is loaded into it.
+   */
+  const [portalPatient, setPortalPatient] = useState<{ id: number; name: string } | null>(null);
   const [apptForm, setApptForm] = useState({
     patientId: '',
     scheduledTime: '2026-10-06 10:00',
@@ -262,6 +271,21 @@ export const ReceptionQueueModule: React.FC = () => {
                                 <span>Done</span>
                               </button>
                             )}
+                            {patient ? (
+                              <button
+                                onClick={() =>
+                                  setPortalPatient({
+                                    id: patient.id,
+                                    name: `${patient.firstName} ${patient.lastName}`,
+                                  })
+                                }
+                                className="px-2.5 py-1 text-2xs font-semibold text-blue-900 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                                title="Activate patient portal / send invitation"
+                              >
+                                <QrCode className="w-3 h-3 text-blue-600" />
+                                <span>Portal</span>
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -344,6 +368,16 @@ export const ReceptionQueueModule: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {portalPatient ? (
+        <PortalInviteDialog
+          patientId={portalPatient.id}
+          patientName={portalPatient.name}
+          open
+          onClose={() => setPortalPatient(null)}
+          onChanged={() => triggerRefresh()}
+        />
+      ) : null}
 
       {/* Appointment Booking Modal */}
       {isApptModalOpen && (

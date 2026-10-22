@@ -53,7 +53,7 @@ function source(path: string): string {
    ============================================================ */
 
 function testCatalogue(): void {
-  assert(FACILITY_MODULES.length === 19, 'The catalogue holds the 19 facility modules');
+  assert(FACILITY_MODULES.length === 20, 'The catalogue holds the 20 facility modules');
 
   assert(
     new Set(FACILITY_MODULE_IDS).size === FACILITY_MODULE_IDS.length,
@@ -63,6 +63,12 @@ function testCatalogue(): void {
   assert(
     FACILITY_MODULE_IDS.includes('maternity'),
     'Maternity is a provisionable module',
+  );
+
+  assert(
+    FACILITY_MODULE_IDS.includes('patient_portal') &&
+      !isAlwaysEnabledModule('patient_portal'),
+    'Patient portal management is provisionable, not forced on every facility',
   );
 
   assert(

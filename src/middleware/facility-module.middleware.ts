@@ -25,6 +25,7 @@ export type FacilityModuleId =
   | 'analytics'
   | 'interoperability'
   | 'configuration'
+  | 'patient_portal'
   | 'audit';
 
 export function requireFacilityModule(moduleId: FacilityModuleId) {

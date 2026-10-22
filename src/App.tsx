@@ -9,6 +9,7 @@ import FacilityAdminInvitationAcceptance from './components/FacilityAdminInvitat
 import { PlatformAdministrationModule } from "./components/modules/PlatformAdministrationModule";
 import { PatientJourneyModal } from './components/PatientJourneyModal.tsx';
 import { NotificationDialog } from './components/NotificationDialog.tsx';
+import { PatientPortalApp } from './components/portal/PortalApp.tsx';
 
 import { DashboardModule } from './components/modules/DashboardModule.tsx';
 import { SuperAdminDashboardModule } from './components/modules/SuperAdminDashboardModule.tsx';
@@ -30,6 +31,7 @@ import { ReportsModule } from './components/modules/ReportsModule.tsx';
 import { PublicHealthModule } from './components/modules/PublicHealthModule.tsx';
 import { InteroperabilityModule } from './components/modules/InteroperabilityModule.tsx';
 import { ConfigurationModule } from './components/modules/ConfigurationModule.tsx';
+import { PatientPortalModule } from './components/modules/PatientPortalModule.tsx';
 import { AuditLogModule } from './components/modules/AuditLogModule.tsx';
 
 import { Loader2 } from 'lucide-react';
@@ -154,6 +156,9 @@ const AppContent: React.FC = () => {
       case 'configuration':
         return <ConfigurationModule />;
 
+      case 'patient_portal':
+        return <PatientPortalModule />;
+
       case 'audit':
         return <AuditLogModule />;
 
@@ -207,7 +212,22 @@ const AppContent: React.FC = () => {
   );
 };
 
+/**
+ * The patient portal is a separate surface with its own session token.
+ *
+ * It is decided **before** `HmisProvider` mounts, so a patient's phone
+ * never loads the staff session, the staff module catalogue or the
+ * notification queue. The tokens live under different keys and neither
+ * server router accepts the other's; this keeps the browser side of that
+ * separation just as literal.
+ */
+const PORTAL_PATHS = ['/portal', '/portal/', '/portal/activate'];
+
 export default function App() {
+  if (PORTAL_PATHS.includes(window.location.pathname)) {
+    return <PatientPortalApp />;
+  }
+
   return (
     <HmisProvider>
       <AppContent />

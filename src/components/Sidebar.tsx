@@ -21,6 +21,7 @@ import {
   Network,
   Sliders,
   ShieldAlert,
+  QrCode,
 } from 'lucide-react';
 
 export interface NavSection {
@@ -109,6 +110,7 @@ export const navSections: NavSection[] = [
     items: [
       { id: 'platform_administration', label: 'Platform Administration', icon: Building2 },
       { id: 'configuration', label: 'System Configuration', icon: Sliders },
+      { id: 'patient_portal', label: 'Patient Portal Management', icon: QrCode },
       { id: 'audit', label: 'Audit Trail & Security', icon: ShieldAlert },
     ],
   },
@@ -181,7 +183,7 @@ export const Sidebar: React.FC = () => {
         'registration', 'reception', 'opd', 'inpatient', 'maternity', 'theatre',
         'specialty', 'laboratory', 'radiology', 'pharmacy', 'inventory',
         'procurement', 'finance', 'insurance', 'claims', 'public_health',
-        'analytics', 'interoperability', 'configuration', 'audit'
+        'analytics', 'interoperability', 'configuration', 'patient_portal', 'audit'
       ].some((moduleId) => enabledModules.has(moduleId));
     }
 
@@ -234,6 +236,13 @@ export const Sidebar: React.FC = () => {
          */
         'users.invite'
       ],
+      /*
+       * Portal administration is a separate duty from configuration.
+       * A receptionist holds `portal.invite` but not
+       * `portal.accounts.manage`, so the management screen stays out of
+       * their rail while the invitation button in reception still works.
+       */
+      patient_portal: ['portal.accounts.manage'],
       audit: ['audit.read', 'audit.security.read']
     };
 

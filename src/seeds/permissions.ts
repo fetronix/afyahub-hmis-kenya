@@ -375,6 +375,59 @@ const PERMISSIONS = [
 
 
   /* ==========================================================
+     PATIENT PORTAL
+     ========================================================== */
+
+  /*
+   * Deliberately five codes rather than one.
+   *
+   * Inviting a patient and suspending an account are different levels
+   * of trust: the desk does the first all day, the second is a
+   * decision about someone's access to their own record. Splitting them
+   * means a receptionist can be productive without being able to
+   * withdraw anybody's access.
+   */
+  {
+    code: 'portal.invite',
+    name: 'Invite Patients to the Portal',
+    module: 'portal',
+    description:
+      'Issue an activation invitation to a patient at this facility and see its delivery status.',
+  },
+
+  {
+    code: 'portal.invites.manage',
+    name: 'Revoke Portal Invitations',
+    module: 'portal',
+    description:
+      'Revoke an invitation that has not yet been used, and resend one within the facility limit.',
+  },
+
+  {
+    code: 'portal.accounts.manage',
+    name: 'Manage Patient Portal Accounts',
+    module: 'portal',
+    description:
+      'Search portal accounts, view activation status, suspend, reactivate, revoke and force a password reset.',
+  },
+
+  {
+    code: 'portal.audit.read',
+    name: 'Review Portal Audit Events',
+    module: 'portal',
+    description:
+      'Read portal invitation, activation and account-administration events for this facility.',
+  },
+
+  {
+    code: 'portal.settings.manage',
+    name: 'Manage Patient Portal Settings',
+    module: 'portal',
+    description:
+      'Configure invitation expiry, resend limits, delivery channels and which record sections the portal releases.',
+  },
+
+  /* ==========================================================
      FHIR INTEROPERABILITY
      ========================================================== */
 

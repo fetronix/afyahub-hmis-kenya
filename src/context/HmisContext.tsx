@@ -95,6 +95,7 @@ export type ModuleId =
   | 'analytics'
   | 'interoperability'
   | 'configuration'
+  | 'patient_portal'
   | 'audit';
 
 /*

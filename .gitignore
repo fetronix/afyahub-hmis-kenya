@@ -12,3 +12,6 @@ coverage/
 
 # Local secrets and credentials
 firebase-applet-config.json
+
+# Local backups made before patching a file — never commit these
+*.bak
