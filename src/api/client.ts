@@ -36,6 +36,8 @@ import {
   ServiceTariff,
   BillingPayment,
   BillingChargeAttemptList,
+  ServiceTariffLink,
+  LabServiceDiagnostics,
   BillingChargeAttemptOutcome,
   BillingChargeRetrySummary,
   TariffMatchExplanation,
@@ -2715,6 +2717,44 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+
+  /** Catalogue service → tariff links (migration 0021). */
+  getServiceTariffLinks: (facilityId: number) =>
+    fetchJson<ServiceTariffLink[]>(
+      `${API_BASE}/service-tariff-links?facilityId=${encodeURIComponent(
+        String(facilityId)
+      )}`
+    ),
+
+  createServiceTariffLink: (input: {
+    facilityId: number;
+    serviceType: string;
+    serviceId?: number | null;
+    tariffId: number;
+    autoBill?: boolean;
+    note?: string;
+  }) =>
+    fetchJson<ServiceTariffLink & { replacedLinks: number[] }>(
+      `${API_BASE}/service-tariff-links`,
+      { method: "POST", body: JSON.stringify(input) }
+    ),
+
+  deactivateServiceTariffLink: (id: number, facilityId: number) =>
+    fetchJson<ServiceTariffLink>(
+      `${API_BASE}/service-tariff-links/${encodeURIComponent(String(id))}/deactivate`,
+      { method: "PATCH", body: JSON.stringify({ facilityId }) }
+    ),
+
+  /**
+   * Every active laboratory test in this facility and what it would
+   * bill today. Runs the same resolver the charger runs.
+   */
+  getLabServiceDiagnostics: (facilityId: number) =>
+    fetchJson<LabServiceDiagnostics>(
+      `${API_BASE}/billing/lab-service-diagnostics?facilityId=${encodeURIComponent(
+        String(facilityId)
+      )}`
+    ),
 
   recordPayment:
     (payment: Partial<BillingPayment> & {

@@ -3,8 +3,10 @@ import { api } from "../../api/client.ts";
 import type {
   BillingChargeAttempt,
   BillingChargeAttemptList,
+  LabServiceDiagnostics,
   LabTest,
   ServiceTariff,
+  ServiceTariffLink,
 } from "../../types/index.ts";
 import {
   BILLING_FAMILIES as BILLING_LINK_FAMILIES,
@@ -106,6 +108,14 @@ const EMPTY_FORM = {
    */
   billingFamily: "",
   billingDetail: "",
+  /*
+   * When this price applies, and whether automatic billing may use it.
+   * Empty dates mean "always"; automatic billing is on by default so
+   * saving a tariff behaves exactly as it did before these fields.
+   */
+  effectiveFrom: "",
+  effectiveTo: "",
+  autoBill: true,
 };
 
 const fieldClass =
@@ -139,6 +149,26 @@ export const FacilityServiceTariffsPanel: React.FC<
     id: number;
     text: string;
   } | null>(null);
+
+  /*
+   * Catalogue service → tariff links (migration 0021) and the
+   * laboratory diagnostics that run the resolver over every test in
+   * this facility. Together they answer "why did my order not bill?"
+   * with the facility's own rows instead of a code it never typed.
+   */
+  const [links, setLinks] = useState<ServiceTariffLink[]>([]);
+  const [linksUnavailable, setLinksUnavailable] = useState("");
+  const [diagnostics, setDiagnostics] =
+    useState<LabServiceDiagnostics | null>(null);
+  const [diagnosticsUnavailable, setDiagnosticsUnavailable] = useState("");
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkNotice, setLinkNotice] = useState("");
+  const [linkDraft, setLinkDraft] = useState<{
+    testId: number | null;
+    serviceType: string;
+    tariffId: string;
+    autoBill: boolean;
+  }>({ testId: null, serviceType: "LAB_TEST", tariffId: "", autoBill: true });
 
   const departments = DEPARTMENTS.filter(({ id }) =>
     enabledModules.includes(id),
@@ -218,6 +248,102 @@ export const FacilityServiceTariffsPanel: React.FC<
         activeTariffCodes.has(candidate.toUpperCase()),
       );
     });
+
+  const loadLinks = useCallback(async () => {
+    try {
+      const rows = await api.getServiceTariffLinks(facilityId);
+      setLinks(Array.isArray(rows) ? rows : []);
+      setLinksUnavailable("");
+    } catch (err) {
+      setLinks([]);
+      setLinksUnavailable(
+        err instanceof Error
+          ? err.message
+          : "Service links are not visible with your permissions.",
+      );
+    }
+  }, [facilityId]);
+
+  const loadDiagnostics = useCallback(async () => {
+    if (!enabledModules.includes("laboratory")) {
+      setDiagnostics(null);
+      return;
+    }
+
+    try {
+      const result = await api.getLabServiceDiagnostics(facilityId);
+      setDiagnostics(result);
+      setDiagnosticsUnavailable("");
+    } catch (err) {
+      setDiagnostics(null);
+      setDiagnosticsUnavailable(
+        err instanceof Error
+          ? err.message
+          : "Laboratory diagnostics are not available with your permissions.",
+      );
+    }
+  }, [facilityId, enabledModules]);
+
+  useEffect(() => {
+    void loadLinks();
+    void loadDiagnostics();
+  }, [loadLinks, loadDiagnostics]);
+
+  const saveLink = async () => {
+    const tariffId = Number(linkDraft.tariffId);
+
+    if (!Number.isSafeInteger(tariffId) || tariffId <= 0) {
+      setLinkNotice("Choose the tariff that should price this service.");
+      return;
+    }
+
+    if (linkDraft.serviceType === "LAB_TEST" && linkDraft.testId === null) {
+      setLinkNotice("Choose the laboratory test to link.");
+      return;
+    }
+
+    setLinkBusy(true);
+    setLinkNotice("");
+
+    try {
+      await api.createServiceTariffLink({
+        facilityId,
+        serviceType: linkDraft.serviceType,
+        serviceId: linkDraft.testId,
+        tariffId,
+        autoBill: linkDraft.autoBill,
+      });
+
+      setLinkNotice("Linked. The next charge for this service uses that tariff.");
+      setLinkDraft((current) => ({ ...current, testId: null, tariffId: "" }));
+      await loadLinks();
+      await loadDiagnostics();
+    } catch (err) {
+      setLinkNotice(
+        err instanceof Error ? err.message : "The link could not be saved.",
+      );
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const removeLink = async (link: ServiceTariffLink) => {
+    setLinkBusy(true);
+    setLinkNotice("");
+
+    try {
+      await api.deactivateServiceTariffLink(link.id, facilityId);
+      setLinkNotice("Link retired. The history is kept; the charge falls back to codes.");
+      await loadLinks();
+      await loadDiagnostics();
+    } catch (err) {
+      setLinkNotice(
+        err instanceof Error ? err.message : "The link could not be retired.",
+      );
+    } finally {
+      setLinkBusy(false);
+    }
+  };
 
   const loadTariffs = useCallback(async () => {
     setLoading(true);
@@ -446,6 +572,9 @@ export const FacilityServiceTariffsPanel: React.FC<
       shaNotes: tariff.shaNotes || "",
       billingFamily: family,
       billingDetail: rest.join(":"),
+      effectiveFrom: (tariff.effectiveFrom ?? "").slice(0, 10),
+      effectiveTo: (tariff.effectiveTo ?? "").slice(0, 10),
+      autoBill: tariff.autoBill !== false,
     });
     setFormOpen(true);
     setError("");
@@ -492,6 +621,9 @@ export const FacilityServiceTariffsPanel: React.FC<
         shaStatus: form.shaStatus,
         shaNotes: form.shaNotes.trim() || null,
         billingKey: buildBillingKey(form.billingFamily, form.billingDetail),
+        effectiveFrom: form.effectiveFrom.trim() || null,
+        effectiveTo: form.effectiveTo.trim() || null,
+        autoBill: form.autoBill,
       };
 
       if (editingId !== null) {
@@ -791,6 +923,304 @@ export const FacilityServiceTariffsPanel: React.FC<
       </details>
 
       {/*
+        Catalogue service → tariff links.
+
+        The strongest statement a facility can make is "this catalogue
+        row, by id, is priced by that tariff row". It cannot be broken by
+        renaming a code, and it cannot be ambiguous.
+      */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-800">
+          Link a service to one of your tariffs
+        </h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Automatic billing finds a price by matching a code. When your codes are
+          numbered — <span className="font-mono">LAB-001</span>,{" "}
+          <span className="font-mono">OPD-001</span> — nothing can match, and the
+          service is recorded without a charge. Link the catalogue row here and
+          the price is certain, whatever the code is called.
+        </p>
+
+        {linksUnavailable !== "" ? (
+          <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+            {linksUnavailable}
+          </p>
+        ) : (
+          <>
+            <div className="mt-3 grid gap-3 md:grid-cols-4">
+              <div>
+                <label className={labelClass} htmlFor={`link-type-${facilityId}`}>
+                  Service type
+                </label>
+                <select
+                  id={`link-type-${facilityId}`}
+                  className={fieldClass}
+                  value={linkDraft.serviceType}
+                  onChange={(event) =>
+                    setLinkDraft((current) => ({
+                      ...current,
+                      serviceType: event.target.value,
+                      testId: null,
+                    }))
+                  }
+                >
+                  <option value="LAB_TEST">Laboratory test</option>
+                  <option value="CONSULTATION">Consultation (all)</option>
+                  <option value="RADIOLOGY">Radiology (all)</option>
+                  <option value="PROCEDURE">Procedure (all)</option>
+                  <option value="PHARMACY">Pharmacy (all)</option>
+                  <option value="ADMISSION">Admission</option>
+                  <option value="BED_DAY">Bed-day</option>
+                  <option value="DELIVERY">Delivery</option>
+                </select>
+              </div>
+
+              {linkDraft.serviceType === "LAB_TEST" && (
+                <div>
+                  <label className={labelClass} htmlFor={`link-test-${facilityId}`}>
+                    Laboratory test
+                  </label>
+                  <select
+                    id={`link-test-${facilityId}`}
+                    className={fieldClass}
+                    value={linkDraft.testId === null ? "" : String(linkDraft.testId)}
+                    onChange={(event) =>
+                      setLinkDraft((current) => ({
+                        ...current,
+                        testId: event.target.value === "" ? null : Number(event.target.value),
+                      }))
+                    }
+                  >
+                    <option value="">Choose a test…</option>
+                    {labTests
+                      .filter((test) => test.isActive !== false)
+                      .map((test) => (
+                        <option key={test.id} value={test.id}>
+                          {test.code} — {test.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className={labelClass} htmlFor={`link-tariff-${facilityId}`}>
+                  Priced by
+                </label>
+                <select
+                  id={`link-tariff-${facilityId}`}
+                  className={fieldClass}
+                  value={linkDraft.tariffId}
+                  onChange={(event) =>
+                    setLinkDraft((current) => ({ ...current, tariffId: event.target.value }))
+                  }
+                >
+                  <option value="">Choose a tariff…</option>
+                  {tariffs
+                    .filter((tariff) => tariff.isActive)
+                    .map((tariff) => (
+                      <option key={tariff.id} value={tariff.id}>
+                        {tariff.code} — {tariff.description} · {tariff.fee} / {tariff.unit}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={linkDraft.autoBill}
+                    onChange={(event) =>
+                      setLinkDraft((current) => ({
+                        ...current,
+                        autoBill: event.target.checked,
+                      }))
+                    }
+                  />
+                  Use automatically
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void saveLink()}
+                  disabled={linkBusy}
+                  className="ml-auto rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {linkBusy ? "Saving…" : "Link"}
+                </button>
+              </div>
+            </div>
+
+            {linkNotice !== "" && (
+              <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">
+                {linkNotice}
+              </p>
+            )}
+
+            {links.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-500">
+                No services are linked yet. Unlinked services still bill by code and
+                by description; a link makes it certain.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {links.map((link) => (
+                  <li
+                    key={link.id}
+                    className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-xs"
+                  >
+                    <span className="text-slate-700">
+                      <span className="font-mono">
+                        {link.serviceCode ?? link.serviceType}
+                      </span>{" "}
+                      {link.serviceName ?? "(all services of this type)"}
+                      <span className="text-slate-400"> → </span>
+                      <span className="font-mono text-emerald-700">
+                        {link.tariffCode} · {link.tariffFee} / {link.tariffUnit}
+                      </span>
+                    </span>
+
+                    <span className="flex items-center gap-2">
+                      {!link.tariffActive && (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800">
+                          tariff inactive
+                        </span>
+                      )}
+                      {!link.tariffAutoBill && (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-800">
+                          manual only
+                        </span>
+                      )}
+                      {!link.autoBill && (
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-2xs font-semibold text-slate-600">
+                          link off
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void removeLink(link)}
+                        disabled={linkBusy}
+                        className="rounded-lg border border-slate-300 px-2 py-1 text-2xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Retire
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+
+      {/*
+        Laboratory diagnostics: every test in this facility, and what it
+        would bill today. Runs the resolver the charger runs, so a green
+        row here is a price on the next order.
+      */}
+      {enabledModules.includes("laboratory") && (
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">
+                What each laboratory test would bill
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                The same resolution the server performs when a clinician orders the
+                test. A test with no price is shown with the reason.
+              </p>
+            </div>
+            {diagnostics && (
+              <span
+                className={
+                  diagnostics.unresolvable > 0
+                    ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                    : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800"
+                }
+              >
+                {diagnostics.resolved} of {diagnostics.total} priced
+              </span>
+            )}
+          </div>
+
+          {diagnosticsUnavailable !== "" && (
+            <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+              {diagnosticsUnavailable}
+            </p>
+          )}
+
+          {diagnostics && diagnostics.tests.length === 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              This facility&apos;s laboratory catalogue is empty. Add tests under the
+              Laboratory module first.
+            </p>
+          )}
+
+          {diagnostics && diagnostics.tests.length > 0 && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="text-slate-500">
+                  <tr>
+                    <th className="py-1 pr-3 font-medium">Test</th>
+                    <th className="py-1 pr-3 font-medium">Catalogue price</th>
+                    <th className="py-1 pr-3 font-medium">Would bill</th>
+                    <th className="py-1 font-medium">How / why not</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {diagnostics.tests.map((test) => (
+                    <tr key={test.testId}>
+                      <td className="py-1.5 pr-3">
+                        <span className="font-mono text-slate-700">{test.code}</span>{" "}
+                        <span className="text-slate-600">{test.name}</span>
+                        {!test.isActive && (
+                          <span className="ml-1 text-2xs text-slate-400">(inactive)</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3 text-slate-400">
+                        {test.cataloguePrice ?? "—"}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        {test.resolved ? (
+                          <span className="font-mono text-emerald-700">
+                            {test.resolved.code} · {test.resolved.fee} / {test.resolved.unit}
+                          </span>
+                        ) : (
+                          <span className="text-amber-700">nothing</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 text-slate-500">
+                        {test.resolved ? (
+                          <span>
+                            {test.resolved.rule === "LINK"
+                              ? "linked to this test"
+                              : test.resolved.rule === "FAMILY_LINK"
+                                ? "linked to all tests"
+                                : test.resolved.rule === "ALIAS"
+                                  ? "approved alias"
+                                  : test.resolved.rule === "CODE"
+                                    ? `by code ${test.resolved.code}`
+                                    : "by description"}
+                          </span>
+                        ) : (
+                          <span title={test.failure?.message}>
+                            {test.failure?.label ?? "no tariff"}
+                            {test.failure?.candidates && test.failure.candidates.length > 0
+                              ? ` — ${test.failure.candidates.join(" / ")}`
+                              : ""}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/*
         Unbilled charges.
 
         A visit whose tariff was missing is recorded but produces no
@@ -1029,6 +1459,73 @@ export const FacilityServiceTariffsPanel: React.FC<
               One active tariff per family. A tariff linked here is charged
               automatically the moment the service is recorded, so the amount on
               the invoice is the amount you typed above.
+            </p>
+          </div>
+
+          {/*
+            Validity and the automatic-billing switch (migration 0021).
+
+            A price list that changes on 1 January needs dates, not a
+            rewrite: the resolver checks today against this pair and
+            reports "expired" rather than silently charging an old rate.
+          */}
+          <div className="md:col-span-2 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+            <div>
+              <label className={labelClass} htmlFor={`tariff-from-${facilityId}`}>
+                Price valid from
+              </label>
+              <input
+                id={`tariff-from-${facilityId}`}
+                type="date"
+                className={fieldClass}
+                value={form.effectiveFrom}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    effectiveFrom: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div>
+              <label className={labelClass} htmlFor={`tariff-to-${facilityId}`}>
+                Price valid to
+              </label>
+              <input
+                id={`tariff-to-${facilityId}`}
+                type="date"
+                className={fieldClass}
+                value={form.effectiveTo}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    effectiveTo: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.autoBill}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      autoBill: event.target.checked,
+                    }))
+                  }
+                />
+                Use for automatic billing
+              </label>
+            </div>
+
+            <p className="md:col-span-3 text-2xs leading-relaxed text-slate-500">
+              Leave the dates empty for a price that never expires. Turn off
+              automatic billing when a tariff should only be chosen by hand on an
+              invoice — it stays available, it is simply not picked automatically.
             </p>
           </div>
 

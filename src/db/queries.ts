@@ -2455,6 +2455,37 @@ export async function createLabOrder(
      */
     let testCode: string | null = null;
 
+    /*
+     * A single order may also arrive as free text. Resolve it the same
+     * way the batch does, so both routes produce a billable identity.
+     */
+    if (
+      (!Number.isSafeInteger(order.testId) || (order.testId ?? 0) <= 0) &&
+      typeof order.testName === 'string'
+    ) {
+      const resolution = await resolveCatalogueTestByName(
+        db,
+        order.facilityId,
+        order.testName,
+      );
+
+      if (resolution.test) {
+        const [updated] = await db
+          .update(schema.labOrders)
+          .set({ testId: resolution.test.id, testName: resolution.test.name })
+          .where(eq(schema.labOrders.id, order.id))
+          .returning();
+
+        if (updated) {
+          return {
+            ...updated,
+            testCode: resolution.test.code,
+            catalogueMatch: 'FOUND' as const,
+          };
+        }
+      }
+    }
+
     if (Number.isSafeInteger(order.testId) && (order.testId ?? 0) > 0) {
       const [test] = await db
         .select({ code: schema.labTests.code })
@@ -3367,6 +3398,76 @@ export async function updatePatientScoped(
 
 
 /**
+ * Find the catalogue row a free-text investigation name refers to.
+ *
+ * The outpatient screen orders laboratory tests as text ("Malaria
+ * rapid diagnostic test"), not as catalogue ids, so `lab_orders.test_id`
+ * was NULL for every such order. That is why a facility could link a
+ * test to a tariff and still bill nothing: there was no id to link on.
+ *
+ * Matching is deliberately strict — an exact, normalised equality of
+ * the catalogue code or the catalogue name, inside this facility, for
+ * active rows only. It is not a fuzzy search: "Blood" matches nothing
+ * unless the catalogue literally has a test called "Blood", and if two
+ * active tests normalise to the same name the answer is "ambiguous",
+ * not the first row.
+ *
+ * Returns the test, or null plus the reason, so the caller can bill
+ * what it can and report the rest instead of silently guessing.
+ */
+async function resolveCatalogueTestByName(
+  executor: {
+    select: typeof db.select;
+  },
+  facilityId: number,
+  rawName: string,
+): Promise<
+  | { test: { id: number; code: string; name: string } | null; reason: 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS' }
+> {
+  const name = rawName.trim();
+  const key = normaliseCatalogueKey(name);
+
+  if (key === '') return { test: null, reason: 'NOT_FOUND' };
+
+  const rows = await executor
+    .select({
+      id: schema.labTests.id,
+      code: schema.labTests.code,
+      name: schema.labTests.name,
+    })
+    .from(schema.labTests)
+    .where(
+      and(
+        eq(schema.labTests.facilityId, facilityId),
+        eq(schema.labTests.isActive, true),
+        or(
+          sql`${normaliseCatalogueKeySql(schema.labTests.name)} = ${key}`,
+          sql`${normaliseCatalogueKeySql(schema.labTests.code)} = ${key}`,
+        ),
+      ),
+    )
+    .limit(5);
+
+  if (rows.length === 1) return { test: rows[0], reason: 'FOUND' };
+  if (rows.length > 1) return { test: null, reason: 'AMBIGUOUS' };
+
+  return { test: null, reason: 'NOT_FOUND' };
+}
+
+/** Lower-case words only: punctuation and spacing are not identity. */
+function normaliseCatalogueKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** The same normalisation in SQL, so the comparison happens in one place. */
+function normaliseCatalogueKeySql(column: any) {
+  return sql`trim(regexp_replace(lower(${column}), '[^a-z0-9]+', ' ', 'g'))`;
+}
+
+/**
  * Creates a laboratory batch and its queue entry atomically.
  * Duplicate test IDs within one request are rejected.
  */
@@ -3454,11 +3555,38 @@ export async function createLabOrderBatch(
 
   try {
     return await db.transaction(async (tx) => {
-      const tests: Array<{ id: number | null; name: string; code: string | null }> = [];
+      const tests: Array<{
+        id: number | null;
+        name: string;
+        code: string | null;
+        match?: 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS';
+      }> = [];
 
       if (freeTextProvided) {
+        /*
+         * Free text is what the outpatient screen sends. Resolve each
+         * name against this facility's own laboratory catalogue so the
+         * order carries a stable `test_id` — without it a tariff link
+         * has nothing to point at, which is why these orders billed
+         * nothing even after the catalogue was priced.
+         *
+         * Unresolved names still create the order: a clinician's request
+         * is never held up because a catalogue entry is missing. They
+         * are reported back so the requirement is visible.
+         */
         for (const name of investigations) {
-          tests.push({ id: null, name, code: null });
+          const resolution = await resolveCatalogueTestByName(
+            tx,
+            scope.facilityId,
+            name,
+          );
+
+          tests.push({
+            id: resolution.test?.id ?? null,
+            name: resolution.test?.name ?? name,
+            code: resolution.test?.code ?? null,
+            match: resolution.reason,
+          });
         }
       } else {
         for (const testId of testIds) {
@@ -3481,7 +3609,7 @@ export async function createLabOrderBatch(
            * facility prices, and before this only the long test name was
            * used, so a priced catalogue still billed nothing.
            */
-          tests.push({ id: test.id, name: test.name, code: test.code ?? null });
+          tests.push({ id: test.id, name: test.name, code: test.code ?? null, match: 'FOUND' });
         }
       }
 
@@ -3522,10 +3650,28 @@ export async function createLabOrderBatch(
           throw new Error('A laboratory order could not be created.');
         }
 
-        orders.push({ ...order, testCode: test.code });
+        orders.push({
+          ...order,
+          testCode: test.code,
+          catalogueMatch: test.match ?? 'FOUND',
+        });
       }
 
-      return { orders, queue };
+      /*
+       * What the catalogue could not resolve, by name. The order exists
+       * and is routed; the charge for it will be recorded as unpriced
+       * with this reason, so an administrator can add the catalogue
+       * entry rather than guess which order was missed.
+       */
+      const unresolved = tests
+        .filter((test) => test.id === null && test.match !== undefined)
+        .map((test) => test.name);
+
+      const ambiguous = tests
+        .filter((test) => test.match === 'AMBIGUOUS')
+        .map((test) => test.name);
+
+      return { orders, queue, unresolved, ambiguous };
     });
   } catch (error) {
     console.error('Laboratory batch transaction failed:', error);

@@ -3840,6 +3840,22 @@ export const facilityServiceTariffs = pgTable(
      * vocabulary.
      */
     billingKey: text('billing_key'),
+
+    /*
+     * When this price applies. Both nullable: NULL means "always", so
+     * every existing row keeps working and no date had to be invented
+     * for it. A resolver checks today's date against the pair.
+     */
+    effectiveFrom: date('effective_from'),
+    effectiveTo: date('effective_to'),
+
+    /*
+     * Whether automatic billing may use this tariff. Default true, so
+     * behaviour is unchanged; a facility can keep a tariff for manual
+     * pricing while excluding it from automatic charging.
+     */
+    autoBill: boolean('auto_bill').notNull().default(true),
+
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -4004,6 +4020,74 @@ export const billingItems = pgTable(
       .defaultNow()
       .notNull(),
   },
+);
+
+/**
+ * The link between a catalogue service and the price that answers it.
+ *
+ * `service_id` is the stable id of the catalogue row — `lab_tests.id`
+ * for a laboratory test — not a code someone can rename. `NULL` means
+ * the link covers every service of that type.
+ *
+ * Why a table instead of comparing strings: the engine used to ask for
+ * `LAB-BLOOD` when the facility's row was `LAB-001`, and every failure
+ * mode (missing, inactive, expired, another facility, ambiguous) looked
+ * identical from the outside. A link by id cannot be ambiguous, and a
+ * link can be validated field by field.
+ *
+ * The composite foreign key to `(facility_id, id)` means a link can
+ * only reference a tariff of the same facility: isolation is a
+ * constraint, not a convention.
+ *
+ * See migration 0021.
+ */
+export const serviceTariffLinks = pgTable(
+  'service_tariff_links',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    /** LAB_TEST | CONSULTATION | RADIOLOGY | … (see migration 0021). */
+    serviceType: text('service_type').notNull(),
+
+    /** Catalogue row id; NULL links the whole family. */
+    serviceId: integer('service_id'),
+
+    /** Snapshot of the catalogue code and name at link time. */
+    serviceCode: text('service_code'),
+    serviceName: text('service_name'),
+
+    tariffId: integer('tariff_id').notNull(),
+
+    autoBill: boolean('auto_bill').notNull().default(true),
+
+    note: text('note'),
+    createdBy: text('created_by'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('service_tariff_links_service_unique')
+      .on(table.facilityId, table.serviceType, table.serviceId)
+      .where(sql`${table.isActive} AND ${table.serviceId} is not null`),
+    uniqueIndex('service_tariff_links_family_unique')
+      .on(table.facilityId, table.serviceType)
+      .where(sql`${table.isActive} AND ${table.serviceId} is null`),
+    index('service_tariff_links_facility_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.serviceType,
+    ),
+    index('service_tariff_links_tariff_idx').on(table.tariffId),
+  ],
 );
 
 /**

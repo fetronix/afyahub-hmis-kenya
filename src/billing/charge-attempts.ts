@@ -386,7 +386,87 @@ export interface RetryOutcome {
 }
 
 /**
+ * Re-read the clinical source at retry time.
+ *
+ * A stored attempt knows *which* laboratory order was billed, not which
+ * catalogue row it pointed at — and the catalogue link is the whole
+ * point of the retry. Reading it live means:
+ *
+ *   - a fix to the mapping applies immediately, without rewriting the
+ *     queue row;
+ *   - the order, its id and its audit trail are untouched: the retry
+ *     reads, it never re-creates the clinical record;
+ *   - a deleted catalogue row surfaces as "no catalogue row" instead of
+ *     a charge against a stale id.
+ */
+async function enrichFromSource(
+  executor: Executor,
+  request: ChargeRequest,
+): Promise<ChargeRequest> {
+  if (request.sourceType !== 'LAB_ORDER') return request;
+
+  if (typeof request.sourceId !== 'number') return request;
+
+  try {
+    const [order] = await executor
+      .select({
+        testId: schema.labOrders.testId,
+        testName: schema.labOrders.testName,
+        facilityId: schema.labOrders.facilityId,
+      })
+      .from(schema.labOrders)
+      .where(eq(schema.labOrders.id, request.sourceId))
+      .limit(1);
+
+    if (!order) return request;
+
+    /* Never let a retry bill another facility's order. */
+    if (order.facilityId !== request.facilityId) return request;
+
+    let testCode: string | null = null;
+
+    if (typeof order.testId === 'number' && order.testId > 0) {
+      const [test] = await executor
+        .select({ code: schema.labTests.code })
+        .from(schema.labTests)
+        .where(
+          and(
+            eq(schema.labTests.id, order.testId),
+            eq(schema.labTests.facilityId, order.facilityId),
+          ),
+        )
+        .limit(1);
+
+      testCode = test?.code ?? null;
+    }
+
+    return {
+      ...request,
+      serviceName: order.testName,
+      ...(testCode ? { aliases: [testCode] } : {}),
+      serviceRef: {
+        type: 'LAB_TEST',
+        id: typeof order.testId === 'number' ? order.testId : null,
+        code: testCode,
+      },
+    };
+  } catch (error) {
+    /*
+     * The order may predate a column, or the read may fail. Replaying
+     * without the enriched fields is still safe: the resolver falls
+     * back to codes and reports what it could not do. It must never
+     * throw from here, because a retry that 500s looks like a bill.
+     */
+    console.error('Billing: could not re-read the laboratory order:', error);
+
+    return request;
+  }
+}
+
+/**
  * Retry one attempt.
+
+ *
  *
  * Runs the ordinary charge path: the link, the code and the description
  * rules all apply, and the idempotency key is the one the original
@@ -433,7 +513,7 @@ export async function retryChargeAttempt(
   try {
     result = await chargeForService(
       executor,
-      toChargeRequest(row, input.tenantId),
+      await enrichFromSource(executor, toChargeRequest(row, input.tenantId)),
     );
   } catch (error: unknown) {
     /*

@@ -35,6 +35,11 @@ import {
   type MatchOutcome,
 } from './tariff-matching.ts';
 import type { BillingFamily } from './tariff-codes.ts';
+import {
+  failureLabel,
+  resolveServiceTariff,
+  type CatalogueServiceType,
+} from './tariff-resolver.ts';
 
 /* ============================================================
    TYPES
@@ -107,6 +112,20 @@ export interface ChargeRequest {
   /** Extra phrases to look for, most specific first. */
   aliases?: readonly string[];
 
+  /**
+   * The catalogue record this charge is for.
+   *
+   * `id` is the stable database id of the thing that was ordered —
+   * `lab_tests.id` for a laboratory test — and is what an explicit
+   * service-to-tariff link is keyed on. Not a code: a facility may
+   * rename `LAB-006` to `FBC` tomorrow without breaking the price.
+   */
+  serviceRef?: {
+    type: CatalogueServiceType;
+    id: number | null;
+    code?: string | null;
+  };
+
   quantity?: number;
 
   sourceType: BillingSourceType;
@@ -151,7 +170,10 @@ export interface ChargeResult {
   unit?: string | null;
 
   /** How the tariff was found, when one was. */
-  matchRule?: 'LINK' | 'CODE' | 'CATALOGUE';
+  matchRule?: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE';
+
+  /** Why the charge could not be priced, when it could not. */
+  diagnosis?: { code: string; label: string; candidates?: string[] };
   matchExplanation?: string;
   /** Codes the engine tried, shown when nothing matched. */
   codesTried?: string[];
@@ -332,21 +354,76 @@ export async function loadActiveFacilityTariffs(
 
 export interface ChargeMatch {
   tariff: ResolvedTariff | null;
-  rule: 'LINK' | 'CODE' | 'CATALOGUE' | null;
+  rule: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE' | null;
   explanation: string;
   ambiguity?: { phrase: string; codes: string[] };
   codesTried: string[];
   phrasesTried: string[];
   /** Rows that were available to match against. */
   candidateCount: number;
+  /** Why nothing was resolved, when nothing was. */
+  failure: {
+    code: string;
+    label: string;
+    message: string;
+    candidates?: string[];
+  } | null;
+  linkId: number | null;
+}
+
+/** Map a billing family onto the catalogue type the resolver expects. */
+export function serviceTypeForCharge(request: {
+  family?: BillingFamily;
+  sourceType?: string;
+}): CatalogueServiceType {
+  switch (request.family) {
+    case 'LABORATORY':
+      return 'LAB_TEST';
+    case 'CONSULTATION':
+      return 'CONSULTATION';
+    case 'RADIOLOGY':
+      return 'RADIOLOGY';
+    case 'PROCEDURE':
+      return 'PROCEDURE';
+    case 'PHARMACY':
+      return 'PHARMACY';
+    case 'ADMISSION':
+      return 'ADMISSION';
+    case 'BED_DAY':
+      return 'BED_DAY';
+    case 'DELIVERY':
+      return 'DELIVERY';
+    default:
+      break;
+  }
+
+  switch (request.sourceType) {
+    case 'LAB_ORDER':
+      return 'LAB_TEST';
+    case 'RADIOLOGY':
+      return 'RADIOLOGY';
+    case 'PROCEDURE':
+      return 'PROCEDURE';
+    case 'PHARMACY':
+      return 'PHARMACY';
+    case 'ADMISSION':
+      return 'ADMISSION';
+    case 'BED_DAY':
+      return 'BED_DAY';
+    case 'MATERNITY':
+      return 'DELIVERY';
+    default:
+      return 'CONSULTATION';
+  }
 }
 
 /**
  * Resolve a charge to one of this facility's tariffs.
  *
- * The ladder is LINK → CODE → CATALOGUE, defined in `tariff-matching.ts`
- * and shared with the configuration screen so the two cannot disagree
- * about what a consultation will cost.
+ * The ladder — LINK → FAMILY_LINK → ALIAS → CODE → CATALOGUE — lives in
+ * `tariff-resolver.ts`, which also validates activity, effective dates,
+ * facility ownership and the unit of charge. This function only adapts
+ * the charge request to it, so there is one resolver, not two.
  */
 export async function resolveTariffForCharge(
   executor: Executor,
@@ -358,9 +435,14 @@ export async function resolveTariffForCharge(
     serviceName?: string | null;
     encounterType?: string | null;
     aliases?: readonly string[];
+    /** The catalogue record being billed, when there is one. */
+    serviceType?: CatalogueServiceType;
+    serviceId?: number | null;
   },
 ): Promise<ChargeMatch> {
-  const rows = await loadActiveFacilityTariffs(executor, request.facilityId);
+  const serviceType =
+    request.serviceType ??
+    serviceTypeForCharge({ family: request.family });
 
   const phrases = request.family
     ? phrasesForCharge({
@@ -371,30 +453,63 @@ export async function resolveTariffForCharge(
       })
     : [];
 
-  const outcome: MatchOutcome<(typeof rows)[number]> = matchTariff({
-    rows,
+  const resolution = await resolveServiceTariff(executor, {
+    facilityId: request.facilityId,
+    serviceType,
+    serviceId: request.serviceId ?? null,
+    serviceName: request.serviceName ?? null,
     codes: request.codes,
-    serviceKeys: request.serviceKeys,
+    serviceKeys: request.serviceKeys ?? [],
     family: request.family,
     phrases,
   });
 
+  const tariff = resolution.tariff;
+
   return {
-    tariff: outcome.tariff
+    tariff: tariff
       ? {
-          id: outcome.tariff.id,
-          code: outcome.tariff.code,
-          description: outcome.tariff.description,
-          fee: outcome.tariff.fee,
-          unit: outcome.tariff.unit,
+          id: tariff.id,
+          code: tariff.code,
+          description: tariff.description,
+          fee: tariff.fee,
+          unit: tariff.unit,
         }
       : null,
-    rule: outcome.rule,
-    explanation: describeMatch(outcome),
-    ambiguity: outcome.ambiguity,
-    codesTried: outcome.triedCodes,
-    phrasesTried: outcome.triedPhrases,
-    candidateCount: rows.length,
+    rule: resolution.rule,
+    explanation: tariff
+      ? resolution.rule === 'LINK'
+        ? `linked to this service (${tariff.code})`
+        : resolution.rule === 'FAMILY_LINK'
+          ? `linked to all ${serviceType.toLowerCase()} charges (${tariff.code})`
+          : resolution.rule === 'ALIAS'
+            ? `approved alias for this charge (${tariff.code})`
+            : resolution.rule === 'CODE'
+              ? `matched by code ${tariff.code}`
+              : `matched on the description “${tariff.description}”`
+      : (resolution.failure?.message ?? 'no tariff matched'),
+    ...(resolution.failure?.code === 'AMBIGUOUS' && resolution.failure.candidates
+      ? {
+          ambiguity: {
+            phrase: phrases[0] ?? '',
+            codes: resolution.failure.candidates,
+          },
+        }
+      : {}),
+    codesTried: resolution.codesTried,
+    phrasesTried: resolution.phrasesTried,
+    candidateCount: resolution.rows.length,
+    failure: resolution.failure
+      ? {
+          code: resolution.failure.code,
+          label: failureLabel(resolution.failure.code),
+          message: resolution.failure.message,
+          ...(resolution.failure.candidates
+            ? { candidates: resolution.failure.candidates }
+            : {}),
+        }
+      : null,
+    linkId: resolution.linkId,
   };
 }
 
@@ -793,6 +908,9 @@ export async function chargeForService(
     serviceName: request.serviceName,
     encounterType: request.encounterType,
     aliases: request.aliases,
+    ...(request.serviceRef
+      ? { serviceType: request.serviceRef.type, serviceId: request.serviceRef.id }
+      : {}),
   });
 
   const tariff = match.tariff;
@@ -807,11 +925,28 @@ export async function chargeForService(
       reason: 'TARIFF_NOT_CONFIGURED',
       codesTried: match.codesTried,
       matchExplanation: match.explanation,
-      message: match.ambiguity
-        ? `Two active tariffs describe ${request.family ? familyLabel(request.family) : 'this service'} in this facility — ${match.ambiguity.codes.join(' and ')}. JaliCare will not choose between them. Open Configuration → Services & Tariffs and set “Used for automatic billing” on the one that should price it; the service was recorded but not billed.`
-        : tariff
-          ? `Tariff ${tariff.code} is priced at zero. The service was recorded but not billed.`
-          : `No active tariff matched ${summariseCodes(request.codes)} for this facility, and no active tariff is linked to this service or describes it. Add one under Configuration → Services & Tariffs, or set “Used for automatic billing” on a tariff you already have; the service was recorded but not billed, and it is now listed under “Charges that could not be priced” so it can be billed once a price exists.`,
+      ...(match.failure
+        ? {
+            diagnosis: {
+              code: match.failure.code,
+              label: match.failure.label,
+              ...(match.failure.candidates
+                ? { candidates: match.failure.candidates }
+                : {}),
+            },
+          }
+        : {}),
+      /*
+       * The resolver's own sentence. It names the row that was found and
+       * why it was refused — inactive, expired, another facility's,
+       * excluded from automatic billing, wrong unit, ambiguous — instead
+       * of the single "no active tariff matched" that made all six
+       * indistinguishable.
+       */
+      message: `${
+        match.failure?.message ??
+        `No active tariff matched ${summariseCodes(request.codes)} for this facility.`
+      } The service was recorded but not billed, and it is listed under Configuration → Services & Tariffs → “Charges that could not be priced” so it can be billed once the price is set.`,
     };
   }
 

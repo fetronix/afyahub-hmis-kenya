@@ -53,90 +53,37 @@ import {
    Normalisation
    ============================================================ */
 
-/**
- * Lower-case word tokens.
- *
- * Punctuation, case, repeated spaces and non-breaking spaces all
- * disappear; the words themselves do not. `Follow-up` and `follow up`
- * are the same service; `follow-up` and `general` are not, and that
- * distinction is preserved because it is the one that changes the price.
- */
-export function words(value: string | null | undefined): string[] {
-  if (typeof value !== 'string') return [];
+export {
+  words,
+  serviceWords,
+  isVaguePhrase,
+  STOP_WORDS,
+  NEUTRAL_WORDS,
+  VAGUE_WORDS,
+} from './tariff-words.ts';
 
-  return value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter((word) => word.length > 0);
-}
+import {
+  NEUTRAL_WORDS,
+  isVaguePhrase,
+  serviceWords,
+  words,
+} from './tariff-words.ts';
 
-/** Words that carry no meaning when matching a service description. */
-const STOP_WORDS = new Set([
-  'and',
-  'of',
-  'the',
-  'per',
-  'for',
-  'with',
-  'a',
-  'an',
-  'to',
-  'in',
-  'on',
-]);
-
-/** Tokens that identify a service, without the filler. */
-export function serviceWords(value: string | null | undefined): string[] {
-  return words(value).filter((word) => !STOP_WORDS.has(word));
+/** A stable comparison key for a code or a key: ` opd-001 ` → `OPD-001`. */
+export function codeKey(value: string | null | undefined): string {
+  return typeof value === 'string' ? value.trim().toUpperCase() : '';
 }
 
 /**
- * Words that add nothing to *which* service a tariff is for.
+ * Is every extra word in `description` a word that does not change the
+ * service?
  *
- * Used only when the phrase being matched is a single word — the last
+ * Only used when the phrase being matched is a single word — the last
  * resort of every family ("consultation"). A tariff described as
  * "Follow-up consultation" contains "consultation" too, and matching it
  * for a general visit would charge 300 where the facility's own list
- * says 150. So a short phrase may only match a description whose extra
- * words are all neutral: "Consultation", "Consultation fee", "OPD
- * consultation visit". Anything else is a different service.
+ * says 150.
  */
-const NEUTRAL_WORDS = new Set([
-  'general',
-  'opd',
-  'outpatient',
-  'inpatient',
-  'clinical',
-  'clinic',
-  'fee',
-  'fees',
-  'charge',
-  'charges',
-  'service',
-  'services',
-  'patient',
-  'adult',
-  'normal',
-  'standard',
-  'basic',
-  'simple',
-  'routine',
-  'hospital',
-  'health',
-  'centre',
-  'center',
-  'price',
-  'rate',
-  'visit',
-  'session',
-  'day',
-]);
-
-/** Is every extra word in `description` a word that does not change the service? */
 function extraWordsAreNeutral(
   description: string,
   phraseWords: readonly string[],
@@ -146,11 +93,6 @@ function extraWordsAreNeutral(
   return serviceWords(description).every(
     (word) => wanted.has(word) || NEUTRAL_WORDS.has(word),
   );
-}
-
-/** A stable comparison key for a code or a key: ` opd-001 ` → `OPD-001`. */
-export function codeKey(value: string | null | undefined): string {
-  return typeof value === 'string' ? value.trim().toUpperCase() : '';
 }
 
 /* ============================================================
@@ -575,6 +517,13 @@ export function matchTariff<T extends TariffLike>(
     const wanted = serviceWords(phrase);
 
     if (wanted.length === 0) continue;
+
+    /*
+     * A phrase made only of vague words ("Blood", "Laboratory test")
+     * cannot identify a service. Matching on it would pick a price by
+     * accident, which is the bug this module exists to remove.
+     */
+    if (isVaguePhrase(phrase)) continue;
 
     const matches = pool.filter((row) => {
       const have = new Set(serviceWords(row.description));

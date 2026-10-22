@@ -47,7 +47,7 @@ export {
 
 export type ChargeableLabOrder = Pick<
   typeof schema.labOrders.$inferSelect,
-  'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterId' | 'testName'
+  'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterId' | 'testName' | 'testId'
 > & {
   /**
    * The test's code from `lab_tests`, carried alongside the order.
@@ -79,6 +79,20 @@ export function labOrderChargeRequest(
     family: 'LABORATORY',
     serviceName: order.testName,
     aliases: order.testCode ? [order.testCode] : [],
+    /*
+     * The catalogue row, by id.
+     *
+     * This is what makes an explicit link possible: the facility says
+     * "lab_tests.id 42 is priced by LAB-001", not "a test whose name
+     * contains the word blood is priced by LAB-BLOOD". A free-text
+     * investigation has no id, and the resolver reports that rather
+     * than guessing.
+     */
+    serviceRef: {
+      type: 'LAB_TEST',
+      id: typeof order.testId === 'number' ? order.testId : null,
+      code: order.testCode ?? null,
+    },
     sourceType: 'LAB_ORDER',
     sourceId: order.id,
     itemType: 'Laboratory',
@@ -154,6 +168,7 @@ export function radiologyChargeRequest(
     serviceKeys: billingServiceKeys('RADIOLOGY', [order.procedureName]),
     family: 'RADIOLOGY',
     serviceName: order.procedureName,
+    serviceRef: { type: 'RADIOLOGY', id: null },
     sourceType: 'RADIOLOGY',
     sourceId: order.id,
     itemType: 'Radiology',

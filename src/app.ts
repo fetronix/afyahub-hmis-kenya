@@ -53,6 +53,10 @@ import {
   isValidBillingKey,
 } from './billing/tariff-codes.ts';
 import { codesForFamily } from './billing/tariff-matching.ts';
+import {
+  CATALOGUE_SERVICE_TYPES,
+  isCatalogueServiceType,
+} from './billing/tariff-resolver.ts';
 import * as insuranceClaims from './insurance/claims.service.ts';
 import * as dha from './integrations/dha/dha.service.ts';
 import { buildReadinessReport } from './integrations/dha/dha.readiness.ts';
@@ -3853,6 +3857,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         facilityId?: number;
         patientId?: number;
         encounterId?: number | null;
+        testId?: number | null;
         testName?: string;
         testCode?: string | null;
       } | null;
@@ -3881,6 +3886,12 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             family: 'LABORATORY',
             serviceName: labOrder.testName,
             aliases: labOrder.testCode ? [labOrder.testCode] : [],
+            serviceRef: {
+              type: 'LAB_TEST',
+              id:
+                typeof labOrder.testId === 'number' ? labOrder.testId : null,
+              code: labOrder.testCode ?? null,
+            },
             sourceType: 'LAB_ORDER',
             sourceId: labOrder.id,
             itemType: 'Laboratory',
@@ -4661,6 +4672,38 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
     const billingKey = rawBillingKey === '' ? null : rawBillingKey.toUpperCase();
 
+    /*
+     * Effective dates. Both optional; empty means "always". They are
+     * what lets a price list change on 1 January without either
+     * rewriting history or silently repricing past invoices: the
+     * resolver checks today's date against the pair.
+     */
+    const parseDate = (value: unknown): string | null | undefined => {
+      if (value === undefined || value === null || value === '') return null;
+
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+        return undefined;
+      }
+
+      const parsed = new Date(`${value.trim()}T00:00:00Z`);
+
+      return Number.isNaN(parsed.getTime()) ? undefined : value.trim();
+    };
+
+    const effectiveFrom = parseDate(input?.effectiveFrom);
+    const effectiveTo = parseDate(input?.effectiveTo);
+
+    if (effectiveFrom === undefined || effectiveTo === undefined) return null;
+
+    if (effectiveFrom && effectiveTo && effectiveFrom > effectiveTo) return null;
+
+    const autoBill =
+      input?.autoBill === undefined ? true : input.autoBill === true;
+
+    if (input?.autoBill !== undefined && typeof input.autoBill !== 'boolean') {
+      return null;
+    }
+
     if (
       !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,49}$/.test(code) ||
       !description || description.length > 500 ||
@@ -4684,6 +4727,9 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
       shaNotes,
       moduleId,
       billingKey,
+      effectiveFrom,
+      effectiveTo,
+      autoBill,
     };
   };
 
@@ -4715,11 +4761,25 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
     }
 
     if (code === '42703' || code === '42P01') {
+      /*
+       * Two migrations sit behind this form now:
+       *   0019 — billing_key (the automatic-billing link)
+       *   0021 — effective dates and the automatic-billing flag
+       * Either being absent is a deployment fact, not a bad request.
+       * The message names the one that is missing rather than a generic
+       * 500, because the operator can fix it in one command.
+       */
+      const message =
+        typeof (error as { message?: string }).message === 'string' &&
+        (error as { message: string }).message.includes('effective')
+
+      ? 'Price validity dates need migration 0021. Run `npm run db:migrate`, then save again. The tariff was not changed.'
+      : 'Automatic billing links need migrations 0019 and 0021. Run `npm run db:migrate`, then save again. The tariff was not changed.';
+
       res.status(409).json({
         success: false,
-        error: 'MIGRATION_0019_REQUIRED',
-        message:
-          'Automatic billing links need migration 0019. Run `npm run db:migrate`, then save again. The tariff was not changed.',
+        error: 'TARIFF_MIGRATION_REQUIRED',
+        message,
       });
 
       return true;
@@ -4920,6 +4980,9 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             shaStatus: input.shaStatus,
             shaNotes: input.shaNotes,
             billingKey: input.billingKey,
+            effectiveFrom: input.effectiveFrom,
+            effectiveTo: input.effectiveTo,
+            autoBill: input.autoBill,
             isActive: true,
           })
           .returning();
@@ -5037,6 +5100,9 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             shaStatus: input.shaStatus,
             shaNotes: input.shaNotes,
             billingKey: input.billingKey,
+            effectiveFrom: input.effectiveFrom,
+            effectiveTo: input.effectiveTo,
+            autoBill: input.autoBill,
             updatedAt: new Date(),
           })
           .where(
@@ -5717,6 +5783,442 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         return res.status(500).json({
           success: false,
           error: 'TARIFF_MATCH_FAILED',
+        });
+      }
+    },
+  );
+
+  // =========================================================
+  // SERVICE → TARIFF LINKS
+  // =========================================================
+  //
+  // The explicit relationship the billing engine prefers: a catalogue
+  // record, by database id, priced by a tariff row of the same facility
+  // (migration 0021). Legacy keys (`billing_key`, 0019) still resolve,
+  // but a link cannot be ambiguous and can be validated field by field.
+
+  /** Every link this facility has made, with the tariff it points at. */
+  app.get(
+    '/api/service-tariff-links',
+    requirePermission('tariffs.read'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+
+      try {
+        const facility = await resolveTariffFacility(
+          req,
+          res,
+          req.query.facilityId,
+        );
+        if (!facility) return;
+
+        const rows = await db
+          .select({
+            id: schema.serviceTariffLinks.id,
+            serviceType: schema.serviceTariffLinks.serviceType,
+            serviceId: schema.serviceTariffLinks.serviceId,
+            serviceCode: schema.serviceTariffLinks.serviceCode,
+            serviceName: schema.serviceTariffLinks.serviceName,
+            tariffId: schema.serviceTariffLinks.tariffId,
+            autoBill: schema.serviceTariffLinks.autoBill,
+            isActive: schema.serviceTariffLinks.isActive,
+            note: schema.serviceTariffLinks.note,
+            createdAt: schema.serviceTariffLinks.createdAt,
+            tariffCode: schema.facilityServiceTariffs.code,
+            tariffDescription: schema.facilityServiceTariffs.description,
+            tariffFee: schema.facilityServiceTariffs.fee,
+            tariffUnit: schema.facilityServiceTariffs.unit,
+            tariffActive: schema.facilityServiceTariffs.isActive,
+            tariffAutoBill: schema.facilityServiceTariffs.autoBill,
+            tariffEffectiveFrom: schema.facilityServiceTariffs.effectiveFrom,
+            tariffEffectiveTo: schema.facilityServiceTariffs.effectiveTo,
+          })
+          .from(schema.serviceTariffLinks)
+          .innerJoin(
+            schema.facilityServiceTariffs,
+            eq(
+              schema.facilityServiceTariffs.id,
+              schema.serviceTariffLinks.tariffId,
+            ),
+          )
+          .where(
+            and(
+              eq(schema.serviceTariffLinks.tenantId, facility.tenantId),
+              eq(schema.serviceTariffLinks.facilityId, facility.id),
+            ),
+          );
+
+        return res.json(rows);
+      } catch (error: unknown) {
+        if (sendTariffWriteError(error, res)) return;
+
+        console.error('Service tariff link list error:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'SERVICE_TARIFF_LINKS_FETCH_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Link a catalogue service to this facility's tariff.
+   *
+   * Re-linking replaces the active link rather than stacking a second
+   * one, and the old row stays with `is_active = false` so the history
+   * of what priced what is not erased.
+   */
+  app.post(
+    '/api/service-tariff-links',
+    requirePermission('tariffs.manage'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+
+      try {
+        const facility = await resolveTariffFacility(
+          req,
+          res,
+          req.body?.facilityId,
+        );
+        if (!facility || !req.authContext) return;
+
+        const serviceType =
+          typeof req.body?.serviceType === 'string'
+            ? req.body.serviceType.trim().toUpperCase()
+            : '';
+        const tariffId = Number(req.body?.tariffId);
+        const rawServiceId = req.body?.serviceId;
+        const serviceId =
+          rawServiceId === undefined || rawServiceId === null || rawServiceId === ''
+            ? null
+            : Number(rawServiceId);
+
+        if (!isCatalogueServiceType(serviceType)) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_SERVICE_TYPE',
+            message: `serviceType must be one of ${CATALOGUE_SERVICE_TYPES.join(', ')}.`,
+          });
+        }
+
+        if (
+          serviceId !== null &&
+          (!Number.isSafeInteger(serviceId) || serviceId <= 0)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_SERVICE_ID',
+          });
+        }
+
+        if (!Number.isSafeInteger(tariffId) || tariffId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_TARIFF_ID',
+          });
+        }
+
+        /* The tariff must be this facility's — the database enforces it
+         * too, but a 400 says which field is wrong. */
+        const [tariff] = await db
+          .select({
+            id: schema.facilityServiceTariffs.id,
+            code: schema.facilityServiceTariffs.code,
+            isActive: schema.facilityServiceTariffs.isActive,
+          })
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .limit(1);
+
+        if (!tariff) {
+          return res.status(404).json({
+            success: false,
+            error: 'TARIFF_NOT_FOUND',
+            message: 'That tariff does not belong to this facility.',
+          });
+        }
+
+        /*
+         * A catalogue id must be a real, active row of this facility —
+         * otherwise a typo would create a link to nothing that never
+         * fires, which is the silent failure this table exists to end.
+         */
+        let serviceCode: string | null =
+          typeof req.body?.serviceCode === 'string'
+            ? req.body.serviceCode.trim() || null
+            : null;
+        let serviceName: string | null =
+          typeof req.body?.serviceName === 'string'
+            ? req.body.serviceName.trim() || null
+            : null;
+
+        if (serviceType === 'LAB_TEST' && serviceId !== null) {
+          const [test] = await db
+            .select({
+              id: schema.labTests.id,
+              code: schema.labTests.code,
+              name: schema.labTests.name,
+              isActive: schema.labTests.isActive,
+            })
+            .from(schema.labTests)
+            .where(
+              and(
+                eq(schema.labTests.id, serviceId),
+                eq(schema.labTests.facilityId, facility.id),
+              ),
+            )
+            .limit(1);
+
+          if (!test) {
+            return res.status(404).json({
+              success: false,
+              error: 'CATALOGUE_SERVICE_NOT_FOUND',
+              message: 'That laboratory test does not belong to this facility.',
+            });
+          }
+
+          serviceCode = test.code ?? serviceCode;
+          serviceName = test.name ?? serviceName;
+        }
+
+        const autoBill = req.body?.autoBill === undefined
+          ? true
+          : req.body.autoBill === true;
+
+        const retired = await db
+          .update(schema.serviceTariffLinks)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.serviceTariffLinks.tenantId, facility.tenantId),
+              eq(schema.serviceTariffLinks.facilityId, facility.id),
+              eq(schema.serviceTariffLinks.serviceType, serviceType),
+              serviceId === null
+                ? sql`${schema.serviceTariffLinks.serviceId} is null`
+                : eq(schema.serviceTariffLinks.serviceId, serviceId),
+              eq(schema.serviceTariffLinks.isActive, true),
+            ),
+          )
+          .returning({ id: schema.serviceTariffLinks.id });
+
+        const [created] = await db
+          .insert(schema.serviceTariffLinks)
+          .values({
+            tenantId: facility.tenantId,
+            facilityId: facility.id,
+            serviceType,
+            serviceId,
+            serviceCode,
+            serviceName,
+            tariffId,
+            autoBill,
+            note:
+              typeof req.body?.note === 'string'
+                ? req.body.note.trim().slice(0, 500) || null
+                : null,
+            createdBy: String(req.authContext.userId),
+            isActive: true,
+          })
+          .returning();
+
+        await queries.logAuditEvent(
+          facility.tenantId,
+          facility.id,
+          String(req.authContext.userId),
+          'CREATE',
+          'SERVICE_TARIFF_LINK',
+          String(created.id),
+          `${serviceType}${serviceId === null ? ' (all)' : ` #${serviceId}`} linked to tariff ${tariff.code}${autoBill ? '' : ' (automatic billing off)'}.`,
+        );
+
+        return res.status(201).json({
+          ...created,
+          replacedLinks: retired.map((row) => row.id),
+        });
+      } catch (error: unknown) {
+        if (handleScopeError(error, res)) return;
+        if (sendTariffWriteError(error, res)) return;
+
+        console.error('Service tariff link error:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'SERVICE_TARIFF_LINK_FAILED',
+        });
+      }
+    },
+  );
+
+  /** Retire a link. The row is kept so the audit trail survives. */
+  app.patch(
+    '/api/service-tariff-links/:id/deactivate',
+    requirePermission('tariffs.manage'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+
+      try {
+        const facility = await resolveTariffFacility(
+          req,
+          res,
+          req.body?.facilityId,
+        );
+        if (!facility || !req.authContext) return;
+
+        const linkId = Number(req.params.id);
+
+        if (!Number.isSafeInteger(linkId) || linkId <= 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_LINK_ID',
+          });
+        }
+
+        const [updated] = await db
+          .update(schema.serviceTariffLinks)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.serviceTariffLinks.id, linkId),
+              eq(schema.serviceTariffLinks.tenantId, facility.tenantId),
+              eq(schema.serviceTariffLinks.facilityId, facility.id),
+            ),
+          )
+          .returning();
+
+        if (!updated) {
+          return res.status(404).json({
+            success: false,
+            error: 'SERVICE_TARIFF_LINK_NOT_FOUND',
+          });
+        }
+
+        await queries.logAuditEvent(
+          facility.tenantId,
+          facility.id,
+          String(req.authContext.userId),
+          'UPDATE',
+          'SERVICE_TARIFF_LINK',
+          String(linkId),
+          'Service-to-tariff link retired.',
+        );
+
+        return res.json(updated);
+      } catch (error: unknown) {
+        if (handleScopeError(error, res)) return;
+        if (sendTariffWriteError(error, res)) return;
+
+        console.error('Service tariff link deactivate error:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'SERVICE_TARIFF_LINK_DEACTIVATE_FAILED',
+        });
+      }
+    },
+  );
+
+  /**
+   * Every active laboratory test in this facility, with what it would
+   * bill today — and, when it would bill nothing, why.
+   *
+   * This is the screen that answers "why did my order not bill?": it
+   * runs the same resolver the charger runs, over the facility's own
+   * catalogue, and names the row and the reason.
+   */
+  app.get(
+    '/api/billing/lab-service-diagnostics',
+    requirePermission('tariffs.read'),
+    async (req: AuthRequest, res: Response) => {
+      if (!requireFacilityAdminTariffRole(req, res)) return;
+
+      try {
+        const facility = await resolveFacilityScope(
+          req.authContext!,
+          req.query.facilityId ? Number(req.query.facilityId) : undefined,
+        );
+
+        const tests = await db
+          .select({
+            id: schema.labTests.id,
+            code: schema.labTests.code,
+            name: schema.labTests.name,
+            category: schema.labTests.category,
+            isActive: schema.labTests.isActive,
+            cataloguePrice: schema.labTests.price,
+          })
+          .from(schema.labTests)
+          .where(eq(schema.labTests.facilityId, facility));
+
+        const diagnostics = [];
+
+        for (const test of tests) {
+          const resolution = await billing.resolveTariffForCharge(db, {
+            facilityId: facility,
+            codes: codesForFamily({
+              family: 'LABORATORY',
+              code: test.code,
+              name: test.name,
+            }),
+            serviceKeys: billingServiceKeys('LABORATORY', [test.code, test.name]),
+            family: 'LABORATORY',
+            serviceName: test.name,
+            serviceType: 'LAB_TEST',
+            serviceId: test.id,
+          });
+
+          diagnostics.push({
+            testId: test.id,
+            code: test.code,
+            name: test.name,
+            category: test.category,
+            isActive: test.isActive,
+            /*
+             * The catalogue price is shown beside the tariff so the two
+             * cannot be confused. It is NOT used for billing; the
+             * invoice amount always comes from the tariff.
+             */
+            cataloguePrice: test.cataloguePrice,
+            resolved: resolution.tariff
+              ? {
+                  tariffId: resolution.tariff.id,
+                  code: resolution.tariff.code,
+                  description: resolution.tariff.description,
+                  fee: resolution.tariff.fee,
+                  unit: resolution.tariff.unit,
+                  rule: resolution.rule,
+                }
+              : null,
+            failure: resolution.failure
+              ? {
+                  code: resolution.failure.code,
+                  label: resolution.failure.label,
+                  message: resolution.failure.message,
+                  ...(resolution.failure.candidates
+                    ? { candidates: resolution.failure.candidates }
+                    : {}),
+                }
+              : null,
+            codesTried: resolution.codesTried,
+          });
+        }
+
+        return res.json({
+          facilityId: facility,
+          total: diagnostics.length,
+          resolved: diagnostics.filter((entry) => entry.resolved !== null).length,
+          unresolvable: diagnostics.filter((entry) => entry.resolved === null).length,
+          tests: diagnostics,
+        });
+      } catch (error: unknown) {
+        if (handleScopeError(error, res)) return;
+
+        console.error('Laboratory diagnostics error:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'LAB_SERVICE_DIAGNOSTICS_FAILED',
         });
       }
     },

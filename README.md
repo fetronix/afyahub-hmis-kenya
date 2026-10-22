@@ -991,10 +991,10 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
-**1,707 modules**. `npm test` — **25 suites, 3,149 assertion statements**, no
+**1,707 modules**. `npm test` — **25 suites, 3,307 assertion statements**, no
 failures. `test:tariff-matching` 92 (new), `test:compliance` 239,
 `test:route-scope` 66, `test:field-encryption` 48, `test:consent-allergy` 80,
-`test:patient-portal` 197, `test:migrations` 721.
+`test:tariff-resolver` 135 (new), `test:patient-portal` 197, `test:migrations` 741.
 
 **Not verified.** No database and no browser: `npm run db:status` fails with
 `Missing required environment variable: SQL_HOST`. Every SQL path is
@@ -1369,10 +1369,118 @@ migration 0020 is applied; the link remains the explicit alternative and is the
 only way to choose between two tariffs that both describe the service.
 
 **Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 25
-suites / 3,149 assertion statements (tariff matching 92 new, OPD journey 82 → 83,
+suites / 3,307 assertion statements (tariff matching 92 new, OPD journey 82 → 83,
 migrations 706 → 721). **Not verified:** no database here — migration 0020 has not
 been executed and no invoice line has been created against PostgreSQL. The 150 is
 the facility's own figure, read from its row, not one this code invented.
+
+### 3.27 Service → tariff billing, reconstructed: the laboratory order that never billed
+
+A laboratory order reached the Laboratory queue and produced no charge. The error
+named the codes: `LAB-BLOOD`, `BLOOD`, `LAB-GENERAL`. The facility's price list is
+`LAB-001` … `LAB-008` plus one row coded `LAB-BLOOD` at 800 whose description is
+literally "LAB-BLOOD".
+
+**Two root causes, both verified in the code.**
+
+1. **The order carried no catalogue identity.** The outpatient screen sends
+   laboratory tests as **free text**; `selectedLabTestIds` was declared and never
+   used, so `lab_orders.test_id` was NULL for every order placed there. A tariff
+   link has nothing to point at when the order has no id.
+2. **Resolution compared strings, and reported every failure identically.** A
+   missing row, an inactive row, an expired row, another facility's row, a row
+   excluded from automatic billing, and two plausible rows all produced the same
+   sentence — "no active tariff matched" — so none of them could be fixed.
+
+**What was built.**
+
+*A shared resolver*, `src/billing/tariff-resolver.ts`, used by every charge (the
+`chargeForService` path in `billing.service.ts` calls it; there is no second
+billing engine). The ladder, and why each step exists:
+
+| Step | Keyed on | Why it is safe |
+|---|---|---|
+| `LINK` | `service_tariff_links.service_id` = `lab_tests.id` | a database id cannot be renamed and cannot be ambiguous |
+| `FAMILY_LINK` | link row with `service_id IS NULL` | one price for a whole family, stated deliberately |
+| `ALIAS` | `facility_service_tariffs.billing_key` (0019) | the facility's own approved key |
+| `CODE` | exact code equality, trimmed and case-insensitive | what billed before still bills |
+| `CATALOGUE` | the tariff's own description, right department, exactly one match | a last resort that fails closed |
+
+A step that **finds** a row and rejects it **stops** and reports why. Falling
+through would let a deactivated link silently bill a different price.
+
+*Validation on every candidate row*: active, today inside
+`[effective_from, effective_to]`, same facility (a composite foreign key, see
+below), `auto_bill` on, a unit that can price that kind of service, and a fee
+above zero. Each produces its own diagnosis — `INACTIVE`, `EXPIRED`,
+`NOT_YET_EFFECTIVE`, `AUTOMATIC_BILLING_DISABLED`, `UNIT_INCOMPATIBLE`,
+`NO_UNIT`, `ZERO_PRICE`, `AMBIGUOUS`, `NO_TARIFF`.
+
+*Vague words are refused.* `BLOOD`, `LABORATORY`, `GENERAL`, `TEST`, `FULL`,
+`SAMPLE`, `PROFILE` name a department, not a service. They can no longer be the
+source of a **generated code** or of a **description match**. That matters
+concretely: `LAB-BLOOD` is not derived from a test called "Blood" any more, so a
+haemoglobin test priced at 300 cannot be billed at the blood tariff's 800. A real
+catalogue code `LAB-BLOOD` is still tried, and the row itself is untouched —
+same code, same 800, same unit, still reachable by code and linkable by id.
+
+*Free text is resolved to a catalogue row, server-side.* `createLabOrderBatch`
+and `createLabOrder` now match each investigation name against the facility's own
+active `lab_tests` by **exact normalised equality of code or name**. One match
+attaches `test_id`; zero or two matches leaves it NULL, keeps the order, and
+reports `unresolved` / `ambiguous` back to the caller. No fuzzy search, no
+"closest" row, no price from the client.
+
+*Migration 0021* (`drizzle/0021_service_tariff_links.sql`, **written, not
+executed**):
+
+- `service_tariff_links` — `service_type`, `service_id`, `tariff_id`,
+  `auto_bill`, `is_active`. Partial unique indexes keep one active link per
+  catalogue service and one per family; deactivating frees the slot.
+- **`FOREIGN KEY (facility_id, tariff_id) REFERENCES
+  facility_service_tariffs (facility_id, id)`** — a link physically cannot point
+  at another facility's tariff. Isolation is a constraint, not a `WHERE` clause
+  someone can forget.
+- `effective_from` / `effective_to` (nullable = always) and `auto_bill`
+  (default `true`) on `facility_service_tariffs`. Every column is additive and
+  preserves today's behaviour; no row is rewritten, nothing is dropped, no id
+  changes.
+
+*Configuration and diagnostics*, on the existing Services & Tariffs screen:
+
+- **Link a service to one of your tariffs** — service type, the laboratory test
+  by catalogue id, the tariff, and an "use automatically" switch. Retiring a link
+  keeps the row and its audit trail.
+- **What each laboratory test would bill** — every test in the facility with the
+  tariff it resolves to, the rule that matched, and for a test that bills
+  nothing, the reason and the candidates. It runs the same resolver the charger
+  runs, so the screen cannot disagree with the invoice.
+- The tariff form gained **Price valid from / to** and **Use for automatic
+  billing**.
+
+All of it sits behind `tariffs.read` / `tariffs.manage`, the existing
+`requireFacilityAdminTariffRole` guard and `resolveFacilityScope`; every change is
+written with `logAuditEvent`. Clinical users never see it.
+
+*Reprocessing.* The unpriced-charge queue (0020) is unchanged in shape, but a
+retry now re-reads the laboratory order at retry time and rebuilds the
+`serviceRef` from its `test_id`. The order is read, never re-created; the
+idempotency key is still derived from the clinical source, so a second retry
+returns `DUPLICATE` instead of writing a second invoice line.
+
+**What is still required from the facility.** Nothing is seeded and no price was
+invented. The catalogue services map to their tariffs **by description** already
+(`Malaria rapid diagnostic test` → `LAB-001` at 300, and so on, asserted in
+`test:tariff-resolver`). Making them certain rather than descriptive is one
+action per service on the tariff screen. `LAB-BLOOD` stays exactly as it is at
+800: what it represents is the facility's decision, and it can be linked to a
+catalogue test — or left alone — but it is never chosen by the word "blood".
+
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules / 644 ms,
+`npm test` **25 suites, 3,307 assertion statements**, no failures — including the
+new `test:tariff-resolver` (135) and `test:migrations` 741. **Not verified:** no
+PostgreSQL in this environment; migration 0021 has not been executed, no link
+row exists yet, and no invoice line has been created against a database.
 
 ## 4. Existing backups and modified files to preserve
 

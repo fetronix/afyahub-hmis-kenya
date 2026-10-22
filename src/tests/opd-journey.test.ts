@@ -117,6 +117,7 @@ function testLabBatch(): void {
     patientId: 3,
     encounterId: 4,
     testName: 'Complete blood count',
+    testId: 11,
   });
 
   assertEqual(request.sourceType, 'LAB_ORDER', 'laboratory source type');
@@ -288,7 +289,7 @@ function testEveryStageIsCharged(): void {
 
   const queries = source('src/db/queries.ts');
   assert(
-    queries.includes('orders.push({ ...order, testCode: test.code })'),
+    queries.includes('orders.push({') && queries.includes('testCode: test.code'),
     'the batch carries each test code to the charging step',
   );
   assert(
@@ -375,7 +376,8 @@ function testEveryStageIsCharged(): void {
     'two active tariffs cannot answer the same automatic charge',
   );
   assert(
-    app.includes('MIGRATION_0019_REQUIRED'),
+    app.includes('TARIFF_MIGRATION_REQUIRED') &&
+      app.includes('migrations 0019 and 0021'),
     'a database without the column says which migration is missing',
   );
 }

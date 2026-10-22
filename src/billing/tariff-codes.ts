@@ -12,6 +12,8 @@
  * of plausible codes and the first configured one wins.
  */
 
+import { isVaguePhrase } from './tariff-words.ts';
+
 /* ============================================================
    NAME -> CODE
    ============================================================ */
@@ -214,9 +216,27 @@ export function codedTariffCodeCandidates(
     }
   }
 
-  codes.push(
-    ...tariffCodeCandidates(prefix, record.name, defaults),
-  );
+  /*
+   * A code generated from a *vague* name is a guess wearing a code's
+   * clothes. `LAB-BLOOD` derived from a test called "Blood" is exactly
+   * how a haemoglobin test priced at 300 would end up billed at the
+   * facility's 800 blood tariff.
+   *
+   * The generic defaults are still offered: `LAB-GENERAL` only prices
+   * anything if the facility genuinely created that row, which is a
+   * deliberate statement rather than an inference.
+   */
+  const codeText = normaliseTariffCode(record.code);
+
+  /*
+   * Only the *name* can be vague here: a code that exists was typed by
+   * a person and is a statement, not an inference.
+   */
+  if (!isVaguePhrase(record.name) && (codeText === '' || !isVaguePhrase(codeText))) {
+    codes.push(...tariffCodeCandidates(prefix, record.name, []));
+  }
+
+  codes.push(...defaults);
 
   return [...new Set(codes)];
 }

@@ -511,6 +511,15 @@ export interface ServiceTariff {
    * by code. Set on the tariff screen; see migration 0019.
    */
   billingKey: string | null;
+  /**
+   * When this price applies. Null means always. Checked against today
+   * when a charge is raised, so a price list can change on a date
+   * without rewriting history.
+   */
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  /** Whether automatic billing may use this tariff. */
+  autoBill: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -619,6 +628,66 @@ export interface TariffMatchExplanation {
     rule: "LINK" | "CODE" | "CATALOGUE" | null;
     ambiguity?: { phrase: string; codes: string[] };
   };
+}
+
+/**
+ * A catalogue service → tariff link (migration 0021).
+ *
+ * `serviceId` is the stable id of the catalogue row — `lab_tests.id`
+ * for a laboratory test — not a code that can be renamed.
+ */
+export interface ServiceTariffLink {
+  id: number;
+  serviceType: string;
+  serviceId: number | null;
+  serviceCode: string | null;
+  serviceName: string | null;
+  tariffId: number;
+  autoBill: boolean;
+  isActive: boolean;
+  note: string | null;
+  createdAt: string;
+  tariffCode: string;
+  tariffDescription: string;
+  tariffFee: string;
+  tariffUnit: string;
+  tariffActive: boolean;
+  tariffAutoBill: boolean;
+  tariffEffectiveFrom: string | null;
+  tariffEffectiveTo: string | null;
+}
+
+/** One laboratory test and what it would bill today. */
+export interface LabServiceDiagnostic {
+  testId: number;
+  code: string;
+  name: string;
+  category: string | null;
+  isActive: boolean;
+  cataloguePrice: string | null;
+  resolved: {
+    tariffId: number;
+    code: string;
+    description: string;
+    fee: string;
+    unit: string;
+    rule: "LINK" | "FAMILY_LINK" | "ALIAS" | "CODE" | "CATALOGUE";
+  } | null;
+  failure: {
+    code: string;
+    label: string;
+    message: string;
+    candidates?: string[];
+  } | null;
+  codesTried: string[];
+}
+
+export interface LabServiceDiagnostics {
+  facilityId: number;
+  total: number;
+  resolved: number;
+  unresolvable: number;
+  tests: LabServiceDiagnostic[];
 }
 
 export interface BillingPayment {
