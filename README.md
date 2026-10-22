@@ -991,8 +991,8 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
-**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 2,925
-assertions**, no failures. `test:compliance` 230 assertions, `test:route-scope` 66,
+**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 2,971
+assertion statements**, no failures. `test:compliance` 230 assertions, `test:route-scope` 66,
 `test:field-encryption` 48, `test:consent-allergy` 80, `test:patient-portal` 178,
 `test:migrations` 692.
 
@@ -1145,12 +1145,64 @@ time-limited, revocable sharing to a named recipient — which the screen states
 health information exchange.
 
 **What was verified.** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24 scripts and
-2,925 assertions including 178 new portal assertions. **What was not:** migration `0018` has not been
+2,971 assertion statements including 178 new portal assertions. **What was not:** migration `0018` has not been
 applied to any database, no portal query has run against real rows, concurrent redemption has not
 been exercised, no SMS or email provider exists, and no browser was driven through the screens. The
 five deliverables in `docs/patient-portal/` separate those two lists line by line; the deployment
 guide's §11 lists the ten blockers that stand between this work and a production claim.
 
+
+### 3.23 Automatic billing — why a service billed nothing, and the fix
+
+Two screens reported the same thing: a visit that started but did not bill, and a
+laboratory order that was submitted but did not bill. Both were true, and neither
+was a crash: the charge step runs *after* the clinical record is written, a missing
+tariff is a normal outcome, and the record is kept. The message said so, but it
+named one code and hid the reason.
+
+**What was actually wrong.** The engine prices a service by looking for one of
+several codes in `facility_service_tariffs` for that facility. Two defects made a
+configured price invisible:
+
+1. The comparison was case-sensitive, while the tariff screen upper-cased in the
+   browser only. A row stored as `opd-consult` matched nothing.
+2. Laboratory and procedure records carry their **own code** (`LAB-CBC`,
+   `PROC-004`) — the code the facility sees on its own screens and therefore the
+   code it prices. Billing ignored it and tried only the long name, so a tariff of
+   `LAB-CBC` did not price `Full Blood Count (CBC/FBC 5-Part Diff)`. Nothing was
+   billed, and the screen's own catalogue made it look as though it should have
+   been.
+
+**What changed.**
+
+| Change | Where |
+|---|---|
+| Codes compared upper-cased, exact case preferred within one priority | `billing.service.ts` |
+| The rule is a pure function, tested without a database | `pickTariffForCodes` |
+| Tariff codes stored in capitals whatever the caller sends | `validateTariffInput` |
+| Laboratory orders carry the catalogue code into the charge | `queries.ts`, `service-charges.ts` |
+| Procedures are priced from their own code as well as their name | `app.ts` |
+| The failure names the codes tried (first three, plus a count) | `chargeForService` |
+| The tariff screen shows which services and which laboratory tests would bill nothing, and pre-fills the code when one is chosen | `FacilityServiceTariffsPanel.tsx` |
+
+Code-candidate rules live in `src/billing/tariff-codes.ts`, a module with no
+database import, so the screen that asks an administrator to type a code shows the
+same candidates the engine will try.
+
+**What is still the facility's decision.** No tariff is seeded, and no price is
+invented. A consultation bills only when the facility has priced one of
+`CONSULT-<VISIT TYPE>`, `<VISIT TYPE>`, `OPD-CONSULT`, `CONSULTATION` or `CONSULT`;
+a laboratory test bills when its catalogue code (`LAB-CBC`), that code without its
+prefix, the name-derived code, or `LAB-GENERAL` / `LABORATORY` is priced. The
+price held in the laboratory catalogue (`lab_tests.price`) is **not** used for
+billing — tariffs remain the single price list, for the same reason pharmacy
+prices come from `facility_service_tariffs` and nowhere else.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
+suites and 2,971 assertion statements, no failures (billing 31 → 57, OPD journey
+58 → 69). **Not verified:** none of this was run against PostgreSQL — there is no
+database in this environment, and the seeded fees are examples, not this
+facility's prices.
 
 ## 4. Existing backups and modified files to preserve
 

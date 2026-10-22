@@ -18,7 +18,7 @@ and gives the exact blocker.
 |---|---|---|
 | Type check | `npm run lint` (`tsc --noEmit`) | **PASS** — no output, exit 0 |
 | Production build | `npm run build` (`vite build`) | **PASS** — **1,707 modules**, 559–710 ms across three runs (22 Oct) |
-| Test suite | `npm test` | **PASS** — **24 suites, 2,925 assertions** (2,912 numbered + 13 catalogue `PASS:` lines) |
+| Test suite | `npm test` | **PASS** — **24 suites, 2,971 assertion statements** (2,958 numbered + 13 catalogue `PASS:` lines) |
 | Portal suite | `npm run test:patient-portal` | **PASS** — 178 assertions |
 | Migration files | `npm run test:migrations` | **PASS** — 692 assertions (0017 and 0018 included, still unapplied) |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
@@ -63,11 +63,19 @@ Consent and allergy: 80 assertions passed.
 Patient portal policy: 178 assertions passed.
 ```
 
-2,912 numbered assertions across 23 suites plus 13 catalogue `PASS:` lines = **2,925**;
+2,958 numbered assertions across 23 counting suites plus 13 catalogue `PASS:` lines = **2,971**;
 **24 suites, no failures**.
 
-The audit round counted 2,717. The increase to 2,925 is the portal suite (178)
-plus small additions elsewhere; no assertion was removed.
+The audit round counted 2,717. The increase to 2,971 is the portal suite (178),
+the billing and laboratory tariff-code suites (26), and small additions elsewhere;
+no assertion was removed.
+
+**A correction to an earlier count.** Revision 4 of this document said "2,912
+numbered + 13 catalogue `PASS:` lines = 2,925". The numbered total was measured
+again at `72b83b5` and was **2,921**, not 2,912, so the figure carried in the audit
+was 13 short. The 13 is exactly the number of catalogue lines, which suggests they
+were subtracted once and never added back. The number above is the re-measured one;
+the discrepancy is recorded rather than quietly overwritten.
 
 The two remediation suites are the difference between "we wrote consent and
 encryption" and "we checked them": 128 new assertions in two new suites. The functional ones

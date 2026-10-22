@@ -2444,7 +2444,31 @@ export async function createLabOrder(
       .values({ ...data, ...scope })
       .returning();
 
-    return res[0];
+    const order = res[0];
+
+    if (!order) return order;
+
+    /*
+     * The catalogue code is not a column on `lab_orders`; read it from the
+     * test the order points at so the caller can bill against `LAB-CBC`
+     * rather than only against the long name.
+     */
+    let testCode: string | null = null;
+
+    if (Number.isSafeInteger(order.testId) && (order.testId ?? 0) > 0) {
+      const [test] = await db
+        .select({ code: schema.labTests.code })
+        .from(schema.labTests)
+        .where(and(
+          eq(schema.labTests.id, order.testId as number),
+          eq(schema.labTests.facilityId, order.facilityId),
+        ))
+        .limit(1);
+
+      testCode = test?.code ?? null;
+    }
+
+    return { ...order, testCode };
   } catch (error) {
     console.error('Error creating lab order:', error);
     throw new Error('Failed to order lab test', { cause: error });
@@ -3430,11 +3454,11 @@ export async function createLabOrderBatch(
 
   try {
     return await db.transaction(async (tx) => {
-      const tests: Array<{ id: number | null; name: string }> = [];
+      const tests: Array<{ id: number | null; name: string; code: string | null }> = [];
 
       if (freeTextProvided) {
         for (const name of investigations) {
-          tests.push({ id: null, name });
+          tests.push({ id: null, name, code: null });
         }
       } else {
         for (const testId of testIds) {
@@ -3451,7 +3475,13 @@ export async function createLabOrderBatch(
           if (!test) {
             throw new Error('A selected test is unavailable at this facility.');
           }
-          tests.push({ id: test.id, name: test.name });
+          /*
+           * Carry the catalogue code. The billing engine tries it first:
+           * `LAB-CBC` is what the laboratory screen shows and what a
+           * facility prices, and before this only the long test name was
+           * used, so a priced catalogue still billed nothing.
+           */
+          tests.push({ id: test.id, name: test.name, code: test.code ?? null });
         }
       }
 
@@ -3491,7 +3521,8 @@ export async function createLabOrderBatch(
         if (!order) {
           throw new Error('A laboratory order could not be created.');
         }
-        orders.push(order);
+
+        orders.push({ ...order, testCode: test.code });
       }
 
       return { orders, queue };

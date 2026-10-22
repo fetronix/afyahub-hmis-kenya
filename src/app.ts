@@ -45,6 +45,8 @@ import * as billing from './billing/billing.service.ts';
 import * as billingPayments from './billing/payments.service.ts';
 import {
   chargeLabOrderBatch,
+  labTariffCodeCandidates,
+  procedureTariffCodeCandidates,
   radiologyChargeRequest,
   tariffCodeCandidates,
 } from './billing/service-charges.ts';
@@ -2418,11 +2420,15 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           facilityId: req.authContext.facilityId ?? 0,
           patientId: (proc as { patientId?: number }).patientId ?? 0,
           encounterId: (proc as { encounterId?: number }).encounterId ?? null,
-          codes: tariffCodeCandidates(
-            'PROC',
-            (proc as { procedureName?: string }).procedureName,
-            ['PROCEDURE', 'PROC-GENERAL'],
-          ),
+          /*
+           * The procedure's own code first (PROC-004), then the
+           * name-derived code (PROC-WOUND-DRESSING), then the generic
+           * fallbacks — the same order laboratory orders use.
+           */
+          codes: procedureTariffCodeCandidates({
+            code: (proc as { procedureCode?: string }).procedureCode ?? null,
+            name: (proc as { procedureName?: string }).procedureName ?? null,
+          }),
           sourceType: 'PROCEDURE',
           sourceId: (proc as { id?: number }).id ?? 0,
           itemType: 'Procedure',
@@ -3802,6 +3808,7 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         patientId?: number;
         encounterId?: number | null;
         testName?: string;
+        testCode?: string | null;
       } | null;
 
       const charge = labOrder && labOrder.id
@@ -3810,10 +3817,16 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
             facilityId: labOrder.facilityId ?? req.authContext.facilityId ?? 0,
             patientId: labOrder.patientId ?? 0,
             encounterId: labOrder.encounterId ?? null,
-            codes: tariffCodeCandidates('LAB', labOrder.testName, [
-              'LAB-GENERAL',
-              'LABORATORY',
-            ]),
+            /*
+             * The catalogue code first (LAB-CBC), then the name-derived
+             * codes, then the generic fallbacks — the same order the batch
+             * route uses, because a single order must price the same way
+             * a batch does.
+             */
+            codes: labTariffCodeCandidates({
+              code: labOrder.testCode ?? null,
+              name: labOrder.testName,
+            }),
             sourceType: 'LAB_ORDER',
             sourceId: labOrder.id,
             itemType: 'Laboratory',

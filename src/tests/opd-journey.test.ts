@@ -244,8 +244,9 @@ function testEveryStageIsCharged(): void {
     'tariff lookup compares upper-cased codes',
   );
   assert(
-    billing.includes('request.codes.join'),
-    'the failure names every code that was tried',
+    billing.includes('summariseCodes(request.codes)') &&
+      billing.includes('function summariseCodes'),
+    'the failure names the codes that were tried, and counts the rest',
   );
 
   const tariffInput = app.slice(
@@ -261,6 +262,45 @@ function testEveryStageIsCharged(): void {
   assert(
     panel.includes('BILLING_FAMILIES') && panel.includes('not priced'),
     'the tariff screen shows which services will not bill',
+  );
+
+  /*
+   * Laboratory billing by catalogue code. The batch route carried only
+   * the test name, so a facility that priced LAB-CBC — the code its own
+   * catalogue shows — billed nothing for a full blood count.
+   */
+  assert(
+    charges.includes('labTariffCodeCandidates'),
+    'the laboratory charge asks for the catalogue code',
+  );
+
+  const queries = source('src/db/queries.ts');
+  assert(
+    queries.includes('orders.push({ ...order, testCode: test.code })'),
+    'the batch carries each test code to the charging step',
+  );
+  assert(
+    queries.includes('testCode = test?.code ?? null'),
+    'the single-order route resolves the code too',
+  );
+
+  assert(
+    app.includes('labTariffCodeCandidates({'),
+    'the one-by-one laboratory route prices like the batch does',
+  );
+
+  assert(
+    panel.includes('unpricedLabTests'),
+    'the tariff screen names the laboratory tests that would bill nothing',
+  );
+  assert(
+    panel.includes('labTariffCodeCandidates'),
+    'the screen and the engine share one rule for laboratory codes',
+  );
+
+  assert(
+    app.includes('procedureTariffCodeCandidates({'),
+    'a procedure is priced from its own code as well as its name',
   );
 }
 

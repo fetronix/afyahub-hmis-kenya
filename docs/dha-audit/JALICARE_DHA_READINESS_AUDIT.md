@@ -87,7 +87,7 @@ different number from 90%, and the difference is the point.
 | Source size | 172 `.ts`/`.tsx` files, 102,925 lines under `src/` (excluding backups) | `wc -l`, 22 Oct 2026 |
 | Schema | 82 tables (six added by migration 0018) | `src/db/schema.ts` |
 | Migrations | 19 SQL files, 19 journal entries, 82 tables — parity confirmed. 0017 and 0018 are written and **unapplied** | `drizzle/` |
-| Tests | 24 suites, 2,925 counted assertions (2,912 numbered + 13 catalogue `PASS:` lines) | `npm test` |
+| Tests | 24 suites, 2,971 assertion statements (2,958 numbered + 13 catalogue `PASS:` lines) | `npm test` |
 | Deployment | Single Node process; frontend built by Vite; no container, CI or IaC in repo | absence verified |
 
 **The brief assumed SQLite.** It is not. PostgreSQL changes two conclusions:
@@ -212,7 +212,7 @@ changed.
 |---|---|---|
 | Type check | `npm run lint` | **Passes** — previously always failed on `firebase.ts` |
 | Production build | `npm run build` | **577 ms, 1,707 modules** (audit day: 644 ms) |
-| Test suite | `npm test` | **24 suites, 2,925 assertions, no failures** (audit day: 23 suites, 2,717) |
+| Test suite | `npm test` | **24 suites, 2,971 assertion statements, no failures** (audit day: 23 suites, 2,717) |
 | Route inventory | static scan of `src/app.ts` and the nine routers | 226 declarations (audit day: 134); 9 previously unguarded routes now guarded; all 38 portal routes guarded |
 | Schema/migration parity | static comparison | 82 = 82; 19 journal entries = 19 files (audit day: 75 / 17) |
 | Portal migration | `npm run test:migrations` | 692 assertions pass; **0017 and 0018 not executed against PostgreSQL** |

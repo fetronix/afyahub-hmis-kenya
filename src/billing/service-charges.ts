@@ -21,42 +21,27 @@ import {
   type ChargeRequest,
   type ChargeResult,
 } from './billing.service.ts';
+import {
+  labTariffCodeCandidates,
+  tariffCodeCandidates,
+} from './tariff-codes.ts';
 
 /* ============================================================
    TARIFF CODE CANDIDATES
    ============================================================ */
 
-/**
- * Turn a clinical record into the tariff codes that might price it.
- *
- * The tariff table is free text per facility, so several plausible
- * codes are offered and the first configured one wins:
- *   PROCEDURE-WOUND-DRESSING, WOUND-DRESSING, PROCEDURE, PROC-GENERAL
+/*
+ * The rules moved to `tariff-codes.ts`, a module with no database
+ * import, so the configuration screen can show an administrator the
+ * same codes the engine will try. Re-exported here because this was
+ * already the import site for the route handlers and the tests.
  */
-export function tariffCodeCandidates(
-  prefix: string,
-  value: string | null | undefined,
-  defaults: readonly string[],
-): string[] {
-  const codes: string[] = [];
-
-  const cleaned =
-    typeof value === 'string'
-      ? value
-          .trim()
-          .toUpperCase()
-          .replace(/[^A-Z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')
-      : '';
-
-  if (cleaned) {
-    codes.push(`${prefix}-${cleaned}`, cleaned);
-  }
-
-  codes.push(...defaults);
-
-  return [...new Set(codes)];
-}
+export {
+  normaliseTariffCode,
+  tariffCodeCandidates,
+  labTariffCodeCandidates,
+  procedureTariffCodeCandidates,
+} from './tariff-codes.ts';
 
 /* ============================================================
    LABORATORY
@@ -65,7 +50,16 @@ export function tariffCodeCandidates(
 export type ChargeableLabOrder = Pick<
   typeof schema.labOrders.$inferSelect,
   'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterId' | 'testName'
->;
+> & {
+  /**
+   * The test's code from `lab_tests`, carried alongside the order.
+   *
+   * It is not a column on `lab_orders`; it is read at order time and
+   * passed here so the catalogue code — `LAB-CBC` — is tried before the
+   * long name-derived code nobody would type.
+   */
+  testCode?: string | null;
+};
 
 export function labOrderChargeRequest(
   order: ChargeableLabOrder,
@@ -75,10 +69,10 @@ export function labOrderChargeRequest(
     facilityId: order.facilityId,
     patientId: order.patientId,
     encounterId: order.encounterId ?? null,
-    codes: tariffCodeCandidates('LAB', order.testName, [
-      'LAB-GENERAL',
-      'LABORATORY',
-    ]),
+    codes: labTariffCodeCandidates({
+      code: order.testCode ?? null,
+      name: order.testName,
+    }),
     sourceType: 'LAB_ORDER',
     sourceId: order.id,
     itemType: 'Laboratory',

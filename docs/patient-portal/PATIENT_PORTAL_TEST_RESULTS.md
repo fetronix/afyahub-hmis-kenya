@@ -15,7 +15,7 @@ says so and is not counted.
 |---|---|---|
 | Type-check | `npm run lint` (= `tsc --noEmit`) | **PASS** — no diagnostics |
 | Production build | `npm run build` | **PASS** — 1,707 modules transformed, built in 577 ms |
-| Full test suite | `npm test` | **PASS** — 24 scripts, **2,925 assertions** |
+| Full test suite | `npm test` | **PASS** — 24 scripts, **2,971 assertion statements** |
 | New portal suite | `npm run test:patient-portal` | **PASS** — **178 assertions** |
 | Migration suite | `npm run test:migrations` | **PASS** — 692 assertions (includes 0018 shape) |
 | Migration applied to PostgreSQL | — | **NOT RUN** — no database available |
@@ -53,7 +53,7 @@ Consent and allergy: 80 assertions passed.
 Patient portal policy: 178 assertions passed.
 ```
 
-Total: 2,912 numbered assertions + 13 catalogue `PASS:` lines = **2,925**, across 24 scripts. Exit
+Total: 2,958 numbered assertions + 13 catalogue `PASS:` lines = **2,971**, across 24 scripts. Exit
 status 0.
 
 Two suites changed in this round because the code changed, and both were updated for an honest

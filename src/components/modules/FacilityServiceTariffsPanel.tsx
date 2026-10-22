@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client.ts";
-import type { ServiceTariff } from "../../types/index.ts";
+import type { LabTest, ServiceTariff } from "../../types/index.ts";
+import { labTariffCodeCandidates } from "../../billing/tariff-codes.ts";
 
 interface FacilityServiceTariffsPanelProps {
   facilityId: number;
@@ -76,6 +77,7 @@ export const FacilityServiceTariffsPanel: React.FC<
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [labTests, setLabTests] = useState<LabTest[]>([]);
 
   const departments = DEPARTMENTS.filter(({ id }) =>
     enabledModules.includes(id),
@@ -101,6 +103,31 @@ export const FacilityServiceTariffsPanel: React.FC<
   });
   const unpriced = coverage.filter((entry) => !entry.match);
 
+  /*
+   * The same question, one level down: which tests in this facility's own
+   * laboratory catalogue would bill nothing today? A generic LAB-GENERAL
+   * tariff prices all of them, so the check runs the engine's own
+   * candidate list rather than comparing one code.
+   */
+  const activeTariffCodes = new Set(
+    tariffs
+      .filter((tariff) => tariff.isActive)
+      .map((tariff) => tariff.code.trim().toUpperCase()),
+  );
+
+  const unpricedLabTests = labTests
+    .filter((test) => test.isActive !== false)
+    .filter((test) => {
+      const candidates = labTariffCodeCandidates({
+        code: test.code,
+        name: test.name,
+      });
+
+      return !candidates.some((candidate) =>
+        activeTariffCodes.has(candidate.toUpperCase()),
+      );
+    });
+
   const loadTariffs = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -122,6 +149,35 @@ export const FacilityServiceTariffsPanel: React.FC<
   useEffect(() => {
     void loadTariffs();
   }, [loadTariffs]);
+
+  /*
+   * The laboratory catalogue, best effort.
+   *
+   * Reading it needs `laboratory.read`, which a facility administrator
+   * may not hold. A refusal is not an error on this screen: the tariff
+   * list still works, and the per-test section simply does not appear.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!enabledModules.includes("laboratory")) {
+      setLabTests([]);
+      return;
+    }
+
+    api
+      .getLabTests(facilityId)
+      .then((rows) => {
+        if (!cancelled) setLabTests(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setLabTests([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [facilityId, enabledModules]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -354,6 +410,72 @@ export const FacilityServiceTariffsPanel: React.FC<
             </p>
           )}
         </div>
+
+        {labTests.length > 0 && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold text-slate-800">
+              Laboratory tests in this catalogue:{" "}
+              {unpricedLabTests.length === 0 ? (
+                <span className="text-emerald-700">all priced</span>
+              ) : (
+                <span className="text-amber-700">
+                  {unpricedLabTests.length} of {labTests.length} would bill nothing
+                </span>
+              )}
+            </p>
+
+            {unpricedLabTests.length > 0 && (
+              <>
+                <p className="mt-1 text-2xs leading-relaxed text-slate-500">
+                  Selecting the test prices it from the tariff screen, not from
+                  the price held in the laboratory catalogue. Choosing one below
+                  fills the code the engine will look for; you still set the fee.
+                </p>
+
+                <ul className="mt-2 space-y-1">
+                  {unpricedLabTests.slice(0, 12).map((test) => (
+                    <li
+                      key={test.id}
+                      className="flex flex-wrap items-baseline justify-between gap-2 text-xs"
+                    >
+                      <span className="text-slate-600">
+                        {test.name}{" "}
+                        <span className="font-mono text-2xs text-slate-400">
+                          {test.code}
+                        </span>
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setError("");
+                          setNotice("");
+                          setEditingId(null);
+                          setForm({
+                            ...EMPTY_FORM,
+                            department: "laboratory",
+                            code: test.code.toUpperCase(),
+                            description: test.name,
+                          });
+                          setFormOpen(true);
+                        }}
+                        className="rounded-md border border-blue-200 bg-white px-2 py-1 text-2xs font-semibold text-blue-700 hover:bg-blue-50"
+                      >
+                        Set a price
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+
+                {unpricedLabTests.length > 12 && (
+                  <p className="mt-1 text-2xs text-slate-400">
+                    and {unpricedLabTests.length - 12} more.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
         <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
           <div>
             <dt className="font-semibold text-slate-700">Consultation</dt>

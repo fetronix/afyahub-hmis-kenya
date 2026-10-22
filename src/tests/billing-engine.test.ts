@@ -17,6 +17,11 @@ import {
   pickTariffForCodes,
   toCents,
 } from '../billing/billing.service.ts';
+import {
+  labTariffCodeCandidates,
+  normaliseTariffCode,
+  procedureTariffCodeCandidates,
+} from '../billing/tariff-codes.ts';
 
 let checks = 0;
 
@@ -274,6 +279,99 @@ function testTariffMatching(): void {
 }
 
 /* ============================================================
+   6. LABORATORY CODES
+   ============================================================ */
+
+function testLabCodes(): void {
+  assertEqual(
+    normaliseTariffCode('Full Blood Count (CBC/FBC 5-Part Diff)'),
+    'FULL-BLOOD-COUNT-CBC-FBC-5-PART-DIFF',
+    'a long test name becomes a typeable code',
+  );
+  assertEqual(
+    normaliseTariffCode('  '),
+    '',
+    'blank text is no code at all',
+  );
+
+  /*
+   * The reported bug: the catalogue shows `LAB-CBC`, the facility prices
+   * `LAB-CBC`, and billing used to look only for the long name.
+   */
+  const cbc = labTariffCodeCandidates({
+    code: 'LAB-CBC',
+    name: 'Full Blood Count (CBC/FBC 5-Part Diff)',
+  });
+
+  assertEqual(cbc[0], 'LAB-CBC', 'the catalogue code is tried first');
+  assertEqual(cbc[1], 'CBC', 'the bare code is tried second');
+
+  assert(
+    cbc.includes('LAB-FULL-BLOOD-COUNT-CBC-FBC-5-PART-DIFF'),
+    'the name-derived code is still tried',
+  );
+  assert(cbc.includes('LAB-GENERAL'), 'the generic laboratory code is tried');
+  assertEqual(
+    new Set(cbc).size,
+    cbc.length,
+    'no candidate is repeated',
+  );
+
+  const bare = labTariffCodeCandidates({ code: 'CBC', name: 'Full Blood Count' });
+  assertEqual(bare[0], 'CBC', 'a bare catalogue code is kept as typed');
+  assertEqual(bare[1], 'LAB-CBC', 'and its prefixed form is tried too');
+
+  const noCode = labTariffCodeCandidates({ code: null, name: 'Malaria RDT' });
+  assertEqual(
+    noCode[0],
+    'LAB-MALARIA-RDT',
+    'free text with no catalogue code still produces a code',
+  );
+  assertEqual(
+    noCode[noCode.length - 1],
+    'LABORATORY',
+    'the last resort is the generic laboratory code',
+  );
+
+  const lowercase = labTariffCodeCandidates({ code: ' lab-cbc ', name: '' });
+  assertEqual(lowercase[0], 'LAB-CBC', 'case and padding are normalised');
+
+  /*
+   * End to end, without a database: the candidates a lab order produces
+   * must match a tariff priced from the catalogue code.
+   */
+  const priced = pickTariffForCodes(
+    [{ id: 7, code: 'LAB-CBC', description: 'Full blood count', fee: '1200.00', unit: 'Test' }],
+    cbc,
+  );
+  assertEqual(priced?.fee, '1200.00', 'a LAB-CBC tariff prices a CBC order');
+
+  /*
+   * A generic tariff prices every test, which is the fallback a facility
+   * uses when it does not want to price 40 tests one by one.
+   */
+  const generic = pickTariffForCodes(
+    [{ id: 8, code: 'LAB-GENERAL', description: 'Laboratory', fee: '600.00', unit: 'Test' }],
+    labTariffCodeCandidates({ code: 'LAB-RFT', name: 'Renal Function Tests' }),
+  );
+  assertEqual(generic?.code, 'LAB-GENERAL', 'LAB-GENERAL prices any test');
+
+  /*
+   * Procedures carry their own code too, so the same rule applies.
+   */
+  const proc = procedureTariffCodeCandidates({
+    code: 'PROC-004',
+    name: 'Wound dressing',
+  });
+  assertEqual(proc[0], 'PROC-004', 'a procedure code is tried first');
+  assertEqual(proc[1], '004', 'and without its prefix');
+  assert(proc.includes('PROC-WOUND-DRESSING'), 'the name-derived code is kept');
+  assert(proc.includes('PROC-GENERAL'), 'the generic procedure code is kept');
+
+  console.log('  ✓ Laboratory code candidates passed');
+}
+
+/* ============================================================
    RUNNER
    ============================================================ */
 
@@ -289,6 +387,7 @@ function run(): void {
   testBedDays();
   testTariffCodes();
   testTariffMatching();
+  testLabCodes();
 
   console.log('');
   console.log('==============================================');

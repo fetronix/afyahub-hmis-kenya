@@ -157,6 +157,21 @@ export function buildIdempotencyKey(
   return `${base}:${request.idempotencySuffix}`;
 }
 
+/**
+ * List the first few codes a charge tried, and say how many others were
+ * tried too.
+ *
+ * A laboratory order now offers up to six codes; printing all six turns
+ * a useful message into a wall of text, and printing one hides the code
+ * the facility actually needs to add.
+ */
+function summariseCodes(codes: readonly string[]): string {
+  const shown = codes.slice(0, 3).join(', ');
+  const rest = codes.length - 3;
+
+  return rest > 0 ? `${shown} (+${rest} more)` : shown;
+}
+
 /* ============================================================
    TARIFF RESOLUTION
    ============================================================ */
@@ -463,8 +478,8 @@ export async function chargeForService(
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
       message: tariff
-        ? `Tariff ${tariff.code} is priced at zero.`
-        : `No active tariff matched ${request.codes.join(', ')} for this facility. Add one under Configuration → Services & Tariffs; the service was recorded but not billed.`,
+        ? `Tariff ${tariff.code} is priced at zero. The service was recorded but not billed.`
+        : `No active tariff matched ${summariseCodes(request.codes)} for this facility. Add one under Configuration → Services & Tariffs; the service was recorded but not billed.`,
     };
   }
 
