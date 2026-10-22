@@ -4,7 +4,7 @@
 **Last revised:** 22 October 2026 (revision 4 — patient portal round)
 **Repository:** `fetronix/afyahub-hmis-kenya`
 **Branch audited:** `arena/14785aa5-afyahub-hmis-kenya`
-**Commit at start:** `9d504b3` · **working tree at revision 4:** `23a636d` plus the portal round
+**Commit at start:** `9d504b3` · **revision 4:** `1726fab` (portal round `9c3a65f`, on `ec7a303`)
 **Auditor:** Arena Agent Mode (code-level audit, no live database, no browser)
 
 > **This is a technical self-assessment, not a DHA certification.**
