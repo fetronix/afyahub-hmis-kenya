@@ -4134,6 +4134,19 @@ export const billingChargeAttempts = pgTable(
     encounterType: text('encounter_type'),
     aliases: text('aliases').array().notNull().default([]),
 
+    /*
+     * Which occurrence of the source this is: the bed-night date for a
+     * ward charge (`BED_DAY:12:2026-10-20`), null when the source is
+     * billed once. Without it, a five-night stay with no tariff would
+     * collapse into a single queue row and only one night could ever be
+     * reprocessed.
+     */
+    idempotencySuffix: text('idempotency_suffix'),
+
+    /** Bed category at accrual time, so a replay prices the same bed. */
+    wardType: text('ward_type'),
+    wardName: text('ward_name'),
+
     quantity: integer('quantity').notNull().default(1),
     fallbackUnitPrice: numeric('fallback_unit_price', { precision: 10, scale: 2 }),
 
@@ -4156,7 +4169,13 @@ export const billingChargeAttempts = pgTable(
   },
   (table) => [
     uniqueIndex('billing_charge_attempts_pending_unique')
-      .on(table.facilityId, table.sourceType, table.sourceId, table.itemType)
+      .on(
+        table.facilityId,
+        table.sourceType,
+        table.sourceId,
+        table.itemType,
+        sql`coalesce(${table.idempotencySuffix}, '')`,
+      )
       .where(sql`${table.status} = 'PENDING' AND ${table.sourceId} is not null`),
     index('billing_charge_attempts_facility_status_idx')
       .on(table.tenantId, table.facilityId, table.status),

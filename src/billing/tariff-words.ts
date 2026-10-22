@@ -83,6 +83,12 @@ export const NEUTRAL_WORDS: ReadonlySet<string> = new Set([
   'center',
   'price',
   'rate',
+  /*
+   * "Inpatient admission administration" is the admission fee; the
+   * word "administration" says it is a charge, not which service it is.
+   */
+  'administration',
+  'admin',
   'visit',
   'session',
   'day',

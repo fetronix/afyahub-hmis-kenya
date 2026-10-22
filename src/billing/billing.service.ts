@@ -109,6 +109,15 @@ export interface ChargeRequest {
   /** Visit type, for a consultation (`OUTPATIENT`, `FOLLOW_UP`, …). */
   encounterType?: string | null;
 
+  /**
+   * Bed category and ward name, for an inpatient bed-night.
+   *
+   * The category gates which descriptions may price the night: a
+   * general ward rate must never be selected for an ICU bed.
+   */
+  wardType?: string | null;
+  wardName?: string | null;
+
   /** Extra phrases to look for, most specific first. */
   aliases?: readonly string[];
 
@@ -435,6 +444,8 @@ export async function resolveTariffForCharge(
     serviceName?: string | null;
     encounterType?: string | null;
     aliases?: readonly string[];
+    wardType?: string | null;
+    wardName?: string | null;
     /** The catalogue record being billed, when there is one. */
     serviceType?: CatalogueServiceType;
     serviceId?: number | null;
@@ -450,6 +461,8 @@ export async function resolveTariffForCharge(
         serviceName: request.serviceName ?? null,
         encounterType: request.encounterType ?? null,
         aliases: request.aliases ?? [],
+        wardType: request.wardType ?? null,
+        wardName: request.wardName ?? null,
       })
     : [];
 
@@ -462,6 +475,7 @@ export async function resolveTariffForCharge(
     serviceKeys: request.serviceKeys ?? [],
     family: request.family,
     phrases,
+    wardType: request.wardType ?? null,
   });
 
   const tariff = resolution.tariff;
@@ -908,6 +922,8 @@ export async function chargeForService(
     serviceName: request.serviceName,
     encounterType: request.encounterType,
     aliases: request.aliases,
+    wardType: request.wardType,
+    wardName: request.wardName,
     ...(request.serviceRef
       ? { serviceType: request.serviceRef.type, serviceId: request.serviceRef.id }
       : {}),
@@ -1097,6 +1113,138 @@ export function bedDayDates(
   }
 
   return dates;
+}
+
+/** A ward as the bed-day engine needs to see it. */
+export interface BedDayWard {
+  id: number;
+  code?: string | null;
+  name?: string | null;
+  wardType?: string | null;
+}
+
+/** One move between wards, as recorded on the transfer. */
+export interface BedDayTransfer {
+  toWardId: number;
+  /** Departure ward. The earliest transfer names the admission ward. */
+  fromWardId?: number | null;
+  /** Arrival time; any timestamp `parseLooseDate` understands. */
+  transferredAt: Date | string;
+  /** The ward moved to, when the caller loaded it. */
+  ward?: BedDayWard | null;
+  /** The ward moved from, when the caller loaded it. */
+  fromWard?: BedDayWard | null;
+}
+
+export interface BedDaySegment {
+  ward: BedDayWard | null;
+  dates: string[];
+}
+
+/**
+ * Split a stay into one segment per occupied ward.
+ *
+ * A patient who moves from General to ICU occupies the General bed for
+ * the nights before the move and the ICU bed from the night of the
+ * move. Pricing the whole stay at whichever ward they happen to be in
+ * today is how a general rate ends up paying for ICU nights, and how two
+ * wards end up competing for the same date.
+ *
+ * The rules:
+ *
+ *   - Every date between admission and discharge (inclusive, the
+ *     existing rule — a same-day stay is one day) belongs to exactly
+ *     one segment. Transfers neither overlap nor leave a gap, so the
+ *     total number of bed-days is unchanged by this split.
+ *   - A transfer takes effect on its local calendar date: that date's
+ *     bed is the one the patient moved into.
+ *   - A segment whose start and end are the same date has no nights of
+ *     its own; two transfers on one day leave the last ward holding it.
+ *   - Transfers are ignored outside the billed period, so a nightly job
+ *     running to yesterday is unaffected by this morning's transfer.
+ *   - The opening ward is the earliest transfer's `fromWard`, falling
+ *     back to the admission's current ward when there is no transfer
+ *     history to say otherwise.
+ *
+ * Pure: no database, no clock except the one `bedDayDates` already uses.
+ */
+export function bedDaySegments(input: {
+  admissionDate: string;
+  dischargeDate?: string | null;
+  /** Stop at this date instead of discharge/today, for a partial run. */
+  untilDate?: string | null;
+  homeWard?: BedDayWard | null;
+  transfers?: readonly BedDayTransfer[];
+}): BedDaySegment[] {
+  const admitted = parseLooseDate(input.admissionDate);
+
+  if (!admitted) return [];
+
+  /*
+   * Never bill past the discharge, even when a nightly job is asked to
+   * run to a later date: the stay ended.
+   */
+  const candidates = [input.dischargeDate, input.untilDate]
+    .map((value) => (value ? parseLooseDate(value) : null))
+    .filter((value): value is Date => value !== null);
+
+  const end =
+    candidates.length > 0
+      ? new Date(Math.min(...candidates.map((value) => value.getTime())))
+      : null;
+
+  const dates = bedDayDates(
+    input.admissionDate,
+    end ? formatDateKey(end) : null,
+  );
+
+  const transfers = (input.transfers ?? [])
+    .map((transfer) => {
+      const at =
+        transfer.transferredAt instanceof Date
+          ? transfer.transferredAt
+          : parseLooseDate(transfer.transferredAt);
+
+      return at ? { date: formatDateKey(at), transfer } : null;
+    })
+    .filter((entry): entry is { date: string; transfer: BedDayTransfer } => entry !== null)
+    /* Stable order: two transfers on one day must keep their record order. */
+    .sort((left, right) => (left.date < right.date ? -1 : left.date > right.date ? 1 : 0));
+
+  const segments: BedDaySegment[] = [];
+  /*
+   * `admissions.ward_id` is the ward the patient is in *now*, not the one
+   * they were admitted to. The earliest transfer records where they came
+   * from, so that is the opening ward. Without this the first nights of a
+   * transferred stay would be re-priced at the destination — the very
+   * bug this split exists to remove.
+   */
+  let ward = transfers[0]?.transfer.fromWard ?? input.homeWard ?? null;
+  let bucket: string[] = [];
+  let index = 0;
+
+  for (const entry of transfers) {
+    while (index < dates.length && dates[index] < entry.date) {
+      bucket.push(dates[index]);
+      index += 1;
+    }
+
+    if (bucket.length > 0) {
+      segments.push({ ward, dates: bucket });
+      bucket = [];
+    }
+
+    ward = entry.transfer.ward ?? ward;
+  }
+
+  while (index < dates.length) {
+    bucket.push(dates[index]);
+    index += 1;
+  }
+
+  if (bucket.length > 0) segments.push({ ward, dates: bucket });
+
+  return segments;
 }
 
 /* ============================================================

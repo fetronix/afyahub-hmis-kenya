@@ -7,6 +7,7 @@ import type {
   LabTest,
   ServiceTariff,
   ServiceTariffLink,
+  Ward,
 } from "../../types/index.ts";
 import {
   BILLING_FAMILIES as BILLING_LINK_FAMILIES,
@@ -136,6 +137,12 @@ export const FacilityServiceTariffsPanel: React.FC<
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   /*
+   * Wards, for a bed-day link. A bed-day link names a ward: "this ward's
+   * night is priced by IP-002". A family-wide bed-day link is possible
+   * but only prices general beds, which is why the picker asks for one.
+   */
+  const [wards, setWards] = useState<Ward[]>([]);
+  /*
    * Charges the engine could not price. These are owed: the visit, the
    * order or the admission happened. Keeping them on this screen is the
    * point — a skipped charge that nobody can see is money lost quietly.
@@ -165,10 +172,17 @@ export const FacilityServiceTariffsPanel: React.FC<
   const [linkNotice, setLinkNotice] = useState("");
   const [linkDraft, setLinkDraft] = useState<{
     testId: number | null;
+    wardId: number | null;
     serviceType: string;
     tariffId: string;
     autoBill: boolean;
-  }>({ testId: null, serviceType: "LAB_TEST", tariffId: "", autoBill: true });
+  }>({
+    testId: null,
+    wardId: null,
+    serviceType: "LAB_TEST",
+    tariffId: "",
+    autoBill: true,
+  });
 
   const departments = DEPARTMENTS.filter(({ id }) =>
     enabledModules.includes(id),
@@ -302,6 +316,13 @@ export const FacilityServiceTariffsPanel: React.FC<
       return;
     }
 
+    if (linkDraft.serviceType === "BED_DAY" && linkDraft.wardId === null) {
+      setLinkNotice(
+        "Choose the ward to link. A ward link prices that ward's nights; a category-wide rate is found by the tariff's own description.",
+      );
+      return;
+    }
+
     setLinkBusy(true);
     setLinkNotice("");
 
@@ -309,13 +330,21 @@ export const FacilityServiceTariffsPanel: React.FC<
       await api.createServiceTariffLink({
         facilityId,
         serviceType: linkDraft.serviceType,
-        serviceId: linkDraft.testId,
+        serviceId:
+          linkDraft.serviceType === "BED_DAY"
+            ? linkDraft.wardId
+            : linkDraft.testId,
         tariffId,
         autoBill: linkDraft.autoBill,
       });
 
       setLinkNotice("Linked. The next charge for this service uses that tariff.");
-      setLinkDraft((current) => ({ ...current, testId: null, tariffId: "" }));
+      setLinkDraft((current) => ({
+        ...current,
+        testId: null,
+        wardId: null,
+        tariffId: "",
+      }));
       await loadLinks();
       await loadDiagnostics();
     } catch (err) {
@@ -548,6 +577,24 @@ export const FacilityServiceTariffsPanel: React.FC<
       cancelled = true;
     };
   }, [facilityId, enabledModules]);
+
+  /* Wards, best effort: a refusal hides the picker, not the screen. */
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .getWards(facilityId)
+      .then((rows) => {
+        if (!cancelled) setWards(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setWards([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [facilityId]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -961,6 +1008,7 @@ export const FacilityServiceTariffsPanel: React.FC<
                       ...current,
                       serviceType: event.target.value,
                       testId: null,
+                      wardId: null,
                     }))
                   }
                 >
@@ -1000,6 +1048,43 @@ export const FacilityServiceTariffsPanel: React.FC<
                         </option>
                       ))}
                   </select>
+                </div>
+              )}
+
+              {linkDraft.serviceType === "BED_DAY" && (
+                <div>
+                  <label className={labelClass} htmlFor={`link-ward-${facilityId}`}>
+                    Ward
+                  </label>
+                  <select
+                    id={`link-ward-${facilityId}`}
+                    className={fieldClass}
+                    value={
+                      linkDraft.wardId === null ? "" : String(linkDraft.wardId)
+                    }
+                    onChange={(event) =>
+                      setLinkDraft((current) => ({
+                        ...current,
+                        wardId:
+                          event.target.value === ""
+                            ? null
+                            : Number(event.target.value),
+                      }))
+                    }
+                  >
+                    <option value="">Choose a ward…</option>
+                    {wards
+                      .filter((ward) => ward.isActive !== false)
+                      .map((ward) => (
+                        <option key={ward.id} value={ward.id}>
+                          {ward.code} — {ward.name} ({ward.wardType ?? "General"})
+                        </option>
+                      ))}
+                  </select>
+                  <p className="mt-1 text-2xs text-slate-500">
+                    The link covers this ward&apos;s nights only. A general rate
+                    never prices an ICU or maternity bed.
+                  </p>
                 </div>
               )}
 

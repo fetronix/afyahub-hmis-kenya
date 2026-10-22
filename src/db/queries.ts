@@ -11,10 +11,12 @@ import {
 } from '../auth/scope.service.ts';
 
 import {
-  bedDayDates,
+  bedDaySegments,
   bedDayTariffCodes,
-  chargeForService,
+  type ChargeResult,
 } from '../billing/billing.service.ts';
+import { chargeAndRecord } from '../billing/charge-attempts.ts';
+import { billingServiceKeys } from '../billing/tariff-codes.ts';
 
 import {
   identifierLookup,
@@ -3683,13 +3685,25 @@ export async function createLabOrderBatch(
 // ============================================================
 
 /**
- * Accrue one bed-day charge per calendar night of a stay segment.
+ * Accrue one bed-day charge per calendar night of a stay.
  *
- * A "segment" runs from the admission date, or from the last transfer,
- * up to `untilDate`. Charge keys are BED_DAY:<admissionId>:<date>, so the
- * boundary day covered by two segments is still billed exactly once.
+ * The stay is split into one segment per occupied ward, using the
+ * admission ward and the transfer history (`bedDaySegments`). Each night
+ * is priced by the ward the patient actually slept in, so:
  *
- * Returns the per-night results so the caller can report what was billed.
+ *   - a General night is never quietly billed at the ICU rate, or the
+ *     other way round;
+ *   - two wards never compete for the same date;
+ *   - the total is still one charge per night of the stay.
+ *
+ * Charge keys stay ``BED_DAY:<admissionId>:<date>``. Segments are
+ * disjoint by construction, so the key that has always meant "this
+ * night, once" keeps meaning that — re-running discharge, a transfer or
+ * a nightly job cannot re-bill a night that is already on the invoice.
+ *
+ * A night no tariff can price is recorded as an unpriced charge (the
+ * invoice line is skipped, the night is reported) rather than throwing:
+ * a discharge must never be lost because the price list is incomplete.
  */
 export async function accrueBedDaysScoped(
   context: AuthorizationContext,
@@ -3706,52 +3720,96 @@ export async function accrueBedDaysScoped(
     );
   }
 
-  const [ward] = await db
+  /*
+   * Wards of this facility, once. The ward the patient is in today is
+   * not enough: each segment is priced from the ward occupied then.
+   */
+  const wardRows = await db
     .select({
+      id: schema.wards.id,
       code: schema.wards.code,
       name: schema.wards.name,
+      wardType: schema.wards.wardType,
+      facilityId: schema.wards.facilityId,
     })
     .from(schema.wards)
-    .where(eq(schema.wards.id, admission.wardId))
-    .limit(1);
+    .where(eq(schema.wards.facilityId, admission.facilityId));
+
+  const wardsById = new Map(wardRows.map((ward) => [ward.id, ward]));
 
   const transfers = await db
-    .select({ transferredAt: schema.admissionTransfers.transferredAt })
+    .select({
+      fromWardId: schema.admissionTransfers.fromWardId,
+      toWardId: schema.admissionTransfers.toWardId,
+      transferredAt: schema.admissionTransfers.transferredAt,
+    })
     .from(schema.admissionTransfers)
     .where(eq(schema.admissionTransfers.admissionId, admission.id))
-    .orderBy(desc(schema.admissionTransfers.transferredAt))
-    .limit(1);
+    .orderBy(schema.admissionTransfers.transferredAt);
 
-  const segmentStart =
-    transfers[0]?.transferredAt instanceof Date
-      ? transfers[0].transferredAt.toISOString().slice(0, 10)
-      : admission.admissionDate;
+  const segments = bedDaySegments({
+    admissionDate: admission.admissionDate,
+    dischargeDate: admission.dischargeDate ?? null,
+    untilDate: untilDate ?? null,
+    homeWard: wardsById.get(admission.wardId) ?? null,
+    transfers: transfers.map((transfer) => ({
+      fromWardId: transfer.fromWardId,
+      toWardId: transfer.toWardId,
+      transferredAt: transfer.transferredAt,
+      ward: wardsById.get(transfer.toWardId) ?? null,
+      fromWard: transfer.fromWardId
+        ? wardsById.get(transfer.fromWardId) ?? null
+        : null,
+    })),
+  });
 
-  const dates = bedDayDates(
-    segmentStart,
-    untilDate ?? admission.dischargeDate ?? null,
-  );
+  const charges: Array<ChargeResult | null> = [];
+  let nights = 0;
 
-  const results = [];
+  for (const segment of segments) {
+    const ward = segment.ward;
 
-  for (const date of dates) {
-    results.push(
-      await chargeForService(db, {
-        tenantId: admission.tenantId,
-        facilityId: admission.facilityId,
-        patientId: admission.patientId,
-        encounterId: admission.encounterId ?? null,
-        codes: bedDayTariffCodes(ward?.code),
-        sourceType: 'BED_DAY',
-        sourceId: admission.id,
-        idempotencySuffix: date,
-        itemType: 'Inpatient',
-        description: `${ward?.name ?? 'Ward'} bed — ${date}`,
-      }),
-    );
+    for (const date of segment.dates) {
+      nights += 1;
+
+      charges.push(
+        await chargeAndRecord(db, {
+          tenantId: admission.tenantId,
+          facilityId: admission.facilityId,
+          patientId: admission.patientId,
+          encounterId: admission.encounterId ?? null,
+          /*
+           * Ward-specific link keys only: an explicit link to *this*
+           * ward's bed day, never a blanket "any bed" link that would
+           * let a general rate price an ICU night.
+           */
+          serviceKeys: billingServiceKeys('BED_DAY', [ward?.code, ward?.name]),
+          codes: bedDayTariffCodes(ward?.code),
+          family: 'BED_DAY',
+          serviceName: 'bed day',
+          wardType: ward?.wardType ?? null,
+          wardName: ward?.name ?? null,
+          /* A ward-level link, when the facility made one, wins. */
+          ...(ward
+            ? {
+                serviceRef: {
+                  type: 'BED_DAY' as const,
+                  id: ward.id,
+                  code: ward.code,
+                },
+              }
+            : {}),
+          sourceType: 'BED_DAY',
+          sourceId: admission.id,
+          idempotencySuffix: date,
+          itemType: 'Inpatient',
+          description: `${ward?.name ?? 'Ward'} bed — ${date}`,
+        }),
+      );
+    }
   }
 
-  return { nights: dates.length, charges: results };
+  return { nights, charges, segments };
 }
 
 /* Bed-night tariff code precedence lives in the billing module. */

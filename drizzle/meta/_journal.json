@@ -155,6 +155,13 @@
             "when": 1792900000009,
             "tag": "0021_service_tariff_links",
             "breakpoints": true
+        },
+        {
+            "idx": 22,
+            "version": "7",
+            "when": 1792900000010,
+            "tag": "0022_bed_day_charge_attempts",
+            "breakpoints": true
         }
     ]
 }

@@ -991,10 +991,11 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
-**1,707 modules**. `npm test` — **25 suites, 3,307 assertion statements**, no
-failures. `test:tariff-matching` 92 (new), `test:compliance` 239,
+**1,707 modules / 711 ms**. `npm test` — **26 suites, 3,429 assertion statements**,
+no failures. `test:tariff-matching` 92, `test:compliance` 239,
 `test:route-scope` 66, `test:field-encryption` 48, `test:consent-allergy` 80,
-`test:tariff-resolver` 135 (new), `test:patient-portal` 197, `test:migrations` 741.
+`test:tariff-resolver` 135, `test:ward-billing` 103 (new), `test:patient-portal`
+197, `test:migrations` 757.
 
 **Not verified.** No database and no browser: `npm run db:status` fails with
 `Missing required environment variable: SQL_HOST`. Every SQL path is
@@ -1368,9 +1369,10 @@ has been invented. `OPD-001` bills at 150 through the description rule once
 migration 0020 is applied; the link remains the explicit alternative and is the
 only way to choose between two tariffs that both describe the service.
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 25
-suites / 3,307 assertion statements (tariff matching 92 new, OPD journey 82 → 83,
-migrations 706 → 721). **Not verified:** no database here — migration 0020 has not
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 26
+suites / 3,429 assertion statements (tariff matching 92, OPD journey 82 → 83,
+migrations 706 → 721 at the time of this section; the current migration suite is
+757). **Not verified:** no database here — migration 0020 has not
 been executed and no invoice line has been created against PostgreSQL. The 150 is
 the facility's own figure, read from its row, not one this code invented.
 
@@ -1476,13 +1478,144 @@ action per service on the tariff screen. `LAB-BLOOD` stays exactly as it is at
 800: what it represents is the facility's decision, and it can be linked to a
 catalogue test — or left alone — but it is never chosen by the word "blood".
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules / 644 ms,
-`npm test` **25 suites, 3,307 assertion statements**, no failures — including the
-new `test:tariff-resolver` (135) and `test:migrations` 741. **Not verified:** no
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules / 711 ms,
+`npm test` **26 suites, 3,429 assertion statements**, no failures — including the
+new `test:tariff-resolver` (135), `test:ward-billing` (103, §3.28) and
+`test:migrations` 757. **Not verified:** no
 PostgreSQL in this environment; migration 0021 has not been executed, no link
 row exists yet, and no invoice line has been created against a database.
 
+### 3.28 Inpatient ward billing: the bed-night that never reached the invoice
+
+A patient was discharged and the message read:
+
+```
+No active tariff matched BED-FMW001, WARD-FMW001, BED-DAY (+3 more)…
+```
+
+The discharge completed, the bed went to Cleaning and the occupancy history was
+intact — but no bed-night charge reached the invoice, although the facility's price
+list holds **IP-002 "General ward bed charge" at 1,500 per day**.
+
+**Two root causes, both in the shared billing path.**
+
+1. **The night was never described.** `chargeForService` labelled the charge
+   `family: 'BED_DAY'`, but `phrasesForCharge` only built vocabulary for
+   consultations. A bed night therefore offered the six codes and the words "bed
+   day" — and no facility writes "General ward bed charge" as "bed day". The
+   resolver's description stage never ran with a phrase that could match IP-002,
+   so the row that was sitting on the price list was never considered. The fix is
+   in the resolver's vocabulary (`bedDayPhrases`), not in a new tariff.
+2. **The stay was priced from today's ward.** Both bed-day loops — discharge in
+   `app.ts` and `accrueBedDaysScoped` in `queries.ts` — read
+   `admissions.ward_id`, which the transfer updates to the **destination**. Every
+   earlier night was therefore re-priced at the ward the patient ended in, and a
+   stay that moved between wards could not keep the rate it was billed at. The
+   accrual also restarted at the last transfer date, so a nightly job and a
+   discharge disagreed about the period.
+
+**How `BED-FMW001` maps to a bed, and to IP-002.**
+
+`FMW001` is the **ward code** of the admission's ward (`wards.code`), not a
+catalogue code. `bedDayTariffCodes` turns it into `BED-FMW001` and `WARD-FMW001`,
+then adds the generic `BED-DAY`, `INPATIENT-BED-DAY`, `WARD-DAY`, `BED`. None of
+those is a row in the facility's list, and none is meant to be: they are the
+codes an administrator *may* create for a ward-specific price.
+
+The charge now also carries the bed's category. For a general ward the phrases
+are, in order: the ward's own name plus "bed charge", `general ward bed charge`,
+`general ward bed`, `ward bed charge`, `bed charge`, `bed day charge`, `bed day`.
+`IP-002`'s own description matches the first phrase, and it is the only inpatient
+row that does, so the resolver selects it by **description** (`CATALOGUE` rule):
+1,500.00 / Per day, quantity 1 per night. `test:ward-billing` asserts this against
+the real code and phrase lists.
+
+**Is IP-002 suitable?** Yes, for a **general** bed only, and under the existing
+rules: the row is in the `inpatient` department, its unit is "Per day" (a
+per-night unit; a per-admission or per-procedure unit is refused as
+`UNIT_INCOMPATIBLE`), and it is active. It is **not** suitable for an ICU, HDU,
+maternity or isolation bed. A special bed does not offer the general vocabulary at
+all, and a family-wide bed-day link is skipped for it; the night is reported as
+unconfigured rather than billed at the general rate. The facility either links
+that ward explicitly on the tariff screen or adds its own special-bed tariff.
+
+**What changed.**
+
+- `src/billing/tariff-matching.ts` — `bedDayPhrases` (category-gated vocabulary),
+  `admissionPhrases`, `isGeneralBedType`. The ward name is only ever offered as
+  "<ward> bed charge", never alone, so a ward called "Maternity" cannot reach a
+  maternity package row.
+- `src/billing/tariff-resolver.ts` — `ResolutionInput.wardType`; a family-wide
+  bed-day link no longer answers for a special bed; `ADMISSION` refuses per-day
+  and per-night units; `BED_DAY` refuses per-admission and per-procedure units.
+- `src/billing/billing.service.ts` — `ChargeRequest.wardType`/`wardName`;
+  `bedDaySegments`, the one function that splits a stay into occupancy segments.
+- `src/db/queries.ts` — `accrueBedDaysScoped` is the single bed-day engine. It
+  loads the transfer history, prices each segment from the ward that actually
+  held the patient, passes the ward's link keys, and records an unpriced night
+  through `chargeAndRecord`.
+- `src/app.ts` — the discharge route calls that engine instead of its own loop;
+  the admission fee no longer offers the ward name as an alias (it is a two-word
+  phrase that also describes IP-002).
+- `src/billing/charge-attempts.ts` + `drizzle/0022_bed_day_charge_attempts.sql` —
+  a skipped night stores its date and bed category, so it can be reprocessed
+  after the tariff is fixed, on the original idempotency key.
+- `src/components/modules/FacilityServiceTariffsPanel.tsx` — the bed-day link
+  picker asks for a **ward**, and validates that the ward belongs to the facility.
+
+**Bed-day math.** Admission date to discharge date inclusive remains the rule (a
+same-day stay is one day — unchanged, and asserted). Segments are disjoint by
+construction: a transfer takes effect on its own calendar date, the opening ward
+comes from the earliest transfer's `fromWard` (because `admissions.ward_id` is
+already the destination), two moves on one day leave the day with the last ward,
+and a nightly run stops at its `untilDate` or the discharge, whichever is earlier.
+The total number of nights therefore never changes; only who is paid for them.
+
+**Idempotency.** Keys are unchanged: `BED_DAY:<admissionId>:<date>`. Because the
+segments are disjoint, one date can only belong to one ward, so adding the ward to
+the key — which would have re-billed every already-charged night — was not needed.
+Discharge, transfer and the nightly job all produce the same key for the same
+night, so a retry is a `DUPLICATE`, not a second invoice line. Billing never
+creates an occupancy event (asserted), never re-admits anybody, and never marks an
+invoice paid.
+
+**What is still required from the facility.** Nothing is seeded and no price was
+changed. For a general ward, IP-002 at 1,500/day is selected by its own
+description as soon as this code is deployed — provided the row is **active** and
+filed in the **inpatient** department, because the bed-day family only reads that
+department's rows. No new tariff is needed. An ICU or maternity bed needs its own
+price, or an explicit ward link. Migration 0022 is only needed for the
+reprocessing queue (one row per unbilled night), not for the price itself. The
+unpriced nights are listed under Configuration → Services & Tariffs → "Charges
+that could not be priced" and can be retried there after the configuration
+changes.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules / 711 ms,
+`npm test` 26 suites / 3,429 assertion statements, including the new
+`test:ward-billing` (103 assertions: the reported warning reproduced, IP-002
+selection, IP-001/IP-002 separation, special-bed refusal, segment math, keys and
+the reprocessing path). **Not verified:** no PostgreSQL in this environment;
+migration 0022 has not been executed, and no bed-night invoice line has been
+created against a database. The 1,500 remains the facility's own figure, read from
+its row.
+
 ## 4. Existing backups and modified files to preserve
+
+### Backups created during the ward-billing session
+
+Pre-edit copies (`.bak` is git-ignored) exist beside each modified file:
+
+- `src/app.ts.before-ward-billing-20261022.bak`
+- `src/billing/billing.service.ts.before-ward-billing-20261022.bak`
+- `src/billing/charge-attempts.ts.before-ward-billing-20261022.bak`
+- `src/billing/tariff-matching.ts.before-ward-billing-20261022.bak`
+- `src/billing/tariff-resolver.ts.before-ward-billing-20261022.bak`
+- `src/billing/tariff-words.ts.before-ward-billing-20261022.bak`
+- `src/db/queries.ts.before-ward-billing-20261022.bak`
+- `src/db/schema.ts.before-ward-billing-20261022.bak`
+- `src/components/modules/FacilityServiceTariffsPanel.tsx.before-ward-billing-20261022.bak`
+- `src/components/modules/InpatientModule.tsx.before-ward-billing-20261022.bak`
+- `src/tests/opd-journey.test.ts.before-ward-billing-20261022.bak`
 
 ### Backups created during the staff-roles session
 

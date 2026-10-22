@@ -29,22 +29,26 @@ live database below is either marked UNVERIFIED or BLOCKED.
 ```
 schema tables           84   (0017 adds patient_allergies, 0018 adds six portal
                              tables, 0020 adds billing_charge_attempts, 0021
-                             adds service_tariff_links)
+                             adds service_tariff_links; 0022 adds only columns
+                             to billing_charge_attempts, so the table count is
+                             unchanged)
 tables created by SQL   84
 missing from migrations 0
 extra in migrations     0
-journal entries         22
-.sql files              22
+journal entries         23
+.sql files              23
 ```
 
 The figures above were 75 / 17 at audit time, 76 / 18 after migration `0017` was
 written, 82 / 19 after `0018` (patient portal), 82 / 20 after `0019` (tariff
 billing links, which adds a column rather than a table), 83 / 21 after `0020`
 (`billing_charge_attempts`, the queue of charges that could not be priced), and
-84 / 22 after `0021` (`service_tariff_links`, plus validity dates and the
-automatic-billing flag on tariffs). None of 0017–0021 has been executed against
-any database; the parity check is static, and `npm run test:migrations` (741
-assertions) passes against the files, not a server.
+84 / 23 after `0022` (`bed_night` identity — the night date, bed category and
+ward — on `billing_charge_attempts`, so each unpriced ward night can be
+reprocessed on its own; columns only, no new table). None of 0017–0022 has been
+executed against any database; the parity check is static, and
+`npm run test:migrations` (757 assertions) passes against the files, not a
+server.
 
 Three tables were initially reported missing by a naive scan —
 `admission_transfers`, `dha_service_mappings`, `nursing_notes` — because they are
@@ -98,6 +102,7 @@ BLOCKED.
 | 0019 | `service_tariff_billing_key` | Adds `facility_service_tariffs.billing_key` and a partial unique index so one active tariff answers each automatic charge. **Added 2026-10-22; not applied** |
 | 0020 | `billing_charge_attempts` | One table: the charges the engine could not price, holding the original request so they can be retried after the tariff is fixed. Partial unique index keeps one `PENDING` row per clinical source; nothing is deleted, a write-off sets `VOID`. **Added 2026-10-22; not applied** |
 | 0021 | `service_tariff_links` | Links a catalogue service (by stable id — `lab_tests.id`) to an existing tariff, with a composite FK `(facility_id, tariff_id)` so a link cannot cross facilities. Adds `effective_from`, `effective_to` and `auto_bill` to `facility_service_tariffs`, all additive. **Added 2026-10-22; not applied** |
+| 0022 | `bed_day_charge_attempts` | Adds `idempotency_suffix` (the bed-night date), `ward_type` and `ward_name` to `billing_charge_attempts`, and rebuilds the partial unique index over `coalesce(idempotency_suffix, '')` so one stay can hold one open row per night without permitting duplicate open rows for any other charge. Additive; the old index is dropped and recreated, no data is deleted. **Added 2026-10-22; not applied** |
 
 ### 3.1 The one destructive statement
 

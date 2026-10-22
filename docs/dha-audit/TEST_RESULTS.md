@@ -18,7 +18,7 @@ and gives the exact blocker.
 |---|---|---|
 | Type check | `npm run lint` (`tsc --noEmit`) | **PASS** — no output, exit 0 |
 | Production build | `npm run build` (`vite build`) | **PASS** — **1,707 modules** (22 Oct) |
-| Test suite | `npm test` | **PASS** — **25 suites, 3,307 assertion statements** (3,294 numbered + 13 catalogue `PASS:` lines) |
+| Test suite | `npm test` | **PASS** — **26 suites, 3,429 assertion statements** (3,416 numbered + 13 catalogue `PASS:` lines) |
 | Portal suite | `npm run test:patient-portal` | **PASS** — 197 assertions |
 | Migration files | `npm run test:migrations` | **PASS** — 741 assertions (0017–0021 included, still unapplied) |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
@@ -42,14 +42,14 @@ OPD JOURNEY TESTS PASSED (83 assertions)
 BILLING TESTS PASSED (75 assertions)
 TARIFF MATCHING TESTS PASSED (92 assertions)
 TARIFF RESOLVER TESTS PASSED (135 assertions)
+WARD BILLING TESTS PASSED (103 assertions)
 NURSING TESTS PASSED (83 assertions)
 REPORTING TESTS PASSED (216 assertions)
 PHARMACY BATCH TESTS PASSED (80 assertions)
-PAYMENT SETTLEMENT TESTS PASSED (91 assertions)
-INSURANCE CLAIMS TESTS PASSED (105 assertions)
+PAYMENT SETTLEMENT TESTS PASSED (93 assertions)
+INSURANCE CLAIMS TESTS PASSED (109 assertions)
 DHA INTEGRATION TESTS PASSED (176 assertions)
 PROFESSIONAL VERIFICATION TESTS PASSED (100 assertions)
-Staff role catalogue tests passed.
 STAFF ROLES TESTS PASSED (135 assertions)
 DESIGN TOKEN TESTS PASSED (33 assertions)
 FACILITY MODULE TESTS PASSED (55 assertions)
@@ -59,21 +59,21 @@ ROUTE SCOPE TESTS PASSED (66 assertions)
 MATERNITY TESTS PASSED (131 assertions)
 POSTNATAL & IMMUNISATION TESTS PASSED (151 assertions)
 HTTP SECURITY TESTS PASSED (54 assertions)
-MIGRATION TESTS PASSED (741 assertions)
+MIGRATION TESTS PASSED (757 assertions)
 Field encryption: 48 assertions passed.
 Consent and allergy: 80 assertions passed.
 Patient portal policy: 197 assertions passed.
 ```
 
-3,294 numbered assertions across 24 counting suites plus 13 catalogue `PASS:` lines = **3,307**;
-**25 suites, no failures**.
+3,416 numbered assertions across 25 counting suites plus 13 catalogue `PASS:` lines = **3,429**;
+**26 suites, no failures**.
 
-The audit round counted 2,717. The increase to 3,307 is the portal suite (197),
+The audit round counted 2,717. The increase to 3,429 is the portal suite (197),
 the billing and laboratory tariff-code suites (48, including the tariff-link
 vocabulary), the portal mount-order and activation-link checks (19), the
-migration-file checks for 0019 and 0020 (29), the tariff-matching suite (92, §3.26),
-the tariff-resolver suite (135, §3.27), and small additions elsewhere; no assertion
-was removed.
+migration-file checks for 0019–0022 (45), the tariff-matching suite (92, §3.26),
+the tariff-resolver suite (135, §3.27), the ward-billing suite (103, §3.28), and
+small additions elsewhere; no assertion was removed.
 
 **A correction to an earlier count.** Revision 4 of this document said "2,912
 numbered + 13 catalogue `PASS:` lines = 2,925". The numbered total was measured

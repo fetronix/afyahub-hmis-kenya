@@ -52,7 +52,12 @@ import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 
 import * as schema from '../db/schema.ts';
 import type { BillingFamily } from './tariff-codes.ts';
-import { matchTariff, type MatchOutcome, type TariffLike } from './tariff-matching.ts';
+import {
+  isGeneralBedType,
+  matchTariff,
+  type MatchOutcome,
+  type TariffLike,
+} from './tariff-matching.ts';
 
 /* ============================================================
    VOCABULARY
@@ -179,6 +184,16 @@ export interface ResolutionInput {
 
   /** Family used for the description rule. */
   family?: BillingFamily;
+
+  /**
+   * Bed category, for a bed-night (`General`, `ICU`, …).
+   *
+   * A family-level bed-day link says "this is my ward bed rate". It must
+   * not answer for an ICU or maternity bed, so it is applied only when
+   * the bed is general — or when the facility says nothing about the
+   * category at all.
+   */
+  wardType?: string | null;
   /** Phrases to look for in the facility's own descriptions. */
   phrases?: readonly string[];
 
@@ -251,8 +266,23 @@ const IMPOSSIBLE_UNITS: Record<CatalogueServiceType, readonly RegExp[]> = {
   ],
   PROCEDURE: [/per\s*(day|night|hour|visit)/i, /^(day|night|hour)$/i],
   PHARMACY: [/per\s*(day|night|hour|visit|admission)/i, /^(day|night|hour)$/i],
-  ADMISSION: [/per\s*(hour|test|sample|specimen)/i, /^(hour|test)$/i],
-  BED_DAY: [/per\s*(test|sample|specimen|visit)/i, /^(test|visit)$/i],
+  /*
+   * An admission fee is charged once. A row priced per day or per night
+   * is a bed rate, whatever it is called, and must not be applied here.
+   */
+  ADMISSION: [
+    /per\s*(hour|test|sample|specimen|day|night|stay|bed)/i,
+    /^(hour|test|day|night|stay|bed)$/i,
+  ],
+  /*
+   * A bed-night priced "per admission" or "per procedure" is the wrong
+   * charge entirely — it would bill the admission fee once per night.
+   * This is the IP-001 / IP-002 confusion, caught rather than billed.
+   */
+  BED_DAY: [
+    /per\s*(test|sample|specimen|visit|admission|procedure|session|case)/i,
+    /^(test|visit|admission|procedure|session|case)$/i,
+  ],
   DELIVERY: [/per\s*(day|night|hour|test|sample|specimen)/i, /^(hour|test)$/i],
 };
 
@@ -437,11 +467,13 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
       }
 
       const note =
-        rule === 'LINK' || rule === 'FAMILY_LINK'
-          ? 'Not the linked tariff for this service.'
-          : failure?.code === 'AMBIGUOUS'
-            ? 'Also describes this service — that is the ambiguity.'
-            : 'Does not price this service.';
+        skippedFamilyLink && skippedFamilyLink.tariffId === row.id
+          ? skippedFamilyLink.note
+          : rule === 'LINK' || rule === 'FAMILY_LINK'
+            ? 'Not the linked tariff for this service.'
+            : failure?.code === 'AMBIGUOUS'
+              ? 'Also describes this service — that is the ambiguity.'
+              : 'Does not price this service.';
 
       rows.push({
         tariff: row,
@@ -487,8 +519,31 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
     rule: 'FAMILY_LINK',
   });
 
+  /*
+   * A blanket bed-day link is a general-ward decision. Skipping it for
+   * a special bed leaves the ward-specific link, the code and the
+   * facility's own description free to price it — and if none of them
+   * does, the night is reported as unconfigured instead of being billed
+   * at the general rate.
+   */
+  const skippedFamilyLink =
+    input.family === 'BED_DAY' &&
+    !isGeneralBedType(input.wardType) &&
+    linkSteps[linkSteps.length - 1]?.rule === 'FAMILY_LINK' &&
+    linkSteps[linkSteps.length - 1]?.link
+      ? {
+          tariffId: linkSteps[linkSteps.length - 1].link!.tariffId,
+          note: `This is a family-wide bed-day link and cannot price a ${input.wardType} bed. Link this ward specifically, or add a tariff for the category.`,
+        }
+      : null;
+
   for (const step of linkSteps) {
     if (!step.link) continue;
+
+    if (step.rule === 'FAMILY_LINK' && skippedFamilyLink) {
+      /* Recorded on the tariff below, so the screen explains the skip. */
+      continue;
+    }
 
     if (mode !== 'MANUAL' && step.link.autoBill === false) {
       return finish(null, null, step.link.id, {
@@ -947,6 +1002,7 @@ export async function resolveServiceTariff(
     serviceKeys?: readonly string[];
     family?: BillingFamily;
     phrases?: readonly string[];
+    wardType?: string | null;
     today?: string;
     mode?: 'AUTO' | 'MANUAL';
   },
@@ -968,6 +1024,7 @@ export async function resolveServiceTariff(
     serviceKeys: input.serviceKeys ?? [],
     family: input.family ?? familyForServiceType(input.serviceType),
     phrases: input.phrases ?? [],
+    wardType: input.wardType ?? null,
     links,
     tariffs,
     today: input.today ?? todayKey(),

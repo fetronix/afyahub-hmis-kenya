@@ -437,8 +437,15 @@ export const InpatientModule: React.FC = () => {
       );
 
       if (nightsUnbilled.length > 0) {
+        /*
+         * The discharge and the cleaning status stand; only the money is
+         * missing. Say how many nights and why, and that it is now in
+         * the unpriced-charge queue — the administrator fixes the tariff
+         * and reprocesses it there, without discharging the patient
+         * again.
+         */
         showToast(
-          `Patient discharged, bed sent for cleaning. ${nightsUnbilled[0]?.message ?? 'Bed nights were not billed.'}`,
+          `Patient discharged, bed sent for cleaning. ${nightsUnbilled.length} of ${nightsUnbilled.length + nightsBilled.length} night(s) not billed: ${nightsUnbilled[0]?.message ?? 'no bed-day tariff is configured.'} Configure the ward's tariff, then reprocess the charge under Billing.`,
         );
       } else if (nightsBilled.length > 0) {
         showToast(

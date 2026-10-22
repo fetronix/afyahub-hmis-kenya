@@ -325,13 +325,22 @@ function testEveryStageIsCharged(): void {
   for (const [label, key] of [
     ["the consultation", "billingServiceKeys('CONSULTATION'"],
     ["the admission", "billingServiceKeys('ADMISSION'"],
-    ["the bed-day", "billingServiceKeys('BED_DAY'"],
     ["the delivery", "billingServiceKeys('DELIVERY'"],
     ["the prescription", "billingServiceKeys('PHARMACY'"],
     ["the procedure", "billingServiceKeys('PROCEDURE'"],
   ] as const) {
     assert(app.includes(key), `${label} offers a billing link`);
   }
+
+  /*
+   * The bed-day link moved with the bed-day engine: discharge, transfer
+   * and the nightly job all charge from `accrueBedDaysScoped`, so that
+   * is where the ward's link key has to be offered.
+   */
+  assert(
+    source('src/db/queries.ts').includes("billingServiceKeys('BED_DAY'"),
+    'the bed-day offers a billing link',
+  );
 
   assert(
     charges.includes("billingServiceKeys('LABORATORY'"),

@@ -581,6 +581,10 @@ export function phrasesForCharge(input: {
   serviceName?: string | null;
   encounterType?: string | null;
   aliases?: readonly string[];
+  /** Bed category, for a bed-day charge (`General`, `ICU`, …). */
+  wardType?: string | null;
+  /** Ward name, for a ward-specific tariff. */
+  wardName?: string | null;
 }): string[] {
   const phrases: string[] = [];
 
@@ -590,6 +594,27 @@ export function phrasesForCharge(input: {
 
   if (input.family === 'CONSULTATION') {
     phrases.push(...consultationPhrases(input.encounterType));
+  }
+
+  if (input.family === 'BED_DAY') {
+    /*
+     * The bed category decides the vocabulary, so a general ward rate
+     * can never be selected for an ICU bed.
+     */
+    phrases.push(
+      ...bedDayPhrases({
+        wardName: input.wardName ?? input.serviceName ?? null,
+        wardType: input.wardType ?? null,
+      }),
+    );
+
+    return [...new Set(phrases)];
+  }
+
+  if (input.family === 'ADMISSION') {
+    phrases.push(...admissionPhrases());
+
+    return [...new Set(phrases)];
   }
 
   phrases.push(...serviceNamePhrases(input.serviceName));
@@ -617,6 +642,104 @@ export function linkedKeysForCharge(input: {
   keys.push(input.family);
 
   return [...new Set(keys)];
+}
+
+/**
+ * What a bed-night is called in a price list, by bed category.
+ *
+ * A general ward bed may be priced by a row such as "General ward bed
+ * charge" (IP-002). A special bed — ICU, HDU, maternity — must **not**
+ * be priced by that row: the words match, the service does not. So the
+ * category gates the vocabulary:
+ *
+ *   General  → "general ward bed charge", "ward bed charge", "bed charge"
+ *   ICU      → "icu bed charge", "icu ward bed charge", "icu bed"
+ *
+ * A special ward with no matching row therefore resolves to nothing and
+ * is reported as a missing configuration, rather than being billed at
+ * the general rate. The explicit link is always available and always
+ * wins.
+ */
+/**
+ * Is this bed an ordinary ward bed, rather than a special-care one?
+ *
+ * `General` is the schema default and an empty category means the
+ * facility did not classify the bed; both are the general case. ICU,
+ * HDU, maternity, isolation and paediatric beds are not, and a general
+ * ward rate must never price them.
+ */
+export function isGeneralBedType(wardType: string | null | undefined): boolean {
+  const type = codeKey(wardType);
+
+  return type === '' || type === 'GENERAL' || type === 'NORMAL';
+}
+
+export function bedDayPhrases(input: {
+  wardName?: string | null;
+  wardType?: string | null;
+}): string[] {
+  const type = codeKey(input.wardType);
+  const name = typeof input.wardName === 'string' ? input.wardName.trim() : '';
+
+  const phrases: string[] = [];
+
+  /*
+   * A ward's name only ever appears in front of "bed": a ward called
+   * "Maternity" must not reach a "Maternity package" row, and a ward
+   * called "Medical" must not reach a medical consultation.
+   */
+  if (name !== '') {
+    const lowerName = name.toLowerCase();
+
+    phrases.push(`${lowerName} bed charge`, `${lowerName} bed`);
+  }
+
+  /*
+   * `General` is the ward default in the schema, and an empty category
+   * means the facility did not classify the bed — both are the general
+   * case, not a special one.
+   */
+  const isGeneral = isGeneralBedType(input.wardType);
+
+  if (isGeneral) {
+    phrases.push(
+      'general ward bed charge',
+      'general ward bed',
+      'ward bed charge',
+      'bed charge',
+      'bed day charge',
+      'bed day',
+    );
+
+    return [...new Set(phrases)];
+  }
+
+  const lower = type.toLowerCase();
+
+  phrases.push(
+    `${lower} bed charge`,
+    `${lower} ward bed charge`,
+    `${lower} bed day`,
+    `${lower} bed`,
+  );
+
+  return [...new Set(phrases)];
+}
+
+/**
+ * What an inpatient admission is called.
+ *
+ * "Inpatient admission administration" is the one-off admission fee
+ * (IP-001), which is a different charge from the nightly bed rate. It
+ * must never be reached by a bed-day charge.
+ */
+export function admissionPhrases(): string[] {
+  return [
+    'inpatient admission administration',
+    'admission administration',
+    'inpatient admission',
+    'admission',
+  ];
 }
 
 /**

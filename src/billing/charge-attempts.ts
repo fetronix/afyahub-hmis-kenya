@@ -19,7 +19,7 @@
  * app says so rather than failing.
  */
 
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import * as schema from '../db/schema.ts';
 import {
@@ -32,6 +32,15 @@ import {
 type Executor = any;
 
 let warnedMissingAttemptsTable = false;
+
+/**
+ * Does this database have migration 0022, which stores the bed-night
+ * identity (date, bed category)? Starts true and is turned off the first
+ * time the database says the column is missing, so a facility that ran
+ * 0020 and 0021 but not yet 0022 still records its skipped charges —
+ * degraded to one row per stay, never silently dropped.
+ */
+let supportsBedNightIdentity = true;
 
 /** True when the database predates migration 0020. */
 export function isMissingAttemptsTable(error: unknown): boolean {
@@ -81,7 +90,7 @@ export async function recordChargeAttempt(
       ? Number(request.quantity)
       : 1;
 
-  const values = {
+  const baseValues = {
     tenantId: request.tenantId,
     facilityId: request.facilityId,
     patientId: request.patientId,
@@ -111,11 +120,39 @@ export async function recordChargeAttempt(
     updatedAt: new Date(),
   };
 
+  /*
+   * The occurrence of the source: a bed-night date, and the bed category
+   * it was accrued in. Part of the row's identity, and replayed into the
+   * ordinary idempotency key — a retry bills the same night, at the same
+   * kind of bed, or not at all.
+   */
+  const suffix =
+    supportsBedNightIdentity && request.idempotencySuffix
+      ? request.idempotencySuffix
+      : null;
+
+  const nightIdentity = supportsBedNightIdentity
+    ? {
+        idempotencySuffix: suffix,
+        wardType: request.wardType ?? null,
+        wardName: request.wardName ?? null,
+      }
+    : {};
+
+  const values = { ...baseValues, ...nightIdentity };
+
   const existingWhere = and(
     eq(schema.billingChargeAttempts.facilityId, values.facilityId),
     eq(schema.billingChargeAttempts.sourceType, values.sourceType),
     eq(schema.billingChargeAttempts.sourceId, values.sourceId),
     eq(schema.billingChargeAttempts.itemType, values.itemType),
+    ...(supportsBedNightIdentity
+      ? [
+          suffix === null
+            ? isNull(schema.billingChargeAttempts.idempotencySuffix)
+            : eq(schema.billingChargeAttempts.idempotencySuffix, suffix),
+        ]
+      : []),
     eq(schema.billingChargeAttempts.status, 'PENDING'),
   );
 
@@ -139,6 +176,12 @@ export async function recordChargeAttempt(
         detail: values.detail,
         codesTried: values.codesTried,
         quantity: values.quantity,
+        ...(supportsBedNightIdentity
+          ? {
+              wardType: request.wardType ?? null,
+              wardName: request.wardName ?? null,
+            }
+          : {}),
       })
       .where(eq(schema.billingChargeAttempts.id, id));
 
@@ -179,6 +222,24 @@ export async function recordChargeAttempt(
       throw insertError;
     }
   } catch (error: unknown) {
+    /*
+     * The table exists but migration 0022 has not run: retry once
+     * without the bed-night columns, so the queue keeps working while
+     * the administrator applies the migration.
+     */
+    if (
+      (error as { code?: unknown })?.code === '42703' &&
+      supportsBedNightIdentity
+    ) {
+      supportsBedNightIdentity = false;
+
+      console.warn(
+        'Billing: billing_charge_attempts has no bed-night identity columns. Run `npm run db:migrate` (migration 0022) so each unbilled night can be reprocessed separately. Recording the skip without it for now.',
+      );
+
+      return recordChargeAttempt(executor, request, result);
+    }
+
     if (isMissingAttemptsTable(error)) {
       if (!warnedMissingAttemptsTable) {
         warnedMissingAttemptsTable = true;
@@ -247,6 +308,11 @@ export interface ChargeAttemptRow {
   serviceName: string | null;
   encounterType: string | null;
   aliases: string[];
+  /** The occurrence of the source (a bed-night date), when it has one. */
+  idempotencySuffix: string | null;
+  /** Bed category and ward at accrual time, for a bed-night. */
+  wardType: string | null;
+  wardName: string | null;
   quantity: number;
   fallbackUnitPrice: string | null;
   reason: string;
@@ -370,6 +436,9 @@ export function toChargeRequest(
     ...(row.aliases.length > 0 ? { aliases: row.aliases } : {}),
     sourceType: row.sourceType as ChargeRequest['sourceType'],
     sourceId: row.sourceId as number,
+    ...(row.idempotencySuffix ? { idempotencySuffix: row.idempotencySuffix } : {}),
+    ...(row.wardType ? { wardType: row.wardType } : {}),
+    ...(row.wardName ? { wardName: row.wardName } : {}),
     itemType: row.itemType,
     description: row.description ?? undefined,
     quantity: row.quantity,

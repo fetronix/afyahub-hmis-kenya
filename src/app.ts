@@ -3150,9 +3150,12 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           serviceKeys: billingServiceKeys('ADMISSION'),
           family: 'ADMISSION',
           serviceName: 'admission',
-          aliases: [ward?.name ?? null].filter(
-            (entry): entry is string => typeof entry === 'string',
-          ),
+          /*
+           * No ward-name alias here. "General Ward" is a two-word phrase
+           * that also describes "General ward bed charge" (IP-002), so
+           * asking for it would let the nightly rate price the one-off
+           * admission fee. The admission fee is found by its own words.
+           */
           sourceType: 'ADMISSION',
           sourceId: admission.id,
           itemType: 'Admission',
@@ -3198,59 +3201,27 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
         );
 
         /*
-         * Accrue one bed-day charge per night of the stay.
+         * Bill the stay through the one bed-day engine.
          *
-         * Each night is keyed BED_DAY:<admissionId>:<date>, so
-         * re-running a discharge, or a nightly accrual job that calls
-         * the same path, can never double-bill a night.
+         * Discharge does not have its own billing loop: it closes the
+         * occupancy, then asks the same accrual that transfers and the
+         * nightly job use for the nights. Every night is keyed
+         * BED_DAY:<admissionId>:<date>, so re-running this — or a job
+         * that already billed last week — adds nothing.
+         *
+         * A missing tariff leaves the night unpriced and reported; it
+         * never rolls back the discharge or the bed's Cleaning status.
          */
-        const [ward] = await db
-          .select({
-            code: schema.wards.code,
-            name: schema.wards.name,
-          })
-          .from(schema.wards)
-          .where(eq(schema.wards.id, admission.wardId))
-          .limit(1);
-
-        const nights = billing.bedDayDates(
-          admission.admissionDate,
-          admission.dischargeDate,
+        const accrual = await queries.accrueBedDaysScoped(
+          context,
+          admission.id,
         );
-
-        const bedDayCharges: Array<billing.ChargeResult | null> = [];
-
-        for (const date of nights) {
-          bedDayCharges.push(
-            await chargeSafely({
-              tenantId: admission.tenantId,
-              facilityId: admission.facilityId,
-              patientId: admission.patientId,
-              encounterId: admission.encounterId ?? null,
-              codes: codesForFamily({
-                family: 'BED_DAY',
-                wardCode: ward?.code,
-              }),
-              serviceKeys: billingServiceKeys('BED_DAY', [ward?.code]),
-              family: 'BED_DAY',
-              serviceName: 'bed day',
-              aliases: [ward?.name ?? null].filter(
-                (entry): entry is string => typeof entry === 'string',
-              ),
-              sourceType: 'BED_DAY',
-              sourceId: admission.id,
-              idempotencySuffix: date,
-              itemType: 'Inpatient',
-              description: `${ward?.name ?? 'Ward'} bed — ${date}`,
-            }),
-          );
-        }
 
         res.json({
           ...admission,
           billing: {
-            nights: nights.length,
-            bedDays: bedDayCharges,
+            nights: accrual.nights,
+            bedDays: accrual.charges,
           },
         });
       } catch (err: unknown) {
@@ -5956,6 +5927,39 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
           typeof req.body?.serviceName === 'string'
             ? req.body.serviceName.trim() || null
             : null;
+
+        /*
+         * A bed-day link names a ward, so "General ward → IP-002" prices
+         * that ward and leaves the ICU to its own row. The ward must be
+         * this facility's, or the link would never fire.
+         */
+        if (serviceType === 'BED_DAY' && serviceId !== null) {
+          const [ward] = await db
+            .select({
+              id: schema.wards.id,
+              code: schema.wards.code,
+              name: schema.wards.name,
+            })
+            .from(schema.wards)
+            .where(
+              and(
+                eq(schema.wards.id, serviceId),
+                eq(schema.wards.facilityId, facility.id),
+              ),
+            )
+            .limit(1);
+
+          if (!ward) {
+            return res.status(404).json({
+              success: false,
+              error: 'CATALOGUE_SERVICE_NOT_FOUND',
+              message: 'That ward does not belong to this facility.',
+            });
+          }
+
+          serviceCode = ward.code ?? serviceCode;
+          serviceName = ward.name ?? serviceName;
+        }
 
         if (serviceType === 'LAB_TEST' && serviceId !== null) {
           const [test] = await db
