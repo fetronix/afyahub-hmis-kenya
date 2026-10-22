@@ -254,6 +254,18 @@ export const ReportsModule: React.FC = () => {
     0,
   );
 
+  const byChannel = revenue?.byChannel ?? [];
+
+  const channelTotal = byChannel.reduce(
+    (sum, row) => sum + (Number(row.amount) || 0),
+    0,
+  );
+
+  const channelMax = byChannel.reduce(
+    (max, row) => Math.max(max, Number(row.amount) || 0),
+    0,
+  );
+
   const trendMax = Math.max(
     1,
     ...(trend?.points.map((point) => point.occupiedBeds) ?? [1]),
@@ -421,6 +433,125 @@ export const ReportsModule: React.FC = () => {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </SectionCard>
+
+            {/*
+              Money in, split by the channel it actually arrived
+              through. SHA settles through the claims workflow, mobile
+              money through the online rail, cash through the drawer.
+              The foot of the panel reconciles the split to Collected
+              rather than asking the reader to trust it.
+            */}
+            <SectionCard
+              title="Money In by Payment Channel"
+              icon={<Wallet className="w-4 h-4 text-emerald-700" />}
+              action={
+                <span className="text-2xs text-slate-500">
+                  Total {formatKes(revenue?.channelTotal)}
+                </span>
+              }
+            >
+              {byChannel.length === 0 ? (
+                <EmptyRow>
+                  No payments recorded in this period.
+                </EmptyRow>
+              ) : (
+                <div className="space-y-3">
+                  {byChannel.map((row) => {
+                    const amount = Number(row.amount) || 0;
+                    const share =
+                      channelTotal > 0 ? (amount / channelTotal) * 100 : 0;
+                    const width =
+                      channelMax > 0 ? (amount / channelMax) * 100 : 0;
+
+                    return (
+                      <div key={row.channel}>
+                        <div className="flex items-baseline justify-between text-xs">
+                          <span className="font-medium text-slate-800">
+                            {row.label}
+                            <span className="ml-1.5 text-2xs text-slate-400 font-normal">
+                              {row.channel === 'MOBILE_MONEY'
+                                ? 'M-Pesa / Airtel'
+                                : row.channel === 'SHA'
+                                  ? 'claims settlement'
+                                  : row.channel === 'CASH'
+                                    ? 'counter'
+                                    : row.channel === 'CARD'
+                                      ? 'card slip'
+                                      : 'unmapped methods'}
+                            </span>
+                          </span>
+                          <span className="font-mono text-slate-900 tabular-nums">
+                            {formatKes(amount)}
+                            <span className="ml-2 text-2xs text-slate-500">
+                              {share.toFixed(1)}%
+                            </span>
+                          </span>
+                        </div>
+
+                        <div className="mt-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-2 rounded-full ${
+                              row.channel === 'SHA'
+                                ? 'bg-indigo-600'
+                                : row.channel === 'MOBILE_MONEY'
+                                  ? 'bg-emerald-600'
+                                  : row.channel === 'CASH'
+                                    ? 'bg-amber-500'
+                                    : 'bg-slate-400'
+                            }`}
+                            style={{
+                              width: `${Math.max(width, amount > 0 ? 1.5 : 0)}%`,
+                            }}
+                          />
+                        </div>
+
+                        <div className="mt-0.5 text-3xs text-slate-400">
+                          {row.paymentCount} payment
+                          {row.paymentCount === 1 ? '' : 's'}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div className="border-t border-slate-100 pt-2 text-2xs">
+                    {revenue?.channelReconciliation ? (
+                      revenue.channelReconciliation.reconciled ? (
+                        <span className="text-emerald-700">
+                          Reconciles to Collected (
+                          {formatKes(revenue.channelReconciliation.collected)}).
+                        </span>
+                      ) : (
+                        <span className="text-amber-800">
+                          Does not reconcile to Collected (
+                          {formatKes(revenue.channelReconciliation.collected)});
+                          difference{' '}
+                          {formatKes(revenue.channelReconciliation.difference)}.
+                          Check payments posted outside the invoice window.
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-slate-500">
+                        Reconciliation was not reported by the server.
+                      </span>
+                    )}
+
+                    {(revenue?.channelReconciliation?.unmappedMethods.length ?? 0) >
+                      0 && (
+                      <span className="mt-1 block text-slate-500">
+                        Unrecognised method
+                        {revenue!.channelReconciliation!.unmappedMethods.length === 1
+                          ? ''
+                          : 's'}
+                        :{' '}
+                        <span className="font-mono">
+                          {revenue!.channelReconciliation!.unmappedMethods.join(', ')}
+                        </span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </SectionCard>

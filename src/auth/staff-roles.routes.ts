@@ -218,6 +218,7 @@ router.get(
       const catalogue = await getRoleTaskCatalogue({
         tenantId: scope.tenantId,
         roleId,
+        facilityId: scope.facilityId,
       });
 
       return res.json({ success: true, ...catalogue });

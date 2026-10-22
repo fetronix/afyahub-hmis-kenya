@@ -87,6 +87,14 @@ type RoleTaskCatalogue = {
   granted: string[];
   unmapped: string[];
   groups: RoleTaskGroup[];
+  /** Where the effective set comes from at this facility. */
+  facilityOverride?: {
+    applies: boolean;
+    facilityId: number | null;
+    permissionCount: number;
+  };
+  /** Where a save from this screen will write. */
+  writeScope?: "FACILITY_OVERRIDE" | "TENANT_DEFAULT";
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -151,6 +159,8 @@ export const StaffRolesPanel: React.FC = () => {
   const [taskRole, setTaskRole] = useState<AssignableRole | null>(null);
   const [taskCatalogue, setTaskCatalogue] = useState<RoleTaskCatalogue | null>(null);
   const [taskSelected, setTaskSelected] = useState<number[]>([]);
+  /* The set the server loaded, so an unchanged save is not offered. */
+  const [taskOriginal, setTaskOriginal] = useState<number[]>([]);
   const [taskLoading, setTaskLoading] = useState(false);
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskError, setTaskError] = useState("");
@@ -334,11 +344,12 @@ export const StaffRolesPanel: React.FC = () => {
         }
       }
 
-      setTaskSelected(
-        payload.granted
-          .map((code) => idByCode.get(code))
-          .filter((id): id is number => typeof id === "number"),
-      );
+      const selectedIds = payload.granted
+        .map((code) => idByCode.get(code))
+        .filter((id): id is number => typeof id === "number");
+
+      setTaskSelected(selectedIds);
+      setTaskOriginal(selectedIds);
     } catch (err) {
       setTaskError(
         err instanceof Error ? err.message : "Could not load this role's tasks.",
@@ -352,6 +363,7 @@ export const StaffRolesPanel: React.FC = () => {
     setTaskRole(null);
     setTaskCatalogue(null);
     setTaskSelected([]);
+    setTaskOriginal([]);
     setTaskError("");
     setTaskSaving(false);
   };
@@ -386,9 +398,15 @@ export const StaffRolesPanel: React.FC = () => {
         changed?: boolean;
         added?: string[];
         removed?: string[];
+        facilityOverrideUpdated?: boolean;
+        writeScope?: "FACILITY_OVERRIDE" | "TENANT_DEFAULT";
       }>(response);
 
       const name = payload.roleName ?? taskRole.name;
+      const scope =
+        payload.writeScope === "FACILITY_OVERRIDE"
+          ? " Saved to the tenant default and to this facility's own permission set, so the change applies here now."
+          : " Saved to the tenant default, which this facility inherits; facilities with their own override are unaffected.";
 
       setNotice(
         payload.changed
@@ -400,7 +418,7 @@ export const StaffRolesPanel: React.FC = () => {
               payload.removed && payload.removed.length > 0
                 ? ` Removed: ${payload.removed.join(", ")}.`
                 : ""
-            } Staff holding this role may need to sign in again to see the change.`
+            }${scope} Staff holding this role may need to sign in again to see the change.`
           : `No task change was needed for ${name}.`,
       );
 
@@ -1010,6 +1028,18 @@ export const StaffRolesPanel: React.FC = () => {
               </button>
             </header>
 
+            {taskCatalogue?.facilityOverride?.applies && (
+              <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-[11px] leading-relaxed text-brand-800">
+                <span className="font-semibold">
+                  This facility has its own permission set for{" "}
+                  {taskCatalogue.role.name}.
+                </span>{" "}
+                The tasks below are that set, not the tenant default. Saving
+                replaces this facility&apos;s set and the tenant default in one
+                step, so there is no second place left holding the old list.
+              </div>
+            )}
+
             {taskError && (
               <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
                 {taskError}
@@ -1092,8 +1122,11 @@ export const StaffRolesPanel: React.FC = () => {
                 <span className="font-semibold text-slate-700">
                   {taskSelected.length} selected.
                 </span>{" "}
-                Applies to every facility on this tenant. Staff holding this role
-                may need to sign in again to see a new module.
+                {taskCatalogue?.writeScope === "FACILITY_OVERRIDE"
+                  ? "Applies at this facility through its own permission set, and to the tenant default."
+                  : "Applies to every facility on this tenant that does not have its own override."}{" "}
+                Staff holding this role may need to sign in again to see a new
+                module.
               </p>
               <div className="flex gap-2">
                 <button
@@ -1110,12 +1143,20 @@ export const StaffRolesPanel: React.FC = () => {
                     taskSaving ||
                     taskLoading ||
                     taskSelected.length === 0 ||
-                    !taskCatalogue
+                    !taskCatalogue ||
+                    taskSelected.slice().sort().join(",") ===
+                      taskOriginal.slice().sort().join(",")
                   }
                   className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-xs font-bold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {taskSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {taskSaving ? "Saving..." : "Save tasks"}
+                  {taskSaving
+                    ? "Saving..."
+                    : taskCatalogue &&
+                        taskSelected.slice().sort().join(",") ===
+                          taskOriginal.slice().sort().join(",")
+                      ? "No changes to save"
+                      : "Save tasks"}
                 </button>
               </div>
             </footer>

@@ -42,6 +42,8 @@ import {
 import { db } from "../db";
 import {
   auditLogs,
+  facilityRolePermissionOverridePermissions,
+  facilityRolePermissionOverrides,
   permissions,
   rolePermissions,
   roles,
@@ -866,6 +868,14 @@ export type RoleTaskCatalogue = {
     requiresVerification: boolean;
   };
   granted: string[];
+  /** True when this facility's own override is the effective set. */
+  facilityOverride: {
+    applies: boolean;
+    facilityId: number | null;
+    permissionCount: number;
+  };
+  /** Where a save from this screen will write. */
+  writeScope: "FACILITY_OVERRIDE" | "TENANT_DEFAULT";
   /**
    * Grants held by the role that sit outside the delegable allowlist
    * (a custom permission, for example). They are shown, left untouched
@@ -883,6 +893,12 @@ export type RoleTaskCatalogue = {
 export async function getRoleTaskCatalogue(input: {
   tenantId: number;
   roleId: number;
+  /**
+   * The facility the editor is acting for. When this facility holds an
+   * override for the role, that override is the effective task set and
+   * the one a save will write; without it the tenant default applies.
+   */
+  facilityId?: number | null;
 }): Promise<RoleTaskCatalogue> {
   if (!Number.isSafeInteger(input.roleId) || input.roleId <= 0) {
     throw new StaffRoleError("A valid role is required.", 400, "INVALID_ROLE_ID");
@@ -937,11 +953,50 @@ export async function getRoleTaskCatalogue(input: {
     .from(permissions)
     .orderBy(asc(permissions.module), asc(permissions.code));
 
-  const grantedRows = await db
-    .select({ code: permissions.code })
-    .from(rolePermissions)
-    .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-    .where(eq(rolePermissions.roleId, role.id));
+  /*
+   * A facility override, where one exists, is what the people holding
+   * this role actually get: authorization.service layers it over the
+   * tenant rows. Showing the tenant default here would make a saved
+   * change look applied while the staff kept the override.
+   */
+  const facilityId =
+    typeof input.facilityId === "number" && Number.isSafeInteger(input.facilityId) && input.facilityId > 0
+      ? input.facilityId
+      : null;
+
+  const [override] = facilityId
+    ? await db
+        .select({ id: facilityRolePermissionOverrides.id })
+        .from(facilityRolePermissionOverrides)
+        .where(
+          and(
+            eq(facilityRolePermissionOverrides.tenantId, input.tenantId),
+            eq(facilityRolePermissionOverrides.facilityId, facilityId),
+            eq(facilityRolePermissionOverrides.roleId, role.id),
+          ),
+        )
+        .limit(1)
+    : [];
+
+  const grantedRows = override
+    ? await db
+        .select({ code: permissions.code })
+        .from(facilityRolePermissionOverridePermissions)
+        .innerJoin(
+          permissions,
+          eq(permissions.id, facilityRolePermissionOverridePermissions.permissionId),
+        )
+        .where(
+          eq(
+            facilityRolePermissionOverridePermissions.overrideId,
+            override.id,
+          ),
+        )
+    : await db
+        .select({ code: permissions.code })
+        .from(rolePermissions)
+        .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+        .where(eq(rolePermissions.roleId, role.id));
 
   const groups = new Map<string, RoleTaskGroup>();
 
@@ -984,6 +1039,18 @@ export async function getRoleTaskCatalogue(input: {
     granted: grantedCodes,
     unmapped: grantedCodes.filter((code) => !delegableCodes.has(code)),
     groups: Array.from(groups.values()),
+    /*
+     * The screen needs to say where a save lands, not just what was
+     * saved. A role with a facility override is edited at this
+     * facility; a role without one is edited at the tenant, and every
+     * facility that inherits it sees the change.
+     */
+    facilityOverride: {
+      applies: Boolean(override),
+      facilityId,
+      permissionCount: grantedCodes.length,
+    },
+    writeScope: override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT",
   };
 }
 
@@ -1128,11 +1195,85 @@ export async function updateRolePermissions(input: {
     const toAdd = uniqueIds.filter((id) => !currentIds.has(id));
     const toRemove = delegableCurrentIds.filter((id) => !wantedIds.has(id));
 
-    if (toAdd.length === 0 && toRemove.length === 0) {
+    /*
+     * A facility that carries its own override does not read the tenant
+     * rows: authorization.service.replaces them with the override. If a
+     * save only wrote role_permissions, the screen would report success
+     * while every holder of the role kept the old access — the exact
+     * "Update did not save" complaint. The same transaction therefore
+     * brings the facility's override to the saved set.
+     */
+    const [override] = await tx
+      .select({ id: facilityRolePermissionOverrides.id })
+      .from(facilityRolePermissionOverrides)
+      .where(
+        and(
+          eq(facilityRolePermissionOverrides.tenantId, input.tenantId),
+          eq(facilityRolePermissionOverrides.facilityId, input.facilityId),
+          eq(facilityRolePermissionOverrides.roleId, target.id),
+        ),
+      )
+      .limit(1);
+
+    const overrideRows = override
+      ? await tx
+          .select({
+            permissionId: facilityRolePermissionOverridePermissions.permissionId,
+            code: permissions.code,
+            module: permissions.module,
+          })
+          .from(facilityRolePermissionOverridePermissions)
+          .innerJoin(
+            permissions,
+            eq(
+              permissions.id,
+              facilityRolePermissionOverridePermissions.permissionId,
+            ),
+          )
+          .where(
+            eq(
+              facilityRolePermissionOverridePermissions.overrideId,
+              override.id,
+            ),
+          )
+      : [];
+
+    /*
+     * Keep an override's non-delegable grants for the same reason the
+     * tenant rows keep theirs: this screen may not silently strip a
+     * permission it never offered.
+     */
+    const preservedOverrideIds = overrideRows
+      .filter((row) => !isDelegablePermission(row))
+      .map((row) => row.permissionId);
+
+    const overrideWantedIds = new Set<number>([
+      ...uniqueIds,
+      ...preservedOverrideIds,
+    ]);
+
+    const overrideCurrentIds = new Set(
+      overrideRows.map((row) => row.permissionId),
+    );
+
+    const overrideToAdd = override
+      ? Array.from(overrideWantedIds).filter((id) => !overrideCurrentIds.has(id))
+      : [];
+    const overrideToRemove = overrideRows
+      .filter((row) => !overrideWantedIds.has(row.permissionId))
+      .map((row) => row.permissionId);
+
+    const globalChanged = toAdd.length > 0 || toRemove.length > 0;
+    const overrideChanged =
+      overrideToAdd.length > 0 || overrideToRemove.length > 0;
+
+    if (!globalChanged && !overrideChanged) {
       return {
         roleId: target.id,
         roleName: target.name,
         changed: false,
+        facilityOverrideUpdated: false,
+        writeScope: override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT",
         added: [] as string[],
         removed: [] as string[],
         permissions: wanted.map((row) => row.code).sort(),
@@ -1159,7 +1300,46 @@ export async function updateRolePermissions(input: {
       );
     }
 
+    if (override && overrideToRemove.length > 0) {
+      await tx
+        .delete(facilityRolePermissionOverridePermissions)
+        .where(
+          and(
+            eq(
+              facilityRolePermissionOverridePermissions.overrideId,
+              override.id,
+            ),
+            inArray(
+              facilityRolePermissionOverridePermissions.permissionId,
+              overrideToRemove,
+            ),
+          ),
+        );
+    }
+
+    if (override && overrideToAdd.length > 0) {
+      await tx.insert(facilityRolePermissionOverridePermissions).values(
+        overrideToAdd.map((permissionId) => ({
+          overrideId: override.id,
+          permissionId,
+        })),
+      );
+    }
+
+    if (override) {
+      await tx
+        .update(facilityRolePermissionOverrides)
+        .set({ updatedAt: new Date() })
+        .where(eq(facilityRolePermissionOverrides.id, override.id));
+    }
+
     const codeById = new Map(wanted.map((row) => [row.id, row.code]));
+
+    for (const row of overrideRows) {
+      if (!codeById.has(row.permissionId)) {
+        codeById.set(row.permissionId, row.code);
+      }
+    }
 
     // A removed permission is no longer in `wanted`; name it from the
     // table itself. An empty IN () is not valid SQL, so skip the query.
@@ -1171,8 +1351,26 @@ export async function updateRolePermissions(input: {
             .where(inArray(permissions.id, toRemove))
         : [];
 
-    const removedCodes = removedRows.map((row) => row.code).sort();
-    const addedCodes = toAdd.map((id) => codeById.get(id) ?? String(id)).sort();
+    const removedCodes = Array.from(
+      new Set([
+        ...removedRows.map((row) => row.code),
+        ...overrideToRemove.map((id) => codeById.get(id) ?? String(id)),
+      ]),
+    ).sort();
+
+    const addedCodes = Array.from(
+      new Set([
+        ...toAdd.map((id) => codeById.get(id) ?? String(id)),
+        ...overrideToAdd.map((id) => codeById.get(id) ?? String(id)),
+      ]),
+    ).sort();
+
+    const writeScope = override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT";
+    const savedPermissionCodes = Array.from(
+      override ? overrideWantedIds : wantedIds,
+    )
+      .map((id) => codeById.get(id) ?? String(id))
+      .sort();
 
     await tx.insert(auditLogs).values({
       tenantId: input.tenantId,
@@ -1185,19 +1383,23 @@ export async function updateRolePermissions(input: {
         addedCodes.length > 0 ? addedCodes.join(", ") : "none"
       }; removed ${
         removedCodes.length > 0 ? removedCodes.join(", ") : "none"
-      }.`,
-      severity: "WARNING",
+      }. ${
+        override
+          ? `Facility ${input.facilityId} override synchronized (${overrideToAdd.length} added, ${overrideToRemove.length} removed).`
+          : "Tenant default updated; facilities with their own override are unaffected."
+      }`,
+      severity: override ? "HIGH" : "WARNING",
     });
 
     return {
       roleId: target.id,
       roleName: target.name,
       changed: true,
+      facilityOverrideUpdated: Boolean(override) && overrideChanged,
+      writeScope,
       added: addedCodes,
       removed: removedCodes,
-      permissions: Array.from(wantedIds)
-        .map((id) => codeById.get(id) ?? String(id))
-        .sort(),
+      permissions: savedPermissionCodes,
     };
   });
 }

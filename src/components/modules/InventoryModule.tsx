@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { InventoryItem, InventoryBatchRow, ExpirySummary } from '../../types/index.ts';
+import ExpiryCountdown, { expiryDeadline } from '../ExpiryCountdown.tsx';
 import {
   Package,
   AlertTriangle,
@@ -50,6 +51,14 @@ export const InventoryModule: React.FC = () => {
     unitCost: '180.00',
     sellingPrice: '300.00',
     storeLocation: 'Main Pharmacy Cold Storage',
+    /*
+     * Expiry is a property of a batch, not of the catalogue item: the
+     * same item is received many times with different shelf lives.
+     * The opening stock is therefore received into its first batch, so
+     * the countdown below has a date to count to.
+     */
+    batchNumber: '',
+    expiryDate: '',
   });
 
   useEffect(() => {
@@ -87,19 +96,96 @@ export const InventoryModule: React.FC = () => {
       return;
     }
 
+    const openingQuantity = Number(newItem.currentStock);
+    const batchNumber = newItem.batchNumber.trim();
+    const expiryDate = newItem.expiryDate.trim();
+    const wantsBatch = batchNumber.length > 0 || expiryDate.length > 0;
+
+    /*
+     * A batch is all-or-nothing. Half a lot — a batch number with no
+     * expiry, or an expiry with no number — cannot be received by the
+     * batch endpoint and would silently leave the item untracked.
+     */
+    if (wantsBatch && (!batchNumber || !expiryDate)) {
+      showToast(
+        'Enter both a batch number and an expiry date, or leave both blank to track the item as a plain stock count.',
+        { tone: 'warning' }
+      );
+      return;
+    }
+
+    if (wantsBatch && !expiryDeadline(expiryDate)) {
+      showToast('Enter a real expiry date in YYYY-MM-DD format.', { tone: 'warning' });
+      return;
+    }
+
+    if (wantsBatch && expiryDeadline(expiryDate)!.getTime() < Date.now()) {
+      showToast(
+        'That expiry date has already passed. Stock cannot be received already expired.',
+        { tone: 'warning' }
+      );
+      return;
+    }
+
+    if (wantsBatch && (!Number.isSafeInteger(openingQuantity) || openingQuantity < 1)) {
+      showToast('Opening stock must be a whole number of at least 1 to receive a batch.', {
+        tone: 'warning',
+      });
+      return;
+    }
+
+    let createdItemId: number | null = null;
+
     try {
-      await api.createInventoryItem({
+      /*
+       * The batch number and expiry date are not columns on
+       * inventory_items; they are stripped here so the catalogue write
+       * carries only catalogue fields. When a batch is supplied the
+       * item is created with zero stock and the opening quantity is
+       * received into the lot, which is the only path that keeps
+       * current_stock and the batch rows in step.
+       */
+      const { batchNumber: _batchNumber, expiryDate: _expiryDate, ...catalogueFields } = newItem;
+
+      const created = await api.createInventoryItem({
         facilityId: currentFacility.id,
-        ...newItem,
-        currentStock: Number(newItem.currentStock),
+        ...catalogueFields,
+        currentStock: wantsBatch ? 0 : Number(newItem.currentStock),
         reorderLevel: Number(newItem.reorderLevel),
       });
 
-      showToast('Item added to facility inventory catalogue!');
+      createdItemId = created?.id ?? null;
+
+      if (wantsBatch && created?.id) {
+        await api.receiveBatch(created.id, {
+          facilityId: currentFacility.id,
+          batchNumber,
+          expiryDate,
+          quantity: openingQuantity,
+          costPerUnit: newItem.unitCost,
+        });
+      }
+
+      showToast(
+        wantsBatch
+          ? `Item added; ${openingQuantity} units received into batch ${batchNumber}, expiring ${expiryDate}.`
+          : 'Item added to facility inventory catalogue!'
+      );
       setIsNewItemModalOpen(false);
+      setNewItem((current) => ({ ...current, batchNumber: '', expiryDate: '' }));
       triggerRefresh();
     } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+      showToast(
+        createdItemId !== null
+          ? `The item was created, but its opening batch could not be received: ${err.message}. Use Receive Batch to add the stock.`
+          : `Error: ${err.message}`,
+        { tone: 'warning' }
+      );
+
+      if (createdItemId !== null) {
+        setIsNewItemModalOpen(false);
+        triggerRefresh();
+      }
     }
   };
 
@@ -110,6 +196,63 @@ export const InventoryModule: React.FC = () => {
   );
 
   const lowStockCount = items.filter(i => (i.currentStock || 0) <= (i.reorderLevel || 50)).length;
+
+  /*
+   * One countdown per item, taken from its batches rather than from a
+   * column on the item: the item is the catalogue entry, the batch owns
+   * the expiry. The soonest batch that still has stock wins, because
+   * that is the lot FEFO will hand out next. When every lot has run out
+   * or expired, the earliest expiry is still shown so the shelf is not
+   * silently reported as having no date.
+   */
+  const nearestExpiryByItem = new Map<
+    number,
+    { expiryDate: string; batchNumber: string; expired: boolean }
+  >();
+
+  const considerBatch = (batch: InventoryBatchRow) => {
+    const candidate = {
+      expiryDate: batch.expiryDate,
+      batchNumber: batch.batchNumber,
+      expired: (batch.daysToExpiry ?? -1) < 0,
+    };
+
+    const current = nearestExpiryByItem.get(batch.itemId);
+
+    if (!current) {
+      nearestExpiryByItem.set(batch.itemId, candidate);
+      return;
+    }
+
+    /* A usable lot always beats an expired one; otherwise earliest wins. */
+    if (current.expired !== candidate.expired) {
+      if (current.expired) nearestExpiryByItem.set(batch.itemId, candidate);
+      return;
+    }
+
+    if (candidate.expiryDate < current.expiryDate) {
+      nearestExpiryByItem.set(batch.itemId, candidate);
+    }
+  };
+
+  /*
+   * A lot with nothing left is not stock at risk. It is only shown when
+   * the item has no batch holding stock at all, so the shelf still says
+   * what it last held rather than "no batch recorded".
+   */
+  for (const batch of batches) {
+    if (batch.quantityRemaining > 0) considerBatch(batch);
+  }
+
+  for (const batch of batches) {
+    if (!nearestExpiryByItem.has(batch.itemId)) considerBatch(batch);
+  }
+
+  const expiringWithin10 = batches.filter(
+    (batch) =>
+      batch.quantityRemaining > 0 &&
+      (batch.status === 'Expired' || (batch.daysToExpiry ?? 999) <= 10)
+  );
 
   const filteredBatches = batches.filter(
     (b) => batchFilter === 'All' || b.status === batchFilter
@@ -275,6 +418,7 @@ export const InventoryModule: React.FC = () => {
                 <th className="px-4 py-2.5 font-medium text-right">Reorder Lvl</th>
                 <th className="px-4 py-2.5 font-medium text-right">Unit Cost</th>
                 <th className="px-4 py-2.5 font-medium text-right">Selling Price</th>
+                <th className="px-4 py-2.5 font-medium">Expiry Countdown</th>
                 <th className="px-4 py-2.5 font-medium">Store Shelf</th>
               </tr>
             </thead>
@@ -304,6 +448,24 @@ export const InventoryModule: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-teal-800">
                       KES {Number(item.sellingPrice).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 font-sans">
+                      {nearestExpiryByItem.get(item.id) ? (
+                        <div className="flex flex-col">
+                          <ExpiryCountdown
+                            expiryDate={nearestExpiryByItem.get(item.id)!.expiryDate}
+                            short
+                          />
+                          <span className="text-3xs text-slate-400 font-mono">
+                            {nearestExpiryByItem.get(item.id)!.batchNumber} ·{' '}
+                            {nearestExpiryByItem.get(item.id)!.expiryDate}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-2xs text-slate-400">
+                          No batch recorded
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-sans text-slate-600 text-2xs truncate max-w-xs">
                       {item.storeLocation}
@@ -363,6 +525,50 @@ export const InventoryModule: React.FC = () => {
               <div className="text-2xs text-slate-500 mt-1">Have stock expired or expiring</div>
             </div>
           </div>
+
+          {expiringWithin10.length > 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs">
+              <div className="flex items-center gap-1.5 font-semibold text-amber-900">
+                <CalendarClock className="w-3.5 h-3.5" />
+                <span>
+                  {expiringWithin10.length} batch
+                  {expiringWithin10.length === 1 ? '' : 'es'} expired or expiring
+                  within 10 days
+                </span>
+              </div>
+
+              <ul className="mt-2 divide-y divide-amber-200/70">
+                {expiringWithin10.slice(0, 6).map((batch) => (
+                  <li
+                    key={batch.id}
+                    className="flex flex-wrap items-center justify-between gap-2 py-1.5"
+                  >
+                    <span className="text-amber-950">
+                      <strong className="font-semibold">{batch.itemName}</strong>
+                      <span className="ml-1.5 font-mono text-2xs text-amber-800">
+                        {batch.batchNumber}
+                      </span>
+                      <span className="ml-1.5 text-2xs text-amber-800">
+                        {batch.quantityRemaining} {batch.unit ?? 'units'} · KES{' '}
+                        {(Number(batch.costPerUnit) * batch.quantityRemaining).toLocaleString()}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2 font-mono text-2xs text-amber-900">
+                      {batch.expiryDate}
+                      <ExpiryCountdown expiryDate={batch.expiryDate} short />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {expiringWithin10.length > 6 && (
+                <p className="mt-1.5 text-2xs text-amber-800">
+                  {expiringWithin10.length - 6} more. The overview lists every lot
+                  inside the ten-day window.
+                </p>
+              )}
+            </div>
+          )}
 
           {!loading && batches.length === 0 && (
             <div className="bg-white border border-slate-200 rounded-xl p-6 text-xs text-slate-600">
@@ -426,13 +632,9 @@ export const InventoryModule: React.FC = () => {
                       <td className="px-4 py-3 font-mono text-slate-700">{batch.batchNumber}</td>
                       <td className="px-4 py-3 font-mono text-slate-700">
                         {batch.expiryDate}
-                        <span className="ml-1.5 text-2xs text-slate-400">
-                          {batch.daysToExpiry === null
-                            ? ''
-                            : batch.daysToExpiry < 0
-                              ? `${Math.abs(batch.daysToExpiry)}d ago`
-                              : `in ${batch.daysToExpiry}d`}
-                        </span>
+                        <div className="mt-0.5">
+                          <ExpiryCountdown expiryDate={batch.expiryDate} short />
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded border text-2xs font-semibold ${batchStatusClass(batch.status)}`}>
@@ -475,7 +677,7 @@ export const InventoryModule: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900">Add Inventory Stock Item</h3>
-              <p className="text-2xs text-slate-500">Configure new pharmaceutical item, pricing, and reorder threshold.</p>
+              <p className="text-2xs text-slate-500">Configure a pharmaceutical item, its pricing, reorder threshold and the expiry of its opening batch.</p>
             </div>
 
             <form onSubmit={handleCreateItem} className="space-y-4">
@@ -557,6 +759,50 @@ export const InventoryModule: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Batch Number
+                  </label>
+                  <input
+                    type="text"
+                    value={newItem.batchNumber}
+                    onChange={(e) => setNewItem({ ...newItem, batchNumber: e.target.value })}
+                    placeholder="e.g. BATCH-2026A"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+                    maxLength={64}
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newItem.expiryDate}
+                    onChange={(e) => setNewItem({ ...newItem, expiryDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+                  />
+                </div>
+              </div>
+
+              <p className="text-2xs text-slate-500 bg-slate-50 border border-slate-200 rounded-md p-2.5">
+                {newItem.expiryDate && expiryDeadline(newItem.expiryDate) ? (
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <CalendarClock className="w-3 h-3" />
+                    Opening stock expires on {newItem.expiryDate} —
+                    <ExpiryCountdown expiryDate={newItem.expiryDate} short />
+                  </span>
+                ) : (
+                  <span>
+                    Expiry belongs to the batch, not the item. Enter a batch
+                    number and an expiry date to receive the opening stock into
+                    that lot; the stock list then counts down to it. Leave both
+                    blank to track a plain stock count with no expiry.
+                  </span>
+                )}
+              </p>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

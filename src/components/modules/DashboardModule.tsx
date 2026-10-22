@@ -5,9 +5,11 @@ import {
   AnalyticsSummary,
   AuditLog,
   InpatientBoard,
+  InventoryBatchRow,
   PublicHealthReport,
   QueueItem,
 } from '../../types/index.ts';
+import ExpiryCountdown from '../ExpiryCountdown.tsx';
 import {
   Users,
   BedDouble,
@@ -15,6 +17,7 @@ import {
   Wallet,
   AlertTriangle,
   ArrowUpRight,
+  CalendarClock,
   Clock,
   HeartPulse,
   RefreshCw,
@@ -51,6 +54,9 @@ import {
 |   * a panel the session may not read is not rendered at all.
 |
 */
+
+/* Days of shelf life that count as "act now" on the overview. */
+const EXPIRY_ALERT_DAYS = 10;
 
 /* ----------------------------------------------------------------
    Small building blocks
@@ -215,6 +221,7 @@ export const DashboardModule: React.FC = () => {
   const canReadQueues = can('appointments.read');
   const canReadInpatient = can('inpatient.read');
   const canReadAudit = can('audit.read');
+  const canReadInventory = can('inventory.read');
 
   const facilityModules = useMemo(
     () => new Set(currentFacility?.enabledModules ?? []),
@@ -237,6 +244,13 @@ export const DashboardModule: React.FC = () => {
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [inpatientBoard, setInpatientBoard] = useState<InpatientBoard | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  /**
+   * Lots inside the ten-day window, per batch rather than per item, so
+   * the overview can name the batch, the quantity and the money at
+   * stake. Ten days is the facility's operating lead time: a lot needs
+   * to be used, transferred or written off before it becomes waste.
+   */
+  const [expiringBatches, setExpiringBatches] = useState<InventoryBatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -315,6 +329,35 @@ export const DashboardModule: React.FC = () => {
       }
 
       /*
+       * Expiry is a stock fact, not a billing one: it is loaded with a
+       * ten-day horizon and shown as its own panel. A missing list
+       * leaves the panel out rather than claiming the store is clean.
+       */
+      if (canReadInventory) {
+        tasks.push(
+          api.getInventoryBatches(currentFacility?.id, { horizonDays: EXPIRY_ALERT_DAYS })
+            .then((value) => {
+              if (!active) return;
+
+              setExpiringBatches(
+                value.filter(
+                  (batch) =>
+                    batch.quantityRemaining > 0 &&
+                    batch.daysToExpiry !== null &&
+                    batch.daysToExpiry <= EXPIRY_ALERT_DAYS,
+                ),
+              );
+            })
+            .catch((err) => {
+              console.error('Failed to load expiring stock:', err);
+              if (active) setExpiringBatches([]);
+            })
+        );
+      } else {
+        setExpiringBatches([]);
+      }
+
+      /*
        * Recent activity is secondary. If the audit module is switched
        * off for this facility the endpoint answers 403; that is not a
        * dashboard failure and must not raise the page-level alert.
@@ -342,7 +385,7 @@ export const DashboardModule: React.FC = () => {
     void loadDashboard();
 
     return () => { active = false; };
-  }, [currentFacility, refreshKey, canReadReports, canReadQueues, canReadInpatient, canReadAudit, facilityModules]);
+  }, [currentFacility, refreshKey, canReadReports, canReadQueues, canReadInpatient, canReadAudit, canReadInventory, facilityModules]);
 
   /* ----------------------------------------------------------------
      Derived view data — every number below came from the server
@@ -391,6 +434,25 @@ export const DashboardModule: React.FC = () => {
     });
   }
 
+  const expiredBatchCount = expiringBatches.filter(
+    (batch) => (batch.daysToExpiry ?? 0) < 0,
+  ).length;
+
+  if (expiringBatches.length > 0) {
+    alerts.push({
+      key: 'expiring-stock-10d',
+      tone: expiredBatchCount > 0 ? 'danger' : 'warning',
+      label: `${expiringBatches.length} batch${
+        expiringBatches.length === 1 ? '' : 'es'
+      } ${
+        expiredBatchCount > 0
+          ? `${expiredBatchCount} already expired · `
+          : ''
+      }expiring within ${EXPIRY_ALERT_DAYS} days`,
+      module: 'inventory',
+    });
+  }
+
   if (summary && summary.expiringStockAlerts > 0) {
     alerts.push({
       key: 'expiring-stock',
@@ -399,6 +461,22 @@ export const DashboardModule: React.FC = () => {
       module: 'inventory',
     });
   }
+
+  const expiringUnits = expiringBatches.reduce(
+    (sum, batch) => sum + batch.quantityRemaining,
+    0,
+  );
+
+  const expiringValueKes = expiringBatches.reduce(
+    (sum, batch) =>
+      sum + Number(batch.costPerUnit || 0) * batch.quantityRemaining,
+    0,
+  );
+
+  /* Earliest expiry first — it is the lot that must move first. */
+  const expiringRows = [...expiringBatches].sort((left, right) =>
+    left.expiryDate < right.expiryDate ? -1 : left.expiryDate > right.expiryDate ? 1 : 0,
+  );
 
   const quickActions = QUICK_ACTIONS.filter(
     (action) => moduleEnabled(action.module) && canAny(...action.permissions)
@@ -640,6 +718,113 @@ export const DashboardModule: React.FC = () => {
               />
             )}
           </div>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------
+          Stock about to expire — the record behind the alert
+      --------------------------------------------------------------- */}
+
+      {expiringRows.length > 0 && (
+        <section className="panel overflow-hidden" aria-label="Stock expiring soon">
+          <div className="flex flex-col gap-2 border-b border-hair px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
+                <CalendarClock className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="eyebrow">Stores · next {EXPIRY_ALERT_DAYS} days</p>
+                <h2 className="mt-0.5 text-sm font-semibold tracking-tight text-navy-900">
+                  {expiringRows.length} batch
+                  {expiringRows.length === 1 ? '' : 'es'} to use, move or write off
+                </h2>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted">
+              <span>
+                <strong className="font-mono font-semibold text-slate-700">
+                  {expiringUnits.toLocaleString()}
+                </strong>{' '}
+                units
+              </span>
+              <span>
+                <strong className="font-mono font-semibold text-slate-700">
+                  KES {expiringValueKes.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </strong>{' '}
+                at cost
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveModule('inventory')}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Open inventory
+                <ArrowUpRight className="h-3 w-3 opacity-60" />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/80 text-2xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-5 py-2 font-medium">Item</th>
+                  <th className="px-4 py-2 font-medium">Batch</th>
+                  <th className="px-4 py-2 text-right font-medium">Quantity</th>
+                  <th className="px-4 py-2 font-medium">Expiry</th>
+                  <th className="px-4 py-2 font-medium">Time left</th>
+                  <th className="px-5 py-2 text-right font-medium">Value at cost</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {expiringRows.map((batch) => {
+                  const expired = (batch.daysToExpiry ?? 0) < 0;
+                  const critical = !expired && (batch.daysToExpiry ?? 99) <= 3;
+
+                  return (
+                    <tr
+                      key={batch.id}
+                      className={expired ? 'bg-rose-50/40' : critical ? 'bg-amber-50/30' : ''}
+                    >
+                      <td className="px-5 py-2.5">
+                        <span className="font-semibold text-slate-900">{batch.itemName}</span>
+                        <span className="ml-1.5 font-mono text-2xs text-slate-400">
+                          {batch.itemCode}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-700">
+                        {batch.batchNumber}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-slate-700">
+                        {batch.quantityRemaining}
+                        <span className="ml-1 text-2xs text-slate-400">
+                          {batch.unit ?? ''}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-700">
+                        {batch.expiryDate}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <ExpiryCountdown expiryDate={batch.expiryDate} short />
+                      </td>
+                      <td className="px-5 py-2.5 text-right font-mono text-slate-700">
+                        KES{' '}
+                        {(
+                          Number(batch.costPerUnit || 0) * batch.quantityRemaining
+                        ).toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="border-t border-hair px-5 py-2.5 text-2xs leading-relaxed text-muted">
+            Expired lots are never dispensed and are excluded from available stock. A lot
+            expiring today is still usable until the end of that day.
+          </p>
         </section>
       )}
 

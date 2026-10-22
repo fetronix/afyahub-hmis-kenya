@@ -6407,15 +6407,24 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
 
         const range = { from, to };
 
-        const [rows, totals] = await Promise.all([
+        const [rows, totals, channelSplit] = await Promise.all([
           billing.getRevenueByServiceType(db, facilityId, range),
           billing.getRevenueTotals(db, facilityId, range),
+          billing.getRevenueByPaymentChannel(db, facilityId, range),
         ]);
 
         const totalCents = rows.reduce(
           (sum, row) => sum + billing.toCents(row.revenue),
           0,
         );
+
+        /*
+         * The channel lines must add up to what the invoices say was
+         * collected. When they do not, the report says so instead of
+         * quietly presenting a split that does not reconcile.
+         */
+        const collectedCents = billing.toCents(totals.collected);
+        const channelDifferenceCents = channelSplit.totalCents - collectedCents;
 
         const echoDate = (value: unknown) =>
           typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())
@@ -6443,6 +6452,14 @@ app.use('/api/audit-logs', requireFacilityModule('audit'));
               (a, b) =>
                 billing.toCents(b.revenue) - billing.toCents(a.revenue),
             ),
+          byChannel: channelSplit.channels,
+          channelTotal: billing.fromCents(channelSplit.totalCents),
+          channelReconciliation: {
+            collected: billing.fromCents(collectedCents),
+            difference: billing.fromCents(channelDifferenceCents),
+            reconciled: channelDifferenceCents === 0,
+            unmappedMethods: channelSplit.unmappedMethods,
+          },
         });
       } catch (err: unknown) {
         if (handleScopeError(err, res)) return;

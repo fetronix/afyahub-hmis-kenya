@@ -17,10 +17,11 @@ and gives the exact blocker.
 | Check | Command | Result |
 |---|---|---|
 | Type check | `npm run lint` (`tsc --noEmit`) | **PASS** — no output, exit 0 |
-| Production build | `npm run build` (`vite build`) | **PASS** — **1,707 modules** (22 Oct) |
-| Test suite | `npm test` | **PASS** — **26 suites, 3,429 assertion statements** (3,416 numbered + 13 catalogue `PASS:` lines) |
+| Production build | `npm run build` (`vite build`) | **PASS** — **1,708 modules** (22 Oct) |
+| Test suite | `npm test` | **PASS** — **28 suites, 3,544 assertion statements** (3,531 numbered + 13 catalogue `PASS:` lines) |
 | Portal suite | `npm run test:patient-portal` | **PASS** — 197 assertions |
-| Migration files | `npm run test:migrations` | **PASS** — 741 assertions (0017–0021 included, still unapplied) |
+| Round-five suite | `npm run test:round5` | **PASS** — 115 assertions (expiry, revenue channels, role save, README codes) |
+| Migration files | `npm run test:migrations` | **PASS** — 757 assertions (0017–0022 included, still unapplied) |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
 | Browser walkthrough | — | **BLOCKED** — no browser in this environment |
 | DHA sandbox call | — | **BLOCKED** — no credentials |
@@ -63,16 +64,18 @@ MIGRATION TESTS PASSED (757 assertions)
 Field encryption: 48 assertions passed.
 Consent and allergy: 80 assertions passed.
 Patient portal policy: 197 assertions passed.
+ROUND FIVE TESTS PASSED (115 assertions)
 ```
 
-3,416 numbered assertions across 25 counting suites plus 13 catalogue `PASS:` lines = **3,429**;
-**26 suites, no failures**.
+3,531 numbered assertions across 27 counting suites plus 13 catalogue `PASS:` lines = **3,544**;
+**28 suites, no failures**.
 
-The audit round counted 2,717. The increase to 3,429 is the portal suite (197),
+The audit round counted 2,717. The increase to 3,544 is the portal suite (197),
 the billing and laboratory tariff-code suites (48, including the tariff-link
 vocabulary), the portal mount-order and activation-link checks (19), the
 migration-file checks for 0019–0022 (45), the tariff-matching suite (92, §3.26),
-the tariff-resolver suite (135, §3.27), the ward-billing suite (103, §3.28), and
+the tariff-resolver suite (135, §3.27), the ward-billing suite (103, §3.28),
+the round-five suite (115, §3.29), and
 small additions elsewhere; no assertion was removed.
 
 **A correction to an earlier count.** Revision 4 of this document said "2,912

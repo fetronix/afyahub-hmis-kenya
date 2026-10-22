@@ -51,6 +51,96 @@ export function isMobileMoney(method: string): boolean {
   return MOBILE_MONEY_METHODS.includes(method.trim());
 }
 
+/* ============================================================
+   PAYMENT CHANNELS
+   ============================================================ */
+
+/**
+ * The three ways money reaches a Kenyan facility, plus the two
+ * exceptions a counter still has to record honestly.
+ *
+ * SHA is a payer, not a till: it settles through the claims workflow
+ * and writes a payment row with method "SHA". Mobile money is the
+ * patient-facing M-Pesa / Airtel rail. Cash is the drawer. Card and
+ * anything unrecognised are kept apart rather than folded into cash,
+ * because a reconciliation that hides a channel is worse than one
+ * that shows an "Other" line.
+ */
+export type PaymentChannel = 'SHA' | 'MOBILE_MONEY' | 'CASH' | 'CARD' | 'OTHER';
+
+/** Display order of the channel split, payer first. */
+export const PAYMENT_CHANNELS: readonly PaymentChannel[] = [
+  'SHA',
+  'MOBILE_MONEY',
+  'CASH',
+  'CARD',
+  'OTHER',
+];
+
+export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
+  SHA: 'SHA',
+  MOBILE_MONEY: 'Online mobile money',
+  CASH: 'Cash',
+  CARD: 'Card',
+  OTHER: 'Other',
+};
+
+const SHA_METHODS = new Set([
+  'sha',
+  'shaclaim',
+  'shaclaims',
+  'socialhealthauthority',
+]);
+
+const MOBILE_METHODS = new Set([
+  'mpesa',
+  'mpesacash',
+  'airtel',
+  'airtelmoney',
+  'mtn',
+  'mtnmomo',
+  'mobilemoney',
+  'mobile',
+  'online',
+  'onlinemobilemoney',
+  'onlinepayment',
+]);
+
+const CASH_METHODS = new Set(['cash', 'cashpayment', 'cashdrawer']);
+
+const CARD_METHODS = new Set([
+  'card',
+  'cardpayment',
+  'visa',
+  'mastercard',
+  'debitcard',
+  'creditcard',
+  'amex',
+  'americanexpress',
+]);
+
+/**
+ * Reduce a stored payment method to one reportable channel.
+ *
+ * Comparison ignores case, spaces, hyphens and punctuation so
+ * "M-Pesa", "MPESA" and "m pesa" are one channel. Anything not
+ * recognised stays OTHER and is named in the report, never guessed
+ * into SHA or cash.
+ */
+export function paymentChannel(method: string | null | undefined): PaymentChannel {
+  if (typeof method !== 'string') return 'OTHER';
+
+  const compact = method.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  if (!compact) return 'OTHER';
+  if (SHA_METHODS.has(compact)) return 'SHA';
+  if (MOBILE_METHODS.has(compact)) return 'MOBILE_MONEY';
+  if (CASH_METHODS.has(compact)) return 'CASH';
+  if (CARD_METHODS.has(compact)) return 'CARD';
+
+  return 'OTHER';
+}
+
 /** Parsed money as signed integer cents, or null when unreadable. */
 export function parseMoneyToCents(
   value: string | number | null | undefined,

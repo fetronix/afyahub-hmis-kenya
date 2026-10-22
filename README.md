@@ -991,11 +991,11 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
-**1,707 modules / 711 ms**. `npm test` — **26 suites, 3,429 assertion statements**,
+**1,708 modules / 697 ms**. `npm test` — **28 suites, 3,544 assertion statements**,
 no failures. `test:tariff-matching` 92, `test:compliance` 239,
 `test:route-scope` 66, `test:field-encryption` 48, `test:consent-allergy` 80,
-`test:tariff-resolver` 135, `test:ward-billing` 103 (new), `test:patient-portal`
-197, `test:migrations` 757.
+`test:tariff-resolver` 135, `test:ward-billing` 103, `test:round5` 115 (new),
+`test:patient-portal` 197, `test:migrations` 757.
 
 **Not verified.** No database and no browser: `npm run db:status` fails with
 `Missing required environment variable: SQL_HOST`. Every SQL path is
@@ -1145,7 +1145,7 @@ URL), correction *requests* rather than edits, a QR card carrying only an opaque
 time-limited, revocable sharing to a named recipient — which the screen states is not a national
 health information exchange.
 
-**What was verified.** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24 scripts and
+**What was verified.** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24 scripts and
 3,038 assertion statements including 197 new portal assertions. **What was not:** migration `0018` has not been
 applied to any database, no portal query has run against real rows, concurrent redemption has not
 been exercised, no SMS or email provider exists, and no browser was driven through the screens. The
@@ -1199,7 +1199,7 @@ price held in the laboratory catalogue (`lab_tests.price`) is **not** used for
 billing — tariffs remain the single price list, for the same reason pharmacy
 prices come from `facility_service_tariffs` and nowhere else.
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24
 suites and 3,038 assertion statements, no failures (billing 31 → 57, OPD journey
 58 → 69). **Not verified:** none of this was run against PostgreSQL — there is no
 database in this environment, and the seeded fees are examples, not this
@@ -1231,7 +1231,7 @@ a link still has no host.
 `/portal/activate/` with a trailing slash also fell through to the staff shell and
 produced the same misleading message; the path is now normalised.
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24
 suites / 3,038 assertion statements, no failures (`test:patient-portal` 178 → 197,
 including the mount order, the three-step link resolution, the refusal of a
 `javascript:` value, and the trailing-slash route). **Not verified:** the flow was
@@ -1288,7 +1288,7 @@ billing*: **Consultation** → Save. The next visit bills 150. `OPD-002` stays
 unlinked, or gets its own link if follow-up visits should price separately — but
 one price per family, not a guess.
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 24
 suites / 3,038 assertion statements (billing 57 → 75, OPD journey 69 → 82,
 migrations 692 → 706). **Not verified:** the migration has not been executed and no
 charge has been raised against PostgreSQL — there is no database in this
@@ -1369,8 +1369,8 @@ has been invented. `OPD-001` bills at 150 through the description rule once
 migration 0020 is applied; the link remains the explicit alternative and is the
 only way to choose between two tariffs that both describe the service.
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 26
-suites / 3,429 assertion statements (tariff matching 92, OPD journey 82 → 83,
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules, `npm test` 28
+suites / 3,544 assertion statements (tariff matching 92, OPD journey 82 → 83,
 migrations 706 → 721 at the time of this section; the current migration suite is
 757). **Not verified:** no database here — migration 0020 has not
 been executed and no invoice line has been created against PostgreSQL. The 150 is
@@ -1478,10 +1478,10 @@ action per service on the tariff screen. `LAB-BLOOD` stays exactly as it is at
 800: what it represents is the facility's decision, and it can be linked to a
 catalogue test — or left alone — but it is never chosen by the word "blood".
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules / 711 ms,
-`npm test` **26 suites, 3,429 assertion statements**, no failures — including the
-new `test:tariff-resolver` (135), `test:ward-billing` (103, §3.28) and
-`test:migrations` 757. **Not verified:** no
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules / 697 ms,
+`npm test` **28 suites, 3,544 assertion statements**, no failures — including the
+new `test:tariff-resolver` (135), `test:ward-billing` (103, §3.28),
+`test:round5` (115, §3.29) and `test:migrations` 757. **Not verified:** no
 PostgreSQL in this environment; migration 0021 has not been executed, no link
 row exists yet, and no invoice line has been created against a database.
 
@@ -1590,7 +1590,7 @@ unpriced nights are listed under Configuration → Services & Tariffs → "Charg
 that could not be priced" and can be retried there after the configuration
 changes.
 
-**Verified:** `npm run lint` clean, `npm run build` 1,707 modules / 711 ms,
+**Verified:** `npm run lint` clean, `npm run build` 1,708 modules / 697 ms,
 `npm test` 26 suites / 3,429 assertion statements, including the new
 `test:ward-billing` (103 assertions: the reported warning reproduced, IP-002
 selection, IP-001/IP-002 separation, special-bed refusal, segment math, keys and
@@ -1599,7 +1599,205 @@ migration 0022 has not been executed, and no bed-night invoice line has been
 created against a database. The 1,500 remains the facility's own figure, read from
 its row.
 
+### 3.29 Stock expiry, the revenue split, role saves, and the codes to bill with
+
+Five requests, one round. Nothing was seeded, no price was changed, and no
+migration was executed — everything below is code plus the SQL that a database
+administrator still has to run.
+
+#### 1. An expiry date on the stock item, and a countdown that can be trusted
+
+Expiry was already stored — on `inventory_batches.expiry_date`, not on
+`inventory_items`. That is the correct place: one catalogue item is received many
+times with different shelf lives, and a single date on the item would be
+overwritten by the next delivery. The gap was the **screen**: "Add Stock Item"
+created a catalogue row with a stock number and no lot, so the item appeared in
+the stock list with no expiry and no countdown.
+
+- The Add form now takes a **Batch Number** and an **Expiry Date**. When both are
+  supplied the item is created with zero stock and the opening quantity is
+  received into that lot, so `current_stock` and the batch row move together.
+  Leaving both blank keeps the old behaviour (a plain stock count, no expiry).
+  Supplying only one is refused rather than silently ignored, and an expiry in
+  the past is refused on the screen as well as by the server.
+- The stock list gained an **Expiry Countdown** column. It reads the earliest
+  batch that still has stock — the lot FEFO will hand out next — and counts down
+  live (days, hours, minutes, refreshed every minute). Colour is amber at ten
+  days or fewer and red at three or fewer; an expired lot says `expired`.
+- The countdown runs to the **end of the expiry day in local time**, which is the
+  same rule `expiryStatus()` applies on the server: a batch expiring today is
+  still dispensable. The screen and the dispensing engine cannot disagree about
+  whether a lot has expired.
+- The batches tab prints the same countdown beside each date and adds a
+  ten-day strip naming the lots inside the window.
+
+No schema change: the batch table already had everything the countdown needs.
+
+#### 2. The overview alert at ten days
+
+The dashboard now loads `/api/inventory/batches?horizonDays=10` for any session
+holding `inventory.read` and raises a chip in the alerts row:
+
+> 4 batches — 1 already expired — expiring within 10 days
+
+followed by the **record itself**, not just the number: item and item code, batch
+number, quantity, expiry date, live time left, and value at cost, with expired
+rows tinted red. The alert is `danger` when anything has already expired and
+`warning` otherwise. When there is nothing inside the window, no panel is drawn —
+the dashboard never claims the store is clean, it simply does not speak.
+
+#### 3. Revenue split: SHA, online mobile money and cash
+
+`GET /api/analytics/revenue` now returns three additions beside the existing
+figures:
+
+| Field | Meaning |
+|---|---|
+| `byChannel[]` | one row per channel: `SHA`, `MOBILE_MONEY`, `CASH`, `CARD`, `OTHER`, with `label`, `paymentCount`, `amount` |
+| `channelTotal` | sum of the channel rows |
+| `channelReconciliation` | `collected`, `difference`, `reconciled`, `unmappedMethods` |
+
+- SHA is a payer, not a till: the claims workflow writes a payment row with
+  method `SHA` when a claim is settled, and that is what appears here.
+- Online mobile money is the M-Pesa / Airtel rail, matched case- and
+  punctuation-insensitively (`M-Pesa`, `MPESA`, `m pesa` are one channel).
+- Cash is the drawer. Card is kept separate. Anything unrecognised stays
+  `OTHER` **and is named** in `unmappedMethods` — a reconciliation that hides a
+  channel is worse than one that admits it.
+- The window is the **invoice's** creation date, the same window `Collected`
+  uses, and voided invoices are excluded, so the channel lines add up to
+  `Collected`. Where they do not, the panel says so and prints the difference
+  instead of presenting a split that does not reconcile.
+- No total changed: `totals`, `byService` and `totalRevenue` are computed exactly
+  as before.
+
+The Reports module renders this as "Money In by Payment Channel" with a bar per
+channel and a one-line reconciliation foot.
+
+#### 4. Role permissions — where "Update" was going
+
+There are two role editors, and they write to two different tables:
+
+| Screen | Endpoint | Writes |
+|---|---|---|
+| Configuration → Staff & Roles → *Edit tasks* → Save tasks | `PUT /api/staff-roles/roles/:id/permissions` | tenant `role_permissions` |
+| Platform Administration → RBAC → *Apply / Save facility override* | `PUT /platform/rbac/roles/:id/permissions` | `facility_role_permission_overrides` |
+
+`authorization.service` gives a facility override **precedence** over the tenant
+rows. Two failures followed from that:
+
+1. **The facility task save could not be seen.** It wrote the tenant default. If
+   the facility already had an override for that role — created from the platform
+   screen — every user at that facility kept reading the override, so the save
+   changed nothing that anyone could observe. The task catalogue had the same
+   blind spot: it displayed the tenant default even while an override governed.
+2. **The platform override editor threw its own receipt away.** `saveOverride()`
+   set the success notice and then called `loadRoles()`, which began by clearing
+   `notice` — so the message was replaced by nothing on the next render. The
+   write had happened; the screen said otherwise.
+
+What changed:
+
+- `getRoleTaskCatalogue` now takes the acting `facilityId`, reads any override
+  for that facility and returns it as the effective `granted` set, together with
+  `facilityOverride { applies, facilityId, permissionCount }` and
+  `writeScope: 'FACILITY_OVERRIDE' | 'TENANT_DEFAULT'`.
+- `updateRolePermissions` compares and writes the **same scope the screen read**
+  and, where an override exists, brings the override to the saved set in the
+  **same transaction**. Grants outside the delegable allowlist are preserved on
+  both sides, exactly as before; the audit row (`ROLE_PERMISSIONS`, raised to
+  `HIGH` when an override is synchronized) names both what was added and removed
+  and which scope was written.
+- The task modal states which scope it is editing, disables **Save tasks** until
+  something actually changes (label: "No changes to save"), and reports the scope
+  in its success message. A server refusal is printed verbatim in the dialog.
+- The platform editor no longer clears its notice on reload and now says how many
+  tasks the override applies.
+
+**Not verified:** there is no PostgreSQL here, so neither write has been executed
+against a database. What is verified is that the read and the write now name the
+same table for the same facility, which is the defect that made a successful save
+invisible.
+
+#### 5. Codes to use in a facility, for a billing structure that works on the first try
+
+The engine tries, in order: an explicit **link** (`billing_key`), then the
+tariff's **code**, then the tariff's **description**. A link is exact and is
+always the cheapest way to make automatic billing work; the code and description
+columns are what the engine falls back to when no link exists.
+
+Two rules apply to every row below:
+
+- **File the tariff under the right module.** An automatic charge only reads
+  tariffs filed in the departments its family owns — `inpatient` for admission
+  and bed nights, `laboratory` for tests, `radiology` for imaging, `pharmacy` for
+  drugs. A correct code filed under the wrong module is invisible.
+- **Give it the right unit.** A bed night must be `Per day`, an admission fee
+  `Per admission`, a test `Per test`. The resolver refuses a contradictory unit
+  (`UNIT_INCOMPATIBLE`) rather than billing the wrong one.
+
+| Charge | Code to use | Description to write | Unit | Module | Link (`Used for automatic billing`) |
+|---|---|---|---|---|---|
+| Outpatient consultation | `OPD-001` | General outpatient consultation | Per visit | opd | `CONSULTATION` |
+| Follow-up consultation | `OPD-002` | Follow-up consultation | Per visit | opd | none — priced by code/description |
+| Laboratory test | the test's own code, e.g. `LAB-CBC` | Full blood count | Per test | laboratory | `LABORATORY:LAB-CBC`, or `LABORATORY` for one flat test price |
+| Imaging | `RAD-001` | Obstetric ultrasound | Per study | radiology | `RADIOLOGY:RAD-001`, or `RADIOLOGY` |
+| Procedure | `PROC-001` | Wound dressing | Per procedure | theatre | `PROCEDURE:PROC-001`, or `PROCEDURE` |
+| Admission (one-off) | `ADM-001` | Inpatient admission administration | Per admission | inpatient | `ADMISSION` |
+| Bed night | `BED-GEN` (or the ward's own code) | General ward bed charge | Per day | inpatient | `BED_DAY` for general wards, or `BED_DAY:<WARDCODE>` for one ward |
+| Delivery | `MAT-001` | Normal delivery | Per delivery | inpatient | `DELIVERY` |
+| Drug | `DRUG-<NAME>` | the drug name as dispensed | Per unit | pharmacy | `PHARMACY`, or `PHARMACY:DRUG-<NAME>` |
+
+Notes that save an afternoon:
+
+- **Ward codes drive bed-day codes.** A ward whose `wards.code` is `GEN` is
+  offered `BED-GEN` and `WARD-GEN` before the generic `BED-DAY`. Keep ward codes
+  short and stable (`GEN`, `ICU`, `MAT`, `PAED`).
+- **A bed-night link means one category.** A plain `BED_DAY` link is skipped for
+  ICU, HDU, maternity and isolation beds, so a special bed is reported as
+  unconfigured rather than billed at the general rate. Link that ward explicitly
+  (`BED_DAY:ICU`) or give it its own row.
+- **Codes are compared after upper-casing and normalising punctuation**, so
+  `opd-001` and `OPD-001` are the same code. The description fallback is stricter
+  on purpose: a word like "consultation" alone will not choose between `OPD-001`
+  and `OPD-002`, and an ambiguous description is reported, not guessed.
+- **Pharmacy prices from the tariff first.** A dispensed drug is matched by code
+  and description; the item's own selling price is only the fallback.
+- **Nothing here is seeded.** These are the rows to create in Configuration →
+  Services & Tariffs (and Configuration → Wards for the ward codes). The facility
+  types its own prices; this code never invents one.
+
+**Verified:** `npm run lint` clean, `npm run build` clean, `npm test` 28 suites /
+3,544 assertion statements, including the new `test:round5` (115 assertions:
+payment-channel classification, the countdown deadline, the ten-day window, the
+override-aware role read/write and the README/code contract). **Not verified:** no
+PostgreSQL and no browser in this environment; no batch has been received, no
+payment split has been run against real rows, and no role save has been executed
+against a database.
+
 ## 4. Existing backups and modified files to preserve
+
+### Backups created during the round-five session
+
+Pre-edit copies taken from `HEAD` (`095d647`) before this round's edits. `.bak` is
+git-ignored:
+
+- `README.md.before-round-five-20261022.bak`
+- `package.json.before-round-five-20261022.bak`
+- `src/app.ts.before-round-five-20261022.bak`
+- `src/auth/staff-roles.routes.ts.before-round-five-20261022.bak`
+- `src/auth/staff-roles.service.ts.before-round-five-20261022.bak`
+- `src/billing/billing.service.ts.before-round-five-20261022.bak`
+- `src/billing/settlement.ts.before-round-five-20261022.bak`
+- `src/components/modules/DashboardModule.tsx.before-round-five-20261022.bak`
+- `src/components/modules/FacilityRbacEditor.tsx.before-round-five-20261022.bak`
+- `src/components/modules/InventoryModule.tsx.before-round-five-20261022.bak`
+- `src/components/modules/ReportsModule.tsx.before-round-five-20261022.bak`
+- `src/components/modules/StaffRolesPanel.tsx.before-round-five-20261022.bak`
+- `src/types/index.ts.before-round-five-20261022.bak`
+
+Two files are new, so no snapshot exists: `src/components/ExpiryCountdown.tsx`
+and `src/tests/round5.test.ts`.
 
 ### Backups created during the ward-billing session
 

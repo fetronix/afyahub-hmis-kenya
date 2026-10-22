@@ -948,6 +948,26 @@ export interface RevenueTotals {
   outstanding: string;
 }
 
+/**
+ * One row of the money-in split. `channel` is the normalised bucket;
+ * `label` is what the screen prints. SHA is a payer settlement, mobile
+ * money is the online rail (M-Pesa / Airtel), cash is the drawer.
+ */
+export interface RevenueChannelRow {
+  channel: 'SHA' | 'MOBILE_MONEY' | 'CASH' | 'CARD' | 'OTHER';
+  label: string;
+  paymentCount: number;
+  amount: string;
+}
+
+export interface RevenueChannelReconciliation {
+  collected: string;
+  difference: string;
+  reconciled: boolean;
+  /** Stored method names that did not map to a known channel. */
+  unmappedMethods: string[];
+}
+
 export interface RevenueReport {
   facilityId: number;
   from: string | null;
@@ -955,6 +975,9 @@ export interface RevenueReport {
   totalRevenue: string;
   totals: RevenueTotals;
   byService: RevenueServiceRow[];
+  byChannel?: RevenueChannelRow[];
+  channelTotal?: string;
+  channelReconciliation?: RevenueChannelReconciliation;
 }
 
 export interface WardOccupancyRow {

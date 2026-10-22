@@ -34,6 +34,12 @@ import {
   phrasesForCharge,
   type MatchOutcome,
 } from './tariff-matching.ts';
+import {
+  PAYMENT_CHANNEL_LABELS,
+  PAYMENT_CHANNELS,
+  paymentChannel,
+  type PaymentChannel,
+} from './settlement.ts';
 import type { BillingFamily } from './tariff-codes.ts';
 import {
   failureLabel,
@@ -1327,6 +1333,100 @@ export interface RevenueTotals {
   invoiced: string;
   collected: string;
   outstanding: string;
+}
+
+export interface RevenueChannelRow {
+  channel: PaymentChannel;
+  label: string;
+  paymentCount: number;
+  /** Money posted through this channel, as a numeric(10,2) string. */
+  amount: string;
+}
+
+export interface RevenueChannelSplit {
+  channels: RevenueChannelRow[];
+  /** Stored method names that did not map to a known channel. */
+  unmappedMethods: string[];
+  /** Total across every channel, integer cents. */
+  totalCents: number;
+}
+
+/**
+ * Money received, split by payment channel.
+ *
+ * The window is the invoice's creation date — the same window
+ * `getRevenueTotals` uses — so the channel lines add up to `collected`
+ * for the same period instead of describing a different set of
+ * invoices. Payments are attached through the invoice, never read
+ * unscoped: a payment row has no facility column of its own.
+ *
+ * A voided invoice is excluded exactly as it is in the totals.
+ */
+export async function getRevenueByPaymentChannel(
+  executor: Executor,
+  facilityId: number,
+  range?: RevenueRange,
+): Promise<RevenueChannelSplit> {
+  const rows = await executor
+    .select({
+      method: schema.billingPayments.paymentMethod,
+      paymentCount: sql<number>`COUNT(*)::int`,
+      amount: sql<string>`COALESCE(SUM(${schema.billingPayments.amount}), 0)`,
+    })
+    .from(schema.billingPayments)
+    .innerJoin(
+      schema.billingInvoices,
+      eq(schema.billingPayments.invoiceId, schema.billingInvoices.id),
+    )
+    .where(
+      and(
+        eq(schema.billingInvoices.facilityId, facilityId),
+        isNull(schema.billingInvoices.voidedAt),
+        ...invoiceRangeConditions(range),
+      ),
+    )
+    .groupBy(schema.billingPayments.paymentMethod);
+
+  const totals = new Map<PaymentChannel, { paymentCount: number; cents: number }>();
+  const unmapped = new Set<string>();
+
+  for (const channel of PAYMENT_CHANNELS) {
+    totals.set(channel, { paymentCount: 0, cents: 0 });
+  }
+
+  for (const row of rows) {
+    const channel = paymentChannel(row.method);
+    const bucket = totals.get(channel);
+
+    if (!bucket) continue;
+
+    bucket.paymentCount += Number(row.paymentCount ?? 0);
+    bucket.cents += toCents(row.amount);
+
+    if (channel === 'OTHER' && row.method) {
+      unmapped.add(row.method);
+    }
+  }
+
+  const channels: RevenueChannelRow[] = PAYMENT_CHANNELS.map((channel) => {
+    const bucket = totals.get(channel) ?? { paymentCount: 0, cents: 0 };
+
+    return {
+      channel,
+      label: PAYMENT_CHANNEL_LABELS[channel],
+      paymentCount: bucket.paymentCount,
+      amount: fromCents(bucket.cents),
+    };
+  });
+
+  return {
+    channels,
+    unmappedMethods: Array.from(unmapped).sort(),
+    totalCents: channels.reduce(
+      (sum, channel) => sum + toCents(channel.amount),
+      0,
+    ),
+  };
 }
 
 /**

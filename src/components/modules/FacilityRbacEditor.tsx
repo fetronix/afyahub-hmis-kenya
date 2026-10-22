@@ -27,10 +27,19 @@ export const FacilityRbacEditor: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const loadRoles = useCallback(async () => {
+  const loadRoles = useCallback(async (options?: { preserveNotice?: boolean }) => {
     setLoading(true);
-    setError(null);
-    setNotice(null);
+
+    /*
+     * A reload after a save must not wipe the sentence that says the
+     * save happened. This used to clear `notice` here, so the success
+     * message was replaced by nothing on the very next render and an
+     * administrator could not tell a write from a no-op.
+     */
+    if (!options?.preserveNotice) {
+      setError(null);
+      setNotice(null);
+    }
 
     try {
       const result = await api.getRbacRoles(facilityId);
@@ -87,6 +96,17 @@ export const FacilityRbacEditor: React.FC<Props> = ({
     );
   };
 
+  /*
+   * Over an existing override, an identical draft is a write that changes
+   * nothing. Offering it as a live button is what makes an administrator
+   * click "save" twice and conclude the screen is broken.
+   */
+  const draftUnchanged = Boolean(
+    selectedRole?.hasFacilityOverride &&
+      selectedRole.permissionIds.slice().sort().join(",") ===
+        draftPermissionIds.slice().sort().join(","),
+  );
+
   const saveOverride = async () => {
     if (!selectedRole || !selectedRole.canEdit || saving) return;
 
@@ -102,11 +122,14 @@ export const FacilityRbacEditor: React.FC<Props> = ({
       );
 
       setNotice(
-        `Facility override saved for ${selectedRole.name}.`,
+        `Facility override saved for ${selectedRole.name} — ${
+          draftPermissionIds.length
+        } task${draftPermissionIds.length === 1 ? "" : "s"} now apply at this facility.`,
       );
 
-      // Reload authoritative server state, including the override indicator.
-      await loadRoles();
+      // Reload authoritative server state, including the override indicator,
+      // without erasing the message that says the write succeeded.
+      await loadRoles({ preserveNotice: true });
     } catch (err) {
       setError(
         err instanceof Error
@@ -157,7 +180,7 @@ export const FacilityRbacEditor: React.FC<Props> = ({
 
       setNotice(parts.length > 0 ? parts.join(" ") : "Nothing to change.");
 
-      await loadRoles();
+      await loadRoles({ preserveNotice: true });
     } catch (err) {
       setError(
         err instanceof Error
@@ -495,22 +518,28 @@ export const FacilityRbacEditor: React.FC<Props> = ({
 
                   <button
                     type="button"
-                    disabled={!selectedRole.canEdit || saving || loading}
+                    disabled={
+                      !selectedRole.canEdit || saving || loading || draftUnchanged
+                    }
                     onClick={() => void saveOverride()}
                     className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
                   >
                     {saving
                       ? "Saving..."
-                      : selectedRole.hasFacilityOverride
-                        ? "Save facility override"
-                        : "Apply facility override"}
+                      : draftUnchanged
+                        ? "No changes to save"
+                        : selectedRole.hasFacilityOverride
+                          ? "Save facility override"
+                          : "Apply facility override"}
                   </button>
                 </div>
 
                 <p className="mt-3 text-xs text-slate-500">
                   Saving creates or updates a facility-specific permission
                   set. An empty selection is an explicit override granting
-                  no permissions; it does not restore shared defaults.
+                  no permissions; it does not restore shared defaults. The
+                  tenant-wide task list is edited in Configuration → Staff &
+                  Roles; this screen writes only this facility&apos;s override.
                 </p>
               </>
             ) : (
