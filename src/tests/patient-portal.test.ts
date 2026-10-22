@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { isDelegablePermission } from '../auth/staff-role-policy.ts';
 
 import {
+  buildActivationLink,
   canResendInvitation,
   checkPortalPassword,
   clampPortalPolicy,
@@ -49,7 +50,9 @@ import {
   normaliseContact,
   normaliseEmail,
   normalisePhone,
+  portalBaseUrl,
   QR_PREFIX,
+  requestOrigin,
   SHARING_CATEGORIES,
   validateSharingRequest,
 } from '../portal/portal-policy.ts';
@@ -1047,6 +1050,144 @@ function permissionTests(): void {
 }
 
 /* ============================================================
+   Activation links and the public mount
+   ============================================================ */
+
+function activationLinkTests(): void {
+  const token = 'raw-token-value';
+
+  /*
+   * An explicit portal address wins, and the token goes in the fragment:
+   * a browser never sends a fragment to the server, so it cannot reach an
+   * access log or a Referer header.
+   */
+  const configured = buildActivationLink(
+    token,
+    { PATIENT_PORTAL_URL: 'https://portal.example.ke/' },
+    'http://localhost:3000',
+  );
+
+  assert(
+    configured === 'https://portal.example.ke/portal/activate#raw-token-value',
+    'the configured portal address is used, in the fragment',
+  );
+
+  /*
+   * No portal address, but the installation has one. The portal is served
+   * by the same Express app, so this is the normal production case.
+   */
+  assert(
+    buildActivationLink(token, { APP_BASE_URL: 'https://hmis.example.ke' })
+      === 'https://hmis.example.ke/portal/activate#raw-token-value',
+    'APP_BASE_URL is used when no portal address is set',
+  );
+
+  /*
+   * The reported bug: nothing configured, and the link came out as a bare
+   * path — "the domain was not added". The request origin is now carried
+   * through, so a development server produces an absolute URL.
+   */
+  assert(
+    buildActivationLink(token, {}, 'http://localhost:3000')
+      === 'http://localhost:3000/portal/activate#raw-token-value',
+    'the request origin fills the gap in development',
+  );
+
+  /*
+   * A configuration value must never be able to produce a script URL in
+   * front of a patient.
+   */
+  assert(
+    portalBaseUrl({ PATIENT_PORTAL_URL: 'javascript:alert(1)' }) === '',
+    'a non-http(s) portal URL is refused',
+  );
+  assert(
+    portalBaseUrl({ PATIENT_PORTAL_URL: 'not a url' }) === '',
+    'a malformed portal URL is refused',
+  );
+  assert(
+    buildActivationLink(token, {}) === '/portal/activate#' + token,
+    'with nothing at all the link is relative, and visibly incomplete',
+  );
+
+  /*
+   * A trailing-slash base must not produce a double slash before /portal.
+   */
+  assert(
+    portalBaseUrl({ APP_BASE_URL: 'https://hmis.example.ke//' })
+      === 'https://hmis.example.ke',
+    'trailing slashes are trimmed',
+  );
+
+  /* Request origin, as the browser addressed the server. */
+  assert(
+    requestOrigin({ protocol: 'http', get: () => 'localhost:3000' })
+      === 'http://localhost:3000',
+    'the request origin keeps the http protocol in development',
+  );
+  assert(
+    requestOrigin({ protocol: 'https', get: () => 'hmis.example.ke' })
+      === 'https://hmis.example.ke',
+    'and https in production',
+  );
+  assert(
+    requestOrigin({ protocol: 'http', get: () => undefined }) === null,
+    'a request with no Host header has no origin',
+  );
+
+  /*
+   * The mount order that produced "Authentication is required" for a
+   * patient holding a valid invitation: `/api/portal` sat below the
+   * global staff gate. Both statements are required — the portal first,
+   * the staff gate after.
+   */
+  const app = code('src/app.ts');
+  const portalMount = app.indexOf("app.use('/api/portal', portalRoutes);");
+  const adminMount = app.indexOf("app.use('/api/portal/admin', portalAdminRoutes);");
+  const staffGate = app.indexOf("app.use('/api', requireAuth);");
+
+  assert(portalMount > -1 && adminMount > -1, 'both portal routers are mounted');
+  assert(staffGate > -1, 'the staff gate is mounted');
+
+  assert(
+    portalMount < staffGate,
+    'the patient portal is mounted before the staff authentication gate',
+  );
+  assert(
+    adminMount < staffGate,
+    'portal administration is mounted before it too (it applies requireAuth itself)',
+  );
+  assert(
+    adminMount < portalMount,
+    'the admin router is matched before the patient router',
+  );
+
+  /* The patient router must still guard everything but activation/login. */
+  const portalRouter = code('src/portal/portal.routes.ts');
+  assert(
+    portalRouter.includes('router.use(requirePortalAuth)'),
+    'the patient router guards itself, so moving it changes nothing else',
+  );
+  assert(
+    !portalRouter.includes('requireAuth('),
+    'the patient router never accepts a staff token',
+  );
+
+  const adminRouter = code('src/portal/portal-admin.routes.ts');
+  assert(
+    adminRouter.includes('router.use(requireAuth)'),
+    'moving the admin router above the gate does not open it',
+  );
+
+  /* The portal path check must tolerate a trailing slash. */
+  const shell = code('src/App.tsx');
+  assert(
+    shell.includes('PORTAL_PATHS') && shell.includes("replace(/\\/+$/, '')"),
+    'a trailing slash still opens the portal, not the staff shell',
+  );
+}
+
+/* ============================================================
    Run
    ============================================================ */
 
@@ -1062,6 +1203,7 @@ function run(): void {
   sourceTests();
   persistenceTests();
   permissionTests();
+  activationLinkTests();
 }
 
 run();

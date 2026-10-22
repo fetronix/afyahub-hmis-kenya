@@ -138,6 +138,92 @@ export function hashesMatch(left: string, right: string): boolean {
 }
 
 /* ============================================================
+   The address a patient is sent to
+   ============================================================ */
+
+/**
+ * The origin a portal link should point at.
+ *
+ * Three sources, in order:
+ *
+ *   1. `PATIENT_PORTAL_URL` — the portal's own public address, for a
+ *      deployment that serves it from a different host.
+ *   2. `APP_BASE_URL` — the installation's public address. The portal is
+ *      served by the same Express app, so this is normally right.
+ *   3. A relative path — no configuration at all. A relative link works
+ *      in a browser that is already on the right origin, and is visibly
+ *      incomplete to anyone reading it, which is better than a link to a
+ *      server nobody chose.
+ *
+ * The caller may pass the origin of the request that produced the link;
+ * that is how a development server ends up with `http://localhost:3000`
+ * rather than a bare path. It is a *fallback*, never an override of an
+ * explicit setting.
+ */
+export function portalBaseUrl(
+  env: Record<string, string | undefined> = process.env,
+  requestOrigin?: string | null,
+): string {
+  const explicit = env.PATIENT_PORTAL_URL?.trim()
+    || env.APP_BASE_URL?.trim();
+
+  const candidate = explicit || requestOrigin?.trim() || '';
+
+  if (candidate === '') return '';
+
+  /*
+   * Only http(s). A link is put in front of a patient; a `javascript:`
+   * or `data:` value from a misconfigured environment variable must not
+   * become one.
+   */
+  try {
+    const url = new URL(candidate);
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The activation link handed to a patient.
+ *
+ * The token goes in the fragment, not the query string. Browsers do not
+ * send a fragment to the server, so it stays out of access logs, proxy
+ * logs and Referer headers; the activation screen reads it with
+ * JavaScript and posts it in a request body.
+ */
+export function buildActivationLink(
+  rawToken: string,
+  env: Record<string, string | undefined> = process.env,
+  requestOrigin?: string | null,
+): string {
+  return `${portalBaseUrl(env, requestOrigin)}/portal/activate#${rawToken}`;
+}
+
+/**
+ * The origin of an incoming request, as the browser addressed it.
+ *
+ * `req.protocol` honours `trust proxy`, and the Host header is what the
+ * staff browser actually used to reach this server — so a link built here
+ * opens on the same host the receptionist is sitting at.
+ */
+export function requestOrigin(req: {
+  protocol?: string;
+  get?: (name: string) => string | undefined;
+}): string | null {
+  const host = req.get?.('host')?.trim();
+
+  if (!host) return null;
+
+  const protocol = req.protocol === 'http' ? 'http' : 'https';
+
+  return `${protocol}://${host}`;
+}
+
+/* ============================================================
    Contact handling
    ============================================================ */
 

@@ -18,8 +18,8 @@ and gives the exact blocker.
 |---|---|---|
 | Type check | `npm run lint` (`tsc --noEmit`) | **PASS** — no output, exit 0 |
 | Production build | `npm run build` (`vite build`) | **PASS** — **1,707 modules**, 559–710 ms across three runs (22 Oct) |
-| Test suite | `npm test` | **PASS** — **24 suites, 2,971 assertion statements** (2,958 numbered + 13 catalogue `PASS:` lines) |
-| Portal suite | `npm run test:patient-portal` | **PASS** — 178 assertions |
+| Test suite | `npm test` | **PASS** — **24 suites, 2,990 assertion statements** (2,977 numbered + 13 catalogue `PASS:` lines) |
+| Portal suite | `npm run test:patient-portal` | **PASS** — 197 assertions |
 | Migration files | `npm run test:migrations` | **PASS** — 692 assertions (0017 and 0018 included, still unapplied) |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
 | Browser walkthrough | — | **BLOCKED** — no browser in this environment |
@@ -60,15 +60,16 @@ HTTP SECURITY TESTS PASSED (54 assertions)
 MIGRATION TESTS PASSED (692 assertions)
 Field encryption: 48 assertions passed.
 Consent and allergy: 80 assertions passed.
-Patient portal policy: 178 assertions passed.
+Patient portal policy: 197 assertions passed.
 ```
 
-2,958 numbered assertions across 23 counting suites plus 13 catalogue `PASS:` lines = **2,971**;
+2,977 numbered assertions across 23 counting suites plus 13 catalogue `PASS:` lines = **2,990**;
 **24 suites, no failures**.
 
-The audit round counted 2,717. The increase to 2,971 is the portal suite (178),
-the billing and laboratory tariff-code suites (26), and small additions elsewhere;
-no assertion was removed.
+The audit round counted 2,717. The increase to 2,990 is the portal suite (197),
+the billing and laboratory tariff-code suites (26), the portal mount-order and
+activation-link checks (19), and small additions elsewhere; no assertion was
+removed.
 
 **A correction to an earlier count.** Revision 4 of this document said "2,912
 numbered + 13 catalogue `PASS:` lines = 2,925". The numbered total was measured
@@ -154,7 +155,7 @@ coverage it does not have.
 
 ---
 
-### 3.5 `test:patient-portal` — 178 assertions
+### 3.5 `test:patient-portal` — 197 assertions
 
 `src/tests/patient-portal.test.ts`
 
@@ -224,6 +225,6 @@ with the reason in the commit.
 - They do not prove absence of security defects. The authorisation audit is
   incomplete and says so.
 - They do not constitute DHA acceptance. Nothing in this repository can.
-- They say nothing about the portal at runtime. The 178 portal assertions check
+- They say nothing about the portal at runtime. The 197 portal assertions check
   policy and wiring; none of them executed a query, and the first real invitation
   will be the first real test.

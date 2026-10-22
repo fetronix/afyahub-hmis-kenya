@@ -57,6 +57,7 @@ import {
   clampPortalPolicy,
   deriveInvitationStatus,
   describeEvent,
+  buildActivationLink,
   generateInvitationToken,
   hashInvitationToken,
   maskContact,
@@ -80,35 +81,17 @@ export class PortalError extends Error {
    Shared helpers
    ============================================================ */
 
-/**
- * The portal URL a patient is sent to.
- *
- * Configurable, because a facility behind a proxy will have a different
- * public origin. The fallback is a relative path so a screenshot or a
- * mis-set variable produces a broken link the desk can see, rather than
- * a link to somebody else's server.
+/*
+ * Link building lives in `portal-policy.ts`, which has no database
+ * import, so it can be tested without a server and reused by anything
+ * that needs to show an administrator the address a patient will get.
+ * Re-exported here because this is where callers expect it.
  */
-export function portalBaseUrl(): string {
-  const configured = process.env.PATIENT_PORTAL_URL?.trim();
-
-  if (configured) {
-    return configured.replace(/\/+$/, '');
-  }
-
-  return '';
-}
-
-export function buildActivationLink(rawToken: string): string {
-  const base = portalBaseUrl();
-
-  /*
-   * The token goes in the fragment, not the query string. Browsers do
-   * not send a fragment to the server, so it stays out of access logs,
-   * proxy logs and Referer headers; the activation screen reads it with
-   * JavaScript and posts it in a request body.
-   */
-  return `${base}/portal/activate#${rawToken}`;
-}
+export {
+  portalBaseUrl,
+  buildActivationLink,
+  requestOrigin,
+} from './portal-policy.ts';
 
 async function writeEvent(input: {
   invitationId: number;
@@ -381,7 +364,7 @@ export async function issueInvitation(
   context: AuthorizationContext,
   rawPatientId: unknown,
   input: IssueInvitationInput = {},
-  request?: { ipAddress?: string | null },
+  request?: { ipAddress?: string | null; origin?: string | null },
 ): Promise<IssuedInvitation> {
   const { patient, facilityId } = await loadInvitablePatient(context, rawPatientId);
 
@@ -519,7 +502,11 @@ export async function issueInvitation(
       deliveryStatus: 'PENDING',
       deliveryChannel: channel,
       expiresAt,
-      activationLink: buildActivationLink(rawToken),
+      activationLink: buildActivationLink(
+        rawToken,
+        process.env,
+        request?.origin ?? null,
+      ),
     };
   }
 
@@ -539,7 +526,11 @@ export async function issueInvitation(
 
   const message = buildInvitationMessage({
     facilityName: facility?.name ?? 'Your facility',
-    link: buildActivationLink(rawToken),
+    link: buildActivationLink(
+      rawToken,
+      process.env,
+      request?.origin ?? null,
+    ),
     expiryHours: policy.invitationExpiryHours,
   });
 
@@ -653,7 +644,7 @@ async function recordDelivery(
 export async function reissueManualLink(
   context: AuthorizationContext,
   rawInvitationId: unknown,
-  request?: { ipAddress?: string | null },
+  request?: { ipAddress?: string | null; origin?: string | null },
 ): Promise<{ activationLink: string; expiresAt: Date }> {
   const invitationId = Number(rawInvitationId);
 
@@ -751,7 +742,14 @@ export async function reissueManualLink(
     'Activation link reissued at the desk',
   );
 
-  return { activationLink: buildActivationLink(rawToken), expiresAt };
+  return {
+    activationLink: buildActivationLink(
+      rawToken,
+      process.env,
+      request?.origin ?? null,
+    ),
+    expiresAt,
+  };
 }
 
 /** The receptionist confirms they gave the link to the patient. */

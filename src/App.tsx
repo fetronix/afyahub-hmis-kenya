@@ -230,10 +230,17 @@ const AppContent: React.FC = () => {
  * server router accepts the other's; this keeps the browser side of that
  * separation just as literal.
  */
-const PORTAL_PATHS = ['/portal', '/portal/', '/portal/activate'];
+const PORTAL_PATHS = ['/portal', '/portal/activate'];
 
 export default function App() {
-  if (PORTAL_PATHS.includes(window.location.pathname)) {
+  /*
+   * Trailing slashes are normalised: `/portal/activate/` was falling
+   * through to the staff shell, which then said "Authentication is
+   * required" to a patient holding a valid invitation.
+   */
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+
+  if (PORTAL_PATHS.includes(path)) {
     return <PatientPortalApp />;
   }
 

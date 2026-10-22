@@ -696,7 +696,7 @@ The `blue`, `teal` and `slate` ramps resolve to those values, so every existing 
 
 - `npm run build` — **616 ms**.
 - `npm run lint` (`tsc --noEmit`) — only the pre-existing `src/lib/firebase.ts(3,28) TS2307`.
-- `npm test` — **2,178 assertions across seventeen suites**, all green. `test:staff-roles` grew from 93 to **134**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring. A new `test:design` suite (28 assertions) fails the build if a screen references a colour family the theme no longer defines, or if a semantic class it uses disappears.
+- `npm test` — **2,197 assertions across seventeen suites**, all green. `test:staff-roles` grew from 93 to **134**: the delegation boundary (including `billing.read` and `tariffs.manage`), the refusal list, the status guards, the session invalidation and the screen wiring. A new `test:design` suite (28 assertions) fails the build if a screen references a colour family the theme no longer defines, or if a semantic class it uses disappears.
 
 **Not verified:** no browser exists in this environment, so no screen in this round was clicked — the palette is verified only as far as "Tailwind emitted the utilities and the bundle builds". The two new features were **not** exercised against a live PostgreSQL database: the assertions are contract/source checks plus type-checking, and the earlier live run (§3.15, 49 checks) covered only the role-assignment routes. Treat the new SQL paths as untested against a real database until they are walked.
 
@@ -991,9 +991,9 @@ and migration audit, test results, remediation plan, deployment and recovery, an
 **draft DPIA that is explicitly not approved**.
 
 **Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
-**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 2,971
+**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 2,990
 assertion statements**, no failures. `test:compliance` 230 assertions, `test:route-scope` 66,
-`test:field-encryption` 48, `test:consent-allergy` 80, `test:patient-portal` 178,
+`test:field-encryption` 48, `test:consent-allergy` 80, `test:patient-portal` 197,
 `test:migrations` 692.
 
 **Not verified.** No database and no browser: `npm run db:status` fails with
@@ -1145,7 +1145,7 @@ time-limited, revocable sharing to a named recipient — which the screen states
 health information exchange.
 
 **What was verified.** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24 scripts and
-2,971 assertion statements including 178 new portal assertions. **What was not:** migration `0018` has not been
+2,990 assertion statements including 197 new portal assertions. **What was not:** migration `0018` has not been
 applied to any database, no portal query has run against real rows, concurrent redemption has not
 been exercised, no SMS or email provider exists, and no browser was driven through the screens. The
 five deliverables in `docs/patient-portal/` separate those two lists line by line; the deployment
@@ -1199,10 +1199,43 @@ billing — tariffs remain the single price list, for the same reason pharmacy
 prices come from `facility_service_tariffs` and nowhere else.
 
 **Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
-suites and 2,971 assertion statements, no failures (billing 31 → 57, OPD journey
+suites and 2,990 assertion statements, no failures (billing 31 → 57, OPD journey
 58 → 69). **Not verified:** none of this was run against PostgreSQL — there is no
 database in this environment, and the seeded fees are examples, not this
 facility's prices.
+
+### 3.24 Patient portal activation — the link, and the gate in front of it
+
+Two things were wrong at once, and only one of them was cosmetic.
+
+**1. The activation endpoints required a staff session.** `app.use('/api', requireAuth)`
+runs before everything mounted under `/api`, and `/api/portal` was mounted after it.
+A patient opening `/portal/activate#…` with a valid invitation reached
+`POST /api/portal/auth/activate` and was told *"Authentication is required."* — by
+the staff gate, not by the portal. The portal router has always said activation and
+login are public; the mount order made that untrue. Both portal routers now sit
+**above** the staff gate. `/api/portal` still guards everything except activation and
+login with `requirePortalAuth`, and `/api/portal/admin` still applies `requireAuth`
+and `requirePermission` itself, so nothing was opened by the move.
+
+**2. The link had no domain.** `PATIENT_PORTAL_URL` was the only source, it is not
+in `.env.example`, and when unset the link came out as `/portal/activate#…` — a path
+with no host, which reads exactly like "the domain was not added". The link now
+resolves in three steps: `PATIENT_PORTAL_URL`, then `APP_BASE_URL`, then the origin
+of the request that issued the invitation. A development server therefore produces
+`http://localhost:3000/portal/activate#…`, and production produces whatever its
+public address is. Non-http(s) values are refused, and the hand-over dialog warns if
+a link still has no host.
+
+`/portal/activate/` with a trailing slash also fell through to the staff shell and
+produced the same misleading message; the path is now normalised.
+
+**Verified:** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24
+suites / 2,990 assertion statements, no failures (`test:patient-portal` 178 → 197,
+including the mount order, the three-step link resolution, the refusal of a
+`javascript:` value, and the trailing-slash route). **Not verified:** the flow was
+not walked in a browser — there is no browser and no database here, so the first real
+activation will be the first real test.
 
 ## 4. Existing backups and modified files to preserve
 

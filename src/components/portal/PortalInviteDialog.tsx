@@ -356,6 +356,24 @@ export const PortalInviteDialog: React.FC<Props> = ({
                     {issued.activationLink}
                   </p>
 
+                  {/*
+                    A relative link has no host. It was produced before the
+                    server carried the request origin, or by a deployment
+                    whose APP_BASE_URL is unset. Say so where the receptionist
+                    will see it, rather than let them hand out a path.
+                  */}
+                  {!issued.activationLink.startsWith('http') ? (
+                    <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-2xs text-amber-900">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        This address has no domain. Set <code>APP_BASE_URL</code> (for
+                        example <code>https://hmis.yourdomain</code>) and restart the
+                        server, or hand the link over on a device already inside the
+                        application.
+                      </span>
+                    </p>
+                  ) : null}
+
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button type="button" className="btn-quiet" onClick={() => void copy()}>
                       <Copy className="h-4 w-4" />

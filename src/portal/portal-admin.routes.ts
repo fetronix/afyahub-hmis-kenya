@@ -19,6 +19,8 @@ import { requireAuth, type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { ScopeAccessError } from '../auth/scope.service.ts';
 
+import { requestOrigin } from './portal-policy.ts';
+
 import {
   PortalError,
   getPatientPortalStatus,
@@ -87,7 +89,13 @@ function sendError(res: import('express').Response, error: unknown): boolean {
 }
 
 function facts(req: AuthRequest) {
-  return { ipAddress: req.ip ?? null };
+  /*
+   * The origin is carried so an activation link built here contains the
+   * address the receptionist's browser is actually using. Without it a
+   * deployment with no `APP_BASE_URL` set produced `/portal/activate#…`
+   * — a path with no host, which reads as "the domain was not added".
+   */
+  return { ipAddress: req.ip ?? null, origin: requestOrigin(req) };
 }
 
 /* ============================================================

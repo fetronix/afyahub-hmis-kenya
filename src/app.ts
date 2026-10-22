@@ -199,6 +199,26 @@ export async function createApp() {
    * - Tenant isolation
    * - Facility isolation
    */
+/*
+ * Patient digital health record portal.
+ *
+ * Mounted BEFORE the staff gate below, and that order is the whole point:
+ * a patient has no staff session. When these mounts sat under
+ * `app.use('/api', requireAuth)`, `/api/portal/auth/activate` and
+ * `/api/portal/auth/login` answered "Authentication is required." to the
+ * patient holding a valid invitation — the link worked, the token was
+ * good, and the door was bolted by a middleware the router never needed.
+ *
+ * `/api/portal` is the patient surface. Only activation and login are
+ * public; every other route in that router carries `requirePortalAuth`,
+ * which reads `patient_portal_sessions` and cannot accept a staff token.
+ * `/api/portal/admin` is the staff surface and applies `requireAuth` and
+ * `requirePermission` inside its own router, so moving it above this line
+ * neither opens it nor duplicates the gate.
+ */
+app.use('/api/portal/admin', portalAdminRoutes);
+app.use('/api/portal', portalRoutes);
+
 app.use('/api', requireAuth);
 app.use('/api', requireAuthorization);
 
@@ -218,21 +238,6 @@ app.use('/api/facilities', facilityModuleRoutes);
  * figure cannot be edited in the browser or stored out of date.
  */
 app.use('/api/compliance', complianceRoutes);
-
-/*
- * Patient digital health record portal.
- *
- * `/api/portal` is the patient surface: activation and login are public,
- * everything else needs a patient session, and no route in it accepts a
- * staff token. `/api/portal/admin` is the staff surface and is behind
- * `requireAuth` inside its own router.
- *
- * Mounted before the module gates because a patient account does not
- * belong to a facility module — a patient must be able to reach their
- * record even if the facility has, say, switched off the pharmacy.
- */
-app.use('/api/portal/admin', portalAdminRoutes);
-app.use('/api/portal', portalRoutes);
 
 // Facility module enforcement. Keep platform administration, invitations,
 // tenants, and facility-context endpoints outside these operational guards.
