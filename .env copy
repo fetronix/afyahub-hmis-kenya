@@ -1,0 +1,70 @@
+# ============================================================
+# DATABASE CONFIGURATION
+# ============================================================
+
+SQL_HOST=localhost
+SQL_PORT=5432
+SQL_DB_NAME=jalicaredb
+SQL_ADMIN_USER=postgres
+SQL_ADMIN_PASSWORD=fantanki
+
+
+# ============================================================
+# PLATFORM ADMINISTRATOR
+# ============================================================
+
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@jalicare.co.ke
+ADMIN_PASSWORD="k8#M$p9!vX2@"
+ADMIN_FULL_NAME=JaliCare Platform Administrator
+ADMIN_PHONE=+254700000000
+
+
+TZ=Africa/Nairobi
+DEFAULT_TIMEZONE=Africa/Nairobi
+APP_BASE_URL=http://localhost:3000
+
+
+
+
+# ============================================================
+# DHA / AfyaConnect (SHA)
+# ============================================================
+#
+# DHA_MODE decides where a request goes:
+#
+#   mock        Deterministic local fixtures. Nothing leaves the
+#               process and every result is marked simulated. Default.
+#   sandbox     Real HTTPS calls to the DHA UAT gateway, using the
+#               credentials issued after the application is approved.
+#   production  Live. Refuses to run unless DHA_ALLOW_PRODUCTION=true
+#               AND DHA_BASE_URL is set. Off by default; do not turn it
+#               on before go-live approval.
+#
+# No credentials are required in mock mode. Sandbox requires
+# DHA_CLIENT_ID, DHA_CLIENT_SECRET and DHA_FACILITY_CODE.
+#
+# Never commit real values. Set them in the host's environment panel.
+DHA_MODE=mock
+DHA_BASE_URL=
+DHA_CLIENT_ID=
+DHA_CLIENT_SECRET=
+DHA_FACILITY_CODE=
+DHA_TIMEOUT_MS=15000
+DHA_MAX_RETRIES=2
+DHA_ALLOW_PRODUCTION=false
+
+# ============================================================
+# HTTP SECURITY
+# ============================================================
+#
+# TRUST_PROXY: set to true only when the app runs behind a reverse
+# proxy (nginx, cPanel, Cloudflare). Rate limiting keys on the client
+# IP; without this every request looks like it came from the proxy and
+# one busy client can lock out the whole facility.
+TRUST_PROXY=false
+
+# Extra browser origins allowed to call the API, comma separated.
+# The deployment's own APP_BASE_URL is always allowed. Localhost is
+# allowed automatically unless NODE_ENV=production.
+CORS_ALLOWED_ORIGINS=
