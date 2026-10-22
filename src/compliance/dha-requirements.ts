@@ -158,11 +158,11 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'high',
     evidence:
-      'duplicateWarning in PatientRegistrationModule.tsx; no merge or reconciliation endpoint',
+      'Duplicate detection on registration compares national ID, SHA number, phone and name+date-of-birth and warns before saving. Since the portal round the database also enforces one portal account per patient (UNIQUE patient_id) and one account per login identifier; activation refuses to attach a contact already owned by another patient, parks the account as PENDING_VERIFICATION and asks for staff verification instead of merging. The portal administration screen lists shared identifiers and accounts awaiting verification as a review list and corrects nothing automatically.',
     verification:
-      'Source inspection. The warning is client-side; no server-side duplicate rule or merge path was found.',
+      'Registration path read; portal constraints and refusal path read; the unique indexes are asserted by test:patient-portal and test:migrations. No database was available, so neither the duplicate query nor the constraints were executed.',
     note:
-      'A warning without a reconciliation workflow leaves the duplicate in place. Not counted as met.',
+      'Still partial: registration-time matching remains heuristic (it warns, it does not decide), there is no master patient index and no merge or split workflow. The portal closes the two-accounts-for-one-person route, not the identity-resolution problem.',
   },
   {
     id: 'FN-06',
@@ -174,13 +174,13 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'Consent can be granted, listed and revoked with purpose, method, scope and expiry; status is derived (ACTIVE / REVOKED / EXPIRED) rather than trusted from the client; revocation is a state change, never a delete; every write is audited. Routes live at /api/patients/:id/consents and the panel is the Consent & Allergies tab of the patient record. Unit tests cover status derivation and input validation (80 assertions, consent-allergy.test.ts).',
+      'Consent can be granted, listed and revoked with purpose, method, scope and expiry; status is derived (ACTIVE / REVOKED / EXPIRED) rather than trusted from the client; revocation is a state change, never a delete; every write is audited. Routes live at /api/patients/:id/consents and the panel is the Consent and Allergies tab of the patient record. Unit tests cover status derivation and input validation (80 assertions, consent-allergy.test.ts). The portal round did not change consent gating: the portal is an access channel for the patient\'s own record and does not read the consent table.',
     verification:
       'Read the service, routes and panel; ran test:consent-allergy. The PostgreSQL paths (grantConsent, revokeConsent, listConsents) have NOT been executed: this environment has no database and migration 0017 is unapplied.',
     note:
-      'Still partial: consent is captured but does not yet gate clinical reads. hasActiveConsent() is exposed for that policy decision, which is a clinical-governance call rather than a coding default. DHA consent authorisation (OTP) is separately blocked; this row concerns the facility-level consent record.',
+      'Still partial: consent is captured but does not gate clinical reads. hasActiveConsent() is exposed for that policy decision, which is a clinical-governance call rather than a coding default. The portal adds a disclosure channel that does not consult consent; that is defensible only because the patient is retrieving their own record, and the facility must confirm that reading rather than have it assumed. DHA consent authorisation (OTP) is separately blocked.',
     remainingGap:
-      'Wire consent checks into cross-facility sharing and insurer submission, not into the treating clinician\'s own access.',
+      'Wire consent checks into cross-facility sharing, portal-initiated sharing and insurer submission, not into the treating clinician\'s own access.',
   },
   {
     id: 'FN-07',
@@ -326,9 +326,9 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'high',
     evidence:
-      'src/components/PatientJourneyModal.tsx; per-patient queries scoped by patient id',
+      'The patient record screen assembles a visit-centred summary. Since the portal round the same record can be produced as a patient-facing text summary generated on request at GET /api/portal/records/download: visits with released diagnoses, verified laboratory results, prescriptions, allergies and appointments, streamed as an attachment with no stored file. Staff-side clinical summaries remain visit-centred rather than a longitudinal shared-health-record document.',
     verification:
-      'Source inspection. No automated test asserts the full summary or its cross-patient isolation.',
+      'Record service and portal download path read; test:patient-portal asserts the download is generated per request and that the portal writes no clinical table. The download has not been executed against a database.',
   },
   {
     id: 'FN-18',
@@ -416,8 +416,8 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'VERIFIED',
     severity: 'critical',
     evidence:
-      'argon2 hashing; 48-byte session tokens stored as SHA-256; 8-hour expiry; security_version invalidation; src/tests/auth-service.test.ts',
-    verification: 'Automated tests and code inspection.',
+      'Staff: argon2 password hashes, 48-byte random session tokens stored as SHA-256, 8-hour expiry and security_version invalidation. The portal round added a second, separate identity namespace: patient_portal_accounts (argon2id, 12-character minimum, five failures then a 15-minute lock) and patient_portal_sessions (48-byte token, SHA-256 only, 2-hour expiry, revoked on logout, password change, suspension and revocation). A patient token is validated only against the patient session table, so a patient credential can never satisfy a staff route and vice versa. Sign-in verifies the password before it discloses whether an account is suspended, revoked or unverified.',
+    verification: 'Auth service, portal auth service and both middlewares read; test:patient-portal asserts the separation, the generic pre-authentication error and the password rules. No runtime sign-in was performed in this environment.',
   },
   {
     id: 'SP-04',
@@ -429,11 +429,11 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      '13 /api routes had no permission check at the start of this audit; 8 were closed in this pass (theatre, radiology, suppliers, purchase orders).',
+      'The audit closed 8 of the 13 unguarded /api routes (theatre, radiology, suppliers, purchase orders). The portal round added 38 routes (19 patient, 19 staff) with no unguarded route: every staff endpoint carries requirePermission with one of five new portal codes or patients.read, and every patient endpoint is behind requirePortalAuth, which accepts only a patient session. test:patient-portal fails if a portal staff route lacks a guard or if the patient router reads a patient id from the request.',
     verification:
-      'Static enumeration of all 133 /api routes and manual reading of the unguarded ones.',
+      'Static enumeration of route declarations and route-by-route reading; automated assertions in test:patient-portal (permission count, requireAuth present, requirePortalAuth absent from the admin router) and test:route-scope. The five pre-existing unguarded routes were not re-reviewed this round and remain.',
     note:
-      'Five unguarded routes remain to be reviewed, and 33 id-addressed routes have not been checked for object-level ownership.',
+      'Still partial for the same reason as before: five pre-existing unguarded routes and the object-level ownership of id-addressed routes outside the portal are unchanged. The portal added guarded surface; it did not fix the legacy surface.',
   },
   {
     id: 'SP-05',
@@ -445,11 +445,11 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'Theatre cases, radiology orders, suppliers and purchase orders were readable across facilities before this audit; now scoped. Object-level checks added for theatre and radiology updates.',
+      'Theatre cases, radiology orders, suppliers and purchase orders were readable across facilities before the audit and are now scoped. Portal reads are scoped to the patient\'s registration facility union the account facility, applied to encounters, appointments, laboratory orders, admissions, allergies and prescriptions (through encounters), and an empty facility set is refused rather than widening the query. Portal administration is scoped on tenant_id and facility_id and answers 404 rather than 403 for another facility\'s account, so the response cannot confirm that an account exists elsewhere. test:patient-portal asserts each facility filter and the absence of any request-supplied patient id.',
     verification:
-      'Route-by-route inspection. Remaining id-addressed routes are listed in the audit documents as unaudited.',
+      'Portal record and admin services read line by line; automated source assertions in test:patient-portal. The portal queries have not been executed against a database, so isolation is asserted structurally, not demonstrated with rows.',
     note:
-      'This is the most serious finding of the audit and is only partly closed.',
+      'Still the most serious finding of the audit: the legacy id-addressed routes outside the portal remain unaudited for object-level ownership. The portal is evidence that the pattern can be applied; it is not evidence that it has been applied everywhere.',
   },
   {
     id: 'SP-06',
@@ -461,9 +461,11 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'high',
     evidence:
-      'audit_logs table with tenant/facility/user indexes; logAuditEvent on sensitive writes; GET /api/audit-logs requires audit.read',
+      'audit_logs records staff actions; patient_record_access_logs records reads with a purpose and channel. The portal round widened the second: eight patient read paths write an access row with accessChannel PATIENT_PORTAL (dashboard, visits, laboratory, medications, appointments, discharge summaries, download, sharing redemption), card lookup writes one under the staff session, and every portal administration action writes an audit row. Reading the portal audit trail is itself audited. Migration 0017 (append-only triggers plus REVOKE UPDATE, DELETE, TRUNCATE) is written but has not been applied to any database.',
     verification:
-      'Schema, query and route inspection. No database trigger or privilege revokes UPDATE/DELETE on audit_logs; patient-record *views* are not logged.',
+      'Read the access-log and audit call sites; test:patient-portal asserts at least eight logPortalRecordAccess calls and that the portal never writes a clinical table. The triggers were not executed.',
+    note:
+      'Still partial: the append-only guarantee exists only in an unapplied migration, so a database that has not run 0017 can still have its audit rows edited by a privileged role. Retention and review ownership are also undecided.',
   },
   {
     id: 'SP-07',
@@ -491,9 +493,9 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'Direct identifiers (national ID, SHA number) can be sealed with AES-256-GCM before they reach PostgreSQL, with an HMAC blind index for exact lookups and legacy plaintext passthrough. The key comes from FIELD_ENCRYPTION_KEY and there is no compiled-in default; 48 assertions cover round-trip, tamper detection, wrong-key refusal and key absence.',
+      'Direct identifiers (national ID, SHA number) can be sealed with AES-256-GCM before they reach PostgreSQL, with an HMAC blind index for exact lookups and legacy plaintext passthrough. The key comes from FIELD_ENCRYPTION_KEY and there is no compiled-in default; 48 assertions cover round-trip, tamper detection, wrong-key refusal and key absence. The portal stores the digital-card code the same way: a SHA-256 hash is the lookup key and the sealed copy is readable only by the account that owns the card. Whole-volume, snapshot and backup encryption are untouched.',
     verification:
-      'Ran test:field-encryption against the real crypto module. The volume, its snapshots and backups are NOT encrypted by anything in this repository.',
+      'Ran test:field-encryption against the real crypto module; read the card issue and render paths. The volume, its snapshots and backups are NOT encrypted by anything in this repository.',
     note:
       'Still an operational control: whole-volume and backup encryption, key custody and rotation remain the hosting provider and facility responsibility. Application-level sealing of two columns does not make the database encrypted at rest.',
     externalDependency:
@@ -524,8 +526,8 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'VERIFIED',
     severity: 'high',
     evidence:
-      'express-rate-limit (15-minute auth window, 60-second API window); failed_login_attempts, locked_until; src/tests/http-security.test.ts (54 assertions)',
-    verification: 'Automated test and code inspection.',
+      'Per-IP rate limits on staff sign-in and the API, plus account lockout. The portal adds public endpoints that need it: activation and login are limited to 10 requests per 15 minutes per address, and a patient account locks for 15 minutes after five failed passwords, counted per account so rotating addresses does not escape it. The lock is checked only after the password verifies, so the endpoint cannot be used to enumerate accounts. http-security and patient-portal tests assert the limiter shape and the lock constants.',
+    verification: 'Read the limiter factory and the login path; ran test:security and test:patient-portal. Rate limiting was not exercised under load and the trust-proxy configuration at the edge is unverified.',
   },
   {
     id: 'SP-11',

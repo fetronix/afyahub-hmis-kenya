@@ -1,6 +1,6 @@
 # Remediation Plan
 
-**Date:** 21 October 2026
+**Date:** 21 October 2026 · **Revised:** 22 October 2026 (patient portal round)
 **Basis:** `JALICARE_DHA_READINESS_AUDIT.md`, `SECURITY_PRIVACY_GAP_REGISTER.md`,
 `INTEROPERABILITY_AUDIT.md`, `DATABASE_MIGRATION_AUDIT.md`
 
@@ -13,7 +13,7 @@ can close from what only the responsible organisation or DHA can close.
 
 | ID | Action | Owner | Dependency | Evidence of completion |
 |---|---|---|---|---|
-| P1-1 | Finish the authorisation audit: every `Number(req.params.id)` route | Engineering | — | Each route either uses a scoped query or includes `facility_id` in the `WHERE`; a test per route. **Partly done** — seven more unguarded routes closed on 2026-10-21 (claims ×3, DHA ×3, departments) and every route read so far proves ownership, but no exhaustive pass exists |
+| P1-1 | Finish the authorisation audit: every `Number(req.params.id)` route | Engineering | — | Each route either uses a scoped query or includes `facility_id` in the `WHERE`; a test per route. **Partly done** — seven more unguarded routes closed on 2026-10-21 (claims ×3, DHA ×3, departments); the 38 portal routes added on 2026-10-22 are all guarded and none takes a patient id from the request. Still no exhaustive pass over the legacy routes, and five of them remain unguarded |
 | P1-2 | ODPC registration for the responsible legal entity | Organisation / DPO | Legal entity identified | Certificate number and role recorded |
 | P1-3 | Review, sign and date the DPIA | DPO / responsible officer | `DPIA_DRAFT.md` | Signed document, version and date |
 | P1-4 | Enable encryption at rest for database and backups | Hosting / DBA | Hosting decision | Provider configuration evidence |
@@ -43,6 +43,10 @@ active risk.
 | P2-9 | Make consent gate cross-facility sharing and insurer submission | Engineering + clinical governance | `hasActiveConsent()` is exposed; the policy decision is not an engineering default. Do **not** block the treating clinician's own access |
 | P2-10 | Drug-drug interaction data | Clinical governance | Needs a licensed interaction dataset; name matching is not that, and the UI says so |
 | P2-11 | Decide whether to encrypt further columns | Engineering + DPO | Names, phone numbers and dates of birth are still plaintext. Encrypting them breaks search unless every lookup moves to a blind index |
+| P2-12 | Apply migration 0018 and exercise the portal against a real database | DBA then Engineering | Preconditions in `../patient-portal/PATIENT_PORTAL_DEPLOYMENT_GUIDE.md`; blockers B1, B2 and B7 must be closed first. Until then no portal query has ever run |
+| P2-13 | A message channel for portal invitations | Facility / vendor | Blocker B3. There is no SMS or email provider. Until one exists, an invitation is handed over in person and the code is read to the patient — which is a staff action, not a proven delivery. Do not describe an unconfigured provider as sending |
+| P2-14 | Consent must gate portal-initiated sharing | Engineering + clinical governance | The portal adds a new disclosure path. `patient_record_sharing_grants` currently records the patient's own instruction but does not consult the consent register; decide whether the patient's act of sharing is itself the basis, and record that decision. See `DPIA_DRAFT.md` §7.3 |
+| P2-15 | Answer the portal questions in `DPIA_DRAFT.md` §7.3 | Organisation / DPO | Lawful basis, contact verification, minors and guardianship, retention, deceased patients, privacy notice. The portal must not be enabled for real patients before this is answered and the DPIA is signed |
 
 ---
 
@@ -93,6 +97,7 @@ active risk.
 1. **Week 1** — P1-1 (authorisation), P1-6 (audit immutability, after backup).
 2. **Weeks 1–2** — P1-4, P1-5, P2-8 with the hosting team.
 3. **Weeks 2–4** — P1-7, P1-8, P2-1 with clinical input.
+3a. **Before any patient is invited to the portal** — P2-12, P2-13, P2-14, P2-15.
 4. **In parallel** — the organisation starts P1-2 and P1-3; both have lead times
    outside engineering's control.
 5. **When credentials arrive** — P2-6, then P2-4/P2-5 once specifications are in hand.
@@ -113,3 +118,8 @@ npx tsx -e "import {buildDhaScore} from './src/compliance/dha-score.ts'; console
 The figure moves only when a requirement's status changes, and a status changes
 only when its evidence does. The critical gate prevents a rising average from
 burying P1-2 and P1-3.
+
+The portal round is the demonstration: nine requirement rows gained evidence, the
+test count rose by 208 assertions, and the score stayed at
+45.5% because no critical gap was closed. A future reader who sees the score
+unchanged should read that as the measure working, not as work not happening.

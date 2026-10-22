@@ -1,7 +1,8 @@
 # Test Results
 
 **Executed:** 21 October 2026 (audit round), re-run after the consent/encryption
-remediation the same evening
+remediation the same evening, and again on 22 October 2026 after the patient
+portal round
 **Environment:** Linux sandbox, Node with `tsx`, **no PostgreSQL**, **no browser**
 **Commit:** this branch, after the remediation described in the readiness audit
 
@@ -16,8 +17,10 @@ and gives the exact blocker.
 | Check | Command | Result |
 |---|---|---|
 | Type check | `npm run lint` (`tsc --noEmit`) | **PASS** — no output, exit 0 |
-| Production build | `npm run build` (`vite build`) | **PASS** — 1,703 modules, **644 ms** (varies a few hundred ms between runs) |
-| Test suite | `npm test` | **PASS** — 23 suites, **2,717 assertions** |
+| Production build | `npm run build` (`vite build`) | **PASS** — **1,707 modules**, 559–710 ms across three runs (22 Oct) |
+| Test suite | `npm test` | **PASS** — **24 suites, 2,925 assertions** (2,912 numbered + 13 catalogue `PASS:` lines) |
+| Portal suite | `npm run test:patient-portal` | **PASS** — 178 assertions |
+| Migration files | `npm run test:migrations` | **PASS** — 692 assertions (0017 and 0018 included, still unapplied) |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
 | Browser walkthrough | — | **BLOCKED** — no browser in this environment |
 | DHA sandbox call | — | **BLOCKED** — no credentials |
@@ -40,30 +43,34 @@ BILLING TESTS PASSED (31 assertions)
 NURSING TESTS PASSED (83 assertions)
 REPORTING TESTS PASSED (216 assertions)
 PHARMACY BATCH TESTS PASSED (80 assertions)
-PAYMENT SETTLEMENT TESTS PASSED (88 assertions)
-INSURANCE CLAIMS TESTS PASSED (99 assertions)
+PAYMENT SETTLEMENT TESTS PASSED (89 assertions)
+INSURANCE CLAIMS TESTS PASSED (101 assertions)
 DHA INTEGRATION TESTS PASSED (176 assertions)
 PROFESSIONAL VERIFICATION TESTS PASSED (100 assertions)
 Staff role catalogue tests passed.
 STAFF ROLES TESTS PASSED (135 assertions)
 DESIGN TOKEN TESTS PASSED (33 assertions)
-FACILITY MODULE TESTS PASSED (53 assertions)
+FACILITY MODULE TESTS PASSED (55 assertions)
 NOTIFICATION TESTS PASSED (28 assertions)
 DHA COMPLIANCE TESTS PASSED (230 assertions)
 ROUTE SCOPE TESTS PASSED (66 assertions)
 MATERNITY TESTS PASSED (131 assertions)
 POSTNATAL & IMMUNISATION TESTS PASSED (151 assertions)
 HTTP SECURITY TESTS PASSED (54 assertions)
-MIGRATION TESTS PASSED (680 assertions)
+MIGRATION TESTS PASSED (692 assertions)
 Field encryption: 48 assertions passed.
 Consent and allergy: 80 assertions passed.
+Patient portal policy: 178 assertions passed.
 ```
 
-2,717 counted assertions across 22 suites; the staff-role catalogue suite reports
-ten named `PASS` lines instead of a count. **23 suites, no failures.**
+2,912 numbered assertions across 23 suites plus 13 catalogue `PASS:` lines = **2,925**;
+**24 suites, no failures**.
 
-The two new suites are the difference between "we wrote consent and encryption"
-and "we checked them": 128 new assertions in two new suites. The functional ones
+The audit round counted 2,717. The increase to 2,925 is the portal suite (178)
+plus small additions elsewhere; no assertion was removed.
+
+The two remediation suites are the difference between "we wrote consent and
+encryption" and "we checked them": 128 new assertions in two new suites. The functional ones
 call the real crypto module (round trip, tamper detection, wrong-key refusal, blind
 index, identifier sealing) and the real consent/allergy functions (status
 derivation, input validation, medication matching). The rest assert wiring —
@@ -139,6 +146,36 @@ coverage it does not have.
 
 ---
 
+### 3.5 `test:patient-portal` — 178 assertions
+
+`src/tests/patient-portal.test.ts`
+
+This suite asserts the portal's rules against the source with comments stripped, and
+it prints what it did not do. It does **not** exercise the portal against a database,
+because there is no database and migration 0018 has never been applied.
+
+| Group | What it proves |
+|---|---|
+| Second identity namespace | Accounts and sessions live in `patient_portal_*`, not `users` / `sessions`; a patient token cannot pass staff middleware and a staff token cannot pass portal middleware |
+| Invitation rules | Single-use, hashed at rest, bound to an existing patient row, expiring; a redeemed or revoked invitation is refused; the event log records issue, redeem and revoke |
+| Activation is not a claim of delivery | The service records an attempt, never a delivered message, and there is no provider to call |
+| Sign-in | Password checked before account state is disclosed; one generic message for an unknown identifier and a wrong password; lock after five failures for 15 minutes; a correct password does not clear a lock |
+| Session lifetime | 2 hours, token stored only as SHA-256, revoked on logout, password change, suspension and revocation |
+| Patient reads | Every route behind `requirePortalAuth`; every read keyed to the session's `patient_id`; no route accepts a patient id from the request |
+| Facility scope | Facility union resolved from the account and patient rows; empty set refused with `FACILITY_NOT_LINKED` rather than widened |
+| Access logging | Every patient read path writes `patient_record_access_logs` before responding, with `accessChannel = PATIENT_PORTAL`; reading the patient's own access history is logged too |
+| Sharing | Time-limited, revocable, recipient captured, audited; the UI says it is not national HIE integration |
+| Card | The symbol encodes only an opaque code; the code is stored as a SHA-256 lookup plus a sealed copy; lookup requires a staff session and is audited; scanning grants nothing |
+| Permissions | Five new codes exist, are in the catalogue, are assigned to no role by default, and every staff route requires one |
+| No second record | The portal inserts into no clinical table; a correction request writes an audit row and a request, never a clinical edit |
+| UI wiring | The management module has all five tabs, the invite dialog is reachable from reception, and the patient app never renders data the server did not send |
+
+**Not run:** any portal query against PostgreSQL; concurrent redemption of one
+invitation; an actual SMS or email send. There is no provider configured, and the
+suite asserts that absence rather than mocking a success.
+
+---
+
 ## 4. Existing suites that had to change
 
 | Suite | Change | Reason |
@@ -147,7 +184,8 @@ coverage it does not have.
 | `test:staff-roles` | Tab-reachability assertion updated (135) | A facility administrator can now reach the modules tab |
 | `test:design` | Palette pins updated to sky blue and a CTA-contrast rule added (33) | Previous round |
 | `test:compliance` | Consent and allergy rows changed from MISSING to PARTIAL, encryption at rest likewise, and a critical-PARTIAL gate assertion added (222 → 230) | The code now exists; the anti-drift assertions were rewritten to check PARTIAL *and* that the row is still a critical gap, never `VERIFIED` |
-| `test:migrations` | 655 → 680 assertions | Migration 0017 was added |
+| `test:migrations` | 655 → 680 → 692 assertions | Migrations 0017 and 0018 were added |
+| `test:payment-settlement`, `test:claims`, `test:facility-modules` | +1, +2, +2 assertions | Followed the changes they cover; no assertion removed |
 
 No assertion was weakened to make a failure disappear. Each change is recorded
 with the reason in the commit.
@@ -162,6 +200,7 @@ with the reason in the commit.
 | Live schema comparison | Same | `information_schema` diff against `src/db/schema.ts` |
 | Route behaviour against a database | Same | Start the API against a test database and call each fixed route with two facilities |
 | Browser walkthrough | No browser binary | Load the app, sign in, walk registration → OPD → lab → pharmacy → billing |
+| Portal runtime | No database, no SMS/email provider | Apply 0018, then invite a synthetic patient and sign in |
 | DHA sandbox exchange | No client credentials | Obtain `DHA_CLIENT_ID`, `DHA_CLIENT_SECRET`, `DHA_FACILITY_CODE`; set `DHA_MODE=sandbox`; call the readiness endpoint with `probe=true` |
 | FHIR validation | No validator installed | Run the Patient resource through a HL7 validator |
 | Dependency vulnerabilities | `npm audit` not executed here | `npm audit --omit=dev` on a networked machine |
@@ -177,3 +216,6 @@ with the reason in the commit.
 - They do not prove absence of security defects. The authorisation audit is
   incomplete and says so.
 - They do not constitute DHA acceptance. Nothing in this repository can.
+- They say nothing about the portal at runtime. The 178 portal assertions check
+  policy and wiring; none of them executed a query, and the first real invitation
+  will be the first real test.

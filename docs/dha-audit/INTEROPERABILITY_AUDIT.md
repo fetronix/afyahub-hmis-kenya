@@ -155,6 +155,12 @@ the certification scope names SDMX, this decision must be revisited.
 | KNHTS terminology | Not supplied | None | — | Blocked on data |
 | KHIS / DHIS2 reporting | Not supplied | None | — | Missing |
 | SDMX | Not required | None | — | Not applicable |
+| Patient-initiated sharing (portal, 2026-10-22) | **No external specification** | Grants name a recipient, a scope and an expiry, and are revocable; the recipient is a clinician the patient identifies, not a registry lookup | 178-assertion portal suite, policy only | **Not an HIE integration** — no message leaves the facility, and the UI says so |
+
+The last row is here to stop a predictable misreading. "The patient can share their
+record" is not the same as "the record interoperates with the national exchange".
+No `Patient`, `Encounter` or document is transmitted anywhere, no registry is
+queried, and nothing in the portal can satisfy an interoperability requirement.
 
 ---
 

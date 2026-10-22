@@ -780,7 +780,7 @@ That is the defect that has now been fixed, rather than papered over with a colo
 
 | Part | File | What it does |
 |---|---|---|
-| One catalogue | `src/config/facility-modules.ts` (new) | 19 modules with a label, group and one-sentence description each. `configuration` is **always-on**: the screen that provisions modules cannot be hidden by the list it controls. Pure module, no imports — the browser and the server read the same list. |
+| One catalogue | `src/config/facility-modules.ts` (new) | 19 modules with a label, group and one-sentence description each (20 since §3.22 added `patient_portal`). `configuration` is **always-on**: the screen that provisions modules cannot be hidden by the list it controls. Pure module, no imports — the browser and the server read the same list. |
 | A real endpoint | `src/config/facility-modules.routes.ts` (new) | `GET` and `PATCH /api/facilities/:id/modules`. Scoped through `getFacilityByIdScoped`, so a facility account can only reach its own facility and a tenant account only its own tenant. Unknown ids are **rejected by name**, not silently dropped. Every save writes an audit row listing what was added and removed. |
 | A working screen | `ConfigurationModule.tsx` | The grid is grouped by department, starts from the facility row, has Save/Discard, an error banner and a dirty count. A successful save calls `setCurrentFacility`, so the rail updates **without a reload**. The false *"Live Reconfiguration Active"* badge is gone. |
 | Reachable tabs | `ConfigurationModule.tsx`, `Sidebar.tsx` | A facility administrator now sees Facility profile, Modular Features, Staff and Tariffs (payment credentials stay with the platform). The rail can no longer hide Configuration itself. |
@@ -957,29 +957,40 @@ only `VERIFIED` when a test in this repository walks the path.
 | Interoperability | 15% | 0 / 7 | 42.9% |
 | **Overall** | | 11 / 46 | **45.5%** |
 
-Eleven critical gaps remain. Three are now **partially** built — consent capture,
-allergy checking and encryption at rest — and eight are untouched: ODPC
-registration, the DPIA, access-control review, incident response, audit-trail
-completeness, backup and disaster recovery, surveillance submission and IDSR
-weekly reporting. A partial critical control is still a gap, so the cap applies.
+Eleven critical gaps remain. Several are now **partially** built — consent capture,
+allergy checking, encryption at rest, role-based access control, tenant and facility
+isolation, the audit trail and surveillance submission — and the rest are untouched:
+ODPC registration, the DPIA, encryption in transit, backup and disaster recovery, and
+IDSR weekly reporting. A partial critical control is still a gap, so the cap applies.
 `readyForSubmission` is false, and the endpoint always returns
 `certification: false`.
+
+**Patient portal round, 22 October 2026.** A patient-facing record portal was built
+and its evidence folded into nine rows of the register. **The score is unchanged at
+45.5%**, because every improvement landed inside a row that was already PARTIAL and
+remains PARTIAL: the portal adds guarded routes but does not audit the five legacy
+unguarded ones; it scopes its own reads but does not finish the object-level pass;
+it logs patient access but migration 0018 is unapplied; it seals the card code but
+the volume is still unencrypted. See `docs/patient-portal/` and §3.22.
 
 **Audit documents** in `docs/dha-audit/`: readiness audit, requirement
 traceability, security and privacy gap register, interoperability audit, database
 and migration audit, test results, remediation plan, deployment and recovery, and a
 **draft DPIA that is explicitly not approved**.
 
-**Validation.** `npm run lint` passes (first time in this repository's recent
-history). `npm run build` — **644 ms**, 1,703 modules (build time moves by a few hundred milliseconds between runs). `npm test` — **23 suites,
-2,717 assertions**, no failures. `test:compliance` adds 230 assertions,
-`test:route-scope` 66, `test:field-encryption` 48 and `test:consent-allergy` 80.
+**Validation** (re-run 22 October 2026). `npm run lint` passes. `npm run build` —
+**559–710 ms, 1,707 modules** across three runs. `npm test` — **24 suites, 2,925
+assertions**, no failures. `test:compliance` 230 assertions, `test:route-scope` 66,
+`test:field-encryption` 48, `test:consent-allergy` 80, `test:patient-portal` 178,
+`test:migrations` 692.
 
 **Not verified.** No database and no browser: `npm run db:status` fails with
 `Missing required environment variable: SQL_HOST`. Every SQL path is
 contract-checked, not executed; no screen was clicked; no DHA sandbox call was made.
 No exhaustive pass over the id-addressed routes — every one read so far proves
 ownership before writing, but that is not the same as all of them having been read.
+The portal has never executed a query: migration 0018 is unapplied, and there is no
+SMS or email provider, so no invitation has ever been delivered.
 
 **Backups created during this round**
 
@@ -998,6 +1009,17 @@ ownership before writing, but that is not the same as all of them having been re
 - `package.json.before-consent-tests-20261021.bak`
 - `README.md.before-consent-remediation-20261021.bak`
 - `src/app.ts.before-dha-audit-scope-20261021.bak`
+
+**Backups created during the portal round (2026-10-22)**
+
+- `src/compliance/dha-requirements.ts.before-portal-round-20261022.bak`
+- `docs/dha-audit/JALICARE_DHA_READINESS_AUDIT.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/SECURITY_PRIVACY_GAP_REGISTER.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/TEST_RESULTS.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/DPIA_DRAFT.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/REMEDIATION_PLAN.md.before-portal-round-20261022.bak`
+- `docs/dha-audit/DATABASE_MIGRATION_AUDIT.md.before-portal-round-20261022.bak`
+- `README.md.before-portal-dha-refresh-20261022.bak`
 - `src/db/queries.ts.before-dha-audit-scope-20261021.bak`
 - `src/config/env.ts.before-sql-tls-20261021.bak`
 - `src/api/client.ts.before-dha-audit-20261021.bak`
@@ -1068,6 +1090,54 @@ governance decision, and `hasActiveConsent()` is exposed for whoever makes it. T
 is no drug-drug interaction engine. Volume and backup encryption are untouched. No
 PostgreSQL was available, so every SQL path in this round is type-checked and
 contract-tested, not executed, and migration `0017` has **not** been applied.
+
+
+### 3.22 Patient digital health record portal
+
+The brief was to reduce a patient's dependence on a physical booklet without building a second
+system beside this one. The portal therefore reuses `patients`, `encounters`, `diagnoses`,
+`lab_orders`/`lab_results`, `medications`, `appointments`, `admissions` and `patient_allergies`,
+and adds six tables of its own — accounts, invitations, invitation events, sessions, settings and
+sharing grants. There is **no second patient record and no duplicate clinical database**; every
+screen is a read of the tables the staff application already writes.
+
+**Patients are not staff users.** A portal account lives in `patient_portal_accounts`, never in
+`users`, and a patient session lives in `patient_portal_sessions`. A patient token cannot reach a
+staff route and a staff token cannot reach the portal, because each middleware reads only its own
+table. The patient surface (`/portal`, `/portal/activate`) is decided in `App.tsx` **before**
+`HmisProvider` mounts, so a phone that opens it never loads the staff session or the staff bundle.
+
+**Reception invites; the patient activates.** The desk issues a single-use invitation from the
+patient row or straight after registration, hands over a link (or, when a provider exists, sends
+one) and can mark the handover, reissue a lost link and revoke it. No code path links an account by
+matching a phone number, a name or a date of birth: an account is created by the patient from the
+link, and if the contact already belongs to another account the result is a
+`PENDING_VERIFICATION` account and a request for staff-assisted identity checks — never a merge.
+Delivery and activation are separate columns, so a message a provider accepted can never be read as
+a signed-up patient; with no provider configured, the truthful states are `NOT_CONFIGURED` and
+`HANDED_OVER`.
+
+**Facility administration is its own section.** *Patient Portal Management* has five tabs —
+overview, accounts, settings, audit, card lookup — and every figure is a query, not a constant. The
+five permissions are seeded and split on purpose: the receptionist gets `portal.invite`, which a
+facility may also delegate to a custom role; account management, audit, settings and invitation
+revocation stay with the administrator and are **not** delegable. Audit review has its own
+permission, the dashboard hides the audit strip without it, and reading the trail is itself written
+to the trail.
+
+**The patient's own screens** show recent visits with released diagnoses, upcoming appointments,
+laboratory results only where a laboratory professional has signed them off, prescriptions,
+allergies, discharge summaries, a downloadable copy generated per request (no stored file, no public
+URL), correction *requests* rather than edits, a QR card carrying only an opaque code, and
+time-limited, revocable sharing to a named recipient — which the screen states is not a national
+health information exchange.
+
+**What was verified.** `npm run lint` clean, `npm run build` 1,707 modules, `npm test` 24 scripts and
+2,925 assertions including 178 new portal assertions. **What was not:** migration `0018` has not been
+applied to any database, no portal query has run against real rows, concurrent redemption has not
+been exercised, no SMS or email provider exists, and no browser was driven through the screens. The
+five deliverables in `docs/patient-portal/` separate those two lists line by line; the deployment
+guide's §11 lists the ten blockers that stand between this work and a production claim.
 
 
 ## 4. Existing backups and modified files to preserve

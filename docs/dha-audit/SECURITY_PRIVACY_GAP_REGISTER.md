@@ -1,6 +1,6 @@
 # Security and Privacy Gap Register
 
-**Audit date:** 21 October 2026 · **Commit:** `9d504b3` + this branch
+**Audit date:** 21 October 2026 · **Last revised:** 22 October 2026 (revision 4, patient portal round) · **Commit:** `9d504b3` base, `23a636d` working tree
 **Scope:** the Jalicare HMIS repository and its documented deployment.
 
 Each row separates three things that are often conflated:
@@ -70,6 +70,9 @@ Nothing in this repository was fabricated to fill this gap.
 | Rate limiting | 15-minute window on `/api/auth`, 60-second window on `/api` | `http-security.middleware.ts:168-209` |
 | Multi-factor | **Absent** | no TOTP/WebAuthn/SMS anywhere |
 | Password reset | **No self-service backend**; the login screen says so instead of pretending | `password-reset.service.ts` is empty |
+| Patient identity (2026-10-22) | **Separate namespace.** `patient_portal_accounts` is not `users`; argon2id, 12-character minimum, five failures then a 15-minute lock. Sessions are 48-byte tokens stored as SHA-256, 2-hour expiry, revoked on logout, password change, suspension and revocation | `src/portal/portal-auth.service.ts`, `patient_portal_sessions` |
+| Patient session isolation | A patient token is validated only against `patient_portal_sessions` and a staff token only against `sessions`; neither middleware can accept the other | `src/portal/portal.middleware.ts`, `src/middleware/auth.ts` |
+| Account enumeration | Sign-in verifies the password **before** it discloses suspended / revoked / unverified state; unknown identifier and wrong password return one message | `portalLogin` |
 
 **Assessment:** authentication is stronger than most systems at this stage.
 MFA is the notable gap, and it matters more once DHA credentials exist.
@@ -87,6 +90,8 @@ This is where the audit found the most serious defects.
 | Seven more routes had no permission check | claims list, claimable lines, claim items, DHA readiness, service mappings, call log | **Fixed** (2026-10-21 evening) |
 | `/api/departments` returned any facility's departments | Took `facilityId` from the query string and never checked it | **Fixed** — `getDepartmentsScoped` |
 | id-addressed routes | Every route read so far proves ownership before it writes; no exhaustive pass exists | **Open** |
+| Portal patient routes (38 new) | 19 patient endpoints behind `requirePortalAuth` (patient session only) and 19 staff endpoints behind `requireAuth` + `requirePermission`; no route takes a patient id from the request | **Verified structurally** — `test:patient-portal` |
+| Portal facility scope | Reads filtered to the patient's registration facility union the account facility; an empty set is refused rather than widened; administration scoped `tenant_id` + `facility_id`, answering 404 (not 403) for another facility's account | **Verified structurally**, never executed against rows |
 
 #### 3.2.1 The remaining unguarded routes
 
@@ -118,6 +123,7 @@ access control as unproven in the parts not yet read.
 | Immutability (application) | No route updates or deletes audit rows |
 | Immutability (database) | **Trigger written, not applied.** Migration `0017` installs `jalicare_audit_is_append_only()` with row and statement triggers on UPDATE/DELETE, plus `REVOKE UPDATE, DELETE, TRUNCATE`. INSERT is accepted. The migration has not been executed. |
 | Record *views* | **Fixed.** `patient_record_access_logs` had exactly one writer — the patient-update route, labelled `EXPORT` / `FHIR` — and the FHIR endpoint wrote nothing. Reads now log `VIEW`, edits `UPDATE`, FHIR logs an `EXPORT` on the `FHIR` channel, each with a purpose from a fixed list, written before the response is sent. |
+| Portal audit coverage (2026-10-22) | Eight patient read paths log with `accessChannel = 'PATIENT_PORTAL'`; card lookup logs under the staff session; every portal administration action writes `audit_logs`; **reading the portal audit trail is itself audited** | `portal-records.service.ts`, `portal-admin.service.ts` |
 
 **Remediation SQL:** implemented in `drizzle/0017_consent_allergy_audit_integrity.sql`
 and verified statically by `test:consent-allergy`. It must be applied by the DBA
@@ -130,7 +136,7 @@ not run migrations. Until it is applied, a database user can still rewrite histo
 |---|---|---|
 | Browser → server | **Deployment** | The Express app serves no TLS. TLS 1.2+ must terminate in front of it. `helmet` sets HSTS only over HTTPS. |
 | Server → PostgreSQL | **Configurable, default off** | `SQL_SSL` + `SQL_SSL_REJECT_UNAUTHORIZED` added in this audit. Previously hard-coded `false`. |
-| Database at rest | **Partial** | Whole-volume encryption, TDE and `pgcrypto` are still absent. Two direct identifiers (`patients.national_id`, `patients.sha_number`) are now sealed by the application with AES-256-GCM before insert (`src/security/field-crypto.ts`), with an HMAC blind index for exact search and legacy plaintext passthrough. The key is `FIELD_ENCRYPTION_KEY`; there is no default. Free-text clinical notes, names, phone numbers and dates of birth remain plaintext. |
+| Database at rest | **Partial** | Whole-volume encryption, TDE and `pgcrypto` are still absent. Two direct identifiers (`patients.national_id`, `patients.sha_number`) are now sealed by the application with AES-256-GCM before insert (`src/security/field-crypto.ts`), with an HMAC blind index for exact search and legacy plaintext passthrough. The key is `FIELD_ENCRYPTION_KEY`; there is no default. Free-text clinical notes, names, phone numbers and dates of birth remain plaintext. Since 2026-10-22 the digital-card code is treated the same way: SHA-256 is the lookup key and the sealed copy is readable only by the owning account. |
 | Backups | **Absent** | No backup mechanism, therefore no encrypted backup. |
 | Secrets | **Partly** | `.env` and `firebase-applet-config.json` are git-ignored; `.env.example` holds names only; no secret manager or rotation. |
 
@@ -144,7 +150,7 @@ could be verified.
 | Class | Finding |
 |---|---|
 | SQL injection | Drizzle parameterises every query observed; raw SQL is confined to migrations. No string-concatenated user input found in query paths. |
-| XSS | React escapes by default; no `dangerouslySetInnerHTML` found. |
+| XSS | React escapes by default. **One** `dangerouslySetInnerHTML` exists as of 2026-10-22: the patient's own QR card, which is an SVG generated server-side by the `qrcode` library from an opaque random code, and whose name/MRN surround is HTML-escaped before it is assembled. No user-supplied text reaches it. A reviewer who disagrees with relying on that should replace the injection with an `<img src="data:image/svg+xml;base64,…">`; the risk is bounded either way. |
 | CSRF | The API authenticates with an `Authorization: Bearer` header, not cookies, so classic CSRF does not apply. No CSRF token is issued, and none is needed while that remains true. |
 | IDOR | **Partly unproven** — see §3.2. |
 | Input validation | Strong on billing, claims, public health, staff roles and DHA; weaker on older operational writes that accepted `req.body` directly. |
@@ -160,9 +166,9 @@ could be verified.
 
 | Obligation | Status | Where |
 |---|---|---|
-| Consent capture | **Missing** | `patient_consents` unused |
-| Access logging for record views | **Missing** | `patient_record_access_logs` unused |
-| Data subject access / export | **Partial** | `health_record_exports` table exists; no export route found for a patient request |
+| Consent capture | **Partial** | Built 2026-10-21 (`consent.service.ts`); captured and revocable, does not yet gate reads |
+| Access logging for record views | **Implemented for staff and patient channels** | `patient_record_access_logs`, written before the response |
+| Data subject access / export | **Partial** | Since 2026-10-22 a patient can download their own record from the portal (generated per request, no stored file) and request a correction; there is still no structured export for a formal subject access request, and no erasure path |
 | Retention and deletion | **Missing** | No retention policy, no erasure path |
 | Breach notification | **Organisational** | No procedure in the repository |
 | Data minimisation in logs | **Good** | Audit records action and ids, not clinical payloads |
@@ -178,7 +184,7 @@ could be verified.
 4. **Encryption at rest and encrypted backups** — hosting decision, documented in
    `DEPLOYMENT_AND_RECOVERY.md`.
 5. **Audit-log immutability** — apply the SQL above, after a backup.
-6. **Consent and access logging** — schema exists; build the paths.
+6. **Consent enforcement** — consent is captured; wire it into cross-facility sharing, portal-initiated sharing and insurer submission. Access logging is done for staff and patient channels.
 7. **MFA** — before DHA production credentials are issued.
 
 ---

@@ -131,6 +131,10 @@ not show what *should* be.
 | R8 | Patient harmed by prescribing without allergy data | Was medium | Severe | Structured allergy registry; a match blocks the prescription until acknowledged, and the override is audited. No interaction engine | **Medium — name matching only** |
 | R9 | Over-broad platform-administrator access | Medium | High | Role-scoped, audited | Medium — needs a policy decision |
 | R10 | Data sent to DHA unintentionally | Low | Severe | Production switch off by default; mock clearly labelled | Low |
+| R11 | Someone other than the patient reaches the portal account (2026-10-22) | Medium | Severe | Single-use invitation bound to the existing patient row, delivered to the contact already on file; 12-character minimum; 2-hour session; lock after five failures; activation is not granted by a successful SMS | **Medium — no second factor, no verified contact channel** |
+| R12 | Portal account used to read another patient's record | Low | Severe | Reads are keyed to the session's `patient_id`, never to a request parameter; facility union scope; 404 for accounts outside the caller's facility | Low |
+| R13 | Patient-initiated sharing exposes the record to the wrong clinician | Medium | High | Sharing requires the patient to enter the recipient's registration details, is time-limited and revocable, and is **not** national HIE integration; each grant is audited | Medium |
+| R14 | QR card scanned by a stranger reveals clinical data | Low | High | The symbol contains one opaque random code and nothing else; scanning grants no access; lookup requires a signed-in staff session and is audited | Low |
 
 ---
 
@@ -148,10 +152,60 @@ not show what *should* be.
 | Decide the legal basis | Organisation / DPO | §4 |
 | Add MFA for privileged accounts | Engineering | P2-7 |
 | Define hosting location and cross-border position | Organisation | §3.3 |
+| Decide how patients are told what the portal does, and obtain a lawful basis for patient-initiated access | Organisation / DPO | §7.3 |
 
 ---
 
-## 7. Consultation
+## 7. Patient portal — scope added 2026-10-22
+
+This section exists because the portal is new processing, not a new screen on old
+processing. It was written by engineering from the code and **does not discharge
+the DPIA**; §4, §8 and §9 remain outstanding.
+
+### 7.1 What is processed
+
+| Element | Detail |
+|---|---|
+| Identity | Mobile number or patient number, password hash (argon2id), display name, last sign-in, lock state |
+| Session | Opaque token, stored only as SHA-256, 2-hour expiry, separate from staff sessions |
+| Invitation | Single-use token (hashed at rest), delivery channel, expiry, and an event log of issue/redeem/revoke |
+| Record projection | The patient's own visits, laboratory results, medications, appointments, discharge summaries — read from the existing tables, nothing copied into a second store |
+| Access history | Who read the record and when, from `patient_record_access_logs`, shown back to the patient |
+| Sharing grants | Recipient details entered by the patient, scope, expiry, revocation, and an audit row per action |
+| Card | Opaque code (SHA-256 lookup key plus sealed copy) and a server-rendered SVG |
+
+### 7.2 What is deliberately not processed
+
+No second clinical record. No portal-side editing of clinical data: a correction
+becomes a request routed to staff, never a write. No national ID, diagnosis or
+result inside the QR symbol. No public link to a medical record. No guardianship
+account — a guardian must be their own patient identity with verified authority,
+which the portal does **not** currently implement.
+
+### 7.3 Questions the organisation must answer before the portal is enabled
+
+1. On what lawful basis is a patient given direct access to their own record, and
+   does that differ from the basis for treatment?
+2. How is the contact number on file verified before an invitation is sent, and who
+   is accountable when it is wrong?
+3. What is the position on minors and on patients without capacity — at what age,
+   and with what evidence of guardianship?
+4. Is patient-initiated sharing a disclosure by the facility or by the patient, and
+   does it need a separate consent record?
+5. How long are portal accounts, sessions, invitations and access history retained
+   after a patient stops using the portal?
+6. What happens to the portal account when the patient dies, or when the record is
+   subject to a legal hold?
+7. Does the facility's data-protection notice mention the portal, the card and the
+   access history?
+
+**Status: UNANSWERED. The portal is disabled by policy in the sense that no
+migration has been applied and no account can exist yet. It must not be enabled for
+real patients until §7.3 is answered and this DPIA is signed.**
+
+---
+
+## 8. Consultation
 
 | Party | Consulted? | Date | Outcome |
 |---|---|---|---|
@@ -162,7 +216,7 @@ not show what *should* be.
 
 ---
 
-## 8. Decision
+## 9. Decision
 
 | Field | Value |
 |---|---|

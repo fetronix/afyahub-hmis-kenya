@@ -27,17 +27,18 @@ live database below is either marked UNVERIFIED or BLOCKED.
 ## 2. Schema and migration parity
 
 ```
-schema tables           76   (0017 adds patient_allergies)
-tables created by SQL   76
+schema tables           82   (0017 adds patient_allergies, 0018 adds six portal tables)
+tables created by SQL   82
 missing from migrations 0
 extra in migrations     0
-journal entries         18
-.sql files              18
+journal entries         19
+.sql files              19
 ```
 
-The figures above were 75 / 17 before migration `0017` was written. That migration
-has **not** been executed against any database; the parity check is static, and
-`npm run test:migrations` (680 assertions) passes against the files, not a server.
+The figures above were 75 / 17 at audit time, 76 / 18 after migration `0017` was
+written, and 82 / 19 after `0018` (patient portal). Neither migration has been
+executed against any database; the parity check is static, and
+`npm run test:migrations` (692 assertions) passes against the files, not a server.
 
 Three tables were initially reported missing by a naive scan —
 `admission_transfers`, `dha_service_mappings`, `nursing_notes` — because they are
@@ -87,6 +88,7 @@ BLOCKED.
 | 0015 | `maternity_mch` | Antenatal, labour, delivery |
 | 0016 | `postnatal_immunisation` | Postnatal and immunisation |
 | 0017 | `consent_allergy_audit_integrity` | Append-only audit triggers, `patient_allergies`, blind-index columns. **Added 2026-10-21 evening; not applied** |
+| 0018 | `patient_portal` | Six tables: `patient_portal_accounts`, `patient_portal_invitations`, `patient_portal_invitation_events`, `patient_portal_sessions`, `patient_portal_settings`, `patient_record_sharing_grants`. Correction requests and portal access history reuse `audit_logs` and `patient_record_access_logs`, so no second audit or second record store was created. **Added 2026-10-22; not applied** |
 
 ### 3.1 The one destructive statement
 
@@ -223,3 +225,4 @@ project runner exists for a reason.
 | Transactional integrity under concurrency | **PARTIAL** — billing and claims use transactions; stock paths untested |
 | Backup and restore | **MISSING** — see `DEPLOYMENT_AND_RECOVERY.md` |
 | Audit immutability | **PARTIAL** — migration 0017 written and statically tested; not applied |
+| Portal tables exist in the database | **NO** — migration 0018 unapplied, so every portal query would fail on a fresh database |

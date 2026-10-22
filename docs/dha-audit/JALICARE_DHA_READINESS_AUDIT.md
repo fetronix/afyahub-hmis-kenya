@@ -1,9 +1,10 @@
 # JaliCare HMIS — DHA Readiness Audit
 
 **Audit date:** 21 October 2026
+**Last revised:** 22 October 2026 (revision 4 — patient portal round)
 **Repository:** `fetronix/afyahub-hmis-kenya`
 **Branch audited:** `arena/14785aa5-afyahub-hmis-kenya`
-**Commit at start:** `9d504b3`
+**Commit at start:** `9d504b3` · **working tree at revision 4:** `23a636d` plus the portal round
 **Auditor:** Arena Agent Mode (code-level audit, no live database, no browser)
 
 > **This is a technical self-assessment, not a DHA certification.**
@@ -42,6 +43,27 @@ different number from 90%, and the difference is the point.
 > and the cap still applies. The remaining work is named in §9 and in
 > `REMEDIATION_PLAN.md`. Nothing here has been re-labelled as complete.
 
+> **Revision 4 — patient portal round, 2026-10-22.** A patient-facing record
+> portal was built: a separate identity and session namespace, single-use
+> invitations, a read-only projection of the existing clinical tables, access
+> logging for every patient read, a QR card that carries only an opaque code, and
+> a facility administration surface behind five new permission codes. The evidence
+> on **nine rows** was rewritten to include it: FN-05, FN-06, FN-17, SP-03, SP-04,
+> SP-05, SP-06, SP-08 and SP-10.
+>
+> **The score did not move: it is 45.5% before and after.** That is the correct
+> result, not an oversight. Every improvement landed inside a requirement that was
+> already PARTIAL and remains PARTIAL: the portal adds guarded routes but does not
+> audit the five legacy unguarded ones; it scopes its own queries but does not
+> resolve object-level ownership elsewhere; it logs patient reads but the
+> append-only guarantee is still an unapplied migration; it seals one more value
+> but the volume and backups are still unencrypted. The eleven critical gaps are
+> unchanged, and the critical gate would still refuse a pass.
+>
+> No requirement was added, removed or re-weighted to make room for the portal.
+> Adding a requirement after building the thing that satisfies it is how a
+> self-assessment starts to flatter itself.
+
 ---
 
 ## 1. What JaliCare is, factually
@@ -54,11 +76,11 @@ different number from 90%, and the difference is the point.
 | ORM | Drizzle ORM 0.45.3 + drizzle-kit 0.31.11 | `src/db/schema.ts`, `drizzle.config.ts` |
 | Authentication | First-party: argon2 password hashes, random 48-byte session tokens stored as SHA-256, 8-hour expiry, `security_version` invalidation | `src/auth/session.service.ts`, `src/utils/password.ts` |
 | Authorisation | Permission codes in `role_permissions`, loaded per request | `src/auth/authorization.service.ts` |
-| API | 134 route declarations under `/api` in one Express app | `src/app.ts` |
-| Source size | 144 `.ts`/`.tsx` files, 84,426 lines (excluding backups) | `wc -l` |
-| Schema | 75 tables, 211 `.references()` declarations | `src/db/schema.ts` |
-| Migrations | 17 SQL files, 17 journal entries, 75 tables — parity confirmed | `drizzle/` |
-| Tests | 23 suites, 2,717 counted assertions | `npm test` |
+| API | 226 route declarations: 134 in `src/app.ts` plus 92 in nine routers (`src/auth/*`, `src/routes/platform.routes.ts`, `src/clinical/*`, `src/compliance/*`, `src/config/facility-modules.routes.ts`, `src/portal/*`) | static scan, 22 Oct 2026 |
+| Source size | 172 `.ts`/`.tsx` files, 102,925 lines under `src/` (excluding backups) | `wc -l`, 22 Oct 2026 |
+| Schema | 82 tables (six added by migration 0018) | `src/db/schema.ts` |
+| Migrations | 19 SQL files, 19 journal entries, 82 tables — parity confirmed. 0017 and 0018 are written and **unapplied** | `drizzle/` |
+| Tests | 24 suites, 2,925 counted assertions (2,912 numbered + 13 catalogue `PASS:` lines) | `npm test` |
 | Deployment | Single Node process; frontend built by Vite; no container, CI or IaC in repo | absence verified |
 
 **The brief assumed SQLite.** It is not. PostgreSQL changes two conclusions:
@@ -176,15 +198,20 @@ modules that nothing imported.
 
 ## 5. Verification performed
 
+Figures as at revision 4 (22 Oct 2026). The audit-day figures are given in brackets where they
+changed.
+
 | Check | Command | Result |
 |---|---|---|
 | Type check | `npm run lint` | **Passes** — previously always failed on `firebase.ts` |
-| Production build | `npm run build` | **644 ms**, bundle emitted |
-| Test suite | `npm test` | **23 suites, 2,717 assertions, no failures** |
-| Route inventory | static scan of `src/app.ts` | 134 routes; 9 previously unguarded routes now guarded |
-| Schema/migration parity | static comparison | 75 = 75; 17 journal entries = 17 files |
+| Production build | `npm run build` | **577 ms, 1,707 modules** (audit day: 644 ms) |
+| Test suite | `npm test` | **24 suites, 2,925 assertions, no failures** (audit day: 23 suites, 2,717) |
+| Route inventory | static scan of `src/app.ts` and the nine routers | 226 declarations (audit day: 134); 9 previously unguarded routes now guarded; all 38 portal routes guarded |
+| Schema/migration parity | static comparison | 82 = 82; 19 journal entries = 19 files (audit day: 75 / 17) |
+| Portal migration | `npm run test:migrations` | 692 assertions pass; **0017 and 0018 not executed against PostgreSQL** |
 | Database status | `npm run db:status` | **BLOCKED** — `Missing required environment variable: SQL_HOST` |
 | Browser walkthrough | — | **BLOCKED** — no browser in this environment |
+| Portal runtime | — | **BLOCKED** — no database; no SMS/email provider exists |
 
 ---
 
@@ -237,10 +264,15 @@ so the cap does not change the figure. `readyForSubmission` is false either way.
 
 **Eleven critical requirements are unmet:** consent capture (FN-06, partial),
 allergy and interaction checking (FN-15, partial), ODPC registration (SP-01),
-DPIA (SP-02), access control review (SP-04, partial), incident response (SP-05,
-partial), audit trail (SP-07, partial), encryption at rest (SP-08, partial),
-backup and disaster recovery (SP-09), surveillance submission (PH-01, partial)
-and IDSR weekly reporting (PH-02).
+DPIA (SP-02), role-based access control review (SP-04, partial), tenant and
+facility isolation (SP-05, partial), audit trail (SP-06, partial), encryption in
+transit (SP-07, partial), encryption at rest (SP-08, partial), backup and
+disaster recovery (SP-09), surveillance submission (PH-01, partial) and IDSR
+weekly reporting (PH-02).
+
+> The labels for SP-05 and SP-07 were transposed in revisions 1–3 ("incident
+> response" and "audit trail"). The identifiers and statuses were correct; the
+> prose was not. Corrected here rather than carried forward.
 
 **Method note.** The critical gate now also counts a PARTIAL critical
 requirement as a gap. Without that, implementing half of each critical control
@@ -248,6 +280,27 @@ would lift the 59.9 cap while none of them worked end to end — which is exactl
 the arithmetic that produced the 90% figure this audit rejected.
 
 **Ready for submission:** no.
+
+### 7.1 What the portal round changed, requirement by requirement
+
+Nothing below altered a status. The table exists so a reader can see exactly what was
+added, where, and why it was not enough to move the number.
+
+| Requirement | Before revision 4 | After revision 4 | Status |
+|---|---|---|---|
+| FN-05 Duplicate patient detection | Client-side warning on registration | Plus `UNIQUE (patient_id)`, `UNIQUE (login_identifier)`, refusal to attach an already-owned contact, and a review list of shared identifiers | PARTIAL |
+| FN-06 Consent | Captured, not enforced | Unchanged; the portal is a new disclosure channel that does not consult consent, recorded as a caveat | PARTIAL |
+| FN-17 Clinical summary | Visit-centred staff screen | Plus a patient-facing summary generated on request, no stored file | PARTIAL |
+| SP-03 Authentication | Staff sessions only | Plus a second identity/session namespace for patients; patient tokens cannot satisfy staff routes | VERIFIED (unchanged) |
+| SP-04 RBAC | 8 of 13 unguarded routes closed | Plus 38 portal routes, every one guarded; 5 legacy routes still open | PARTIAL |
+| SP-05 Isolation | Four cross-facility leaks closed | Plus facility-scoped portal reads and a 404-not-403 rule for other facilities | PARTIAL |
+| SP-06 Audit trail | Access logging on some reads | Plus eight patient read paths, admin actions, and auditing of audit reads; 0017 still unapplied | PARTIAL |
+| SP-08 Encryption at rest | Two sealed identifier columns | Plus a sealed card code (hash for lookup, sealed copy for re-display); volume and backups unchanged | PARTIAL |
+| SP-10 Brute force | Staff rate limits and lockout | Plus 10/15 min public limits and a per-account patient lock that cannot be used to enumerate | VERIFIED (unchanged) |
+
+What the portal did **not** do, and must not be read into the rows above: it did not
+apply a migration, run a query against PostgreSQL, send a message, prove facility
+isolation with real rows, or close any of the eleven critical gaps.
 
 ---
 
@@ -263,6 +316,13 @@ the arithmetic that produced the 90% figure this audit rejected.
   were performed, as instructed.
 - **Five unguarded routes and 33 id-addressed routes remain unaudited.** This is
   the largest residual technical risk and is item P1-1 in the remediation plan.
+- **The portal has never run.** Migration 0018 is unapplied, no portal query has
+  been executed, concurrent invitation redemption has not been exercised, and there
+  is no SMS or email provider, so no delivery has ever been attempted. The patient
+  and administration screens were built and type-checked, not clicked.
+- **The portal added processing the DPIA did not originally cover** — patient
+  accounts, portal access logs, digital-card lookups and patient-initiated sharing
+  grants. `DPIA_DRAFT.md` §7 now records it; the draft is still unsigned.
 
 ---
 
@@ -277,4 +337,9 @@ the arithmetic that produced the 90% figure this audit rejected.
 | `TEST_RESULTS.md` | Executed commands and real output |
 | `REMEDIATION_PLAN.md` | Ordered work, owners, dependencies |
 | `DEPLOYMENT_AND_RECOVERY.md` | Deployment, backup, restore |
-| `DPIA_DRAFT.md` | Populated draft, unsigned |
+| `DPIA_DRAFT.md` | Populated draft, unsigned; §11 covers the portal |
+| `../patient-portal/PATIENT_PORTAL_IMPLEMENTATION.md` | What the portal does, endpoint by endpoint |
+| `../patient-portal/PATIENT_PORTAL_SECURITY_AUDIT.md` | Threat model, token handling, open legal questions |
+| `../patient-portal/PATIENT_PORTAL_TEST_RESULTS.md` | What was executed, what was not |
+| `../patient-portal/PATIENT_PORTAL_DATABASE_CHANGES.md` | Migration 0018 in full |
+| `../patient-portal/PATIENT_PORTAL_DEPLOYMENT_GUIDE.md` | Preconditions and blockers |
