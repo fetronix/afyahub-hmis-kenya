@@ -40,10 +40,7 @@ export default defineConfig({
      * src/tests/vitest/support/db.ts is the single place that decides,
      * so a local run and CI agree.
      */
-    setupFiles: [
-      'src/tests/vitest/support/setup.ts',
-      'src/tests/vitest/support/setup-dom.ts',
-    ],
+    setupFiles: ['src/tests/vitest/support/setup.ts', 'src/tests/vitest/support/setup-dom.ts'],
     globalSetup: ['src/tests/vitest/support/global-setup.ts'],
 
     /**
@@ -79,10 +76,12 @@ export default defineConfig({
          * Two levels, because one number cannot say both things.
          *
          * GLOBAL is a ratchet: set just below the measured baseline
-         * (2026-10-25, after the dates/password suites and the auth
-         * validation suite: 7.66% statements, 7.90% lines, 4.57%
-         * functions, 2.54% branches) so the build cannot regress while the
-         * remaining suites migrate.
+         * (2026-10-26, after the auth validation, route authorization,
+         * settlement, tariff resolution, scope enforcement and field
+         * encryption, authorization middleware and DHA boundary suites:
+         * 11.35% statements, 11.50% lines, 8.77% functions, 7.42% branches)
+         * so the
+         * build cannot regress while the remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
          * 3,752 legacy assertions exist, but they assert on source text
@@ -92,10 +91,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 7.6,
-        statements: 7.4,
-        functions: 4.3,
-        branches: 2.3,
+        lines: 11.4,
+        statements: 11.2,
+        functions: 8.7,
+        branches: 7.3,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -151,6 +150,93 @@ export default defineConfig({
           statements: 95,
           functions: 100,
           branches: 95,
+        },
+
+        /*
+         * Payment settlement. Every payment taken at a counter runs through
+         * this module, and it is where an overpayment becomes patient credit
+         * instead of a negative balance that would offset somebody else's
+         * debt. A regression here moves money.
+         */
+        'src/billing/settlement.ts': {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 92,
+        },
+
+        /*
+         * Tariff resolution. This is the module that answers "what does this
+         * cost?", and its own header lists the six different problems that
+         * used to produce one identical sentence. Held high because every
+         * charge in the facility passes through it, and because the costly
+         * regressions are silent: billing a general ward rate for an ICU
+         * night, or substituting a different tariff when the linked one
+         * lapsed, both produce a plausible invoice.
+         */
+        'src/billing/tariff-resolver.ts': {
+          lines: 79,
+          statements: 78,
+          functions: 75,
+          branches: 74,
+        },
+
+        /*
+         * Tenant and facility enforcement - the boundary between hospitals.
+         * Held at 100 on purpose, and it is the one row here expected to stay
+         * there: an untested branch in this file is a cross-tenant read, not
+         * a cosmetic gap. It is also small and entirely synchronous, so full
+         * coverage is a fair thing to ask of it.
+         */
+        'src/auth/scope.service.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+
+        /*
+         * Field encryption. Everything a stolen table dump must not reveal
+         * passes through here, and the failures that matter are silent ones:
+         * a reused IV that makes equal identifiers detectable, or a caught
+         * authentication error that returns a wrong identifier instead of
+         * throwing. Held just below the measured 98.38/98.59/100/97.72; the
+         * missing lines are the defensive branches around an unreachable
+         * `Buffer.from(..., 'base64')` throw, not real behaviour.
+         */
+        'src/security/field-crypto.ts': {
+          lines: 98,
+          statements: 98,
+          functions: 100,
+          branches: 97,
+        },
+
+        /*
+         * The guards mounted in front of the API. Held high because the
+         * damaging failures here are fail-open: a guard that writes a 403 and
+         * still calls next() shows the client a refusal while the handler has
+         * already run. Held just below the measured 82.10/82.10/100/88.09.
+         */
+        'src/auth/authorization.middleware.ts': {
+          lines: 81,
+          statements: 81,
+          functions: 100,
+          branches: 87,
+        },
+
+        /*
+         * DHA configuration decides whether live patient data can leave this
+         * server. The regressions that matter are the permissive ones - a
+         * default that is not mock, a production gate that can be skipped, a
+         * redaction that returns the secret it was meant to hide - so the
+         * whole configuration path is held near the measured 97.05/97.14/
+         * 100/98.14 rather than left to the global ratchet.
+         */
+        'src/integrations/dha/dha.config.ts': {
+          lines: 96,
+          statements: 96,
+          functions: 100,
+          branches: 97,
         },
       },
     },
