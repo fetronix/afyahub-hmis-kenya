@@ -78,8 +78,9 @@ export default defineConfig({
          * GLOBAL is a ratchet: set just below the measured baseline
          * (2026-10-26, after the auth validation, route authorization,
          * settlement, tariff resolution, scope enforcement and field
-         * encryption and authorization middleware suites: 10.97%
-         * statements, 11.10% lines, 8.39% functions, 6.43% branches) so the
+         * encryption, authorization middleware and DHA boundary suites:
+         * 11.35% statements, 11.50% lines, 8.77% functions, 7.42% branches)
+         * so the
          * build cannot regress while the remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
@@ -90,10 +91,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 11.0,
-        statements: 10.9,
-        functions: 8.3,
-        branches: 6.3,
+        lines: 11.4,
+        statements: 11.2,
+        functions: 8.7,
+        branches: 7.3,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -221,6 +222,21 @@ export default defineConfig({
           statements: 81,
           functions: 100,
           branches: 87,
+        },
+
+        /*
+         * DHA configuration decides whether live patient data can leave this
+         * server. The regressions that matter are the permissive ones - a
+         * default that is not mock, a production gate that can be skipped, a
+         * redaction that returns the secret it was meant to hide - so the
+         * whole configuration path is held near the measured 97.05/97.14/
+         * 100/98.14 rather than left to the global ratchet.
+         */
+        'src/integrations/dha/dha.config.ts': {
+          lines: 96,
+          statements: 96,
+          functions: 100,
+          branches: 97,
         },
       },
     },
