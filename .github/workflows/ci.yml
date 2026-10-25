@@ -228,6 +228,13 @@ jobs:
           set -o pipefail
           npx vitest run --coverage src/tests/vitest --reporter=verbose 2>&1 | tee db-specs.log
 
+      - name: Create the bootstrap administrator
+        # The auth suites log in as the administrator named by ADMIN_*, and
+        # migrations create no users. Without this the login assertion fails
+        # for a reason that has nothing to do with the code under test.
+        # Synthetic data in a database that is destroyed with the runner.
+        run: npm run db:seed
+
       - name: Authentication and authorization suites (database-backed)
         # These two suites import `../db` and exercise real rows, so they
         # cannot run in `npm test`. Until now they had never been executed by
