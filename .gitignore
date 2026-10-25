@@ -18,3 +18,24 @@ firebase-applet-config.json
 
 # scratch files written by scripts/verify-dry-run.mjs
 .verify-dry-run-*
+
+# ============================================================
+# Database dumps and backups — NEVER commit these
+# ============================================================
+#
+# Four pg_dump files were committed before this rule existed (~1.1 MB,
+# referencing `patients` and `patient_identifiers`). They have been removed
+# from tracking. A dump is a full copy of patient data with none of the
+# database's access control: it cannot be encrypted at rest by the database,
+# cannot be audited, and cannot be un-disclosed once pushed.
+#
+# Back up to storage outside the repository. If a dump must live locally,
+# this file keeps it out of commits.
+*.dump
+*.dump.*
+*.sql.gz
+*.sql.gz.*
+*.pgdump
+*.psql
+backups/
+local-backups/
