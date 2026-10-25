@@ -55,8 +55,12 @@ env:
   APP_BASE_URL: http://localhost:3000
   DHA_MODE: mock
   DHA_ALLOW_PRODUCTION: 'false'
-  # A throwaway 32-byte key, base64. Never reuse this outside CI.
-  FIELD_ENCRYPTION_KEY: dGVzdC1vbmx5LWtleS1ub3QtZm9yLXByb2R1Y3Rpb24tMDAwMDA=
+  # FIELD_ENCRYPTION_KEY is NOT set here. The application needs one to
+  # start, but a literal base64 key in the workflow is indistinguishable
+  # from a leaked production key to any secret scanner, and would make every
+  # future scan of this repository a false positive. Each job that needs it
+  # generates a fresh value in a step (see below), so the key exists only for
+  # the life of one job and exists in no file anywhere.
 
 jobs:
   # ------------------------------------------------------------------
@@ -98,6 +102,12 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
       - name: Vitest (coverage)
         run: npm run test:coverage
 
@@ -126,6 +136,12 @@ jobs:
           cache: npm
 
       - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
 
       - name: npm test
         run: npm test
@@ -170,6 +186,12 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
       - name: Confirm the service is reachable
         run: |
           node -e "
@@ -183,9 +205,6 @@ jobs:
 
       - name: Migration status must be clean
         run: npm run db:status
-
-      - name: A dry run must be read-only
-        run: npm run verify:dry-run
 
       - name: Database and migration specs
         run: npm run test:coverage -- --project node
@@ -216,8 +235,21 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
       - name: Build client and server bundles
         run: npm run build:deploy
+
+      - name: A migration dry run must be read-only
+        # Runs against a fake pg driver that records every statement, so it
+        # proves the runner issues nothing but SELECT without needing a
+        # database. It needs build/scripts/migrate.js, which is why it lives
+        # here and not in the database job.
+        run: npm run verify:dry-run
 
       - name: Check the artifacts exist
         run: |
@@ -267,6 +299,12 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
       - name: Audit production dependencies
         # High and critical block. Moderate advisories are reported: the
         # project cannot always fix a transitive dependency the day it is
@@ -302,6 +340,12 @@ jobs:
           cache: npm
 
       - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
 
       - name: Prettier check
         # Not a required check yet: 173 existing files predate the formatter,

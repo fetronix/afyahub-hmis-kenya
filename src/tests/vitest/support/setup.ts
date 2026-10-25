@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Vitest setup — node environment
  *
@@ -34,9 +35,18 @@ process.env.DHA_MODE ??= 'mock';
 process.env.DHA_ALLOW_PRODUCTION = 'false';
 
 /*
- * A deterministic encryption key for the field-crypto tests. 32 bytes,
- * base64. Generated for tests only and useless anywhere else — a real key
- * must never appear in the repository.
+ * An encryption key for the field-crypto tests, derived at run time.
+ *
+ * It is deliberately NOT a literal. A committed 32-byte base64 string is
+ * indistinguishable from a real key to any secret scanner, so storing even a
+ * fake one makes every future scan of this repository a false positive that
+ * has to be explained and waived. Deriving it means the repository contains
+ * no key-shaped string at all, and the value is still stable across runs
+ * (which the field-crypto tests need: ciphertext written by one test must be
+ * readable by the next).
  */
-process.env.FIELD_ENCRYPTION_KEY ??=
-  'dGVzdC1vbmx5LWtleS1ub3QtZm9yLXByb2R1Y3Rpb24tMDAwMDA=';
+const TEST_ONLY_KEY_MATERIAL = 'jalicare-test-only-field-encryption-key';
+
+process.env.FIELD_ENCRYPTION_KEY ??= createHash('sha256')
+  .update(TEST_ONLY_KEY_MATERIAL)
+  .digest('base64');
