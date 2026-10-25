@@ -34,6 +34,41 @@ protections:
 For a Kenyan HMIS this is a Data Protection Act 2019 matter, not a
 housekeeping one.
 
+### What is in them — verified 2026-10-25
+
+The contents were previously unexamined. They have now been inspected at the
+structure level only: the dumps were extracted outside the repository, and
+**no values were printed, copied into a report, or committed.** What follows
+is counts, not data.
+
+All four are PostgreSQL custom-format archives (`PGDMP`) containing 61
+table-data sections each, including `patients`, `patient_identifiers`,
+`users` and `sessions`. Decompressed content, counted by pattern:
+
+| Dump | Argon2 hashes | `+254` phone numbers | email addresses | 64-hex tokens |
+|---|---|---|---|---|
+| `…before-patient-guardian-20261019` | 14 | 19 | 83 | 21 |
+| `…pre-tariffs-20261018` | 6 | 6 | 54 | 11 |
+| `…before-tariff-migration` | 6 | 6 | 56 | 11 |
+| `…before-subscription-migration` | 6 | 6 | 42 | 6 |
+
+**Conclusion: these contain real personal data and real credential
+material. They are not synthetic fixtures.** Phone numbers, email addresses
+and national-ID-like values are personal data under the Data Protection Act
+2019; the Argon2id hashes are user login material.
+
+Consequences:
+
+1. A **breach assessment** is required, not optional.
+2. The affected user accounts — 14 at most — should be **forced to reset**
+   their passwords. Argon2id at 64 MiB resists offline cracking well, but
+   "resists well" is not "cannot".
+3. The **database password is not in these files**; a `pg_dump` does not
+   carry it. Rotating it is still prudent, but the patient data above is the
+   primary issue.
+4. Removing the files from the current tree does **not** remove them from
+   history. See the purge procedure below.
+
 ### Remediated
 
 - Removed from tracking with `git rm --cached` (the local files are kept —
