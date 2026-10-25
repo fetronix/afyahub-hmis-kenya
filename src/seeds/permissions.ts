@@ -2,9 +2,34 @@
  * JaliCare HMIS
  * Permission Seed
  *
- * Seeds the system-wide permission catalogue.
+ * Seeds the system-wide permission catalogue and grants the seeded
+ * permissions to the two administrator roles that must hold them.
  *
- * Safe to run repeatedly.
+ * WHAT IT MAY CHANGE
+ * ------------------
+ * - INSERTS a permission code that does not exist yet.
+ * - UPDATES the name / module / description of an existing permission
+ *   row. Those three columns are platform-owned: they are the label the
+ *   screens print, not a facility decision.
+ * - INSERTS a role_permissions row for SUPER_ADMIN (all seeded codes)
+ *   and for each tenant FACILITY_ADMIN (the invitation set) when that
+ *   grant is absent.
+ *
+ * WHAT IT NEVER DOES
+ * ------------------
+ * - No DELETE, no TRUNCATE, no DROP, no column drop anywhere.
+ * - It never removes a permission that an operator granted by hand, and
+ *   never revokes a role assignment from a user.
+ * - It never touches facility-level role overrides
+ *   (facility_role_permission_overrides), staff accounts, or custom
+ *   roles. A facility that narrowed a role's permissions keeps that
+ *   narrowing.
+ *
+ * Because "safe to re-run" is a claim, it is checkable: `--dry-run`
+ * prints every insert/update it would make and writes nothing.
+ *
+ *   npm run db:seed:permissions -- --dry-run
+ *   npm run db:seed:permissions
  */
 
 import 'dotenv/config';
@@ -23,6 +48,30 @@ import {
   isNull,
   isNotNull,
 } from 'drizzle-orm';
+
+/*
+ * A seed that writes is a deployment step, so it must be possible to see
+ * what it would do first, and to run it against a database whose host is
+ * not this machine only when someone says so.
+ */
+const dryRun = process.argv.includes('--dry-run');
+const confirmed = process.argv.includes('--yes') || process.argv.includes('-y');
+
+const RESET = '\u001b[0m';
+const YELLOW = '\u001b[33m';
+const DIM = '\u001b[2m';
+
+let plannedInserts = 0;
+let plannedUpdates = 0;
+let skippedWrites = 0;
+
+function plan(action: 'create' | 'update' | 'grant', message: string): void {
+  if (action === 'create') plannedInserts += 1;
+  else if (action === 'update') plannedUpdates += 1;
+  else plannedInserts += 1;
+
+  console.log(`  ${dryRun ? `${YELLOW}would ${action}${RESET}` : `${action}d`} ${DIM}${message}${RESET}`);
+}
 
 
 /* ============================================================
@@ -940,48 +989,67 @@ async function seedPermissions(): Promise<void> {
 
     if (existing.length === 0) {
 
-      await db
-        .insert(permissions)
-        .values({
-          code: permission.code,
+      plan('create', `permission ${permission.code}`);
 
-          name: permission.name,
+      if (!dryRun) {
+        await db
+          .insert(permissions)
+          .values({
+            code: permission.code,
 
-          module: permission.module,
+            name: permission.name,
 
-          description:
-            permission.description,
+            module: permission.module,
 
-          createdAt: new Date(),
-        });
+            description:
+              permission.description,
 
-      console.log(
-        `Created permission: ${permission.code}`,
-      );
+            createdAt: new Date(),
+          });
+      }
 
     } else {
 
       /*
        * Keep the seed idempotent while allowing the
        * description/name to be corrected later.
+       *
+       * Only the three platform-owned columns are written. `id` and
+       * `code` are the identity every role grant and every audit row
+       * points at, and are never rewritten here.
        */
 
-      await db
-        .update(permissions)
-        .set({
-          name: permission.name,
+      const current = existing[0];
 
-          module: permission.module,
+      const unchanged =
+        current.name === permission.name &&
+        current.module === permission.module &&
+        (current.description ?? null) === (permission.description ?? null);
 
-          description:
-            permission.description,
-        })
-        .where(
-          eq(
-            permissions.code,
-            permission.code,
-          ),
-        );
+      if (!unchanged) {
+        plan('update', `permission ${permission.code} (name/module/description)`);
+
+        if (!dryRun) {
+          await db
+            .update(permissions)
+            .set({
+              name: permission.name,
+
+              module: permission.module,
+
+              description:
+                permission.description,
+            })
+            .where(
+              eq(
+                permissions.code,
+                permission.code,
+              ),
+            );
+        }
+      } else {
+        skippedWrites += 1;
+      }
     }
   }
 
@@ -1055,17 +1123,19 @@ async function seedPermissions(): Promise<void> {
 
     if (existingAssignment.length === 0) {
 
-      await db
-        .insert(rolePermissions)
-        .values({
-          roleId: superAdminRole.id,
+      plan('grant', `SUPER_ADMIN -> ${permission.code}`);
 
-          permissionId: permission.id,
-        });
+      if (!dryRun) {
+        await db
+          .insert(rolePermissions)
+          .values({
+            roleId: superAdminRole.id,
 
-      console.log(
-        `Assigned: ${permission.code}`,
-      );
+            permissionId: permission.id,
+          });
+      }
+    } else {
+      skippedWrites += 1;
     }
   }
 
@@ -1133,10 +1203,16 @@ async function seedPermissions(): Promise<void> {
         .limit(1);
 
       if (!existingAssignment) {
-        await db.insert(rolePermissions).values({
-          roleId: facilityAdminRole.id,
-          permissionId: permission.id,
-        });
+        plan('grant', `FACILITY_ADMIN(${facilityAdminRole.id}) -> ${permission.code}`);
+
+        if (!dryRun) {
+          await db.insert(rolePermissions).values({
+            roleId: facilityAdminRole.id,
+            permissionId: permission.id,
+          });
+        }
+      } else {
+        skippedWrites += 1;
       }
     }
   }
@@ -1152,20 +1228,32 @@ async function seedPermissions(): Promise<void> {
 
   console.log('');
   console.log('==============================================');
-  console.log('PERMISSION SEED COMPLETE');
+  console.log(dryRun ? 'PERMISSION SEED — DRY RUN' : 'PERMISSION SEED COMPLETE');
   console.log('==============================================');
 
-  console.log(
-    `Total permissions: ${allPermissions.length}`,
-  );
+  console.log(`Permissions in this catalogue : ${PERMISSIONS.length}`);
+  console.log(`Existing rows already correct: ${skippedWrites}`);
+  console.log(`Rows ${dryRun ? 'that would be written' : 'written'}     : ${plannedInserts + plannedUpdates}`);
 
   console.log(
     `SUPER_ADMIN role ID: ${superAdminRole.id}`,
   );
 
+  console.log('');
   console.log(
-    'SUPER_ADMIN now has all seeded platform permissions.',
+    'Rules this seed follows: no DELETE, no TRUNCATE, no DROP; no role',
   );
+  console.log(
+    'assignment is removed; facility permission overrides and custom roles',
+  );
+  console.log(
+    'are not touched.',
+  );
+
+  if (dryRun) {
+    console.log('');
+    console.log('Dry run — nothing was written to the database.');
+  }
 
   console.log('==============================================');
   console.log('');
@@ -1176,8 +1264,47 @@ async function seedPermissions(): Promise<void> {
    EXECUTE
    ============================================================ */
 
-seedPermissions()
-  .then(() => {
+/**
+ * Guard against the one mistake that matters: running the seeder with
+ * production credentials by accident. It is additive, but it still
+ * writes, so a remote host needs an explicit --yes.
+ */
+async function guardRemoteTarget(): Promise<void> {
+  const { env } = await import('../config/env.ts');
+
+  const local =
+    ['localhost', '127.0.0.1', '::1'].includes(env.database.host.trim().toLowerCase()) ||
+    env.database.host.trim() === '';
+
+  console.log('');
+  console.log(`Target: ${env.database.user}@${env.database.host}:${env.database.port}/${env.database.name}`);
+
+  if (dryRun) {
+    console.log('Mode  : DRY RUN (read-only)');
+  }
+
+  if (!local && !confirmed && !dryRun) {
+    console.log('');
+    console.log('This database is not on this machine. The seed only adds rows,');
+    console.log('but it still writes. Re-run with --yes once a backup exists:');
+    console.log('');
+    console.log('  npm run db:seed:permissions -- --yes');
+    console.log('');
+    process.exit(1);
+  }
+}
+
+guardRemoteTarget()
+  .then(() => seedPermissions())
+  .then(async () => {
+    /*
+     * Close the pool rather than calling process.exit(). An abrupt exit
+     * with an open pool is what leaves connections behind on a shared
+     * PostgreSQL server, and on a low-process host it also hides whether
+     * the exit was clean.
+     */
+    const { pool } = await import('../db/index.ts');
+    await pool.end();
     process.exit(0);
   })
   .catch((error) => {

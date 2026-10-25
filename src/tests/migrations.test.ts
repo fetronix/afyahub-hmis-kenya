@@ -21,6 +21,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { classifyMigrations } from '../../scripts/migration-journal.ts';
+
 let checks = 0;
 
 function assert(condition: boolean, label: string): void {
@@ -199,9 +201,32 @@ function testRunnerSafety(): void {
     'utf8',
   );
 
+  /*
+   * The rule used to be asserted as the literal string `appliedMillis`
+   * inside this file. It now lives in the shared classifier, so assert
+   * the BEHAVIOUR instead: an edited migration that is already recorded
+   * must not be queued again.
+   */
+  const editedButRecorded = classifyMigrations(
+    [
+      { tag: '0002_x', hash: 'hash-after-edit', folderMillis: 2_000, statements: [], bomStripped: false },
+    ],
+    [{ hash: 'hash-before-edit', createdAt: 2_000 }],
+  );
+
   assert(
-    runner.includes('appliedMillis'),
+    editedButRecorded.pending.length === 0,
     'the runner skips an applied migration by journal timestamp, so editing 0002 does not re-run it',
+  );
+
+  assert(
+    editedButRecorded.editedAfterApply.length === 1,
+    'editing an applied migration is reported as drift rather than replayed',
+  );
+
+  assert(
+    runner.includes('classifyMigrations('),
+    'the runner uses the shared classifier rather than its own copy of the rule',
   );
 
   assert(

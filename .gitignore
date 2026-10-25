@@ -14,3 +14,6 @@ firebase-applet-config.json
 
 # Local backups made before patching a file — never commit these
 *.bak
+
+# scratch files written by scripts/verify-dry-run.mjs
+.verify-dry-run-*
