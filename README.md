@@ -337,11 +337,25 @@ Two suites, running side by side while the older one is migrated.
 
 ### `npm test` — legacy assertion suites
 
-29 suites, ~3,700 assertions, no database required.
+32 suites, ~3,700 assertions. **No database required, but `.env` must exist.**
 
 ```bash
+cp .env.example .env     # once, if you have not already
 npm test
 ```
+
+The suites import `src/config/env.ts`, which validates configuration at load
+time and refuses to start without `SQL_*`. The values are never used to
+connect — any non-empty string satisfies it — but without a `.env` the first
+suite exits with:
+
+```
+Error: Missing required environment variable: SQL_HOST.
+```
+
+That is deliberate: a server with no database configuration must not start
+quietly. It does mean `npm test` cannot run on a bare clone, which is why
+the `.env` step comes before it in [Quick start](#quick-start).
 
 These are the suites written during development. Each one runs as its own
 process (`tsx src/tests/*.test.ts`). They are the reason the system is
