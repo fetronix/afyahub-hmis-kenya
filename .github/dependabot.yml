@@ -105,3 +105,11 @@ updates:
       - docker
     commit-message:
       prefix: 'chore(docker)'
+    ignore:
+      # The image is pinned to Node 22 to match CI and the `engines` range.
+      # Dependabot offered node:26 within a day of this config landing, and
+      # accepting it would put production on a runtime no test has run on —
+      # exactly the mismatch the pin exists to prevent. A Node major is a
+      # planned migration, not a dependency bump.
+      - dependency-name: 'node'
+        update-types: ['version-update:semver-major']
