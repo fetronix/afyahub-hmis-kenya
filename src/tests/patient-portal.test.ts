@@ -56,6 +56,7 @@ import {
   SHARING_CATEGORIES,
   validateSharingRequest,
 } from '../portal/portal-policy.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../..');
@@ -899,7 +900,7 @@ function sourceTests(): void {
 
 function persistenceTests(): void {
   const sql = code('drizzle/0018_patient_portal.sql');
-  const schema = code('src/db/schema.ts');
+  const schema = schemaSource();
 
   assert(
     sql.includes('CREATE TABLE IF NOT EXISTS patient_portal_accounts'),

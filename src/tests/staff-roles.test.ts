@@ -28,6 +28,7 @@ import {
   isDelegablePermission,
   isRestrictedRolePermission,
 } from '../auth/staff-role-policy.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
@@ -66,7 +67,7 @@ const panel = source('src/components/modules/StaffRolesPanel.tsx');
 const configuration = source('src/components/modules/ConfigurationModule.tsx');
 const sidebar = source('src/components/Sidebar.tsx');
 const verificationModal = source('src/components/modules/StaffVerificationModal.tsx');
-const schema = source('src/db/schema.ts');
+const schema = schemaSource();
 const loginService = source('src/auth/login.service.ts');
 const authMiddleware = source('src/auth/auth.middleware.ts');
 

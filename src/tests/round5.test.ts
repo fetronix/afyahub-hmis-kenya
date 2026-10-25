@@ -35,6 +35,7 @@ import {
   daysUntilExpiry,
   expiryStatus,
 } from '../inventory/inventory-contracts.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 let checks = 0;
 
@@ -309,7 +310,7 @@ function testAddStockItem(): void {
   );
 
   /* Expiry stays a batch fact: no column was invented on the item. */
-  const schema = source('src/db/schema.ts');
+  const schema = schemaSource();
   const itemStart = schema.indexOf("export const inventoryItems = pgTable(");
   const itemEnd = schema.indexOf("export const inventoryBatches = pgTable(");
   const itemTable = schema.slice(itemStart, itemEnd);

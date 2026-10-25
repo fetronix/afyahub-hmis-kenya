@@ -33,6 +33,7 @@ import {
   buildPartographPlot,
   partographGuidance,
 } from '../maternity/maternity-contracts.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 let checks = 0;
 
@@ -347,7 +348,7 @@ function testPlot(): void {
    ============================================================ */
 
 function testSchema(): void {
-  const schema = read('src/db/schema.ts');
+  const schema = schemaSource();
 
   assert(schema.includes("postnatalVisits = pgTable(\n  'postnatal_visits'"), 'postnatal_visits is declared');
   assert(schema.includes("immunisationRecords = pgTable(\n  'immunisation_records'"), 'immunisation_records is declared');

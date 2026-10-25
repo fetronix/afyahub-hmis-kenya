@@ -34,6 +34,7 @@ import {
   LIQUORS,
   PREGNANCY_STATUSES,
 } from '../maternity/maternity-contracts.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 let checks = 0;
 
@@ -226,7 +227,7 @@ function testMigration(): void {
    ============================================================ */
 
 function testSchemaHonesty(): void {
-  const schema = read('src/db/schema.ts');
+  const schema = schemaSource();
 
   const start = schema.indexOf("export const maternityPregnancies");
   const end = schema.indexOf('/* ============================================================\n   45. RELATIONS');
