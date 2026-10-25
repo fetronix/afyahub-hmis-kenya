@@ -1,7 +1,20 @@
 # JaliCare HMIS — Truehost cPanel deployment
 
-Practical guide for `https://jalicare.co.ke`, cPanel **Setup Node.js App**,
-application root `/home/gjwldxza/jalicare`, Node 24.
+Practical guide for cPanel **Setup Node.js App** on Truehost.
+
+**Placeholders used in this document**
+
+| Placeholder | Meaning |
+|---|---|
+| `<cpanel-user>` | your cPanel account name |
+| `<app-root>` | the application root set in Setup Node.js App |
+| `<domain>` | the domain the site answers on |
+| `<local-checkout>` | where you build the artifacts on your own machine |
+
+The installation this guide was written against ran
+`https://jalicare.co.ke` under cPanel with Node 24. Every path below is
+written as `<app-root>` so the guide applies to any account; substitute your
+own.
 
 Nothing in this document contains a secret. Passwords live only in
 cPanel's environment panel.
@@ -33,7 +46,7 @@ refuses, only the hosting provider can raise the limit.
 Requirements on the build machine: Node 22 or 24, npm 10+.
 
 ```bat
-cd C:\dev\afyahub-hmis-kenya
+cd <local-checkout>
 npm ci
 npm run lint
 npm test
@@ -139,7 +152,7 @@ put them in a file that is committed.
 | `SQL_HOST` | `localhost` |
 | `SQL_PORT` | `5432` |
 | `SQL_DB_NAME` | the database from cPanel → PostgreSQL Databases |
-| `SQL_ADMIN_USER` | the database user, including the `gjwldxza_` prefix |
+| `SQL_ADMIN_USER` | the database user, including cPanel's `<cpanel-user>_` prefix |
 | `SQL_ADMIN_PASSWORD` | the password you set in cPanel |
 | `SQL_SSL` | `false` for a database on the same host |
 | `SQL_SSL_REJECT_UNAUTHORIZED` | `true` |
@@ -210,7 +223,7 @@ Upload `dist/` or set `STATIC_DIR`.
 All three are **read-only** until the last one.
 
 ```bash
-cd /home/gjwldxza/jalicare
+cd <app-root>
 npm run db:status      # read-only: what does this database still owe?
 npm run db:preflight   # read-only: which database is this, what is in it?
 npm run db:migrate:dry # read-only: the exact plan, statement counts, destructive SQL
@@ -284,7 +297,7 @@ not something a script may guess.
 ### Dump (SSH)
 
 ```bash
-cd /home/gjwldxza/jalicare
+cd <app-root>
 pg_dump -Fc -f jalicare-$(date +%F-%H%M).dump "$SQL_DB_NAME"
 ls -lh jalicare-*.dump        # a 0-byte file is not a backup
 ```
@@ -382,7 +395,7 @@ Truehost support (**ticket 9707039**) and ask specifically:
 2. What is the maximum number of threads a single Node process may create?
 3. Is Node.js 24 fully supported for **CLI** jobs on this plan, not only for
    the application process?
-4. Can the process/thread limit for `gjwldxza` be raised, or can the account
+4. Can the process/thread limit for `<cpanel-user>` be raised, or can the account
    be moved to a plan that permits it?
 
 Attach the exact command, the exit code, and the output — that is what makes

@@ -80,7 +80,7 @@ export default defineConfig({
          *
          * GLOBAL is a ratchet: set just below the measured baseline
          * (2026-10-25, after the first execution-based specs:
-         * 6.74% statements, 6.99% lines, 3.48% functions, 1.62% branches)
+         * 6.78% statements, 7.03% lines, 3.52% functions, 1.59% branches)
          * so the build cannot regress while the remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:

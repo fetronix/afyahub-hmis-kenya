@@ -110,3 +110,83 @@ template cannot start the application.
    whole application. They cannot be split safely in one step.
 5. There is no CI, so none of the above is enforced by anything but a
    developer remembering to run it.
+
+---
+
+# 7. Current state after the quality upgrade
+
+Measured, not estimated. The sections above are the baseline as it was found
+and are left unedited, including where they turned out to be incomplete.
+
+## 7.1 Gates
+
+| Gate | Baseline | Now |
+|---|---|---|
+| `npm run typecheck` | pass | pass |
+| `npm run lint` | **absent** | 0 errors, 52 warnings |
+| `npm run format:check` | **absent** | configured; 173 files would change |
+| `npm test` (legacy) | 29 suites / 3,752 assertions | 29 suites, pass |
+| `npm run test:unit` (Vitest) | **absent** | 7 files: 62 passing, 11 skipped |
+| `npm run test:coverage` | **absent** | 7.03% lines, 6.78% statements, 3.52% functions, 1.59% branches |
+| `npm run build:deploy` | pass | pass |
+| Production bundle smoke test | **absent** | starts, `/api/health` 200, `/` 200 |
+| CI | **absent** | 7 jobs |
+| `npm audit --omit=dev` | 12 advisories (6 high) | 4 advisories, **0 high** |
+
+The 52 lint warnings are `set-state-in-effect` (31), `exhaustive-deps` (12),
+`immutability` (4), `purity` (3), `preserve-manual-memoization` (1) and
+`prefer-const` (1). None is suppressed globally; each is a real React hook
+issue to fix when the component is next touched.
+
+## 7.2 Coverage — what the number means
+
+7.03% lines looks poor and is. The reason is structural, not a shortage of
+tests: the 3,752 legacy assertions mostly assert that a file *contains* the
+right code, so they execute almost nothing. Only three of 113 source modules
+were executed at all before the new specs.
+
+Two figures matter more than the global percentage:
+
+- the modules the new specs do execute run at **93–100%** lines;
+- the per-module thresholds in `vitest.config.ts` hold the pricing rules high,
+  because a defect there bills a patient the wrong amount.
+
+The global threshold is a ratchet set just below the measured value, so it
+cannot regress while suites migrate. It is never lowered to make a build pass.
+
+## 7.3 Database verification
+
+The baseline's most important finding was that **no test in the repository
+touched PostgreSQL**. Tenant isolation was verified by grepping source text
+for `tenantId`.
+
+That is now covered by two specs against a real database:
+
+- `migrations.db.spec.ts` — applies the journal to an empty database and
+  checks status; refuses any database whose name lacks `test`.
+- `tenant-isolation.db.spec.ts` — two tenants, per-facility tariffs with the
+  same code at different prices, duplicate keys refused, cleanup scoped to the
+  synthetic tenants it created.
+
+**These have not run in this environment**, because it has no PostgreSQL. They
+skip with the address they tried and are executed by the CI `database` job,
+where `JALICARE_REQUIRE_DB=1` makes a skip a failure. The results are in the
+first CI run; they are not claimed here.
+
+## 7.4 Correction to section 5
+
+Section 5 recorded "none found" for raw SQL built from input. That was
+incomplete: `maternity.service.ts` had two `sql.raw(ARRAY[...])` calls built
+by string concatenation from row ids. The values came from the database and
+were integers, so they were not exploitable — but the pattern was one refactor
+away from becoming so, and a reviewer relying on section 5 would not have
+looked. Both are now parameterised `inArray` calls and no string-built SQL
+remains in `src/`.
+
+## 7.5 Phases not completed
+
+| Phase | State |
+|---|---|
+| P4 — split `app.ts`, `schema.ts`, `queries.ts` | **started, not finished.** `system.routes.ts` extracted; `app.ts` 8,449 → 8,449 lines (the phase added 145 lines of middleware and removed 106). The clinical routes wait for the schema split. |
+| Prettier across the tree | **reverted deliberately.** Reformatting 173 files broke five suites that assert on other files' source layout. The config is committed and the check is advisory in CI until those assertions are format-insensitive. |
+| Docker image build | **not executed here** — no Docker in this environment. Files are linted and reviewed; the build itself is unverified. |
