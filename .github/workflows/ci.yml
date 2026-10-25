@@ -218,6 +218,15 @@ jobs:
           set -o pipefail
           npx vitest run --coverage src/tests/vitest --reporter=verbose 2>&1 | tee db-specs.log
 
+      - name: Auth service and authentication specs
+        # These two suites now create the administrator they authenticate as
+        # and delete it afterwards, so they run against any migrated
+        # database. Previously they required an ADMIN_USERNAME account to
+        # already exist - which nothing in this repository creates - so they
+        # could never pass and were kept out of the gate. See
+        # docs/testing/KNOWN-GAPS.md.
+        run: npm run test:auth-db
+
       - name: Report the failing assertions
         if: failure()
         run: |

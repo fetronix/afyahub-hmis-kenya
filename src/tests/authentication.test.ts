@@ -9,9 +9,12 @@ import {
   loginAttempts,
 } from "../db/schema";
 
-import { verifyPassword } from "../utils/password";
+import { hashPassword, verifyPassword } from "../utils/password";
 
-const TEST_USERNAME = process.env.ADMIN_USERNAME || "admin";
+const TEST_PASSWORD = "JaliCareTestPassword2026!";
+
+const TEST_USERNAME =
+  `auth_admin_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
 const TEST_IP = "127.0.0.1";
 const TEST_USER_AGENT = "JaliCare-Authentication-Test";
@@ -49,7 +52,48 @@ async function main() {
    * -------------------------------------------------------
    */
 
-  console.log("TEST 1: Finding platform administrator...");
+  /*
+   * This suite used to require an administrator that already existed, named
+   * by ADMIN_USERNAME/ADMIN_PASSWORD, and in TEST 6 it incremented that
+   * account's failed-login counter. On a fresh database nothing matches, so
+   * it failed every run; against a real deployment it would have pushed a
+   * live administrator toward a lockout.
+   *
+   * It now creates the platform administrator it exercises and removes it
+   * afterwards. The assertions are unchanged.
+   */
+
+  console.log(
+    "TEST 1: Creating a platform administrator and finding it..."
+  );
+
+  await db.insert(users).values({
+    uid: `usr_auth_admin_${crypto.randomUUID()}`,
+    tenantId: null,
+    facilityId: null,
+    username: TEST_USERNAME,
+    email: `${TEST_USERNAME}@test.jalicare.local`,
+    fullName: "JaliCare Authentication Test Administrator",
+    phone: null,
+    designation: "Platform Administrator",
+    passwordHash: await hashPassword(TEST_PASSWORD),
+    passwordChangedAt: new Date(),
+    mustChangePassword: false,
+    accountStatus: "ACTIVE",
+    failedLoginAttempts: 0,
+    lastFailedLoginAt: null,
+    lockedUntil: null,
+    lastLoginAt: null,
+    lastLoginIp: null,
+    lastLogoutAt: null,
+    mfaEnabled: false,
+    mfaRequired: false,
+    mfaSecretEncrypted: null,
+    securityVersion: 1,
+    isActive: true,
+    deactivatedAt: null,
+    deactivationReason: null,
+  });
 
   const result = await db
     .select()
@@ -93,13 +137,7 @@ async function main() {
   console.log("");
   console.log("TEST 2: Testing Argon2id password verification...");
 
-  const adminPassword = process.env.ADMIN_PASSWORD;
-
-  if (!adminPassword) {
-    throw new Error(
-      "ADMIN_PASSWORD is not available in the environment."
-    );
-  }
+  const adminPassword = TEST_PASSWORD;
 
   const validPassword = await verifyPassword(
     adminPassword,
@@ -339,8 +377,13 @@ async function main() {
       )
     );
 
+  await db
+    .delete(users)
+    .where(eq(users.id, adminUser.id));
+
   console.log("✓ Test session removed");
   console.log("✓ Test login attempts removed");
+  console.log("✓ Test administrator removed");
 
   /*
    * -------------------------------------------------------
