@@ -207,7 +207,25 @@ jobs:
         run: npm run db:status
 
       - name: Database and migration specs
-        run: npm run test:coverage -- --project node
+        # No `--project node` filter: the config has a single environment
+        # selection (per-file `@vitest-environment` docblocks), so a project
+        # filter matches nothing and vitest exits with a startup error. The
+        # DB specs are selected by filename instead.
+        # `tee` so the output can be re-emitted as annotations below. Job
+        # logs are served from object storage, which is not always reachable
+        # from every network; annotations come from the API and always are.
+        run: |
+          set -o pipefail
+          npx vitest run --coverage src/tests/vitest --reporter=verbose 2>&1 | tee db-specs.log
+
+      - name: Report the failing assertions
+        if: failure()
+        run: |
+          if [ -f db-specs.log ]; then
+            grep -E "AssertionError|FAIL |Startup Error|✕|×|Error:" db-specs.log | tail -20 | while IFS= read -r line; do
+              echo "::error::${line//\%/%%25}"
+            done
+          fi
 
       - name: Upload database logs on failure
         if: failure()
