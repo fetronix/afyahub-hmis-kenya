@@ -79,9 +79,9 @@ export default defineConfig({
          * Two levels, because one number cannot say both things.
          *
          * GLOBAL is a ratchet: set just below the measured baseline
-         * (2026-10-25, after the first execution-based specs and the
-         * dates/password suites: 7.06% statements, 7.27% lines, 4.05%
-         * functions, 1.84% branches) so the build cannot regress while the
+         * (2026-10-25, after the dates/password suites and the auth
+         * validation suite: 7.66% statements, 7.90% lines, 4.57%
+         * functions, 2.54% branches) so the build cannot regress while the
          * remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
@@ -92,10 +92,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 7.0,
-        statements: 6.8,
-        functions: 3.8,
-        branches: 1.7,
+        lines: 7.6,
+        statements: 7.4,
+        functions: 4.3,
+        branches: 2.3,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -139,6 +139,18 @@ export default defineConfig({
           statements: 100,
           functions: 100,
           branches: 100,
+        },
+
+        /*
+         * The gate every login, session check and password reset passes
+         * through. Held high because a weakened length rule or a relaxed
+         * token shape would not show up anywhere else.
+         */
+        'src/auth/auth.validation.ts': {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
         },
       },
     },
