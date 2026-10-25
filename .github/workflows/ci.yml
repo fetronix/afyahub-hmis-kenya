@@ -12,11 +12,10 @@
 # this workflow.
 #
 # Jobs:
-#   typecheck   tsc --noEmit
-#   lint        eslint (0 errors required, warnings reported)
-#   unit        Vitest: pure + React specs, no database
-#   database    migrations applied to PostgreSQL 16, then the DB specs
-#   legacy      the 29 hand-written suites in `npm test`
+#   static      tsc --noEmit, then eslint (0 errors required, warnings reported)
+#   unit        Vitest: pure + React specs, coverage thresholds enforced
+#   database    migrations applied to PostgreSQL 16, DB specs, auth suites
+#   legacy      the 32 hand-written suites in `npm test`
 #   build       client + server bundles, uploaded as artifacts
 #   audit       npm audit for high/critical advisories
 #   format      Prettier check (advisory while the tree is being migrated)
