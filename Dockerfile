@@ -24,7 +24,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1 — dependencies
 # ---------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -59,7 +59,7 @@ RUN npm run build:deploy
 # ---------------------------------------------------------------------------
 # Stage 3 — runtime
 # ---------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS runner
+FROM node:26-bookworm-slim AS runner
 
 # `curl` is not installed: the health check in docker-compose uses a Node
 # one-liner instead, so the runtime image keeps one fewer package and one
