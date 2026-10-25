@@ -111,7 +111,19 @@ describeDb('migrations against a real PostgreSQL 16', () => {
     const result = run('migration-status');
 
     expect(result.code).toBe(0);
-    expect(result.out).toMatch(/Pending\s*:\s*0/);
+
+    /*
+     * The exact sentence the script prints when the journal and the database
+     * agree. The first version of this test asserted `/Pending: 0/`, which is
+     * not a line the script has ever printed — it was invented, and it failed
+     * the first time the spec ran against a real database. Asserting the
+     * string the script actually emits is the whole point of the test.
+     */
+    expect(result.out).toMatch(/All migrations in the journal are applied\./);
+
+    /* And it must not report a pending migration in any other form. */
+    expect(result.out).not.toMatch(/\bPENDING\b/);
+    expect(result.out).not.toMatch(/\d+ migration\(s\) pending:/);
   });
 
   it('is idempotent: a second run applies nothing', () => {
@@ -126,6 +138,6 @@ describeDb('migrations against a real PostgreSQL 16', () => {
     const status = run('migration-status');
 
     expect(result.code).toBe(0);
-    expect(status.out).toMatch(/Pending\s*:\s*0/);
+    expect(status.out).toMatch(/All migrations in the journal are applied\./);
   });
 });
