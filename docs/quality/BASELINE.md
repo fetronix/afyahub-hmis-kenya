@@ -190,3 +190,30 @@ remains in `src/`.
 | P4 — split `app.ts`, `schema.ts`, `queries.ts` | **started, not finished.** `system.routes.ts` extracted; `app.ts` 8,449 → 8,449 lines (the phase added 145 lines of middleware and removed 106). The clinical routes wait for the schema split. |
 | Prettier across the tree | **reverted deliberately.** Reformatting 173 files broke five suites that assert on other files' source layout. The config is committed and the check is advisory in CI until those assertions are format-insensitive. |
 | Docker image build | **not executed here** — no Docker in this environment. Files are linted and reviewed; the build itself is unverified. |
+
+## 7.6 The GitGuardian finding on commit 3427cce
+
+The pull request shows GitGuardian failing with "2 secrets uncovered". Both
+are the same value, and it is not a credential: it was a test-only
+`FIELD_ENCRYPTION_KEY` — base64 of the plaintext
+`test-only-key-not-for-production-00000` — used in the CI workflow's `env`
+block and in the Vitest setup.
+
+It has been removed. The Vitest setup now derives its key with SHA-256 at run
+time, and CI generates a fresh key per job into `$GITHUB_ENV`, so the
+repository contains no key-shaped string at all.
+
+**The check will still fail on this branch.** GitGuardian scans every commit
+in the pull request, and the literal exists in commit `3427cce`. It cannot be
+cleared by a file: `.gitguardian.yaml` is a ggshield CLI configuration and is
+**not read by the GitGuardian GitHub App**, whose exceptions live in the
+dashboard. Clearing it requires one of two things, neither of which is a code
+change:
+
+1. dismiss the incident as a false positive in the GitGuardian dashboard (one
+   click, and the right answer for a value that was never a secret); or
+2. rewrite the branch history so the literal never existed, which changes
+   every commit SHA on the branch.
+
+Option 1 is recommended. This note exists so that whoever reads the check does
+not have to reconstruct why a red security badge sits next to a green build.
