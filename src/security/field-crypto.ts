@@ -94,7 +94,12 @@ export interface FieldEncryptionStatus {
 }
 
 export function describeFieldEncryption(): FieldEncryptionStatus {
-  let key: Buffer | null = null;
+  /*
+   * No initial `null`: the catch returns, so the only path that reaches
+   * the return below has a value. The initialiser was dead and the
+   * linter was right to say so.
+   */
+  let key: Buffer | null;
 
   try {
     key = readKey();
@@ -239,7 +244,7 @@ export function normaliseIdentifier(value: string): string {
   return value
     .trim()
     .toUpperCase()
-    .replace(/[\s\-\/._]+/g, '');
+    .replace(/[\s\-/._]+/g, '');
 }
 
 /**

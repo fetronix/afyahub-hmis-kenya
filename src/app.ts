@@ -23,6 +23,12 @@ import * as queries from './db/queries.ts';
 import { db } from './db/index.ts';
 import * as schema from './db/schema.ts';
 import { and, count, eq, sql, sum } from 'drizzle-orm';
+import { createSystemRouter } from './routes/system.routes.ts';
+
+import {
+  correlationIdFrom,
+  moduleLogger,
+} from './logging/logger.ts';
 import authRoutes from './auth/auth.routes.ts';
 
 
@@ -100,6 +106,14 @@ const STATIC_DIR = process.env.STATIC_DIR
   ? path.resolve(process.cwd(), process.env.STATIC_DIR)
   : path.resolve(__dirname, 'dist');
 
+/*
+ * The application-wide logger. Structured, with credentials and patient
+ * identity redacted at the logger rather than at each call site — a call
+ * site that forgets is a leak, so the default has to be safe.
+ */
+const requestLog = moduleLogger('http');
+const appLog = moduleLogger('app');
+
 
 export async function createApp() {
 
@@ -123,6 +137,76 @@ export async function createApp() {
   app.use(createHelmetMiddleware());
   app.use(createCorsMiddleware());
 
+  /*
+   * =========================================================
+   * REQUEST LOGGING AND CORRELATION
+   * =========================================================
+   *
+   * Every request gets one line on completion, and one correlation id that
+   * every log statement inside it inherits.
+   *
+   * WHAT IS NOT LOGGED
+   *
+   * The query string is dropped. `GET /api/patients?nationalId=...` puts a
+   * national identity number into a log file, and a log file is a copy of
+   * patient data with none of the database's access control. The route path
+   * is enough to see what happened; the parameters belong in the database
+   * and in the audit trail, which has its own access rules.
+   *
+   * The body is never read. A discharge summary is a body.
+   *
+   * WHAT IS LOGGED
+   *
+   * method, path, status, duration, and the correlation id. That is enough
+   * to answer "which requests got slower at 14:32" and "was there a burst
+   * of 401s before this ticket" without storing anything about a patient.
+   *
+   * Health and readiness probes are not logged at info: an orchestrator
+   * polls them every few seconds and would bury every other line.
+   *
+   * ORDER MATTERS AND THIS IS DELIBERATE. It runs before the rate limiters
+   * and before `express.json()`, so that:
+   *   - a rate-limited request is still logged (429s are worth seeing);
+   *   - a malformed JSON body is still answered with a correlation id.
+   * Placed after the body parser, a client sending bad JSON receives an
+   * empty id and the operator has nothing to search for.
+   */
+  app.use((req, res, next) => {
+    const correlationId = correlationIdFrom(req.headers['x-correlation-id']);
+    const startedAt = process.hrtime.bigint();
+
+    /* Echoed so a client (or a proxy log) can quote the id when reporting
+     * a problem, which is how a support ticket becomes a log query. */
+    res.setHeader('X-Correlation-Id', correlationId);
+
+    const probe = req.path === '/api/health' || req.path === '/api/ready';
+
+    res.on('finish', () => {
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
+      requestLog[probe ? 'debug' : 'info'](
+        {
+          correlationId,
+          method: req.method,
+          /* `originalUrl.split('?')[0]` and not `req.path`: on a mounted
+           * router they differ, and the mounted path is the useful one. */
+          path: req.originalUrl.split('?')[0],
+          status: res.statusCode,
+          durationMs: Math.round(durationMs * 10) / 10,
+          /* A failed request at warn level is what makes a 5xx alerting
+           * rule possible without parsing messages. */
+        },
+        res.statusCode >= 500
+          ? 'request.failed'
+          : res.statusCode >= 400
+            ? 'request.rejected'
+            : 'request.completed',
+      );
+    });
+
+    next();
+  });
+
   /* Sign-in and invitation acceptance: counted on failures only. */
   app.use('/api/auth', createAuthRateLimiter());
 
@@ -135,6 +219,7 @@ export async function createApp() {
    * process while it parses.
    */
   app.use(express.json({ limit: '1mb' }));
+
 
   /*
    * =========================================================
@@ -152,27 +237,17 @@ export async function createApp() {
    */
   app.use('/api/auth', authRoutes);
 
-
   /*
    * =========================================================
-   * HEALTH CHECK
+   * HEALTH AND READINESS
    * =========================================================
    *
-   * This remains PUBLIC.
-   *
-   * It can be used by:
-   * - monitoring systems
-   * - load balancers
-   * - deployment health checks
+   * Extracted to src/routes/system.routes.ts. Both stay PUBLIC, because a
+   * load balancer and a container probe cannot authenticate. The paths are
+   * unchanged: deployment health checks are already pointed at them.
    */
-  app.get('/api/health', (req, res) => {
-    res.json({
-      status: 'healthy',
-      system: 'JaliCare Kenya HMIS',
-      dhaReadiness: 'Not assessed',
-      timestamp: new Date().toISOString(),
-    });
-  });
+  app.use('/api', createSystemRouter());
+
 
   /*
    * =========================================================
@@ -8287,6 +8362,83 @@ app.get(
 
   // =========================================================
 
+  /*
+   * =========================================================
+   * CATCH-ALL ERROR HANDLER
+   * =========================================================
+   *
+   * Without this, an error thrown inside a route that did not handle it
+   * reaches Express's default handler, which answers with an HTML page
+   * containing the stack trace and the file paths. To a client that
+   * expects JSON that is a parse failure; to anyone else it is a map of
+   * the server.
+   *
+   * The response is deliberately uniform: a status and a correlation id.
+   * Not the message, because a database error message contains table and
+   * column names, and not the stack, because it contains paths. The full
+   * detail goes to the log, where the correlation id joins it to the
+   * request line, and an operator can read it.
+   *
+   * A 4xx is the client's problem and is logged at warn; a 5xx is ours and
+   * is logged at error with the stack.
+   */
+  app.use(
+    (
+      error: Error & { status?: number; statusCode?: number; type?: string },
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      /* A response already started cannot be replaced with JSON; the only
+       * correct move is to let Express close the connection. */
+      if (res.headersSent) {
+        next(error);
+
+        return;
+      }
+
+      const correlationId = String(res.getHeader('X-Correlation-Id') ?? '');
+
+      /* A malformed JSON body is a client mistake, not a server fault, and
+       * answering 500 for it sends operators looking for an outage. */
+      const isBadJson = error.type === 'entity.parse.failed';
+      const isTooLarge = error.type === 'entity.too.large';
+
+      const status = isBadJson
+        ? 400
+        : isTooLarge
+          ? 413
+          : (error.status ?? error.statusCode ?? 500);
+
+      const detail = {
+        correlationId,
+        method: req.method,
+        path: req.originalUrl.split('?')[0],
+        status,
+        err: error,
+      };
+
+      if (status >= 500) {
+        appLog.error(detail, 'unhandled.error');
+      } else {
+        appLog.warn(detail, 'request.bad_input');
+      }
+
+      res.status(status).json({
+        error:
+          status >= 500
+            ? 'An internal error occurred. Quote the correlation id when reporting it.'
+            : isBadJson
+              ? 'The request body is not valid JSON.'
+              : isTooLarge
+                ? 'The request body is too large.'
+                : 'The request could not be processed.',
+        /* Never the message and never the stack. The id is the whole
+         * contract between the client and the log. */
+        correlationId,
+      });
+    },
+  );
 
   return app;
 }

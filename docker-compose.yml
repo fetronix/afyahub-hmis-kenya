@@ -1,0 +1,158 @@
+# JaliCare HMIS — local and small-production stack
+#
+#   docker compose up -d --build          start
+#   docker compose logs -f app            watch
+#   docker compose exec app node dist...  (nothing: the app image has no shell tooling)
+#   docker compose exec db pg_dump ...    back up
+#   docker compose down                   stop, keep data
+#   docker compose down -v                stop and DELETE the database
+#
+# MIGRATIONS ARE A SEPARATE, EXPLICIT STEP — they are not part of `up`.
+#
+#   docker compose run --rm migrate
+#
+# The application container never runs a migration on boot. That is not
+# caution for its own sake: two app containers starting together would both
+# see a pending migration and both apply it, and this database holds patient
+# records. Applying a schema change is a decision somebody makes, with a
+# backup in hand. See docs/DEPLOYMENT.md.
+#
+# SECRETS
+#   Nothing here contains a real credential. Values come from `.env`, which is
+#   gitignored, or from the shell. Generate the encryption key with:
+#       node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+#   and put it in `.env` as FIELD_ENCRYPTION_KEY. The compose file fails
+#   loudly if it is missing rather than starting with a default.
+
+name: jalicare
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SQL_ADMIN_USER:-jalicare}
+      POSTGRES_PASSWORD: ${SQL_ADMIN_PASSWORD:?SQL_ADMIN_PASSWORD is required - set it in .env}
+      POSTGRES_DB: ${SQL_DB_NAME:-jalicare}
+      # Deterministic collation regardless of the host locale: a database
+      # sort order that changes with the host makes ORDER BY results, and
+      # therefore tests, depend on where it runs.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+      TZ: ${TZ:-Africa/Nairobi}
+    volumes:
+      # Named volume: survives `down`, destroyed by `down -v`. The data lives
+      # here, not inside the image.
+      - jalicare-db-data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` with the real user and database, so "the port is open"
+      # is not mistaken for "this database accepts connections".
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # Not published to the host by default: the app reaches the database
+    # over the compose network by service name (`db`), and a database port
+    # open on 0.0.0.0 is the single most common way a small deployment is
+    # found and emptied. Uncomment to inspect it from the host.
+    # ports:
+    #   - '127.0.0.1:5432:5432'
+    networks: [jalicare]
+
+  # One-shot migration runner. Uses the same image as the app, so the
+  # migration files and the code that produced them can never disagree.
+  migrate:
+    build:
+      context: .
+      target: runner
+    image: jalicare-hmis:latest
+    profiles: ['tools']
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      SQL_HOST: db
+      SQL_PORT: '5432'
+      SQL_DB_NAME: ${SQL_DB_NAME:-jalicare}
+      SQL_ADMIN_USER: ${SQL_ADMIN_USER:-jalicare}
+      SQL_ADMIN_PASSWORD: ${SQL_ADMIN_PASSWORD:?SQL_ADMIN_PASSWORD is required}
+      SQL_SSL: 'false'
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY is required}
+      TZ: ${TZ:-Africa/Nairobi}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Africa/Nairobi}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      DHA_MODE: ${DHA_MODE:-mock}
+    # `db:status` is the safe default: it reports what would be applied and
+    # changes nothing. To apply, run the same service with `db:migrate`:
+    #   docker compose run --rm migrate npm run db:migrate -- --yes
+    command: ['npm', 'run', 'db:status']
+    networks: [jalicare]
+
+  app:
+    build:
+      context: .
+      target: runner
+    image: jalicare-hmis:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      # The app starts whether or not migrations were applied; this only
+      # orders it after the database is accepting connections.
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '3000'
+      # Service DNS: `db` is the compose service name. This is why the
+      # database does not need a published port.
+      SQL_HOST: db
+      SQL_PORT: '5432'
+      SQL_DB_NAME: ${SQL_DB_NAME:-jalicare}
+      SQL_ADMIN_USER: ${SQL_ADMIN_USER:-jalicare}
+      SQL_ADMIN_PASSWORD: ${SQL_ADMIN_PASSWORD:?SQL_ADMIN_PASSWORD is required}
+      # Inside the compose network the traffic never leaves the host.
+      # Set 'true' with a managed PostgreSQL that requires TLS.
+      SQL_SSL: ${SQL_SSL:-false}
+      SQL_SSL_REJECT_UNAUTHORIZED: ${SQL_SSL_REJECT_UNAUTHORIZED:-true}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY is required}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      TZ: ${TZ:-Africa/Nairobi}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Africa/Nairobi}
+      # Behind a reverse proxy, so express-rate-limit can see the client IP
+      # in X-Forwarded-For. Set to 'false' only if the port is exposed
+      # directly and no proxy exists — otherwise a client can forge its IP
+      # and bypass the login rate limit.
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      DHA_MODE: ${DHA_MODE:-mock}
+      DHA_ALLOW_PRODUCTION: 'false'
+    volumes:
+      # Uploads live outside the container so a redeploy does not take the
+      # scanned documents with it.
+      - jalicare-uploads:/app/uploads
+    healthcheck:
+      # Same probe the image declares. Kept explicit here so the compose
+      # file is readable on its own.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks: [jalicare]
+
+volumes:
+  jalicare-db-data:
+    driver: local
+  jalicare-uploads:
+    driver: local
+
+networks:
+  jalicare:
+    driver: bridge

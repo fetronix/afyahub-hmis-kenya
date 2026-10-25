@@ -2416,7 +2416,7 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
       );
 
       const previousAmount = Number(period.amountDue);
-      let changedPeriod = period;
+      let changedPeriod: typeof period;
 
       if (effectiveTiming === 'CURRENT_PERIOD') {
         if (paidCents > newAmountCents) {

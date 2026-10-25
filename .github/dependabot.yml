@@ -1,0 +1,107 @@
+# Automated dependency updates
+#
+# WHY THIS EXISTS
+#
+# The audit in this phase found twelve advisories, four of them high. Three
+# were fixed by upgrading a transitive dependency the project did not
+# choose. That will keep happening: the only sustainable answer is a regular
+# drip of small updates, not an annual archaeology project.
+#
+# The configuration below is deliberately conservative. This is a clinical
+# system, and an automatic major-version bump of a database client is not an
+# improvement — it is an outage waiting for a quiet Saturday.
+#
+#   - patch and minor updates are grouped into one PR per ecosystem, so a
+#     week produces one reviewable pull request instead of fifteen;
+#   - major updates are separate PRs, one per package, because those need
+#     reading, not approving;
+#   - security updates ignore the schedule and open immediately, because
+#     that is the one case where waiting is worse than reviewing;
+#   - GitHub Actions are updated too: an unpinned action is a supply-chain
+#     dependency nobody is watching.
+
+version: 2
+
+updates:
+  # ----------------------------------------------------------------
+  # Application dependencies
+  # ----------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Africa/Nairobi
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    labels:
+      - dependencies
+    commit-message:
+      prefix: 'chore(deps)'
+      include: scope
+    groups:
+      # Patch and minor together: these are the ones that should be
+      # reviewed quickly and merged when CI is green.
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      # Security fixes are grouped separately so they are never buried
+      # under routine noise.
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    ignore:
+      # A major Node type bump rewrites the whole codebase's type surface.
+      # It is a project, not a pull request, and it should be scheduled.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # ESLint 10 is incompatible with the current plugin set (ERESOLVE on
+      # @eslint/js). Revisit when the plugins ship support.
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@eslint/js'
+        update-types: ['version-update:semver-major']
+      # React 20 does not exist yet; listed so the intent is explicit
+      # rather than implicit in a lock file.
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react-dom'
+        update-types: ['version-update:semver-major']
+
+  # ----------------------------------------------------------------
+  # CI actions
+  # ----------------------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  # ----------------------------------------------------------------
+  # Docker base image
+  # ----------------------------------------------------------------
+  - package-ecosystem: docker
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: 'chore(docker)'

@@ -1,0 +1,20 @@
+# Generated output
+dist/
+build/
+coverage/
+node_modules/
+
+# Migrations are append-only history: reformatting one changes its hash and
+# makes an applied migration look edited. Never format them.
+drizzle/
+*.sql
+
+# Snapshots kept beside the source they replaced
+*.bak
+*.backup-*
+
+# Lockfile is managed by npm
+package-lock.json
+
+# GitHub workflow YAML is hand-formatted
+.github/

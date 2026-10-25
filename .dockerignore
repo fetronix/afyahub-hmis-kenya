@@ -1,0 +1,57 @@
+# Files the image must not carry.
+#
+# Reason to care beyond size: a secret copied into a layer is in that layer
+# forever, even if a later instruction deletes the file. `.env` is excluded so
+# it cannot reach the build stage at all.
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.netrc
+.npmrc
+
+# Dependencies and build output — reinstalled and rebuilt inside the image
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+
+# Version control, tests, docs, deployment helpers
+.git/
+.gitignore
+.github/
+.lintstagedrc*
+.husky/
+src/tests/
+docs/
+.local/
+local-backups/
+deploy/
+*.md
+!README.md
+
+# Logs, OS noise, editor state
+*.log
+logs/
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Databases and dumps — the image never contains data
+*.sql.gz
+*.dump
+*.bak
+*.sqlite
+*.sqlite3
+dumps/
+backups/

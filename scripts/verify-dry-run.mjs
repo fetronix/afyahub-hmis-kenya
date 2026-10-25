@@ -18,7 +18,7 @@
  * Exits 0 when the dry run is clean, 1 otherwise.
  */
 
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { register } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';

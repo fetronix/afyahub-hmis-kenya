@@ -1,0 +1,372 @@
+# JaliCare HMIS — continuous integration
+#
+# Every job here runs a command a developer can run locally. Nothing is
+# special-cased for CI except the PostgreSQL service and the throwaway
+# credentials that service uses.
+#
+# THE DATABASE IS DISPOSABLE. `postgres:16` starts empty on every run and is
+# destroyed with the runner. The credentials below are literal test values
+# committed on purpose: they are not secrets, they grant access to nothing,
+# and the database they open ceases to exist when the job ends. No real
+# patient data, insurance credential or production secret is used anywhere in
+# this workflow.
+#
+# Jobs:
+#   typecheck   tsc --noEmit
+#   lint        eslint (0 errors required, warnings reported)
+#   unit        Vitest: pure + React specs, no database
+#   database    migrations applied to PostgreSQL 16, then the DB specs
+#   legacy      the 29 hand-written suites in `npm test`
+#   build       client + server bundles, uploaded as artifacts
+#   audit       npm audit for high/critical advisories
+#   format      Prettier check (advisory while the tree is being migrated)
+
+name: CI
+
+on:
+  push:
+    branches: [main, 'arena/**', 'restructure/**', 'feature/**', 'fix/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A push to a busy branch cancels the previous run for that ref: CI minutes
+# are not worth spending on a commit nobody will look at again.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  # Deterministic, obviously-fake values. See the note at the top of this file.
+  SQL_HOST: 127.0.0.1
+  SQL_PORT: '5432'
+  SQL_DB_NAME: jalicare_test
+  SQL_ADMIN_USER: jalicare_test
+  SQL_ADMIN_PASSWORD: jalicare_test_password
+  SQL_SSL: 'false'
+  SQL_SSL_REJECT_UNAUTHORIZED: 'true'
+  NODE_ENV: test
+  TZ: Africa/Nairobi
+  DEFAULT_TIMEZONE: Africa/Nairobi
+  APP_BASE_URL: http://localhost:3000
+  DHA_MODE: mock
+  DHA_ALLOW_PRODUCTION: 'false'
+  # FIELD_ENCRYPTION_KEY is NOT set here. The application needs one to
+  # start, but a literal base64 key in the workflow is indistinguishable
+  # from a leaked production key to any secret scanner, and would make every
+  # future scan of this repository a false positive. Each job that needs it
+  # generates a fresh value in a step (see below), so the key exists only for
+  # the life of one job and exists in no file anywhere.
+
+jobs:
+  # ------------------------------------------------------------------
+  # Fast, independent gates. These run first so an obvious break stops
+  # the pipeline before the expensive jobs start.
+  # ------------------------------------------------------------------
+  static:
+    name: Typecheck and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        # Errors fail the job. Warnings are surfaced in the log and in the
+        # artifacts below; they are known and tracked, not ignored.
+        run: npm run lint
+
+  unit:
+    name: Unit and component tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
+      - name: Vitest (coverage)
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+  # ------------------------------------------------------------------
+  # The legacy suites. They need no database; three files need SQL_*
+  # to exist at import time, which the job-level env provides.
+  # ------------------------------------------------------------------
+  legacy:
+    name: Legacy assertion suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
+      - name: npm test
+        run: npm test
+
+  # ------------------------------------------------------------------
+  # PostgreSQL 16. This is the job that proves the migrations actually
+  # apply, and the only place tenant isolation is tested against a real
+  # database.
+  # ------------------------------------------------------------------
+  database:
+    name: Migrations and database specs (PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jalicare_test
+          POSTGRES_PASSWORD: jalicare_test_password
+          POSTGRES_DB: jalicare_test
+        ports:
+          - 5432:5432
+        # Wait for readiness here rather than sleeping in a step.
+        options: >-
+          --health-cmd "pg_isready -U jalicare_test -d jalicare_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Turns a skipped database suite into a failure: in CI, "no database"
+      # means the service did not come up, and that must not pass quietly.
+      JALICARE_REQUIRE_DB: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
+      - name: Confirm the service is reachable
+        run: |
+          node -e "
+            const { Pool } = require('pg');
+            const pool = new Pool({ host: '127.0.0.1', port: 5432, user: 'jalicare_test', password: 'jalicare_test_password', database: 'jalicare_test' });
+            pool.query('SELECT version()').then(r => { console.log(r.rows[0].version); return pool.end(); }).catch(e => { console.error(e); process.exit(1); });
+          "
+
+      - name: Apply migrations to an empty database
+        run: npm run db:migrate -- --yes
+
+      - name: Migration status must be clean
+        run: npm run db:status
+
+      - name: Database and migration specs
+        # No `--project node` filter: the config has a single environment
+        # selection (per-file `@vitest-environment` docblocks), so a project
+        # filter matches nothing and vitest exits with a startup error. The
+        # DB specs are selected by filename instead.
+        # `tee` so the output can be re-emitted as annotations below. Job
+        # logs are served from object storage, which is not always reachable
+        # from every network; annotations come from the API and always are.
+        run: |
+          set -o pipefail
+          npx vitest run --coverage src/tests/vitest --reporter=verbose 2>&1 | tee db-specs.log
+
+      - name: Report the failing assertions
+        if: failure()
+        run: |
+          if [ -f db-specs.log ]; then
+            grep -E "AssertionError|FAIL |Startup Error|✕|×|Error:" db-specs.log | tail -20 | while IFS= read -r line; do
+              echo "::error::${line//\%/%%25}"
+            done
+          fi
+
+      - name: Upload database logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-failure-context
+          path: |
+            coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------
+  # Build. Produces exactly what a deployment uploads.
+  # ------------------------------------------------------------------
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
+      - name: Build client and server bundles
+        run: npm run build:deploy
+
+      - name: A migration dry run must be read-only
+        # Runs against a fake pg driver that records every statement, so it
+        # proves the runner issues nothing but SELECT without needing a
+        # database. It needs build/scripts/migrate.js, which is why it lives
+        # here and not in the database job.
+        run: npm run verify:dry-run
+
+      - name: Check the artifacts exist
+        run: |
+          test -f build/server.js || { echo "build/server.js missing"; exit 1; }
+          test -f dist/index.html || { echo "dist/index.html missing"; exit 1; }
+          ls -lh build/server.js dist/index.html
+
+      - name: Smoke-test the production bundle
+        # Starts the real artifact on a spare port and checks it answers.
+        # This is the closest CI gets to the cPanel deployment.
+        run: |
+          NODE_ENV=production PORT=4321 node build/server.js &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4321/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          echo "--- /api/health ---"
+          curl -sf http://127.0.0.1:4321/api/health
+          echo
+          echo "--- / (SPA) ---"
+          curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4321/
+          kill "$SERVER_PID"
+
+      - name: Upload deployable artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-and-build
+          path: |
+            dist/
+            build/
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # Dependency hygiene.
+  # ------------------------------------------------------------------
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
+      - name: Audit production dependencies
+        # High and critical block. Moderate advisories are reported: the
+        # project cannot always fix a transitive dependency the day it is
+        # published, and a permanently red pipeline gets ignored.
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Full audit report (informational)
+        if: always()
+        run: npm audit --json > audit.json || true
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          path: audit.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------
+  # Formatting is advisory until the existing tree is formatted.
+  # ------------------------------------------------------------------
+  format:
+    name: Formatting (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate a throwaway encryption key
+        # Written to the job environment, never to a file. See the note at the
+        # top of this workflow for why it is not a literal.
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
+      - name: Prettier check
+        # Not a required check yet: 173 existing files predate the formatter,
+        # and reformatting them breaks five suites that assert on source
+        # layout. See docs/quality/LINTING.md for the migration plan.
+        run: npm run format:check

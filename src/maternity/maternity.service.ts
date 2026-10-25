@@ -23,7 +23,7 @@
  * did not fill is a field the record does not have.
  */
 
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
@@ -584,9 +584,10 @@ export async function getPregnancy(
         .select()
         .from(schema.deliveryBabies)
         .where(
-          sql`${schema.deliveryBabies.deliveryId} = ANY(${sql.raw(
-            `ARRAY[${deliveryRows.map((row) => row.id).join(',')}]::int[]`,
-          )})`,
+          inArray(
+            schema.deliveryBabies.deliveryId,
+            deliveryRows.map((row) => row.id),
+          ),
         )
         .orderBy(asc(schema.deliveryBabies.babyNumber))
     : [];
@@ -1633,9 +1634,7 @@ export async function listDeliveries(
         .select()
         .from(schema.deliveryBabies)
         .where(
-          sql`${schema.deliveryBabies.deliveryId} = ANY(${sql.raw(
-            `ARRAY[${ids.join(',')}]::int[]`,
-          )})`,
+          inArray(schema.deliveryBabies.deliveryId, ids),
         )
         .orderBy(asc(schema.deliveryBabies.babyNumber))
     : [];
