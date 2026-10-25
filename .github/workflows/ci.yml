@@ -218,6 +218,15 @@ jobs:
           set -o pipefail
           npx vitest run --coverage src/tests/vitest --reporter=verbose 2>&1 | tee db-specs.log
 
+      - name: Authentication and authorization suites (database-backed)
+        # These two suites import `../db` and exercise real rows, so they
+        # cannot run in `npm test`. Until now they had never been executed by
+        # anything: written, left out of the `test` chain, and forgotten.
+        # This job is the only environment that has a PostgreSQL for them.
+        run: |
+          set -o pipefail
+          npm run test:auth-db 2>&1 | tee -a db-specs.log
+
       - name: Report the failing assertions
         if: failure()
         run: |
