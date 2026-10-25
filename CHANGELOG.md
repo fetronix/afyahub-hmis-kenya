@@ -9,6 +9,56 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Repository hygiene
+
+- **Untracked 206 backup snapshots** (523 tracked files -> 317). Timeline
+  copies of `App.tsx`, `schema.ts`, `platform.routes.ts`, `api/client.ts` and
+  others, plus six backups sitting inside `drizzle/` next to the real
+  migrations. Removed with `git rm --cached`, so the local files are intact.
+  No real migration matched; all 23 `.sql` files and the journal remain.
+- `.gitignore` already covered the patterns, so they cannot be re-added.
+
+### Security
+
+- **Confirmed and documented the dump exposure.** The four committed
+  `pg_dump` archives were inspected at the structure level (outside the
+  repository; no values printed or committed). They contain real personal
+  data and user credential material — up to 14 Argon2id password hashes, 19
+  Kenyan phone numbers, 83 email addresses across the four files — not
+  synthetic fixtures. `docs/security/DATA-EXPOSURE.md` now records the
+  finding, the DPA 2019 consequences, and the owner actions outstanding.
+  The files remain in history; the purge still needs authorisation.
+- `SECURITY.md` added: private reporting route, what must never be pasted
+  into a report, the known exposure, and an honest statement that no tagged
+  releases exist and no security email is published.
+- `.env.example` now documents `LOG_LEVEL`, `LOG_PSEUDONYM_KEY`,
+  `JALICARE_DB_AVAILABLE` and `JALICARE_REQUIRE_DB`, which the source read
+  but the example omitted. Empty values; no credential introduced.
+
+### Testing
+
+- `src/tests/vitest/auth-validation.spec.ts` — 46 tests over
+  `src/auth/auth.validation.ts`, the gate every login, session check and
+  password reset passes through, previously untested. 0% -> 97.67% lines.
+- `src/tests/vitest/notification-dialog.spec.tsx` — 17 tests over the
+  notification component: tone labelling (a failure must never read
+  "Saved"), empty-queue rendering, every dismissal path, and accessibility.
+- Both mutation-checked against deliberately broken source.
+- Coverage 7.27% -> 7.90% lines (7.06 -> 7.66 statements, 4.05 -> 4.57
+  functions, 1.84 -> 2.54 branches); 99 -> 162 passing Vitest tests.
+  Thresholds raised to just under the new measurement.
+
+### Changed
+
+- `package.json` identity: `react-example` / `0.0.0` -> `jalicare-hmis` /
+  `0.1.0`. Deliberately not 1.0.0: there are no tags and no releases. No
+  `license` field is added — that decision belongs to the owner.
+- README testing instructions corrected: copying `.env.example` alone is not
+  enough, because its `SQL_*` values ship empty. Verified by following the
+  instructions as written and hitting the failure.
+- README and CI comments corrected from 29 suites to 32.
+
+
 Repository quality and buyer-readiness upgrade. Every entry below was applied
 on its own and verified with the full local gate: `tsc --noEmit`, ESLint,
 29 legacy suites, Vitest, `build:deploy`, and a smoke test of the built

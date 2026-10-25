@@ -337,25 +337,36 @@ Two suites, running side by side while the older one is migrated.
 
 ### `npm test` — legacy assertion suites
 
-32 suites, ~3,700 assertions. **No database required, but `.env` must exist.**
+32 suites, ~3,700 assertions. **No database required, but `.env` must be
+filled in, not merely copied.**
 
 ```bash
-cp .env.example .env     # once, if you have not already
+cp .env.example .env
+# then set SQL_HOST, SQL_PORT, SQL_DB_NAME, SQL_ADMIN_USER,
+# SQL_ADMIN_PASSWORD and FIELD_ENCRYPTION_KEY — see step 2 of Quick start.
 npm test
 ```
 
 The suites import `src/config/env.ts`, which validates configuration at load
-time and refuses to start without `SQL_*`. The values are never used to
-connect — any non-empty string satisfies it — but without a `.env` the first
-suite exits with:
+time and refuses to start without `SQL_*`. **The values are never used to
+connect** — any non-empty string satisfies validation — but `.env.example`
+ships those keys empty, so an unedited copy is not enough. Run against a bare
+`.env` and the first suite exits with:
 
 ```
 Error: Missing required environment variable: SQL_HOST.
 ```
 
 That is deliberate: a server with no database configuration must not start
-quietly. It does mean `npm test` cannot run on a bare clone, which is why
-the `.env` step comes before it in [Quick start](#quick-start).
+quietly. Two consequences worth knowing:
+
+- `npm test` will not run on a fresh clone until the six values above are
+  filled in. Filling them with placeholders is enough; no database is
+  contacted.
+- This is why the `.env` step comes before it in [Quick start](#quick-start).
+
+`npm run test:unit` is different: it needs `.env` too, but its database specs
+skip when PostgreSQL is unreachable, so it runs anywhere.
 
 These are the suites written during development. Each one runs as its own
 process (`tsx src/tests/*.test.ts`). They are the reason the system is
@@ -427,7 +438,7 @@ and `fix/**`.
 |---|---|
 | `static` | `tsc --noEmit` passes; ESLint reports 0 errors |
 | `unit` | Vitest passes and coverage meets the thresholds |
-| `legacy` | The 29 hand-written suites still pass |
+| `legacy` | The 32 hand-written suites still pass |
 | `database` | Migrations apply to a real **PostgreSQL 16**, status is clean, dry run is read-only, DB specs pass |
 | `build` | Client and server bundle, then **starts the real artifact** and checks `/api/health` and `/` |
 | `audit` | `npm audit --omit=dev --audit-level=high` |
