@@ -40,10 +40,7 @@ export default defineConfig({
      * src/tests/vitest/support/db.ts is the single place that decides,
      * so a local run and CI agree.
      */
-    setupFiles: [
-      'src/tests/vitest/support/setup.ts',
-      'src/tests/vitest/support/setup-dom.ts',
-    ],
+    setupFiles: ['src/tests/vitest/support/setup.ts', 'src/tests/vitest/support/setup-dom.ts'],
     globalSetup: ['src/tests/vitest/support/global-setup.ts'],
 
     /**
@@ -79,10 +76,10 @@ export default defineConfig({
          * Two levels, because one number cannot say both things.
          *
          * GLOBAL is a ratchet: set just below the measured baseline
-         * (2026-10-26, after the auth validation, route authorization and
-         * settlement suites: 8.16% statements, 8.34% lines, 4.91%
-         * functions, 3.16% branches) so the build cannot regress while the
-         * remaining suites migrate.
+         * (2026-10-26, after the auth validation, route authorization,
+         * settlement and tariff resolution suites: 9.43% statements,
+         * 9.53% lines, 6.53% functions, 4.92% branches) so the build cannot
+         * regress while the remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
          * 3,752 legacy assertions exist, but they assert on source text
@@ -92,10 +89,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 8.1,
-        statements: 7.9,
-        functions: 4.7,
-        branches: 3.0,
+        lines: 9.4,
+        statements: 9.3,
+        functions: 6.4,
+        branches: 4.8,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -164,6 +161,22 @@ export default defineConfig({
           statements: 95,
           functions: 100,
           branches: 92,
+        },
+
+        /*
+         * Tariff resolution. This is the module that answers "what does this
+         * cost?", and its own header lists the six different problems that
+         * used to produce one identical sentence. Held high because every
+         * charge in the facility passes through it, and because the costly
+         * regressions are silent: billing a general ward rate for an ICU
+         * night, or substituting a different tariff when the linked one
+         * lapsed, both produce a plausible invoice.
+         */
+        'src/billing/tariff-resolver.ts': {
+          lines: 79,
+          statements: 78,
+          functions: 75,
+          branches: 74,
         },
       },
     },
