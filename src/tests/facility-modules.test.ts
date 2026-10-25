@@ -17,7 +17,7 @@
  * Run with: npx tsx src/tests/facility-modules.test.ts
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -46,6 +46,33 @@ function assert(condition: boolean, label: string): void {
 
 function source(path: string): string {
   return readFileSync(resolve(root, path), 'utf8');
+}
+
+/**
+ * The schema, as one searchable string.
+ *
+ * `src/db/schema.ts` used to hold every table. It is being split into
+ * domain modules under `src/db/schema/`, so a table's definition may now
+ * live in either place. Reading only the barrel made this suite fail the
+ * moment `facilities` moved - which is the correct alarm for a text
+ * assertion, but the wrong thing to leave it doing.
+ *
+ * Concatenating the barrel and its modules keeps the assertion's intent
+ * (the schema declares this default) while surviving the split.
+ */
+function schemaSource(): string {
+  const modules = resolve(root, 'src/db/schema');
+  let text = source('src/db/schema.ts');
+
+  try {
+    for (const file of readdirSync(modules).filter((f) => f.endsWith('.ts'))) {
+      text += '\n' + readFileSync(resolve(modules, file), 'utf8');
+    }
+  } catch {
+    /* No modules yet: the barrel is the whole schema. */
+  }
+
+  return text;
 }
 
 /* ============================================================
@@ -189,7 +216,7 @@ function testServerContract(): void {
    ============================================================ */
 
 function testData(): void {
-  const schema = source('src/db/schema.ts');
+  const schema = schemaSource();
   const defaultBlock = schema.slice(
     schema.indexOf('enabledModules: jsonb'),
     schema.indexOf('enabledModules: jsonb') + 900,
