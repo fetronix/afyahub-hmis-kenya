@@ -175,6 +175,16 @@ jobs:
       # Turns a skipped database suite into a failure: in CI, "no database"
       # means the service did not come up, and that must not pass quietly.
       JALICARE_REQUIRE_DB: '1'
+      # The two database-backed auth suites import src/bootstrap-admin.ts,
+      # which refuses to load without these. They are deliberately obvious
+      # throwaway values for an administrator that exists only inside this
+      # job's disposable database, which is destroyed with the runner.
+      # No real operator account is created anywhere in CI.
+      ADMIN_USERNAME: ci_test_admin
+      ADMIN_EMAIL: ci-test-admin@example.invalid
+      ADMIN_PASSWORD: ci-test-only-not-a-real-password
+      ADMIN_FULL_NAME: CI Test Administrator
+      ADMIN_PHONE: '+254700000000'
 
     steps:
       - uses: actions/checkout@v4
