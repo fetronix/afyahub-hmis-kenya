@@ -79,9 +79,9 @@ export default defineConfig({
          * Two levels, because one number cannot say both things.
          *
          * GLOBAL is a ratchet: set just below the measured baseline
-         * (2026-10-25, after the dates/password suites and the auth
-         * validation suite: 7.66% statements, 7.90% lines, 4.57%
-         * functions, 2.54% branches) so the build cannot regress while the
+         * (2026-10-26, after the auth validation, route authorization and
+         * settlement suites: 8.16% statements, 8.34% lines, 4.91%
+         * functions, 3.16% branches) so the build cannot regress while the
          * remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
@@ -92,10 +92,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 7.6,
-        statements: 7.4,
-        functions: 4.3,
-        branches: 2.3,
+        lines: 8.1,
+        statements: 7.9,
+        functions: 4.7,
+        branches: 3.0,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -151,6 +151,19 @@ export default defineConfig({
           statements: 95,
           functions: 100,
           branches: 95,
+        },
+
+        /*
+         * Payment settlement. Every payment taken at a counter runs through
+         * this module, and it is where an overpayment becomes patient credit
+         * instead of a negative balance that would offset somebody else's
+         * debt. A regression here moves money.
+         */
+        'src/billing/settlement.ts': {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 92,
         },
       },
     },
