@@ -23,6 +23,7 @@ import * as queries from './db/queries.ts';
 import { db } from './db/index.ts';
 import * as schema from './db/schema.ts';
 import { and, count, eq, sql, sum } from 'drizzle-orm';
+import { createSystemRouter } from './routes/system.routes.ts';
 
 import {
   correlationIdFrom,
@@ -236,112 +237,17 @@ export async function createApp() {
    */
   app.use('/api/auth', authRoutes);
 
-
   /*
    * =========================================================
-   * HEALTH CHECK
+   * HEALTH AND READINESS
    * =========================================================
    *
-   * This remains PUBLIC.
-   *
-   * It can be used by:
-   * - monitoring systems
-   * - load balancers
-   * - deployment health checks
+   * Extracted to src/routes/system.routes.ts. Both stay PUBLIC, because a
+   * load balancer and a container probe cannot authenticate. The paths are
+   * unchanged: deployment health checks are already pointed at them.
    */
-  app.get('/api/health', (req, res) => {
-    res.json({
-      status: 'healthy',
-      system: 'JaliCare Kenya HMIS',
-      dhaReadiness: 'Not assessed',
-      timestamp: new Date().toISOString(),
-    });
-  });
+  app.use('/api', createSystemRouter());
 
-  /*
-   * =========================================================
-   * READINESS
-   * =========================================================
-   *
-   * /api/health answers "is the process alive". It always says yes, which
-   * is what a load balancer wants when deciding whether to restart a
-   * container — but it is the wrong question when deciding whether to send
-   * traffic to it.
-   *
-   * /api/ready answers "can this instance actually work". It checks the
-   * database, because every clinical screen needs it: a process that is up
-   * and cannot reach PostgreSQL is not serving anybody, and reporting it as
-   * ready means the proxy keeps routing requests into failures.
-   *
-   * 200 ready · 503 not ready. Both are cheap and rate-limit exempt.
-   *
-   * Nothing here exposes a host, user, password or connection string: the
-   * response says which dependency failed and how long the check took, and
-   * the detail stays in the server log.
-   */
-  let readinessProbe: { at: number; ok: boolean; latencyMs: number } | null = null;
-
-  app.get('/api/ready', async (req, res) => {
-    const started = Date.now();
-
-    /*
-     * A readiness probe is called every few seconds by every orchestrator.
-     * Hammering PostgreSQL at that rate is its own outage, so an answer is
-     * reused for two seconds. Two seconds is short enough that a recovered
-     * database is noticed before a proxy gives up on the instance.
-     */
-    if (readinessProbe && started - readinessProbe.at < 2_000) {
-      const cached = readinessProbe;
-
-      res.status(cached.ok ? 200 : 503).json({
-        status: cached.ok ? 'ready' : 'not_ready',
-        checks: {
-          database: {
-            status: cached.ok ? 'up' : 'down',
-            latencyMs: cached.latencyMs,
-            cached: true,
-          },
-        },
-        timestamp: new Date().toISOString(),
-      });
-
-      return;
-    }
-
-    let ok = false;
-
-    try {
-      await db.execute(sql`SELECT 1`);
-      ok = true;
-    } catch (error) {
-      const detail = error as { code?: string; message?: string };
-
-      console.error(
-        `Readiness check failed (${detail.code ?? 'unknown'}): ${detail.message ?? 'no detail'}`,
-      );
-    }
-
-    const latencyMs = Date.now() - started;
-
-    readinessProbe = { at: started, ok, latencyMs };
-
-    res.status(ok ? 200 : 503).json({
-      status: ok ? 'ready' : 'not_ready',
-      checks: {
-        database: { status: ok ? 'up' : 'down', latencyMs, cached: false },
-      },
-      /*
-       * Schema expectations are reported, not enforced here: a pending
-       * migration is a reason to alert, not a reason to take a working
-       * hospital system out of service.
-       */
-      schema: {
-        expectedMigrations: 23,
-        note: 'Run npm run db:status to compare the journal with the database.',
-      },
-      timestamp: new Date().toISOString(),
-    });
-  });
 
   /*
    * =========================================================
