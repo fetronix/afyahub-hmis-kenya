@@ -7,52 +7,47 @@ deleted, because each one is real coverage somebody intended to have.
 
 ## `src/tests/auth-service.test.ts` and `src/tests/authentication.test.ts`
 
-**State: broken. Not in any CI gate.**
+**State: FIXED. Both run in the CI `database` job.**
 
 Both import `../db` and exercise real rows, so they need PostgreSQL. They
-are runnable in the CI `database` job, and were temporarily wired into it.
-They fail.
+used to sign in as an administrator named by `ADMIN_USERNAME` /
+`ADMIN_PASSWORD` and assume that account already existed with a known
+password. Nothing in this repository creates it:
 
-The failure was traced to the first real assertion:
-
-```
-ASSERTION FAILED: Administrator can authenticate through AuthService
-```
-
-They sign in as the administrator named by `ADMIN_USERNAME` /
-`ADMIN_PASSWORD` and assume that account exists with a known password.
-
-Two things were tried:
-
-1. **Setting `ADMIN_*`.** This only got past `src/bootstrap-admin.ts`, which
+1. **Setting `ADMIN_*`** only got past `src/bootstrap-admin.ts`, which
    validates those variables at import. The account still did not exist.
-2. **`npm run db:seed`.** This does not help: `src/db/seed.ts` never reads
-   `ADMIN_*` and does not create that account. It seeds demo facilities and
-   patients, not a bootstrap administrator.
+2. **`npm run db:seed`** did not help: `src/db/seed.ts` never reads `ADMIN_*`
+   and does not create a bootstrap administrator.
 
-So the suites encode assumptions about a developer's existing database.
-They have never passed in this repository, and no evidence of them passing
-exists.
+So on a fresh database both failed at `Administrator can authenticate
+through AuthService`. They had never passed anywhere.
 
-### What repairing them needs
+### The repair
 
-Choose one, and write it down before starting:
+Self-contained fixtures, the first of the two options this document used to
+list. Each suite now inserts the platform administrator it exercises - the
+same field set it already used for its temporary user - and deletes it in
+cleanup. Every assertion and business rule is unchanged; only the source of
+the account moved, from the environment into the test.
 
-- **Self-contained fixtures.** Each suite creates the user it needs at the
-  top of the run, with a known password hash, and deletes it afterwards.
-  This is the right answer: a test that depends on ambient database state is
-  not a test, it is a memory of one working afternoon.
-- **Or a real bootstrap-admin seed step** that creates the account from
-  `ADMIN_*`, which is a product change and needs its own review.
+`authentication.test.ts` had a second problem worth recording: it
+incremented the failed-login counter of whatever account it found. Against a
+real deployment that would have pushed a live administrator toward the
+five-attempt lockout. It now only touches its own row.
 
-Until then they are excluded deliberately. They are **not** passing, they
-are **not** counted, and wiring them in would either fail CI every run or
-require weakening the assertion — both worse than an honest gap.
+### Verification
 
-The `test:auth-db` script exists so the work can be run by hand:
+The `database` job runs `npm run test:auth-db` after migrations. Run
+[40158302094](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/40158302094),
+step *Auth service and authentication specs*: **success**, against
+PostgreSQL 16.
+
+These cannot be run in every environment - they need a database, and there
+is no PostgreSQL or Docker in some development sandboxes. The CI job is
+where they are authoritative:
 
 ```bash
-npm run test:auth-db     # needs a database and a matching administrator
+npm run test:auth-db     # needs a migrated database
 ```
 
 ---
@@ -83,14 +78,24 @@ They are also the reason `prettier --write` cannot be run across the tree —
 reformatting broke five of them — and the reason the first schema extraction
 required a test change.
 
-`facility-modules.test.ts` now reads the barrel **plus** every module under
-`src/db/schema/`, which survives the split. The other eleven will need the
-same treatment as their tables move. The durable fix is one shared helper:
+The shared helper now exists and **eleven suites use it**:
 
 ```ts
 // src/tests/support/schema-source.ts
 export function schemaSource(): string   // barrel + every schema module
 ```
 
-Recommended next, before the third or fourth extraction, rather than
-repairing each file as it breaks.
+It concatenates `src/db/schema.ts` with every `.ts` file under
+`src/db/schema/`, sorted for determinism. `facility-modules.test.ts` keeps
+its own local copy; folding it in is a one-line change for the next commit
+that touches it.
+
+This makes the assertions survive the schema split. It does **not** make
+them behavioural. They still pass when the code is present but wrong, and
+they are still why `prettier --write` cannot run across the tree without
+breaking five of them first.
+
+The durable fix is unchanged: replace each with an executed assertion
+against the real table object (`getTableConfig(...)`, a `references()` walk,
+or a query against a disposable database). That is where the remaining
+source-text debt lives, and it is the highest-value test work left.

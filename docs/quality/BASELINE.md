@@ -36,7 +36,7 @@ Largest source files, measured with `wc -l`:
 | Check | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | **pass**, 6.6 s |
-| Tests | `npm test` | **pass**, 29 suites, **3,752 assertions**, 15 s |
+| Tests | `npm test` | **pass**, 32 suites, **3,752 assertions**, 15 s |
 | Client build | `npm run build` | **pass**, 1,708 modules, 761 ms |
 | Server bundle | `npm run build:server` | **pass**, 6 bundles, 0.2 s |
 | Dry-run proof | `npm run verify:dry-run` | **pass**, 3 statements, 0 writes |
@@ -125,13 +125,24 @@ and are left unedited, including where they turned out to be incomplete.
 | `npm run typecheck` | pass | pass |
 | `npm run lint` | **absent** | 0 errors, 52 warnings |
 | `npm run format:check` | **absent** | configured; 173 files would change |
-| `npm test` (legacy) | 29 suites / 3,752 assertions | 29 suites, pass |
-| `npm run test:unit` (Vitest) | **absent** | 7 files: 62 passing, 11 skipped |
-| `npm run test:coverage` | **absent** | 7.03% lines, 6.78% statements, 3.52% functions, 1.59% branches |
+| `npm test` (legacy) | 29 suites / 3,752 assertions | 32 suites, pass |
+| `npm run test:unit` (Vitest) | **absent** | 9 files: 99 passing, 11 skipped |
+| `npm run test:coverage` | **absent** | 7.27% lines, 7.06% statements, 4.05% functions, 1.84% branches |
 | `npm run build:deploy` | pass | pass |
 | Production bundle smoke test | **absent** | starts, `/api/health` 200, `/` 200 |
 | CI | **absent** | 7 jobs |
 | `npm audit --omit=dev` | 12 advisories (6 high) | 4 advisories, **0 high** |
+| `npm run test:auth-db` | **excluded** — could never pass | **in the database job**, passing |
+
+The last row is the one worth explaining. `auth-service.test.ts` and
+`authentication.test.ts` required an administrator to already exist, named
+by `ADMIN_USERNAME`/`ADMIN_PASSWORD`, and signed in as it. Nothing in the
+repository creates that account, so they failed on a fresh database every
+time they were run and were kept out of the gate rather than left red. They
+now create the administrator they exercise and delete it afterwards, so they
+run anywhere with a migrated database. Verified in CI run
+[40158302094](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/40158302094),
+step *Auth service and authentication specs*: success.
 
 The 52 lint warnings are `set-state-in-effect` (31), `exhaustive-deps` (12),
 `immutability` (4), `purity` (3), `preserve-manual-memoization` (1) and
@@ -140,10 +151,17 @@ issue to fix when the component is next touched.
 
 ## 7.2 Coverage — what the number means
 
-7.03% lines looks poor and is. The reason is structural, not a shortage of
+7.27% lines looks poor and is. The reason is structural, not a shortage of
 tests: the 3,752 legacy assertions mostly assert that a file *contains* the
 right code, so they execute almost nothing. Only three of 113 source modules
 were executed at all before the new specs.
+
+The figure moved from 7.03% to 7.27% when the clinical date arithmetic and
+password hashing suites landed; both modules went from 0% to 100% lines and
+now carry their own thresholds. That is a real gain in the modules that
+matter, but it barely moves a global percentage dominated by `src/app.ts`
+(1,992 instrumented lines), `src/db/queries.ts` (1,069) and
+`src/routes/platform.routes.ts` (991), which need a database to exercise.
 
 Two figures matter more than the global percentage:
 
