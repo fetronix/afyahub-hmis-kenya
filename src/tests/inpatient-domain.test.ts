@@ -183,6 +183,25 @@ function testRolePermissions(): void {
  * `app.use('/api/wards', requireFacilityModule(...))` mentions the same
  * path earlier in the file without any permission check.
  */
+/**
+ * Remove all whitespace from a source string.
+ *
+ * The route-wiring assertions below used to match `app.post(\n    '/api/wards',`
+ * including the newline and the exact indentation. That passes only while
+ * `src/app.ts` keeps that formatting: reformat it, or extract the route into
+ * a router, and a green test turns red with nothing about security having
+ * changed.
+ *
+ * Stripping whitespace from both sides makes the assertion about *which
+ * handler is registered with which permission*, independent of column
+ * numbers and line breaks. The behavioural equivalent - does the server
+ * actually refuse an unauthenticated caller - lives in
+ * `src/tests/vitest/route-authorization.spec.ts`.
+ */
+function stripWhitespace(source: string): string {
+  return source.replace(/\s+/g, '');
+}
+
 function routeIsGuarded(
   source: string,
   routePath: string,
@@ -366,16 +385,18 @@ function testWardBedSetup(): void {
     { route: "'/api/beds/:id'", method: 'app.delete', permission: 'inpatient.beds.delete' },
   ];
 
+  const flatApp = stripWhitespace(appSource);
+
   for (const { route, method, permission } of routes) {
-    const marker = `${method}(\n    ${route},`;
+    const marker = stripWhitespace(`${method}(${route},`);
 
     assert(
-      appSource.includes(marker),
+      flatApp.includes(marker),
       `${method} ${route} is registered`,
     );
 
-    const index = appSource.indexOf(marker);
-    const block = appSource.slice(index, index + 250);
+    const index = flatApp.indexOf(marker);
+    const block = flatApp.slice(index, index + 250);
 
     assert(
       block.includes(`requirePermission('${permission}')`),
