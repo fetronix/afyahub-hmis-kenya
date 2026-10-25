@@ -79,9 +79,11 @@ export default defineConfig({
          * Two levels, because one number cannot say both things.
          *
          * GLOBAL is a ratchet: set just below the measured baseline
-         * (2026-10-25: 1.06% statements, 1% lines, 1.82% functions,
-         * 0.91% branches) so the build cannot regress while suites
-         * migrate. It is deliberately not raised to a flattering figure:
+         * (2026-10-25, after the first execution-based specs:
+         * 6.74% statements, 6.99% lines, 3.48% functions, 1.62% branches)
+         * so the build cannot regress while the remaining suites migrate.
+         * These numbers move up as tests are added and are never lowered to
+         * make a build pass. It is deliberately not raised to a flattering figure:
          * 3,752 legacy assertions exist, but they assert on source text
          * and execute almost nothing, which is the gap this phase closes.
          *
@@ -89,10 +91,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 0.95,
-        statements: 1.0,
-        functions: 1.7,
-        branches: 0.85,
+        lines: 6.6,
+        statements: 6.4,
+        functions: 3.2,
+        branches: 1.5,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
