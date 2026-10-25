@@ -77,9 +77,9 @@ export default defineConfig({
          *
          * GLOBAL is a ratchet: set just below the measured baseline
          * (2026-10-26, after the auth validation, route authorization,
-         * settlement and tariff resolution suites: 9.43% statements,
-         * 9.53% lines, 6.53% functions, 4.92% branches) so the build cannot
-         * regress while the remaining suites migrate.
+         * settlement, tariff resolution and scope enforcement suites: 9.86%
+         * statements, 9.98% lines, 7.20% functions, 5.59% branches) so the
+         * build cannot regress while the remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
          * 3,752 legacy assertions exist, but they assert on source text
@@ -89,10 +89,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 9.4,
-        statements: 9.3,
-        functions: 6.4,
-        branches: 4.8,
+        lines: 9.9,
+        statements: 9.7,
+        functions: 7.1,
+        branches: 5.5,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -177,6 +177,20 @@ export default defineConfig({
           statements: 78,
           functions: 75,
           branches: 74,
+        },
+
+        /*
+         * Tenant and facility enforcement - the boundary between hospitals.
+         * Held at 100 on purpose, and it is the one row here expected to stay
+         * there: an untested branch in this file is a cross-tenant read, not
+         * a cosmetic gap. It is also small and entirely synchronous, so full
+         * coverage is a fair thing to ask of it.
+         */
+        'src/auth/scope.service.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
         },
       },
     },
