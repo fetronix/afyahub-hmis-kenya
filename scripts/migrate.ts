@@ -486,7 +486,7 @@ async function applyPlan(client: PoolClient, plan: MigrationPlan): Promise<void>
       console.error('Nothing was committed. The database is unchanged.');
       console.error('');
 
-      throw new Error(`${plan.tag} failed at statement ${index + 1}`);
+      throw new Error(`${plan.tag} failed at statement ${index + 1}`, { cause: error });
     }
   }
 

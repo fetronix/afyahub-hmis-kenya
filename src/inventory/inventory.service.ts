@@ -531,7 +531,19 @@ export async function dispenseFefoScoped(
   const today = todayKey();
 
   return db.transaction(async (tx) => {
-    let item: typeof schema.inventoryItems.$inferSelect | null = null;
+    /*
+     * Declared here, assigned once inside the branch below, and read only
+     * inside it. The previous `| null = null` initialiser was never read
+     * on any path, which is what the linter reported.
+     */
+    let item: typeof schema.inventoryItems.$inferSelect;
+    /*
+     * The empty array is NOT dead: when the dispense has no tracked item
+     * the `if` below is skipped entirely and this value is what the
+     * result reports. TypeScript agrees (TS2454 without it); the
+     * lint rule cannot see the branch.
+     */
+     
     let allocations: DispenseResult['allocations'] = [];
     let stockTracking: 'FEFO' | 'untracked' = 'untracked';
     let stockAfter: number | null = null;

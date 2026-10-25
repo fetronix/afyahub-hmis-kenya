@@ -379,7 +379,7 @@ export async function getPatients(
   search?: string,
 ) {
   try {
-    let query = db.select().from(schema.patients);
+    const query = db.select().from(schema.patients);
     const conditions = [];
 
     if (tenantId) {
@@ -514,7 +514,7 @@ export async function updatePatient(id: number, data: Partial<typeof schema.pati
 // Encounters
 export async function getEncounters(patientId?: number, facilityId?: number) {
   try {
-    let query = db.select().from(schema.encounters);
+    const query = db.select().from(schema.encounters);
     const conditions = [];
     if (patientId) conditions.push(eq(schema.encounters.patientId, patientId));
     if (facilityId) conditions.push(eq(schema.encounters.facilityId, facilityId));
@@ -552,7 +552,7 @@ export async function updateEncounter(id: number, data: Partial<typeof schema.en
 // Queues
 export async function getQueues(facilityId?: number, queueType?: string) {
   try {
-    let query = db.select().from(schema.queues);
+    const query = db.select().from(schema.queues);
     const conditions = [];
     if (facilityId) conditions.push(eq(schema.queues.facilityId, facilityId));
     if (queueType && queueType !== 'All') conditions.push(eq(schema.queues.queueType, queueType));
@@ -590,7 +590,7 @@ export async function updateQueueStatus(id: number, status: string) {
 // Appointments
 export async function getAppointments(facilityId?: number, practitionerId?: number) {
   try {
-    let query = db.select().from(schema.appointments);
+    const query = db.select().from(schema.appointments);
     const conditions = [];
     if (facilityId) conditions.push(eq(schema.appointments.facilityId, facilityId));
     if (practitionerId) conditions.push(eq(schema.appointments.practitionerId, practitionerId));
@@ -618,7 +618,7 @@ export async function createAppointment(data: typeof schema.appointments.$inferI
 // Observations / Vitals
 export async function getObservations(encounterId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.observations);
+    const query = db.select().from(schema.observations);
     const conditions = [];
     if (encounterId) conditions.push(eq(schema.observations.encounterId, encounterId));
     if (patientId) conditions.push(eq(schema.observations.patientId, patientId));
@@ -646,7 +646,7 @@ export async function recordObservation(data: typeof schema.observations.$inferI
 // Diagnoses
 export async function getDiagnoses(encounterId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.diagnoses);
+    const query = db.select().from(schema.diagnoses);
     const conditions = [];
     if (encounterId) conditions.push(eq(schema.diagnoses.encounterId, encounterId));
     if (patientId) conditions.push(eq(schema.diagnoses.patientId, patientId));
@@ -674,7 +674,7 @@ export async function recordDiagnosis(data: typeof schema.diagnoses.$inferInsert
 // Clinical Procedures
 export async function getProcedures(encounterId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.clinicalProcedures);
+    const query = db.select().from(schema.clinicalProcedures);
     const conditions = [];
     if (encounterId) conditions.push(eq(schema.clinicalProcedures.encounterId, encounterId));
     if (patientId) conditions.push(eq(schema.clinicalProcedures.patientId, patientId));
@@ -702,7 +702,7 @@ export async function recordProcedure(data: typeof schema.clinicalProcedures.$in
 // Medications & Prescriptions
 export async function getMedications(encounterId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.medications);
+    const query = db.select().from(schema.medications);
     const conditions = [];
     if (encounterId) conditions.push(eq(schema.medications.encounterId, encounterId));
     if (patientId) conditions.push(eq(schema.medications.patientId, patientId));
@@ -774,7 +774,7 @@ export async function updateBedStatus(bedId: number, status: string, currentPati
 
 export async function getAdmissions(facilityId?: number, status?: string) {
   try {
-    let query = db.select().from(schema.admissions);
+    const query = db.select().from(schema.admissions);
     const conditions = [];
     if (facilityId) conditions.push(eq(schema.admissions.facilityId, facilityId));
     if (status) conditions.push(eq(schema.admissions.status, status));
@@ -867,7 +867,7 @@ export async function getLabTests(facilityId?: number) {
 
 export async function getLabOrders(facilityId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.labOrders);
+    const query = db.select().from(schema.labOrders);
     const conditions = [];
     if (facilityId) conditions.push(eq(schema.labOrders.facilityId, facilityId));
     if (patientId) conditions.push(eq(schema.labOrders.patientId, patientId));
@@ -909,7 +909,7 @@ export async function updateLabOrderStatus(id: number, status: string, accession
 
 export async function getLabResults(orderId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.labResults);
+    const query = db.select().from(schema.labResults);
     const conditions = [];
     if (orderId) conditions.push(eq(schema.labResults.orderId, orderId));
     if (patientId) conditions.push(eq(schema.labResults.patientId, patientId));
@@ -939,7 +939,7 @@ export async function addLabResult(data: typeof schema.labResults.$inferInsert) 
 // Radiology
 export async function getRadiologyOrders(facilityId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.radiologyOrders);
+    const query = db.select().from(schema.radiologyOrders);
     const conditions = [];
     if (facilityId) conditions.push(eq(schema.radiologyOrders.facilityId, facilityId));
     if (patientId) conditions.push(eq(schema.radiologyOrders.patientId, patientId));
@@ -1063,7 +1063,7 @@ export async function createPurchaseOrder(data: typeof schema.purchaseOrders.$in
 // Finance & Billing
 export async function getInvoices(facilityId?: number, patientId?: number) {
   try {
-    let query = db.select().from(schema.billingInvoices);
+    const query = db.select().from(schema.billingInvoices);
     const conditions = [];
     if (facilityId) conditions.push(eq(schema.billingInvoices.facilityId, facilityId));
     if (patientId) conditions.push(eq(schema.billingInvoices.patientId, patientId));

@@ -93,6 +93,12 @@ export function validateIdentifier(
   |
   */
 
+    /*
+     * Deliberate: this rejects ASCII control characters, which is
+     * the rule’s stated concern. Suppressed narrowly, per site, not
+     * globally — every other file still enforces no-control-regex.
+     */
+    // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001F\u007F]/.test(normalized)) {
     throw new AuthValidationError(
       "Username or email contains invalid characters.",
@@ -215,6 +221,12 @@ export function validateIpAddress(
   }
 
   if (
+    /*
+     * Deliberate: this rejects ASCII control characters, which is
+     * the rule’s stated concern. Suppressed narrowly, per site, not
+     * globally — every other file still enforces no-control-regex.
+     */
+    // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
     throw new AuthValidationError(
@@ -271,6 +283,12 @@ export function validateUserAgent(
   }
 
   if (
+    /*
+     * Deliberate: this rejects ASCII control characters, which is
+     * the rule’s stated concern. Suppressed narrowly, per site, not
+     * globally — every other file still enforces no-control-regex.
+     */
+    // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
     throw new AuthValidationError(
@@ -436,6 +454,12 @@ export function validateEmail(
   }
 
   if (
+    /*
+     * Deliberate: this rejects ASCII control characters, which is
+     * the rule’s stated concern. Suppressed narrowly, per site, not
+     * globally — every other file still enforces no-control-regex.
+     */
+    // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
     throw new AuthValidationError(
@@ -479,6 +503,12 @@ export function validatePasswordResetToken(
   }
 
   if (
+    /*
+     * Deliberate: this rejects ASCII control characters, which is
+     * the rule’s stated concern. Suppressed narrowly, per site, not
+     * globally — every other file still enforces no-control-regex.
+     */
+    // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
     throw new AuthValidationError(

@@ -179,6 +179,7 @@ function testGuardedDdl(): void {
       [/CREATE TABLE(?! IF NOT EXISTS)/, 'CREATE TABLE must say IF NOT EXISTS'],
       [/CREATE (?:UNIQUE )?INDEX(?! IF NOT EXISTS)/, 'CREATE INDEX must say IF NOT EXISTS'],
       [/CREATE SEQUENCE(?! IF NOT EXISTS)/, 'CREATE SEQUENCE must say IF NOT EXISTS'],
+      // eslint-disable-next-line no-control-regex -- ESLint reads the \b word boundary as the backspace control character
       [/(DROP TABLE|TRUNCATE|DELETE FROM|DROP COLUMN)/, 'the migration is not destructive'],
     ];
 
