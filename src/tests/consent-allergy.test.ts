@@ -23,6 +23,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { schemaSource } from './support/schema-source.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
@@ -451,8 +452,8 @@ async function main(): Promise<void> {
   );
 
   assert(
-    code('src/db/schema.ts').includes("pgTable(\n  'patient_allergies'") ||
-      code('src/db/schema.ts').includes("pgTable('patient_allergies'"),
+    schemaSource().includes("pgTable(\n  'patient_allergies'") ||
+      schemaSource().includes("pgTable('patient_allergies'"),
     'The schema defines the allergy table',
   );
 

@@ -37,6 +37,7 @@ import {
 
 import { dhaCall } from '../integrations/dha/dha.client.ts';
 import { loadDhaConfig } from '../integrations/dha/dha.config.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 let checks = 0;
 
@@ -362,7 +363,7 @@ function testHonestyAndWiring(): void {
   );
 
   /* Data minimisation: no national ID column on the credential table. */
-  const schema = readRepoFile('src/db/schema.ts');
+  const schema = schemaSource();
   const tableStart = schema.indexOf("export const staffProfessionalCredentials");
   const tableEnd = schema.indexOf('export const professionalVerificationEvents');
   const table = schema.slice(tableStart, tableEnd);

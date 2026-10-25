@@ -30,6 +30,7 @@ import {
   parseMoneyToCents,
   validateTransactionCode,
 } from '../billing/settlement.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 let checks = 0;
 
@@ -246,7 +247,7 @@ function testWiring(): void {
     'the ledger uses the scoped service',
   );
 
-  const schema = readRepoFile('src/db/schema.ts');
+  const schema = schemaSource();
   assert(schema.includes("transactionCode: text('transaction_code')"), 'payments store a transaction code');
   assert(schema.includes("settlementStatus: text('settlement_status')"), 'payments store the settlement outcome');
   assert(schema.includes("creditBalance: numeric("), 'invoices carry a credit balance');

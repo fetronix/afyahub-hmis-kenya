@@ -27,6 +27,7 @@ import {
   radiologyChargeRequest,
   tariffCodeCandidates,
 } from '../billing/service-charges.ts';
+import { schemaSource } from './support/schema-source.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
@@ -147,7 +148,7 @@ function testLabBatch(): void {
    ============================================================ */
 
 function testRadiology(): void {
-  const schema = source('src/db/schema.ts');
+  const schema = schemaSource();
   const radiologyTable = schema.slice(schema.indexOf('radiologyOrders = pgTable'));
 
   assert(

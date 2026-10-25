@@ -79,9 +79,10 @@ export default defineConfig({
          * Two levels, because one number cannot say both things.
          *
          * GLOBAL is a ratchet: set just below the measured baseline
-         * (2026-10-25, after the first execution-based specs:
-         * 6.78% statements, 7.03% lines, 3.52% functions, 1.59% branches)
-         * so the build cannot regress while the remaining suites migrate.
+         * (2026-10-25, after the first execution-based specs and the
+         * dates/password suites: 7.06% statements, 7.27% lines, 4.05%
+         * functions, 1.84% branches) so the build cannot regress while the
+         * remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
          * 3,752 legacy assertions exist, but they assert on source text
@@ -91,10 +92,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 6.6,
-        statements: 6.4,
-        functions: 3.2,
-        branches: 1.5,
+        lines: 7.0,
+        statements: 6.8,
+        functions: 3.8,
+        branches: 1.7,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -113,6 +114,31 @@ export default defineConfig({
           statements: 40,
           functions: 35,
           branches: 30,
+        },
+
+        /*
+         * Clinical date arithmetic drives the bed-day charge and the
+         * length-of-stay report. A regression here mis-bills a patient, so
+         * it is held at the measured figure rather than allowed to drift
+         * down with the global ratchet.
+         */
+        'src/utils/dates.ts': {
+          lines: 100,
+          statements: 96,
+          functions: 100,
+          branches: 94,
+        },
+
+        /*
+         * The only place a password becomes a hash. Held high because a
+         * weakened cost factor or a silently swallowed verification error
+         * would not show up in any other test.
+         */
+        'src/utils/password.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
         },
       },
     },

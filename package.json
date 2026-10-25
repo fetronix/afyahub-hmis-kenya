@@ -27,7 +27,7 @@
     "test:pharmacy-batches": "tsx src/tests/pharmacy-batches.test.ts",
     "test:payments": "tsx src/tests/payments.test.ts",
     "test:claims": "tsx src/tests/claims.test.ts",
-    "test": "npm run test:inpatient && npm run test:opd && npm run test:billing && npm run test:tariff-matching && npm run test:tariff-resolver && npm run test:ward-billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:roles && npm run test:staff-roles && npm run test:design && npm run test:modules && npm run test:notifications && npm run test:compliance && npm run test:route-scope && npm run test:maternity && npm run test:postnatal && npm run test:security && npm run test:migrations && npm run test:field-encryption && npm run test:consent-allergy && npm run test:patient-portal && npm run test:round5 && npm run test:deploy",
+    "test": "npm run test:inpatient && npm run test:opd && npm run test:billing && npm run test:tariff-matching && npm run test:tariff-resolver && npm run test:ward-billing && npm run test:nursing && npm run test:reporting && npm run test:pharmacy-batches && npm run test:payments && npm run test:claims && npm run test:dha && npm run test:verification && npm run test:roles && npm run test:staff-roles && npm run test:design && npm run test:modules && npm run test:notifications && npm run test:compliance && npm run test:route-scope && npm run test:maternity && npm run test:postnatal && npm run test:security && npm run test:migrations && npm run test:field-encryption && npm run test:consent-allergy && npm run test:patient-portal && npm run test:round5 && npm run test:deploy && npm run test:auth-validation && npm run test:authorization && npm run test:subscription-access",
     "db:status:all": "node scripts/run-script.mjs migration-status --expect-all",
     "test:dha": "tsx src/tests/dha.test.ts",
     "test:verification": "tsx src/tests/professional-verification.test.ts",
@@ -65,7 +65,11 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:all": "npm test && npm run test:unit",
-    "ci": "npm run typecheck && npm run lint && npm test && npm run test:coverage && npm run build:deploy"
+    "ci": "npm run typecheck && npm run lint && npm test && npm run test:coverage && npm run build:deploy",
+    "test:auth-validation": "tsx src/tests/auth-validation.test.ts",
+    "test:authorization": "tsx src/tests/authorization.test.ts",
+    "test:subscription-access": "tsx src/tests/subscription-access.policy.test.ts",
+    "test:auth-db": "tsx src/tests/auth-service.test.ts && tsx src/tests/authentication.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

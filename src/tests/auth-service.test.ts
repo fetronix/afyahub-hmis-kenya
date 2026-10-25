@@ -24,9 +24,6 @@ import {
 |--------------------------------------------------------------------------
 */
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-
 const TEST_PASSWORD = "JaliCareTestPassword2026!";
 
 const TEST_IP = "127.0.0.1";
@@ -37,19 +34,6 @@ const TEST_USER_AGENT = "JaliCare-Authentication-Test";
 | Helpers
 |--------------------------------------------------------------------------
 */
-
-function requireEnvironmentVariable(
-  name: string,
-  value: string | undefined
-): string {
-  if (!value) {
-    throw new Error(
-      `Missing required environment variable: ${name}`
-    );
-  }
-
-  return value;
-}
 
 function hashSessionToken(token: string): string {
   return crypto
@@ -82,17 +66,8 @@ async function runAuthenticationServiceTest() {
   console.log("==============================================");
   console.log("");
 
-  const adminUsername = requireEnvironmentVariable(
-    "ADMIN_USERNAME",
-    ADMIN_USERNAME
-  );
-
-  const adminPassword = requireEnvironmentVariable(
-    "ADMIN_PASSWORD",
-    ADMIN_PASSWORD
-  );
-
   let temporaryUserId: number | null = null;
+  let adminUserId: number | null = null;
 
   const temporaryUsername =
     `auth_test_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -107,7 +82,69 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("TEST 1: Testing real administrator login...");
+    console.log(
+      "TEST 1: Creating a platform administrator and logging in..."
+    );
+
+    /*
+     * This suite used to sign in as an administrator that was assumed to
+     * already exist, named by ADMIN_USERNAME/ADMIN_PASSWORD. Nothing in the
+     * repository creates that account: src/bootstrap-admin.ts does, but it
+     * is a manual, separate step, and `npm run db:seed` does not call it.
+     * On a fresh database the suite therefore failed every time it ran,
+     * which is why it was never in the CI gate.
+     *
+     * It now creates the account it tests, exactly as TEST 5 already did for
+     * the ordinary user, and deletes it in the cleanup below. Every
+     * assertion is unchanged; they simply no longer depend on state outside
+     * the test.
+     */
+
+    const adminUsername =
+      `auth_admin_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+    const adminPassword = TEST_PASSWORD;
+
+    const insertedAdmins = await db
+      .insert(users)
+      .values({
+        uid: `usr_auth_admin_${crypto.randomUUID()}`,
+        tenantId: null,
+        facilityId: null,
+        username: adminUsername,
+        email: `${adminUsername}@test.jalicare.local`,
+        fullName: "JaliCare Authentication Test Administrator",
+        phone: null,
+        designation: "Platform Administrator",
+        passwordHash: await hashPassword(adminPassword),
+        passwordChangedAt: new Date(),
+        mustChangePassword: false,
+        accountStatus: "ACTIVE",
+        failedLoginAttempts: 0,
+        lastFailedLoginAt: null,
+        lockedUntil: null,
+        lastLoginAt: null,
+        lastLoginIp: null,
+        lastLogoutAt: null,
+        mfaEnabled: false,
+        mfaRequired: false,
+        mfaSecretEncrypted: null,
+        securityVersion: 1,
+        isActive: true,
+        deactivatedAt: null,
+        deactivationReason: null,
+      })
+      .returning({
+        id: users.id,
+        username: users.username,
+      });
+
+    adminUserId = insertedAdmins[0].id;
+
+    assert(
+      adminUserId > 0,
+      "Test administrator was created"
+    );
 
     const adminLogin = await login({
       identifier: adminUsername,
@@ -706,6 +743,20 @@ async function runAuthenticationServiceTest() {
       "Cleaning up authentication test records..."
     );
 
+    if (adminUserId !== null) {
+      await db
+        .delete(sessions)
+        .where(eq(sessions.userId, adminUserId));
+
+      await db
+        .delete(loginAttempts)
+        .where(eq(loginAttempts.userId, adminUserId));
+
+      await db
+        .delete(users)
+        .where(eq(users.id, adminUserId));
+    }
+
     if (temporaryUserId !== null) {
       await db
         .delete(sessions)
@@ -738,6 +789,7 @@ async function runAuthenticationServiceTest() {
     console.log("✓ Temporary sessions removed");
     console.log("✓ Temporary login attempts removed");
     console.log("✓ Temporary test user removed");
+    console.log("✓ Temporary administrator removed");
     console.log("");
   }
 }

@@ -12,6 +12,72 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 
+/*
+ * Domain modules
+ * --------------
+ * Tables are extracted one domain at a time. They are imported here so the
+ * relations below can reference them, and re-exported so that every existing
+ * `import * as schema from './db/schema.ts'` keeps working untouched.
+ *
+ * The re-export is deliberate and load-bearing: 27 files do `schema.tenants`,
+ * `schema.patients` and so on, and `drizzle.config.ts` points at this file.
+ * Moving the barrel would silently give drizzle-kit an empty schema.
+ */
+import {
+  departments,
+  facilityDocuments,
+  facilityOnboarding,
+  facilitySubscriptionAccess,
+  facilitySubscriptionPayments,
+  facilitySubscriptionPeriods,
+  facilitySubscriptionPriceChanges,
+  facilities,
+  tenants,
+} from './schema/tenancy.ts';
+
+export {
+  departments,
+  facilityDocuments,
+  facilityOnboarding,
+  facilitySubscriptionAccess,
+  facilitySubscriptionPayments,
+  facilitySubscriptionPeriods,
+  facilitySubscriptionPriceChanges,
+  facilities,
+  tenants,
+} from './schema/tenancy.ts';
+
+import {
+  facilityAdminInvitations,
+  facilityRolePermissionOverridePermissions,
+  facilityRolePermissionOverrides,
+  loginAttempts,
+  passwordResets,
+  permissions,
+  rolePermissions,
+  roles,
+  sessions,
+  userInvitations,
+  userRoles,
+  users,
+} from './schema/auth.ts';
+
+export {
+  facilityAdminInvitations,
+  facilityRolePermissionOverridePermissions,
+  facilityRolePermissionOverrides,
+  loginAttempts,
+  passwordResets,
+  permissions,
+  rolePermissions,
+  roles,
+  sessions,
+  userInvitations,
+  userRoles,
+  users,
+} from './schema/auth.ts';
+
+
 import { relations, sql } from 'drizzle-orm';
 
 /* ============================================================
@@ -44,935 +110,63 @@ import { relations, sql } from 'drizzle-orm';
    1. TENANTS
    ============================================================ */
 
-export const tenants = pgTable(
-  'tenants',
-  {
-    id: serial('id').primaryKey(),
-
-    name: text('name').notNull(),
-
-    slug: text('slug').notNull().unique(),
-
-    domain: text('domain'),
-
-    logoUrl: text('logo_url'),
-
-    brandColor: text('brand_color').default('#0f766e'),
-
-    contactEmail: text('contact_email'),
-
-    contactPhone: text('contact_phone'),
-
-    currency: text('currency').default('KES'),
-
-    timezone: text('timezone').default('Africa/Nairobi'),
-
-    settings: jsonb('settings').default({}),
-
-    isActive: boolean('is_active').default(true),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    slugIdx: uniqueIndex('tenants_slug_idx').on(table.slug),
-  }),
-);
-
-
 /* ============================================================
    2. HEALTHCARE FACILITIES
    ============================================================ */
-
-export const facilities = pgTable(
-  'facilities',
-  {
-    id: serial('id').primaryKey(),
-
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-
-    code: text('code').notNull(),
-
-    name: text('name').notNull(),
-
-    level: text('level').default('Level 4'),
-
-    county: text('county').default('Nairobi'),
-
-    subCounty: text('sub_county').default('Westlands'),
-
-    mflCode: text('mfl_code'),
-
-    address: text('address'),
-
-    phone: text('phone'),
-
-    email: text('email'),
-
-    enabledModules: jsonb('enabled_modules').default([
-      'registration',
-      'reception',
-      'opd',
-      'inpatient',
-      'maternity',
-      'theatre',
-      'specialty',
-      'laboratory',
-      'radiology',
-      'pharmacy',
-      'inventory',
-      'procurement',
-      'finance',
-      'insurance',
-      'public_health',
-      'analytics',
-      'interoperability',
-      'configuration',
-      'audit',
-    ]),
-
-    isActive: boolean('is_active').default(true),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    tenantCodeIdx: uniqueIndex('facilities_tenant_code_idx').on(
-      table.tenantId,
-      table.code,
-    ),
-
-    mflCodeIdx: uniqueIndex('facilities_mfl_code_idx').on(
-      table.mflCode,
-    ),
-  }),
-);
-
 
 /* ============================================================
    3. FACILITY ONBOARDING
    Platform Administrator controls this process.
    ============================================================ */
 
-export const facilityOnboarding = pgTable(
-  'facility_onboarding',
-  {
-    id: serial('id').primaryKey(),
-
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-
-    status: text('status')
-      .default('PROSPECT')
-      .notNull(),
-
-    /*
-      PROSPECT
-      PENDING_VERIFICATION
-      VERIFIED
-      INVITED
-      ACTIVATING
-      ACTIVE
-      SUSPENDED
-      DEACTIVATED
-    */
-
-    submittedBy: text('submitted_by'),
-
-    verifiedBy: text('verified_by'),
-
-    approvedBy: text('approved_by'),
-
-    submittedAt: timestamp('submitted_at'),
-
-    verifiedAt: timestamp('verified_at'),
-
-    approvedAt: timestamp('approved_at'),
-
-    activatedAt: timestamp('activated_at'),
-
-    suspendedAt: timestamp('suspended_at'),
-
-    deactivatedAt: timestamp('deactivated_at'),
-
-    suspensionReason: text('suspension_reason'),
-
-    rejectionReason: text('rejection_reason'),
-
-    notes: text('notes'),
-
-    metadata: jsonb('metadata').default({}),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    facilityIdx: uniqueIndex(
-      'facility_onboarding_facility_idx',
-    ).on(table.facilityId),
-
-    tenantStatusIdx: index(
-      'facility_onboarding_tenant_status_idx',
-    ).on(table.tenantId, table.status),
-  }),
-);
-
-
 /* ============================================================
    4. FACILITY ONBOARDING DOCUMENTS
    ============================================================ */
-
-export const facilityDocuments = pgTable(
-  'facility_documents',
-  {
-    id: serial('id').primaryKey(),
-
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-
-    documentType: text('document_type').notNull(),
-
-    /*
-      Examples:
-      - LICENSE
-      - REGISTRATION_CERTIFICATE
-      - MFL_DOCUMENT
-      - KRA_DOCUMENT
-      - OWNERSHIP_DOCUMENT
-      - FACILITY_ADMIN_ID
-      - OTHER
-    */
-
-    documentName: text('document_name').notNull(),
-
-    documentUrl: text('document_url'),
-
-    storageKey: text('storage_key'),
-
-    mimeType: text('mime_type'),
-
-    fileSize: integer('file_size'),
-
-    documentHash: text('document_hash'),
-
-    verificationStatus: text('verification_status')
-      .default('PENDING')
-      .notNull(),
-
-    /*
-      PENDING
-      VERIFIED
-      REJECTED
-    */
-
-    uploadedBy: text('uploaded_by'),
-
-    verifiedBy: text('verified_by'),
-
-    uploadedAt: timestamp('uploaded_at')
-      .defaultNow()
-      .notNull(),
-
-    verifiedAt: timestamp('verified_at'),
-
-    rejectionReason: text('rejection_reason'),
-
-    metadata: jsonb('metadata').default({}),
-  },
-  (table) => ({
-    facilityIdx: index(
-      'facility_documents_facility_idx',
-    ).on(table.facilityId),
-
-    verificationIdx: index(
-      'facility_documents_verification_idx',
-    ).on(table.verificationStatus),
-  }),
-);
-
 
 /* ============================================================
    5. DEPARTMENTS
    ============================================================ */
 
-export const departments = pgTable(
-  'departments',
-  {
-    id: serial('id').primaryKey(),
-
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-
-    name: text('name').notNull(),
-
-    code: text('code').notNull(),
-
-    type: text('type').default('clinical'),
-
-    isActive: boolean('is_active').default(true),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    facilityCodeIdx: uniqueIndex(
-      'departments_facility_code_idx',
-    ).on(table.facilityId, table.code),
-  }),
-);
-
-
 /* ============================================================
    6. ROLES
    ============================================================ */
-
-export const roles = pgTable(
-  'roles',
-  {
-    id: serial('id').primaryKey(),
-
-    /*
-      NULL tenantId means this is a platform/system role.
-      Example:
-      SUPER_ADMIN
-    */
-
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id),
-
-    name: text('name').notNull(),
-
-    description: text('description'),
-
-    isSystem: boolean('is_system')
-      .default(false)
-      .notNull(),
-
-    isActive: boolean('is_active')
-      .default(true)
-      .notNull(),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    tenantRoleIdx: uniqueIndex(
-      'roles_tenant_name_idx',
-    ).on(table.tenantId, table.name),
-  }),
-);
-
 
 /* ============================================================
    7. PERMISSIONS
    ============================================================ */
 
-export const permissions = pgTable(
-  'permissions',
-  {
-    id: serial('id').primaryKey(),
-
-    code: text('code').notNull().unique(),
-
-    name: text('name').notNull(),
-
-    module: text('module').notNull(),
-
-    description: text('description'),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-);
-
-
 /* ============================================================
    8. ROLE PERMISSIONS
    ============================================================ */
 
-export const rolePermissions = pgTable(
-  'role_permissions',
-  {
-    id: serial('id').primaryKey(),
-
-    roleId: integer('role_id')
-      .references(() => roles.id)
-      .notNull(),
-
-    permissionId: integer('permission_id')
-      .references(() => permissions.id)
-      .notNull(),
-
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => ({
-    rolePermissionIdx: uniqueIndex(
-      'role_permissions_role_permission_idx',
-    ).on(table.roleId, table.permissionId),
-  }),
-);
-export const facilityRolePermissionOverrides = pgTable(
-  'facility_role_permission_overrides',
-  {
-    id: serial('id').primaryKey(),
-    tenantId: integer('tenant_id').references(() => tenants.id).notNull(),
-    facilityId: integer('facility_id').references(() => facilities.id).notNull(),
-    roleId: integer('role_id').references(() => roles.id).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    facilityRoleIdx: uniqueIndex(
-      'facility_role_permission_overrides_facility_role_idx',
-    ).on(table.facilityId, table.roleId),
-    tenantFacilityIdx: index(
-      'facility_role_permission_overrides_tenant_facility_idx',
-    ).on(table.tenantId, table.facilityId),
-  }),
-);
-
-export const facilityRolePermissionOverridePermissions = pgTable(
-  'facility_role_permission_override_permissions',
-  {
-    id: serial('id').primaryKey(),
-    overrideId: integer('override_id')
-      .references(() => facilityRolePermissionOverrides.id, { onDelete: 'cascade' })
-      .notNull(),
-    permissionId: integer('permission_id').references(() => permissions.id).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    overridePermissionIdx: uniqueIndex(
-      'facility_role_permission_override_permissions_override_permission_idx',
-    ).on(table.overrideId, table.permissionId),
-  }),
-);
-
-   
 /* ============================================================
    9. USERS
    PostgreSQL-backed authentication
    ============================================================ */
 
-export const users = pgTable(
-  'users',
-  {
-    id: serial('id').primaryKey(),
-
-    /*
-      Internal immutable JaliCare user identifier.
-
-      Example:
-      usr_01HXYZ...
-    */
-
-    uid: text('uid')
-      .notNull()
-      .unique(),
-
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id),
-
-    facilityId: integer('facility_id')
-      .references(() => facilities.id),
-
-    /*
-      Login username.
-      Normalized to lowercase by application code.
-    */
-
-    username: text('username')
-      .notNull()
-      .unique(),
-
-    /*
-      Email is also normalized by application code.
-    */
-
-    email: text('email')
-      .notNull()
-      .unique(),
-
-    emailVerifiedAt: timestamp('email_verified_at'),
-
-    fullName: text('full_name').notNull(),
-
-    phone: text('phone'),
-
-    phoneVerifiedAt: timestamp('phone_verified_at'),
-
-    designation: text('designation'),
-
-    /*
-      Argon2id password hash.
-
-      NEVER store plaintext passwords.
-    */
-
-    passwordHash: text('password_hash'),
-
-    passwordChangedAt: timestamp('password_changed_at'),
-
-    mustChangePassword: boolean('must_change_password')
-      .default(false)
-      .notNull(),
-
-    /*
-      Account lifecycle.
-
-      PENDING
-      ACTIVE
-      LOCKED
-      SUSPENDED
-      DISABLED
-    */
-
-    accountStatus: text('account_status')
-      .default('PENDING')
-      .notNull(),
-
-    /*
-      Brute-force protection.
-    */
-
-    failedLoginAttempts: integer('failed_login_attempts')
-      .default(0)
-      .notNull(),
-
-    lastFailedLoginAt: timestamp('last_failed_login_at'),
-
-    lockedUntil: timestamp('locked_until'),
-
-    lastLoginAt: timestamp('last_login_at'),
-
-    lastLoginIp: text('last_login_ip'),
-
-    lastLogoutAt: timestamp('last_logout_at'),
-
-    /*
-      MFA readiness.
-    */
-
-    mfaEnabled: boolean('mfa_enabled')
-      .default(false)
-      .notNull(),
-
-    mfaRequired: boolean('mfa_required')
-      .default(false)
-      .notNull(),
-
-    /*
-      Store encrypted MFA secret only if/when MFA is implemented.
-      NEVER store raw secrets.
-    */
-
-    mfaSecretEncrypted: text('mfa_secret_encrypted'),
-
-    /*
-      Used to invalidate old authentication credentials/sessions
-      after important security changes.
-    */
-
-    securityVersion: integer('security_version')
-      .default(1)
-      .notNull(),
-
-    isActive: boolean('is_active')
-      .default(true)
-      .notNull(),
-
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-
-    deactivatedAt: timestamp('deactivated_at'),
-
-    deactivationReason: text('deactivation_reason'),
-  },
-  (table) => ({
-    usernameIdx: uniqueIndex(
-      'users_username_idx',
-    ).on(table.username),
-
-    emailIdx: uniqueIndex(
-      'users_email_idx',
-    ).on(table.email),
-
-    tenantIdx: index(
-      'users_tenant_idx',
-    ).on(table.tenantId),
-
-    facilityIdx: index(
-      'users_facility_idx',
-    ).on(table.facilityId),
-
-    accountStatusIdx: index(
-      'users_account_status_idx',
-    ).on(table.accountStatus),
-  }),
-);
-
-
 /* ============================================================
    10. USER ROLES
    ============================================================ */
-
-export const userRoles = pgTable(
-  'user_roles',
-  {
-    id: serial('id').primaryKey(),
-
-    userId: integer('user_id')
-      .references(() => users.id)
-      .notNull(),
-
-    roleId: integer('role_id')
-      .references(() => roles.id)
-      .notNull(),
-
-    assignedBy: text('assigned_by'),
-
-    assignedAt: timestamp('assigned_at')
-      .defaultNow()
-      .notNull(),
-
-    revokedAt: timestamp('revoked_at'),
-
-    isActive: boolean('is_active')
-      .default(true)
-      .notNull(),
-  },
-  (table) => ({
-    userRoleIdx: uniqueIndex(
-      'user_roles_user_role_idx',
-    ).on(table.userId, table.roleId),
-
-    userIdx: index(
-      'user_roles_user_idx',
-    ).on(table.userId),
-
-    roleIdx: index(
-      'user_roles_role_idx',
-    ).on(table.roleId),
-  }),
-);
-
 
 /* ============================================================
    11. SECURE USER SESSIONS
    ============================================================ */
 
-export const sessions = pgTable(
-  'sessions',
-  {
-    id: serial('id').primaryKey(),
-
-    userId: integer('user_id')
-      .references(() => users.id)
-      .notNull(),
-
-    /*
-      Store ONLY a hash of the session token.
-
-      The actual token exists only in the user's browser cookie.
-    */
-
-    sessionTokenHash: text('session_token_hash')
-      .notNull()
-      .unique(),
-
-    ipAddress: text('ip_address'),
-
-    userAgent: text('user_agent'),
-
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-
-    lastActivityAt: timestamp('last_activity_at')
-      .defaultNow()
-      .notNull(),
-
-    expiresAt: timestamp('expires_at')
-      .notNull(),
-
-    revokedAt: timestamp('revoked_at'),
-
-    revokeReason: text('revoke_reason'),
-
-    /*
-      Security version at session creation.
-      If user.securityVersion changes, sessions can be rejected.
-    */
-
-    securityVersion: integer('security_version')
-      .default(1)
-      .notNull(),
-  },
-  (table) => ({
-    userIdx: index(
-      'sessions_user_idx',
-    ).on(table.userId),
-
-    expiryIdx: index(
-      'sessions_expiry_idx',
-    ).on(table.expiresAt),
-
-    activeSessionIdx: index(
-      'sessions_active_idx',
-    ).on(table.userId, table.revokedAt),
-  }),
-);
-
-
 /* ============================================================
    12. LOGIN ATTEMPTS
    ============================================================ */
-
-export const loginAttempts = pgTable(
-  'login_attempts',
-  {
-    id: serial('id').primaryKey(),
-
-    /*
-      Do not necessarily store the raw login identifier if
-      privacy requirements later require hashing it.
-    */
-
-    usernameOrEmail: text('username_or_email')
-      .notNull(),
-
-    userId: integer('user_id')
-      .references(() => users.id),
-
-    ipAddress: text('ip_address'),
-
-    userAgent: text('user_agent'),
-
-    successful: boolean('successful')
-      .default(false)
-      .notNull(),
-
-    failureReason: text('failure_reason'),
-
-    attemptedAt: timestamp('attempted_at')
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => ({
-    userAttemptIdx: index(
-      'login_attempts_user_idx',
-    ).on(table.userId),
-
-    ipAttemptIdx: index(
-      'login_attempts_ip_idx',
-    ).on(table.ipAddress),
-
-    timeIdx: index(
-      'login_attempts_time_idx',
-    ).on(table.attemptedAt),
-  }),
-);
-
 
 /* ============================================================
    13. PASSWORD RESET TOKENS
    ============================================================ */
 
-export const passwordResets = pgTable(
-  'password_resets',
-  {
-    id: serial('id').primaryKey(),
-
-    userId: integer('user_id')
-      .references(() => users.id)
-      .notNull(),
-
-    /*
-      Store only a hash of the reset token.
-    */
-
-    tokenHash: text('token_hash')
-      .notNull()
-      .unique(),
-
-    expiresAt: timestamp('expires_at')
-      .notNull(),
-
-    usedAt: timestamp('used_at'),
-
-    requestedIp: text('requested_ip'),
-
-    requestedUserAgent: text('requested_user_agent'),
-
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => ({
-    userIdx: index(
-      'password_resets_user_idx',
-    ).on(table.userId),
-
-    expiryIdx: index(
-      'password_resets_expiry_idx',
-    ).on(table.expiresAt),
-  }),
-);
-
-
 /* ============================================================
    14. FACILITY ADMIN INVITATIONS
    ============================================================ */
 
-export const facilityAdminInvitations = pgTable(
-  'facility_admin_invitations',
-  {
-    id: serial('id').primaryKey(),
-
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-
-    email: text('email').notNull(),
-
-    fullName: text('full_name').notNull(),
-
-    phone: text('phone'),
-
-    designation: text('designation')
-      .default('Facility Administrator'),
-
-    /*
-      Hash only.
-      The actual invitation token is sent to the recipient.
-    */
-
-    invitationTokenHash: text('invitation_token_hash')
-      .notNull()
-      .unique(),
-
-    expiresAt: timestamp('expires_at')
-      .notNull(),
-
-    acceptedAt: timestamp('accepted_at'),
-
-    acceptedUserId: integer('accepted_user_id')
-      .references(() => users.id),
-
-    invitedBy: text('invited_by')
-      .notNull(),
-
-    revokedAt: timestamp('revoked_at'),
-
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => ({
-    facilityIdx: index(
-      'facility_admin_invitations_facility_idx',
-    ).on(table.facilityId),
-
-    emailIdx: index(
-      'facility_admin_invitations_email_idx',
-    ).on(table.email),
-
-    expiryIdx: index(
-      'facility_admin_invitations_expiry_idx',
-    ).on(table.expiresAt),
-  }),
-);
-
-
 /* ============================================================
    15. STAFF INVITATIONS
    ============================================================ */
-
-export const userInvitations = pgTable(
-  'user_invitations',
-  {
-    id: serial('id').primaryKey(),
-
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-
-    email: text('email').notNull(),
-
-    fullName: text('full_name').notNull(),
-
-    phone: text('phone'),
-
-    designation: text('designation'),
-
-    roleId: integer('role_id')
-      .references(() => roles.id)
-      .notNull(),
-
-    invitationTokenHash: text('invitation_token_hash')
-      .notNull()
-      .unique(),
-
-    expiresAt: timestamp('expires_at')
-      .notNull(),
-
-    acceptedAt: timestamp('accepted_at'),
-
-    acceptedUserId: integer('accepted_user_id')
-      .references(() => users.id),
-
-    invitedBy: text('invited_by')
-      .notNull(),
-
-    revokedAt: timestamp('revoked_at'),
-
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => ({
-    facilityIdx: index(
-      'user_invitations_facility_idx',
-    ).on(table.facilityId),
-
-    emailIdx: index(
-      'user_invitations_email_idx',
-    ).on(table.email),
-
-    expiryIdx: index(
-      'user_invitations_expiry_idx',
-    ).on(table.expiresAt),
-  }),
-);
-
 
 /* ============================================================
    16. PRACTITIONERS
@@ -4480,152 +3674,6 @@ export const auditLogs = pgTable(
    Separate from patient billing and facilities.is_active.
    ============================================================ */
 
-export const facilitySubscriptionAccess = pgTable(
-  'facility_subscription_access',
-  {
-    id: serial('id').primaryKey(),
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-
-    accessStatus: text('access_status').default('ACTIVE').notNull(),
-    suspendedAt: timestamp('suspended_at'),
-    suspendedBy: text('suspended_by'),
-    suspensionReason: text('suspension_reason'),
-    reactivatedAt: timestamp('reactivated_at'),
-    reactivatedBy: text('reactivated_by'),
-
-    createdBy: text('created_by').notNull(),
-    updatedBy: text('updated_by').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    facilityUnique: uniqueIndex('facility_subscription_access_facility_uidx')
-      .on(table.facilityId),
-    tenantIdx: index('facility_subscription_access_tenant_idx')
-      .on(table.tenantId),
-    statusIdx: index('facility_subscription_access_status_idx')
-      .on(table.accessStatus),
-  }),
-);
-export const facilitySubscriptionPeriods = pgTable(
-  'facility_subscription_periods',
-  {
-    id: serial('id').primaryKey(),
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-
-    subscriptionName: text('subscription_name').notNull(),
-    amountDue: numeric('amount_due', { precision: 12, scale: 2 }).notNull(),
-    currency: text('currency').default('KES').notNull(),
-
-    periodStart: date('period_start').notNull(),
-    periodEnd: date('period_end').notNull(),
-    dueDate: date('due_date').notNull(),
-    gracePeriodEnd: date('grace_period_end'),
-
-    status: text('status').default('PENDING').notNull(),
-    notes: text('notes'),
-    createdBy: text('created_by').notNull(),
-    updatedBy: text('updated_by').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    facilityIdx: index('facility_subscription_periods_facility_idx')
-      .on(table.facilityId),
-    tenantIdx: index('facility_subscription_periods_tenant_idx')
-      .on(table.tenantId),
-    statusIdx: index('facility_subscription_periods_status_idx')
-      .on(table.status),
-    periodStartIdx: index('facility_subscription_periods_start_idx')
-      .on(table.periodStart),
-  }),
-);
-
-export const facilitySubscriptionPayments = pgTable(
-  'facility_subscription_payments',
-  {
-    id: serial('id').primaryKey(),
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-    subscriptionPeriodId: integer('subscription_period_id')
-      .references(() => facilitySubscriptionPeriods.id)
-      .notNull(),
-
-    transactionCode: text('transaction_code').notNull(),
-    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-    paymentMethod: text('payment_method').default('MPESA').notNull(),
-    paymentDate: timestamp('payment_date').defaultNow().notNull(),
-
-    verificationStatus: text('verification_status').default('PENDING').notNull(),
-    verifiedBy: text('verified_by'),
-    verifiedAt: timestamp('verified_at'),
-    verificationNotes: text('verification_notes'),
-
-    createdBy: text('created_by').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    transactionCodeUnique: uniqueIndex(
-      'facility_subscription_payments_transaction_code_uidx',
-    ).on(table.transactionCode),
-    periodIdx: index('facility_subscription_payments_period_idx')
-      .on(table.subscriptionPeriodId),
-    facilityIdx: index('facility_subscription_payments_facility_idx')
-      .on(table.facilityId),
-    verificationIdx: index('facility_subscription_payments_verification_idx')
-      .on(table.verificationStatus),
-  }),
-);
-
-export const facilitySubscriptionPriceChanges = pgTable(
-  'facility_subscription_price_changes',
-  {
-    id: serial('id').primaryKey(),
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
-    subscriptionPeriodId: integer('subscription_period_id')
-      .references(() => facilitySubscriptionPeriods.id)
-      .notNull(),
-
-    previousAmount: numeric('previous_amount', {
-      precision: 12,
-      scale: 2,
-    }).notNull(),
-    newAmount: numeric('new_amount', {
-      precision: 12,
-      scale: 2,
-    }).notNull(),
-
-    effectiveTiming: text('effective_timing').notNull(),
-    reason: text('reason').notNull(),
-    changedBy: text('changed_by').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    periodIdx: index('facility_subscription_price_changes_period_idx')
-      .on(table.subscriptionPeriodId),
-    facilityIdx: index('facility_subscription_price_changes_facility_idx')
-      .on(table.facilityId),
-  }),
-);
 /* ============================================================
    44b. MATERNITY / MCH
    ============================================================

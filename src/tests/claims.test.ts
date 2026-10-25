@@ -19,6 +19,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { schemaSource } from './support/schema-source.ts';
 
 let checks = 0;
 
@@ -85,7 +86,7 @@ function testMigration(): void {
 
   assertEqual(sql.charCodeAt(0) !== 0xfeff, true, 'the migration has no BOM');
 
-  const schema = readRepoFile('src/db/schema.ts');
+  const schema = schemaSource();
   assert(schema.includes('export const insuranceClaimItems'), 'schema mirrors the claim lines table');
   assert(schema.includes("settledPaymentId: integer('settled_payment_id')"), 'schema has settledPaymentId');
 
