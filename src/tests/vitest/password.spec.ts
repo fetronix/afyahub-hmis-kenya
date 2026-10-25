@@ -22,10 +22,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  hashPassword,
-  verifyPassword,
-} from '../../utils/password.ts';
+import { hashPassword, verifyPassword } from '../../utils/password.ts';
 
 const VALID = 'correct horse battery staple';
 
@@ -45,10 +42,7 @@ describe('hashPassword', () => {
   });
 
   it('salts, so the same password hashes differently every time', async () => {
-    const [first, second] = await Promise.all([
-      hashPassword(VALID),
-      hashPassword(VALID),
-    ]);
+    const [first, second] = await Promise.all([hashPassword(VALID), hashPassword(VALID)]);
 
     expect(first).not.toBe(second);
 
@@ -58,9 +52,7 @@ describe('hashPassword', () => {
   });
 
   it('rejects a password shorter than twelve characters', async () => {
-    await expect(hashPassword('short')).rejects.toThrow(
-      /at least 12 characters/i,
-    );
+    await expect(hashPassword('short')).rejects.toThrow(/at least 12 characters/i);
 
     // Eleven is the boundary on the rejecting side.
     await expect(hashPassword('a'.repeat(11))).rejects.toThrow();
@@ -87,26 +79,20 @@ describe('verifyPassword', () => {
   it('rejects the wrong password', async () => {
     const hash = await hashPassword(VALID);
 
-    await expect(verifyPassword('incorrect horse battery staple', hash)).resolves.toBe(
-      false,
-    );
+    await expect(verifyPassword('incorrect horse battery staple', hash)).resolves.toBe(false);
   });
 
   it('is case- and whitespace-sensitive', async () => {
     const hash = await hashPassword(VALID);
 
-    await expect(verifyPassword(VALID.toUpperCase(), hash)).resolves.toBe(
-      false,
-    );
+    await expect(verifyPassword(VALID.toUpperCase(), hash)).resolves.toBe(false);
     await expect(verifyPassword(`${VALID} `, hash)).resolves.toBe(false);
   });
 
   it('returns false for a malformed hash instead of throwing', async () => {
     // A truncated or legacy row must fail this one login, not the endpoint.
     await expect(verifyPassword(VALID, 'not-a-hash')).resolves.toBe(false);
-    await expect(verifyPassword(VALID, '$argon2id$broken')).resolves.toBe(
-      false,
-    );
+    await expect(verifyPassword(VALID, '$argon2id$broken')).resolves.toBe(false);
   });
 
   it('returns false when either side is empty', async () => {
@@ -119,8 +105,6 @@ describe('verifyPassword', () => {
   it('does not accept a different password that shares a prefix', async () => {
     const hash = await hashPassword(VALID);
 
-    await expect(verifyPassword(VALID.slice(0, -1), hash)).resolves.toBe(
-      false,
-    );
+    await expect(verifyPassword(VALID.slice(0, -1), hash)).resolves.toBe(false);
   });
 });

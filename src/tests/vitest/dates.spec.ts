@@ -54,9 +54,7 @@ describe('parseLooseDate', () => {
   });
 
   it('surrounding whitespace does not change the result', () => {
-    expect(parseLooseDate('  2026-03-14  ')?.toISOString()).toBe(
-      '2026-03-14T00:00:00.000Z',
-    );
+    expect(parseLooseDate('  2026-03-14  ')?.toISOString()).toBe('2026-03-14T00:00:00.000Z');
   });
 
   it('returns null instead of an Invalid Date for a missing value', () => {
@@ -73,14 +71,7 @@ describe('parseLooseDate', () => {
   });
 
   it('never returns an Invalid Date — the contract callers rely on', () => {
-    const inputs = [
-      '2026-03-14',
-      '2026-03-14 09:30',
-      '2026/03/14',
-      'garbage',
-      '',
-      '0000-00-00',
-    ];
+    const inputs = ['2026-03-14', '2026-03-14 09:30', '2026/03/14', 'garbage', '', '0000-00-00'];
 
     for (const input of inputs) {
       const parsed = parseLooseDate(input);
@@ -102,12 +93,8 @@ describe('daysBetween', () => {
   });
 
   it('counts a 47-hour stay as one day and a 49-hour stay as two', () => {
-    expect(daysBetween(start, new Date(start.getTime() + 47 * 3_600_000))).toBe(
-      1,
-    );
-    expect(daysBetween(start, new Date(start.getTime() + 49 * 3_600_000))).toBe(
-      2,
-    );
+    expect(daysBetween(start, new Date(start.getTime() + 47 * 3_600_000))).toBe(1);
+    expect(daysBetween(start, new Date(start.getTime() + 49 * 3_600_000))).toBe(2);
   });
 
   it('is zero for the same instant', () => {
@@ -178,7 +165,7 @@ describe('median', () => {
     expect(median([])).toBeNull();
   });
 
-  it('does not mutate the caller\'s array', () => {
+  it("does not mutate the caller's array", () => {
     const values = [3, 1, 2];
 
     median(values);
