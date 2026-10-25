@@ -78,8 +78,8 @@ export default defineConfig({
          * GLOBAL is a ratchet: set just below the measured baseline
          * (2026-10-26, after the auth validation, route authorization,
          * settlement, tariff resolution, scope enforcement and field
-         * encryption suites: 10.35% statements, 10.44% lines, 7.67%
-         * functions, 6.03% branches) so the
+         * encryption and authorization middleware suites: 10.97%
+         * statements, 11.10% lines, 8.39% functions, 6.43% branches) so the
          * build cannot regress while the remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
@@ -90,10 +90,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 10.3,
-        statements: 10.2,
-        functions: 7.5,
-        branches: 5.9,
+        lines: 11.0,
+        statements: 10.9,
+        functions: 8.3,
+        branches: 6.3,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -208,6 +208,19 @@ export default defineConfig({
           statements: 98,
           functions: 100,
           branches: 97,
+        },
+
+        /*
+         * The guards mounted in front of the API. Held high because the
+         * damaging failures here are fail-open: a guard that writes a 403 and
+         * still calls next() shows the client a refusal while the handler has
+         * already run. Held just below the measured 82.10/82.10/100/88.09.
+         */
+        'src/auth/authorization.middleware.ts': {
+          lines: 81,
+          statements: 81,
+          functions: 100,
+          branches: 87,
         },
       },
     },
