@@ -37,6 +37,7 @@ Largest source files, measured with `wc -l`:
 |---|---|---|
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | **pass**, 6.6 s |
 | Tests | `npm test` | **pass**, 32 suites, **3,752 assertions**, 15 s |
+| Repository size | `git ls-files` | **317 tracked files** (523 before 206 backups were untracked) |
 | Client build | `npm run build` | **pass**, 1,708 modules, 761 ms |
 | Server bundle | `npm run build:server` | **pass**, 6 bundles, 0.2 s |
 | Dry-run proof | `npm run verify:dry-run` | **pass**, 3 statements, 0 writes |
@@ -126,8 +127,8 @@ and are left unedited, including where they turned out to be incomplete.
 | `npm run lint` | **absent** | 0 errors, 52 warnings |
 | `npm run format:check` | **absent** | configured; 173 files would change |
 | `npm test` (legacy) | 29 suites / 3,752 assertions | 32 suites, pass |
-| `npm run test:unit` (Vitest) | **absent** | 9 files: 99 passing, 11 skipped |
-| `npm run test:coverage` | **absent** | 7.27% lines, 7.06% statements, 4.05% functions, 1.84% branches |
+| `npm run test:unit` (Vitest) | **absent** | 11 files: 162 passing, 11 skipped |
+| `npm run test:coverage` | **absent** | 7.90% lines, 7.66% statements, 4.57% functions, 2.54% branches |
 | `npm run build:deploy` | pass | pass |
 | Production bundle smoke test | **absent** | starts, `/api/health` 200, `/` 200 |
 | CI | **absent** | 7 jobs |
@@ -151,17 +152,23 @@ issue to fix when the component is next touched.
 
 ## 7.2 Coverage — what the number means
 
-7.27% lines looks poor and is. The reason is structural, not a shortage of
+7.90% lines looks poor and is. The reason is structural, not a shortage of
 tests: the 3,752 legacy assertions mostly assert that a file *contains* the
 right code, so they execute almost nothing. Only three of 113 source modules
 were executed at all before the new specs.
 
-The figure moved from 7.03% to 7.27% when the clinical date arithmetic and
-password hashing suites landed; both modules went from 0% to 100% lines and
-now carry their own thresholds. That is a real gain in the modules that
-matter, but it barely moves a global percentage dominated by `src/app.ts`
-(1,992 instrumented lines), `src/db/queries.ts` (1,069) and
-`src/routes/platform.routes.ts` (991), which need a database to exercise.
+The figure moved 7.03% -> 7.27% -> 7.90% as execution-based suites landed:
+clinical date arithmetic and password hashing (both 0% -> 100%), then the
+authentication validation gate (0% -> 97.67%), each now carrying its own
+threshold. That is a real gain in the modules that matter, but it barely
+moves a global percentage dominated by `src/app.ts` (1,992 instrumented
+lines), `src/db/queries.ts` (1,069) and `src/routes/platform.routes.ts`
+(991), which need a database to exercise.
+
+`src/components/**` is excluded from the denominator on purpose, so the
+notification-dialog component suite does not change the figure. That
+exclusion was left alone: widening the measured surface to make the number
+look better would defeat the point of measuring it.
 
 Two figures matter more than the global percentage:
 
