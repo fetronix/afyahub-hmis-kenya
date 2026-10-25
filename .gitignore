@@ -13,8 +13,20 @@ coverage/
 # Local secrets and credentials
 firebase-applet-config.json
 
-# Local backups made before patching a file — never commit these
+# Local backups made before patching a file — never commit these.
+#
+# *.bak alone was not enough: the repository also carried
+#   App.tsx.backup-20261013-145411        (*.backup-*)
+#   schema.ts.before-access-status-...    (*.before-*)
+#   client.ts.validated-backup-...        (*-backup-*)
+# which were untracked in 404caee and then still showed up as untracked
+# files, one `git add .` away from coming back.
 *.bak
+*.orig
+*.backup
+*.backup-*
+*.before-*
+*-backup-*
 
 # scratch files written by scripts/verify-dry-run.mjs
 .verify-dry-run-*
