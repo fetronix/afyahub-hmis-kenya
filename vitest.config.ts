@@ -77,8 +77,9 @@ export default defineConfig({
          *
          * GLOBAL is a ratchet: set just below the measured baseline
          * (2026-10-26, after the auth validation, route authorization,
-         * settlement, tariff resolution and scope enforcement suites: 9.86%
-         * statements, 9.98% lines, 7.20% functions, 5.59% branches) so the
+         * settlement, tariff resolution, scope enforcement and field
+         * encryption suites: 10.35% statements, 10.44% lines, 7.67%
+         * functions, 6.03% branches) so the
          * build cannot regress while the remaining suites migrate.
          * These numbers move up as tests are added and are never lowered to
          * make a build pass. It is deliberately not raised to a flattering figure:
@@ -89,10 +90,10 @@ export default defineConfig({
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 9.9,
-        statements: 9.7,
-        functions: 7.1,
-        branches: 5.5,
+        lines: 10.3,
+        statements: 10.2,
+        functions: 7.5,
+        branches: 5.9,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,
@@ -191,6 +192,22 @@ export default defineConfig({
           statements: 100,
           functions: 100,
           branches: 100,
+        },
+
+        /*
+         * Field encryption. Everything a stolen table dump must not reveal
+         * passes through here, and the failures that matter are silent ones:
+         * a reused IV that makes equal identifiers detectable, or a caught
+         * authentication error that returns a wrong identifier instead of
+         * throwing. Held just below the measured 98.38/98.59/100/97.72; the
+         * missing lines are the defensive branches around an unreachable
+         * `Buffer.from(..., 'base64')` throw, not real behaviour.
+         */
+        'src/security/field-crypto.ts': {
+          lines: 98,
+          statements: 98,
+          functions: 100,
+          branches: 97,
         },
       },
     },
