@@ -18,7 +18,7 @@
 #   legacy      the 32 hand-written suites in `npm test`
 #   build       client + server bundles, uploaded as artifacts
 #   audit       npm audit for high/critical advisories
-#   format      Prettier check (advisory while the tree is being migrated)
+#   format      Prettier check (required: the tree is formatted)
 
 name: CI
 
@@ -351,12 +351,17 @@ jobs:
           if-no-files-found: ignore
 
   # ------------------------------------------------------------------
-  # Formatting is advisory until the existing tree is formatted.
+  # Formatting. Required.
+  #
+  # This job carried `continue-on-error: true` because 183 files predated
+  # the formatter. That made it a check that had never passed and could not
+  # fail: it reported red on every run, so it was read as noise. The tree
+  # is now formatted, so the check means what its name says, and a red run
+  # here is a real defect to fix rather than an accepted state.
   # ------------------------------------------------------------------
   format:
-    name: Formatting (advisory)
+    name: Formatting
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -374,7 +379,6 @@ jobs:
           echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
 
       - name: Prettier check
-        # Not a required check yet: 173 existing files predate the formatter,
-        # and reformatting them breaks five suites that assert on source
-        # layout. See docs/quality/LINTING.md for the migration plan.
+        # Fails the job on any unformatted file. `npm run format` fixes it,
+        # and a formatting-only commit is cheap to review on its own.
         run: npm run format:check
