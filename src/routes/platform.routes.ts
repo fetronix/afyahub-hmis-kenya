@@ -14,15 +14,14 @@ import {
   handleError,
   optionalText,
   parseId,
-  parseMoneyCents,
   requireSuperAdmin,
   textValue,
-  validCalendarDate,
   validEmail,
   validSlug,
   type PlatformRequest,
 } from './platform/shared.ts';
 import subscriptionsRoutes from './platform/subscriptions.routes.ts';
+import { bodyOf, parseFacilityUpdate, parseTenantInput } from './platform/validation.ts';
 
 const router = Router();
 
@@ -79,59 +78,31 @@ router.post('/tenants', async (req: Request, res: Response) => {
   if (!requireSuperAdmin(req, res)) return;
 
   const context = getContext(req)!;
-  const body = (req.body ?? {}) as Record<string, unknown>;
+  /* Validation lives in ./platform/validation.ts so the rules can be
+     exercised without authentication or a database. It reproduces this
+     handler's decisions exactly; the messages below are the ones it always
+     returned. */
+  const parsed = parseTenantInput(bodyOf(req));
 
-  const name = textValue(body.name);
-  const suppliedSlug = textValue(body.slug);
-
-  const slug = (
-    suppliedSlug ??
-    name
-      ?.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-  )?.toLowerCase();
-
-  if (!name || name.length > 200 || !slug || !validSlug(slug)) {
+  if (!parsed.ok) {
     res.status(400).json({
       error: 'VALIDATION_ERROR',
-      message: 'Provide a valid tenant name and slug.',
+      message: parsed.message,
     });
     return;
   }
 
-  const contactEmail = textValue(body.contactEmail);
-
-  if (contactEmail && !validEmail(contactEmail)) {
-    res.status(400).json({
-      error: 'VALIDATION_ERROR',
-      message: 'Provide a valid contact email.',
-    });
-    return;
-  }
-
-  const domain = textValue(body.domain);
-  const logoUrl = textValue(body.logoUrl);
-  const brandColor = textValue(body.brandColor);
-  const contactPhone = textValue(body.contactPhone);
-  const currency = textValue(body.currency) ?? 'KES';
-  const timezone = textValue(body.timezone) ?? 'Africa/Nairobi';
-
-  if (!/^[A-Z]{3}$/.test(currency)) {
-    res.status(400).json({
-      error: 'VALIDATION_ERROR',
-      message: 'Currency must be a three-letter code such as KES.',
-    });
-    return;
-  }
-
-  if (timezone.length > 100) {
-    res.status(400).json({
-      error: 'VALIDATION_ERROR',
-      message: 'Timezone is too long.',
-    });
-    return;
-  }
+  const {
+    name,
+    slug,
+    domain,
+    logoUrl,
+    brandColor,
+    contactEmail,
+    contactPhone,
+    currency,
+    timezone,
+  } = parsed.value;
   try {
     const tenant = await db.transaction(async (tx) => {
       // 1. Create the tenant.
@@ -651,148 +622,23 @@ router.patch('/facilities/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const updates: Partial<typeof schema.facilities.$inferInsert> = {};
+  /* Same reasoning as tenant creation: the rules moved to
+     ./platform/validation.ts, unchanged, so they can be tested directly.
+     A PATCH with nothing to change is rejected before it reaches the
+     database or writes an audit entry saying nothing happened. */
+  const parsed = parseFacilityUpdate(bodyOf(req));
 
-  for (const key of [
-    'code',
-    'name',
-    'level',
-    'county',
-    'subCounty',
-    'mflCode',
-    'address',
-    'phone',
-    'email',
-  ] as const) {
-    if (!(key in body)) continue;
-
-    const value = optionalText(body, key);
-
-    if (value === undefined) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: `${key} must be a string or null.`,
-      });
-      return;
-    }
-
-    if (key === 'code' && (!value || value.length > 80)) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Facility code is required and must not exceed 80 characters.',
-      });
-      return;
-    }
-
-    if (key === 'name' && (!value || value.length > 200)) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Facility name is required and must not exceed 200 characters.',
-      });
-      return;
-    }
-
-    if (key === 'email' && value && !validEmail(value)) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Facility email is invalid.',
-      });
-      return;
-    }
-
-    if (value === null) {
-      switch (key) {
-        case 'mflCode':
-          updates.mflCode = null;
-          break;
-        case 'address':
-          updates.address = null;
-          break;
-        case 'phone':
-          updates.phone = null;
-          break;
-        case 'email':
-          updates.email = null;
-          break;
-        default:
-          res.status(400).json({
-            error: 'VALIDATION_ERROR',
-            message: `${key} cannot be empty.`,
-          });
-          return;
-      }
-    } else {
-      switch (key) {
-        case 'code':
-          updates.code = value;
-          break;
-        case 'name':
-          updates.name = value;
-          break;
-        case 'level':
-          updates.level = value;
-          break;
-        case 'county':
-          updates.county = value;
-          break;
-        case 'subCounty':
-          updates.subCounty = value;
-          break;
-        case 'mflCode':
-          updates.mflCode = value;
-          break;
-        case 'address':
-          updates.address = value;
-          break;
-        case 'phone':
-          updates.phone = value;
-          break;
-        case 'email':
-          updates.email = value;
-          break;
-      }
-    }
-  }
-
-  if ('enabledModules' in body) {
-    if (
-      !Array.isArray(body.enabledModules) ||
-      !body.enabledModules.every(
-        (item) => typeof item === 'string' && item.trim().length > 0 && item.length <= 80,
-      )
-    ) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'enabledModules must be an array of non-empty strings.',
-      });
-      return;
-    }
-
-    updates.enabledModules = [
-      ...new Set((body.enabledModules as string[]).map((item) => item.trim())),
-    ];
-  }
-
-  if ('isActive' in body) {
-    if (typeof body.isActive !== 'boolean') {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'isActive must be true or false.',
-      });
-      return;
-    }
-
-    updates.isActive = body.isActive;
-  }
-
-  if (Object.keys(updates).length === 0) {
+  if (!parsed.ok) {
     res.status(400).json({
       error: 'VALIDATION_ERROR',
-      message: 'No valid fields supplied to update.',
+      message: parsed.message,
     });
     return;
   }
+
+  const updates: Partial<typeof schema.facilities.$inferInsert> = {
+    ...parsed.value,
+  };
 
   updates.updatedAt = new Date();
 
