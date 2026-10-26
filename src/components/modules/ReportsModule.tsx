@@ -496,7 +496,9 @@ export const ReportsModule: React.FC = () => {
                     {(revenue?.channelReconciliation?.unmappedMethods.length ?? 0) > 0 && (
                       <span className="mt-1 block text-slate-500">
                         Unrecognised method
-                        {revenue!.channelReconciliation!.unmappedMethods.length === 1 ? '' : 's'}:{' '}
+                        {revenue!.channelReconciliation!.unmappedMethods.length === 1
+                          ? ''
+                          : 's'}:{' '}
                         <span className="font-mono">
                           {revenue!.channelReconciliation!.unmappedMethods.join(', ')}
                         </span>
