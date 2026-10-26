@@ -442,11 +442,20 @@ and `fix/**`.
 | `database` | Migrations apply to a real **PostgreSQL 16**, status is clean, dry run is read-only, DB specs pass |
 | `build`    | Client and server bundle, then **starts the real artifact** and checks `/api/health` and `/`       |
 | `audit`    | `npm audit --omit=dev --audit-level=high`                                                          |
-| `format`   | Prettier check — advisory while the existing tree is migrated                                      |
+| `format`   | `npm run format:check` over every file `npm run format` rewrites                                   |
 
 The PostgreSQL service uses throwaway credentials committed on purpose: they
 grant access to an empty database that is destroyed with the runner. No real
 patient data or production secret is used anywhere in CI.
+
+No job uses `continue-on-error`, and none is conditional on another's
+outcome, so any failure fails the run. The `database` job sets
+`JALICARE_REQUIRE_DB=1`, which turns "PostgreSQL was unreachable" from a
+skip into a failure — otherwise a missing service would report green.
+
+`format:check` covers the same files `format` rewrites, including root
+`*.{json,md}`. It did not always: the fixer formatted those and the check
+never looked at them, so five files were unformatted and nothing said so.
 
 Run the same gates locally:
 
@@ -640,20 +649,25 @@ it without re-running `npm test`.
 
 ```
 src/
-  app.ts                 8,400 lines — middleware and routes (being split)
+  app.ts                 6,188 lines — middleware and routes (being split)
   App.tsx                React root
   db/
     schema.ts            6,900 lines — every table (being split by domain)
     queries.ts           4,300 lines — shared queries
     index.ts             the connection pool
-  routes/                extracted routers (system.routes.ts)
+  routes/                extracted routers
+    platform/            platform-admin helpers, validation, subscriptions
+    shared/              request, error and billing helpers used by routers
+    system.routes.ts
+    inpatient.routes.ts
+    maternal-health.routes.ts
   auth/                  sign-in, sessions, password policy
   billing/               pricing rules, invoices, claims
   logging/               structured logging and redaction
   middleware/            security, rate limiting, scoping
   components/            React components
   tests/
-    *.test.ts            29 legacy suites
+    *.test.ts            32 legacy suites
     vitest/              Vitest specs, including *.db.spec.ts
 drizzle/                 migration SQL and journal
 scripts/                 build, migrate, preflight, verification
@@ -678,17 +692,20 @@ Stated here rather than discovered later.
   executing code, so measured coverage is in single digits. The numbers and
   the migration plan are in
   [`docs/quality/BASELINE.md`](docs/quality/BASELINE.md).
-- **`app.ts`, `schema.ts` and `queries.ts` are large and unsplit.** The
-  extraction has started (`src/routes/system.routes.ts`); the clinical routes
-  wait until the schema is split, because they depend on almost every table.
+- **`app.ts`, `schema.ts` and `queries.ts` are still large.** `app.ts` has
+  come down from 8,449 to 6,188 lines by moving three domains out whole —
+  platform administration, maternal and child health, and inpatient care —
+  each behind its own router and verified by a route-inventory diff. Roughly
+  90 routes remain inline, including billing, claims and the DHA integration.
+  `schema.ts` (5,910) and `queries.ts` (4,303) are untouched.
 - **Doctor and nurse portals depend on accounts created by an administrator.**
   There is no self-service registration, by design.
 - **The DHA integration is not live.** `DHA_MODE=mock` is the default and no
   sandbox or production credentials are configured.
-- **186 backup files (`*.bak`, `*.backup-*`) are tracked in git** under `src/`
-  and `scripts/`. They predate this work and are preserved deliberately.
-  Removing them is safe once git history is confirmed to hold every version,
-  and is recommended before a buyer review.
+- **Backup snapshots are no longer tracked.** 206 `*.bak` / `*.backup-*`
+  files were removed from the index with `git rm --cached`; the working copies
+  remain on disk, untracked and ignored, and git history still holds every
+  version. No tracked file matches those patterns today.
 - **Docker was configured but not executed** in the environment where this was
   written: the files are linted and the commands are correct, but the image
   build itself has not been run here.

@@ -9,6 +9,65 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A 500 returned the exception's own text.** Twenty-nine handlers answered
+  unexpected failures with `error: err.message`. A PostgreSQL unique-violation
+  carries the constraint name and, in its `DETAIL` line, the offending values —
+  including patient identifiers and tenant ids. An authenticated user of one
+  facility could therefore infer that a named patient record existed at another.
+  All twenty-nine now call `respondInternalError`, which logs the operation and
+  the original error server-side and returns a fixed message. Status codes and
+  the response shape are unchanged; deliberate domain-error messages are still
+  returned as before. Covered by `internal-error.spec.ts`.
+- **The protected-route list named six routes that do not exist.** The
+  authorization suite asserts that clinical and financial routes answer 401
+  without a session. `requireAuth` is mounted on all of `/api`, so it rejects
+  before routing resolves, and a typo'd path answers exactly like a real one.
+  `POST /api/lab/orders`, `POST /api/billing/invoices`,
+  `POST /api/insurance/claims` and their read counterparts were wrong; the real
+  paths are `/api/lab-orders`, `/api/invoices` and `/api/claims`. The paths are
+  corrected and every entry is now checked against the app's route table, so a
+  rename cannot silently turn a test into a no-op.
+- **`format:check` did not cover the files `format` rewrites.** The fixer
+  formatted root `*.{json,md}`; the required CI check never looked at them, so
+  `CHANGELOG.md`, `CONTRIBUTING.md`, `README.md`, `SECURITY.md` and
+  `tsconfig.json` were unformatted and nothing reported it. Both scripts now
+  cover the same scope and those files are formatted (table alignment and
+  indentation only; `tsconfig.json` parses to an identical object).
+
+### Changed
+
+- **`src/app.ts` split by domain.** 8,449 -> 6,188 lines, three extractions,
+  each verified by dumping the app's route table before and after and comparing
+  the sets rather than reading the diff:
+  - `routes/platform/subscriptions.routes.ts` — 8 subscription routes.
+  - `routes/maternal-health.routes.ts` — 23 maternity and immunisation routes.
+  - `routes/inpatient.routes.ts` — 22 ward, bed, admission and nursing routes.
+    Shared helpers that were trapped inside `createApp` moved to
+    `routes/shared/` (request context, domain error handlers, charge helper,
+    validation) so routes outside that function can use them.
+- **Tenant and facility validation extracted** to
+  `routes/platform/validation.ts` as pure functions, so the rules can be tested
+  without authentication or a database. Behaviour is unchanged and was checked
+  by driving the old inline logic and the new parsers over 40,000 generated
+  bodies: 0 disagreements.
+- README corrected: the `format` job is no longer described as advisory, the
+  legacy-suite count (29 -> 32), the `app.ts` size and the extraction status,
+  and the note about tracked backup files (none remain).
+
+### Added
+
+- Router tests that fail if an extracted router is mounted at the wrong prefix,
+  mounted nowhere, or loses a route: `platform-router.spec.ts` (8),
+  `maternal-health-router.spec.ts` (5), `inpatient-router.spec.ts` (7),
+  `platform-validation.spec.ts` (67), `internal-error.spec.ts` (5). Each was
+  mutation-tested by breaking the mount or renaming a route.
+- Coverage thresholds verified as enforced, not assumed: raising the global
+  `lines` threshold to 99 fails the run with
+  `ERROR: Coverage for lines (12.08%) does not meet global threshold (99%)`,
+  and raising one per-module threshold fails it too.
+
 ### Repository hygiene
 
 - **Untracked 206 backup snapshots** (523 tracked files -> 317). Timeline
