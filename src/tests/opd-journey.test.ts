@@ -43,10 +43,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} — expected ${String(expected)}, got ${String(actual)}`,
-  );
+  assert(actual === expected, `${label} — expected ${String(expected)}, got ${String(actual)}`);
 }
 
 function source(path: string): string {
@@ -54,15 +51,48 @@ function source(path: string): string {
 }
 
 /**
+ * Match code without caring how it is laid out.
+ *
+ * Several assertions below ask "does this call site pass family PROCEDURE?"
+ * and were written against the exact indentation of src/app.ts. That makes
+ * them a test of the formatter, not of the behaviour: re-indenting the file
+ * breaks the assertion while deleting the argument it is supposed to guard
+ * would still pass.
+ *
+ * Stripping whitespace from both the source and the needle keeps the claim
+ * ("this route asks the shared rule, with this family") and drops the
+ * column numbers. It is deliberately whitespace only - `contains` still
+ * fails if the argument changes, which is the thing worth protecting.
+ */
+function squashed(haystack: string): string {
+  return haystack.replace(/\s+/g, '');
+}
+
+function containsCode(haystack: string, needle: string): boolean {
+  return squashed(haystack).includes(squashed(needle));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * The body of one route, from its declaration to the next `app.` at
- * the same indentation. Routes are written both on one line and with
- * the path on its own line, so both forms are found.
+ * the same indentation.
+ *
+ * Routes are written both on one line and with the path on its own line, so
+ * both forms are found. The multiline form accepts any indentation: matching
+ * it against four spaces meant a reformat silently turned this helper into
+ * `return null`, and every call site that treats null as "not found" would
+ * then have asserted nothing.
  */
 function routeBody(file: string, method: string, path: string): string | null {
   const inline = file.indexOf(`${method}('${path}'`);
-  const multiline = file.indexOf(`${method}(\n    '${path}'`);
+
+  const multiline = new RegExp(`${escapeRegExp(method)}\\(\\s*'${escapeRegExp(path)}'`).exec(file);
+
   const start = Math.min(
-    ...[inline, multiline].filter((index) => index >= 0),
+    ...[inline, multiline ? multiline.index : -1].filter((index) => index >= 0),
   );
 
   if (!Number.isFinite(start)) return null;
@@ -79,11 +109,7 @@ function routeBody(file: string, method: string, path: string): string | null {
 function testTariffCodes(): void {
   assertEqual(
     JSON.stringify(tariffCodeCandidates('LAB', 'Complete blood count', ['LAB-GENERAL'])),
-    JSON.stringify([
-      'LAB-COMPLETE-BLOOD-COUNT',
-      'COMPLETE-BLOOD-COUNT',
-      'LAB-GENERAL',
-    ]),
+    JSON.stringify(['LAB-COMPLETE-BLOOD-COUNT', 'COMPLETE-BLOOD-COUNT', 'LAB-GENERAL']),
     'a test name becomes a LAB- code first',
   );
 
@@ -181,14 +207,9 @@ function testRadiology(): void {
    * not about where the line breaks fell.
    */
   const routeStart = app.search(/app\.post\(\s*'\/api\/radiology-orders'/);
-  const routeEnd = app.search(
-    /app\.put\(\s*'\/api\/radiology-orders\/:id\/report'/,
-  );
+  const routeEnd = app.search(/app\.put\(\s*'\/api\/radiology-orders\/:id\/report'/);
 
-  const route =
-    routeStart === -1 || routeEnd === -1
-      ? ''
-      : app.slice(routeStart, routeEnd);
+  const route = routeStart === -1 || routeEnd === -1 ? '' : app.slice(routeStart, routeEnd);
 
   assert(route.includes('radiologyChargeRequest'), 'the radiology route uses the shared request');
   assert(!route.includes('testName'), 'the radiology route no longer looks for testName');
@@ -213,10 +234,7 @@ function testEveryStageIsCharged(): void {
     const body = routeBody(app, 'app.post', route.replace(/'/g, ''));
     assert(body !== null, `${route} exists`);
 
-    assert(
-      body!.includes(sourceType),
-      `${sourceType} is charged by ${route}`,
-    );
+    assert(body!.includes(sourceType), `${sourceType} is charged by ${route}`);
   }
 
   /*
@@ -299,7 +317,7 @@ function testEveryStageIsCharged(): void {
   );
 
   assert(
-    app.includes("codes: codesForFamily({\n              family: 'LABORATORY',"),
+    containsCode(app, "codes: codesForFamily({ family: 'LABORATORY',"),
     'the one-by-one laboratory route prices like the batch does',
   );
 
@@ -313,7 +331,7 @@ function testEveryStageIsCharged(): void {
   );
 
   assert(
-    app.includes("codes: codesForFamily({\n            family: 'PROCEDURE',"),
+    containsCode(app, "codes: codesForFamily({ family: 'PROCEDURE',"),
     'a procedure is priced from its own code as well as its name',
   );
 
@@ -324,11 +342,11 @@ function testEveryStageIsCharged(): void {
    * the codes.
    */
   for (const [label, key] of [
-    ["the consultation", "billingServiceKeys('CONSULTATION'"],
-    ["the admission", "billingServiceKeys('ADMISSION'"],
-    ["the delivery", "billingServiceKeys('DELIVERY'"],
-    ["the prescription", "billingServiceKeys('PHARMACY'"],
-    ["the procedure", "billingServiceKeys('PROCEDURE'"],
+    ['the consultation', "billingServiceKeys('CONSULTATION'"],
+    ['the admission', "billingServiceKeys('ADMISSION'"],
+    ['the delivery', "billingServiceKeys('DELIVERY'"],
+    ['the prescription', "billingServiceKeys('PHARMACY'"],
+    ['the procedure', "billingServiceKeys('PROCEDURE'"],
   ] as const) {
     assert(app.includes(key), `${label} offers a billing link`);
   }
@@ -360,8 +378,7 @@ function testEveryStageIsCharged(): void {
    */
   assert(
     billing.includes('resolveTariffForCharge(') &&
-      matching.indexOf('/* ---- 1. Explicit link') <
-        matching.indexOf('/* ---- 2. Exact code') &&
+      matching.indexOf('/* ---- 1. Explicit link') < matching.indexOf('/* ---- 2. Exact code') &&
       matching.indexOf('/* ---- 2. Exact code') <
         matching.indexOf("/* ---- 3. The facility's own description"),
     'a link the facility made is tried before a code, and a code before a description',
@@ -377,17 +394,13 @@ function testEveryStageIsCharged(): void {
   );
 
   /* The write path stores the link, and refuses a duplicate. */
-  assert(
-    app.includes('billingKey: input.billingKey'),
-    'the tariff write stores the link',
-  );
+  assert(app.includes('billingKey: input.billingKey'), 'the tariff write stores the link');
   assert(
     app.includes('TARIFF_BILLING_KEY_TAKEN'),
     'two active tariffs cannot answer the same automatic charge',
   );
   assert(
-    app.includes('TARIFF_MIGRATION_REQUIRED') &&
-      app.includes('migrations 0019 and 0021'),
+    app.includes('TARIFF_MIGRATION_REQUIRED') && app.includes('migrations 0019 and 0021'),
     'a database without the column says which migration is missing',
   );
 }
@@ -399,10 +412,7 @@ function testEveryStageIsCharged(): void {
 function testVisitLifecycle(): void {
   const queries = source('src/db/queries.ts');
 
-  assert(
-    queries.includes("safeData.status === 'Completed'"),
-    'completing a visit is recognised',
-  );
+  assert(queries.includes("safeData.status === 'Completed'"), 'completing a visit is recognised');
   assert(
     queries.includes('safeData.endedAt = safeData.endedAt ?? new Date()'),
     'the server stamps the end time',
@@ -411,21 +421,15 @@ function testVisitLifecycle(): void {
   const ui = source('src/components/modules/OutpatientModule.tsx');
 
   assert(ui.includes('handleCompleteVisit'), 'the OPD screen can end a visit');
-  assert(
-    ui.includes("status: 'Completed'"),
-    'it sends the completed status',
-  );
-  assert(
-    !ui.includes('endedAt'),
-    'it does not send a timestamp the server should own',
-  );
+  assert(ui.includes("status: 'Completed'"), 'it sends the completed status');
+  assert(!ui.includes('endedAt'), 'it does not send a timestamp the server should own');
 
   /*
    * The second visit must not reuse the first encounter: the consult
    * charge is keyed on the encounter, so reuse silently skips the fee.
    */
   assert(
-    ui.includes("encs.find") || ui.includes("status === 'Active'"),
+    ui.includes('encs.find') || ui.includes("status === 'Active'"),
     'the screen only resumes an Active encounter',
   );
 }
@@ -437,9 +441,18 @@ function testVisitLifecycle(): void {
 function testIdentifiers(): void {
   const queries = source('src/db/queries.ts');
 
-  assert(queries.includes('export async function nextPatientMrn'), 'MRNs are allocated in the database layer');
-  assert(queries.includes('export async function nextQueueToken'), 'queue tokens are allocated in the database layer');
-  assert(queries.includes('export class PatientMrnConflictError'), 'a duplicate MRN has a named refusal');
+  assert(
+    queries.includes('export async function nextPatientMrn'),
+    'MRNs are allocated in the database layer',
+  );
+  assert(
+    queries.includes('export async function nextQueueToken'),
+    'queue tokens are allocated in the database layer',
+  );
+  assert(
+    queries.includes('export class PatientMrnConflictError'),
+    'a duplicate MRN has a named refusal',
+  );
 
   const registration = source('src/components/modules/PatientRegistrationModule.tsx');
   const opd = source('src/components/modules/OutpatientModule.tsx');
@@ -448,10 +461,7 @@ function testIdentifiers(): void {
     !registration.includes('Math.random()'),
     'the registration screen no longer invents an MRN or a token',
   );
-  assert(
-    !opd.includes('Math.random()'),
-    'the clinician screen no longer invents a pharmacy token',
-  );
+  assert(!opd.includes('Math.random()'), 'the clinician screen no longer invents a pharmacy token');
 
   /* The API route turns the named refusal into 409, not 500. */
   const app = source('src/app.ts');
@@ -487,12 +497,12 @@ function testQueueFlow(): void {
     queries.includes('export async function completeQueueTokensForPatient'),
     'a served patient can have their token closed',
   );
-  assert(
-    app.includes("'Pharmacy'"),
-    'dispensing closes the pharmacy token',
-  );
+  assert(app.includes("'Pharmacy'"), 'dispensing closes the pharmacy token');
 
-  assert(opd.includes("api.getQueues(currentFacility?.id, 'Triage')"), 'the clinician sees the triage queue');
+  assert(
+    opd.includes("api.getQueues(currentFacility?.id, 'Triage')"),
+    'the clinician sees the triage queue',
+  );
   assert(opd.includes("'In-Progress'"), 'starting a visit moves the token');
   assert(opd.includes('Waiting in Triage'), 'the queue is visible on the OPD screen');
 }
@@ -508,10 +518,7 @@ function testTariffGuidance(): void {
     assert(panel.includes(code), `the tariff screen names ${code}`);
   }
 
-  assert(
-    panel.includes('not</strong> billed'),
-    'it says that an unmatched service is not billed',
-  );
+  assert(panel.includes('not</strong> billed'), 'it says that an unmatched service is not billed');
 }
 
 /* ============================================================
