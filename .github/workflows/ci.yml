@@ -183,12 +183,21 @@ jobs:
         # selection (per-file `@vitest-environment` docblocks), so a project
         # filter matches nothing and vitest exits with a startup error. The
         # DB specs are selected by filename instead.
+        #
+        # No `--coverage` either, and that is a correction rather than an
+        # omission: this step runs ONE directory, so the coverage it reports
+        # is the coverage of that subset (12.1%), and the global thresholds
+        # are measured over the whole suite (19.9%). Asking for both made the
+        # job fail on arithmetic while every test in it passed. Thresholds
+        # are enforced in the `unit` job, which runs every spec - that is the
+        # only place the number they describe can be measured.
+        #
         # `tee` so the output can be re-emitted as annotations below. Job
         # logs are served from object storage, which is not always reachable
         # from every network; annotations come from the API and always are.
         run: |
           set -o pipefail
-          npx vitest run --coverage src/tests/vitest --reporter=verbose 2>&1 | tee db-specs.log
+          npx vitest run src/tests/vitest --reporter=verbose 2>&1 | tee db-specs.log
 
       - name: Auth service and authentication specs
         # These two suites now create the administrator they authenticate as
@@ -198,6 +207,13 @@ jobs:
         # could never pass and were kept out of the gate. See
         # docs/testing/KNOWN-GAPS.md.
         run: npx vitest run src/tests/auth-service.db.spec.ts src/tests/authentication.db.spec.ts
+
+      - name: County migration spec
+        # The one spec that executes a data migration, so it needs the real
+        # PostgreSQL and a schema that has had every migration applied. It is
+        # listed by name because `src/tests/*.db.spec.ts` sits outside
+        # src/tests/vitest, which is all the step above runs.
+        run: npx vitest run src/tests/county-migration.db.spec.ts --reporter=verbose
 
       - name: Report the failing assertions
         if: failure()
