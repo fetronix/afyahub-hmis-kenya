@@ -4,6 +4,7 @@ import type { Tenant, Facility } from '../../types/index.ts';
 import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from 'lucide-react';
 import { SubscriptionBillingPanel } from './SubscriptionBillingPanel.tsx';
 import { FacilityRbacEditor } from './FacilityRbacEditor.tsx';
+import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
 
 type Tab = 'tenants' | 'facilities' | 'administrators' | 'billing';
 type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
@@ -687,21 +688,40 @@ export const PlatformAdministrationModule: React.FC = () => {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className={labelClass}>County</label>
-                  <input
+                  <select
                     className={fieldClass}
                     value={facilityForm.county}
-                    onChange={(e) => setFacilityForm({ ...facilityForm, county: e.target.value })}
-                  />
+                    onChange={(e) =>
+                      setFacilityForm({ ...facilityForm, county: e.target.value, subCounty: '' })
+                    }
+                  >
+                    <option value="">Select county</option>
+                    {KENYA_COUNTIES.map((county) => (
+                      <option key={county.code} value={county.name}>
+                        {county.code}. {county.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className={labelClass}>Sub-county</label>
-                  <input
+                  <select
                     className={fieldClass}
                     value={facilityForm.subCounty}
                     onChange={(e) =>
                       setFacilityForm({ ...facilityForm, subCounty: e.target.value })
                     }
-                  />
+                    disabled={!facilityForm.county}
+                  >
+                    <option value="">
+                      {facilityForm.county ? 'Select sub-county' : 'Select a county first'}
+                    </option>
+                    {subCountiesOf(facilityForm.county).map((subCounty) => (
+                      <option key={subCounty} value={subCounty}>
+                        {subCounty}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -873,23 +893,47 @@ export const PlatformAdministrationModule: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelClass}>County</label>
-                    <input
+                    <select
                       className={fieldClass}
                       value={editFacilityForm.county}
                       onChange={(e) =>
-                        setEditFacilityForm({ ...editFacilityForm, county: e.target.value })
+                        setEditFacilityForm({
+                          ...editFacilityForm,
+                          county: e.target.value,
+                          subCounty: '',
+                        })
                       }
-                    />
+                    >
+                      <option value="">Select county</option>
+                      {KENYA_COUNTIES.map((county) => (
+                        <option key={county.code} value={county.name}>
+                          {county.code}. {county.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className={labelClass}>Sub-county</label>
-                    <input
+                    {/* The PATCH refuses a blank sub-county, so the browser
+                        says so before a round trip rather than after one. */}
+                    <select
                       className={fieldClass}
                       value={editFacilityForm.subCounty}
                       onChange={(e) =>
                         setEditFacilityForm({ ...editFacilityForm, subCounty: e.target.value })
                       }
-                    />
+                      disabled={!editFacilityForm.county}
+                      required
+                    >
+                      <option value="">
+                        {editFacilityForm.county ? 'Select sub-county' : 'Select a county first'}
+                      </option>
+                      {subCountiesOf(editFacilityForm.county).map((subCounty) => (
+                        <option key={subCounty} value={subCounty}>
+                          {subCounty}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

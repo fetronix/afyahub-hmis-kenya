@@ -14,6 +14,7 @@ import portalAdminRoutes from './portal/portal-admin.routes.ts';
 import clinicalRecordsRoutes from './clinical/clinical-records.routes.ts';
 import { checkMedicationAllergies } from './clinical/allergy.service.ts';
 import { logPatientAccess } from './clinical/access-log.service.ts';
+import { resolveLocation } from './constants/kenya-locations.ts';
 
 import * as queries from './db/queries.ts';
 import { db } from './db/index.ts';
@@ -615,7 +616,24 @@ export async function createApp() {
           });
         }
 
-        const patient = await queries.createPatientScoped(req.authContext, req.body);
+        /* The pair is checked before anything is written: a sub-county that
+           is not in its county is a refusal, not a value to store. */
+        const body = req.body ?? {};
+        const location = resolveLocation(body.county, body.subCounty);
+
+        if (!location.ok) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_SUB_COUNTY',
+            message: location.message,
+          });
+        }
+
+        const patient = await queries.createPatientScoped(req.authContext, {
+          ...body,
+          county: location.county,
+          subCounty: location.subCounty,
+        });
 
         await queries.logAuditEvent(
           patient.tenantId,
@@ -669,7 +687,34 @@ export async function createApp() {
           });
         }
 
-        const patient = await queries.updatePatientScoped(req.authContext, patientId, req.body);
+        // A partial update may carry neither field, either one, or both. The
+        // pair is only checkable together, so a sub-county on its own is
+        // refused rather than stored against a county nobody looked at. A
+        // county on its own clears the sub-county: the old one belonged to
+        // the county that has just been replaced.
+        const body = req.body ?? {};
+        const touchesLocation = 'county' in body || 'subCounty' in body;
+
+        let locationPatch: Partial<{ county: string | null; subCounty: string | null }> = {};
+
+        if (touchesLocation) {
+          const location = resolveLocation(body.county, body.subCounty);
+
+          if (!location.ok) {
+            return res.status(400).json({
+              success: false,
+              error: 'INVALID_SUB_COUNTY',
+              message: location.message,
+            });
+          }
+
+          locationPatch = { county: location.county, subCounty: location.subCounty };
+        }
+
+        const patient = await queries.updatePatientScoped(req.authContext, patientId, {
+          ...body,
+          ...locationPatch,
+        });
 
         if (!patient) {
           return res.status(404).json({

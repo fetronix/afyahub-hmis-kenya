@@ -22,6 +22,7 @@ import {
 } from './platform/shared.ts';
 import subscriptionsRoutes from './platform/subscriptions.routes.ts';
 import { bodyOf, parseFacilityUpdate, parseTenantInput } from './platform/validation.ts';
+import { resolveLocation } from '../constants/kenya-locations.ts';
 
 const router = Router();
 
@@ -448,11 +449,25 @@ router.post('/facilities', async (req: Request, res: Response) => {
   }
 
   const level = textValue(body.level);
-  const county = textValue(body.county);
-  const subCounty = textValue(body.subCounty);
   const mflCode = textValue(body.mflCode);
   const address = textValue(body.address);
   const phone = textValue(body.phone);
+
+  /* The pair is checked together: a sub-county must belong to the county it
+     is stored with. A facility with no county keeps the column defaults -
+     that is the existing behaviour and it is a deliberate choice for
+     facilities that have not been surveyed yet. Once a county is given,
+     though, the sub-county is written explicitly (possibly null) so the
+     Westlands default cannot be attached to, say, a Kisumu facility. */
+  const location = resolveLocation(textValue(body.county), textValue(body.subCounty));
+
+  if (!location.ok) {
+    res.status(400).json({
+      error: 'VALIDATION_ERROR',
+      message: location.message,
+    });
+    return;
+  }
 
   try {
     const result = await db.transaction(async (tx) => {
@@ -484,8 +499,7 @@ router.post('/facilities', async (req: Request, res: Response) => {
           code,
           name,
           ...(level ? { level } : {}),
-          ...(county ? { county } : {}),
-          ...(subCounty ? { subCounty } : {}),
+          ...(location.county ? { county: location.county, subCounty: location.subCounty } : {}),
           ...(mflCode ? { mflCode } : {}),
           ...(address ? { address } : {}),
           ...(phone ? { phone } : {}),

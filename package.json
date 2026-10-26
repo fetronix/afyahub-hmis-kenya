@@ -16,6 +16,7 @@
     "db:status": "node scripts/run-script.mjs migration-status",
     "db:status:0009": "node scripts/run-script.mjs migration-status --expect-0009",
     "db:grant-inpatient-permissions": "tsx scripts/grant-inpatient-permissions.ts",
+    "locations:migration": "tsx scripts/generate-location-migration.ts",
     "test": "vitest run --coverage",
     "db:status:all": "node scripts/run-script.mjs migration-status --expect-all",
     "db:seed": "tsx src/db/seed.ts",

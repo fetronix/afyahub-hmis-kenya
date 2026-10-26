@@ -3,6 +3,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
 import { Patient } from '../../types/index.ts';
+import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
 import {
   UserPlus,
   Search,
@@ -128,6 +129,13 @@ export const PatientRegistrationModule: React.FC = () => {
     }
     loadPatients();
   }, [currentTenant, currentFacility, search, refreshKey]);
+
+  // A sub-county only means something inside its county, so changing the
+  // county clears the one already chosen. Without this, "Nyeri" could keep a
+  // "Kasarani" sub-county left over from the previous selection.
+  const handleCountyChange = (county: string) => {
+    setFormData((prev) => ({ ...prev, county, subCounty: '' }));
+  };
 
   // Duplicate Check logic
   const handleInputChange = (field: string, value: string) => {
@@ -429,30 +437,34 @@ export const PatientRegistrationModule: React.FC = () => {
                   </label>
                   <select
                     value={formData.county}
-                    onChange={(e) => handleInputChange('county', e.target.value)}
+                    onChange={(e) => handleCountyChange(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   >
-                    <option value="Nairobi">Nairobi</option>
-                    <option value="Mombasa">Mombasa</option>
-                    <option value="Kisumu">Kisumu</option>
-                    <option value="Nakuru">Nakuru</option>
-                    <option value="Kiambu">Kiambu</option>
-                    <option value="Machakos">Machakos</option>
-                    <option value="Kilifi">Kilifi</option>
-                    <option value="Uasin Gishu">Uasin Gishu</option>
-                    <option value="Nyeri">Nyeri</option>
-                    <option value="Meru">Meru</option>
+                    <option value="">Select county</option>
+                    {KENYA_COUNTIES.map((county) => (
+                      <option key={county.code} value={county.name}>
+                        {county.code}. {county.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-slate-700 font-medium mb-1">Sub-County</label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.subCounty}
                     onChange={(e) => handleInputChange('subCounty', e.target.value)}
-                    placeholder="e.g. Westlands / Langata"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
-                  />
+                    disabled={!formData.county}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  >
+                    <option value="">
+                      {formData.county ? 'Select sub-county' : 'Select a county first'}
+                    </option>
+                    {subCountiesOf(formData.county).map((subCounty) => (
+                      <option key={subCounty} value={subCounty}>
+                        {subCounty}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-slate-700 font-medium mb-1">
@@ -761,7 +773,9 @@ export const PatientRegistrationModule: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-slate-700 font-sans">
                           <div className="font-mono">{p.phone}</div>
-                          <div className="text-2xs text-slate-400">{p.county}</div>
+                          <div className="text-2xs text-slate-400">
+                            {[p.subCounty, p.county].filter(Boolean).join(', ')}
+                          </div>
                         </td>
                         <td className="px-4 py-3 font-sans">
                           <span
