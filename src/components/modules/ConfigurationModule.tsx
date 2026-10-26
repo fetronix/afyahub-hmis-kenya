@@ -648,12 +648,24 @@ export const ConfigurationModule: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-slate-600 mb-1">Passkey (Encrypted)</label>
+                <label className="block text-slate-600 mb-1">Passkey</label>
+                {/*
+                  A Daraja passkey is a secret used to build every STK push
+                  password. It is not rendered, prefilled or bundled here: a
+                  value in this component would ship to every browser that
+                  loads the app, and this panel has no integration behind it
+                  to read one anyway.
+                */}
                 <input
                   type="password"
-                  defaultValue="bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono"
+                  value=""
+                  readOnly
+                  placeholder="Held on the server"
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono bg-slate-50"
                 />
+                <p className="mt-1 text-2xs text-slate-500">
+                  The passkey stays in the server environment and is never sent to the browser.
+                </p>
               </div>
               <span className="text-2xs text-emerald-700 font-medium">
                 ✓ Auto-STK Push Active on Cashier POS
