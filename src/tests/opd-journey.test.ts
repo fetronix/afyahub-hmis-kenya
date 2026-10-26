@@ -97,9 +97,17 @@ function routeBody(file: string, method: string, path: string): string | null {
 
   if (!Number.isFinite(start)) return null;
 
-  const end = file.indexOf('\n  app.', start);
+  /* Routes now live on either `app` or a mounted router; stop at whichever
+     handler declaration comes next. */
+  const end = Math.min(
+    ...['\n  app.', '\n  router.'].map((marker) => {
+      const found = file.indexOf(marker, start);
 
-  return file.slice(start, end > -1 ? end : undefined);
+      return found >= 0 ? found : Number.POSITIVE_INFINITY;
+    }),
+  );
+
+  return file.slice(start, Number.isFinite(end) ? end : undefined);
 }
 
 /* ============================================================
@@ -222,16 +230,31 @@ function testRadiology(): void {
 function testEveryStageIsCharged(): void {
   const app = source('src/app.ts');
 
-  const stages: Array<[string, string]> = [
-    ["'/api/encounters'", 'CONSULTATION'],
-    ["'/api/procedures'", 'PROCEDURE'],
-    ["'/api/radiology-orders'", 'RADIOLOGY'],
-    ["'/api/pharmacy/dispense'", 'PHARMACY'],
-    ["'/api/admissions/:id/discharge'", 'BED_DAY'],
+  /*
+   * Discharge moved to src/routes/inpatient.routes.ts with the inpatient
+   * routes, so each stage names the file that now owns it. The claim is
+   * unchanged: this endpoint charges this source type.
+   */
+  const inpatient = source('src/routes/inpatient.routes.ts');
+
+  const stages: Array<[string, string, string, string, string]> = [
+    ["'/api/encounters'", 'CONSULTATION', app, 'app.post', '/api/encounters'],
+    ["'/api/procedures'", 'PROCEDURE', app, 'app.post', '/api/procedures'],
+    ["'/api/radiology-orders'", 'RADIOLOGY', app, 'app.post', '/api/radiology-orders'],
+    ["'/api/pharmacy/dispense'", 'PHARMACY', app, 'app.post', '/api/pharmacy/dispense'],
+    /* The router is mounted at /api, so it registers the path without it. */
+    [
+      "'/api/admissions/:id/discharge'",
+      'BED_DAY',
+      inpatient,
+      'router.post',
+      '/admissions/:id/discharge',
+    ],
   ];
 
-  for (const [route, sourceType] of stages) {
-    const body = routeBody(app, 'app.post', route.replace(/'/g, ''));
+  for (const [route, sourceType, file, method, path] of stages) {
+    const body = routeBody(file, method, path);
+
     assert(body !== null, `${route} exists`);
 
     assert(body!.includes(sourceType), `${sourceType} is charged by ${route}`);
@@ -350,7 +373,7 @@ function testEveryStageIsCharged(): void {
    */
   for (const [label, key, file] of [
     ['the consultation', "billingServiceKeys('CONSULTATION'", 'src/app.ts'],
-    ['the admission', "billingServiceKeys('ADMISSION'", 'src/app.ts'],
+    ['the admission', "billingServiceKeys('ADMISSION'", 'src/routes/inpatient.routes.ts'],
     ['the delivery', "billingServiceKeys('DELIVERY'", 'src/routes/maternal-health.routes.ts'],
     ['the prescription', "billingServiceKeys('PHARMACY'", 'src/app.ts'],
     ['the procedure', "billingServiceKeys('PROCEDURE'", 'src/app.ts'],

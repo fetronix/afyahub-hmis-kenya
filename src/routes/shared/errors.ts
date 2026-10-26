@@ -20,6 +20,7 @@
 import type { Response } from 'express';
 
 import { ScopeAccessError } from '../../auth/scope.service.ts';
+import * as queries from '../../db/queries.ts';
 import * as immunisation from '../../immunisation/immunisation.service.ts';
 import * as maternity from '../../maternity/maternity.service.ts';
 
@@ -84,6 +85,30 @@ export function handleImmunisationError(error: unknown, res: Response): boolean 
 
   if (error instanceof immunisation.ImmunisationDomainError) {
     res.status(error.statusCode).json({
+      success: false,
+      error: error.code,
+      message: error.message,
+    });
+
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Inpatient failures: wards, beds, admissions, transfers, discharge.
+ *
+ * `InpatientDomainError` carries its own status. 400 for bad input, 404 for
+ * a record outside the caller's scope, 409 for a state conflict such as
+ * discharging an admission that is already closed or admitting to a bed
+ * that is occupied.
+ */
+export function handleInpatientError(error: unknown, res: Response): boolean {
+  if (handleScopeError(error, res)) return true;
+
+  if (error instanceof queries.InpatientDomainError) {
+    res.status(error.status).json({
       success: false,
       error: error.code,
       message: error.message,

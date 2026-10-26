@@ -836,14 +836,23 @@ function testUnpricedNightIsRecoverable(): void {
    ============================================================ */
 
 function testOneBedDayEngine(): void {
-  const app = source('src/app.ts');
+  /*
+   * The discharge and transfer handlers moved out of app.ts into the
+   * inpatient router. They are read from there now; reading app.ts would
+   * find neither route and the slice below would silently be empty, which
+   * would make every assertion in this function vacuous. The claims are
+   * unchanged.
+   */
+  const app = source('src/routes/inpatient.routes.ts');
   const queries = source('src/db/queries.ts');
   const resolver = source('src/billing/tariff-resolver.ts');
 
   const dischargeRoute = app.slice(
-    app.indexOf("'/api/admissions/:id/discharge'"),
-    app.indexOf("'/api/admissions/:id/transfer'"),
+    app.indexOf("'/admissions/:id/discharge'"),
+    app.indexOf("'/admissions/:id/transfer'"),
   );
+
+  assert(dischargeRoute.length > 100, 'the discharge route was found, not an empty slice');
 
   assert(
     dischargeRoute.includes('queries.accrueBedDaysScoped('),
@@ -861,8 +870,8 @@ function testOneBedDayEngine(): void {
   );
 
   const transferRoute = app.slice(
-    app.indexOf("'/api/admissions/:id/transfer'"),
-    app.indexOf("'/api/admissions/:id/transfers'"),
+    app.indexOf("'/admissions/:id/transfer'"),
+    app.indexOf("'/admissions/:id/transfers'"),
   );
 
   assert(

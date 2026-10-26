@@ -172,6 +172,18 @@ function stripWhitespace(source: string): string {
   return source.replace(/\s+/g, '');
 }
 
+/**
+ * Translate a public API path into the path the router source uses.
+ *
+ * The inpatient router is mounted at `/api`, so it registers '/wards'
+ * where the app used to register '/api/wards'. The expectations in this
+ * file stay written as the URLs a client calls, because that is the thing
+ * worth protecting; this converts them once for matching against source.
+ */
+function asRouterPath(routePath: string): string {
+  return routePath.replace(/^'\/api/, "'");
+}
+
 function routeIsGuarded(source: string, routePath: string, permission: string): boolean {
   let index = source.indexOf(routePath);
 
@@ -208,7 +220,15 @@ function routeAcceptsAuthRequest(source: string, routePath: string, permission: 
 }
 
 function testRouteWiring(): void {
-  const appSource = readFileSync(resolve(import.meta.dirname, '../app.ts'), 'utf8');
+  /*
+   * The inpatient routes moved out of app.ts into their own router. Read
+   * the file that now owns them - reading app.ts here would make every
+   * assertion below vacuous, since none of the routes are in it any more.
+   */
+  const appSource = readFileSync(
+    resolve(import.meta.dirname, '../routes/inpatient.routes.ts'),
+    'utf8',
+  );
 
   const expectations: Array<{ route: string; permission: string }> = [
     { route: "'/api/wards'", permission: 'inpatient.read' },
@@ -224,15 +244,17 @@ function testRouteWiring(): void {
   ];
 
   for (const expectation of expectations) {
-    assert(appSource.includes(expectation.route), `route ${expectation.route} exists`);
+    const route = asRouterPath(expectation.route);
+
+    assert(appSource.includes(route), `route ${expectation.route} exists`);
 
     assert(
-      routeIsGuarded(appSource, expectation.route, expectation.permission),
+      routeIsGuarded(appSource, route, expectation.permission),
       `route ${expectation.route} enforces ${expectation.permission}`,
     );
 
     assert(
-      routeAcceptsAuthRequest(appSource, expectation.route, expectation.permission),
+      routeAcceptsAuthRequest(appSource, route, expectation.permission),
       `route ${expectation.route} with ${expectation.permission} receives an AuthRequest`,
     );
   }
@@ -272,7 +294,10 @@ function testRouteWiring(): void {
  *   - a ward or bed that has held a patient cannot be deleted.
  */
 function testWardBedSetup(): void {
-  const appSource = readFileSync(resolve(import.meta.dirname, '../app.ts'), 'utf8');
+  const appSource = readFileSync(
+    resolve(import.meta.dirname, '../routes/inpatient.routes.ts'),
+    'utf8',
+  );
 
   const service = readFileSync(
     resolve(import.meta.dirname, '../inpatient/ward-bed.service.ts'),
@@ -287,6 +312,18 @@ function testWardBedSetup(): void {
   );
 
   const client = readFileSync(resolve(import.meta.dirname, '../api/client.ts'), 'utf8');
+
+  /*
+   * A router that exists, holds correct handlers and is never mounted is
+   * dead code that still passes every assertion in this file. The mount is
+   * checked here for the same reason it is checked in the router specs.
+   */
+  assert(
+    readFileSync(resolve(import.meta.dirname, '../app.ts'), 'utf8').includes(
+      "app.use('/api', inpatientRoutes)",
+    ),
+    'the inpatient router is mounted at /api',
+  );
 
   /* ---- permissions ---- */
   const requiredPermissions = [
@@ -313,18 +350,18 @@ function testWardBedSetup(): void {
 
   /* ---- routes ---- */
   const routes: Array<{ route: string; method: string; permission: string }> = [
-    { route: "'/api/wards'", method: 'app.post', permission: 'inpatient.wards.create' },
-    { route: "'/api/wards/:id'", method: 'app.put', permission: 'inpatient.wards.update' },
-    { route: "'/api/wards/:id'", method: 'app.delete', permission: 'inpatient.wards.delete' },
-    { route: "'/api/beds'", method: 'app.post', permission: 'inpatient.beds.create' },
-    { route: "'/api/beds/:id'", method: 'app.put', permission: 'inpatient.beds.update' },
-    { route: "'/api/beds/:id'", method: 'app.delete', permission: 'inpatient.beds.delete' },
+    { route: "'/api/wards'", method: 'router.post', permission: 'inpatient.wards.create' },
+    { route: "'/api/wards/:id'", method: 'router.put', permission: 'inpatient.wards.update' },
+    { route: "'/api/wards/:id'", method: 'router.delete', permission: 'inpatient.wards.delete' },
+    { route: "'/api/beds'", method: 'router.post', permission: 'inpatient.beds.create' },
+    { route: "'/api/beds/:id'", method: 'router.put', permission: 'inpatient.beds.update' },
+    { route: "'/api/beds/:id'", method: 'router.delete', permission: 'inpatient.beds.delete' },
   ];
 
   const flatApp = stripWhitespace(appSource);
 
   for (const { route, method, permission } of routes) {
-    const marker = stripWhitespace(`${method}(${route},`);
+    const marker = stripWhitespace(`${method}(${asRouterPath(route)},`);
 
     assert(flatApp.includes(marker), `${method} ${route} is registered`);
 

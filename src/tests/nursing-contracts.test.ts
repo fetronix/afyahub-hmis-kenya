@@ -246,16 +246,28 @@ function testRouteWiring(): void {
     'nursing note routes are module-guarded',
   );
 
-  /* The three nursing endpoints the UI calls must exist and be permission-guarded. */
+  /*
+   * The three nursing endpoints the UI calls must exist and be
+   * permission-guarded. They moved to src/routes/inpatient.routes.ts with
+   * the rest of the inpatient routes, so they are looked up there; the
+   * router is mounted at /api, hence the prefix is dropped for the search.
+   */
+  const routes = readRepoFile('src/routes/inpatient.routes.ts');
+
+  assert(
+    app.includes("app.use('/api', inpatientRoutes)"),
+    'the inpatient router is mounted at /api',
+  );
+
   for (const route of [
     '/api/inpatient/board',
     '/api/admissions/:id/vitals',
     '/api/nursing-notes/handover',
   ]) {
-    const index = app.indexOf(route);
+    const index = routes.indexOf(route.replace(/^\/api/, ''));
     assert(index > -1, `${route} is registered`);
 
-    const window = app.slice(index, index + 400);
+    const window = routes.slice(index, index + 400);
     assert(window.includes('requirePermission('), `${route} declares a permission guard`);
     assert(window.includes('requireAuthContext'), `${route} resolves the auth context`);
   }
