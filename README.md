@@ -26,13 +26,13 @@ process serving a JSON API and a React SPA, backed by PostgreSQL.
 
 ## What this is
 
-| | |
-|---|---|
-| **Runtime** | Node.js `^20.19.0` or `>=22.12.0` (declared in `engines`) |
-| **Database** | PostgreSQL 16 |
-| **Server** | Express 4, TypeScript, Drizzle ORM |
-| **Client** | React 19, Vite 8, Tailwind CSS 4 |
-| **Entry point** | `server.ts` (development) → `build/server.js` (production) |
+|                 |                                                                     |
+| --------------- | ------------------------------------------------------------------- |
+| **Runtime**     | Node.js `^20.19.0` or `>=22.12.0` (declared in `engines`)           |
+| **Database**    | PostgreSQL 16                                                       |
+| **Server**      | Express 4, TypeScript, Drizzle ORM                                  |
+| **Client**      | React 19, Vite 8, Tailwind CSS 4                                    |
+| **Entry point** | `server.ts` (development) → `build/server.js` (production)          |
 | **API and SPA** | One process, one port. `/api/*` is JSON; everything else is the SPA |
 
 The application is multi-tenant: one installation can host several facilities,
@@ -69,12 +69,12 @@ cp .env.example .env
 Then edit `.env`. Four values need real entries before the application will
 start:
 
-| Variable | What it is | How to get one |
-|---|---|---|
+| Variable               | What it is                           | How to get one                                                                |
+| ---------------------- | ------------------------------------ | ----------------------------------------------------------------------------- |
 | `FIELD_ENCRYPTION_KEY` | Encrypts patient identifiers at rest | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
-| `SQL_HOST` | PostgreSQL host | `localhost` for a local database |
-| `SQL_ADMIN_USER` | PostgreSQL user | your database user |
-| `SQL_ADMIN_PASSWORD` | PostgreSQL password | your database password |
+| `SQL_HOST`             | PostgreSQL host                      | `localhost` for a local database                                              |
+| `SQL_ADMIN_USER`       | PostgreSQL user                      | your database user                                                            |
+| `SQL_ADMIN_PASSWORD`   | PostgreSQL password                  | your database password                                                        |
 
 Also set `SQL_DB_NAME` and `SQL_PORT` (5432 unless you changed it), and
 `APP_BASE_URL` (`http://localhost:3000` in development).
@@ -233,46 +233,46 @@ variable the code reads, with the reasoning for each.
 
 ### Required
 
-| Variable | Purpose | Notes |
-|---|---|---|
+| Variable               | Purpose                              | Notes                                         |
+| ---------------------- | ------------------------------------ | --------------------------------------------- |
 | `FIELD_ENCRYPTION_KEY` | Encrypts patient identifiers at rest | 32 random bytes, base64. **Not recoverable.** |
-| `SQL_HOST` | PostgreSQL host | `db` inside the compose stack |
-| `SQL_PORT` | PostgreSQL port | `5432` |
-| `SQL_DB_NAME` | Database name | |
-| `SQL_ADMIN_USER` | Database user | |
-| `SQL_ADMIN_PASSWORD` | Database password | |
-| `APP_BASE_URL` | Public address of the installation | Used for invitation links and CORS |
+| `SQL_HOST`             | PostgreSQL host                      | `db` inside the compose stack                 |
+| `SQL_PORT`             | PostgreSQL port                      | `5432`                                        |
+| `SQL_DB_NAME`          | Database name                        |                                               |
+| `SQL_ADMIN_USER`       | Database user                        |                                               |
+| `SQL_ADMIN_PASSWORD`   | Database password                    |                                               |
+| `APP_BASE_URL`         | Public address of the installation   | Used for invitation links and CORS            |
 
 ### Runtime
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `NODE_ENV` | `development` | `production` tightens CORS and refuses default secrets |
-| `PORT` | `3000` | cPanel and every PaaS set this |
-| `HOST` | `0.0.0.0` | Bind address; `127.0.0.1` behind a local proxy |
-| `STATIC_DIR` | `dist/` | Where the built SPA lives |
-| `MIGRATIONS_DIR` | `drizzle/` | Where the migration journal and SQL live |
-| `TRUST_PROXY` | `false` | **Set to `true` behind a reverse proxy**, or rate limiting keys on the proxy's IP |
-| `CORS_ALLOWED_ORIGINS` | empty | Extra origins; comma separated |
-| `TZ` / `DEFAULT_TIMEZONE` | `Africa/Nairobi` | Clinical dates and expiry countdowns |
-| `LOG_LEVEL` | `info` (`debug` in dev, `silent` in test) | `fatal`–`trace` |
-| `LOG_PSEUDONYM_KEY` | falls back to `FIELD_ENCRYPTION_KEY` | Key for patient references in logs |
+| Variable                  | Default                                   | Purpose                                                                           |
+| ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------- |
+| `NODE_ENV`                | `development`                             | `production` tightens CORS and refuses default secrets                            |
+| `PORT`                    | `3000`                                    | cPanel and every PaaS set this                                                    |
+| `HOST`                    | `0.0.0.0`                                 | Bind address; `127.0.0.1` behind a local proxy                                    |
+| `STATIC_DIR`              | `dist/`                                   | Where the built SPA lives                                                         |
+| `MIGRATIONS_DIR`          | `drizzle/`                                | Where the migration journal and SQL live                                          |
+| `TRUST_PROXY`             | `false`                                   | **Set to `true` behind a reverse proxy**, or rate limiting keys on the proxy's IP |
+| `CORS_ALLOWED_ORIGINS`    | empty                                     | Extra origins; comma separated                                                    |
+| `TZ` / `DEFAULT_TIMEZONE` | `Africa/Nairobi`                          | Clinical dates and expiry countdowns                                              |
+| `LOG_LEVEL`               | `info` (`debug` in dev, `silent` in test) | `fatal`–`trace`                                                                   |
+| `LOG_PSEUDONYM_KEY`       | falls back to `FIELD_ENCRYPTION_KEY`      | Key for patient references in logs                                                |
 
 ### Database TLS
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `SQL_SSL` | `false` | `true` for a managed PostgreSQL that requires TLS |
-| `SQL_SSL_REJECT_UNAUTHORIZED` | `true` | Leave `true`; accepting any certificate is not authentication |
+| Variable                      | Default | Purpose                                                       |
+| ----------------------------- | ------- | ------------------------------------------------------------- |
+| `SQL_SSL`                     | `false` | `true` for a managed PostgreSQL that requires TLS             |
+| `SQL_SSL_REJECT_UNAUTHORIZED` | `true`  | Leave `true`; accepting any certificate is not authentication |
 
 ### DHA / AfyaConnect (SHA)
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `DHA_MODE` | `mock` | `mock` (local fixtures), `sandbox` (UAT), `production` |
-| `DHA_BASE_URL`, `DHA_CLIENT_ID`, `DHA_CLIENT_SECRET`, `DHA_FACILITY_CODE` | empty | Required for `sandbox` |
-| `DHA_ALLOW_PRODUCTION` | `false` | Must be `true` before `production` mode will run |
-| `DHA_TIMEOUT_MS` / `DHA_MAX_RETRIES` | `15000` / `2` | Outbound resilience |
+| Variable                                                                  | Default       | Purpose                                                |
+| ------------------------------------------------------------------------- | ------------- | ------------------------------------------------------ |
+| `DHA_MODE`                                                                | `mock`        | `mock` (local fixtures), `sandbox` (UAT), `production` |
+| `DHA_BASE_URL`, `DHA_CLIENT_ID`, `DHA_CLIENT_SECRET`, `DHA_FACILITY_CODE` | empty         | Required for `sandbox`                                 |
+| `DHA_ALLOW_PRODUCTION`                                                    | `false`       | Must be `true` before `production` mode will run       |
+| `DHA_TIMEOUT_MS` / `DHA_MAX_RETRIES`                                      | `15000` / `2` | Outbound resilience                                    |
 
 `mock` mode makes no network calls and marks every result as simulated. Use it
 for development and demos. It is the default on purpose.
@@ -281,11 +281,11 @@ for development and demos. It is the default on purpose.
 
 These affect `npm run dev` and `npm run build`, not the running server.
 
-| Variable | Purpose |
-|---|---|
-| `BUILD_TARGET` | Selects the server bundle target |
+| Variable             | Purpose                                                         |
+| -------------------- | --------------------------------------------------------------- |
+| `BUILD_TARGET`       | Selects the server bundle target                                |
 | `VITE_ALLOWED_HOSTS` | Extra hostnames the Vite dev server answers (tunnels, previews) |
-| `DISABLE_HMR` | `true` disables hot reload and file watching |
+| `DISABLE_HMR`        | `true` disables hot reload and file watching                    |
 
 ---
 
@@ -296,14 +296,14 @@ They are plain SQL files, never edited after they have been applied anywhere.
 
 ### Commands
 
-| Command | Changes data? | Use |
-|---|---|---|
-| `npm run db:preflight` | No | Check the connection and print the plan |
-| `npm run db:migrate:dry` | No | Print exactly which migrations would run |
-| `npm run db:status` | No | Compare the journal with what the database recorded |
-| `npm run db:migrate` | **Yes** | Apply pending migrations |
-| `npm run db:seed` | **Yes** | Create the first administrator |
-| `npm run db:seed:permissions` | **Yes** | Load the permission catalogue |
+| Command                       | Changes data? | Use                                                 |
+| ----------------------------- | ------------- | --------------------------------------------------- |
+| `npm run db:preflight`        | No            | Check the connection and print the plan             |
+| `npm run db:migrate:dry`      | No            | Print exactly which migrations would run            |
+| `npm run db:status`           | No            | Compare the journal with what the database recorded |
+| `npm run db:migrate`          | **Yes**       | Apply pending migrations                            |
+| `npm run db:seed`             | **Yes**       | Create the first administrator                      |
+| `npm run db:seed:permissions` | **Yes**       | Load the permission catalogue                       |
 
 ### Rules
 
@@ -383,11 +383,11 @@ npm run test:coverage   # with coverage and thresholds
 
 Runs the specs in `src/tests/vitest/`. No database required for most of them.
 
-| Command | What it runs |
-|---|---|
-| `npm run test:unit` | Vitest only |
-| `npm test` | Legacy suites only |
-| `npm run test:all` | Both |
+| Command                 | What it runs                    |
+| ----------------------- | ------------------------------- |
+| `npm run test:unit`     | Vitest only                     |
+| `npm test`              | Legacy suites only              |
+| `npm run test:all`      | Both                            |
 | `npm run test:coverage` | Vitest with coverage thresholds |
 
 ### Component tests
@@ -434,15 +434,15 @@ open coverage/index.html
 request and on pushes to `main`, `arena/**`, `restructure/**`, `feature/**`
 and `fix/**`.
 
-| Job | What it proves |
-|---|---|
-| `static` | `tsc --noEmit` passes; ESLint reports 0 errors |
-| `unit` | Vitest passes and coverage meets the thresholds |
-| `legacy` | The 32 hand-written suites still pass |
+| Job        | What it proves                                                                                     |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| `static`   | `tsc --noEmit` passes; ESLint reports 0 errors                                                     |
+| `unit`     | Vitest passes and coverage meets the thresholds                                                    |
+| `legacy`   | The 32 hand-written suites still pass                                                              |
 | `database` | Migrations apply to a real **PostgreSQL 16**, status is clean, dry run is read-only, DB specs pass |
-| `build` | Client and server bundle, then **starts the real artifact** and checks `/api/health` and `/` |
-| `audit` | `npm audit --omit=dev --audit-level=high` |
-| `format` | Prettier check — advisory while the existing tree is migrated |
+| `build`    | Client and server bundle, then **starts the real artifact** and checks `/api/health` and `/`       |
+| `audit`    | `npm audit --omit=dev --audit-level=high`                                                          |
+| `format`   | Prettier check — advisory while the existing tree is migrated                                      |
 
 The PostgreSQL service uses throwaway credentials committed on purpose: they
 grant access to an empty database that is destroyed with the runner. No real
@@ -479,17 +479,17 @@ Two rules apply to every row below:
   `Per admission`, a test `Per test`. The resolver refuses a contradictory unit
   (`UNIT_INCOMPATIBLE`) rather than billing the wrong one.
 
-| Charge | Code to use | Description to write | Unit | Module | Link (`Used for automatic billing`) |
-|---|---|---|---|---|---|
-| Outpatient consultation | `OPD-001` | General outpatient consultation | Per visit | opd | `CONSULTATION` |
-| Follow-up consultation | `OPD-002` | Follow-up consultation | Per visit | opd | none — priced by code/description |
-| Laboratory test | the test's own code, e.g. `LAB-CBC` | Full blood count | Per test | laboratory | `LABORATORY:LAB-CBC`, or `LABORATORY` for one flat test price |
-| Imaging | `RAD-001` | Obstetric ultrasound | Per study | radiology | `RADIOLOGY:RAD-001`, or `RADIOLOGY` |
-| Procedure | `PROC-001` | Wound dressing | Per procedure | theatre | `PROCEDURE:PROC-001`, or `PROCEDURE` |
-| Admission (one-off) | `ADM-001` | Inpatient admission administration | Per admission | inpatient | `ADMISSION` |
-| Bed night | `BED-GEN` (or the ward's own code) | General ward bed charge | Per day | inpatient | `BED_DAY` for general wards, or `BED_DAY:<WARDCODE>` for one ward |
-| Delivery | `MAT-001` | Normal delivery | Per delivery | inpatient | `DELIVERY` |
-| Drug | `DRUG-<NAME>` | the drug name as dispensed | Per unit | pharmacy | `PHARMACY`, or `PHARMACY:DRUG-<NAME>` |
+| Charge                  | Code to use                         | Description to write               | Unit          | Module     | Link (`Used for automatic billing`)                               |
+| ----------------------- | ----------------------------------- | ---------------------------------- | ------------- | ---------- | ----------------------------------------------------------------- |
+| Outpatient consultation | `OPD-001`                           | General outpatient consultation    | Per visit     | opd        | `CONSULTATION`                                                    |
+| Follow-up consultation  | `OPD-002`                           | Follow-up consultation             | Per visit     | opd        | none — priced by code/description                                 |
+| Laboratory test         | the test's own code, e.g. `LAB-CBC` | Full blood count                   | Per test      | laboratory | `LABORATORY:LAB-CBC`, or `LABORATORY` for one flat test price     |
+| Imaging                 | `RAD-001`                           | Obstetric ultrasound               | Per study     | radiology  | `RADIOLOGY:RAD-001`, or `RADIOLOGY`                               |
+| Procedure               | `PROC-001`                          | Wound dressing                     | Per procedure | theatre    | `PROCEDURE:PROC-001`, or `PROCEDURE`                              |
+| Admission (one-off)     | `ADM-001`                           | Inpatient admission administration | Per admission | inpatient  | `ADMISSION`                                                       |
+| Bed night               | `BED-GEN` (or the ward's own code)  | General ward bed charge            | Per day       | inpatient  | `BED_DAY` for general wards, or `BED_DAY:<WARDCODE>` for one ward |
+| Delivery                | `MAT-001`                           | Normal delivery                    | Per delivery  | inpatient  | `DELIVERY`                                                        |
+| Drug                    | `DRUG-<NAME>`                       | the drug name as dispensed         | Per unit      | pharmacy   | `PHARMACY`, or `PHARMACY:DRUG-<NAME>`                             |
 
 The families the engine recognises are `CONSULTATION`, `LABORATORY`,
 `RADIOLOGY`, `PROCEDURE`, `ADMISSION`, `BED_DAY`, `DELIVERY` and `PHARMACY`.
@@ -597,7 +597,7 @@ is a file, not a backup.
 
 **`Missing required environment variable: SQL_HOST`**
 The `.env` is not being read, or the variable is empty. cPanel sets variables
-in *Setup Node.js App → Environment variables*, not in a file.
+in _Setup Node.js App → Environment variables_, not in a file.
 
 **`/api/health` is 200 but `/api/ready` is 503**
 The process is running and the database is not reachable. Check `SQL_HOST`,
@@ -606,6 +606,7 @@ the log has the error code.
 
 **`FIELD_ENCRYPTION_KEY is required` / startup fails immediately**
 Generate one:
+
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
@@ -629,7 +630,7 @@ produces the same symptom, with a message in the log naming the path it tried.
 moves it to 10 breaks the install.
 
 **Tests fail only when formatting changes**
-Some legacy suites assert on the exact layout of *other files'* source text.
+Some legacy suites assert on the exact layout of _other files'_ source text.
 They are being migrated. Do not run `npm run format` across the tree and commit
 it without re-running `npm test`.
 

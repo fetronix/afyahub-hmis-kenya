@@ -57,15 +57,15 @@ npm run build:deploy     # only when the change touches build or server code
 
 ### What to run for a given change
 
-| You changed | Run at minimum |
-|---|---|
-| A pure function | `npm run test:unit` |
-| A React component | `npm run test:unit` (with a `.spec.tsx`) |
-| A route or a permission check | `npm test`, `npm run test:unit` |
-| A query or a scope filter | `npm test`, plus a `*.db.spec.ts` against PostgreSQL |
-| A migration | `npm run db:preflight`, `db:migrate:dry`, then `db:migrate` on a scratch database |
-| The build or `server.ts` | `npm run build:deploy`, then start `build/server.js` and hit `/api/ready` |
-| `package.json` | `npm ci` from a clean `node_modules` — a lock file that only works incrementally is broken |
+| You changed                   | Run at minimum                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| A pure function               | `npm run test:unit`                                                                        |
+| A React component             | `npm run test:unit` (with a `.spec.tsx`)                                                   |
+| A route or a permission check | `npm test`, `npm run test:unit`                                                            |
+| A query or a scope filter     | `npm test`, plus a `*.db.spec.ts` against PostgreSQL                                       |
+| A migration                   | `npm run db:preflight`, `db:migrate:dry`, then `db:migrate` on a scratch database          |
+| The build or `server.ts`      | `npm run build:deploy`, then start `build/server.js` and hit `/api/ready`                  |
+| `package.json`                | `npm ci` from a clean `node_modules` — a lock file that only works incrementally is broken |
 
 ---
 
@@ -111,7 +111,7 @@ nothing about what a user can do.
 
 ### Pure functions over source text
 
-The legacy suites largely assert that a file *contains* the right code:
+The legacy suites largely assert that a file _contains_ the right code:
 
 ```ts
 assert(source.includes('tenantId'), 'route must scope by tenant');

@@ -58,7 +58,6 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   instructions as written and hitting the failure.
 - README and CI comments corrected from 29 suites to 32.
 
-
 Repository quality and buyer-readiness upgrade. Every entry below was applied
 on its own and verified with the full local gate: `tsc --noEmit`, ESLint,
 29 legacy suites, Vitest, `build:deploy`, and a smoke test of the built
@@ -67,6 +66,7 @@ server.
 ### Added
 
 **Testing**
+
 - Vitest, alongside the 29 legacy suites rather than replacing them. Rewriting
   ~3,700 assertions in one step would destroy the only evidence the system
   works; suites move one at a time, with their assertions carried across.
@@ -90,12 +90,14 @@ server.
   present, and fail when `JALICARE_REQUIRE_DB=1`.
 
 **CI**
+
 - `.github/workflows/ci.yml` with seven jobs: `static`, `unit`, `legacy`,
   `database` (real PostgreSQL 16 service with health checks), `build` (which
   starts the built artifact and checks it answers), `audit`, and an advisory
   `format`.
 
 **Deployment**
+
 - `Dockerfile` — three stages, non-root runtime, production dependencies only,
   no writable application code, `dumb-init` for signal handling.
 - `docker-compose.yml` — PostgreSQL 16 with a real healthcheck, service-DNS
@@ -105,6 +107,7 @@ server.
 - `.dockerignore` — excludes `.env`, keys, tests, backups and data dumps.
 
 **Observability**
+
 - `src/logging/logger.ts` — Pino structured logging, JSON in every environment.
 - Redaction of credentials **and patient identity**, generated across four
   levels of nesting.
@@ -119,6 +122,7 @@ server.
   seconds. `/api/health` continues to report only that the process is alive.
 
 **Documentation**
+
 - `README.md` rewritten: quick start, architecture with a diagram, full
   environment reference, migration rules, testing, CI, production deployment,
   troubleshooting, project layout, and a list of known limitations.
@@ -130,6 +134,7 @@ server.
   `docs/history/HANDOVER-2025-2026.md`, marked as an archive.
 
 **Tooling**
+
 - ESLint (flat config, TypeScript via `@babel/eslint-parser`) and Prettier.
 - `lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test:unit`,
   `test:watch`, `test:coverage`, `test:all`, `ci`.
@@ -152,8 +157,7 @@ server.
   error handler, so an unhandled route error answered with Express's HTML page
   containing the stack, file paths and library versions. It now answers JSON
   with a status and a correlation id; the detail goes to the log.
-- **Malformed JSON answered 500.** A client sending a broken body now receives
-  400. Answering 500 sent operators looking for an outage that did not exist.
+- **Malformed JSON answered 500.** A client sending a broken body now receives 400. Answering 500 sent operators looking for an outage that did not exist.
 - **The correlation id on a malformed body was empty**, because the body parser
   ran before the middleware that set it. Request logging now runs before the
   rate limiters and the body parser.
@@ -196,6 +200,6 @@ Deliberately, and for the record:
 Development before this changelog was kept as a running handover log rather
 than release notes. It is preserved at
 [`docs/history/HANDOVER-2025-2026.md`](docs/history/HANDOVER-2025-2026.md)
-because it records *why* decisions were made — which migrations were applied
+because it records _why_ decisions were made — which migrations were applied
 when, which tenant-scoping problems were found, and what was verified against
 a real database and what was not.
