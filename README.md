@@ -695,8 +695,8 @@ Stated here rather than discovered later.
 - **`app.ts`, `schema.ts` and `queries.ts` are still large.** `app.ts` has
   come down from 8,449 to 6,188 lines by moving three domains out whole —
   platform administration, maternal and child health, and inpatient care —
-  each behind its own router and verified by a route-inventory diff. Roughly
-  90 routes remain inline, including billing, claims and the DHA integration.
+  each behind its own router and verified by a route-inventory diff. 97
+  routes remain inline, including billing, claims and the DHA integration.
   `schema.ts` (5,910) and `queries.ts` (4,303) are untouched.
 - **Doctor and nurse portals depend on accounts created by an administrator.**
   There is no self-service registration, by design.
