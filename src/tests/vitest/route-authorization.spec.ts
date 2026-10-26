@@ -66,10 +66,10 @@ const PROTECTED_WRITES: Array<[string, string]> = [
   ['DELETE', '/api/beds/1'],
   ['POST', '/api/patients'],
   ['POST', '/api/encounters'],
-  ['POST', '/api/lab/orders'],
-  ['POST', '/api/billing/invoices'],
+  ['POST', '/api/lab-orders'],
+  ['POST', '/api/invoices'],
   ['POST', '/api/pharmacy/dispense'],
-  ['POST', '/api/insurance/claims'],
+  ['POST', '/api/claims'],
 ];
 
 /** Routes that read patient or facility data. Same rule. */
@@ -79,9 +79,9 @@ const PROTECTED_READS: Array<[string, string]> = [
   ['GET', '/api/patients'],
   ['GET', '/api/patients/1'],
   ['GET', '/api/encounters'],
-  ['GET', '/api/lab/orders'],
-  ['GET', '/api/billing/invoices'],
-  ['GET', '/api/insurance/claims'],
+  ['GET', '/api/lab-orders'],
+  ['GET', '/api/invoices'],
+  ['GET', '/api/claims'],
 ];
 
 async function call(method: string, path: string): Promise<Response> {
@@ -91,6 +91,73 @@ async function call(method: string, path: string): Promise<Response> {
     body: method === 'GET' || method === 'DELETE' ? undefined : '{}',
   });
 }
+
+/**
+ * Every path listed above must be a route that actually exists.
+ *
+ * This guard exists because six of them once were not. `POST /api/lab/orders`,
+ * `POST /api/billing/invoices`, `POST /api/insurance/claims` and their read
+ * counterparts name paths the application never registered — the real ones
+ * are `/api/lab-orders`, `/api/invoices` and `/api/claims`.
+ *
+ * The tests still passed. `requireAuth` is mounted on all of `/api`, so it
+ * rejects an unauthenticated caller before routing resolves, and a typo'd
+ * path answers 401 exactly like a real protected one. That is the same
+ * property that makes the API unenumerable, and it means a wrong path in
+ * this list tests nothing at all while looking green.
+ */
+function collectRoutePaths(router: unknown): string[] {
+  type Layer = {
+    route?: { path: string; methods: Record<string, boolean> };
+    handle?: { stack?: Layer[] };
+  };
+
+  const r = router as { stack?: Layer[]; _router?: { stack?: Layer[] } };
+  const found: string[] = [];
+
+  const walk = (layers: Layer[]) => {
+    for (const layer of layers) {
+      if (layer.route) {
+        for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
+          if (enabled) found.push(`${method.toUpperCase()} ${layer.route.path}`);
+        }
+      } else if (layer.handle?.stack) {
+        walk(layer.handle.stack);
+      }
+    }
+  };
+
+  walk(r.stack ?? r._router?.stack ?? []);
+
+  return found;
+}
+
+const normalise = (path: string): string =>
+  path.replace(/:[A-Za-z]+/g, '<id>').replace(/(?<=\/)\d+(?=\/|$)/g, '<id>');
+
+describe('the protected route list is real', () => {
+  it.each([...PROTECTED_WRITES, ...PROTECTED_READS])(
+    '%s %s is a registered route',
+    async (method, path) => {
+      const app = await createApp();
+      const registered = collectRoutePaths(app);
+
+      /* A sub-router mounted at /api registers '/claims' where the client
+         calls '/api/claims'. Either form names the same route, so both are
+         accepted - but one of them must exist. */
+      const matches = [path, path.replace(/^\/api/, '')].map(
+        (candidate) => `${method} ${normalise(candidate)}`,
+      );
+
+      expect(
+        registered.map(normalise).some((route) => matches.includes(route)),
+        `${method} ${path} is not a route the app registers. This test would ` +
+          'pass without testing anything: requireAuth answers 401 for every ' +
+          'path under /api, existing or not.',
+      ).toBe(true);
+    },
+  );
+});
 
 describe('unauthenticated writes are refused', () => {
   it.each(PROTECTED_WRITES)('%s %s requires a session', async (method, path) => {
