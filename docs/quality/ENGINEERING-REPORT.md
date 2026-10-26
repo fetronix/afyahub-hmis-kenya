@@ -294,3 +294,40 @@ are CI evidence; none was produced locally.
    number, which is diluted by untested surface.
 5. **Set branch protection / required status checks.** The gates work; they
    are not yet enforced at merge.
+
+---
+
+## 9. Postscript: what shipped after this report, and where it landed
+
+This report was written when the branch held fifteen commits. It was merged
+into `main` as PR #16 (`480c71f`) with twenty. The difference, recorded here
+so the sections above are read as the point-in-time snapshot they are:
+
+1. **All 34 legacy suites moved to Vitest.** `npm test` is now
+   `vitest run --coverage` and nothing else runs tests. 829 tests pass, 14
+   skip; coverage 19.86 statements / 16.88 branches → **19.86 / 17.18 / 20.89
+   / 19.67**, and the global thresholds were raised from 11.4/11.2/8.7/7.3 to
+   19.0/19.1/19.3/16.6. See `MIGRATION.md` for the three conversion defects
+   this surfaced.
+2. **`src/app.ts` is 3,370 lines**, not the 6,188 quoted in §7 — maternity,
+   immunisation, inpatient care and the platform validators were extracted
+   after this report, and billing, claims, inventory, laboratory, radiology,
+   tariffs, DHA and reporting are listed there as still to do.
+3. **All 47 counties**, with a sub-county that must match its county, plus
+   the data migration for records already stored. See
+   `docs/architecture/county-subcounty.md`.
+4. **Two CI defects fixed, both of which had been making the gate lie.**
+   The `database` job ran `vitest --coverage` over one directory and was then
+   measured against whole-suite thresholds, so it failed on arithmetic while
+   every test in it passed; thresholds now belong to the `unit` job alone.
+   The new county migration spec sat outside every CI job and would have
+   skipped silently in each, so it has its own step.
+5. **A Daraja passkey was removed from the client bundle.** It was a
+   published Safaricom sandbox value, not a live credential, but a passkey was
+   being shipped to every browser for a panel with no integration behind it.
+   GitGuardian flagged it on #16 because a formatting commit reflowed the line
+   onto its own — the finding was real in the history it scanned, and HEAD is
+   now clean.
+
+§8 item 5 is still true and still the highest-value five minutes available:
+the checks work, and nothing yet makes a failure block a merge.
