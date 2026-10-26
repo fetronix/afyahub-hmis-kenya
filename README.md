@@ -333,12 +333,9 @@ Run it before every deployment.
 
 ## Testing
 
-Two suites, running side by side while the older one is migrated.
+One runner. Every suite in the repository runs under `npm test`.
 
-### `npm test` — legacy assertion suites
-
-32 suites, ~3,700 assertions. **No database required, but `.env` must be
-filled in, not merely copied.**
+### `npm test` — everything, with coverage
 
 ```bash
 cp .env.example .env
@@ -349,46 +346,39 @@ npm test
 
 The suites import `src/config/env.ts`, which validates configuration at load
 time and refuses to start without `SQL_*`. **The values are never used to
-connect** — any non-empty string satisfies validation — but `.env.example`
-ships those keys empty, so an unedited copy is not enough. Run against a bare
-`.env` and the first suite exits with:
+connect** by the source-text suites — any non-empty string satisfies
+validation — but `.env.example` ships those keys empty, so an unedited copy
+is not enough. Run against a bare `.env` and the first suite exits with:
 
 ```
 Error: Missing required environment variable: SQL_HOST.
 ```
 
 That is deliberate: a server with no database configuration must not start
-quietly. Two consequences worth knowing:
+quietly. Filling the values with placeholders is enough; no database is
+contacted unless a spec asks for one.
 
-- `npm test` will not run on a fresh clone until the six values above are
-  filled in. Filling them with placeholders is enough; no database is
-  contacted.
-- This is why the `.env` step comes before it in [Quick start](#quick-start).
+### What used to be here
 
-`npm run test:unit` is different: it needs `.env` too, but its database specs
-skip when PostgreSQL is unreachable, so it runs anywhere.
+34 suites once ran as `tsx` scripts with a local `assert` helper, chained
+together by name in the `test` script. Coverage could not see inside a
+subprocess, so two thirds of the assertions measured nothing. They have all
+moved to vitest — same assertions, same labels, one runner — and the 34
+per-suite `test:*` scripts are gone. `docs/quality/MIGRATION.md` records how
+each batch was checked.
 
-These are the suites written during development. Each one runs as its own
-process (`tsx src/tests/*.test.ts`). They are the reason the system is
-trusted today, and they are being replaced one at a time rather than all at
-once.
+### Commands
 
-### `npm run test:unit` — Vitest
+| Command                 | What it runs                                  |
+| ----------------------- | --------------------------------------------- |
+| `npm test`              | Every spec, with coverage thresholds enforced |
+| `npm run test:unit`     | Every spec, no coverage (faster)              |
+| `npm run test:watch`    | Watch mode                                    |
+| `npm run test:coverage` | Same as `npm test`                            |
 
-```bash
-npm run test:unit        # run once
-npm run test:watch      # watch mode
-npm run test:coverage   # with coverage and thresholds
-```
-
-Runs the specs in `src/tests/vitest/`. No database required for most of them.
-
-| Command                 | What it runs                    |
-| ----------------------- | ------------------------------- |
-| `npm run test:unit`     | Vitest only                     |
-| `npm test`              | Legacy suites only              |
-| `npm run test:all`      | Both                            |
-| `npm run test:coverage` | Vitest with coverage thresholds |
+Database specs (`*.db.spec.ts`) skip themselves when no PostgreSQL answers,
+so a laptop without a database still gets a green run; CI sets
+`JALICARE_REQUIRE_DB=1`, which turns that skip into a failure.
 
 ### Component tests
 

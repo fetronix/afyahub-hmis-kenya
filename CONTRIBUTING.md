@@ -48,8 +48,8 @@ See [Quick start](README.md#quick-start) for the details.
 ```bash
 npm run typecheck        # before anything else: it is the fastest signal
 npm run lint
-npm test                 # legacy suites
-npm run test:unit        # Vitest
+npm test                 # every spec, with coverage
+npm run test:unit        # every spec, no coverage
 npm run build:deploy     # only when the change touches build or server code
 ```
 
@@ -61,7 +61,7 @@ npm run build:deploy     # only when the change touches build or server code
 | ----------------------------- | ------------------------------------------------------------------------------------------ |
 | A pure function               | `npm run test:unit`                                                                        |
 | A React component             | `npm run test:unit` (with a `.spec.tsx`)                                                   |
-| A route or a permission check | `npm test`, `npm run test:unit`                                                            |
+| A route or a permission check | `npm test`                                                                                 |
 | A query or a scope filter     | `npm test`, plus a `*.db.spec.ts` against PostgreSQL                                       |
 | A migration                   | `npm run db:preflight`, `db:migrate:dry`, then `db:migrate` on a scratch database          |
 | The build or `server.ts`      | `npm run build:deploy`, then start `build/server.js` and hit `/api/ready`                  |

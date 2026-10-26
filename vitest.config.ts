@@ -31,7 +31,20 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    include: ['src/tests/vitest/**/*.spec.ts', 'src/tests/vitest/**/*.spec.tsx'],
+    /*
+     * Two locations, one runner. `src/tests/vitest/` holds the specs written
+     * for vitest from the start. `src/tests/*.spec.ts` holds the suites that
+     * were migrated off the hand-rolled `tsx` runner - they keep their old
+     * path and their old relative imports, and change only their extension
+     * and their assertions. A `.test.ts` beside them is a suite that has not
+     * migrated yet and still runs through its own npm script.
+     */
+    include: [
+      'src/tests/vitest/**/*.spec.ts',
+      'src/tests/vitest/**/*.spec.tsx',
+      'src/tests/*.spec.ts',
+      'src/tests/*.db.spec.ts',
+    ],
     exclude: ['node_modules', 'dist', 'build'],
 
     /*
@@ -75,26 +88,30 @@ export default defineConfig({
         /*
          * Two levels, because one number cannot say both things.
          *
-         * GLOBAL is a ratchet: set just below the measured baseline
-         * (2026-10-26, after the auth validation, route authorization,
-         * settlement, tariff resolution, scope enforcement and field
-         * encryption, authorization middleware and DHA boundary suites:
-         * 11.35% statements, 11.50% lines, 8.77% functions, 7.42% branches)
-         * so the
-         * build cannot regress while the remaining suites migrate.
+         * GLOBAL is a ratchet, set just below the measured baseline and
+         * raised when the baseline rises. It went 11.4/11.2/8.7/7.3 ->
+         * 19.0/19.1/19.3/16.6 when the last 34 suites moved off the `tsx`
+         * runner and into vitest: no assertion changed, but the code they
+         * exercise is now counted, where before an un-instrumented
+         * subprocess ran it.
+         *
+         * Measured 2026-10-26 with `npm test` across all 56 spec files:
+         * 19.35 statements, 19.22 lines, 19.58 functions, 16.88 branches.
+         *
          * These numbers move up as tests are added and are never lowered to
-         * make a build pass. It is deliberately not raised to a flattering figure:
-         * 3,752 legacy assertions exist, but they assert on source text
-         * and execute almost nothing, which is the gap this phase closes.
+         * make a build pass. The figure is still low on purpose: most of the
+         * 3,700 migrated assertions read source text and execute almost
+         * nothing. That is the gap the next phase closes, and a threshold
+         * raised to a flattering number would only hide it.
          *
          * PER-MODULE rows carry the real meaning today. These are the
          * pricing rules, held high because a regression here bills a
          * patient the wrong amount.
          */
-        lines: 11.4,
-        statements: 11.2,
-        functions: 8.7,
-        branches: 7.3,
+        lines: 19.0,
+        statements: 19.1,
+        functions: 19.3,
+        branches: 16.6,
 
         'src/billing/tariff-codes.ts': {
           lines: 90,

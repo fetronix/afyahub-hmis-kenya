@@ -13,9 +13,8 @@
 #
 # Jobs:
 #   static      tsc --noEmit, then eslint (0 errors required, warnings reported)
-#   unit        Vitest: pure + React specs, coverage thresholds enforced
-#   database    migrations applied to PostgreSQL 16, DB specs, auth suites
-#   legacy      the 32 hand-written suites in `npm test`
+#   unit        `npm test`: every spec, coverage thresholds enforced
+#   database    migrations applied to PostgreSQL 16, then the DB specs
 #   build       client + server bundles, uploaded as artifacts
 #   audit       npm audit for high/critical advisories
 #   format      Prettier check (required: the tree is formatted)
@@ -120,32 +119,6 @@ jobs:
           if-no-files-found: warn
 
   # ------------------------------------------------------------------
-  # The legacy suites. They need no database; three files need SQL_*
-  # to exist at import time, which the job-level env provides.
-  # ------------------------------------------------------------------
-  legacy:
-    name: Legacy assertion suites
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - run: npm ci --no-audit --no-fund
-
-      - name: Generate a throwaway encryption key
-        # Written to the job environment, never to a file. See the note at the
-        # top of this workflow for why it is not a literal.
-        run: |
-          echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
-
-      - name: npm test
-        run: npm test
-
-  # ------------------------------------------------------------------
   # PostgreSQL 16. This is the job that proves the migrations actually
   # apply, and the only place tenant isolation is tested against a real
   # database.
@@ -224,7 +197,7 @@ jobs:
         # already exist - which nothing in this repository creates - so they
         # could never pass and were kept out of the gate. See
         # docs/testing/KNOWN-GAPS.md.
-        run: npm run test:auth-db
+        run: npx vitest run src/tests/auth-service.db.spec.ts src/tests/authentication.db.spec.ts
 
       - name: Report the failing assertions
         if: failure()

@@ -20,7 +20,11 @@
 import type { Response } from 'express';
 
 import { ScopeAccessError } from '../../auth/scope.service.ts';
+import * as billingPayments from '../../billing/payments.service.ts';
 import * as queries from '../../db/queries.ts';
+import * as insuranceClaims from '../../insurance/claims.service.ts';
+import * as inventory from '../../inventory/inventory.service.ts';
+import { DhaError } from '../../integrations/dha/dha.errors.ts';
 import * as immunisation from '../../immunisation/immunisation.service.ts';
 import * as maternity from '../../maternity/maternity.service.ts';
 
@@ -158,3 +162,123 @@ export function respondInternalError(
 
   res.status(500).json({ error: message });
 }
+
+export const handleDhaError = (error: unknown, res: Response): boolean => {
+  if (handleScopeError(error, res)) return true;
+
+  if (error instanceof DhaError) {
+    const status =
+      error.code === 'NOT_CONFIGURED' || error.code === 'PRODUCTION_BLOCKED'
+        ? 503
+        : error.code === 'UNAUTHORIZED' || error.code === 'AUTH_FAILED'
+          ? 502
+          : error.code === 'FORBIDDEN'
+            ? 403
+            : error.code === 'NOT_FOUND'
+              ? 404
+              : error.code === 'VALIDATION_FAILED'
+                ? 400
+                : error.code === 'RATE_LIMITED'
+                  ? 429
+                  : 502;
+
+    res.status(status).json({
+      success: false,
+      error: error.code,
+      message: error.message,
+      operation: error.operation,
+    });
+
+    return true;
+  }
+
+  return false;
+};
+
+export const handleClaimError = (error: unknown, res: Response): boolean => {
+  if (handleScopeError(error, res)) return true;
+
+  if (error instanceof insuranceClaims.ClaimDomainError) {
+    res.status(error.status).json({
+      success: false,
+      error: error.code,
+      message: error.message,
+      ...(Object.keys(error.detail).length > 0 ? { detail: error.detail } : {}),
+    });
+
+    return true;
+  }
+
+  return false;
+};
+
+export const handlePaymentError = (error: unknown, res: Response): boolean => {
+  if (handleScopeError(error, res)) return true;
+
+  if (error instanceof billingPayments.PaymentDomainError) {
+    res.status(error.status).json({
+      success: false,
+      error: error.code,
+      message: error.message,
+      ...(Object.keys(error.detail).length > 0 ? { detail: error.detail } : {}),
+    });
+
+    return true;
+  }
+
+  return false;
+};
+
+export const handleInventoryError = (error: unknown, res: Response): boolean => {
+  if (handleScopeError(error, res)) return true;
+
+  if (error instanceof inventory.InventoryDomainError) {
+    res.status(error.status).json({
+      success: false,
+      error: error.code,
+      message: error.message,
+      ...(error.detail ? { detail: error.detail } : {}),
+    });
+
+    return true;
+  }
+
+  return false;
+};
+
+export const handleEncounterValidationError = (error: unknown, res: Response): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const validationMessages = new Set([
+    'A valid patient ID is required.',
+    'Patient not found.',
+    'Invalid practitioner ID.',
+    'Invalid department ID.',
+    'Invalid encounter ID.',
+    'Changing the patient on an existing encounter is not allowed. Use the authorized patient-correction workflow.',
+  ]);
+
+  if (!validationMessages.has(error.message)) {
+    return false;
+  }
+
+  const errorCodeByMessage: Record<string, string> = {
+    'A valid patient ID is required.': 'INVALID_PATIENT_ID',
+    'Patient not found.': 'PATIENT_NOT_FOUND',
+    'Invalid practitioner ID.': 'INVALID_PRACTITIONER_ID',
+    'Invalid department ID.': 'INVALID_DEPARTMENT_ID',
+    'Invalid encounter ID.': 'INVALID_ENCOUNTER_ID',
+    'Changing the patient on an existing encounter is not allowed. Use the authorized patient-correction workflow.':
+      'PATIENT_REASSIGNMENT_NOT_ALLOWED',
+  };
+
+  res.status(400).json({
+    success: false,
+    error: errorCodeByMessage[error.message],
+    message: error.message,
+  });
+
+  return true;
+};

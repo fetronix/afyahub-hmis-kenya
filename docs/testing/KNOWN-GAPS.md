@@ -37,9 +37,16 @@ five-attempt lockout. It now only touches its own row.
 
 ### Verification
 
-The `database` job runs `npm run test:auth-db` after migrations. Run
+Both files are now `*.db.spec.ts` specs in the one runner, so the
+`database` job runs them by path after migrations:
+
+```bash
+npx vitest run src/tests/auth-service.db.spec.ts src/tests/authentication.db.spec.ts
+```
+
+Run
 [40158302094](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/40158302094),
-step *Auth service and authentication specs*: **success**, against
+step _Auth service and authentication specs_: **success**, against
 PostgreSQL 16.
 
 These cannot be run in every environment - they need a database, and there
@@ -47,8 +54,12 @@ is no PostgreSQL or Docker in some development sandboxes. The CI job is
 where they are authoritative:
 
 ```bash
-npm run test:auth-db     # needs a migrated database
+npx vitest run src/tests/auth-service.db.spec.ts src/tests/authentication.db.spec.ts
 ```
+
+The `test:auth-db` script is gone: there is one runner and one `npm test`,
+and a suite that needs a database says so in its filename rather than in a
+separate command.
 
 ---
 
@@ -60,11 +71,17 @@ Not deleted, because removing a file under `src/tests` is a decision for the
 owner rather than a cleanup. It provides no coverage and appears in no
 suite. Either write it or remove it.
 
+It is now the only `.test.ts` left under `src/tests` - every other suite was
+migrated to `*.spec.ts` and runs under vitest. The extension is what
+distinguishes "written but never migrated" from "written for the runner", so
+this file is currently invisible to `npm test` for two independent reasons:
+it is empty, and it does not match the runner's glob.
+
 ---
 
 ## Source-text assertions
 
-Twelve suites assert that a file *contains* a string:
+Twelve suites assert that a file _contains_ a string:
 
 ```ts
 assert(schema.includes("pgTable('patients'"), '...');
@@ -82,7 +99,7 @@ The shared helper now exists and **eleven suites use it**:
 
 ```ts
 // src/tests/support/schema-source.ts
-export function schemaSource(): string   // barrel + every schema module
+export function schemaSource(): string; // barrel + every schema module
 ```
 
 It concatenates `src/db/schema.ts` with every `.ts` file under

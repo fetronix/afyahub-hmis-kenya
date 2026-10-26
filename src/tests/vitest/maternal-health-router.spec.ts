@@ -22,6 +22,7 @@
 import { describe, expect, it } from 'vitest';
 
 import maternalHealthRoutes from '../../routes/maternal-health.routes.ts';
+import { findMounts, mountChain } from './support/express-stack.ts';
 
 const { createApp } = await import('../../app.ts');
 
@@ -116,16 +117,19 @@ describe('maternal health router', () => {
     const app = await createApp();
 
     /* Find the mounted router that owns a maternity route, then inspect the
-       layer's own match regexp. */
-    const mounts = stackOf(app).filter(
-      (layer) =>
-        !layer.route &&
-        layer.handle?.stack?.some((inner) => inner.route?.path === '/maternity/summary'),
-    );
+       layer's own match regexp. The router is mounted inside the API router
+       now, so walk the chain down to it: the outermost layer is the mount on
+       the app, and that is the one carrying `/api`. */
+    expect(
+      findMounts(app, '/maternity/summary'),
+      'the maternal-health router should be mounted exactly once',
+    ).toHaveLength(1);
 
-    expect(mounts, 'the maternal-health router should be mounted exactly once').toHaveLength(1);
+    const chain = mountChain(app, '/maternity/summary');
 
-    const [mount] = mounts;
+    expect(chain, 'the maternal-health router is reachable from the app').toBeDefined();
+
+    const [mount] = chain!;
 
     expect(mount.regexp, 'a mounted router carries its match regexp').toBeTruthy();
     expect(mount.regexp!.test('/api/maternity/summary')).toBe(true);

@@ -29,6 +29,7 @@
 import { describe, expect, it } from 'vitest';
 
 import inpatientRoutes from '../../routes/inpatient.routes.ts';
+import { findMounts, mountChain } from './support/express-stack.ts';
 
 const { createApp } = await import('../../app.ts');
 
@@ -117,14 +118,22 @@ describe('inpatient router', () => {
   it('is mounted on the app at /api, not at the root', async () => {
     const app = await createApp();
 
-    const mounts = stackOf(app).filter(
-      (layer) =>
-        !layer.route && layer.handle?.stack?.some((inner) => inner.route?.path === '/wards'),
-    );
+    /*
+     * The router is mounted inside the API router now, so it sits one level
+     * deeper than the app's own stack. The chain still starts at a single
+     * outermost mount, and that is the layer whose regexp decides whether
+     * `/api` is present.
+     */
+    expect(
+      findMounts(app, '/wards'),
+      'the inpatient router should be mounted exactly once',
+    ).toHaveLength(1);
 
-    expect(mounts, 'the inpatient router should be mounted exactly once').toHaveLength(1);
+    const chain = mountChain(app, '/wards');
 
-    const [mount] = mounts;
+    expect(chain, 'the inpatient router is reachable from the app').toBeDefined();
+
+    const [mount] = chain!;
 
     expect(mount.regexp, 'a mounted router carries its match regexp').toBeTruthy();
     expect(mount.regexp!.test('/api/wards')).toBe(true);
