@@ -21,21 +21,11 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import {
-  PAYMENT_CHANNELS,
-  PAYMENT_CHANNEL_LABELS,
-  paymentChannel,
-} from '../billing/settlement.ts';
-import {
-  countdownTo,
-  expiryDeadline,
-  expiryToneClass,
-} from '../components/ExpiryCountdown.tsx';
-import {
-  daysUntilExpiry,
-  expiryStatus,
-} from '../inventory/inventory-contracts.ts';
+import { PAYMENT_CHANNELS, PAYMENT_CHANNEL_LABELS, paymentChannel } from '../billing/settlement.ts';
+import { countdownTo, expiryDeadline, expiryToneClass } from '../components/ExpiryCountdown.tsx';
+import { daysUntilExpiry, expiryStatus } from '../inventory/inventory-contracts.ts';
 import { schemaSource } from './support/schema-source.ts';
+import { containsCode } from './support/source-text.ts';
 
 let checks = 0;
 
@@ -77,21 +67,13 @@ function testPaymentChannels(): void {
   /* SHA is a payer. A claim settles into a payment row with method SHA. */
   assertEqual(paymentChannel('SHA'), 'SHA', 'SHA is its own channel');
   assertEqual(paymentChannel('sha'), 'SHA', 'SHA is matched case-insensitively');
-  assertEqual(
-    paymentChannel('SHA Claim'),
-    'SHA',
-    'A spaced SHA claim label still lands in SHA',
-  );
+  assertEqual(paymentChannel('SHA Claim'), 'SHA', 'A spaced SHA claim label still lands in SHA');
 
   /* Online mobile money, however the till spelled it. */
   assertEqual(paymentChannel('M-Pesa'), 'MOBILE_MONEY', 'M-Pesa is mobile money');
   assertEqual(paymentChannel('MPESA'), 'MOBILE_MONEY', 'MPESA is mobile money');
   assertEqual(paymentChannel('m pesa'), 'MOBILE_MONEY', 'm pesa is mobile money');
-  assertEqual(
-    paymentChannel('Airtel Money'),
-    'MOBILE_MONEY',
-    'Airtel Money is mobile money',
-  );
+  assertEqual(paymentChannel('Airtel Money'), 'MOBILE_MONEY', 'Airtel Money is mobile money');
 
   assertEqual(paymentChannel('Cash'), 'CASH', 'Cash is its own channel');
   assertEqual(paymentChannel('CARD'), 'CARD', 'Card is not folded into cash');
@@ -157,10 +139,7 @@ function testPaymentChannels(): void {
   );
 
   const types = source('src/types/index.ts');
-  assert(
-    types.includes('byChannel?: RevenueChannelRow[]'),
-    'The client knows the channel rows',
-  );
+  assert(types.includes('byChannel?: RevenueChannelRow[]'), 'The client knows the channel rows');
 
   const reports = source('src/components/modules/ReportsModule.tsx');
   assert(
@@ -213,11 +192,7 @@ function testCountdown(): void {
     null,
     'An impossible date is rejected, not rolled into March',
   );
-  assertEqual(
-    expiryDeadline('not-a-date'),
-    null,
-    'Free text is not a countdown',
-  );
+  assertEqual(expiryDeadline('not-a-date'), null, 'Free text is not a countdown');
 
   /* The server's rule and the screen's rule must agree. */
   assertEqual(
@@ -244,10 +219,7 @@ function testCountdown(): void {
     component.includes('window.setInterval'),
     'The countdown ticks instead of freezing at render time',
   );
-  assert(
-    component.includes('60_000'),
-    'It re-renders once a minute, not once a frame',
-  );
+  assert(component.includes('60_000'), 'It re-renders once a minute, not once a frame');
 }
 
 /* ============================================================
@@ -284,7 +256,9 @@ function testAddStockItem(): void {
     'An already-expired receipt is refused on the screen',
   );
   assert(
-    inventory.includes('const { batchNumber: _batchNumber, expiryDate: _expiryDate, ...catalogueFields }'),
+    inventory.includes(
+      'const { batchNumber: _batchNumber, expiryDate: _expiryDate, ...catalogueFields }',
+    ),
     'The batch fields are stripped before the catalogue insert',
   );
   assert(
@@ -298,7 +272,7 @@ function testAddStockItem(): void {
   );
   assert(
     inventory.includes('nearestExpiryByItem'),
-    'The countdown is taken from the item\'s batches',
+    "The countdown is taken from the item's batches",
   );
   assert(
     inventory.includes('<ExpiryCountdown expiryDate={batch.expiryDate} short />'),
@@ -311,8 +285,8 @@ function testAddStockItem(): void {
 
   /* Expiry stays a batch fact: no column was invented on the item. */
   const schema = schemaSource();
-  const itemStart = schema.indexOf("export const inventoryItems = pgTable(");
-  const itemEnd = schema.indexOf("export const inventoryBatches = pgTable(");
+  const itemStart = schema.indexOf('export const inventoryItems = pgTable(');
+  const itemEnd = schema.indexOf('export const inventoryBatches = pgTable(');
   const itemTable = schema.slice(itemStart, itemEnd);
 
   assert(
@@ -323,10 +297,7 @@ function testAddStockItem(): void {
     !itemTable.includes('expiryDate') && !itemTable.includes('expiry_date'),
     'No expiry column was added to inventory_items',
   );
-  assert(
-    schema.includes("expiryDate: text('expiry_date')"),
-    'Expiry remains on inventory_batches',
-  );
+  assert(schema.includes("expiryDate: text('expiry_date')"), 'Expiry remains on inventory_batches');
 }
 
 /* ============================================================
@@ -417,7 +388,7 @@ function testRoleSave(): void {
     'The catalogue says whether an override is in force',
   );
   assert(
-    service.includes('writeScope: override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT"'),
+    containsCode(service, 'writeScope: override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT"'),
     'The catalogue says where a save will land',
   );
   assert(
@@ -447,7 +418,7 @@ function testRoleSave(): void {
     'The audit row names the facility whose override changed',
   );
   assert(
-    service.includes('resource: "ROLE_PERMISSIONS"'),
+    containsCode(service, 'resource: "ROLE_PERMISSIONS"'),
     'The audit row still names the role permission change',
   );
 
@@ -470,10 +441,7 @@ function testRoleSave(): void {
   );
 
   /* The platform editor: a successful save keeps its receipt. */
-  assert(
-    editor.includes('preserveNotice'),
-    'Reloading after a save can keep the notice',
-  );
+  assert(editor.includes('preserveNotice'), 'Reloading after a save can keep the notice');
   assert(
     editor.includes('if (!options?.preserveNotice)'),
     'The notice is cleared only on an ordinary load',
@@ -514,7 +482,9 @@ function testReadmeCodes(): void {
   const readme = source('README.md');
 
   assert(
-    readme.includes('Codes to use in a facility, for a billing structure that works on the first try'),
+    readme.includes(
+      'Codes to use in a facility, for a billing structure that works on the first try',
+    ),
     'The README carries the billing-code guidance',
   );
 
@@ -544,10 +514,7 @@ function testReadmeCodes(): void {
     assert(readme.includes(`\`${family}`), `The link column names ${family}`);
   }
 
-  assert(
-    readme.includes('Nothing here is seeded.'),
-    'The README says no price was seeded',
-  );
+  assert(readme.includes('Nothing here is seeded.'), 'The README says no price was seeded');
   assert(
     readme.includes('File the tariff under the right module.'),
     'The README says the department must match the charge',

@@ -37,6 +37,7 @@ import {
   scanDestructiveStatements,
   stripSqlComments,
 } from '../../scripts/migration-journal.ts';
+import { containsCode } from './support/source-text.ts';
 
 let checks = 0;
 
@@ -103,19 +104,10 @@ function testScripts(): void {
     scripts.start === 'node build/server.js',
     `start must run the built file (got "${scripts.start}")`,
   );
-  assert(
-    !/node\s+server\.ts/.test(scripts.start),
-    'start must never ask node to run TypeScript',
-  );
+  assert(!/node\s+server\.ts/.test(scripts.start), 'start must never ask node to run TypeScript');
 
-  assert(
-    scripts.dev === 'tsx server.ts',
-    'Development keeps the TypeScript runner',
-  );
-  assert(
-    scripts['start:dev'] === 'tsx server.ts',
-    'A developer can still start the source build',
-  );
+  assert(scripts.dev === 'tsx server.ts', 'Development keeps the TypeScript runner');
+  assert(scripts['start:dev'] === 'tsx server.ts', 'A developer can still start the source build');
 
   /* Every deployment step exists and is a real command. */
   for (const name of [
@@ -135,19 +127,12 @@ function testScripts(): void {
   }
 
   assert(
-    scripts['build:deploy'].includes('build:server') &&
-      scripts['build:deploy'].includes('build'),
+    scripts['build:deploy'].includes('build:server') && scripts['build:deploy'].includes('build'),
     'build:deploy builds the client and the server',
   );
 
-  assert(
-    scripts['db:migrate:dry'].endsWith('--dry-run'),
-    'The dry-run script passes --dry-run',
-  );
-  assert(
-    scripts['db:seed:permissions:dry'].endsWith('--dry-run'),
-    'The seed has a dry run',
-  );
+  assert(scripts['db:migrate:dry'].endsWith('--dry-run'), 'The dry-run script passes --dry-run');
+  assert(scripts['db:seed:permissions:dry'].endsWith('--dry-run'), 'The seed has a dry run');
 
   /*
    * Every maintenance command goes through the dispatcher, so it uses
@@ -155,29 +140,18 @@ function testScripts(): void {
    * starts an extra esbuild process, which is the resource the host ran
    * out of.
    */
-  for (const name of [
-    'db:status',
-    'db:preflight',
-    'db:migrate',
-    'db:seed:permissions',
-  ]) {
+  for (const name of ['db:status', 'db:preflight', 'db:migrate', 'db:seed:permissions']) {
     assert(
       scripts[name].startsWith('node scripts/run-script.mjs'),
       `${name} runs through the dispatcher, not tsx`,
     );
   }
 
-  assert(
-    scripts['test'].includes('test:deploy'),
-    'npm test includes the deployment contracts',
-  );
+  assert(scripts['test'].includes('test:deploy'), 'npm test includes the deployment contracts');
 
   /* Deps that the bundle imports at runtime must be production deps. */
   for (const dependency of ['express', 'pg', 'drizzle-orm', 'dotenv', 'argon2', 'helmet']) {
-    assert(
-      Boolean(pkg.dependencies[dependency]),
-      `${dependency} is a runtime dependency`,
-    );
+    assert(Boolean(pkg.dependencies[dependency]), `${dependency} is a runtime dependency`);
   }
 }
 
@@ -191,17 +165,11 @@ function testBuildConfiguration(): void {
   const build = source('scripts/build-server.mjs');
 
   assert(
-    build.includes("outfile: resolve(ROOT, entry.out)"),
+    build.includes('outfile: resolve(ROOT, entry.out)'),
     'Each bundle is written to an explicit outfile',
   );
-  assert(
-    build.includes("out: 'build/server.js'"),
-    'The server bundle is named build/server.js',
-  );
-  assert(
-    build.includes("format: 'esm'"),
-    'The output is ESM, matching package.json type=module',
-  );
+  assert(build.includes("out: 'build/server.js'"), 'The server bundle is named build/server.js');
+  assert(build.includes("format: 'esm'"), 'The output is ESM, matching package.json type=module');
   assert(
     build.includes("packages: 'external'"),
     'npm packages stay external; native modules are not re-bundled',
@@ -211,7 +179,7 @@ function testBuildConfiguration(): void {
     'A failed build cannot leave a stale server.js behind',
   );
   assert(
-    build.includes("target: TARGET") && build.includes("'node22'"),
+    build.includes('target: TARGET') && build.includes("'node22'"),
     'The bundle targets a Node version the host actually runs',
   );
 
@@ -220,18 +188,18 @@ function testBuildConfiguration(): void {
    * its own, esbuild flattens both into one scope, and the result was
    * "Identifier '__filename' has already been declared" at startup.
    */
-  const banner = build.slice(build.indexOf('banner:'), build.indexOf('},', build.indexOf('banner:')));
+  const banner = build.slice(
+    build.indexOf('banner:'),
+    build.indexOf('},', build.indexOf('banner:')),
+  );
 
   assert(
     !/const __filename =/.test(banner),
     'The banner does not declare __filename (it collides with app.ts)',
   );
+  assert(!/const __dirname =/.test(banner), 'The banner does not declare __dirname');
   assert(
-    !/const __dirname =/.test(banner),
-    'The banner does not declare __dirname',
-  );
-  assert(
-    banner.includes("createRequire(import.meta.url)"),
+    banner.includes('createRequire(import.meta.url)'),
     'The banner provides require() for bundled CommonJS interop',
   );
 
@@ -239,13 +207,10 @@ function testBuildConfiguration(): void {
   const dispatcher = source('scripts/run-script.mjs');
 
   assert(
-    dispatcher.includes("existsSync(bundle)"),
+    dispatcher.includes('existsSync(bundle)'),
     'The dispatcher checks for the built bundle first',
   );
-  assert(
-    dispatcher.includes('build/scripts/'),
-    'The dispatcher looks in build/scripts',
-  );
+  assert(dispatcher.includes('build/scripts/'), 'The dispatcher looks in build/scripts');
   assert(
     dispatcher.includes("'tsx', 'dist', 'cli.mjs'"),
     'It falls back to the locally installed tsx in development',
@@ -278,10 +243,7 @@ function testNoViteInProduction(): void {
 
   const app = source('src/app.ts');
 
-  assert(
-    !/^\s*import .*from 'vite';/m.test(app),
-    'app.ts has no static vite import',
-  );
+  assert(!/^\s*import .*from 'vite';/m.test(app), 'app.ts has no static vite import');
   assert(
     app.includes("await import('vite')"),
     'vite is imported lazily, inside the development branch',
@@ -316,28 +278,19 @@ function testDryRunIsReadOnly(): void {
    * The exact defect reported: the runner created the schema and the
    * tracking table before it looked at --dry-run.
    */
-  const createSchema = migrate.indexOf("CREATE SCHEMA IF NOT EXISTS drizzle");
+  const createSchema = migrate.indexOf('CREATE SCHEMA IF NOT EXISTS drizzle');
   const dryRunReturn = migrate.indexOf('if (dryRun) {');
 
   assert(createSchema > 0, 'The runner does create the schema when it applies');
   assert(dryRunReturn > 0, 'The runner has a dry-run exit');
-  assert(
-    dryRunReturn < createSchema,
-    'The dry-run exit comes BEFORE the schema is created',
-  );
+  assert(dryRunReturn < createSchema, 'The dry-run exit comes BEFORE the schema is created');
 
   /* No DDL or DML may appear between the plan print and the dry-run exit. */
   const beforeExit = migrate.slice(0, dryRunReturn);
   const tail = beforeExit.slice(beforeExit.lastIndexOf('printDestructive'));
 
-  assert(
-    !/client\.query\(/.test(tail),
-    'No statement runs on a client before the dry-run exits',
-  );
-  assert(
-    !/INSERT INTO/.test(tail),
-    'No tracking row is written on a dry run',
-  );
+  assert(!/client\.query\(/.test(tail), 'No statement runs on a client before the dry-run exits');
+  assert(!/INSERT INTO/.test(tail), 'No tracking row is written on a dry run');
 
   /* And the read path must not create anything. */
   const status = source('scripts/migration-status.ts');
@@ -347,9 +300,7 @@ function testDryRunIsReadOnly(): void {
     'The status command contains no CREATE statement at all',
   );
   assert(
-    !/\b(INSERT|UPDATE|DELETE)\s/i.test(
-      stripSqlComments(status).replace(/--[^\n]*/g, ' '),
-    ),
+    !/\b(INSERT|UPDATE|DELETE)\s/i.test(stripSqlComments(status).replace(/--[^\n]*/g, ' ')),
     'The status command contains no write statement',
   );
 
@@ -377,23 +328,21 @@ function testDryRunIsReadOnly(): void {
     verification.includes("['empty', 'populated']"),
     'It checks a database with and without the tracking table',
   );
-  assert(
-    verification.includes('isWrite'),
-    'It classifies statements as writes',
-  );
+  assert(verification.includes('isWrite'), 'It classifies statements as writes');
   assert(
     packageJson().scripts['verify:dry-run'] === 'node scripts/verify-dry-run.mjs',
     'npm run verify:dry-run runs it',
   );
 
   /* The tracking table is created once, where migrations are applied. */
-  const migrateCreates = migrate.split('CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations').length - 1;
+  const migrateCreates =
+    migrate.split('CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations').length - 1;
 
   assertEqual(migrateCreates, 1, 'The tracking table is created in exactly one place');
 
   assert(
     migrate.indexOf('if (!isLocalDatabaseHost(env.database.host) && !confirmed)') <
-      migrate.indexOf("CREATE SCHEMA IF NOT EXISTS drizzle"),
+      migrate.indexOf('CREATE SCHEMA IF NOT EXISTS drizzle'),
     'A non-local host is refused before anything is written',
   );
 }
@@ -421,7 +370,13 @@ function testClassificationConsistency(): void {
   /* The behaviour the two used to disagree about. */
   const plans = [
     { tag: '0001_a', hash: 'hash-a', folderMillis: 1000, statements: [], bomStripped: false },
-    { tag: '0002_b', hash: 'hash-b-edited', folderMillis: 2000, statements: [], bomStripped: false },
+    {
+      tag: '0002_b',
+      hash: 'hash-b-edited',
+      folderMillis: 2000,
+      statements: [],
+      bomStripped: false,
+    },
     { tag: '0003_c', hash: 'hash-c', folderMillis: 3000, statements: [], bomStripped: false },
   ];
 
@@ -433,7 +388,11 @@ function testClassificationConsistency(): void {
 
   const result = classifyMigrations(plans, applied);
 
-  assertEqual(result.pending.map((plan) => plan.tag), ['0003_c'], 'Only the unrecorded migration is pending');
+  assertEqual(
+    result.pending.map((plan) => plan.tag),
+    ['0003_c'],
+    'Only the unrecorded migration is pending',
+  );
   assertEqual(
     result.editedAfterApply.map((plan) => plan.tag),
     ['0002_b'],
@@ -442,10 +401,7 @@ function testClassificationConsistency(): void {
   assertEqual(result.applied.length, 2, 'Both recorded migrations count as applied');
 
   /* Newer timestamp recorded than the journal knows: the rest is behind. */
-  const behind = classifyMigrations(
-    [plans[2]],
-    [{ hash: 'unknown', createdAt: 9000 }],
-  );
+  const behind = classifyMigrations([plans[2]], [{ hash: 'unknown', createdAt: 9000 }]);
 
   assertEqual(behind.pending.length, 1, 'The older pending migration is still listed');
   assertEqual(behind.behindNewest.length, 1, 'It is flagged as behind the newest row');
@@ -470,11 +426,7 @@ function testRealJournal(): void {
   const plans = readPlans(entries, dir);
 
   assert(plans.length >= 23, `The journal has ${plans.length} migrations`);
-  assertEqual(
-    plans.length,
-    entries.length,
-    'Every journal entry has a .sql file',
-  );
+  assertEqual(plans.length, entries.length, 'Every journal entry has a .sql file');
 
   for (const plan of plans) {
     assert(plan.statements.length > 0, `${plan.tag} contains statements`);
@@ -502,7 +454,7 @@ function testRealJournal(): void {
   /* Drizzle's own table shape, so `drizzle-kit migrate` stays compatible. */
   assert(
     migrate.includes('hash text NOT NULL') && migrate.includes('created_at bigint'),
-    'The tracking table matches drizzle-kit\'s schema',
+    "The tracking table matches drizzle-kit's schema",
   );
 }
 
@@ -523,7 +475,7 @@ function testDestructiveGuard(): void {
 
   assert(
     Boolean(dropColumn),
-    'The scan finds 0002\'s DROP COLUMN, which is why a full replay is refused',
+    "The scan finds 0002's DROP COLUMN, which is why a full replay is refused",
   );
   assert(
     Boolean(dropColumn?.preview.toLowerCase().includes('patients')),
@@ -567,10 +519,7 @@ function testDestructiveGuard(): void {
     ).length === 0,
     'A trigger that blocks TRUNCATE is not destructive',
   );
-  assert(
-    scanOne('DELETE FROM patients;').length === 1,
-    'A real DELETE is reported',
-  );
+  assert(scanOne('DELETE FROM patients;').length === 1, 'A real DELETE is reported');
   assert(
     scanOne('GRANT SELECT, DELETE ON patients TO app;').length === 0,
     'A GRANT is not a destructive statement',
@@ -604,10 +553,7 @@ function testDestructiveGuard(): void {
     migrate.includes('const orphanedHistory ='),
     'The runner detects history that matches no journal entry',
   );
-  assert(
-    migrate.includes('none of which match this journal'),
-    'It refuses instead of replaying',
-  );
+  assert(migrate.includes('none of which match this journal'), 'It refuses instead of replaying');
   const orphanGuard = migrate.indexOf('const orphanedHistory =');
 
   assert(
@@ -627,17 +573,11 @@ function testDestructiveGuard(): void {
 
   assertEqual(orphan.applied.length, 0, 'A foreign row matches no migration');
   assertEqual(orphan.pending.length, 1, 'The migration counts as pending');
-  assert(
-    orphan.behindNewest.length === 1,
-    'and is flagged as older than the newest recorded row',
-  );
+  assert(orphan.behindNewest.length === 1, 'and is flagged as older than the newest recorded row');
 
   const preflight = source('scripts/preflight.ts');
 
-  assert(
-    preflight.includes('Unmanaged database'),
-    'Preflight names the same condition',
-  );
+  assert(preflight.includes('Unmanaged database'), 'Preflight names the same condition');
   assert(
     preflight.includes('match nothing in this journal'),
     'Preflight reports orphaned history rather than a plain pending count',
@@ -646,10 +586,7 @@ function testDestructiveGuard(): void {
     preflight.includes('createdTables'),
     'Preflight reports table-creation conflicts with what already exists',
   );
-  assert(
-    preflight.includes('--backup='),
-    'Preflight can verify a named backup',
-  );
+  assert(preflight.includes('--backup='), 'Preflight can verify a named backup');
 
   /* Host classification for the confirmation gate. */
   assert(isLocalDatabaseHost('localhost'), 'localhost is local');
@@ -666,31 +603,13 @@ function testServerStartup(): void {
 
   const server = source('server.ts');
 
-  assert(
-    server.includes('process.env.PORT'),
-    'The port comes from the environment',
-  );
-  assert(
-    server.includes('DEFAULT_PORT = 3000'),
-    'There is a documented local fallback',
-  );
-  assert(
-    server.includes("'0.0.0.0'"),
-    'The server binds every interface',
-  );
-  assert(
-    server.includes('app.listen(port, HOST'),
-    'The resolved port and host are used together',
-  );
+  assert(server.includes('process.env.PORT'), 'The port comes from the environment');
+  assert(server.includes('DEFAULT_PORT = 3000'), 'There is a documented local fallback');
+  assert(server.includes("'0.0.0.0'"), 'The server binds every interface');
+  assert(server.includes('app.listen(port, HOST'), 'The resolved port and host are used together');
 
-  assert(
-    server.includes("httpServer.on('error'"),
-    'A late listen error is handled',
-  );
-  assert(
-    server.includes('EADDRINUSE'),
-    'A second instance is reported clearly',
-  );
+  assert(server.includes("httpServer.on('error'"), 'A late listen error is handled');
+  assert(server.includes('EADDRINUSE'), 'A second instance is reported clearly');
   assert(
     server.includes("process.on('uncaughtException'"),
     'An uncaught exception shuts down cleanly instead of hanging',
@@ -703,13 +622,10 @@ function testServerStartup(): void {
     server.includes("process.on('SIGTERM'") && server.includes("process.on('SIGINT'"),
     'Both stop signals are handled',
   );
-  assert(
-    server.includes('await pool.end()'),
-    'The database pool is closed on shutdown',
-  );
+  assert(server.includes('await pool.end()'), 'The database pool is closed on shutdown');
   assert(
     server.includes('Graceful shutdown timed out'),
-    'A stuck shutdown cannot outlive the supervisor\'s patience',
+    "A stuck shutdown cannot outlive the supervisor's patience",
   );
 
   /* Nothing in the startup path may print a credential. */
@@ -736,12 +652,9 @@ function testStaticServing(): void {
     app.includes('const STATIC_DIR = process.env.STATIC_DIR'),
     'The static root can be overridden per deployment',
   );
+  assert(app.includes("path.resolve(__dirname, 'dist')"), 'It defaults to dist/ beside the bundle');
   assert(
-    app.includes("path.resolve(__dirname, 'dist')"),
-    'It defaults to dist/ beside the bundle',
-  );
-  assert(
-    app.includes('path.join(STATIC_DIR, \'index.html\')'),
+    app.includes("path.join(STATIC_DIR, 'index.html')"),
     'The SPA shell is resolved from the same absolute root',
   );
   assert(
@@ -765,7 +678,7 @@ function testStaticServing(): void {
     'An unknown /api path is not answered with the SPA shell',
   );
   assert(
-    app.includes("res.status(503).type('text/plain')"),
+    containsCode(app, "res.status(503).type('text/plain')"),
     'A missing build answers 503 rather than a blank 200',
   );
 }
@@ -779,10 +692,7 @@ function testSeedSafety(): void {
 
   const seed = source('src/seeds/permissions.ts');
 
-  assert(
-    !/db\s*\.\s*delete\(/.test(codeOnly(seed)),
-    'The seed never issues a DELETE',
-  );
+  assert(!/db\s*\.\s*delete\(/.test(codeOnly(seed)), 'The seed never issues a DELETE');
   assert(
     !/\bTRUNCATE\b|\bDROP\s+(TABLE|COLUMN|SCHEMA)\b/i.test(codeOnly(seed)),
     'The seed executes no truncate or drop',
@@ -791,18 +701,9 @@ function testSeedSafety(): void {
     !/facilityRolePermissionOverrides/.test(seed),
     'The seed never touches facility overrides',
   );
-  assert(
-    seed.includes('--dry-run'),
-    'The seed supports a dry run',
-  );
-  assert(
-    seed.includes('if (!dryRun)'),
-    'Writes happen only when the dry run is off',
-  );
-  assert(
-    seed.includes('--yes'),
-    'A non-local database requires confirmation',
-  );
+  assert(seed.includes('--dry-run'), 'The seed supports a dry run');
+  assert(seed.includes('if (!dryRun)'), 'Writes happen only when the dry run is off');
+  assert(seed.includes('--yes'), 'A non-local database requires confirmation');
   assert(
     seed.includes('await pool.end()'),
     'The seed closes its pool instead of exiting mid-connection',
@@ -856,10 +757,7 @@ function testDeploymentDoc(): void {
     !/ADMIN_PASSWORD\s*=\s*\S+/.test(doc),
     'The guide contains no administrator password value',
   );
-  assert(
-    doc.toLowerCase().includes('never commit'),
-    'The guide says not to commit the .env',
-  );
+  assert(doc.toLowerCase().includes('never commit'), 'The guide says not to commit the .env');
 }
 
 /* ============================================================

@@ -35,6 +35,7 @@ import {
   PREGNANCY_STATUSES,
 } from '../maternity/maternity-contracts.ts';
 import { schemaSource } from './support/schema-source.ts';
+import { containsCode } from './support/source-text.ts';
 
 let checks = 0;
 
@@ -45,10 +46,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function read(path: string): string {
@@ -90,11 +88,7 @@ function testDates(): void {
     null,
     'a date two years early is refused rather than reported as negative',
   );
-  assertEqual(
-    gestationAt('not-a-date', '2026-04-01'),
-    null,
-    'an invalid EDD produces nothing',
-  );
+  assertEqual(gestationAt('not-a-date', '2026-04-01'), null, 'an invalid EDD produces nothing');
 }
 
 /* ============================================================
@@ -109,11 +103,26 @@ function testValidation(): void {
   assert(numberInRange(11, 'x', 0, 10).error !== undefined, 'out of range is refused');
   assert(numberInRange('abc', 'x', 0, 10).error !== undefined, 'text is refused');
   assertEqual(numberInRange(-4, 'station', -3, 3).value, null, 'below the range');
-  assertEqual(numberInRange(-3, 'station', -3, 3).value, -3, 'a negative value is allowed where the range allows it');
+  assertEqual(
+    numberInRange(-3, 'station', -3, 3).value,
+    -3,
+    'a negative value is allowed where the range allows it',
+  );
 
-  assertEqual(oneOf('Intact', 'membranes', ['Intact', 'Ruptured'] as const).value, 'Intact', 'a listed value passes');
-  assertEqual(oneOf('', 'membranes', ['Intact', 'Ruptured'] as const).value, null, 'an empty choice is absent');
-  assert(oneOf('Torn', 'membranes', ['Intact', 'Ruptured'] as const).error !== undefined, 'an unlisted value is refused');
+  assertEqual(
+    oneOf('Intact', 'membranes', ['Intact', 'Ruptured'] as const).value,
+    'Intact',
+    'a listed value passes',
+  );
+  assertEqual(
+    oneOf('', 'membranes', ['Intact', 'Ruptured'] as const).value,
+    null,
+    'an empty choice is absent',
+  );
+  assert(
+    oneOf('Torn', 'membranes', ['Intact', 'Ruptured'] as const).error !== undefined,
+    'an unlisted value is refused',
+  );
   assert(oneOf(5, 'membranes', ['Intact'] as const).error !== undefined, 'a non-string is refused');
 }
 
@@ -140,14 +149,22 @@ function testPartograph(): void {
     { recordedAt: '2026-10-08T08:00:00Z', cervicalDilatationCm: 4 },
     { recordedAt: '2026-10-08T12:00:00Z', cervicalDilatationCm: 6 },
   ]);
-  assertEqual(behind.zone, 'Between the alert and action lines', 'two hours behind is between the lines');
+  assertEqual(
+    behind.zone,
+    'Between the alert and action lines',
+    'two hours behind is between the lines',
+  );
   assertEqual(behind.hoursBeyondAlert, 2, 'two hours beyond the alert line');
 
   const farBehind = partographGuidance([
     { recordedAt: '2026-10-08T08:00:00Z', cervicalDilatationCm: 4 },
     { recordedAt: '2026-10-08T14:00:00Z', cervicalDilatationCm: 5 },
   ]);
-  assertEqual(farBehind.zone, 'Right of the action line', 'five hours behind is past the action line');
+  assertEqual(
+    farBehind.zone,
+    'Right of the action line',
+    'five hours behind is past the action line',
+  );
   assertEqual(farBehind.hoursBeyondAlert, 5, 'five hours beyond the alert line');
 
   const unsorted = partographGuidance([
@@ -156,10 +173,7 @@ function testPartograph(): void {
   ]);
   assertEqual(unsorted.zone, 'On or left of the alert line', 'readings are sorted before plotting');
 
-  assert(
-    tooFew.note.includes('plotting aid'),
-    'the guidance says what it is and is not',
-  );
+  assert(tooFew.note.includes('plotting aid'), 'the guidance says what it is and is not');
   assert(
     !partographGuidance([]).zone.includes('emergency'),
     'the module never raises an emergency of its own',
@@ -201,7 +215,7 @@ function testMigration(): void {
     'duplicate partograph timestamps are refused by the database',
   );
   assert(
-    sql.includes("WHERE \"status\" = 'Active'"),
+    sql.includes('WHERE "status" = \'Active\''),
     'the partial index only constrains active pregnancies',
   );
 
@@ -229,8 +243,10 @@ function testMigration(): void {
 function testSchemaHonesty(): void {
   const schema = schemaSource();
 
-  const start = schema.indexOf("export const maternityPregnancies");
-  const end = schema.indexOf('/* ============================================================\n   45. RELATIONS');
+  const start = schema.indexOf('export const maternityPregnancies');
+  const end = schema.indexOf(
+    '/* ============================================================\n   45. RELATIONS',
+  );
   const block = schema.slice(start, end);
 
   assert(start > -1 && end > start, 'the maternity tables can be isolated');
@@ -325,20 +341,16 @@ function testWiring(): void {
   const server = read('src/maternity/maternity.service.ts');
 
   assert(
-    server.includes('maternity.read') === false &&
-      server.includes('requirePermission') === false,
+    server.includes('maternity.read') === false && server.includes('requirePermission') === false,
     'the service does not make permission decisions',
   );
 
   assert(
-    server.includes('notFound(\'The pregnancy record\')'),
+    server.includes("notFound('The pregnancy record')"),
     'a pregnancy outside scope answers as not found',
   );
 
-  assert(
-    server.includes('ONE ACTIVE') === false,
-    'nothing claims a constraint it does not have',
-  );
+  assert(server.includes('ONE ACTIVE') === false, 'nothing claims a constraint it does not have');
 
   /*
    * Drizzle wraps driver errors, so the SQLSTATE lives on `cause`. A
@@ -351,10 +363,7 @@ function testWiring(): void {
     'Postgres error codes are read through the wrapper',
   );
 
-  assert(
-    server.includes('.cause?.code'),
-    'the wrapped cause is inspected',
-  );
+  assert(server.includes('.cause?.code'), 'the wrapped cause is inspected');
 
   assert(
     (server.match(/\.catch\(\(\) => null\)/g) ?? []).length >= 3,
@@ -381,7 +390,7 @@ function testPermissions(): void {
   );
 
   assert(
-    catalogue.includes("'maternity.create', 'maternity.update'"),
+    containsCode(catalogue, "'maternity.create', 'maternity.update'"),
     'the roles that record care hold the write permissions',
   );
 }
@@ -395,37 +404,22 @@ function testScreen(): void {
 
   assert(!ui.includes('142 bpm'), 'no sample fetal heart rate is shipped');
   assert(!ui.includes('G2 P1'), 'no sample obstetric history is shipped');
-  assert(
-    !/value=\{\d+\}/.test(ui),
-    'no input is pre-filled with a literal number',
-  );
+  assert(!/value=\{\d+\}/.test(ui), 'no input is pre-filled with a literal number');
 
-  assert(
-    /placeholder="Cephalic"/.test(ui),
-    'a placeholder is a hint, not a stored value',
-  );
+  assert(/placeholder="Cephalic"/.test(ui), 'a placeholder is a hint, not a stored value');
 
   assert(
     ui.includes('Number.isFinite(parsed) ? parsed : undefined'),
     'an empty field is sent as absent',
   );
 
-  assert(
-    ui.includes('gestation'),
-    'the register shows gestation computed by the server',
-  );
+  assert(ui.includes('gestation'), 'the register shows gestation computed by the server');
 
   const specialty = read('src/components/modules/SpecialtyModule.tsx');
 
-  assert(
-    !specialty.includes("activeSpecialty === 'MCH'"),
-    'the mock antenatal form is gone',
-  );
+  assert(!specialty.includes("activeSpecialty === 'MCH'"), 'the mock antenatal form is gone');
 
-  assert(
-    !specialty.includes('142 bpm'),
-    'and its invented observations are gone with it',
-  );
+  assert(!specialty.includes('142 bpm'), 'and its invented observations are gone with it');
 
   assert(DELIVERY_MODES.length === 6, 'six delivery modes are offered');
   assert(BABY_OUTCOMES.length === 4, 'four baby outcomes are offered');
