@@ -548,8 +548,16 @@ function testRetryAfterFixingThePriceList(): void {
     app.includes("'/api/billing/charge-attempts/retry'"),
     'a route retries everything waiting',
   );
+  /*
+   * The wrapper moved to its own module when the maternity routes were
+   * extracted; the assertion follows it. `chargeSafely` is the one place a
+   * charge is attempted, so this still pins "every charge site records what
+   * it could not price".
+   */
+  const charges = readFileSync(resolve(process.cwd(), 'src/routes/shared/charges.ts'), 'utf8');
+
   assert(
-    app.includes('chargeAttempts.chargeAndRecord(db, request)'),
+    charges.includes('chargeAttempts.chargeAndRecord(db, request)'),
     'every charge site records what it could not price',
   );
   assert(

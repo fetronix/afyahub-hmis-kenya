@@ -517,47 +517,61 @@ function testRoutes(): void {
     'immunisation is gated on the MCH module like maternity',
   );
 
+  /*
+   * The routes moved out of createApp into src/routes/maternal-health.routes.ts,
+   * mounted at '/api', so the paths below are relative and the handler is a
+   * router rather than the app. Nothing else about these checks changed: the
+   * route is still named, and the permission must still appear immediately
+   * after it. The module gates above stay in app.ts because they are mounts,
+   * not routes.
+   */
+  const routesSource = read('src/routes/maternal-health.routes.ts');
+
   const routes = [
-    ["'/api/maternity/postnatal'", 'maternity.read'],
-    ["'/api/maternity/pregnancies/:id/postnatal'", 'maternity.read'],
-    ["'/api/immunisation/schedule'", 'maternity.read'],
-    ["'/api/immunisation/card'", 'maternity.read'],
-    ["'/api/immunisation/due'", 'maternity.read'],
+    ["'/maternity/postnatal'", 'maternity.read'],
+    ["'/maternity/pregnancies/:id/postnatal'", 'maternity.read'],
+    ["'/immunisation/schedule'", 'maternity.read'],
+    ["'/immunisation/card'", 'maternity.read'],
+    ["'/immunisation/due'", 'maternity.read'],
   ] as const;
 
   for (const [route, permission] of routes) {
-    const index = app.indexOf(route);
+    const index = routesSource.indexOf(route);
 
-    assert(index > -1, `${route} exists`);
+    assert(index > -1, `GET ${route} exists`);
 
     assert(
-      app.slice(index, index + 300).includes(`requirePermission('${permission}')`),
-      `${route} is guarded by ${permission}`,
+      routesSource.slice(index, index + 300).includes(`requirePermission('${permission}')`),
+      `GET ${route} is guarded by ${permission}`,
     );
   }
 
-  const postnatalPost = app.indexOf("app.post(\n    '/api/maternity/postnatal'");
-  const immunisationPost = app.indexOf("app.post(\n    '/api/immunisation/records'");
+  const postnatalPost = routesSource.indexOf("router.post(\n  '/maternity/postnatal'");
+  const immunisationPost = routesSource.indexOf("router.post(\n  '/immunisation/records'");
 
   assert(postnatalPost > -1, 'a postnatal contact can be written');
   assert(immunisationPost > -1, 'a dose can be written');
 
   assert(
-    app.slice(postnatalPost, postnatalPost + 200).includes("requirePermission('maternity.create')"),
+    routesSource
+      .slice(postnatalPost, postnatalPost + 200)
+      .includes("requirePermission('maternity.create')"),
     'writing a postnatal contact needs maternity.create',
   );
 
   assert(
-    app
+    routesSource
       .slice(immunisationPost, immunisationPost + 200)
       .includes("requirePermission('maternity.create')"),
     'writing a dose needs maternity.create',
   );
 
   /* ---- the delivery charge ---- */
-  const deliveryCharge = app.slice(
-    app.indexOf('const created = await maternity.recordDelivery'),
-    app.indexOf('res.status(201).json({ ...created, billing: charge });'),
+  /* The delivery charge block moved with its route; the pricing claims
+     below are checked against it in its new home. */
+  const deliveryCharge = routesSource.slice(
+    routesSource.indexOf('const created = await maternity.recordDelivery'),
+    routesSource.indexOf('res.status(201).json({ ...created, billing: charge });'),
   );
 
   assert(deliveryCharge.length > 100, 'the delivery route has a billing block');

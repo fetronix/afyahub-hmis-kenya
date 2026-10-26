@@ -307,36 +307,48 @@ function testWiring(): void {
     'the module gate is mounted',
   );
 
+  /*
+   * The maternity and immunisation routes moved out of createApp into
+   * src/routes/maternal-health.routes.ts, mounted at '/api'. The module
+   * gate above stayed in app.ts, because it is a mount rather than a
+   * route. These assertions follow the routes to their new home instead of
+   * being relaxed: the route path is still named, and the permission is
+   * still required within 400 characters of it.
+   */
+  const routesSource = read('src/routes/maternal-health.routes.ts');
+
   const routes = [
-    ['/api/maternity/summary', 'maternity.read'],
-    ['/api/maternity/pregnancies', 'maternity.read'],
-    ['/api/maternity/anc-visits', 'maternity.create'],
-    ['/api/maternity/labours', 'maternity.read'],
-    ['/api/maternity/partograph', 'maternity.create'],
-    ['/api/maternity/deliveries', 'maternity.read'],
+    ['/maternity/summary', 'maternity.read'],
+    ['/maternity/pregnancies', 'maternity.read'],
+    ['/maternity/anc-visits', 'maternity.create'],
+    ['/maternity/labours', 'maternity.read'],
+    ['/maternity/partograph', 'maternity.create'],
+    ['/maternity/deliveries', 'maternity.read'],
   ] as const;
 
   for (const [route, permission] of routes) {
-    const index = app.indexOf(route);
+    const index = routesSource.indexOf(`'${route}'`);
 
-    assert(index > -1, `${route} exists`);
+    assert(index > -1, `GET ${route} exists`);
 
-    const nearby = app.slice(index, index + 400);
+    const nearby = routesSource.slice(index, index + 400);
 
     assert(
       nearby.includes(`requirePermission('${permission}')`),
-      `${route} is guarded by ${permission}`,
+      `GET ${route} is guarded by ${permission}`,
     );
   }
 
   assert(
-    app.indexOf("app.post(\n    '/api/maternity/deliveries'") >
-      app.indexOf("app.get(\n    '/api/maternity/deliveries'"),
+    routesSource.indexOf("router.post(\n  '/maternity/deliveries'") >
+      routesSource.indexOf("router.get(\n  '/maternity/deliveries'"),
     'the delivery POST is registered separately from the GET',
   );
 
-  const deliveryIndex = app.indexOf("'/api/maternity/deliveries',", app.indexOf('app.post('));
-  void deliveryIndex;
+  assert(
+    app.includes("app.use('/api', maternalHealthRoutes)"),
+    'the extracted router is mounted at /api',
+  );
 
   const server = read('src/maternity/maternity.service.ts');
 

@@ -341,14 +341,21 @@ function testEveryStageIsCharged(): void {
    * facility made on the tariff screen, and the engine tries it before
    * the codes.
    */
-  for (const [label, key] of [
-    ['the consultation', "billingServiceKeys('CONSULTATION'"],
-    ['the admission', "billingServiceKeys('ADMISSION'"],
-    ['the delivery', "billingServiceKeys('DELIVERY'"],
-    ['the prescription', "billingServiceKeys('PHARMACY'"],
-    ['the procedure', "billingServiceKeys('PROCEDURE'"],
+  /*
+   * Each key is checked in the file that now owns its route. The delivery
+   * moved to src/routes/maternal-health.routes.ts when the maternity and
+   * immunisation routes were extracted from createApp; naming the file per
+   * key keeps the assertion as tight as it was, instead of loosening it to
+   * "somewhere in the sources".
+   */
+  for (const [label, key, file] of [
+    ['the consultation', "billingServiceKeys('CONSULTATION'", 'src/app.ts'],
+    ['the admission', "billingServiceKeys('ADMISSION'", 'src/app.ts'],
+    ['the delivery', "billingServiceKeys('DELIVERY'", 'src/routes/maternal-health.routes.ts'],
+    ['the prescription', "billingServiceKeys('PHARMACY'", 'src/app.ts'],
+    ['the procedure', "billingServiceKeys('PROCEDURE'", 'src/app.ts'],
   ] as const) {
-    assert(app.includes(key), `${label} offers a billing link`);
+    assert(source(file).includes(key), `${label} offers a billing link`);
   }
 
   /*
