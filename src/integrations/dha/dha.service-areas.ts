@@ -173,9 +173,7 @@ const AREA_BY_ID = new Map<DhaServiceAreaId, DhaServiceAreaDefinition>(
   DHA_SERVICE_AREAS.map((area) => [area.id, area]),
 );
 
-export function getServiceArea(
-  id: string | null | undefined,
-): DhaServiceAreaDefinition | null {
+export function getServiceArea(id: string | null | undefined): DhaServiceAreaDefinition | null {
   if (!id) return null;
 
   return AREA_BY_ID.get(id as DhaServiceAreaId) ?? null;
@@ -195,9 +193,7 @@ export function resolveServiceArea(input: {
   const sourceType = (input.sourceType ?? '').trim().toUpperCase();
 
   if (sourceType) {
-    const matches = DHA_SERVICE_AREAS.filter((area) =>
-      area.sourceTypes.includes(sourceType),
-    );
+    const matches = DHA_SERVICE_AREAS.filter((area) => area.sourceTypes.includes(sourceType));
 
     /*
      * CONSULTATION and PROCEDURE each appear in more than one area, so
@@ -259,9 +255,7 @@ export interface ServiceAreaCoverage {
  * a service the facility cannot yet claim for, and saying so is the whole
  * point of the report.
  */
-export function describeServiceAreaCoverage(
-  mappings: ServiceAreaMapping[],
-): ServiceAreaCoverage[] {
+export function describeServiceAreaCoverage(mappings: ServiceAreaMapping[]): ServiceAreaCoverage[] {
   const configured = new Set(
     mappings
       .filter((mapping) => (mapping.interventionCode ?? '').trim().length > 0)
@@ -277,9 +271,7 @@ export function describeServiceAreaCoverage(
 }
 
 /** Areas with no intervention code yet. */
-export function unmappedServiceAreas(
-  mappings: ServiceAreaMapping[],
-): DhaServiceAreaId[] {
+export function unmappedServiceAreas(mappings: ServiceAreaMapping[]): DhaServiceAreaId[] {
   return describeServiceAreaCoverage(mappings)
     .filter((coverage) => !coverage.mapped)
     .map((coverage) => coverage.serviceArea);

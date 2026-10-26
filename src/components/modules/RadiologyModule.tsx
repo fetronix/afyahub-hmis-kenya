@@ -9,11 +9,20 @@ import {
   UserCheck,
   Plus,
   FileText,
-  Image as ImageIcon
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export const RadiologyModule: React.FC = () => {
-  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentTenant,
+    currentFacility,
+    currentUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
   const [orders, setOrders] = useState<RadiologyOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<RadiologyOrder | null>(null);
@@ -43,7 +52,7 @@ export const RadiologyModule: React.FC = () => {
         setOrders(rList);
         setPatients(pList);
         if (pList.length > 0 && !reqForm.patientId) {
-          setReqForm(prev => ({ ...prev, patientId: pList[0].id.toString() }));
+          setReqForm((prev) => ({ ...prev, patientId: pList[0].id.toString() }));
         }
         if (rList.length > 0 && !selectedOrder) {
           selectOrder(rList[0]);
@@ -109,7 +118,7 @@ export const RadiologyModule: React.FC = () => {
   };
 
   const getPatient = (patientId: number) => {
-    return patients.find(p => p.id === patientId);
+    return patients.find((p) => p.id === patientId);
   };
 
   return (
@@ -117,9 +126,12 @@ export const RadiologyModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Diagnostic Radiology & Medical Imaging</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Diagnostic Radiology & Medical Imaging
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            X-Ray, Ultrasound, CT Scan, and MRI requests with PACS simulation and official radiologist reporting.
+            X-Ray, Ultrasound, CT Scan, and MRI requests with PACS simulation and official
+            radiologist reporting.
           </p>
         </div>
 
@@ -161,20 +173,34 @@ export const RadiologyModule: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-900 text-xs">{ord.procedureName}</span>
-                    <span className={`px-2 py-0.5 rounded text-3xs font-medium ${
-                      ord.status === 'Reported' ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'
-                    }`}>
+                    <span className="font-semibold text-slate-900 text-xs">
+                      {ord.procedureName}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-3xs font-medium ${
+                        ord.status === 'Reported'
+                          ? 'bg-emerald-50 text-emerald-800'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
                       {ord.status}
                     </span>
                   </div>
 
                   <div className="text-2xs text-slate-600 mt-1">
-                    Patient: <strong>{patient ? `${patient.firstName} ${patient.lastName}` : `Patient #${ord.patientId}`}</strong> ({patient?.mrn})
+                    Patient:{' '}
+                    <strong>
+                      {patient
+                        ? `${patient.firstName} ${patient.lastName}`
+                        : `Patient #${ord.patientId}`}
+                    </strong>{' '}
+                    ({patient?.mrn})
                   </div>
 
                   <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 text-3xs text-slate-400 font-mono">
-                    <span className="px-1.5 py-0.2 bg-slate-100 rounded text-slate-700 font-semibold">{ord.modality}</span>
+                    <span className="px-1.5 py-0.2 bg-slate-100 rounded text-slate-700 font-semibold">
+                      {ord.modality}
+                    </span>
                     <span>{new Date(ord.createdAt).toLocaleDateString()}</span>
                   </div>
                 </div>
@@ -189,14 +215,21 @@ export const RadiologyModule: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">{selectedOrder.procedureName}</h2>
+                  <h2 className="text-base font-bold text-slate-900">
+                    {selectedOrder.procedureName}
+                  </h2>
                   <div className="text-2xs text-slate-500 mt-0.5">
-                    Modality: <strong>{selectedOrder.modality}</strong> · Ordered by: <strong>{selectedOrder.orderedBy || 'Clinician'}</strong>
+                    Modality: <strong>{selectedOrder.modality}</strong> · Ordered by:{' '}
+                    <strong>{selectedOrder.orderedBy || 'Clinician'}</strong>
                   </div>
                 </div>
-                <span className={`px-2.5 py-1 rounded text-2xs font-semibold ${
-                  selectedOrder.status === 'Reported' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-                }`}>
+                <span
+                  className={`px-2.5 py-1 rounded text-2xs font-semibold ${
+                    selectedOrder.status === 'Reported'
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
                   {selectedOrder.status}
                 </span>
               </div>
@@ -207,10 +240,17 @@ export const RadiologyModule: React.FC = () => {
                 return (
                   <div className="bg-slate-50 p-3 rounded-lg flex items-center justify-between text-2xs">
                     <div>
-                      Patient: <strong className="text-slate-800">{pat?.firstName} {pat?.lastName}</strong> ({pat?.gender} · {pat?.dateOfBirth})
+                      Patient:{' '}
+                      <strong className="text-slate-800">
+                        {pat?.firstName} {pat?.lastName}
+                      </strong>{' '}
+                      ({pat?.gender} · {pat?.dateOfBirth})
                     </div>
                     <div>
-                      Clinical Indication: <strong className="text-slate-700">{selectedOrder.clinicalIndication || 'Routine imaging'}</strong>
+                      Clinical Indication:{' '}
+                      <strong className="text-slate-700">
+                        {selectedOrder.clinicalIndication || 'Routine imaging'}
+                      </strong>
                     </div>
                   </div>
                 );
@@ -223,8 +263,12 @@ export const RadiologyModule: React.FC = () => {
                     <ImageIcon className="w-6 h-6" />
                   </div>
                   <div>
-                    <div className="font-semibold text-white text-xs">PACS DICOM Study #DCM-{selectedOrder.id}982</div>
-                    <div className="text-2xs text-slate-400 font-mono">Modality: {selectedOrder.modality} · 128 Slices · Window: Mediastinum/Bone</div>
+                    <div className="font-semibold text-white text-xs">
+                      PACS DICOM Study #DCM-{selectedOrder.id}982
+                    </div>
+                    <div className="text-2xs text-slate-400 font-mono">
+                      Modality: {selectedOrder.modality} · 128 Slices · Window: Mediastinum/Bone
+                    </div>
                   </div>
                 </div>
                 <span className="px-3 py-1 bg-slate-800 text-teal-300 text-2xs font-mono rounded border border-slate-700">
@@ -235,7 +279,9 @@ export const RadiologyModule: React.FC = () => {
               {/* Radiologist Report Editor */}
               <div className="space-y-3 pt-2">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Radiological Findings</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Radiological Findings
+                  </label>
                   <textarea
                     rows={4}
                     value={reportFindings}
@@ -246,7 +292,9 @@ export const RadiologyModule: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Impression / Radiologist Conclusion</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Impression / Radiologist Conclusion
+                  </label>
                   <textarea
                     rows={2}
                     value={reportImpression}
@@ -282,8 +330,12 @@ export const RadiologyModule: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Request Diagnostic Medical Imaging</h3>
-              <p className="text-2xs text-slate-500">Order X-Ray, Ultrasound, CT Scan or MRI with clinical indication.</p>
+              <h3 className="text-sm font-bold text-slate-900">
+                Request Diagnostic Medical Imaging
+              </h3>
+              <p className="text-2xs text-slate-500">
+                Order X-Ray, Ultrasound, CT Scan or MRI with clinical indication.
+              </p>
             </div>
 
             <form onSubmit={handleCreateOrder} className="space-y-4">
@@ -295,7 +347,7 @@ export const RadiologyModule: React.FC = () => {
                   onChange={(e) => setReqForm({ ...reqForm, patientId: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
-                  {patients.map(p => (
+                  {patients.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.firstName} {p.lastName} ({p.mrn} · {p.payerType})
                     </option>
@@ -331,7 +383,9 @@ export const RadiologyModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Clinical Indication & History *</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Clinical Indication & History *
+                </label>
                 <textarea
                   rows={3}
                   required

@@ -40,7 +40,12 @@ describeDb('tenant and facility isolation', () => {
 
     const tenants = await pool.query<{ id: number }>(
       `INSERT INTO tenants (name, slug) VALUES ($1, $2), ($3, $4) RETURNING id`,
-      [`Test Tenant A ${suffix}`, `test-a-${suffix}`, `Test Tenant B ${suffix}`, `test-b-${suffix}`],
+      [
+        `Test Tenant A ${suffix}`,
+        `test-a-${suffix}`,
+        `Test Tenant B ${suffix}`,
+        `test-b-${suffix}`,
+      ],
     );
 
     fx.tenantA = tenants.rows[0]!.id;
@@ -80,8 +85,24 @@ describeDb('tenant and facility isolation', () => {
         (tenant_id, facility_id, code, description, department, unit, fee)
       VALUES ($1, $2, $3, $4, $5, $6, $7)`;
 
-    await pool.query(insert, [fx.tenantA, fx.facilityA, 'LAB-CBC', 'Full blood count', 'laboratory', 'Test', '500.00']);
-    await pool.query(insert, [fx.tenantB, fx.facilityB, 'LAB-CBC', 'Full blood count', 'laboratory', 'Test', '650.00']);
+    await pool.query(insert, [
+      fx.tenantA,
+      fx.facilityA,
+      'LAB-CBC',
+      'Full blood count',
+      'laboratory',
+      'Test',
+      '500.00',
+    ]);
+    await pool.query(insert, [
+      fx.tenantB,
+      fx.facilityB,
+      'LAB-CBC',
+      'Full blood count',
+      'laboratory',
+      'Test',
+      '650.00',
+    ]);
 
     const rows = await pool.query<{ facility_id: number; fee: string }>(
       `SELECT facility_id, fee FROM facility_service_tariffs

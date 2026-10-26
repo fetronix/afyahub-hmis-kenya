@@ -91,9 +91,7 @@ export function isCatalogueServiceType(value: unknown): value is CatalogueServic
 }
 
 /** Which billing family a catalogue type belongs to. */
-export function familyForServiceType(
-  serviceType: CatalogueServiceType,
-): BillingFamily {
+export function familyForServiceType(serviceType: CatalogueServiceType): BillingFamily {
   return serviceType === 'LAB_TEST' ? 'LABORATORY' : (serviceType as BillingFamily);
 }
 
@@ -163,12 +161,7 @@ export interface TariffLink {
   isActive: boolean;
 }
 
-export type ResolutionRule =
-  | 'LINK'
-  | 'FAMILY_LINK'
-  | 'ALIAS'
-  | 'CODE'
-  | 'CATALOGUE';
+export type ResolutionRule = 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE';
 
 export interface ResolutionInput {
   serviceType: CatalogueServiceType;
@@ -252,18 +245,9 @@ export interface TariffResolution {
  * the invoice never carries a number nobody meant.
  */
 const IMPOSSIBLE_UNITS: Record<CatalogueServiceType, readonly RegExp[]> = {
-  LAB_TEST: [
-    /per\s*(day|night|hour|visit|admission|stay)/i,
-    /^(day|night|hour|visit|admission)$/i,
-  ],
-  CONSULTATION: [
-    /per\s*(day|night|hour|test|sample|specimen)/i,
-    /^(day|night|hour)$/i,
-  ],
-  RADIOLOGY: [
-    /per\s*(day|night|hour|visit|admission|stay|test)/i,
-    /^(day|night|hour|visit)$/i,
-  ],
+  LAB_TEST: [/per\s*(day|night|hour|visit|admission|stay)/i, /^(day|night|hour|visit|admission)$/i],
+  CONSULTATION: [/per\s*(day|night|hour|test|sample|specimen)/i, /^(day|night|hour)$/i],
+  RADIOLOGY: [/per\s*(day|night|hour|visit|admission|stay|test)/i, /^(day|night|hour|visit)$/i],
   PROCEDURE: [/per\s*(day|night|hour|visit)/i, /^(day|night|hour)$/i],
   PHARMACY: [/per\s*(day|night|hour|visit|admission)/i, /^(day|night|hour)$/i],
   /*
@@ -345,12 +329,10 @@ type RowRejectionCode =
   | 'NO_UNIT'
   | 'ZERO_PRICE';
 
-type RowRejection =
-  | null
-  | {
-      code: RowRejectionCode;
-      note: string;
-    };
+type RowRejection = null | {
+  code: RowRejectionCode;
+  note: string;
+};
 
 function rejectionFor(
   tariff: ResolvableTariff,
@@ -459,7 +441,11 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
         continue;
       }
 
-      const rejection = rejectionFor(row, { serviceType: input.serviceType, today: input.today, mode });
+      const rejection = rejectionFor(row, {
+        serviceType: input.serviceType,
+        today: input.today,
+        mode,
+      });
 
       if (rejection) {
         rows.push({ tariff: row, verdict: rejection.code, note: rejection.note });
@@ -512,9 +498,7 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
   linkSteps.push({
     link: input.links.find(
       (entry) =>
-        entry.isActive &&
-        entry.serviceType === input.serviceType &&
-        entry.serviceId === null,
+        entry.isActive && entry.serviceType === input.serviceType && entry.serviceId === null,
     ),
     rule: 'FAMILY_LINK',
   });
@@ -601,7 +585,8 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
     .filter((key) => key !== '');
 
   const valid = input.tariffs.filter(
-    (row) => rejectionFor(row, { serviceType: input.serviceType, today: input.today, mode }) === null,
+    (row) =>
+      rejectionFor(row, { serviceType: input.serviceType, today: input.today, mode }) === null,
   );
 
   for (const key of keys) {
@@ -611,9 +596,7 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
 
     if (matches.length === 0) continue;
 
-    const usable = matches.find((row) =>
-      valid.some((entry) => entry.id === row.id),
-    );
+    const usable = matches.find((row) => valid.some((entry) => entry.id === row.id));
 
     if (usable) {
       const rejection = rejectionFor(usable, {
@@ -758,7 +741,7 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
      * it is inactive.
      */
     const described = everything.tariff
-      ? input.tariffs.find((row) => row.id === everything.tariff?.id) ?? null
+      ? (input.tariffs.find((row) => row.id === everything.tariff?.id) ?? null)
       : null;
 
     if (described && everything.rule === 'CATALOGUE') {
@@ -923,10 +906,7 @@ export async function loadFacilityTariffs(
   }
 
   /* Neither 0019 nor 0021: codes and descriptions only. */
-  const rows = await executor
-    .select(base)
-    .from(schema.facilityServiceTariffs)
-    .where(where);
+  const rows = await executor.select(base).from(schema.facilityServiceTariffs).where(where);
 
   return rows.map((row: Record<string, unknown>) => ({
     ...(row as unknown as ResolvableTariff),
@@ -1062,10 +1042,7 @@ export async function findTariffAtOtherFacility(
         and(
           eq(schema.facilityServiceTariffs.tenantId, input.tenantId),
           ne(schema.facilityServiceTariffs.facilityId, input.facilityId),
-          inArray(
-            sql`upper(${schema.facilityServiceTariffs.code})`,
-            wanted,
-          ),
+          inArray(sql`upper(${schema.facilityServiceTariffs.code})`, wanted),
         ),
       )
       .limit(10);

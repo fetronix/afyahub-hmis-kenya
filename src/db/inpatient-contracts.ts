@@ -51,11 +51,7 @@ export class InpatientDomainError extends Error {
   public readonly code: InpatientErrorCode;
   public readonly status: number;
 
-  constructor(
-    code: InpatientErrorCode,
-    message: string,
-    status = 400,
-  ) {
+  constructor(code: InpatientErrorCode, message: string, status = 400) {
     super(message);
 
     this.name = 'InpatientDomainError';
@@ -71,10 +67,7 @@ export class InpatientDomainError extends Error {
 export const ACTIVE_ADMISSION_STATUS = 'Admitted';
 export const CLOSED_ADMISSION_STATUS = 'Discharged';
 
-export const ADMISSION_STATUSES = [
-  ACTIVE_ADMISSION_STATUS,
-  CLOSED_ADMISSION_STATUS,
-] as const;
+export const ADMISSION_STATUSES = [ACTIVE_ADMISSION_STATUS, CLOSED_ADMISSION_STATUS] as const;
 
 export const ADMISSION_STATUS_SET = new Set<string>(ADMISSION_STATUSES);
 

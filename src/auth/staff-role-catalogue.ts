@@ -3,8 +3,11 @@ export const STAFF_ROLE_CATALOGUE = [
     name: 'BILLING_CLERK',
     description: 'Handles billing and payment records.',
     permissions: [
-      'billing.create', 'billing.payments.record', 'billing.read',
-      'billing.update', 'patients.read',
+      'billing.create',
+      'billing.payments.record',
+      'billing.read',
+      'billing.update',
+      'patients.read',
     ],
   },
   {
@@ -19,74 +22,94 @@ export const STAFF_ROLE_CATALOGUE = [
     name: 'CLINICAL_OFFICER',
     description: 'Provides clinical care under the Clinical Officers Council.',
     permissions: [
-      'appointments.read', 'clinical.create', 'clinical.read',
-      'clinical.update', 'inpatient.read', 'inpatient.admit',
-      'laboratory.read', 'laboratory.orders.create', 'patients.read',
+      'appointments.read',
+      'clinical.create',
+      'clinical.read',
+      'clinical.update',
+      'inpatient.read',
+      'inpatient.admit',
+      'laboratory.read',
+      'laboratory.orders.create',
+      'patients.read',
       // Recording consent and correcting a patient's own demographic
       // details are part of the consultation, not admin work.
       'patients.update',
       // Clinical officers run antenatal clinics and conduct deliveries.
-      'maternity.read', 'maternity.create', 'maternity.update',
+      'maternity.read',
+      'maternity.create',
+      'maternity.update',
     ],
   },
   {
     name: 'DOCTOR',
     description: 'Provides clinical care and manages clinical records.',
     permissions: [
-      'appointments.read', 'clinical.create', 'clinical.read',
+      'appointments.read',
+      'clinical.create',
+      'clinical.read',
       'clinical.update',
       // Doctors admit and authorise discharge for their own patients.
-      'inpatient.read', 'inpatient.admit', 'inpatient.discharge',
+      'inpatient.read',
+      'inpatient.admit',
+      'inpatient.discharge',
       'laboratory.read',
-      'laboratory.orders.create', 'patients.read',
+      'laboratory.orders.create',
+      'patients.read',
       // Consent to treatment and to sharing is taken during the
       // consultation; a doctor who cannot record it will not ask.
       'patients.update',
-      'maternity.read', 'maternity.create', 'maternity.update',
+      'maternity.read',
+      'maternity.create',
+      'maternity.update',
     ],
   },
   {
     name: 'INVENTORY_OFFICER',
     description: 'Manages inventory and procurement activities.',
-    permissions: [
-      'inventory.manage', 'inventory.read',
-      'procurement.create', 'procurement.read',
-    ],
+    permissions: ['inventory.manage', 'inventory.read', 'procurement.create', 'procurement.read'],
   },
   {
     name: 'LABORATORY_TECHNICIAN',
     description: 'Handles laboratory orders and results entry.',
     permissions: [
-      'laboratory.orders.create', 'laboratory.read',
-      'laboratory.results.enter', 'patients.read',
+      'laboratory.orders.create',
+      'laboratory.read',
+      'laboratory.results.enter',
+      'patients.read',
     ],
   },
   {
     name: 'NURSE',
     description: 'Provides nursing care and accesses clinical records.',
     permissions: [
-      'clinical.create', 'clinical.read',
+      'clinical.create',
+      'clinical.read',
       // Nurses admit patients to a ward and manage beds, but do not
       // discharge them: discharge stays a doctor authorisation.
-      'inpatient.read', 'inpatient.admit', 'patients.read',
+      'inpatient.read',
+      'inpatient.admit',
+      'patients.read',
       // Nurse-midwives conduct deliveries in Kenya, so the nursing cadre
       // records the whole maternity pathway.
-      'maternity.read', 'maternity.create', 'maternity.update',
+      'maternity.read',
+      'maternity.create',
+      'maternity.update',
     ],
   },
   {
     name: 'PHARMACIST',
     description: 'Handles pharmacy dispensing and pharmacy records.',
-    permissions: [
-      'patients.read', 'pharmacy.dispense', 'pharmacy.read',
-    ],
+    permissions: ['patients.read', 'pharmacy.dispense', 'pharmacy.read'],
   },
   {
     name: 'RECEPTIONIST',
     description: 'Handles patient registration and appointments.',
     permissions: [
-      'appointments.create', 'appointments.read', 'appointments.update',
-      'patients.create', 'patients.read',
+      'appointments.create',
+      'appointments.read',
+      'appointments.update',
+      'patients.create',
+      'patients.read',
       // Consent is a registration form at most facilities, so the desk
       // that registers the patient must be able to record it — and to
       // revoke it when the patient asks.

@@ -56,11 +56,7 @@ export const CONSENT_PURPOSES = [
 
 export type ConsentPurpose = (typeof CONSENT_PURPOSES)[number];
 
-export const CONSENT_METHODS = [
-  'WRITTEN',
-  'VERBAL_WITNESSED',
-  'ELECTRONIC',
-] as const;
+export const CONSENT_METHODS = ['WRITTEN', 'VERBAL_WITNESSED', 'ELECTRONIC'] as const;
 
 export type ConsentMethod = (typeof CONSENT_METHODS)[number];
 
@@ -136,10 +132,7 @@ async function resolvePatient(
     .select()
     .from(schema.patients)
     .where(
-      and(
-        eq(schema.patients.id, patientId),
-        eq(schema.patients.tenantId, facility[0].tenantId),
-      ),
+      and(eq(schema.patients.id, patientId), eq(schema.patients.tenantId, facility[0].tenantId)),
     )
     .limit(1);
 
@@ -175,10 +168,7 @@ export function deriveConsentStatus(row: {
      * because silently forgetting a permission is worse than keeping
      * it until an operator looks.
      */
-    const expiry =
-      row.expiresAt instanceof Date
-        ? row.expiresAt
-        : new Date(row.expiresAt);
+    const expiry = row.expiresAt instanceof Date ? row.expiresAt : new Date(row.expiresAt);
 
     if (!Number.isNaN(expiry.getTime()) && expiry.getTime() <= Date.now()) {
       return 'EXPIRED';
@@ -232,10 +222,7 @@ export function validateConsentInput(input: unknown): GrantConsentInput {
 
   const purpose = body.purpose;
 
-  if (
-    typeof purpose !== 'string' ||
-    !CONSENT_PURPOSES.includes(purpose as ConsentPurpose)
-  ) {
+  if (typeof purpose !== 'string' || !CONSENT_PURPOSES.includes(purpose as ConsentPurpose)) {
     throw new ConsentError(
       `purpose must be one of: ${CONSENT_PURPOSES.join(', ')}.`,
       400,
@@ -245,10 +232,7 @@ export function validateConsentInput(input: unknown): GrantConsentInput {
 
   const method = body.method;
 
-  if (
-    typeof method !== 'string' ||
-    !CONSENT_METHODS.includes(method as ConsentMethod)
-  ) {
+  if (typeof method !== 'string' || !CONSENT_METHODS.includes(method as ConsentMethod)) {
     throw new ConsentError(
       `method must be one of: ${CONSENT_METHODS.join(', ')}.`,
       400,
@@ -258,11 +242,7 @@ export function validateConsentInput(input: unknown): GrantConsentInput {
 
   const rawScope = body.scope;
 
-  if (
-    rawScope === null ||
-    typeof rawScope !== 'object' ||
-    Array.isArray(rawScope)
-  ) {
+  if (rawScope === null || typeof rawScope !== 'object' || Array.isArray(rawScope)) {
     throw new ConsentError(
       'scope must be an object naming what the patient agreed to share.',
       400,
@@ -282,11 +262,7 @@ export function validateConsentInput(input: unknown): GrantConsentInput {
     }
 
     if (typeof value !== 'boolean') {
-      throw new ConsentError(
-        `scope.${key} must be true or false.`,
-        400,
-        'INVALID_CONSENT_SCOPE',
-      );
+      throw new ConsentError(`scope.${key} must be true or false.`, 400, 'INVALID_CONSENT_SCOPE');
     }
 
     scope[key as ConsentScopeKey] = value;
@@ -298,11 +274,7 @@ export function validateConsentInput(input: unknown): GrantConsentInput {
    * look like evidence.
    */
   if (!Object.values(scope).some((granted) => granted === true)) {
-    throw new ConsentError(
-      'A consent must grant at least one scope.',
-      400,
-      'EMPTY_CONSENT_SCOPE',
-    );
+    throw new ConsentError('A consent must grant at least one scope.', 400, 'EMPTY_CONSENT_SCOPE');
   }
 
   let expiresAt: string | null = null;
@@ -337,9 +309,7 @@ export function validateConsentInput(input: unknown): GrantConsentInput {
     method: method as ConsentMethod,
     scope,
     grantedThrough:
-      typeof body.grantedThrough === 'string'
-        ? body.grantedThrough.slice(0, 40)
-        : 'STAFF',
+      typeof body.grantedThrough === 'string' ? body.grantedThrough.slice(0, 40) : 'STAFF',
     documentHash: typeof documentHash === 'string' ? documentHash : undefined,
     expiresAt,
     notes: typeof body.notes === 'string' ? body.notes.slice(0, 500) : undefined,
@@ -350,10 +320,7 @@ export function validateConsentInput(input: unknown): GrantConsentInput {
    Read
    ============================================================ */
 
-export async function listConsents(
-  context: AuthorizationContext,
-  rawPatientId: unknown,
-) {
+export async function listConsents(context: AuthorizationContext, rawPatientId: unknown) {
   const { patient } = await resolvePatient(context, rawPatientId);
 
   const rows = await db
@@ -366,8 +333,7 @@ export async function listConsents(
     patientId: patient.id,
     consents: rows.map(shapeConsent),
     hasActiveTreatmentConsent: rows.some(
-      (row) =>
-        row.purpose === 'TREATMENT' && deriveConsentStatus(row) === 'ACTIVE',
+      (row) => row.purpose === 'TREATMENT' && deriveConsentStatus(row) === 'ACTIVE',
     ),
   };
 }
@@ -399,10 +365,7 @@ export async function grantConsent(
   rawPatientId: unknown,
   rawInput: unknown,
 ) {
-  const { patient, scope: facilityScope } = await resolvePatient(
-    context,
-    rawPatientId,
-  );
+  const { patient, scope: facilityScope } = await resolvePatient(context, rawPatientId);
 
   const input = validateConsentInput(rawInput);
 
@@ -444,10 +407,7 @@ export async function revokeConsent(
   rawConsentId: unknown,
   rawReason: unknown,
 ) {
-  const { patient, scope: facilityScope } = await resolvePatient(
-    context,
-    rawPatientId,
-  );
+  const { patient, scope: facilityScope } = await resolvePatient(context, rawPatientId);
 
   const consentId = Number(rawConsentId);
 
@@ -515,15 +475,9 @@ export async function consentCountsForTenant(tenantId: number) {
       revoked: sql<number>`count(*) FILTER (WHERE status = 'REVOKED')::int`,
     })
     .from(schema.patientConsents)
-    .innerJoin(
-      schema.patients,
-      eq(schema.patients.id, schema.patientConsents.patientId),
-    )
+    .innerJoin(schema.patients, eq(schema.patients.id, schema.patientConsents.patientId))
     .where(
-      and(
-        eq(schema.patients.tenantId, tenantId),
-        isNull(schema.patients.mergedIntoPatientId),
-      ),
+      and(eq(schema.patients.tenantId, tenantId), isNull(schema.patients.mergedIntoPatientId)),
     );
 
   return row ?? { total: 0, active: 0, revoked: 0 };

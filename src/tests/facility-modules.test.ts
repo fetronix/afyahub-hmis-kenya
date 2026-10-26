@@ -82,19 +82,12 @@ function schemaSource(): string {
 function testCatalogue(): void {
   assert(FACILITY_MODULES.length === 20, 'The catalogue holds the 20 facility modules');
 
-  assert(
-    new Set(FACILITY_MODULE_IDS).size === FACILITY_MODULE_IDS.length,
-    'Module ids are unique',
-  );
+  assert(new Set(FACILITY_MODULE_IDS).size === FACILITY_MODULE_IDS.length, 'Module ids are unique');
+
+  assert(FACILITY_MODULE_IDS.includes('maternity'), 'Maternity is a provisionable module');
 
   assert(
-    FACILITY_MODULE_IDS.includes('maternity'),
-    'Maternity is a provisionable module',
-  );
-
-  assert(
-    FACILITY_MODULE_IDS.includes('patient_portal') &&
-      !isAlwaysEnabledModule('patient_portal'),
+    FACILITY_MODULE_IDS.includes('patient_portal') && !isAlwaysEnabledModule('patient_portal'),
     'Patient portal management is provisionable, not forced on every facility',
   );
 
@@ -114,10 +107,7 @@ function testCatalogue(): void {
     (module) => module.description.trim().length < 20,
   );
 
-  assert(
-    missingDescription.length === 0,
-    'Every module explains itself in one honest sentence',
-  );
+  assert(missingDescription.length === 0, 'Every module explains itself in one honest sentence');
 }
 
 /* ============================================================
@@ -163,10 +153,7 @@ function testServerContract(): void {
   const middleware = source('src/middleware/facility-module.middleware.ts');
 
   for (const id of FACILITY_MODULE_IDS) {
-    assert(
-      middleware.includes(`'${id}'`),
-      `The module guard knows "${id}"`,
-    );
+    assert(middleware.includes(`'${id}'`), `The module guard knows "${id}"`);
   }
 
   assert(
@@ -227,10 +214,7 @@ function testData(): void {
   const seed = source('src/db/seed.ts');
   const firstFacility = seed.slice(seed.indexOf('NRB-CENTRAL'), seed.indexOf('NRB-SOUTH'));
 
-  assert(
-    firstFacility.includes("'maternity'"),
-    'The seeded referral hospital enables Maternity',
-  );
+  assert(firstFacility.includes("'maternity'"), 'The seeded referral hospital enables Maternity');
 }
 
 /* ============================================================

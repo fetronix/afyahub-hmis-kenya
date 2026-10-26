@@ -32,10 +32,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function readRepoFile(relativePath: string): string {
@@ -87,8 +84,14 @@ function testMigration(): void {
   assertEqual(sql.charCodeAt(0) !== 0xfeff, true, 'the migration has no BOM');
 
   const schema = schemaSource();
-  assert(schema.includes('export const insuranceClaimItems'), 'schema mirrors the claim lines table');
-  assert(schema.includes("settledPaymentId: integer('settled_payment_id')"), 'schema has settledPaymentId');
+  assert(
+    schema.includes('export const insuranceClaimItems'),
+    'schema mirrors the claim lines table',
+  );
+  assert(
+    schema.includes("settledPaymentId: integer('settled_payment_id')"),
+    'schema has settledPaymentId',
+  );
 
   /* Every .sql in the journal must load cleanly. */
   const journal = JSON.parse(readRepoFile('drizzle/meta/_journal.json')) as {
@@ -132,14 +135,8 @@ function testStateMachine(): void {
     service.includes("const OPEN_STATUSES = ['Draft', 'Submitted', 'Approved']"),
     'only one claim may be open per invoice',
   );
-  assert(
-    service.includes(".for('update')"),
-    'the invoice is locked while a claim is drafted',
-  );
-  assert(
-    service.includes('INVALID_TRANSITION'),
-    'illegal status jumps are refused',
-  );
+  assert(service.includes(".for('update')"), 'the invoice is locked while a claim is drafted');
+  assert(service.includes('INVALID_TRANSITION'), 'illegal status jumps are refused');
   assert(
     service.includes('APPROVED_EXCEEDS_CLAIM'),
     'a payer cannot approve more than was claimed',
@@ -158,18 +155,12 @@ function testStateMachine(): void {
 
   const settleBody = service.slice(settleIndex);
 
-  assert(
-    settleBody.includes('insert(schema.billingPayments)'),
-    'settling inserts a payment',
-  );
+  assert(settleBody.includes('insert(schema.billingPayments)'), 'settling inserts a payment');
   assert(
     settleBody.includes('update(schema.billingInvoices)'),
     'settling updates the invoice balance',
   );
-  assert(
-    settleBody.includes("status: 'Settled'"),
-    'only the settle path marks a claim Settled',
-  );
+  assert(settleBody.includes("status: 'Settled'"), 'only the settle path marks a claim Settled');
 
   /* Nothing else may set Settled. */
   const settledWrites = service.match(/status:\s*'Settled'/g) ?? [];
@@ -183,10 +174,7 @@ function testStateMachine(): void {
     settleBody.includes('Math.min(approvedCents, balanceCents)'),
     'settlement is capped at the outstanding balance',
   );
-  assert(
-    settleBody.includes('unappliedCents'),
-    'the unapplied remainder is reported',
-  );
+  assert(settleBody.includes('unappliedCents'), 'the unapplied remainder is reported');
 }
 
 /* ============================================================
@@ -229,7 +217,11 @@ function testRoutes(): void {
    * adding one here would take the claims screen away from clerks who
    * can see it today. Tighten this once roles are granted the code.
    */
-  for (const route of ['/api/claims', '/api/claims/:id/items', '/api/invoices/:id/claimable-lines']) {
+  for (const route of [
+    '/api/claims',
+    '/api/claims/:id/items',
+    '/api/invoices/:id/claimable-lines',
+  ]) {
     const index = app.indexOf(`app.get(\n    '${route}'`);
     assert(index > -1, `GET ${route} is registered`);
 
@@ -273,14 +265,8 @@ function testNoInventedData(): void {
     assert(!ui.includes(invention), `the screen must not prefill "${invention}"`);
   }
 
-  assert(
-    !ui.includes('Math.random()'),
-    'claim numbers are not invented in the browser',
-  );
-  assert(
-    !/4450\.00/.test(ui),
-    'no hardcoded claim amount',
-  );
+  assert(!ui.includes('Math.random()'), 'claim numbers are not invented in the browser');
+  assert(!/4450\.00/.test(ui), 'no hardcoded claim amount');
 
   /* Unsupported compliance claims that used to be printed on the screen. */
   const overclaims = [
@@ -296,10 +282,7 @@ function testNoInventedData(): void {
 
   /* And the truthful statement must be present. */
   assert(ui.includes('No live SHA connection'), 'the screen states there is no SHA connection');
-  assert(
-    ui.includes('does not transmit claims'),
-    'the screen says claims are not transmitted',
-  );
+  assert(ui.includes('does not transmit claims'), 'the screen says claims are not transmitted');
 
   /* The module must not call any external URL. */
   assert(!/https?:\/\//.test(ui), 'the claims screen makes no external requests');

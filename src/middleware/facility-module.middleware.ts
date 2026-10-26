@@ -1,9 +1,6 @@
 ﻿import type { NextFunction, Response } from 'express';
 import type { AuthRequest } from '../auth/auth.middleware.ts';
-import {
-  ScopeAccessError,
-  resolveFacilityScope,
-} from '../auth/scope.service.ts';
+import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import * as queries from '../db/queries.ts';
 
 export type FacilityModuleId =
@@ -29,11 +26,7 @@ export type FacilityModuleId =
   | 'audit';
 
 export function requireFacilityModule(moduleId: FacilityModuleId) {
-  return async (
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     const context = req.authContext;
 
     if (!context) {
@@ -48,25 +41,18 @@ export function requireFacilityModule(moduleId: FacilityModuleId) {
     const queryFacilityId = req.query.facilityId;
     const bodyFacilityId = req.body?.facilityId;
 
-    const parseFacilityId = (
-      value: unknown,
-    ): number | undefined | null => {
+    const parseFacilityId = (value: unknown): number | undefined | null => {
       if (value === undefined || value === null || value === '') {
         return undefined;
       }
 
-      if (
-        typeof value !== 'string' &&
-        typeof value !== 'number'
-      ) {
+      if (typeof value !== 'string' && typeof value !== 'number') {
         return null;
       }
 
       const parsed = Number(value);
 
-      return Number.isSafeInteger(parsed) && parsed > 0
-        ? parsed
-        : null;
+      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
     };
 
     const queryId = parseFacilityId(queryFacilityId);
@@ -81,11 +67,7 @@ export function requireFacilityModule(moduleId: FacilityModuleId) {
       return;
     }
 
-    if (
-      queryId !== undefined &&
-      bodyId !== undefined &&
-      queryId !== bodyId
-    ) {
+    if (queryId !== undefined && bodyId !== undefined && queryId !== bodyId) {
       res.status(403).json({
         success: false,
         error: 'FACILITY_SCOPE_MISMATCH',
@@ -98,25 +80,15 @@ export function requireFacilityModule(moduleId: FacilityModuleId) {
 
     // Global superadmins may view platform-wide audit logs without
     // selecting a facility. Facility-specific requests remain gated.
-    if (
-      moduleId === 'audit' &&
-      context.isSuperAdmin &&
-      requestedFacilityId === undefined
-    ) {
+    if (moduleId === 'audit' && context.isSuperAdmin && requestedFacilityId === undefined) {
       next();
       return;
     }
 
     try {
-      const facilityId = resolveFacilityScope(
-        context,
-        requestedFacilityId,
-      );
+      const facilityId = resolveFacilityScope(context, requestedFacilityId);
 
-      const facility = await queries.getFacilityByIdScoped(
-        context,
-        facilityId,
-      );
+      const facility = await queries.getFacilityByIdScoped(context, facilityId);
 
       if (!facility) {
         res.status(404).json({
@@ -127,13 +99,10 @@ export function requireFacilityModule(moduleId: FacilityModuleId) {
         return;
       }
 
-      const enabledModules = Array.isArray(facility.enabledModules)
-        ? facility.enabledModules
-        : [];
+      const enabledModules = Array.isArray(facility.enabledModules) ? facility.enabledModules : [];
 
       // "claims" is the frontend name; the saved module is "insurance".
-      const normalizedModuleId =
-        moduleId === 'insurance' ? 'insurance' : moduleId;
+      const normalizedModuleId = moduleId === 'insurance' ? 'insurance' : moduleId;
 
       if (!enabledModules.includes(normalizedModuleId)) {
         res.status(403).json({

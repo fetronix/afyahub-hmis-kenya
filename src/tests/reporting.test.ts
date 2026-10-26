@@ -50,10 +50,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function readRepoFile(relativePath: string): string {
@@ -89,16 +86,9 @@ function testDateParsing(): void {
 
   /* A bad date must never surface as an Invalid Date object. */
   const invalid = parseLooseDate('2026-13-45');
-  assert(
-    invalid === null || !Number.isNaN(invalid.getTime()),
-    'never returns an Invalid Date',
-  );
+  assert(invalid === null || !Number.isNaN(invalid.getTime()), 'never returns an Invalid Date');
 
-  assertEqual(
-    formatDateKey(new Date(2026, 0, 5)),
-    '2026-01-05',
-    'date key pads month and day',
-  );
+  assertEqual(formatDateKey(new Date(2026, 0, 5)), '2026-01-05', 'date key pads month and day');
 }
 
 /* ============================================================
@@ -114,24 +104,12 @@ function testStayLength(): void {
     'same-day stay is 0 whole days',
   );
 
-  assertEqual(
-    daysBetween(start, new Date(2026, 0, 2, 10, 0, 0)),
-    1,
-    '25 hours is 1 day',
-  );
+  assertEqual(daysBetween(start, new Date(2026, 0, 2, 10, 0, 0)), 1, '25 hours is 1 day');
 
-  assertEqual(
-    daysBetween(start, new Date(2026, 0, 8, 9, 0, 0)),
-    7,
-    'exactly 7 days is 7',
-  );
+  assertEqual(daysBetween(start, new Date(2026, 0, 8, 9, 0, 0)), 7, 'exactly 7 days is 7');
 
   /* Clock skew or a future admission date must not produce negative days. */
-  assertEqual(
-    daysBetween(start, new Date(2025, 11, 30)),
-    0,
-    'a negative interval clamps to 0',
-  );
+  assertEqual(daysBetween(start, new Date(2025, 11, 30)), 0, 'a negative interval clamps to 0');
 
   assertEqual(roundDays(6.449), 6.4, 'roundDays truncates to one decimal');
   assertEqual(roundDays(6.46), 6.5, 'roundDays rounds up at the second decimal');
@@ -196,10 +174,7 @@ function testBuckets(): void {
   /* Every integer 0..120 lands in exactly one bucket. */
   for (let days = 0; days <= 120; days += 1) {
     const index = bucketIndexFor(days);
-    assert(
-      index >= 0 && index < STAY_BUCKETS.length,
-      `${days} days falls inside the histogram`,
-    );
+    assert(index >= 0 && index < STAY_BUCKETS.length, `${days} days falls inside the histogram`);
   }
 
   const buckets = bucketStays([0, 0, 2, 4, 9, 12, 21]);
@@ -231,10 +206,7 @@ function testOverstay(): void {
 function testBedDay(): void {
   const day = new Date(2026, 9, 21, 0, 0, 0);
 
-  assert(
-    occupiesBedOn(new Date(2026, 9, 21, 9, 0), null, day),
-    'admitted on the day occupies it',
-  );
+  assert(occupiesBedOn(new Date(2026, 9, 21, 9, 0), null, day), 'admitted on the day occupies it');
 
   assert(
     !occupiesBedOn(new Date(2026, 9, 22, 9, 0), null, day),
@@ -289,14 +261,8 @@ function testRouteWiring(): void {
     assert(index > -1, `${route} is registered`);
 
     const window = app.slice(index, index + 300);
-    assert(
-      window.includes("requirePermission('reports.read')"),
-      `${route} requires reports.read`,
-    );
-    assert(
-      window.includes('requireAuthContext'),
-      `${route} resolves the auth context`,
-    );
+    assert(window.includes("requirePermission('reports.read')"), `${route} requires reports.read`);
+    assert(window.includes('requireAuthContext'), `${route} resolves the auth context`);
   }
 
   /* The revenue route must reject a malformed or inverted range. */
@@ -332,20 +298,11 @@ function testUiWiring(): void {
   assert(app.includes('<ReportsModule />'), 'App mounts the reports module');
 
   const sidebar = readRepoFile('src/components/Sidebar.tsx');
-  assert(
-    sidebar.includes("id: 'analytics'"),
-    'sidebar lists Reports & Revenue',
-  );
-  assert(
-    sidebar.includes("analytics: ['reports.read']"),
-    'sidebar gates reports on reports.read',
-  );
+  assert(sidebar.includes("id: 'analytics'"), 'sidebar lists Reports & Revenue');
+  assert(sidebar.includes("analytics: ['reports.read']"), 'sidebar gates reports on reports.read');
 
   const header = readRepoFile('src/components/Header.tsx');
-  assert(
-    header.includes("'Reports, Revenue & Bed Utilisation'"),
-    'header titles the module',
-  );
+  assert(header.includes("'Reports, Revenue & Bed Utilisation'"), 'header titles the module');
 
   const module = readRepoFile('src/components/modules/ReportsModule.tsx');
 
@@ -358,10 +315,7 @@ function testUiWiring(): void {
     assert(module.includes(section), `reports screen renders "${section}"`);
   }
 
-  assert(
-    module.includes('PERIODS.map'),
-    'reports screen offers a revenue period selector',
-  );
+  assert(module.includes('PERIODS.map'), 'reports screen offers a revenue period selector');
   assert(
     !module.includes('parseFloat(') && !module.includes('Number(row.revenue) * 100'),
     'reports screen does not recompute money on the client',

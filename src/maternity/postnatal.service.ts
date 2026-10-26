@@ -28,10 +28,7 @@ import {
   type FieldError,
 } from '../maternity/maternity-contracts.ts';
 
-import {
-  MaternityDomainError,
-  resolvePregnancy,
-} from '../maternity/maternity.service.ts';
+import { MaternityDomainError, resolvePregnancy } from '../maternity/maternity.service.ts';
 
 export type PostnatalVisitInput = {
   pregnancyId: number;
@@ -109,10 +106,7 @@ export async function recordPostnatalVisit(
       );
     }
 
-    dayPostpartum = daysBetween(
-      delivery.deliveredAt.slice(0, 10),
-      visitDate,
-    );
+    dayPostpartum = daysBetween(delivery.deliveredAt.slice(0, 10), visitDate);
   } else if (input.dayPostpartum !== undefined) {
     dayPostpartum = Number(input.dayPostpartum);
   }
@@ -243,10 +237,7 @@ export async function recordPostnatalVisit(
   return created;
 }
 
-export async function listPostnatalVisits(
-  context: AuthorizationContext,
-  pregnancyId: number,
-) {
+export async function listPostnatalVisits(context: AuthorizationContext, pregnancyId: number) {
   const pregnancy = await resolvePregnancy(context, pregnancyId);
 
   return db
@@ -287,10 +278,7 @@ export async function listPostnatalVisitsForFacility(
       },
     })
     .from(schema.postnatalVisits)
-    .innerJoin(
-      schema.patients,
-      eq(schema.patients.id, schema.postnatalVisits.patientId),
-    )
+    .innerJoin(schema.patients, eq(schema.patients.id, schema.postnatalVisits.patientId))
     .where(and(...conditions))
     .orderBy(desc(schema.postnatalVisits.visitDate))
     .limit(50);

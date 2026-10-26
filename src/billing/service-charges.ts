@@ -16,10 +16,7 @@
 
 import type * as schema from '../db/schema.ts';
 
-import {
-  type ChargeRequest,
-  type ChargeResult,
-} from './billing.service.ts';
+import { type ChargeRequest, type ChargeResult } from './billing.service.ts';
 import { chargeAndRecord } from './charge-attempts.ts';
 import { billingServiceKeys } from './tariff-codes.ts';
 import { codesForFamily } from './tariff-matching.ts';
@@ -59,9 +56,7 @@ export type ChargeableLabOrder = Pick<
   testCode?: string | null;
 };
 
-export function labOrderChargeRequest(
-  order: ChargeableLabOrder,
-): ChargeRequest {
+export function labOrderChargeRequest(order: ChargeableLabOrder): ChargeRequest {
   return {
     tenantId: order.tenantId,
     facilityId: order.facilityId,
@@ -72,10 +67,7 @@ export function labOrderChargeRequest(
       code: order.testCode ?? null,
       name: order.testName,
     }),
-    serviceKeys: billingServiceKeys('LABORATORY', [
-      order.testCode ?? null,
-      order.testName,
-    ]),
+    serviceKeys: billingServiceKeys('LABORATORY', [order.testCode ?? null, order.testName]),
     family: 'LABORATORY',
     serviceName: order.testName,
     aliases: order.testCode ? [order.testCode] : [],
@@ -153,9 +145,7 @@ export type ChargeableRadiologyOrder = Pick<
   'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterId' | 'procedureName'
 >;
 
-export function radiologyChargeRequest(
-  order: ChargeableRadiologyOrder,
-): ChargeRequest {
+export function radiologyChargeRequest(order: ChargeableRadiologyOrder): ChargeRequest {
   return {
     tenantId: order.tenantId,
     facilityId: order.facilityId,

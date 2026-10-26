@@ -36,18 +36,9 @@ import 'dotenv/config';
 
 import { db } from '../db';
 
-import {
-  permissions,
-  roles,
-  rolePermissions,
-} from '../db/schema';
+import { permissions, roles, rolePermissions } from '../db/schema';
 
-import {
-  and,
-  eq,
-  isNull,
-  isNotNull,
-} from 'drizzle-orm';
+import { and, eq, isNull, isNotNull } from 'drizzle-orm';
 
 /*
  * A seed that writes is a deployment step, so it must be possible to see
@@ -70,16 +61,16 @@ function plan(action: 'create' | 'update' | 'grant', message: string): void {
   else if (action === 'update') plannedUpdates += 1;
   else plannedInserts += 1;
 
-  console.log(`  ${dryRun ? `${YELLOW}would ${action}${RESET}` : `${action}d`} ${DIM}${message}${RESET}`);
+  console.log(
+    `  ${dryRun ? `${YELLOW}would ${action}${RESET}` : `${action}d`} ${DIM}${message}${RESET}`,
+  );
 }
-
 
 /* ============================================================
    PERMISSION DEFINITIONS
    ============================================================ */
 
 const PERMISSIONS = [
-
   /* ==========================================================
      PLATFORM
      ========================================================== */
@@ -88,26 +79,22 @@ const PERMISSIONS = [
     code: 'platform.read',
     name: 'View Platform',
     module: 'platform',
-    description:
-      'View platform-wide JaliCare administration information.',
+    description: 'View platform-wide JaliCare administration information.',
   },
 
   {
     code: 'platform.manage',
     name: 'Manage Platform',
     module: 'platform',
-    description:
-      'Manage global JaliCare platform configuration.',
+    description: 'Manage global JaliCare platform configuration.',
   },
 
   {
     code: 'platform.settings.manage',
     name: 'Manage Platform Settings',
     module: 'platform',
-    description:
-      'Manage global platform settings.',
+    description: 'Manage global platform settings.',
   },
-
 
   /* ==========================================================
      TENANTS
@@ -117,34 +104,29 @@ const PERMISSIONS = [
     code: 'tenants.read',
     name: 'View Tenants',
     module: 'tenants',
-    description:
-      'View registered healthcare organizations and tenants.',
+    description: 'View registered healthcare organizations and tenants.',
   },
 
   {
     code: 'tenants.create',
     name: 'Create Tenants',
     module: 'tenants',
-    description:
-      'Create new healthcare organization tenants.',
+    description: 'Create new healthcare organization tenants.',
   },
 
   {
     code: 'tenants.update',
     name: 'Update Tenants',
     module: 'tenants',
-    description:
-      'Update tenant information.',
+    description: 'Update tenant information.',
   },
 
   {
     code: 'tenants.deactivate',
     name: 'Deactivate Tenants',
     module: 'tenants',
-    description:
-      'Deactivate a tenant organization.',
+    description: 'Deactivate a tenant organization.',
   },
-
 
   /* ==========================================================
      FACILITIES
@@ -154,50 +136,43 @@ const PERMISSIONS = [
     code: 'facilities.read',
     name: 'View Facilities',
     module: 'facilities',
-    description:
-      'View healthcare facilities.',
+    description: 'View healthcare facilities.',
   },
 
   {
     code: 'facilities.create',
     name: 'Create Facilities',
     module: 'facilities',
-    description:
-      'Create healthcare facilities.',
+    description: 'Create healthcare facilities.',
   },
 
   {
     code: 'facilities.update',
     name: 'Update Facilities',
     module: 'facilities',
-    description:
-      'Update healthcare facility information.',
+    description: 'Update healthcare facility information.',
   },
 
   {
     code: 'facilities.modules.manage',
     name: 'Manage Facility Modules',
     module: 'facilities',
-    description:
-      'Turn a facility module on or off, which also opens or closes that module\'s API.',
+    description: "Turn a facility module on or off, which also opens or closes that module's API.",
   },
 
   {
     code: 'facilities.approve',
     name: 'Approve Facilities',
     module: 'facilities',
-    description:
-      'Approve facility onboarding.',
+    description: 'Approve facility onboarding.',
   },
 
   {
     code: 'facilities.deactivate',
     name: 'Deactivate Facilities',
     module: 'facilities',
-    description:
-      'Deactivate healthcare facilities.',
+    description: 'Deactivate healthcare facilities.',
   },
-
 
   /* ==========================================================
      USERS
@@ -207,56 +182,49 @@ const PERMISSIONS = [
     code: 'users.read',
     name: 'View Users',
     module: 'users',
-    description:
-      'View users within the authorized scope.',
+    description: 'View users within the authorized scope.',
   },
 
   {
     code: 'users.create',
     name: 'Create Users',
     module: 'users',
-    description:
-      'Create user accounts.',
+    description: 'Create user accounts.',
   },
 
   {
     code: 'users.update',
     name: 'Update Users',
     module: 'users',
-    description:
-      'Update user accounts.',
+    description: 'Update user accounts.',
   },
 
   {
     code: 'users.deactivate',
     name: 'Deactivate Users',
     module: 'users',
-    description:
-      'Deactivate user accounts.',
+    description: 'Deactivate user accounts.',
   },
 
   {
     code: 'users.invite',
     name: 'Invite Staff',
     module: 'users',
-    description:
-      'Invite staff to an authorized facility using a secure invitation link.',
+    description: 'Invite staff to an authorized facility using a secure invitation link.',
   },
 
   {
     code: 'users.invitations.read',
     name: 'View Staff Invitations',
     module: 'users',
-    description:
-      'View staff invitations within the authorized scope.',
+    description: 'View staff invitations within the authorized scope.',
   },
 
   {
     code: 'users.invitations.revoke',
     name: 'Revoke Staff Invitations',
     module: 'users',
-    description:
-      'Revoke unused staff invitations within the authorized scope.',
+    description: 'Revoke unused staff invitations within the authorized scope.',
   },
   {
     code: 'users.invitations.reissue',
@@ -270,10 +238,8 @@ const PERMISSIONS = [
     code: 'users.roles.manage',
     name: 'Manage User Roles',
     module: 'users',
-    description:
-      'Assign and revoke user roles.',
+    description: 'Assign and revoke user roles.',
   },
-
 
   /* ==========================================================
      ROLES
@@ -283,34 +249,29 @@ const PERMISSIONS = [
     code: 'roles.read',
     name: 'View Roles',
     module: 'roles',
-    description:
-      'View roles and their permissions.',
+    description: 'View roles and their permissions.',
   },
 
   {
     code: 'roles.create',
     name: 'Create Roles',
     module: 'roles',
-    description:
-      'Create custom roles.',
+    description: 'Create custom roles.',
   },
 
   {
     code: 'roles.update',
     name: 'Update Roles',
     module: 'roles',
-    description:
-      'Update custom roles.',
+    description: 'Update custom roles.',
   },
 
   {
     code: 'roles.permissions.manage',
     name: 'Manage Role Permissions',
     module: 'roles',
-    description:
-      'Assign and revoke permissions from roles.',
+    description: 'Assign and revoke permissions from roles.',
   },
-
 
   /* ==========================================================
      AUTHENTICATION
@@ -320,34 +281,29 @@ const PERMISSIONS = [
     code: 'auth.sessions.read',
     name: 'View Sessions',
     module: 'authentication',
-    description:
-      'View active authentication sessions.',
+    description: 'View active authentication sessions.',
   },
 
   {
     code: 'auth.sessions.revoke',
     name: 'Revoke Sessions',
     module: 'authentication',
-    description:
-      'Revoke authentication sessions.',
+    description: 'Revoke authentication sessions.',
   },
 
   {
     code: 'auth.password.reset',
     name: 'Reset Passwords',
     module: 'authentication',
-    description:
-      'Perform authorized password reset operations.',
+    description: 'Perform authorized password reset operations.',
   },
 
   {
     code: 'auth.mfa.manage',
     name: 'Manage MFA',
     module: 'authentication',
-    description:
-      'Manage multi-factor authentication settings.',
+    description: 'Manage multi-factor authentication settings.',
   },
-
 
   /* ==========================================================
      PRACTITIONERS
@@ -357,34 +313,29 @@ const PERMISSIONS = [
     code: 'practitioners.read',
     name: 'View Practitioners',
     module: 'practitioners',
-    description:
-      'View healthcare practitioners.',
+    description: 'View healthcare practitioners.',
   },
 
   {
     code: 'practitioners.create',
     name: 'Create Practitioners',
     module: 'practitioners',
-    description:
-      'Create practitioner records.',
+    description: 'Create practitioner records.',
   },
 
   {
     code: 'practitioners.update',
     name: 'Update Practitioners',
     module: 'practitioners',
-    description:
-      'Update practitioner information.',
+    description: 'Update practitioner information.',
   },
 
   {
     code: 'practitioners.verify',
     name: 'Verify Practitioner Credentials',
     module: 'practitioners',
-    description:
-      'Verify professional credentials and registrations.',
+    description: 'Verify professional credentials and registrations.',
   },
-
 
   /* ==========================================================
      PATIENTS
@@ -394,34 +345,29 @@ const PERMISSIONS = [
     code: 'patients.read',
     name: 'View Patients',
     module: 'patients',
-    description:
-      'View patient records within the authorized facility.',
+    description: 'View patient records within the authorized facility.',
   },
 
   {
     code: 'patients.create',
     name: 'Register Patients',
     module: 'patients',
-    description:
-      'Register new patients.',
+    description: 'Register new patients.',
   },
 
   {
     code: 'patients.update',
     name: 'Update Patients',
     module: 'patients',
-    description:
-      'Update patient demographic information.',
+    description: 'Update patient demographic information.',
   },
 
   {
     code: 'patients.deactivate',
     name: 'Deactivate Patients',
     module: 'patients',
-    description:
-      'Deactivate patient records where permitted.',
+    description: 'Deactivate patient records where permitted.',
   },
-
 
   /* ==========================================================
      PATIENT PORTAL
@@ -484,11 +430,8 @@ const PERMISSIONS = [
     code: 'interop.fhir.patient.read',
     name: 'Export FHIR Patient Resource',
     module: 'interop',
-    description:
-      'Read and export patient demographics through the FHIR interoperability endpoint.',
+    description: 'Read and export patient demographics through the FHIR interoperability endpoint.',
   },
-
-
 
   /* ==========================================================
      CLINICAL
@@ -498,26 +441,22 @@ const PERMISSIONS = [
     code: 'clinical.read',
     name: 'View Clinical Records',
     module: 'clinical',
-    description:
-      'View clinical records.',
+    description: 'View clinical records.',
   },
 
   {
     code: 'clinical.create',
     name: 'Create Clinical Records',
     module: 'clinical',
-    description:
-      'Create clinical records.',
+    description: 'Create clinical records.',
   },
 
   {
     code: 'clinical.update',
     name: 'Update Clinical Records',
     module: 'clinical',
-    description:
-      'Update clinical records.',
+    description: 'Update clinical records.',
   },
-
 
   /* ==========================================================
      APPOINTMENTS
@@ -527,34 +466,29 @@ const PERMISSIONS = [
     code: 'appointments.read',
     name: 'View Appointments',
     module: 'appointments',
-    description:
-      'View patient appointments.',
+    description: 'View patient appointments.',
   },
 
   {
     code: 'appointments.create',
     name: 'Create Appointments',
     module: 'appointments',
-    description:
-      'Create appointments.',
+    description: 'Create appointments.',
   },
 
   {
     code: 'appointments.update',
     name: 'Update Appointments',
     module: 'appointments',
-    description:
-      'Update appointments.',
+    description: 'Update appointments.',
   },
 
   {
     code: 'appointments.cancel',
     name: 'Cancel Appointments',
     module: 'appointments',
-    description:
-      'Cancel appointments.',
+    description: 'Cancel appointments.',
   },
-
 
   /* ==========================================================
      MATERNITY / MCH
@@ -564,8 +498,7 @@ const PERMISSIONS = [
     code: 'maternity.read',
     name: 'View Maternity Records',
     module: 'maternity',
-    description:
-      'View antenatal visits, labour records, partographs and delivery records.',
+    description: 'View antenatal visits, labour records, partographs and delivery records.',
   },
 
   {
@@ -580,8 +513,7 @@ const PERMISSIONS = [
     code: 'maternity.update',
     name: 'Update Maternity Records',
     module: 'maternity',
-    description:
-      'Correct or close maternity records, including recording a delivery.',
+    description: 'Correct or close maternity records, including recording a delivery.',
   },
 
   /* ==========================================================
@@ -592,24 +524,21 @@ const PERMISSIONS = [
     code: 'inpatient.read',
     name: 'View Inpatient Records',
     module: 'inpatient',
-    description:
-      'View inpatient admissions and records.',
+    description: 'View inpatient admissions and records.',
   },
 
   {
     code: 'inpatient.admit',
     name: 'Admit Patients',
     module: 'inpatient',
-    description:
-      'Admit patients.',
+    description: 'Admit patients.',
   },
 
   {
     code: 'inpatient.discharge',
     name: 'Discharge Patients',
     module: 'inpatient',
-    description:
-      'Discharge admitted patients.',
+    description: 'Discharge admitted patients.',
   },
 
   /*
@@ -627,8 +556,7 @@ const PERMISSIONS = [
     code: 'inpatient.wards.create',
     name: 'Create Wards',
     module: 'inpatient',
-    description:
-      'Add wards to this facility. Reading wards needs inpatient.read.',
+    description: 'Add wards to this facility. Reading wards needs inpatient.read.',
   },
 
   {
@@ -651,16 +579,14 @@ const PERMISSIONS = [
     code: 'inpatient.beds.create',
     name: 'Create Beds',
     module: 'inpatient',
-    description:
-      'Add beds to a ward, singly or in a numbered batch.',
+    description: 'Add beds to a ward, singly or in a numbered batch.',
   },
 
   {
     code: 'inpatient.beds.update',
     name: 'Update Beds',
     module: 'inpatient',
-    description:
-      'Change a bed number, type, daily charge or housekeeping status.',
+    description: 'Change a bed number, type, daily charge or housekeeping status.',
   },
 
   {
@@ -671,7 +597,6 @@ const PERMISSIONS = [
       'Delete a bed that has never held a patient. A bed with admission history can only be taken out of service.',
   },
 
-
   /* ==========================================================
      LABORATORY
      ========================================================== */
@@ -680,34 +605,29 @@ const PERMISSIONS = [
     code: 'laboratory.read',
     name: 'View Laboratory',
     module: 'laboratory',
-    description:
-      'View laboratory records.',
+    description: 'View laboratory records.',
   },
 
   {
     code: 'laboratory.orders.create',
     name: 'Create Laboratory Orders',
     module: 'laboratory',
-    description:
-      'Create laboratory test orders.',
+    description: 'Create laboratory test orders.',
   },
 
   {
     code: 'laboratory.results.enter',
     name: 'Enter Laboratory Results',
     module: 'laboratory',
-    description:
-      'Enter laboratory results.',
+    description: 'Enter laboratory results.',
   },
 
   {
     code: 'laboratory.results.verify',
     name: 'Verify Laboratory Results',
     module: 'laboratory',
-    description:
-      'Verify laboratory results.',
+    description: 'Verify laboratory results.',
   },
-
 
   /* ==========================================================
      PHARMACY
@@ -717,26 +637,22 @@ const PERMISSIONS = [
     code: 'pharmacy.read',
     name: 'View Pharmacy',
     module: 'pharmacy',
-    description:
-      'View pharmacy records.',
+    description: 'View pharmacy records.',
   },
 
   {
     code: 'pharmacy.dispense',
     name: 'Dispense Medicines',
     module: 'pharmacy',
-    description:
-      'Dispense prescribed medicines.',
+    description: 'Dispense prescribed medicines.',
   },
 
   {
     code: 'pharmacy.inventory.manage',
     name: 'Manage Pharmacy Inventory',
     module: 'pharmacy',
-    description:
-      'Manage pharmacy inventory.',
+    description: 'Manage pharmacy inventory.',
   },
-
 
   /* ==========================================================
      INVENTORY
@@ -746,18 +662,15 @@ const PERMISSIONS = [
     code: 'inventory.read',
     name: 'View Inventory',
     module: 'inventory',
-    description:
-      'View inventory.',
+    description: 'View inventory.',
   },
 
   {
     code: 'inventory.manage',
     name: 'Manage Inventory',
     module: 'inventory',
-    description:
-      'Manage inventory items and stock.',
+    description: 'Manage inventory items and stock.',
   },
-
 
   /* ==========================================================
      BILLING
@@ -767,36 +680,31 @@ const PERMISSIONS = [
     code: 'billing.read',
     name: 'View Billing',
     module: 'billing',
-    description:
-      'View billing information.',
+    description: 'View billing information.',
   },
 
   {
     code: 'billing.create',
     name: 'Create Bills',
     module: 'billing',
-    description:
-      'Create patient bills.',
+    description: 'Create patient bills.',
   },
 
   {
     code: 'billing.update',
     name: 'Update Bills',
     module: 'billing',
-    description:
-      'Update billing records.',
+    description: 'Update billing records.',
   },
 
   {
     code: 'billing.payments.record',
     name: 'Record Payments',
     module: 'billing',
-    description:
-      'Record patient payments.',
+    description: 'Record patient payments.',
   },
 
-
-    /* ==========================================================
+  /* ==========================================================
      FACILITY SERVICE TARIFFS
      ========================================================== */
 
@@ -813,7 +721,7 @@ const PERMISSIONS = [
     module: 'billing',
     description: 'Create, update, and deactivate facility service tariffs.',
   },
-/* ==========================================================
+  /* ==========================================================
      INSURANCE / SHA
      ========================================================== */
 
@@ -821,34 +729,29 @@ const PERMISSIONS = [
     code: 'insurance.read',
     name: 'View Insurance',
     module: 'insurance',
-    description:
-      'View insurance and SHA information.',
+    description: 'View insurance and SHA information.',
   },
 
   {
     code: 'insurance.claims.create',
     name: 'Create Claims',
     module: 'insurance',
-    description:
-      'Create insurance or SHA claims.',
+    description: 'Create insurance or SHA claims.',
   },
 
   {
     code: 'insurance.claims.submit',
     name: 'Submit Claims',
     module: 'insurance',
-    description:
-      'Submit insurance or SHA claims.',
+    description: 'Submit insurance or SHA claims.',
   },
 
   {
     code: 'insurance.claims.manage',
     name: 'Manage Claims',
     module: 'insurance',
-    description:
-      'Manage insurance and SHA claims.',
+    description: 'Manage insurance and SHA claims.',
   },
-
 
   /* ==========================================================
      PROCUREMENT
@@ -858,56 +761,47 @@ const PERMISSIONS = [
     code: 'procurement.read',
     name: 'View Procurement',
     module: 'procurement',
-    description:
-      'View procurement information.',
+    description: 'View procurement information.',
   },
 
   {
     code: 'procurement.create',
     name: 'Create Procurement Requests',
     module: 'procurement',
-    description:
-      'Create procurement requests.',
+    description: 'Create procurement requests.',
   },
 
   {
     code: 'procurement.approve',
     name: 'Approve Procurement',
     module: 'procurement',
-    description:
-      'Approve procurement transactions.',
+    description: 'Approve procurement transactions.',
   },
-
 
   /* ==========================================================
      REPORTS
      ========================================================== */
 
-
   {
     code: 'reports.read',
     name: 'View Reports',
     module: 'reports',
-    description:
-      'View authorized reports.',
+    description: 'View authorized reports.',
   },
 
   {
     code: 'public_health.reports.create',
     name: 'Create Public Health Reports',
     module: 'public_health',
-    description:
-      'Record disease surveillance reports for an authorized facility.',
+    description: 'Record disease surveillance reports for an authorized facility.',
   },
 
   {
     code: 'reports.export',
     name: 'Export Reports',
     module: 'reports',
-    description:
-      'Export authorized reports.',
+    description: 'Export authorized reports.',
   },
-
 
   /* ==========================================================
      AUDIT
@@ -917,18 +811,15 @@ const PERMISSIONS = [
     code: 'audit.read',
     name: 'View Audit Logs',
     module: 'audit',
-    description:
-      'View system audit logs.',
+    description: 'View system audit logs.',
   },
 
   {
     code: 'audit.security.read',
     name: 'View Security Audit Logs',
     module: 'audit',
-    description:
-      'View authentication and security audit events.',
+    description: 'View authentication and security audit events.',
   },
-
 
   /* ==========================================================
      SYSTEM
@@ -938,78 +829,57 @@ const PERMISSIONS = [
     code: 'system.health.read',
     name: 'View System Health',
     module: 'system',
-    description:
-      'View system health and operational status.',
+    description: 'View system health and operational status.',
   },
 
   {
     code: 'system.settings.manage',
     name: 'Manage System Settings',
     module: 'system',
-    description:
-      'Manage system configuration.',
+    description: 'Manage system configuration.',
   },
-
 ] as const;
-
 
 /* ============================================================
    SEED PERMISSIONS
    ============================================================ */
 
 async function seedPermissions(): Promise<void> {
-
   console.log('');
   console.log('==============================================');
   console.log('JaliCare HMIS - Permission Seeder');
   console.log('==============================================');
 
-  console.log(
-    `Preparing ${PERMISSIONS.length} permissions...`,
-  );
-
+  console.log(`Preparing ${PERMISSIONS.length} permissions...`);
 
   /* ==========================================================
      1. INSERT / UPDATE PERMISSIONS
      ========================================================== */
 
   for (const permission of PERMISSIONS) {
-
     const existing = await db
       .select()
       .from(permissions)
-      .where(
-        eq(
-          permissions.code,
-          permission.code,
-        ),
-      )
+      .where(eq(permissions.code, permission.code))
       .limit(1);
 
-
     if (existing.length === 0) {
-
       plan('create', `permission ${permission.code}`);
 
       if (!dryRun) {
-        await db
-          .insert(permissions)
-          .values({
-            code: permission.code,
+        await db.insert(permissions).values({
+          code: permission.code,
 
-            name: permission.name,
+          name: permission.name,
 
-            module: permission.module,
+          module: permission.module,
 
-            description:
-              permission.description,
+          description: permission.description,
 
-            createdAt: new Date(),
-          });
+          createdAt: new Date(),
+        });
       }
-
     } else {
-
       /*
        * Keep the seed idempotent while allowing the
        * description/name to be corrected later.
@@ -1037,22 +907,15 @@ async function seedPermissions(): Promise<void> {
 
               module: permission.module,
 
-              description:
-                permission.description,
+              description: permission.description,
             })
-            .where(
-              eq(
-                permissions.code,
-                permission.code,
-              ),
-            );
+            .where(eq(permissions.code, permission.code));
         }
       } else {
         skippedWrites += 1;
       }
     }
   }
-
 
   /* ==========================================================
      2. FIND GLOBAL SUPER_ADMIN
@@ -1061,40 +924,21 @@ async function seedPermissions(): Promise<void> {
   const [superAdminRole] = await db
     .select()
     .from(roles)
-    .where(
-      and(
-        eq(
-          roles.name,
-          'SUPER_ADMIN',
-        ),
-        isNull(
-          roles.tenantId,
-        ),
-      ),
-    )
+    .where(and(eq(roles.name, 'SUPER_ADMIN'), isNull(roles.tenantId)))
     .limit(1);
 
-
   if (!superAdminRole) {
-    throw new Error(
-      'Global SUPER_ADMIN role was not found. Run bootstrap-admin.ts first.',
-    );
+    throw new Error('Global SUPER_ADMIN role was not found. Run bootstrap-admin.ts first.');
   }
-
 
   /* ==========================================================
      3. ASSIGN ALL PERMISSIONS TO SUPER_ADMIN
      ========================================================== */
 
   console.log('');
-  console.log(
-    'Synchronizing SUPER_ADMIN permissions...',
-  );
+  console.log('Synchronizing SUPER_ADMIN permissions...');
 
-  const allPermissions = await db
-    .select()
-    .from(permissions);
-
+  const allPermissions = await db.select().from(permissions);
 
   for (const permission of allPermissions) {
     // Facility tariffs are managed only by tenant-level Facility Admins.
@@ -1107,32 +951,22 @@ async function seedPermissions(): Promise<void> {
       .from(rolePermissions)
       .where(
         and(
-          eq(
-            rolePermissions.roleId,
-            superAdminRole.id,
-          ),
+          eq(rolePermissions.roleId, superAdminRole.id),
 
-          eq(
-            rolePermissions.permissionId,
-            permission.id,
-          ),
+          eq(rolePermissions.permissionId, permission.id),
         ),
       )
       .limit(1);
 
-
     if (existingAssignment.length === 0) {
-
       plan('grant', `SUPER_ADMIN -> ${permission.code}`);
 
       if (!dryRun) {
-        await db
-          .insert(rolePermissions)
-          .values({
-            roleId: superAdminRole.id,
+        await db.insert(rolePermissions).values({
+          roleId: superAdminRole.id,
 
-            permissionId: permission.id,
-          });
+          permissionId: permission.id,
+        });
       }
     } else {
       skippedWrites += 1;
@@ -1182,11 +1016,7 @@ async function seedPermissions(): Promise<void> {
     .select()
     .from(roles)
     .where(
-      and(
-        eq(roles.name, 'FACILITY_ADMIN'),
-        eq(roles.isActive, true),
-        isNotNull(roles.tenantId),
-      ),
+      and(eq(roles.name, 'FACILITY_ADMIN'), eq(roles.isActive, true), isNotNull(roles.tenantId)),
     );
 
   for (const facilityAdminRole of facilityAdminRoles) {
@@ -1221,7 +1051,6 @@ async function seedPermissions(): Promise<void> {
     `Synchronized invitation permissions for ${facilityAdminRoles.length} tenant facility-admin roles.`,
   );
 
-
   /* ==========================================================
      4. RESULT
      ========================================================== */
@@ -1233,22 +1062,16 @@ async function seedPermissions(): Promise<void> {
 
   console.log(`Permissions in this catalogue : ${PERMISSIONS.length}`);
   console.log(`Existing rows already correct: ${skippedWrites}`);
-  console.log(`Rows ${dryRun ? 'that would be written' : 'written'}     : ${plannedInserts + plannedUpdates}`);
-
   console.log(
-    `SUPER_ADMIN role ID: ${superAdminRole.id}`,
+    `Rows ${dryRun ? 'that would be written' : 'written'}     : ${plannedInserts + plannedUpdates}`,
   );
+
+  console.log(`SUPER_ADMIN role ID: ${superAdminRole.id}`);
 
   console.log('');
-  console.log(
-    'Rules this seed follows: no DELETE, no TRUNCATE, no DROP; no role',
-  );
-  console.log(
-    'assignment is removed; facility permission overrides and custom roles',
-  );
-  console.log(
-    'are not touched.',
-  );
+  console.log('Rules this seed follows: no DELETE, no TRUNCATE, no DROP; no role');
+  console.log('assignment is removed; facility permission overrides and custom roles');
+  console.log('are not touched.');
 
   if (dryRun) {
     console.log('');
@@ -1258,7 +1081,6 @@ async function seedPermissions(): Promise<void> {
   console.log('==============================================');
   console.log('');
 }
-
 
 /* ============================================================
    EXECUTE
@@ -1277,7 +1099,9 @@ async function guardRemoteTarget(): Promise<void> {
     env.database.host.trim() === '';
 
   console.log('');
-  console.log(`Target: ${env.database.user}@${env.database.host}:${env.database.port}/${env.database.name}`);
+  console.log(
+    `Target: ${env.database.user}@${env.database.host}:${env.database.port}/${env.database.name}`,
+  );
 
   if (dryRun) {
     console.log('Mode  : DRY RUN (read-only)');
@@ -1308,25 +1132,16 @@ guardRemoteTarget()
     process.exit(0);
   })
   .catch((error) => {
-
     console.error('');
-    console.error(
-      '==============================================',
-    );
+    console.error('==============================================');
 
-    console.error(
-      'PERMISSION SEED FAILED',
-    );
+    console.error('PERMISSION SEED FAILED');
 
-    console.error(
-      '==============================================',
-    );
+    console.error('==============================================');
 
     console.error(error);
 
-    console.error(
-      '==============================================',
-    );
+    console.error('==============================================');
 
     process.exit(1);
   });

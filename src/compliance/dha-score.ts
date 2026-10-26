@@ -108,14 +108,9 @@ export function scoreCategory(
 ): CategoryScore {
   const inCategory = requirements.filter((item) => item.category === category);
 
-  const assessed = inCategory.filter(
-    (item) => item.status !== 'NOT_APPLICABLE',
-  );
+  const assessed = inCategory.filter((item) => item.status !== 'NOT_APPLICABLE');
 
-  const credit = assessed.reduce(
-    (sum, item) => sum + STATUS_CREDIT[item.status],
-    0,
-  );
+  const credit = assessed.reduce((sum, item) => sum + STATUS_CREDIT[item.status], 0);
 
   const score = assessed.length === 0 ? 0 : (credit / assessed.length) * 100;
 
@@ -153,9 +148,7 @@ export function isCriticalGap(requirement: DhaRequirement): boolean {
 export function buildDhaScore(
   requirements: readonly DhaRequirement[] = DHA_REQUIREMENTS,
 ): DhaScoreReport {
-  const categories = CATEGORY_ORDER.map((category) =>
-    scoreCategory(category, requirements),
-  );
+  const categories = CATEGORY_ORDER.map((category) => scoreCategory(category, requirements));
 
   /*
    * Weights are re-normalised over the categories that actually have
@@ -171,8 +164,7 @@ export function buildDhaScore(
     weightTotal === 0
       ? 0
       : categories.reduce(
-          (sum, item) =>
-            sum + (item.assessed > 0 ? item.score * item.weight : 0),
+          (sum, item) => sum + (item.assessed > 0 ? item.score * item.weight : 0),
           0,
         ) / weightTotal;
 
@@ -187,9 +179,7 @@ export function buildDhaScore(
   const criticalGateTriggered = criticalGaps.length > 0;
 
   const overallScore = round1(
-    criticalGateTriggered
-      ? Math.min(weightedAverage, CRITICAL_GAP_CEILING)
-      : weightedAverage,
+    criticalGateTriggered ? Math.min(weightedAverage, CRITICAL_GAP_CEILING) : weightedAverage,
   );
 
   const counts = {
@@ -210,8 +200,7 @@ export function buildDhaScore(
     overallScore,
     criticalGateTriggered,
     criticalGaps,
-    readyForSubmission:
-      !criticalGateTriggered && overallScore >= MINIMUM_READINESS_SCORE,
+    readyForSubmission: !criticalGateTriggered && overallScore >= MINIMUM_READINESS_SCORE,
     counts,
     totalRequirements: requirements.length,
     requirements: [...requirements],

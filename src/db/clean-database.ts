@@ -1,8 +1,8 @@
-import dotenv from "dotenv";
-import { eq, ne, isNull, isNotNull, and } from "drizzle-orm";
+import dotenv from 'dotenv';
+import { eq, ne, isNull, isNotNull, and } from 'drizzle-orm';
 
-import { db } from "./index.ts";
-import * as schema from "./schema.ts";
+import { db } from './index.ts';
+import * as schema from './schema.ts';
 
 dotenv.config();
 
@@ -10,15 +10,13 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 
 if (!ADMIN_USERNAME && !ADMIN_EMAIL) {
-  throw new Error(
-    "ADMIN_USERNAME or ADMIN_EMAIL must be configured in .env",
-  );
+  throw new Error('ADMIN_USERNAME or ADMIN_EMAIL must be configured in .env');
 }
 
 async function cleanDatabase() {
-  console.log("==============================================");
-  console.log(" JaliCare HMIS DATABASE CLEANUP");
-  console.log("==============================================");
+  console.log('==============================================');
+  console.log(' JaliCare HMIS DATABASE CLEANUP');
+  console.log('==============================================');
 
   await db.transaction(async (tx) => {
     // ============================================================
@@ -42,16 +40,14 @@ async function cleanDatabase() {
     if (adminResult.length === 0) {
       throw new Error(
         `Super User not found using username/email from .env.
-Username: ${ADMIN_USERNAME ?? "(not configured)"}
-Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
+Username: ${ADMIN_USERNAME ?? '(not configured)'}
+Email: ${ADMIN_EMAIL ?? '(not configured)'}`,
       );
     }
 
     const admin = adminResult[0];
 
-    console.log(
-      `Preserving Super User: ${admin.username} (${admin.email})`,
-    );
+    console.log(`Preserving Super User: ${admin.username} (${admin.email})`);
 
     // ============================================================
     // 2. VERIFY SUPER ADMIN ROLE
@@ -64,18 +60,11 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
         tenantId: schema.roles.tenantId,
       })
       .from(schema.roles)
-      .where(
-        and(
-          eq(schema.roles.name, "SUPER_ADMIN"),
-          isNull(schema.roles.tenantId),
-        ),
-      )
+      .where(and(eq(schema.roles.name, 'SUPER_ADMIN'), isNull(schema.roles.tenantId)))
       .limit(1);
 
     if (superAdminRole.length === 0) {
-      throw new Error(
-        "Global SUPER_ADMIN role was not found. Cleanup stopped.",
-      );
+      throw new Error('Global SUPER_ADMIN role was not found. Cleanup stopped.');
     }
 
     const superAdmin = superAdminRole[0];
@@ -83,17 +72,12 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
     const adminRole = await tx
       .select()
       .from(schema.userRoles)
-      .where(
-        and(
-          eq(schema.userRoles.userId, admin.id),
-          eq(schema.userRoles.roleId, superAdmin.id),
-        ),
-      )
+      .where(and(eq(schema.userRoles.userId, admin.id), eq(schema.userRoles.roleId, superAdmin.id)))
       .limit(1);
 
     if (adminRole.length === 0) {
       throw new Error(
-        "The configured Super User does not have the global SUPER_ADMIN role. Cleanup stopped for safety.",
+        'The configured Super User does not have the global SUPER_ADMIN role. Cleanup stopped for safety.',
       );
     }
 
@@ -101,174 +85,172 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
     // 3. SECURITY / AUTH DATA
     // ============================================================
 
-    console.log("Removing sessions...");
+    console.log('Removing sessions...');
     await tx.delete(schema.sessions);
 
-    console.log("Removing login attempts...");
+    console.log('Removing login attempts...');
     await tx.delete(schema.loginAttempts);
 
-    console.log("Removing password reset tokens...");
+    console.log('Removing password reset tokens...');
     await tx.delete(schema.passwordResets);
 
-    console.log("Removing facility admin invitations...");
+    console.log('Removing facility admin invitations...');
     await tx.delete(schema.facilityAdminInvitations);
 
-    console.log("Removing user invitations...");
+    console.log('Removing user invitations...');
     await tx.delete(schema.userInvitations);
 
     // ============================================================
     // 4. AUDIT LOGS
     // ============================================================
 
-    console.log("Removing old audit logs...");
+    console.log('Removing old audit logs...');
     await tx.delete(schema.auditLogs);
 
     // ============================================================
     // 5. FINANCE / INSURANCE
     // ============================================================
 
-    console.log("Removing insurance claims...");
+    console.log('Removing insurance claims...');
     await tx.delete(schema.insuranceClaims);
 
-    console.log("Removing billing payments...");
+    console.log('Removing billing payments...');
     await tx.delete(schema.billingPayments);
 
-    console.log("Removing billing items...");
+    console.log('Removing billing items...');
     await tx.delete(schema.billingItems);
 
-    console.log("Removing billing invoices...");
+    console.log('Removing billing invoices...');
     await tx.delete(schema.billingInvoices);
 
     // ============================================================
     // 6. PHARMACY / INVENTORY / PROCUREMENT
     // ============================================================
 
-    console.log("Removing pharmacy dispensations...");
+    console.log('Removing pharmacy dispensations...');
     await tx.delete(schema.pharmacyDispensations);
 
-    console.log("Removing inventory batches...");
+    console.log('Removing inventory batches...');
     await tx.delete(schema.inventoryBatches);
 
-    console.log("Removing inventory items...");
+    console.log('Removing inventory items...');
     await tx.delete(schema.inventoryItems);
 
-    console.log("Removing purchase orders...");
+    console.log('Removing purchase orders...');
     await tx.delete(schema.purchaseOrders);
 
-    console.log("Removing suppliers...");
+    console.log('Removing suppliers...');
     await tx.delete(schema.suppliers);
 
     // ============================================================
     // 7. LAB / RADIOLOGY
     // ============================================================
 
-    console.log("Removing lab results...");
+    console.log('Removing lab results...');
     await tx.delete(schema.labResults);
 
-    console.log("Removing lab orders...");
+    console.log('Removing lab orders...');
     await tx.delete(schema.labOrders);
 
-    console.log("Removing lab tests...");
+    console.log('Removing lab tests...');
     await tx.delete(schema.labTests);
 
-    console.log("Removing radiology orders...");
+    console.log('Removing radiology orders...');
     await tx.delete(schema.radiologyOrders);
 
     // ============================================================
     // 8. THEATRE / INPATIENT
     // ============================================================
 
-    console.log("Removing theatre cases...");
+    console.log('Removing theatre cases...');
     await tx.delete(schema.theatreCases);
 
-    console.log("Removing admissions...");
+    console.log('Removing admissions...');
     await tx.delete(schema.admissions);
 
-    console.log("Removing beds...");
+    console.log('Removing beds...');
     await tx.delete(schema.beds);
 
-    console.log("Removing wards...");
+    console.log('Removing wards...');
     await tx.delete(schema.wards);
 
     // ============================================================
     // 9. APPOINTMENTS / QUEUES / CLINICAL DATA
     // ============================================================
 
-    console.log("Removing observations...");
+    console.log('Removing observations...');
     await tx.delete(schema.observations);
 
-    console.log("Removing diagnoses...");
+    console.log('Removing diagnoses...');
     await tx.delete(schema.diagnoses);
 
-    console.log("Removing clinical procedures...");
+    console.log('Removing clinical procedures...');
     await tx.delete(schema.clinicalProcedures);
 
-    console.log("Removing medications...");
+    console.log('Removing medications...');
     await tx.delete(schema.medications);
 
-    console.log("Removing queues...");
+    console.log('Removing queues...');
     await tx.delete(schema.queues);
 
-    console.log("Removing appointments...");
+    console.log('Removing appointments...');
     await tx.delete(schema.appointments);
 
-    console.log("Removing encounters...");
+    console.log('Removing encounters...');
     await tx.delete(schema.encounters);
 
     // ============================================================
     // 10. PUBLIC HEALTH
     // ============================================================
 
-    console.log("Removing public health reports...");
+    console.log('Removing public health reports...');
     await tx.delete(schema.publicHealthReports);
 
     // ============================================================
     // 11. PATIENT IDENTIFIERS
     // ============================================================
 
-    console.log("Removing patient identifiers...");
+    console.log('Removing patient identifiers...');
     await tx.delete(schema.patientIdentifiers);
 
     // ============================================================
     // 12. PATIENTS
     // ============================================================
 
-    console.log("Removing patients...");
+    console.log('Removing patients...');
     await tx.delete(schema.patients);
 
     // ============================================================
     // 13. PRACTITIONERS
     // ============================================================
 
-    console.log("Removing practitioners...");
+    console.log('Removing practitioners...');
     await tx.delete(schema.practitioners);
 
     // ============================================================
     // 14. DEPARTMENTS
     // ============================================================
 
-    console.log("Removing departments...");
+    console.log('Removing departments...');
     await tx.delete(schema.departments);
 
     // ============================================================
     // 15. FACILITY DOCUMENTS / ONBOARDING
     // ============================================================
 
-    console.log("Removing facility documents...");
+    console.log('Removing facility documents...');
     await tx.delete(schema.facilityDocuments);
 
-    console.log("Removing facility onboarding records...");
+    console.log('Removing facility onboarding records...');
     await tx.delete(schema.facilityOnboarding);
 
     // ============================================================
     // 16. USER ROLE ASSIGNMENTS
     // ============================================================
 
-    console.log("Removing non-admin role assignments...");
+    console.log('Removing non-admin role assignments...');
 
-    await tx
-      .delete(schema.userRoles)
-      .where(ne(schema.userRoles.userId, admin.id));
+    await tx.delete(schema.userRoles).where(ne(schema.userRoles.userId, admin.id));
 
     // ============================================================
     // 17. REMOVE TENANT-SCOPED ROLES
@@ -276,7 +258,7 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
     // Keep only global roles such as SUPER_ADMIN.
     // ============================================================
 
-    console.log("Removing tenant-specific role permissions...");
+    console.log('Removing tenant-specific role permissions...');
 
     const tenantRoles = await tx
       .select({
@@ -286,40 +268,34 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
       .where(isNotNull(schema.roles.tenantId));
 
     for (const role of tenantRoles) {
-      await tx
-        .delete(schema.rolePermissions)
-        .where(eq(schema.rolePermissions.roleId, role.id));
+      await tx.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, role.id));
     }
 
-    console.log("Removing tenant-specific roles...");
+    console.log('Removing tenant-specific roles...');
 
-    await tx
-      .delete(schema.roles)
-      .where(isNotNull(schema.roles.tenantId));
+    await tx.delete(schema.roles).where(isNotNull(schema.roles.tenantId));
 
     // ============================================================
     // 18. REMOVE FACILITIES
     // ============================================================
 
-    console.log("Removing facilities...");
+    console.log('Removing facilities...');
     await tx.delete(schema.facilities);
 
     // ============================================================
     // 19. REMOVE TENANTS
     // ============================================================
 
-    console.log("Removing tenants...");
+    console.log('Removing tenants...');
     await tx.delete(schema.tenants);
 
     // ============================================================
     // 20. REMOVE NON-ADMIN USERS
     // ============================================================
 
-    console.log("Removing non-admin users...");
+    console.log('Removing non-admin users...');
 
-    await tx
-      .delete(schema.users)
-      .where(ne(schema.users.id, admin.id));
+    await tx.delete(schema.users).where(ne(schema.users.id, admin.id));
 
     // ============================================================
     // 21. VERIFY ADMIN STILL EXISTS
@@ -341,7 +317,7 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
 
     if (remainingUsers[0].id !== admin.id) {
       throw new Error(
-        "Cleanup verification failed: preserved user is not the original Super User.",
+        'Cleanup verification failed: preserved user is not the original Super User.',
       );
     }
 
@@ -349,14 +325,10 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
     // 22. VERIFY NO TENANTS
     // ============================================================
 
-    const remainingTenants = await tx
-      .select({ id: schema.tenants.id })
-      .from(schema.tenants);
+    const remainingTenants = await tx.select({ id: schema.tenants.id }).from(schema.tenants);
 
     if (remainingTenants.length !== 0) {
-      throw new Error(
-        `Cleanup verification failed: ${remainingTenants.length} tenants remain.`,
-      );
+      throw new Error(`Cleanup verification failed: ${remainingTenants.length} tenants remain.`);
     }
 
     // ============================================================
@@ -377,43 +349,39 @@ Email: ${ADMIN_EMAIL ?? "(not configured)"}`,
     // 24. VERIFY NO PATIENTS
     // ============================================================
 
-    const remainingPatients = await tx
-      .select({ id: schema.patients.id })
-      .from(schema.patients);
+    const remainingPatients = await tx.select({ id: schema.patients.id }).from(schema.patients);
 
     if (remainingPatients.length !== 0) {
-      throw new Error(
-        `Cleanup verification failed: ${remainingPatients.length} patients remain.`,
-      );
+      throw new Error(`Cleanup verification failed: ${remainingPatients.length} patients remain.`);
     }
 
     // ============================================================
     // SUCCESS
     // ============================================================
 
-    console.log("");
-    console.log("==============================================");
-    console.log(" CLEANUP COMPLETED SUCCESSFULLY");
-    console.log("==============================================");
-    console.log("");
-    console.log("Preserved:");
+    console.log('');
+    console.log('==============================================');
+    console.log(' CLEANUP COMPLETED SUCCESSFULLY');
+    console.log('==============================================');
+    console.log('');
+    console.log('Preserved:');
     console.log(`  Super User: ${admin.username}`);
     console.log(`  Email:      ${admin.email}`);
-    console.log("  Role:       SUPER_ADMIN");
-    console.log("");
-    console.log("Removed:");
-    console.log("  Demo tenants");
-    console.log("  Demo facilities");
-    console.log("  Demo patients");
-    console.log("  Demo practitioners");
-    console.log("  Demo clinical records");
-    console.log("  Demo billing data");
-    console.log("  Demo inventory");
-    console.log("  Demo insurance");
-    console.log("  Demo public health data");
-    console.log("  Demo users");
-    console.log("  Old audit logs");
-    console.log("");
+    console.log('  Role:       SUPER_ADMIN');
+    console.log('');
+    console.log('Removed:');
+    console.log('  Demo tenants');
+    console.log('  Demo facilities');
+    console.log('  Demo patients');
+    console.log('  Demo practitioners');
+    console.log('  Demo clinical records');
+    console.log('  Demo billing data');
+    console.log('  Demo inventory');
+    console.log('  Demo insurance');
+    console.log('  Demo public health data');
+    console.log('  Demo users');
+    console.log('  Old audit logs');
+    console.log('');
   });
 }
 
@@ -422,14 +390,14 @@ cleanDatabase()
     process.exit(0);
   })
   .catch((error) => {
-    console.error("");
-    console.error("==============================================");
-    console.error(" DATABASE CLEANUP FAILED");
-    console.error("==============================================");
+    console.error('');
+    console.error('==============================================');
+    console.error(' DATABASE CLEANUP FAILED');
+    console.error('==============================================');
     console.error(error);
-    console.error("");
+    console.error('');
     console.error(
-      "Because the cleanup runs inside a transaction, PostgreSQL should have rolled back the changes.",
+      'Because the cleanup runs inside a transaction, PostgreSQL should have rolled back the changes.',
     );
     process.exit(1);
   });

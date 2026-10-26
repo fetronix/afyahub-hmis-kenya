@@ -24,13 +24,7 @@ type NursingTab = 'vitals' | 'notes' | 'handover';
 
 const SHIFTS = ['Morning', 'Afternoon', 'Night'] as const;
 
-const NOTE_TYPES = [
-  'Progress',
-  'Observation',
-  'Handover',
-  'Medication',
-  'Incident',
-] as const;
+const NOTE_TYPES = ['Progress', 'Observation', 'Handover', 'Medication', 'Incident'] as const;
 
 const EMPTY_VITALS = {
   systolicBp: '',
@@ -137,9 +131,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
   const [savingNote, setSavingNote] = useState(false);
 
   const [handover, setHandover] = useState<ShiftHandover | null>(null);
-  const [handoverDate, setHandoverDate] = useState<string>(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [handoverDate, setHandoverDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [handoverLoading, setHandoverLoading] = useState(false);
 
   /* Default to the first active admission. */
@@ -148,10 +140,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
       setAdmissionId(admissions[0].id);
     }
 
-    if (
-      admissionId !== null &&
-      !admissions.some((admission) => admission.id === admissionId)
-    ) {
+    if (admissionId !== null && !admissions.some((admission) => admission.id === admissionId)) {
       setAdmissionId(admissions.length > 0 ? admissions[0].id : null);
     }
   }, [admissions, admissionId]);
@@ -160,9 +149,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
     (patientId: number) => {
       const patient = patients.find((entry) => entry.id === patientId);
 
-      return patient
-        ? `${patient.firstName} ${patient.lastName}`
-        : `Patient #${patientId}`;
+      return patient ? `${patient.firstName} ${patient.lastName}` : `Patient #${patientId}`;
     },
     [patients],
   );
@@ -218,9 +205,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
     if (tab === 'handover') void loadHandover();
   }, [tab, loadVitals, loadNotes, loadHandover]);
 
-  const selectedAdmission = admissions.find(
-    (admission) => admission.id === admissionId,
-  );
+  const selectedAdmission = admissions.find((admission) => admission.id === admissionId);
 
   const handleSaveVitals = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -251,9 +236,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
         recordedBy: currentUser?.name,
       });
 
-      const critical = (saved.flags ?? []).filter(
-        (flag) => flag.severity === 'critical',
-      );
+      const critical = (saved.flags ?? []).filter((flag) => flag.severity === 'critical');
 
       if (critical.length > 0) {
         showToast(
@@ -262,9 +245,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
             .join(', ')}`,
         );
       } else if ((saved.flags ?? []).length > 0) {
-        showToast(
-          `Vitals saved with ${saved.flags?.length} flagged value(s).`,
-        );
+        showToast(`Vitals saved with ${saved.flags?.length} flagged value(s).`);
       } else {
         showToast('Vitals saved.');
       }
@@ -367,9 +348,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
             onChange={(event) => setAdmissionId(Number(event.target.value))}
             className="flex-1 px-3 py-2 border border-slate-200 rounded-md text-xs"
           >
-            {admissions.length === 0 && (
-              <option value="">No active admissions</option>
-            )}
+            {admissions.length === 0 && <option value="">No active admissions</option>}
             {admissions.map((admission) => (
               <option key={admission.id} value={admission.id}>
                 {patientName(admission.patientId)} — Bed {admission.bedId} ·{' '}
@@ -444,9 +423,8 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
             </div>
 
             <p className="text-3xs text-slate-500 leading-relaxed">
-              Leave a field blank if it was not measured — blank values are
-              never replaced with defaults. BMI is calculated when weight and
-              height are both supplied.
+              Leave a field blank if it was not measured — blank values are never replaced with
+              defaults. BMI is calculated when weight and height are both supplied.
             </p>
 
             <button
@@ -475,9 +453,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
               <ul className="space-y-2 max-h-80 overflow-y-auto pr-1">
                 {vitalsHistory.map((observation) => {
                   const flags = observation.flags ?? [];
-                  const critical = flags.some(
-                    (flag) => flag.severity === 'critical',
-                  );
+                  const critical = flags.some((flag) => flag.severity === 'critical');
 
                   return (
                     <li
@@ -500,9 +476,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
                       </div>
 
                       {observation.bmi && (
-                        <div className="text-3xs text-slate-500 mt-0.5">
-                          BMI {observation.bmi}
-                        </div>
+                        <div className="text-3xs text-slate-500 mt-0.5">BMI {observation.bmi}</div>
                       )}
 
                       {flags.length > 0 && (
@@ -516,17 +490,14 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
                                   : 'bg-amber-200 text-amber-900'
                               }`}
                             >
-                              {flag.label} {flag.direction === 'high' ? '↑' : '↓'}{' '}
-                              {flag.value}
+                              {flag.label} {flag.direction === 'high' ? '↑' : '↓'} {flag.value}
                             </span>
                           ))}
                         </div>
                       )}
 
                       {observation.recordedBy && (
-                        <div className="text-3xs text-slate-400 mt-1">
-                          {observation.recordedBy}
-                        </div>
+                        <div className="text-3xs text-slate-400 mt-1">{observation.recordedBy}</div>
                       )}
                     </li>
                   );
@@ -548,9 +519,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-2xs font-medium text-slate-600 mb-1">
-                  Note type
-                </label>
+                <label className="block text-2xs font-medium text-slate-600 mb-1">Note type</label>
                 <select
                   value={noteType}
                   onChange={(event) => setNoteType(event.target.value)}
@@ -565,9 +534,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
               </div>
 
               <div>
-                <label className="block text-2xs font-medium text-slate-600 mb-1">
-                  Shift
-                </label>
+                <label className="block text-2xs font-medium text-slate-600 mb-1">Shift</label>
                 <select
                   value={noteShift}
                   onChange={(event) => setNoteShift(event.target.value)}
@@ -583,9 +550,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
             </div>
 
             <div>
-              <label className="block text-2xs font-medium text-slate-600 mb-1">
-                Note
-              </label>
+              <label className="block text-2xs font-medium text-slate-600 mb-1">Note</label>
               <textarea
                 rows={6}
                 value={noteText}
@@ -596,8 +561,8 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
             </div>
 
             <p className="text-3xs text-slate-500">
-              Notes are append-only: saved notes cannot be edited or deleted, so
-              the care record stays auditable.
+              Notes are append-only: saved notes cannot be edited or deleted, so the care record
+              stays auditable.
             </p>
 
             <button
@@ -637,9 +602,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
                       </span>
                     </div>
                     <p className="text-slate-800 whitespace-pre-wrap">{note.note}</p>
-                    <div className="text-3xs text-slate-400 mt-1">
-                      {note.recordedBy}
-                    </div>
+                    <div className="text-3xs text-slate-400 mt-1">{note.recordedBy}</div>
                   </li>
                 ))}
               </ul>
@@ -669,8 +632,7 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
             </button>
             {handover && (
               <span className="text-2xs text-slate-500">
-                {handover.total} note{handover.total === 1 ? '' : 's'} on{' '}
-                {handover.date}
+                {handover.total} note{handover.total === 1 ? '' : 's'} on {handover.date}
               </span>
             )}
           </div>
@@ -718,15 +680,9 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
                               {formatTime(note.recordedAt)}
                             </span>
                           </div>
-                          <span className="text-3xs text-slate-500">
-                            {note.noteType}
-                          </span>
-                          <p className="text-slate-700 whitespace-pre-wrap mt-0.5">
-                            {note.note}
-                          </p>
-                          <div className="text-3xs text-slate-400 mt-1">
-                            {note.recordedBy}
-                          </div>
+                          <span className="text-3xs text-slate-500">{note.noteType}</span>
+                          <p className="text-slate-700 whitespace-pre-wrap mt-0.5">{note.note}</p>
+                          <div className="text-3xs text-slate-400 mt-1">{note.recordedBy}</div>
                         </li>
                       ))}
                     </ul>
@@ -739,26 +695,22 @@ export const NursingPanel: React.FC<NursingPanelProps> = ({
       )}
 
       {/* Overdue banner */}
-      {tab !== 'handover' &&
-        board &&
-        board.vitalsOverdueCount > 0 && (
-          <div className="px-5 py-2.5 border-t border-orange-200 bg-orange-50 flex items-center gap-2 text-2xs text-orange-900">
-            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>
-              <strong>{board.vitalsOverdueCount}</strong> admitted patient
-              {board.vitalsOverdueCount === 1 ? '' : 's'} have no vitals recorded
-              in the last 8 hours
-              {board.criticalVitalsCount > 0 && (
-                <>
-                  {' '}
-                  · <strong>{board.criticalVitalsCount}</strong> with critical
-                  observations
-                </>
-              )}
-              .
-            </span>
-          </div>
-        )}
+      {tab !== 'handover' && board && board.vitalsOverdueCount > 0 && (
+        <div className="px-5 py-2.5 border-t border-orange-200 bg-orange-50 flex items-center gap-2 text-2xs text-orange-900">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>
+            <strong>{board.vitalsOverdueCount}</strong> admitted patient
+            {board.vitalsOverdueCount === 1 ? '' : 's'} have no vitals recorded in the last 8 hours
+            {board.criticalVitalsCount > 0 && (
+              <>
+                {' '}
+                · <strong>{board.criticalVitalsCount}</strong> with critical observations
+              </>
+            )}
+            .
+          </span>
+        </div>
+      )}
     </div>
   );
 };

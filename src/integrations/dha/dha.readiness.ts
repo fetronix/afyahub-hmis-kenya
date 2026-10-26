@@ -158,10 +158,12 @@ export interface ReadinessReport {
  * report reflects reality rather than intention. Pass `false` for a
  * purely local report.
  */
-export async function buildReadinessReport(options: {
-  config?: DhaConfig;
-  probe?: boolean;
-} = {}): Promise<ReadinessReport> {
+export async function buildReadinessReport(
+  options: {
+    config?: DhaConfig;
+    probe?: boolean;
+  } = {},
+): Promise<ReadinessReport> {
   const config = options.config ?? loadDhaConfig();
   const checks: ReadinessCheck[] = [];
 
@@ -216,7 +218,12 @@ export async function buildReadinessReport(options: {
   checks.push({
     id: 'credentials',
     label: 'OAuth client credentials',
-    status: config.mode === 'mock' ? 'READY' : config.clientId && config.clientSecret ? 'READY' : 'BLOCKED',
+    status:
+      config.mode === 'mock'
+        ? 'READY'
+        : config.clientId && config.clientSecret
+          ? 'READY'
+          : 'BLOCKED',
     detail:
       config.mode === 'mock'
         ? 'Not required in mock mode.'
@@ -253,9 +260,7 @@ export async function buildReadinessReport(options: {
         id: 'connectivity',
         label: 'Token exchange',
         status: 'BLOCKED',
-        detail: dhaError
-          ? `${dhaError.code}: ${dhaError.message}`
-          : 'The token exchange failed.',
+        detail: dhaError ? `${dhaError.code}: ${dhaError.message}` : 'The token exchange failed.',
       });
     }
   } else if (config.mode !== 'mock') {

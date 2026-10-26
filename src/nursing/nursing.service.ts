@@ -168,12 +168,7 @@ const OBSERVATION_COLUMNS = {
   recordedAt: schema.observations.recordedAt,
 };
 
-function optionalInt(
-  value: unknown,
-  field: string,
-  min: number,
-  max: number,
-): number | null {
+function optionalInt(value: unknown, field: string, min: number, max: number): number | null {
   if (value === undefined || value === null || value === '') return null;
 
   const parsed = Number(value);
@@ -211,21 +206,11 @@ function optionalDecimal(
   return parsed.toFixed(decimals);
 }
 
-export async function recordVitalsScoped(
-  context: AuthorizationContext,
-  input: RecordVitalsInput,
-) {
-  const admission = await getAdmissionByIdScoped(
-    context,
-    Number(input?.admissionId),
-  );
+export async function recordVitalsScoped(context: AuthorizationContext, input: RecordVitalsInput) {
+  const admission = await getAdmissionByIdScoped(context, Number(input?.admissionId));
 
   if (!admission) {
-    throw new InpatientDomainError(
-      'ADMISSION_NOT_FOUND',
-      'Admission not found.',
-      404,
-    );
+    throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
   }
 
   if (admission.status !== 'Admitted') {
@@ -239,28 +224,13 @@ export async function recordVitalsScoped(
   const systolicBp = optionalInt(input.systolicBp, 'Systolic BP', 40, 300);
   const diastolicBp = optionalInt(input.diastolicBp, 'Diastolic BP', 20, 200);
   const pulseRate = optionalInt(input.pulseRate, 'Pulse rate', 20, 250);
-  const respiratoryRate = optionalInt(
-    input.respiratoryRate,
-    'Respiratory rate',
-    4,
-    80,
-  );
+  const respiratoryRate = optionalInt(input.respiratoryRate, 'Respiratory rate', 4, 80);
   const spo2Percent = optionalInt(input.spo2Percent, 'SpO2', 40, 100);
 
-  const temperatureC = optionalDecimal(
-    input.temperatureC,
-    'Temperature',
-    30,
-    45,
-  );
+  const temperatureC = optionalDecimal(input.temperatureC, 'Temperature', 30, 45);
   const weightKg = optionalDecimal(input.weightKg, 'Weight', 0.5, 400);
   const heightCm = optionalDecimal(input.heightCm, 'Height', 20, 260);
-  const bloodGlucoseMmol = optionalDecimal(
-    input.bloodGlucoseMmol,
-    'Blood glucose',
-    0.5,
-    50,
-  );
+  const bloodGlucoseMmol = optionalDecimal(input.bloodGlucoseMmol, 'Blood glucose', 0.5, 50);
 
   /*
    * Reject an entirely empty observation. A "vitals" row with no values
@@ -279,11 +249,7 @@ export async function recordVitalsScoped(
   ].some((value) => value !== null);
 
   if (!hasAnyValue) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'Record at least one observation.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'Record at least one observation.', 400);
   }
 
   if (systolicBp !== null && diastolicBp !== null && systolicBp <= diastolicBp) {
@@ -351,11 +317,7 @@ export async function recordObservationForEncounterScoped(
   const encounterId = Number(input.encounterId);
 
   if (!Number.isSafeInteger(encounterId) || encounterId <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A valid encounter ID is required.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid encounter ID is required.', 400);
   }
 
   const [encounter] = await db
@@ -371,11 +333,7 @@ export async function recordObservationForEncounterScoped(
     .limit(1);
 
   if (!encounter) {
-    throw new InpatientDomainError(
-      'ENCOUNTER_NOT_FOUND',
-      'Encounter not found.',
-      404,
-    );
+    throw new InpatientDomainError('ENCOUNTER_NOT_FOUND', 'Encounter not found.', 404);
   }
 
   const facility = await getFacilityByIdScoped(context, encounter.facilityId);
@@ -388,10 +346,7 @@ export async function recordObservationForEncounterScoped(
     );
   }
 
-  if (
-    input.patientId !== undefined &&
-    Number(input.patientId) !== encounter.patientId
-  ) {
+  if (input.patientId !== undefined && Number(input.patientId) !== encounter.patientId) {
     throw new InpatientDomainError(
       'INVALID_INPUT',
       'The patient does not match that encounter.',
@@ -402,22 +357,12 @@ export async function recordObservationForEncounterScoped(
   const systolicBp = optionalInt(input.systolicBp, 'Systolic BP', 40, 300);
   const diastolicBp = optionalInt(input.diastolicBp, 'Diastolic BP', 20, 200);
   const pulseRate = optionalInt(input.pulseRate, 'Pulse rate', 20, 250);
-  const respiratoryRate = optionalInt(
-    input.respiratoryRate,
-    'Respiratory rate',
-    4,
-    80,
-  );
+  const respiratoryRate = optionalInt(input.respiratoryRate, 'Respiratory rate', 4, 80);
   const spo2Percent = optionalInt(input.spo2Percent, 'SpO2', 40, 100);
   const temperatureC = optionalDecimal(input.temperatureC, 'Temperature', 30, 45);
   const weightKg = optionalDecimal(input.weightKg, 'Weight', 0.5, 400);
   const heightCm = optionalDecimal(input.heightCm, 'Height', 20, 260);
-  const bloodGlucoseMmol = optionalDecimal(
-    input.bloodGlucoseMmol,
-    'Blood glucose',
-    0.5,
-    50,
-  );
+  const bloodGlucoseMmol = optionalDecimal(input.bloodGlucoseMmol, 'Blood glucose', 0.5, 50);
 
   const hasAnyValue = [
     systolicBp,
@@ -432,11 +377,7 @@ export async function recordObservationForEncounterScoped(
   ].some((value) => value !== null);
 
   if (!hasAnyValue) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'Record at least one observation.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'Record at least one observation.', 400);
   }
 
   if (systolicBp !== null && diastolicBp !== null && systolicBp <= diastolicBp) {
@@ -518,11 +459,7 @@ export async function getObservationsScoped(
     const patientId = Number(filters.patientId);
 
     if (!Number.isSafeInteger(patientId) || patientId <= 0) {
-      throw new InpatientDomainError(
-        'INVALID_INPUT',
-        'A valid patient ID is required.',
-        400,
-      );
+      throw new InpatientDomainError('INVALID_INPUT', 'A valid patient ID is required.', 400);
     }
 
     await requirePatientInTenant(context, patientId, context.tenantId ?? 0);
@@ -539,11 +476,7 @@ export async function getObservationsScoped(
     const encounterId = Number(filters.encounterId);
 
     if (!Number.isSafeInteger(encounterId) || encounterId <= 0) {
-      throw new InpatientDomainError(
-        'INVALID_INPUT',
-        'A valid encounter ID is required.',
-        400,
-      );
+      throw new InpatientDomainError('INVALID_INPUT', 'A valid encounter ID is required.', 400);
     }
 
     const [encounter] = await db
@@ -557,17 +490,10 @@ export async function getObservationsScoped(
       .limit(1);
 
     if (!encounter) {
-      throw new InpatientDomainError(
-        'ENCOUNTER_NOT_FOUND',
-        'Encounter not found.',
-        404,
-      );
+      throw new InpatientDomainError('ENCOUNTER_NOT_FOUND', 'Encounter not found.', 404);
     }
 
-    const facility = await getFacilityByIdScoped(
-      context,
-      encounter.facilityId,
-    );
+    const facility = await getFacilityByIdScoped(context, encounter.facilityId);
 
     if (!facility) {
       throw new InpatientDomainError(
@@ -656,17 +582,12 @@ export async function getInpatientBoardScoped(
   context: AuthorizationContext,
   requestedFacilityId?: number | null,
 ): Promise<InpatientBoardSummary> {
-  const admissions = await getAdmissionsScoped(
-    context,
-    requestedFacilityId,
-    'Admitted',
-  );
+  const admissions = await getAdmissionsScoped(context, requestedFacilityId, 'Admitted');
 
   const wards = await getWardsScoped(context, requestedFacilityId);
   const beds = await getBedsScoped(context);
 
-  const facilityId =
-    admissions[0]?.facilityId ?? wards[0]?.facilityId ?? 0;
+  const facilityId = admissions[0]?.facilityId ?? wards[0]?.facilityId ?? 0;
 
   const wardNameById = new Map(wards.map((ward) => [ward.id, ward.name]));
   const bedById = new Map(beds.map((bed) => [bed.id, bed]));
@@ -698,10 +619,7 @@ export async function getInpatientBoardScoped(
   }
 
   /* Vitals: latest per patient, within the facility's admitted set. */
-  const latestVitalsByPatient = new Map<
-    number,
-    (typeof schema.observations.$inferSelect)[]
-  >();
+  const latestVitalsByPatient = new Map<number, (typeof schema.observations.$inferSelect)[]>();
 
   if (patientIds.length > 0) {
     const observations = await db
@@ -801,12 +719,8 @@ export async function getInpatientBoardScoped(
       provisionalDiagnosis: admission.provisionalDiagnosis ?? null,
       lastVitalsAt: lastVitalsAt ? new Date(lastVitalsAt).toISOString() : null,
       lastVitalsFlags: latest ? assessVitals(latest) : [],
-      vitalsOverdue:
-        hoursSinceVitals === null || hoursSinceVitals > VITALS_OVERDUE_HOURS,
-      hoursSinceVitals:
-        hoursSinceVitals === null
-          ? null
-          : Math.round(hoursSinceVitals * 10) / 10,
+      vitalsOverdue: hoursSinceVitals === null || hoursSinceVitals > VITALS_OVERDUE_HOURS,
+      hoursSinceVitals: hoursSinceVitals === null ? null : Math.round(hoursSinceVitals * 10) / 10,
       notesToday: noteInfo?.count ?? 0,
       lastNoteAt: noteInfo?.lastAt ? noteInfo.lastAt.toISOString() : null,
       lastNoteShift: noteInfo?.lastShift ?? null,
@@ -826,8 +740,7 @@ export async function getInpatientBoardScoped(
     occupiedBeds,
     availableBeds,
     cleaningBeds,
-    occupancyRate:
-      beds.length > 0 ? Math.round((occupiedBeds / beds.length) * 1000) / 10 : 0,
+    occupancyRate: beds.length > 0 ? Math.round((occupiedBeds / beds.length) * 1000) / 10 : 0,
     admissionCount: admissions.length,
     vitalsOverdueCount: rows.filter((row) => row.vitalsOverdue).length,
     criticalVitalsCount: rows.filter((row) =>
@@ -874,20 +787,15 @@ export async function getShiftHandoverScoped(
     return { date: options.date ?? dateKey(new Date()), groups: [], total: 0 };
   }
 
-  const day = options.date && /^\d{4}-\d{2}-\d{2}$/.test(options.date)
-    ? options.date
-    : dateKey(new Date());
+  const day =
+    options.date && /^\d{4}-\d{2}-\d{2}$/.test(options.date) ? options.date : dateKey(new Date());
 
   const start = new Date(`${day}T00:00:00`);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
   if (Number.isNaN(start.getTime())) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'Enter the handover date as YYYY-MM-DD.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'Enter the handover date as YYYY-MM-DD.', 400);
   }
 
   const rows = await db
@@ -943,9 +851,7 @@ export async function getShiftHandoverScoped(
     group.noteCount += 1;
   }
 
-  const filtered = options.shift
-    ? groups.filter((group) => group.shift === options.shift)
-    : groups;
+  const filtered = options.shift ? groups.filter((group) => group.shift === options.shift) : groups;
 
   return {
     date: day,

@@ -77,7 +77,6 @@ export {
   users,
 } from './schema/auth.ts';
 
-
 import { relations, sql } from 'drizzle-orm';
 
 /* ============================================================
@@ -104,7 +103,6 @@ import { relations, sql } from 'drizzle-orm';
    Passwords, session tokens and reset tokens must NEVER be
    stored in plaintext.
    ============================================================ */
-
 
 /* ============================================================
    1. TENANTS
@@ -185,8 +183,7 @@ export const practitioners = pgTable(
       .references(() => facilities.id)
       .notNull(),
 
-    userId: integer('user_id')
-      .references(() => users.id),
+    userId: integer('user_id').references(() => users.id),
 
     fullName: text('full_name').notNull(),
 
@@ -208,9 +205,7 @@ export const practitioners = pgTable(
 
     licenseExpiryDate: text('license_expiry_date'),
 
-    credentialVerificationStatus: text(
-      'credential_verification_status',
-    )
+    credentialVerificationStatus: text('credential_verification_status')
       .default('PENDING')
       .notNull(),
 
@@ -221,57 +216,37 @@ export const practitioners = pgTable(
       EXPIRED
     */
 
-    credentialVerifiedAt: timestamp(
-      'credential_verified_at',
-    ),
+    credentialVerifiedAt: timestamp('credential_verified_at'),
 
-    credentialVerifiedBy: text(
-      'credential_verified_by',
-    ),
+    credentialVerifiedBy: text('credential_verified_by'),
 
-    credentialVerificationNotes: text(
-      'credential_verification_notes',
-    ),
+    credentialVerificationNotes: text('credential_verification_notes'),
 
-    specialty: text('specialty')
-      .default('General Medicine'),
+    specialty: text('specialty').default('General Medicine'),
 
     qualification: text('qualification'),
 
-    departmentId: integer('department_id')
-      .references(() => departments.id),
+    departmentId: integer('department_id').references(() => departments.id),
 
     phone: text('phone'),
 
     email: text('email'),
 
-    isActive: boolean('is_active')
-      .default(true)
-      .notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdx: uniqueIndex(
-      'practitioners_user_idx',
-    ).on(table.userId),
+    userIdx: uniqueIndex('practitioners_user_idx').on(table.userId),
 
-    facilityLicenseIdx: index(
-      'practitioners_facility_license_idx',
-    ).on(
+    facilityLicenseIdx: index('practitioners_facility_license_idx').on(
       table.facilityId,
       table.licenseNumber,
     ),
 
-    registrationIdx: index(
-      'practitioners_registration_idx',
-    ).on(
+    registrationIdx: index('practitioners_registration_idx').on(
       table.registrationBody,
       table.registrationNumber,
     ),
@@ -298,29 +273,21 @@ export const patients = pgTable(
       This is NOT the patient's permanent facility.
       A patient may receive care at multiple facilities.
     */
-    registrationFacilityId: integer(
-      'registration_facility_id',
-    )
+    registrationFacilityId: integer('registration_facility_id')
       .references(() => facilities.id)
       .notNull(),
 
-    mrn: text('mrn')
-      .notNull()
-      .unique(),
+    mrn: text('mrn').notNull().unique(),
 
-    firstName: text('first_name')
-      .notNull(),
+    firstName: text('first_name').notNull(),
 
-    lastName: text('last_name')
-      .notNull(),
+    lastName: text('last_name').notNull(),
 
     middleName: text('middle_name'),
 
-    dateOfBirth: date('date_of_birth')
-      .notNull(),
+    dateOfBirth: date('date_of_birth').notNull(),
 
-    gender: text('gender')
-      .notNull(),
+    gender: text('gender').notNull(),
 
     phone: text('phone'),
 
@@ -375,21 +342,13 @@ export const patients = pgTable(
 
     subCounty: text('sub_county'),
 
-    residentialAddress: text(
-      'residential_address',
-    ),
+    residentialAddress: text('residential_address'),
 
-    emergencyContactName: text(
-      'emergency_contact_name',
-    ),
+    emergencyContactName: text('emergency_contact_name'),
 
-    emergencyContactPhone: text(
-      'emergency_contact_phone',
-    ),
+    emergencyContactPhone: text('emergency_contact_phone'),
 
-    emergencyContactRelationship: text(
-      'emergency_contact_relationship',
-    ),
+    emergencyContactRelationship: text('emergency_contact_relationship'),
 
     /*
       These remain as summary fields.
@@ -399,17 +358,11 @@ export const patients = pgTable(
     */
     allergies: text('allergies'),
 
-    chronicConditions: text(
-      'chronic_conditions',
-    ),
+    chronicConditions: text('chronic_conditions'),
 
-    payerType: text('payer_type')
-      .default('SELF_PAY')
-      .notNull(),
+    payerType: text('payer_type').default('SELF_PAY').notNull(),
 
-    insuranceProvider: text(
-      'insurance_provider',
-    ),
+    insuranceProvider: text('insurance_provider'),
 
     policyNumber: text('policy_number'),
 
@@ -419,60 +372,36 @@ export const patients = pgTable(
       DECEASED
       MERGED
     */
-    status: text('status')
-      .default('ACTIVE')
-      .notNull(),
+    status: text('status').default('ACTIVE').notNull(),
 
-    deceasedAt: timestamp(
-      'deceased_at',
-    ),
+    deceasedAt: timestamp('deceased_at'),
 
     /*
       If duplicate patients are merged, retain
       the surviving patient relationship.
     */
-    mergedIntoPatientId: integer(
-      'merged_into_patient_id',
-    ),
+    mergedIntoPatientId: integer('merged_into_patient_id'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    tenantIdx: index(
-      'patients_tenant_idx',
-    ).on(table.tenantId),
+    tenantIdx: index('patients_tenant_idx').on(table.tenantId),
 
-    registrationFacilityIdx: index(
-      'patients_registration_facility_idx',
-    ).on(
+    registrationFacilityIdx: index('patients_registration_facility_idx').on(
       table.registrationFacilityId,
     ),
 
-    nationalIdIdx: index(
-      'patients_national_id_idx',
-    ).on(table.nationalId),
+    nationalIdIdx: index('patients_national_id_idx').on(table.nationalId),
 
-    shaIdx: index(
-      'patients_sha_idx',
-    ).on(table.shaNumber),
+    shaIdx: index('patients_sha_idx').on(table.shaNumber),
 
-    phoneIdx: index(
-      'patients_phone_idx',
-    ).on(table.phone),
+    phoneIdx: index('patients_phone_idx').on(table.phone),
 
-    statusIdx: index(
-      'patients_status_idx',
-    ).on(table.status),
+    statusIdx: index('patients_status_idx').on(table.status),
 
-    mergedIntoIdx: index(
-      'patients_merged_into_idx',
-    ).on(table.mergedIntoPatientId),
+    mergedIntoIdx: index('patients_merged_into_idx').on(table.mergedIntoPatientId),
   }),
 );
 /* ============================================================
@@ -511,57 +440,38 @@ export const patientAllergies = pgTable(
       .notNull(),
 
     /* DRUG / FOOD / ENVIRONMENTAL / OTHER */
-    allergenType: text('allergen_type')
-      .default('DRUG')
-      .notNull(),
+    allergenType: text('allergen_type').default('DRUG').notNull(),
 
-    allergen: text('allergen')
-      .notNull(),
+    allergen: text('allergen').notNull(),
 
     reaction: text('reaction'),
 
     /* MILD / MODERATE / SEVERE / LIFE_THREATENING */
-    severity: text('severity')
-      .default('MODERATE')
-      .notNull(),
+    severity: text('severity').default('MODERATE').notNull(),
 
     /* ACTIVE / RESOLVED / ENTERED_IN_ERROR */
-    status: text('status')
-      .default('ACTIVE')
-      .notNull(),
+    status: text('status').default('ACTIVE').notNull(),
 
     notes: text('notes'),
 
-    recordedByUserId: integer('recorded_by_user_id')
-      .references(() => users.id),
+    recordedByUserId: integer('recorded_by_user_id').references(() => users.id),
 
-    recordedAt: timestamp('recorded_at')
-      .defaultNow()
-      .notNull(),
+    recordedAt: timestamp('recorded_at').defaultNow().notNull(),
 
     resolvedAt: timestamp('resolved_at'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    patientIdx: index('patient_allergies_patient_idx').on(
-      table.patientId,
-      table.status,
-    ),
+    patientIdx: index('patient_allergies_patient_idx').on(table.patientId, table.status),
 
     tenantIdx: index('patient_allergies_tenant_idx').on(table.tenantId),
 
     facilityIdx: index('patient_allergies_facility_idx').on(table.facilityId),
   }),
 );
-
-
 
 /* ============================================================
    18. PATIENT FACILITY RELATIONSHIPS
@@ -609,64 +519,35 @@ export const patientFacilities = pgTable(
       FOLLOW_UP
       HISTORICAL
     */
-    relationshipType: text(
-      'relationship_type',
-    )
-      .default('CARE')
-      .notNull(),
+    relationshipType: text('relationship_type').default('CARE').notNull(),
 
     /*
       ACTIVE
       INACTIVE
     */
-    status: text('status')
-      .default('ACTIVE')
-      .notNull(),
+    status: text('status').default('ACTIVE').notNull(),
 
-    firstSeenAt: timestamp(
-      'first_seen_at',
-    )
-      .defaultNow()
-      .notNull(),
+    firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
 
-    lastSeenAt: timestamp(
-      'last_seen_at',
-    ),
+    lastSeenAt: timestamp('last_seen_at'),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp(
-      'updated_at',
-    )
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    patientIdx: index(
-      'patient_facilities_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('patient_facilities_patient_idx').on(table.patientId),
 
-    facilityIdx: index(
-      'patient_facilities_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('patient_facilities_facility_idx').on(table.facilityId),
 
-    tenantIdx: index(
-      'patient_facilities_tenant_idx',
-    ).on(table.tenantId),
+    tenantIdx: index('patient_facilities_tenant_idx').on(table.tenantId),
 
-    patientFacilityUnique: uniqueIndex(
-      'patient_facilities_unique_idx',
-    ).on(
+    patientFacilityUnique: uniqueIndex('patient_facilities_unique_idx').on(
       table.patientId,
       table.facilityId,
     ),
   }),
 );
-
 
 /* ============================================================
    19. PATIENT ACCOUNTS
@@ -702,76 +583,45 @@ export const patientAccounts = pgTable(
       SUSPENDED
       DISABLED
     */
-    status: text('status')
-      .default('PENDING')
-      .notNull(),
+    status: text('status').default('PENDING').notNull(),
 
     /*
       Indicates that the patient has completed
       portal verification.
     */
-    accountVerifiedAt: timestamp(
-      'account_verified_at',
-    ),
+    accountVerifiedAt: timestamp('account_verified_at'),
 
     /*
       Timestamp of first successful portal activation.
     */
-    activatedAt: timestamp(
-      'activated_at',
-    ),
+    activatedAt: timestamp('activated_at'),
 
-    lastPortalLoginAt: timestamp(
-      'last_portal_login_at',
-    ),
+    lastPortalLoginAt: timestamp('last_portal_login_at'),
 
-    lastPortalAccessAt: timestamp(
-      'last_portal_access_at',
-    ),
+    lastPortalAccessAt: timestamp('last_portal_access_at'),
 
-    disabledAt: timestamp(
-      'disabled_at',
-    ),
+    disabledAt: timestamp('disabled_at'),
 
-    disabledReason: text(
-      'disabled_reason',
-    ),
+    disabledReason: text('disabled_reason'),
 
     /*
       Used for portal preferences without mixing
       clinical information into the authentication table.
     */
-    preferences: jsonb('preferences')
-      .default({})
-      .notNull(),
+    preferences: jsonb('preferences').default({}).notNull(),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp(
-      'updated_at',
-    )
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdx: uniqueIndex(
-      'patient_accounts_user_idx',
-    ).on(table.userId),
+    userIdx: uniqueIndex('patient_accounts_user_idx').on(table.userId),
 
-    patientIdx: uniqueIndex(
-      'patient_accounts_patient_idx',
-    ).on(table.patientId),
+    patientIdx: uniqueIndex('patient_accounts_patient_idx').on(table.patientId),
 
-    statusIdx: index(
-      'patient_accounts_status_idx',
-    ).on(table.status),
+    statusIdx: index('patient_accounts_status_idx').on(table.status),
   }),
 );
-
 
 /* ============================================================
    20. PATIENT IDENTIFIERS
@@ -795,63 +645,32 @@ export const patientIdentifiers = pgTable(
       FACILITY_MRN
       OTHER
     */
-    idType: text('id_type')
-      .notNull(),
+    idType: text('id_type').notNull(),
 
-    idValue: text('id_value')
-      .notNull(),
+    idValue: text('id_value').notNull(),
 
-    issuingAuthority: text(
-      'issuing_authority',
-    ),
+    issuingAuthority: text('issuing_authority'),
 
-    isPrimary: boolean('is_primary')
-      .default(false)
-      .notNull(),
+    isPrimary: boolean('is_primary').default(false).notNull(),
 
-    verified: boolean('verified')
-      .default(false)
-      .notNull(),
+    verified: boolean('verified').default(false).notNull(),
 
-    verifiedAt: timestamp(
-      'verified_at',
-    ),
+    verifiedAt: timestamp('verified_at'),
 
-    verifiedByUserId: integer(
-      'verified_by_user_id',
-    )
-      .references(() => users.id),
+    verifiedByUserId: integer('verified_by_user_id').references(() => users.id),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp(
-      'updated_at',
-    )
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    patientIdentifierIdx: index(
-      'patient_identifiers_patient_idx',
-    ).on(table.patientId),
+    patientIdentifierIdx: index('patient_identifiers_patient_idx').on(table.patientId),
 
-    typeValueIdx: index(
-      'patient_identifiers_type_value_idx',
-    ).on(
-      table.idType,
-      table.idValue,
-    ),
+    typeValueIdx: index('patient_identifiers_type_value_idx').on(table.idType, table.idValue),
 
-    verifiedIdx: index(
-      'patient_identifiers_verified_idx',
-    ).on(table.verified),
+    verifiedIdx: index('patient_identifiers_verified_idx').on(table.verified),
   }),
 );
-
 
 /* ============================================================
    21. PATIENT CONSENTS
@@ -866,23 +685,13 @@ export const patientConsents = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    grantedByUserId: integer(
-      'granted_by_user_id',
-    )
-      .references(() => users.id),
+    grantedByUserId: integer('granted_by_user_id').references(() => users.id),
 
-    recipientFacilityId: integer(
-      'recipient_facility_id',
-    )
-      .references(() => facilities.id),
+    recipientFacilityId: integer('recipient_facility_id').references(() => facilities.id),
 
-    recipientUserId: integer(
-      'recipient_user_id',
-    )
-      .references(() => users.id),
+    recipientUserId: integer('recipient_user_id').references(() => users.id),
 
-    purpose: text('purpose')
-      .notNull(),
+    purpose: text('purpose').notNull(),
 
     /*
       ACTIVE
@@ -890,9 +699,7 @@ export const patientConsents = pgTable(
       EXPIRED
       USED
     */
-    status: text('status')
-      .default('ACTIVE')
-      .notNull(),
+    status: text('status').default('ACTIVE').notNull(),
 
     /*
       Example:
@@ -908,49 +715,28 @@ export const patientConsents = pgTable(
         "billing": false
       }
     */
-    scope: jsonb('scope')
-      .default({})
-      .notNull(),
+    scope: jsonb('scope').default({}).notNull(),
 
-    grantedAt: timestamp(
-      'granted_at',
-    )
-      .defaultNow()
-      .notNull(),
+    grantedAt: timestamp('granted_at').defaultNow().notNull(),
 
-    expiresAt: timestamp(
-      'expires_at',
-    ),
+    expiresAt: timestamp('expires_at'),
 
-    revokedAt: timestamp(
-      'revoked_at',
-    ),
+    revokedAt: timestamp('revoked_at'),
 
-    revokedByUserId: integer(
-      'revoked_by_user_id',
-    )
-      .references(() => users.id),
+    revokedByUserId: integer('revoked_by_user_id').references(() => users.id),
 
-    consentVersion: integer(
-      'consent_version',
-    )
-      .default(1)
-      .notNull(),
+    consentVersion: integer('consent_version').default(1).notNull(),
 
     /*
       Stores the version of the consent form/
       terms that the patient accepted.
     */
-    consentDocumentHash: text(
-      'consent_document_hash',
-    ),
+    consentDocumentHash: text('consent_document_hash'),
 
     /*
       Useful for electronic consent evidence.
     */
-    consentMethod: text(
-      'consent_method',
-    ),
+    consentMethod: text('consent_method'),
 
     /*
       PATIENT_PORTAL
@@ -958,49 +744,28 @@ export const patientConsents = pgTable(
       EMERGENCY
       OTHER
     */
-    grantedThrough: text(
-      'granted_through',
-    ),
+    grantedThrough: text('granted_through'),
 
-    metadata: jsonb('metadata')
-      .default({})
-      .notNull(),
+    metadata: jsonb('metadata').default({}).notNull(),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp(
-      'updated_at',
-    )
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    patientIdx: index(
-      'patient_consents_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('patient_consents_patient_idx').on(table.patientId),
 
-    recipientFacilityIdx: index(
-      'patient_consents_recipient_facility_idx',
-    ).on(table.recipientFacilityId),
+    recipientFacilityIdx: index('patient_consents_recipient_facility_idx').on(
+      table.recipientFacilityId,
+    ),
 
-    recipientUserIdx: index(
-      'patient_consents_recipient_user_idx',
-    ).on(table.recipientUserId),
+    recipientUserIdx: index('patient_consents_recipient_user_idx').on(table.recipientUserId),
 
-    statusIdx: index(
-      'patient_consents_status_idx',
-    ).on(table.status),
+    statusIdx: index('patient_consents_status_idx').on(table.status),
 
-    expiryIdx: index(
-      'patient_consents_expiry_idx',
-    ).on(table.expiresAt),
+    expiryIdx: index('patient_consents_expiry_idx').on(table.expiresAt),
   }),
 );
-
 
 /* ============================================================
    22. PATIENT RECORD ACCESS LOG
@@ -1021,18 +786,11 @@ export const patientRecordAccessLogs = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    userId: integer('user_id')
-      .references(() => users.id),
+    userId: integer('user_id').references(() => users.id),
 
-    facilityId: integer(
-      'facility_id',
-    )
-      .references(() => facilities.id),
+    facilityId: integer('facility_id').references(() => facilities.id),
 
-    tenantId: integer(
-      'tenant_id',
-    )
-      .references(() => tenants.id),
+    tenantId: integer('tenant_id').references(() => tenants.id),
 
     /*
       VIEW
@@ -1044,8 +802,7 @@ export const patientRecordAccessLogs = pgTable(
       PRINT
       IMPORT
     */
-    action: text('action')
-      .notNull(),
+    action: text('action').notNull(),
 
     /*
       PATIENT_PORTAL
@@ -1055,53 +812,30 @@ export const patientRecordAccessLogs = pgTable(
       FHIR
       EMERGENCY
     */
-    accessChannel: text(
-      'access_channel',
-    ),
+    accessChannel: text('access_channel'),
 
-    recordType: text(
-      'record_type',
-    ),
+    recordType: text('record_type'),
 
-    recordId: integer(
-      'record_id',
-    ),
+    recordId: integer('record_id'),
 
     purpose: text('purpose'),
 
-    ipAddress: text(
-      'ip_address',
-    ),
+    ipAddress: text('ip_address'),
 
-    userAgent: text(
-      'user_agent',
-    ),
+    userAgent: text('user_agent'),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    patientIdx: index(
-      'patient_record_access_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('patient_record_access_patient_idx').on(table.patientId),
 
-    userIdx: index(
-      'patient_record_access_user_idx',
-    ).on(table.userId),
+    userIdx: index('patient_record_access_user_idx').on(table.userId),
 
-    facilityIdx: index(
-      'patient_record_access_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('patient_record_access_facility_idx').on(table.facilityId),
 
-    createdIdx: index(
-      'patient_record_access_created_idx',
-    ).on(table.createdAt),
+    createdIdx: index('patient_record_access_created_idx').on(table.createdAt),
   }),
 );
-
 
 /* ============================================================
    23. REFERRALS
@@ -1112,83 +846,50 @@ export const referrals = pgTable(
   {
     id: serial('id').primaryKey(),
 
-    referralNumber: text(
-      'referral_number',
-    )
-      .notNull()
-      .unique(),
+    referralNumber: text('referral_number').notNull().unique(),
 
-    patientId: integer(
-      'patient_id',
-    )
+    patientId: integer('patient_id')
       .references(() => patients.id)
       .notNull(),
 
-    sourceTenantId: integer(
-      'source_tenant_id',
-    )
+    sourceTenantId: integer('source_tenant_id')
       .references(() => tenants.id)
       .notNull(),
 
-    sourceFacilityId: integer(
-      'source_facility_id',
-    )
+    sourceFacilityId: integer('source_facility_id')
       .references(() => facilities.id)
       .notNull(),
 
-    destinationTenantId: integer(
-      'destination_tenant_id',
-    )
-      .references(() => tenants.id),
+    destinationTenantId: integer('destination_tenant_id').references(() => tenants.id),
 
-    destinationFacilityId: integer(
-      'destination_facility_id',
-    )
-      .references(() => facilities.id),
+    destinationFacilityId: integer('destination_facility_id').references(() => facilities.id),
 
-    destinationDepartmentId: integer(
-      'destination_department_id',
-    )
-      .references(() => departments.id),
+    destinationDepartmentId: integer('destination_department_id').references(() => departments.id),
 
-    externalDestinationName: text(
-      'external_destination_name',
+    externalDestinationName: text('external_destination_name'),
+
+    externalDestinationContact: text('external_destination_contact'),
+
+    referringPractitionerId: integer('referring_practitioner_id').references(
+      () => practitioners.id,
     ),
 
-    externalDestinationContact: text(
-      'external_destination_contact',
+    referredByUserId: integer('referred_by_user_id').references(() => users.id),
+
+    receivingPractitionerId: integer('receiving_practitioner_id').references(
+      () => practitioners.id,
     ),
 
-    referringPractitionerId: integer(
-      'referring_practitioner_id',
-    )
-      .references(() => practitioners.id),
+    reason: text('reason').notNull(),
 
-    referredByUserId: integer(
-      'referred_by_user_id',
-    )
-      .references(() => users.id),
-
-    receivingPractitionerId: integer(
-      'receiving_practitioner_id',
-    )
-      .references(() => practitioners.id),
-
-    reason: text('reason')
-      .notNull(),
-
-    clinicalSummary: text(
-      'clinical_summary',
-    ),
+    clinicalSummary: text('clinical_summary'),
 
     /*
       ROUTINE
       URGENT
       EMERGENCY
     */
-    urgency: text('urgency')
-      .default('ROUTINE')
-      .notNull(),
+    urgency: text('urgency').default('ROUTINE').notNull(),
 
     /*
       DRAFT
@@ -1199,96 +900,55 @@ export const referrals = pgTable(
       COMPLETED
       CANCELLED
     */
-    status: text('status')
-      .default('DRAFT')
-      .notNull(),
+    status: text('status').default('DRAFT').notNull(),
 
-    requestedAt: timestamp(
-      'requested_at',
-    ),
+    requestedAt: timestamp('requested_at'),
 
-    sentAt: timestamp(
-      'sent_at',
-    ),
+    sentAt: timestamp('sent_at'),
 
-    acceptedAt: timestamp(
-      'accepted_at',
-    ),
+    acceptedAt: timestamp('accepted_at'),
 
-    patientSeenAt: timestamp(
-      'patient_seen_at',
-    ),
+    patientSeenAt: timestamp('patient_seen_at'),
 
-    completedAt: timestamp(
-      'completed_at',
-    ),
+    completedAt: timestamp('completed_at'),
 
-    cancelledAt: timestamp(
-      'cancelled_at',
-    ),
+    cancelledAt: timestamp('cancelled_at'),
 
-    cancellationReason: text(
-      'cancellation_reason',
-    ),
+    cancellationReason: text('cancellation_reason'),
 
     /*
       Clinical response from receiving facility.
     */
-    receivingClinicalSummary: text(
-      'receiving_clinical_summary',
-    ),
+    receivingClinicalSummary: text('receiving_clinical_summary'),
 
-    receivingNotes: text(
-      'receiving_notes',
-    ),
+    receivingNotes: text('receiving_notes'),
 
-    responseAt: timestamp(
-      'response_at',
-    ),
+    responseAt: timestamp('response_at'),
 
-    metadata: jsonb('metadata')
-      .default({})
-      .notNull(),
+    metadata: jsonb('metadata').default({}).notNull(),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp(
-      'updated_at',
-    )
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    patientIdx: index(
-      'referrals_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('referrals_patient_idx').on(table.patientId),
 
-    sourceFacilityIdx: index(
-      'referrals_source_facility_idx',
-    ).on(table.sourceFacilityId),
+    sourceFacilityIdx: index('referrals_source_facility_idx').on(table.sourceFacilityId),
 
-    destinationFacilityIdx: index(
-      'referrals_destination_facility_idx',
-    ).on(table.destinationFacilityId),
+    destinationFacilityIdx: index('referrals_destination_facility_idx').on(
+      table.destinationFacilityId,
+    ),
 
-    destinationDepartmentIdx: index(
-      'referrals_destination_department_idx',
-    ).on(table.destinationDepartmentId),
+    destinationDepartmentIdx: index('referrals_destination_department_idx').on(
+      table.destinationDepartmentId,
+    ),
 
-    statusIdx: index(
-      'referrals_status_idx',
-    ).on(table.status),
+    statusIdx: index('referrals_status_idx').on(table.status),
 
-    referralNumberIdx: uniqueIndex(
-      'referrals_number_idx',
-    ).on(table.referralNumber),
+    referralNumberIdx: uniqueIndex('referrals_number_idx').on(table.referralNumber),
   }),
 );
-
 
 /* ============================================================
    24. REFERRAL DOCUMENTS
@@ -1299,72 +959,42 @@ export const referralDocuments = pgTable(
   {
     id: serial('id').primaryKey(),
 
-    referralId: integer(
-      'referral_id',
-    )
+    referralId: integer('referral_id')
       .references(() => referrals.id)
       .notNull(),
 
-    patientId: integer(
-      'patient_id',
-    )
+    patientId: integer('patient_id')
       .references(() => patients.id)
       .notNull(),
 
-    documentType: text(
-      'document_type',
-    ).notNull(),
+    documentType: text('document_type').notNull(),
 
-    documentName: text(
-      'document_name',
-    ).notNull(),
+    documentName: text('document_name').notNull(),
 
-    storageKey: text(
-      'storage_key',
-    ),
+    storageKey: text('storage_key'),
 
     /*
       Avoid treating this as a permanent public URL.
       Prefer signed/private storage access.
     */
-    documentUrl: text(
-      'document_url',
-    ),
+    documentUrl: text('document_url'),
 
-    mimeType: text(
-      'mime_type',
-    ),
+    mimeType: text('mime_type'),
 
-    fileSize: integer(
-      'file_size',
-    ),
+    fileSize: integer('file_size'),
 
-    documentHash: text(
-      'document_hash',
-    ),
+    documentHash: text('document_hash'),
 
-    uploadedByUserId: integer(
-      'uploaded_by_user_id',
-    )
-      .references(() => users.id),
+    uploadedByUserId: integer('uploaded_by_user_id').references(() => users.id),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    referralIdx: index(
-      'referral_documents_referral_idx',
-    ).on(table.referralId),
+    referralIdx: index('referral_documents_referral_idx').on(table.referralId),
 
-    patientIdx: index(
-      'referral_documents_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('referral_documents_patient_idx').on(table.patientId),
   }),
 );
-
 
 /* ============================================================
    25. REFERRAL ACCESS LOG
@@ -1375,27 +1005,17 @@ export const referralAccessLogs = pgTable(
   {
     id: serial('id').primaryKey(),
 
-    referralId: integer(
-      'referral_id',
-    )
+    referralId: integer('referral_id')
       .references(() => referrals.id)
       .notNull(),
 
-    patientId: integer(
-      'patient_id',
-    )
+    patientId: integer('patient_id')
       .references(() => patients.id)
       .notNull(),
 
-    userId: integer(
-      'user_id',
-    )
-      .references(() => users.id),
+    userId: integer('user_id').references(() => users.id),
 
-    facilityId: integer(
-      'facility_id',
-    )
-      .references(() => facilities.id),
+    facilityId: integer('facility_id').references(() => facilities.id),
 
     /*
       VIEW
@@ -1405,38 +1025,22 @@ export const referralAccessLogs = pgTable(
       UPLOAD
       COMPLETE
     */
-    action: text('action')
-      .notNull(),
+    action: text('action').notNull(),
 
-    ipAddress: text(
-      'ip_address',
-    ),
+    ipAddress: text('ip_address'),
 
-    userAgent: text(
-      'user_agent',
-    ),
+    userAgent: text('user_agent'),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    referralIdx: index(
-      'referral_access_logs_referral_idx',
-    ).on(table.referralId),
+    referralIdx: index('referral_access_logs_referral_idx').on(table.referralId),
 
-    patientIdx: index(
-      'referral_access_logs_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('referral_access_logs_patient_idx').on(table.patientId),
 
-    userIdx: index(
-      'referral_access_logs_user_idx',
-    ).on(table.userId),
+    userIdx: index('referral_access_logs_user_idx').on(table.userId),
   }),
 );
-
 
 /* ============================================================
    26. HEALTH RECORD EXPORTS
@@ -1447,15 +1051,11 @@ export const healthRecordExports = pgTable(
   {
     id: serial('id').primaryKey(),
 
-    patientId: integer(
-      'patient_id',
-    )
+    patientId: integer('patient_id')
       .references(() => patients.id)
       .notNull(),
 
-    requestedByUserId: integer(
-      'requested_by_user_id',
-    )
+    requestedByUserId: integer('requested_by_user_id')
       .references(() => users.id)
       .notNull(),
 
@@ -1464,8 +1064,7 @@ export const healthRecordExports = pgTable(
       JSON
       FHIR_JSON
     */
-    format: text('format')
-      .notNull(),
+    format: text('format').notNull(),
 
     /*
       REQUESTED
@@ -1474,63 +1073,34 @@ export const healthRecordExports = pgTable(
       EXPIRED
       FAILED
     */
-    status: text('status')
-      .default('REQUESTED')
-      .notNull(),
+    status: text('status').default('REQUESTED').notNull(),
 
-    scope: jsonb('scope')
-      .default({})
-      .notNull(),
+    scope: jsonb('scope').default({}).notNull(),
 
-    storageKey: text(
-      'storage_key',
-    ),
+    storageKey: text('storage_key'),
 
-    documentHash: text(
-      'document_hash',
-    ),
+    documentHash: text('document_hash'),
 
-    expiresAt: timestamp(
-      'expires_at',
-    ),
+    expiresAt: timestamp('expires_at'),
 
-    downloadedAt: timestamp(
-      'downloaded_at',
-    ),
+    downloadedAt: timestamp('downloaded_at'),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    completedAt: timestamp(
-      'completed_at',
-    ),
+    completedAt: timestamp('completed_at'),
 
-    failureReason: text(
-      'failure_reason',
-    ),
+    failureReason: text('failure_reason'),
   },
   (table) => ({
-    patientIdx: index(
-      'health_record_exports_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('health_record_exports_patient_idx').on(table.patientId),
 
-    requesterIdx: index(
-      'health_record_exports_requester_idx',
-    ).on(table.requestedByUserId),
+    requesterIdx: index('health_record_exports_requester_idx').on(table.requestedByUserId),
 
-    statusIdx: index(
-      'health_record_exports_status_idx',
-    ).on(table.status),
+    statusIdx: index('health_record_exports_status_idx').on(table.status),
 
-    expiryIdx: index(
-      'health_record_exports_expiry_idx',
-    ).on(table.expiresAt),
+    expiryIdx: index('health_record_exports_expiry_idx').on(table.expiresAt),
   }),
 );
-
 
 /* ============================================================
    27. HEALTH RECORD IMPORTS
@@ -1541,52 +1111,33 @@ export const healthRecordImports = pgTable(
   {
     id: serial('id').primaryKey(),
 
-    patientId: integer(
-      'patient_id',
-    )
-      .references(() => patients.id),
+    patientId: integer('patient_id').references(() => patients.id),
 
-    targetTenantId: integer(
-      'target_tenant_id',
-    )
+    targetTenantId: integer('target_tenant_id')
       .references(() => tenants.id)
       .notNull(),
 
-    targetFacilityId: integer(
-      'target_facility_id',
-    )
+    targetFacilityId: integer('target_facility_id')
       .references(() => facilities.id)
       .notNull(),
 
-    uploadedByUserId: integer(
-      'uploaded_by_user_id',
-    )
+    uploadedByUserId: integer('uploaded_by_user_id')
       .references(() => users.id)
       .notNull(),
 
-    sourceFacilityName: text(
-      'source_facility_name',
-    ),
+    sourceFacilityName: text('source_facility_name'),
 
-    sourceFacilityId: integer(
-      'source_facility_id',
-    )
-      .references(() => facilities.id),
+    sourceFacilityId: integer('source_facility_id').references(() => facilities.id),
 
     /*
       External source system identifier.
       Useful for interoperability.
     */
-    sourceSystem: text(
-      'source_system',
-    ),
+    sourceSystem: text('source_system'),
 
-    sourceRecordId: text(
-      'source_record_id',
-    ),
+    sourceRecordId: text('source_record_id'),
 
-    format: text('format')
-      .notNull(),
+    format: text('format').notNull(),
 
     /*
       UPLOADED
@@ -1598,83 +1149,44 @@ export const healthRecordImports = pgTable(
       REJECTED
       FAILED
     */
-    status: text('status')
-      .default('UPLOADED')
-      .notNull(),
+    status: text('status').default('UPLOADED').notNull(),
 
-    storageKey: text(
-      'storage_key',
-    ),
+    storageKey: text('storage_key'),
 
-    documentHash: text(
-      'document_hash',
-    ),
+    documentHash: text('document_hash'),
 
-    validationErrors: jsonb(
-      'validation_errors',
-    )
-      .default([])
-      .notNull(),
+    validationErrors: jsonb('validation_errors').default([]).notNull(),
 
-    importSummary: jsonb(
-      'import_summary',
-    )
-      .default({})
-      .notNull(),
+    importSummary: jsonb('import_summary').default({}).notNull(),
 
-    matchedPatientId: integer(
-      'matched_patient_id',
-    )
-      .references(() => patients.id),
+    matchedPatientId: integer('matched_patient_id').references(() => patients.id),
 
-    reviewedByUserId: integer(
-      'reviewed_by_user_id',
-    )
-      .references(() => users.id),
+    reviewedByUserId: integer('reviewed_by_user_id').references(() => users.id),
 
-    reviewedAt: timestamp(
-      'reviewed_at',
-    ),
+    reviewedAt: timestamp('reviewed_at'),
 
-    importedAt: timestamp(
-      'imported_at',
-    ),
+    importedAt: timestamp('imported_at'),
 
-    rejectionReason: text(
-      'rejection_reason',
-    ),
+    rejectionReason: text('rejection_reason'),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp(
-      'updated_at',
-    )
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    targetFacilityIdx: index(
-      'health_record_imports_target_facility_idx',
-    ).on(table.targetFacilityId),
+    targetFacilityIdx: index('health_record_imports_target_facility_idx').on(
+      table.targetFacilityId,
+    ),
 
-    patientIdx: index(
-      'health_record_imports_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('health_record_imports_patient_idx').on(table.patientId),
 
-    matchedPatientIdx: index(
-      'health_record_imports_matched_patient_idx',
-    ).on(table.matchedPatientId),
+    matchedPatientIdx: index('health_record_imports_matched_patient_idx').on(
+      table.matchedPatientId,
+    ),
 
-    statusIdx: index(
-      'health_record_imports_status_idx',
-    ).on(table.status),
+    statusIdx: index('health_record_imports_status_idx').on(table.status),
   }),
 );
-
 
 /* ============================================================
    28. CLINICAL ENCOUNTERS
@@ -1697,15 +1209,9 @@ export const encounters = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    practitionerId: integer(
-      'practitioner_id',
-    )
-      .references(() => practitioners.id),
+    practitionerId: integer('practitioner_id').references(() => practitioners.id),
 
-    departmentId: integer(
-      'department_id',
-    )
-      .references(() => departments.id),
+    departmentId: integer('department_id').references(() => departments.id),
 
     /*
       OUTPATIENT
@@ -1717,11 +1223,7 @@ export const encounters = pgTable(
       TELEMEDICINE
       FOLLOW_UP
     */
-    encounterType: text(
-      'encounter_type',
-    )
-      .default('OUTPATIENT')
-      .notNull(),
+    encounterType: text('encounter_type').default('OUTPATIENT').notNull(),
 
     /*
       PLANNED
@@ -1730,103 +1232,53 @@ export const encounters = pgTable(
       COMPLETED
       CANCELLED
     */
-    status: text('status')
-      .default('ACTIVE')
-      .notNull(),
+    status: text('status').default('ACTIVE').notNull(),
 
-    triageCategory: text(
-      'triage_category',
-    ),
+    triageCategory: text('triage_category'),
 
-    chiefComplaint: text(
-      'chief_complaint',
-    ),
+    chiefComplaint: text('chief_complaint'),
 
-    historyOfPresentIllness: text(
-      'history_of_present_illness',
-    ),
+    historyOfPresentIllness: text('history_of_present_illness'),
 
-    physicalExamination: text(
-      'physical_examination',
-    ),
+    physicalExamination: text('physical_examination'),
 
-    clinicalNotes: text(
-      'clinical_notes',
-    ),
+    clinicalNotes: text('clinical_notes'),
 
-    followUpDate: date(
-      'follow_up_date',
-    ),
+    followUpDate: date('follow_up_date'),
 
     /*
       Keep legacy/simple referral text only as
       a summary. The real referral relationship
       belongs in referrals.
     */
-    referralFacility: text(
-      'referral_facility',
-    ),
+    referralFacility: text('referral_facility'),
 
-    startedAt: timestamp(
-      'started_at',
-    )
-      .defaultNow()
-      .notNull(),
+    startedAt: timestamp('started_at').defaultNow().notNull(),
 
-    endedAt: timestamp(
-      'ended_at',
-    ),
+    endedAt: timestamp('ended_at'),
 
-    createdByUserId: integer(
-      'created_by_user_id',
-    )
-      .references(() => users.id),
+    createdByUserId: integer('created_by_user_id').references(() => users.id),
 
-    updatedByUserId: integer(
-      'updated_by_user_id',
-    )
-      .references(() => users.id),
+    updatedByUserId: integer('updated_by_user_id').references(() => users.id),
 
-    createdAt: timestamp(
-      'created_at',
-    )
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp(
-      'updated_at',
-    )
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    tenantIdx: index(
-      'encounters_tenant_idx',
-    ).on(table.tenantId),
+    tenantIdx: index('encounters_tenant_idx').on(table.tenantId),
 
-    patientIdx: index(
-      'encounters_patient_idx',
-    ).on(table.patientId),
+    patientIdx: index('encounters_patient_idx').on(table.patientId),
 
-    facilityIdx: index(
-      'encounters_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('encounters_facility_idx').on(table.facilityId),
 
-    practitionerIdx: index(
-      'encounters_practitioner_idx',
-    ).on(table.practitionerId),
+    practitionerIdx: index('encounters_practitioner_idx').on(table.practitionerId),
 
-    departmentIdx: index(
-      'encounters_department_idx',
-    ).on(table.departmentId),
+    departmentIdx: index('encounters_department_idx').on(table.departmentId),
 
-    statusIdx: index(
-      'encounters_status_idx',
-    ).on(table.status),
+    statusIdx: index('encounters_status_idx').on(table.status),
 
-    startedAtIdx: index(
-      'encounters_started_at_idx',
-    ).on(table.startedAt),
+    startedAtIdx: index('encounters_started_at_idx').on(table.startedAt),
   }),
 );
 
@@ -1834,324 +1286,240 @@ export const encounters = pgTable(
    20. APPOINTMENTS
    ============================================================ */
 
-export const appointments = pgTable(
-  'appointments',
-  {
-    id: serial('id').primaryKey(),
+export const appointments = pgTable('appointments', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    practitionerId: integer('practitioner_id')
-      .references(() => practitioners.id),
+  practitionerId: integer('practitioner_id').references(() => practitioners.id),
 
-    departmentId: integer('department_id')
-      .references(() => departments.id),
+  departmentId: integer('department_id').references(() => departments.id),
 
-    scheduledTime: text('scheduled_time')
-      .notNull(),
+  scheduledTime: text('scheduled_time').notNull(),
 
-    durationMinutes: integer('duration_minutes')
-      .default(30),
+  durationMinutes: integer('duration_minutes').default(30),
 
-    appointmentType: text('appointment_type')
-      .default('Routine Follow-up'),
+  appointmentType: text('appointment_type').default('Routine Follow-up'),
 
-    status: text('status')
-      .default('Scheduled'),
+  status: text('status').default('Scheduled'),
 
-    reason: text('reason'),
+  reason: text('reason'),
 
-    notes: text('notes'),
+  notes: text('notes'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    21. PATIENT QUEUES
    ============================================================ */
 
-export const queues = pgTable(
-  'queues',
-  {
-    id: serial('id').primaryKey(),
+export const queues = pgTable('queues', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id),
+  encounterId: integer('encounter_id').references(() => encounters.id),
 
-    queueType: text('queue_type').notNull(),
+  queueType: text('queue_type').notNull(),
 
-    tokenNumber: text('token_number').notNull(),
+  tokenNumber: text('token_number').notNull(),
 
-    priority: text('priority')
-      .default('Normal'),
+  priority: text('priority').default('Normal'),
 
-    status: text('status')
-      .default('Waiting'),
+  status: text('status').default('Waiting'),
 
-    waitingTimeMinutes: integer(
-      'waiting_time_minutes',
-    ).default(0),
+  waitingTimeMinutes: integer('waiting_time_minutes').default(0),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    22. VITAL SIGNS & OBSERVATIONS
    ============================================================ */
 
-export const observations = pgTable(
-  'observations',
-  {
-    id: serial('id').primaryKey(),
+export const observations = pgTable('observations', {
+  id: serial('id').primaryKey(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id)
-      .notNull(),
+  encounterId: integer('encounter_id')
+    .references(() => encounters.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    systolicBp: integer('systolic_bp'),
+  systolicBp: integer('systolic_bp'),
 
-    diastolicBp: integer('diastolic_bp'),
+  diastolicBp: integer('diastolic_bp'),
 
-    pulseRate: integer('pulse_rate'),
+  pulseRate: integer('pulse_rate'),
 
-    temperatureC: numeric(
-      'temperature_c',
-      {
-        precision: 4,
-        scale: 1,
-      },
-    ),
+  temperatureC: numeric('temperature_c', {
+    precision: 4,
+    scale: 1,
+  }),
 
-    respiratoryRate: integer(
-      'respiratory_rate',
-    ),
+  respiratoryRate: integer('respiratory_rate'),
 
-    spo2Percent: integer('spo2_percent'),
+  spo2Percent: integer('spo2_percent'),
 
-    weightKg: numeric(
-      'weight_kg',
-      {
-        precision: 5,
-        scale: 1,
-      },
-    ),
+  weightKg: numeric('weight_kg', {
+    precision: 5,
+    scale: 1,
+  }),
 
-    heightCm: numeric(
-      'height_cm',
-      {
-        precision: 5,
-        scale: 1,
-      },
-    ),
+  heightCm: numeric('height_cm', {
+    precision: 5,
+    scale: 1,
+  }),
 
-    bmi: numeric(
-      'bmi',
-      {
-        precision: 4,
-        scale: 1,
-      },
-    ),
+  bmi: numeric('bmi', {
+    precision: 4,
+    scale: 1,
+  }),
 
-    bloodGlucoseMmol: numeric(
-      'blood_glucose_mmol',
-      {
-        precision: 4,
-        scale: 1,
-      },
-    ),
+  bloodGlucoseMmol: numeric('blood_glucose_mmol', {
+    precision: 4,
+    scale: 1,
+  }),
 
-    recordedBy: text('recorded_by'),
+  recordedBy: text('recorded_by'),
 
-    recordedAt: timestamp('recorded_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  recordedAt: timestamp('recorded_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    23. DIAGNOSES
    ============================================================ */
 
-export const diagnoses = pgTable(
-  'diagnoses',
-  {
-    id: serial('id').primaryKey(),
+export const diagnoses = pgTable('diagnoses', {
+  id: serial('id').primaryKey(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id)
-      .notNull(),
+  encounterId: integer('encounter_id')
+    .references(() => encounters.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    icd10Code: text('icd10_code').notNull(),
+  icd10Code: text('icd10_code').notNull(),
 
-    icd10Description: text(
-      'icd10_description',
-    ).notNull(),
+  icd10Description: text('icd10_description').notNull(),
 
-    diagnosisType: text('diagnosis_type')
-      .default('Primary'),
+  diagnosisType: text('diagnosis_type').default('Primary'),
 
-    status: text('status')
-      .default('Confirmed'),
+  status: text('status').default('Confirmed'),
 
-    notes: text('notes'),
+  notes: text('notes'),
 
-    diagnosedBy: text('diagnosed_by'),
+  diagnosedBy: text('diagnosed_by'),
 
-    diagnosedAt: timestamp('diagnosed_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  diagnosedAt: timestamp('diagnosed_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    24. CLINICAL PROCEDURES
    ============================================================ */
 
-export const clinicalProcedures = pgTable(
-  'procedures',
-  {
-    id: serial('id').primaryKey(),
+export const clinicalProcedures = pgTable('procedures', {
+  id: serial('id').primaryKey(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id)
-      .notNull(),
+  encounterId: integer('encounter_id')
+    .references(() => encounters.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    procedureCode: text('procedure_code')
-      .notNull(),
+  procedureCode: text('procedure_code').notNull(),
 
-    procedureName: text('procedure_name')
-      .notNull(),
+  procedureName: text('procedure_name').notNull(),
 
-    departmentId: integer('department_id')
-      .references(() => departments.id),
+  departmentId: integer('department_id').references(() => departments.id),
 
-    category: text('category')
-      .default('Minor OPD'),
+  category: text('category').default('Minor OPD'),
 
-    cost: numeric(
-      'cost',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  cost: numeric('cost', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    status: text('status')
-      .default('Completed'),
+  status: text('status').default('Completed'),
 
-    performedBy: text('performed_by'),
+  performedBy: text('performed_by'),
 
-    notes: text('notes'),
+  notes: text('notes'),
 
-    performedAt: timestamp('performed_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  performedAt: timestamp('performed_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    25. MEDICATIONS & PRESCRIPTIONS
    ============================================================ */
 
-export const medications = pgTable(
-  'medications',
-  {
-    id: serial('id').primaryKey(),
+export const medications = pgTable('medications', {
+  id: serial('id').primaryKey(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id)
-      .notNull(),
+  encounterId: integer('encounter_id')
+    .references(() => encounters.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    drugId: integer('drug_id'),
+  drugId: integer('drug_id'),
 
-    drugName: text('drug_name').notNull(),
+  drugName: text('drug_name').notNull(),
 
-    dosage: text('dosage').notNull(),
+  dosage: text('dosage').notNull(),
 
-    frequency: text('frequency').notNull(),
+  frequency: text('frequency').notNull(),
 
-    duration: text('duration').notNull(),
+  duration: text('duration').notNull(),
 
-    route: text('route')
-      .default('Oral'),
+  route: text('route').default('Oral'),
 
-    instructions: text('instructions'),
+  instructions: text('instructions'),
 
-    quantity: integer('quantity')
-      .default(1),
+  quantity: integer('quantity').default(1),
 
-    unitPrice: numeric(
-      'unit_price',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  unitPrice: numeric('unit_price', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    status: text('status')
-      .default('Prescribed'),
+  status: text('status').default('Prescribed'),
 
-    prescribedBy: text('prescribed_by'),
+  prescribedBy: text('prescribed_by'),
 
-    prescribedAt: timestamp('prescribed_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  prescribedAt: timestamp('prescribed_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    26. INPATIENT WARDS
@@ -2170,41 +1538,25 @@ export const wards = pgTable(
 
     code: text('code').notNull(),
 
-    wardType: text('ward_type')
-      .default('General'),
+    wardType: text('ward_type').default('General'),
 
-    genderAllocation: text(
-      'gender_allocation',
-    ).default('Mixed'),
+    genderAllocation: text('gender_allocation').default('Mixed'),
 
-    totalBeds: integer('total_beds')
-      .default(20),
+    totalBeds: integer('total_beds').default(20),
 
-    dailyRate: numeric(
-      'daily_rate',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('1500.00'),
+    dailyRate: numeric('daily_rate', {
+      precision: 10,
+      scale: 2,
+    }).default('1500.00'),
 
-    isActive: boolean('is_active')
-      .default(true),
+    isActive: boolean('is_active').default(true),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityCodeIdx: uniqueIndex(
-      'wards_facility_code_idx',
-    ).on(
-      table.facilityId,
-      table.code,
-    ),
+    facilityCodeIdx: uniqueIndex('wards_facility_code_idx').on(table.facilityId, table.code),
   }),
 );
-
 
 /* ============================================================
    27. WARD BEDS
@@ -2219,123 +1571,87 @@ export const beds = pgTable(
       .references(() => wards.id)
       .notNull(),
 
-    bedNumber: text('bed_number')
-      .notNull(),
+    bedNumber: text('bed_number').notNull(),
 
-    bedType: text('bed_type')
-      .default('Standard'),
+    bedType: text('bed_type').default('Standard'),
 
-    status: text('status')
-      .default('Available'),
+    status: text('status').default('Available'),
 
-    dailyCharge: numeric(
-      'daily_charge',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('1500.00'),
+    dailyCharge: numeric('daily_charge', {
+      precision: 10,
+      scale: 2,
+    }).default('1500.00'),
 
-    currentPatientId: integer(
-      'current_patient_id',
-    ).references(() => patients.id),
+    currentPatientId: integer('current_patient_id').references(() => patients.id),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    wardBedIdx: uniqueIndex(
-      'beds_ward_bed_number_idx',
-    ).on(
-      table.wardId,
-      table.bedNumber,
-    ),
+    wardBedIdx: uniqueIndex('beds_ward_bed_number_idx').on(table.wardId, table.bedNumber),
   }),
 );
-
 
 /* ============================================================
    28. INPATIENT ADMISSIONS
    ============================================================ */
 
-export const admissions = pgTable(
-  'admissions',
-  {
-    id: serial('id').primaryKey(),
+export const admissions = pgTable('admissions', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id),
+  encounterId: integer('encounter_id').references(() => encounters.id),
 
-    wardId: integer('ward_id')
-      .references(() => wards.id)
-      .notNull(),
+  wardId: integer('ward_id')
+    .references(() => wards.id)
+    .notNull(),
 
-    bedId: integer('bed_id')
-      .references(() => beds.id)
-      .notNull(),
+  bedId: integer('bed_id')
+    .references(() => beds.id)
+    .notNull(),
 
-    admissionDate: text('admission_date')
-      .notNull(),
+  admissionDate: text('admission_date').notNull(),
 
-    admissionType: text('admission_type')
-      .default('Emergency'),
+  admissionType: text('admission_type').default('Emergency'),
 
-    admittingDoctor: text('admitting_doctor'),
+  admittingDoctor: text('admitting_doctor'),
 
-    provisionalDiagnosis: text(
-      'provisional_diagnosis',
-    ),
+  provisionalDiagnosis: text('provisional_diagnosis'),
 
-    nursingNotes: text('nursing_notes'),
+  nursingNotes: text('nursing_notes'),
 
-    status: text('status')
-      .default('Admitted'),
+  status: text('status').default('Admitted'),
 
-    dischargeDate: text('discharge_date'),
+  dischargeDate: text('discharge_date'),
 
-    dischargeType: text('discharge_type'),
+  dischargeType: text('discharge_type'),
 
-    dischargeSummary: text(
-      'discharge_summary',
-    ),
+  dischargeSummary: text('discharge_summary'),
 
-    dischargedBy: text('discharged_by'),
+  dischargedBy: text('discharged_by'),
 
-    /*
-     * Recovered | Improved | Referred | Absconded | Deceased |
-     * Against Medical Advice
-     */
-    dischargeDisposition: text(
-      'discharge_disposition',
-    ),
+  /*
+   * Recovered | Improved | Referred | Absconded | Deceased |
+   * Against Medical Advice
+   */
+  dischargeDisposition: text('discharge_disposition'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    28b. INPATIENT TRANSFERS
@@ -2362,11 +1678,9 @@ export const admissionTransfers = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    fromWardId: integer('from_ward_id')
-      .references(() => wards.id),
+    fromWardId: integer('from_ward_id').references(() => wards.id),
 
-    fromBedId: integer('from_bed_id')
-      .references(() => beds.id),
+    fromBedId: integer('from_bed_id').references(() => beds.id),
 
     toWardId: integer('to_ward_id')
       .references(() => wards.id)
@@ -2378,27 +1692,18 @@ export const admissionTransfers = pgTable(
 
     reason: text('reason'),
 
-    transferredBy: text('transferred_by')
-      .notNull(),
+    transferredBy: text('transferred_by').notNull(),
 
-    transferredByUserId: integer(
-      'transferred_by_user_id',
-    ).references(() => users.id),
+    transferredByUserId: integer('transferred_by_user_id').references(() => users.id),
 
-    transferredAt: timestamp('transferred_at')
-      .defaultNow()
-      .notNull(),
+    transferredAt: timestamp('transferred_at').defaultNow().notNull(),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
-    index('admission_transfers_admission_idx')
-      .on(table.admissionId, table.transferredAt),
+    index('admission_transfers_admission_idx').on(table.admissionId, table.transferredAt),
   ],
 );
-
 
 /* ============================================================
    28c. NURSING NOTES
@@ -2421,107 +1726,77 @@ export const nursingNotes = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    admissionId: integer('admission_id')
-      .references(() => admissions.id),
+    admissionId: integer('admission_id').references(() => admissions.id),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id),
+    encounterId: integer('encounter_id').references(() => encounters.id),
 
     /* Progress | Observation | Handover | Medication | Incident */
-    noteType: text('note_type')
-      .default('Progress')
-      .notNull(),
+    noteType: text('note_type').default('Progress').notNull(),
 
     /* Morning | Afternoon | Night */
     shift: text('shift'),
 
     note: text('note').notNull(),
 
-    recordedBy: text('recorded_by')
-      .notNull(),
+    recordedBy: text('recorded_by').notNull(),
 
-    recordedByUserId: integer(
-      'recorded_by_user_id',
-    ).references(() => users.id),
+    recordedByUserId: integer('recorded_by_user_id').references(() => users.id),
 
-    recordedAt: timestamp('recorded_at')
-      .defaultNow()
-      .notNull(),
+    recordedAt: timestamp('recorded_at').defaultNow().notNull(),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
-    index('nursing_notes_admission_idx')
-      .on(table.admissionId, table.recordedAt),
-    index('nursing_notes_patient_idx')
-      .on(table.patientId, table.recordedAt),
+    index('nursing_notes_admission_idx').on(table.admissionId, table.recordedAt),
+    index('nursing_notes_patient_idx').on(table.patientId, table.recordedAt),
   ],
 );
-
 
 /* ============================================================
    29. OPERATING THEATRE
    ============================================================ */
 
-export const theatreCases = pgTable(
-  'theatre_cases',
-  {
-    id: serial('id').primaryKey(),
+export const theatreCases = pgTable('theatre_cases', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    procedureName: text('procedure_name')
-      .notNull(),
+  procedureName: text('procedure_name').notNull(),
 
-    theatreRoom: text('theatre_room')
-      .default('Main Theatre 1'),
+  theatreRoom: text('theatre_room').default('Main Theatre 1'),
 
-    theatreType: text('theatre_type')
-      .default('Major'),
+  theatreType: text('theatre_type').default('Major'),
 
-    leadSurgeon: text('lead_surgeon')
-      .notNull(),
+  leadSurgeon: text('lead_surgeon').notNull(),
 
-    anaesthetist: text('anaesthetist'),
+  anaesthetist: text('anaesthetist'),
 
-    scrubNurse: text('scrub_nurse'),
+  scrubNurse: text('scrub_nurse'),
 
-    scheduledStart: text('scheduled_start')
-      .notNull(),
+  scheduledStart: text('scheduled_start').notNull(),
 
-    scheduledEnd: text('scheduled_end'),
+  scheduledEnd: text('scheduled_end'),
 
-    preOpChecklist: jsonb(
-      'pre_op_checklist',
-    ).default({}),
+  preOpChecklist: jsonb('pre_op_checklist').default({}),
 
-    postOpNotes: text('post_op_notes'),
+  postOpNotes: text('post_op_notes'),
 
-    status: text('status')
-      .default('Scheduled'),
+  status: text('status').default('Scheduled'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    30. LABORATORY TEST CATALOGUE
@@ -2540,205 +1815,149 @@ export const labTests = pgTable(
 
     name: text('name').notNull(),
 
-    category: text('category')
-      .default('Haematology'),
+    category: text('category').default('Haematology'),
 
-    specimenType: text('specimen_type')
-      .default('Whole Blood'),
+    specimenType: text('specimen_type').default('Whole Blood'),
 
-    referenceRanges: text(
-      'reference_ranges',
-    ),
+    referenceRanges: text('reference_ranges'),
 
-    turnaroundHours: integer(
-      'turnaround_hours',
-    ).default(2),
+    turnaroundHours: integer('turnaround_hours').default(2),
 
-    price: numeric(
-      'price',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('500.00'),
+    price: numeric('price', {
+      precision: 10,
+      scale: 2,
+    }).default('500.00'),
 
-    isActive: boolean('is_active')
-      .default(true),
+    isActive: boolean('is_active').default(true),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityCodeIdx: uniqueIndex(
-      'lab_tests_facility_code_idx',
-    ).on(
-      table.facilityId,
-      table.code,
-    ),
+    facilityCodeIdx: uniqueIndex('lab_tests_facility_code_idx').on(table.facilityId, table.code),
   }),
 );
-
 
 /* ============================================================
    31. LABORATORY ORDERS
    ============================================================ */
 
-export const labOrders = pgTable(
-  'lab_orders',
-  {
-    id: serial('id').primaryKey(),
+export const labOrders = pgTable('lab_orders', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id),
+  encounterId: integer('encounter_id').references(() => encounters.id),
 
-    testId: integer('test_id')
-      .references(() => labTests.id),
+  testId: integer('test_id').references(() => labTests.id),
 
-    testName: text('test_name')
-      .notNull(),
+  testName: text('test_name').notNull(),
 
-    status: text('status')
-      .default('Ordered'),
-    clinicalIndication: text('clinical_indication'),
+  status: text('status').default('Ordered'),
+  clinicalIndication: text('clinical_indication'),
 
-    specimenType: text('specimen_type'),
+  specimenType: text('specimen_type'),
 
-    priority: text('priority')
-      .default('Routine'),
+  priority: text('priority').default('Routine'),
 
-    clinicalNotes: text('clinical_notes'),
+  clinicalNotes: text('clinical_notes'),
 
-    sampleCollectedAt: timestamp(
-      'sample_collected_at',
-    ),
+  sampleCollectedAt: timestamp('sample_collected_at'),
 
-    sampleAccessionNumber: text(
-      'sample_accession_number',
-    ),
+  sampleAccessionNumber: text('sample_accession_number'),
 
-    orderedBy: text('ordered_by'),
+  orderedBy: text('ordered_by'),
 
-    orderedAt: timestamp('ordered_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  orderedAt: timestamp('ordered_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    32. LABORATORY RESULTS
    ============================================================ */
 
-export const labResults = pgTable(
-  'lab_results',
-  {
-    id: serial('id').primaryKey(),
+export const labResults = pgTable('lab_results', {
+  id: serial('id').primaryKey(),
 
-    orderId: integer('order_id')
-      .references(() => labOrders.id)
-      .notNull(),
+  orderId: integer('order_id')
+    .references(() => labOrders.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    parameterName: text('parameter_name')
-      .notNull(),
+  parameterName: text('parameter_name').notNull(),
 
-    measuredValue: text('measured_value')
-      .notNull(),
+  measuredValue: text('measured_value').notNull(),
 
-    unit: text('unit'),
+  unit: text('unit'),
 
-    referenceRange: text('reference_range'),
+  referenceRange: text('reference_range'),
 
-    flag: text('flag')
-      .default('Normal'),
+  flag: text('flag').default('Normal'),
 
-    notes: text('notes'),
+  notes: text('notes'),
 
-    status: text('status').notNull().default('Pending Verification'),
-    verifiedBy: text('verified_by'),
+  status: text('status').notNull().default('Pending Verification'),
+  verifiedBy: text('verified_by'),
 
-    verifiedAt: timestamp('verified_at'),
-  },
-);
-
+  verifiedAt: timestamp('verified_at'),
+});
 
 /* ============================================================
    33. RADIOLOGY ORDERS
    ============================================================ */
 
-export const radiologyOrders = pgTable(
-  'radiology_orders',
-  {
-    id: serial('id').primaryKey(),
+export const radiologyOrders = pgTable('radiology_orders', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id),
+  encounterId: integer('encounter_id').references(() => encounters.id),
 
-    modality: text('modality')
-      .notNull(),
+  modality: text('modality').notNull(),
 
-    procedureName: text('procedure_name')
-      .notNull(),
+  procedureName: text('procedure_name').notNull(),
 
-    clinicalIndication: text(
-      'clinical_indication',
-    ),
+  clinicalIndication: text('clinical_indication'),
 
-    status: text('status')
-      .default('Requested'),
+  status: text('status').default('Requested'),
 
-    radiologistFindings: text(
-      'radiologist_findings',
-    ),
+  radiologistFindings: text('radiologist_findings'),
 
-    impression: text('impression'),
+  impression: text('impression'),
 
-    attachmentUrl: text('attachment_url'),
+  attachmentUrl: text('attachment_url'),
 
-    orderedBy: text('ordered_by'),
+  orderedBy: text('ordered_by'),
 
-    reportedBy: text('reported_by'),
+  reportedBy: text('reported_by'),
 
-    reportedAt: timestamp('reported_at'),
+  reportedAt: timestamp('reported_at'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    34. INVENTORY ITEMS
@@ -2759,62 +1978,43 @@ export const inventoryItems = pgTable(
 
     genericName: text('generic_name'),
 
-    category: text('category')
-      .default('Pharmaceuticals'),
+    category: text('category').default('Pharmaceuticals'),
 
-    unit: text('unit')
-      .default('Tablets'),
+    unit: text('unit').default('Tablets'),
 
     strength: text('strength'),
 
     dosageForm: text('dosage_form'),
 
-    currentStock: integer('current_stock')
-      .default(0),
+    currentStock: integer('current_stock').default(0),
 
-    reorderLevel: integer('reorder_level')
-      .default(50),
+    reorderLevel: integer('reorder_level').default(50),
 
-    unitCost: numeric(
-      'unit_cost',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+    unitCost: numeric('unit_cost', {
+      precision: 10,
+      scale: 2,
+    }).default('0'),
 
-    sellingPrice: numeric(
-      'selling_price',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+    sellingPrice: numeric('selling_price', {
+      precision: 10,
+      scale: 2,
+    }).default('0'),
 
-    storeLocation: text('store_location')
-      .default('Main Pharmacy Store'),
+    storeLocation: text('store_location').default('Main Pharmacy Store'),
 
-    isActive: boolean('is_active')
-      .default(true),
+    isActive: boolean('is_active').default(true),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityItemCodeIdx: uniqueIndex(
-      'inventory_items_facility_code_idx',
-    ).on(
+    facilityItemCodeIdx: uniqueIndex('inventory_items_facility_code_idx').on(
       table.facilityId,
       table.itemCode,
     ),
   }),
 );
-
 
 /* ============================================================
    35. INVENTORY BATCHES
@@ -2829,175 +2029,127 @@ export const inventoryBatches = pgTable(
       .references(() => inventoryItems.id)
       .notNull(),
 
-    batchNumber: text('batch_number')
-      .notNull(),
+    batchNumber: text('batch_number').notNull(),
 
-    expiryDate: text('expiry_date')
-      .notNull(),
+    expiryDate: text('expiry_date').notNull(),
 
-    quantityRemaining: integer(
-      'quantity_remaining',
-    ).notNull(),
+    quantityRemaining: integer('quantity_remaining').notNull(),
 
-    costPerUnit: numeric(
-      'cost_per_unit',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+    costPerUnit: numeric('cost_per_unit', {
+      precision: 10,
+      scale: 2,
+    }).default('0'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    itemBatchIdx: uniqueIndex(
-      'inventory_batches_item_batch_idx',
-    ).on(
+    itemBatchIdx: uniqueIndex('inventory_batches_item_batch_idx').on(
       table.itemId,
       table.batchNumber,
     ),
   }),
 );
 
-
 /* ============================================================
    36. PHARMACY DISPENSATIONS
    ============================================================ */
 
-export const pharmacyDispensations = pgTable(
-  'pharmacy_dispensations',
-  {
-    id: serial('id').primaryKey(),
+export const pharmacyDispensations = pgTable('pharmacy_dispensations', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    prescriptionId: integer(
-      'prescription_id',
-    ).references(() => medications.id),
+  prescriptionId: integer('prescription_id').references(() => medications.id),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    itemId: integer('item_id')
-      .references(() => inventoryItems.id),
+  itemId: integer('item_id').references(() => inventoryItems.id),
 
-    batchNumber: text('batch_number'),
+  batchNumber: text('batch_number'),
 
-    quantityDispensed: integer(
-      'quantity_dispensed',
-    ).notNull(),
+  quantityDispensed: integer('quantity_dispensed').notNull(),
 
-    dispensedBy: text('dispensed_by')
-      .notNull(),
+  dispensedBy: text('dispensed_by').notNull(),
 
-    dispensedAt: timestamp(
-      'dispensed_at',
-    ).defaultNow().notNull(),
+  dispensedAt: timestamp('dispensed_at').defaultNow().notNull(),
 
-    notes: text('notes'),
-
-  },
-);
-
+  notes: text('notes'),
+});
 
 /* ============================================================
    37. SUPPLIERS
    ============================================================ */
 
-export const suppliers = pgTable(
-  'suppliers',
-  {
-    id: serial('id').primaryKey(),
+export const suppliers = pgTable('suppliers', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    name: text('name').notNull(),
+  name: text('name').notNull(),
 
-    contactPerson: text('contact_person'),
+  contactPerson: text('contact_person'),
 
-    phone: text('phone'),
+  phone: text('phone'),
 
-    email: text('email'),
+  email: text('email'),
 
-    kraPin: text('kra_pin'),
+  kraPin: text('kra_pin'),
 
-    address: text('address'),
+  address: text('address'),
 
-    isActive: boolean('is_active')
-      .default(true),
+  isActive: boolean('is_active').default(true),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    38. PURCHASE ORDERS
    ============================================================ */
 
-export const purchaseOrders = pgTable(
-  'purchase_orders',
-  {
-    id: serial('id').primaryKey(),
+export const purchaseOrders = pgTable('purchase_orders', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    supplierId: integer('supplier_id')
-      .references(() => suppliers.id)
-      .notNull(),
+  supplierId: integer('supplier_id')
+    .references(() => suppliers.id)
+    .notNull(),
 
-    poNumber: text('po_number')
-      .notNull()
-      .unique(),
+  poNumber: text('po_number').notNull().unique(),
 
-    totalAmount: numeric(
-      'total_amount',
-      {
-        precision: 12,
-        scale: 2,
-      },
-    ).default('0'),
+  totalAmount: numeric('total_amount', {
+    precision: 12,
+    scale: 2,
+  }).default('0'),
 
-    status: text('status')
-      .default('Pending Approval'),
+  status: text('status').default('Pending Approval'),
 
-    orderedBy: text('ordered_by'),
+  orderedBy: text('ordered_by'),
 
-    approvedBy: text('approved_by'),
+  approvedBy: text('approved_by'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    39. BILLING INVOICES
@@ -3055,166 +2207,125 @@ export const facilityServiceTariffs = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex('facility_service_tariffs_facility_code_unique')
-      .on(table.facilityId, table.code),
-    index('facility_service_tariffs_tenant_facility_idx')
-      .on(table.tenantId, table.facilityId),
-    index('facility_service_tariffs_active_idx')
-      .on(table.facilityId, table.isActive),
+    uniqueIndex('facility_service_tariffs_facility_code_unique').on(table.facilityId, table.code),
+    index('facility_service_tariffs_tenant_facility_idx').on(table.tenantId, table.facilityId),
+    index('facility_service_tariffs_active_idx').on(table.facilityId, table.isActive),
   ],
 );
-export const billingInvoices = pgTable(
-  'billing_invoices',
-  {
-    id: serial('id').primaryKey(),
+export const billingInvoices = pgTable('billing_invoices', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id),
+  encounterId: integer('encounter_id').references(() => encounters.id),
 
-    invoiceNumber: text('invoice_number')
-      .notNull()
-      .unique(),
+  invoiceNumber: text('invoice_number').notNull().unique(),
 
-    totalAmount: numeric(
-      'total_amount',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  totalAmount: numeric('total_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    paidAmount: numeric(
-      'paid_amount',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  paidAmount: numeric('paid_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    balanceAmount: numeric(
-      'balance_amount',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  balanceAmount: numeric('balance_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    status: text('status')
-      .default('Pending'),
+  status: text('status').default('Pending'),
 
-    /*
-     * Money received beyond the invoice total. Kept as its own column
-     * instead of letting balance_amount go negative, because a negative
-     * balance silently cancels out other patients' debts whenever the
-     * facility totals what it is owed.
-     */
-    creditBalance: numeric(
-      'credit_balance',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  /*
+   * Money received beyond the invoice total. Kept as its own column
+   * instead of letting balance_amount go negative, because a negative
+   * balance silently cancels out other patients' debts whenever the
+   * facility totals what it is owed.
+   */
+  creditBalance: numeric('credit_balance', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    payerType: text('payer_type')
-      .default('Self-Pay'),
+  payerType: text('payer_type').default('Self-Pay'),
 
-    payerName: text('payer_name'),
+  payerName: text('payer_name'),
 
-    memberNumber: text('member_number'),
+  memberNumber: text('member_number'),
 
-    voidedAt: timestamp('voided_at'),
+  voidedAt: timestamp('voided_at'),
 
-    voidReason: text('void_reason'),
+  voidReason: text('void_reason'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    40. BILLING ITEMS
    ============================================================ */
 
-export const billingItems = pgTable(
-  'billing_items',
-  {
-    id: serial('id').primaryKey(),
+export const billingItems = pgTable('billing_items', {
+  id: serial('id').primaryKey(),
 
-    invoiceId: integer('invoice_id')
-      .references(() => billingInvoices.id)
-      .notNull(),
+  invoiceId: integer('invoice_id')
+    .references(() => billingInvoices.id)
+    .notNull(),
 
-    tariffId: integer('tariff_id')
-      .references(() => facilityServiceTariffs.id, { onDelete: 'set null' }),
+  tariffId: integer('tariff_id').references(() => facilityServiceTariffs.id, {
+    onDelete: 'set null',
+  }),
 
-    tariffCode: text('tariff_code'),
+  tariffCode: text('tariff_code'),
 
-    /*
-     * Provenance: which clinical event produced this line item.
-     *
-     *   CONSULTATION | LAB_ORDER | PROCEDURE | RADIOLOGY | PHARMACY
-     *   ADMISSION | BED_DAY | MANUAL
-     */
-    sourceType: text('source_type'),
+  /*
+   * Provenance: which clinical event produced this line item.
+   *
+   *   CONSULTATION | LAB_ORDER | PROCEDURE | RADIOLOGY | PHARMACY
+   *   ADMISSION | BED_DAY | MANUAL
+   */
+  sourceType: text('source_type'),
 
-    sourceId: integer('source_id'),
+  sourceId: integer('source_id'),
 
-    /*
-     * Idempotency key for engine-generated charges, enforced by a UNIQUE
-     * partial index in migration 0009. Replaying a clinical event can
-     * never create a second charge. Manual items leave this NULL.
-     */
-    idempotencyKey: text('idempotency_key'),
+  /*
+   * Idempotency key for engine-generated charges, enforced by a UNIQUE
+   * partial index in migration 0009. Replaying a clinical event can
+   * never create a second charge. Manual items leave this NULL.
+   */
+  idempotencyKey: text('idempotency_key'),
 
-    itemType: text('item_type')
-      .notNull(),
+  itemType: text('item_type').notNull(),
 
-    description: text('description')
-      .notNull(),
+  description: text('description').notNull(),
 
-    quantity: integer('quantity')
-      .default(1),
+  quantity: integer('quantity').default(1),
 
-    unitPrice: numeric(
-      'unit_price',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  unitPrice: numeric('unit_price', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    totalAmount: numeric(
-      'total_amount',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  totalAmount: numeric('total_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 /**
  * The link between a catalogue service and the price that answers it.
@@ -3371,228 +2482,177 @@ export const billingChargeAttempts = pgTable(
         sql`coalesce(${table.idempotencySuffix}, '')`,
       )
       .where(sql`${table.status} = 'PENDING' AND ${table.sourceId} is not null`),
-    index('billing_charge_attempts_facility_status_idx')
-      .on(table.tenantId, table.facilityId, table.status),
+    index('billing_charge_attempts_facility_status_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.status,
+    ),
     index('billing_charge_attempts_patient_idx').on(table.patientId),
   ],
 );
-
 
 /* ============================================================
    41. BILLING PAYMENTS
    ============================================================ */
 
-export const billingPayments = pgTable(
-  'billing_payments',
-  {
-    id: serial('id').primaryKey(),
+export const billingPayments = pgTable('billing_payments', {
+  id: serial('id').primaryKey(),
 
-    invoiceId: integer('invoice_id')
-      .references(() => billingInvoices.id)
-      .notNull(),
+  invoiceId: integer('invoice_id')
+    .references(() => billingInvoices.id)
+    .notNull(),
 
-    receiptNumber: text('receipt_number')
-      .notNull()
-      .unique(),
+  receiptNumber: text('receipt_number').notNull().unique(),
 
-    paymentMethod: text('payment_method')
-      .default('M-Pesa'),
+  paymentMethod: text('payment_method').default('M-Pesa'),
 
-    amount: numeric(
-      'amount',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).notNull(),
+  amount: numeric('amount', {
+    precision: 10,
+    scale: 2,
+  }).notNull(),
 
-    referenceCode: text('reference_code'),
+  referenceCode: text('reference_code'),
 
-    /*
-     * The code printed on the customer's M-Pesa or Airtel confirmation
-     * message. Distinct from reference_code so reconciliation can match
-     * against a mobile money statement without parsing free text.
-     */
-    transactionCode: text('transaction_code'),
+  /*
+   * The code printed on the customer's M-Pesa or Airtel confirmation
+   * message. Distinct from reference_code so reconciliation can match
+   * against a mobile money statement without parsing free text.
+   */
+  transactionCode: text('transaction_code'),
 
-    /* FULLY_PAID | BALANCE_REMAINING | OVERPAID at the moment of posting. */
-    settlementStatus: text('settlement_status'),
+  /* FULLY_PAID | BALANCE_REMAINING | OVERPAID at the moment of posting. */
+  settlementStatus: text('settlement_status'),
 
-    cashierName: text('cashier_name')
-      .notNull(),
+  cashierName: text('cashier_name').notNull(),
 
-    paymentDate: timestamp(
-      'payment_date',
-    ).defaultNow().notNull(),
+  paymentDate: timestamp('payment_date').defaultNow().notNull(),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    42. INSURANCE / SHA CLAIMS
    ============================================================ */
 
-export const insuranceClaims = pgTable(
-  'insurance_claims',
-  {
-    id: serial('id').primaryKey(),
+export const insuranceClaims = pgTable('insurance_claims', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id)
-      .notNull(),
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    patientId: integer('patient_id')
-      .references(() => patients.id)
-      .notNull(),
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
 
-    invoiceId: integer('invoice_id')
-      .references(() => billingInvoices.id)
-      .notNull(),
+  invoiceId: integer('invoice_id')
+    .references(() => billingInvoices.id)
+    .notNull(),
 
-    claimNumber: text('claim_number')
-      .notNull()
-      .unique(),
+  claimNumber: text('claim_number').notNull().unique(),
 
-    payerName: text('payer_name')
-      .default('Social Health Authority (SHA)'),
+  payerName: text('payer_name').default('Social Health Authority (SHA)'),
 
-    policyNumber: text('policy_number'),
+  policyNumber: text('policy_number'),
 
-    preAuthCode: text('pre_auth_code'),
+  preAuthCode: text('pre_auth_code'),
 
-    claimAmount: numeric(
-      'claim_amount',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).notNull(),
+  claimAmount: numeric('claim_amount', {
+    precision: 10,
+    scale: 2,
+  }).notNull(),
 
-    approvedAmount: numeric(
-      'approved_amount',
-      {
-        precision: 10,
-        scale: 2,
-      },
-    ).default('0'),
+  approvedAmount: numeric('approved_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
 
-    status: text('status')
-      .default('Draft'),
+  status: text('status').default('Draft'),
 
-    submittedAt: timestamp('submitted_at'),
+  submittedAt: timestamp('submitted_at'),
 
-    adjudicationNotes: text(
-      'adjudication_notes',
-    ),
+  adjudicationNotes: text('adjudication_notes'),
 
-    /*
-     * The payment that settled this claim. Set when an approved amount
-     * is posted against the invoice; null while the money is outstanding.
-     */
-    settledPaymentId: integer('settled_payment_id')
-      .references(() => billingPayments.id, { onDelete: 'set null' }),
+  /*
+   * The payment that settled this claim. Set when an approved amount
+   * is posted against the invoice; null while the money is outstanding.
+   */
+  settledPaymentId: integer('settled_payment_id').references(() => billingPayments.id, {
+    onDelete: 'set null',
+  }),
 
-    settledAt: timestamp('settled_at'),
+  settledAt: timestamp('settled_at'),
 
-    createdByUserId: integer('created_by_user_id'),
+  createdByUserId: integer('created_by_user_id'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
-  },
-);
-
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    42b. INSURANCE CLAIM ITEMS
    ============================================================ */
 
-export const insuranceClaimItems = pgTable(
-  'insurance_claim_items',
-  {
-    id: serial('id').primaryKey(),
+export const insuranceClaimItems = pgTable('insurance_claim_items', {
+  id: serial('id').primaryKey(),
 
-    claimId: integer('claim_id')
-      .references(() => insuranceClaims.id, { onDelete: 'cascade' })
-      .notNull(),
+  claimId: integer('claim_id')
+    .references(() => insuranceClaims.id, { onDelete: 'cascade' })
+    .notNull(),
 
-    billingItemId: integer('billing_item_id')
-      .references(() => billingItems.id, { onDelete: 'set null' }),
+  billingItemId: integer('billing_item_id').references(() => billingItems.id, {
+    onDelete: 'set null',
+  }),
 
-    /*
-     * Snapshot of the line at claim time. The invoice may be edited or
-     * voided later; the claim must still say what it asked for.
-     */
-    description: text('description').notNull(),
+  /*
+   * Snapshot of the line at claim time. The invoice may be edited or
+   * voided later; the claim must still say what it asked for.
+   */
+  description: text('description').notNull(),
 
-    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+  amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
 
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-);
-
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    43. PUBLIC HEALTH REPORTS
    ============================================================ */
 
-export const publicHealthReports = pgTable(
-  'public_health_reports',
-  {
-    id: serial('id').primaryKey(),
+export const publicHealthReports = pgTable('public_health_reports', {
+  id: serial('id').primaryKey(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id)
-      .notNull(),
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
 
-    diseaseCode: text('disease_code')
-      .notNull(),
+  diseaseCode: text('disease_code').notNull(),
 
-    diseaseName: text('disease_name')
-      .notNull(),
+  diseaseName: text('disease_name').notNull(),
 
-    casesCount: integer('cases_count')
-      .default(1),
+  casesCount: integer('cases_count').default(1),
 
-    mortalityCount: integer(
-      'mortality_count',
-    ).default(0),
+  mortalityCount: integer('mortality_count').default(0),
 
-    ageGroup: text('age_group')
-      .default('Over 5 Years'),
+  ageGroup: text('age_group').default('Over 5 Years'),
 
-    epiWeek: text('epi_week')
-      .notNull(),
+  epiWeek: text('epi_week').notNull(),
 
-    reportedAt: timestamp('reported_at')
-      .defaultNow()
-      .notNull(),
+  reportedAt: timestamp('reported_at').defaultNow().notNull(),
 
-    reportedBy: text('reported_by'),
+  reportedBy: text('reported_by'),
 
-    status: text('status')
-      .default('DRAFT'),
+  status: text('status').default('DRAFT'),
 
-    submittedAt: timestamp('submitted_at'),
+  submittedAt: timestamp('submitted_at'),
 
-    submissionReference: text(
-      'submission_reference',
-    ),
-  },
-);
-
+  submissionReference: text('submission_reference'),
+});
 
 /* ============================================================
    44. AUDIT TRAIL & SECURITY LOGS
@@ -3613,11 +2673,9 @@ export const auditLogs = pgTable(
 
     userId: text('user_id'),
 
-    action: text('action')
-      .notNull(),
+    action: text('action').notNull(),
 
-    resource: text('resource')
-      .notNull(),
+    resource: text('resource').notNull(),
 
     resourceId: text('resource_id'),
 
@@ -3629,8 +2687,7 @@ export const auditLogs = pgTable(
 
     requestId: text('request_id'),
 
-    severity: text('severity')
-      .default('INFO'),
+    severity: text('severity').default('INFO'),
 
     /*
       Examples:
@@ -3640,34 +2697,20 @@ export const auditLogs = pgTable(
       CRITICAL
     */
 
-    timestamp: timestamp('timestamp')
-      .defaultNow()
-      .notNull(),
+    timestamp: timestamp('timestamp').defaultNow().notNull(),
   },
   (table) => ({
-    tenantIdx: index(
-      'audit_logs_tenant_idx',
-    ).on(table.tenantId),
+    tenantIdx: index('audit_logs_tenant_idx').on(table.tenantId),
 
-    facilityIdx: index(
-      'audit_logs_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('audit_logs_facility_idx').on(table.facilityId),
 
-    userIdx: index(
-      'audit_logs_user_idx',
-    ).on(table.userId),
+    userIdx: index('audit_logs_user_idx').on(table.userId),
 
-    actionIdx: index(
-      'audit_logs_action_idx',
-    ).on(table.action),
+    actionIdx: index('audit_logs_action_idx').on(table.action),
 
-    timestampIdx: index(
-      'audit_logs_timestamp_idx',
-    ).on(table.timestamp),
+    timestampIdx: index('audit_logs_timestamp_idx').on(table.timestamp),
   }),
 );
-
-
 
 /* ============================================================
    FACILITY SUBSCRIPTIONS
@@ -3765,10 +2808,7 @@ export const maternityPregnancies = pgTable(
       table.status,
     ),
 
-    facilityIdx: index('maternity_pregnancies_facility_idx').on(
-      table.facilityId,
-      table.status,
-    ),
+    facilityIdx: index('maternity_pregnancies_facility_idx').on(table.facilityId, table.status),
 
     /*
      * A patient cannot be booked twice for the same pregnancy. Two active
@@ -3845,15 +2885,9 @@ export const ancVisits = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    pregnancyIdx: index('anc_visits_pregnancy_idx').on(
-      table.pregnancyId,
-      table.visitDate,
-    ),
+    pregnancyIdx: index('anc_visits_pregnancy_idx').on(table.pregnancyId, table.visitDate),
 
-    facilityIdx: index('anc_visits_facility_idx').on(
-      table.facilityId,
-      table.visitDate,
-    ),
+    facilityIdx: index('anc_visits_facility_idx').on(table.facilityId, table.visitDate),
   }),
 );
 
@@ -3878,8 +2912,7 @@ export const labourRecords = pgTable(
       .references(() => patients.id)
       .notNull(),
 
-    encounterId: integer('encounter_id')
-      .references(() => encounters.id),
+    encounterId: integer('encounter_id').references(() => encounters.id),
 
     admittedAt: text('admitted_at').notNull(),
 
@@ -3899,10 +2932,7 @@ export const labourRecords = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    pregnancyIdx: index('labour_records_pregnancy_idx').on(
-      table.pregnancyId,
-      table.admittedAt,
-    ),
+    pregnancyIdx: index('labour_records_pregnancy_idx').on(table.pregnancyId, table.admittedAt),
 
     facilityStatusIdx: index('labour_records_facility_status_idx').on(
       table.facilityId,
@@ -3976,10 +3006,7 @@ export const partographEntries = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    labourIdx: index('partograph_entries_labour_idx').on(
-      table.labourRecordId,
-      table.recordedAt,
-    ),
+    labourIdx: index('partograph_entries_labour_idx').on(table.labourRecordId, table.recordedAt),
 
     /*
      * Two observations claiming the same moment is a double entry, and on
@@ -4009,8 +3036,7 @@ export const deliveries = pgTable(
       .references(() => maternityPregnancies.id)
       .notNull(),
 
-    labourRecordId: integer('labour_record_id')
-      .references(() => labourRecords.id),
+    labourRecordId: integer('labour_record_id').references(() => labourRecords.id),
 
     patientId: integer('patient_id')
       .references(() => patients.id)
@@ -4042,15 +3068,9 @@ export const deliveries = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    pregnancyIdx: index('deliveries_pregnancy_idx').on(
-      table.pregnancyId,
-      table.deliveredAt,
-    ),
+    pregnancyIdx: index('deliveries_pregnancy_idx').on(table.pregnancyId, table.deliveredAt),
 
-    facilityIdx: index('deliveries_facility_idx').on(
-      table.facilityId,
-      table.deliveredAt,
-    ),
+    facilityIdx: index('deliveries_facility_idx').on(table.facilityId, table.deliveredAt),
   }),
 );
 
@@ -4136,8 +3156,7 @@ export const postnatalVisits = pgTable(
       .references(() => maternityPregnancies.id)
       .notNull(),
 
-    deliveryId: integer('delivery_id')
-      .references(() => deliveries.id),
+    deliveryId: integer('delivery_id').references(() => deliveries.id),
 
     visitDate: text('visit_date').notNull(),
 
@@ -4188,15 +3207,9 @@ export const postnatalVisits = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    pregnancyIdx: index('postnatal_visits_pregnancy_idx').on(
-      table.pregnancyId,
-      table.visitDate,
-    ),
+    pregnancyIdx: index('postnatal_visits_pregnancy_idx').on(table.pregnancyId, table.visitDate),
 
-    facilityIdx: index('postnatal_visits_facility_idx').on(
-      table.facilityId,
-      table.visitDate,
-    ),
+    facilityIdx: index('postnatal_visits_facility_idx').on(table.facilityId, table.visitDate),
   }),
 );
 
@@ -4232,14 +3245,11 @@ export const immunisationRecords = pgTable(
       .notNull(),
 
     /* Set when the child was born here and the link is known. */
-    deliveryId: integer('delivery_id')
-      .references(() => deliveries.id),
+    deliveryId: integer('delivery_id').references(() => deliveries.id),
 
-    deliveryBabyId: integer('delivery_baby_id')
-      .references(() => deliveryBabies.id),
+    deliveryBabyId: integer('delivery_baby_id').references(() => deliveryBabies.id),
 
-    pregnancyId: integer('pregnancy_id')
-      .references(() => maternityPregnancies.id),
+    pregnancyId: integer('pregnancy_id').references(() => maternityPregnancies.id),
 
     /* BCG | OPV | PENTA | PCV | ROTA | IPV | MR | YF | HPV | Td */
     antigenCode: text('antigen_code').notNull(),
@@ -4288,1116 +3298,615 @@ export const immunisationRecords = pgTable(
    45. RELATIONS
    ============================================================ */
 
-export const tenantsRelations = relations(
-  tenants,
-  ({ many }) => ({
-    facilities: many(facilities),
+export const tenantsRelations = relations(tenants, ({ many }) => ({
+  facilities: many(facilities),
 
-    users: many(users),
+  users: many(users),
 
-    roles: many(roles),
+  roles: many(roles),
 
-    patients: many(patients),
+  patients: many(patients),
 
-    onboardingRecords: many(
-      facilityOnboarding,
-    ),
+  onboardingRecords: many(facilityOnboarding),
+}));
+
+export const facilitiesRelations = relations(facilities, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [facilities.tenantId],
+    references: [tenants.id],
   }),
-);
 
+  departments: many(departments),
 
-export const facilitiesRelations = relations(
-  facilities,
-  ({ one, many }) => ({
-    tenant: one(tenants, {
-      fields: [facilities.tenantId],
-      references: [tenants.id],
-    }),
+  users: many(users),
 
-    departments: many(departments),
+  patients: many(patients),
 
-    users: many(users),
+  wards: many(wards),
 
-    patients: many(patients),
+  practitioners: many(practitioners),
 
-    wards: many(wards),
+  onboarding: many(facilityOnboarding),
 
-    practitioners: many(practitioners),
+  documents: many(facilityDocuments),
 
-    onboarding: many(
-      facilityOnboarding,
-    ),
+  adminInvitations: many(facilityAdminInvitations),
 
-    documents: many(
-      facilityDocuments,
-    ),
+  userInvitations: many(userInvitations),
 
-    adminInvitations: many(
-      facilityAdminInvitations,
-    ),
+  labTests: many(labTests),
 
-    userInvitations: many(
-      userInvitations,
-    ),
+  inventoryItems: many(inventoryItems),
+}));
 
-    labTests: many(labTests),
-
-    inventoryItems: many(
-      inventoryItems,
-    ),
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [departments.facilityId],
+    references: [facilities.id],
   }),
-);
 
+  practitioners: many(practitioners),
 
-export const departmentsRelations = relations(
-  departments,
-  ({ one, many }) => ({
-    facility: one(facilities, {
-      fields: [departments.facilityId],
-      references: [facilities.id],
-    }),
+  encounters: many(encounters),
+}));
 
-    practitioners: many(
-      practitioners,
-    ),
-
-    encounters: many(encounters),
+export const rolesRelations = relations(roles, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [roles.tenantId],
+    references: [tenants.id],
   }),
-);
 
+  permissions: many(rolePermissions),
 
-export const rolesRelations = relations(
-  roles,
-  ({ one, many }) => ({
-    tenant: one(tenants, {
-      fields: [roles.tenantId],
-      references: [tenants.id],
-    }),
+  users: many(userRoles),
+}));
 
-    permissions: many(
-      rolePermissions,
-    ),
+export const permissionsRelations = relations(permissions, ({ many }) => ({
+  roles: many(rolePermissions),
+}));
 
-    users: many(userRoles),
+export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => ({
+  role: one(roles, {
+    fields: [rolePermissions.roleId],
+    references: [roles.id],
   }),
-);
 
-
-export const permissionsRelations = relations(
-  permissions,
-  ({ many }) => ({
-    roles: many(rolePermissions),
+  permission: one(permissions, {
+    fields: [rolePermissions.permissionId],
+    references: [permissions.id],
   }),
-);
+}));
 
-
-export const rolePermissionsRelations =
-  relations(
-    rolePermissions,
-    ({ one }) => ({
-      role: one(roles, {
-        fields: [
-          rolePermissions.roleId,
-        ],
-        references: [roles.id],
-      }),
-
-      permission: one(permissions, {
-        fields: [
-          rolePermissions.permissionId,
-        ],
-        references: [permissions.id],
-      }),
-    }),
-  );
-
-
-export const usersRelations = relations(
-  users,
-  ({ one, many }) => ({
-    tenant: one(tenants, {
-      fields: [users.tenantId],
-      references: [tenants.id],
-    }),
-
-    facility: one(facilities, {
-      fields: [users.facilityId],
-      references: [facilities.id],
-    }),
-
-    roles: many(userRoles),
-
-    sessions: many(sessions),
-
-    loginAttempts: many(
-      loginAttempts,
-    ),
-
-    passwordResets: many(
-      passwordResets,
-    ),
-
-    practitioners: many(
-      practitioners,
-    ),
-
-    facilityAdminInvitations: many(
-      facilityAdminInvitations,
-    ),
-
-    userInvitations: many(
-      userInvitations,
-    ),
+export const usersRelations = relations(users, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [users.tenantId],
+    references: [tenants.id],
   }),
-);
 
-
-export const userRolesRelations = relations(
-  userRoles,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [userRoles.userId],
-      references: [users.id],
-    }),
-
-    role: one(roles, {
-      fields: [userRoles.roleId],
-      references: [roles.id],
-    }),
+  facility: one(facilities, {
+    fields: [users.facilityId],
+    references: [facilities.id],
   }),
-);
 
+  roles: many(userRoles),
 
-export const sessionsRelations = relations(
-  sessions,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [sessions.userId],
-      references: [users.id],
-    }),
+  sessions: many(sessions),
+
+  loginAttempts: many(loginAttempts),
+
+  passwordResets: many(passwordResets),
+
+  practitioners: many(practitioners),
+
+  facilityAdminInvitations: many(facilityAdminInvitations),
+
+  userInvitations: many(userInvitations),
+}));
+
+export const userRolesRelations = relations(userRoles, ({ one }) => ({
+  user: one(users, {
+    fields: [userRoles.userId],
+    references: [users.id],
   }),
-);
 
-
-export const loginAttemptsRelations =
-  relations(
-    loginAttempts,
-    ({ one }) => ({
-      user: one(users, {
-        fields: [
-          loginAttempts.userId,
-        ],
-        references: [users.id],
-      }),
-    }),
-  );
-
-
-export const passwordResetsRelations =
-  relations(
-    passwordResets,
-    ({ one }) => ({
-      user: one(users, {
-        fields: [
-          passwordResets.userId,
-        ],
-        references: [users.id],
-      }),
-    }),
-  );
-
-
-export const facilityOnboardingRelations =
-  relations(
-    facilityOnboarding,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          facilityOnboarding.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          facilityOnboarding.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-    }),
-  );
-
-
-export const facilityDocumentsRelations =
-  relations(
-    facilityDocuments,
-    ({ one }) => ({
-      facility: one(facilities, {
-        fields: [
-          facilityDocuments.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-    }),
-  );
-
-
-export const facilityAdminInvitationsRelations =
-  relations(
-    facilityAdminInvitations,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          facilityAdminInvitations.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          facilityAdminInvitations.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-
-      acceptedUser: one(users, {
-        fields: [
-          facilityAdminInvitations.acceptedUserId,
-        ],
-        references: [users.id],
-      }),
-    }),
-  );
-
-
-export const userInvitationsRelations =
-  relations(
-    userInvitations,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          userInvitations.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          userInvitations.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-
-      role: one(roles, {
-        fields: [
-          userInvitations.roleId,
-        ],
-        references: [roles.id],
-      }),
-
-      acceptedUser: one(users, {
-        fields: [
-          userInvitations.acceptedUserId,
-        ],
-        references: [users.id],
-      }),
-    }),
-  );
-
-
-export const practitionersRelations =
-  relations(
-    practitioners,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          practitioners.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          practitioners.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-
-      user: one(users, {
-        fields: [
-          practitioners.userId,
-        ],
-        references: [users.id],
-      }),
-
-      department: one(departments, {
-        fields: [
-          practitioners.departmentId,
-        ],
-        references: [departments.id],
-      }),
-    }),
-  );
-
-
-export const patientsRelations = relations(
-  patients,
-  ({ one, many }) => ({
-    tenant: one(tenants, {
-      fields: [patients.tenantId],
-      references: [tenants.id],
-    }),
-
-    registrationFacility: one(facilities, {
-      fields: [patients.registrationFacilityId],
-      references: [facilities.id],
-    }),
-
-    encounters: many(encounters),
-
-    appointments: many(appointments),
-
-    invoices: many(
-      billingInvoices,
-    ),
-
-    admissions: many(admissions),
-
-    identifiers: many(
-      patientIdentifiers,
-    ),
+  role: one(roles, {
+    fields: [userRoles.roleId],
+    references: [roles.id],
   }),
-);
+}));
 
-
-export const patientIdentifiersRelations =
-  relations(
-    patientIdentifiers,
-    ({ one }) => ({
-      patient: one(patients, {
-        fields: [
-          patientIdentifiers.patientId,
-        ],
-        references: [patients.id],
-      }),
-    }),
-  );
-
-
-export const encountersRelations =
-  relations(
-    encounters,
-    ({ one, many }) => ({
-      tenant: one(tenants, {
-        fields: [
-          encounters.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          encounters.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          encounters.patientId,
-        ],
-        references: [patients.id],
-      }),
-
-      practitioner: one(
-        practitioners,
-        {
-          fields: [
-            encounters.practitionerId,
-          ],
-          references: [
-            practitioners.id,
-          ],
-        },
-      ),
-
-      department: one(
-        departments,
-        {
-          fields: [
-            encounters.departmentId,
-          ],
-          references: [
-            departments.id,
-          ],
-        },
-      ),
-
-      observations: many(
-        observations,
-      ),
-
-      diagnoses: many(
-        diagnoses,
-      ),
-
-      medications: many(
-        medications,
-      ),
-
-      labOrders: many(
-        labOrders,
-      ),
-    }),
-  );
-
-
-export const observationsRelations =
-  relations(
-    observations,
-    ({ one }) => ({
-      encounter: one(encounters, {
-        fields: [
-          observations.encounterId,
-        ],
-        references: [
-          encounters.id,
-        ],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          observations.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-    }),
-  );
-
-
-export const diagnosesRelations =
-  relations(
-    diagnoses,
-    ({ one }) => ({
-      encounter: one(encounters, {
-        fields: [
-          diagnoses.encounterId,
-        ],
-        references: [
-          encounters.id,
-        ],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          diagnoses.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-    }),
-  );
-
-
-export const medicationsRelations =
-  relations(
-    medications,
-    ({ one, many }) => ({
-      encounter: one(encounters, {
-        fields: [
-          medications.encounterId,
-        ],
-        references: [
-          encounters.id,
-        ],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          medications.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-
-      dispensations: many(
-        pharmacyDispensations,
-      ),
-    }),
-  );
-
-
-export const wardsRelations = relations(
-  wards,
-  ({ one, many }) => ({
-    facility: one(facilities, {
-      fields: [wards.facilityId],
-      references: [facilities.id],
-    }),
-
-    beds: many(beds),
-
-    admissions: many(
-      admissions,
-    ),
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
   }),
-);
+}));
 
-
-export const bedsRelations = relations(
-  beds,
-  ({ one }) => ({
-    ward: one(wards, {
-      fields: [beds.wardId],
-      references: [wards.id],
-    }),
-
-    currentPatient: one(
-      patients,
-      {
-        fields: [
-          beds.currentPatientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      },
-    ),
+export const loginAttemptsRelations = relations(loginAttempts, ({ one }) => ({
+  user: one(users, {
+    fields: [loginAttempts.userId],
+    references: [users.id],
   }),
-);
-
-
-export const admissionsRelations =
-  relations(
-    admissions,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          admissions.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          admissions.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          admissions.patientId,
-        ],
-        references: [patients.id],
-      }),
-
-      encounter: one(encounters, {
-        fields: [
-          admissions.encounterId,
-        ],
-        references: [
-          encounters.id,
-        ],
-      }),
-
-      ward: one(wards, {
-        fields: [
-          admissions.wardId,
-        ],
-        references: [wards.id],
-      }),
-
-      bed: one(beds, {
-        fields: [
-          admissions.bedId,
-        ],
-        references: [beds.id],
-      }),
-    }),
-  );
-
-
-export const theatreCasesRelations =
-  relations(
-    theatreCases,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          theatreCases.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          theatreCases.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          theatreCases.patientId,
-        ],
-        references: [patients.id],
-      }),
-    }),
-  );
-
-
-export const labTestsRelations =
-  relations(
-    labTests,
-    ({ one, many }) => ({
-      facility: one(facilities, {
-        fields: [
-          labTests.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-
-      orders: many(labOrders),
-    }),
-  );
-
-
-export const labOrdersRelations =
-  relations(
-    labOrders,
-    ({ one, many }) => ({
-      tenant: one(tenants, {
-        fields: [
-          labOrders.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          labOrders.facilityId,
-        ],
-        references: [facilities.id],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          labOrders.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-
-      encounter: one(encounters, {
-        fields: [
-          labOrders.encounterId,
-        ],
-        references: [
-          encounters.id,
-        ],
-      }),
-
-      test: one(labTests, {
-        fields: [
-          labOrders.testId,
-        ],
-        references: [
-          labTests.id,
-        ],
-      }),
-
-      results: many(
-        labResults,
-      ),
-    }),
-  );
-
-
-export const labResultsRelations =
-  relations(
-    labResults,
-    ({ one }) => ({
-      order: one(labOrders, {
-        fields: [
-          labResults.orderId,
-        ],
-        references: [
-          labOrders.id,
-        ],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          labResults.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-    }),
-  );
-
-
-export const radiologyOrdersRelations =
-  relations(
-    radiologyOrders,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          radiologyOrders.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          radiologyOrders.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          radiologyOrders.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-
-      encounter: one(encounters, {
-        fields: [
-          radiologyOrders.encounterId,
-        ],
-        references: [
-          encounters.id,
-        ],
-      }),
-    }),
-  );
-
-
-export const inventoryItemsRelations =
-  relations(
-    inventoryItems,
-    ({ one, many }) => ({
-      facility: one(facilities, {
-        fields: [
-          inventoryItems.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-
-      batches: many(
-        inventoryBatches,
-      ),
-
-      dispensations: many(
-        pharmacyDispensations,
-      ),
-    }),
-  );
-
-
-export const inventoryBatchesRelations =
-  relations(
-    inventoryBatches,
-    ({ one }) => ({
-      item: one(
-        inventoryItems,
-        {
-          fields: [
-            inventoryBatches.itemId,
-          ],
-          references: [
-            inventoryItems.id,
-          ],
-        },
-      ),
-    }),
-  );
-
-
-export const pharmacyDispensationsRelations =
-  relations(
-    pharmacyDispensations,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          pharmacyDispensations.tenantId,
-        ],
-        references: [tenants.id],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          pharmacyDispensations.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-
-      prescription: one(
-        medications,
-        {
-          fields: [
-            pharmacyDispensations.prescriptionId,
-          ],
-          references: [
-            medications.id,
-          ],
-        },
-      ),
-
-      patient: one(patients, {
-        fields: [
-          pharmacyDispensations.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-
-      item: one(
-        inventoryItems,
-        {
-          fields: [
-            pharmacyDispensations.itemId,
-          ],
-          references: [
-            inventoryItems.id,
-          ],
-        },
-      ),
-    }),
-  );
-
-
-export const suppliersRelations =
-  relations(
-    suppliers,
-    ({ one, many }) => ({
-      tenant: one(tenants, {
-        fields: [
-          suppliers.tenantId,
-        ],
-        references: [
-          tenants.id,
-        ],
-      }),
-
-      purchaseOrders: many(
-        purchaseOrders,
-      ),
-    }),
-  );
-
-
-export const purchaseOrdersRelations =
-  relations(
-    purchaseOrders,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          purchaseOrders.tenantId,
-        ],
-        references: [
-          tenants.id,
-        ],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          purchaseOrders.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-
-      supplier: one(suppliers, {
-        fields: [
-          purchaseOrders.supplierId,
-        ],
-        references: [
-          suppliers.id,
-        ],
-      }),
-    }),
-  );
-
-
-export const billingInvoicesRelations =
-  relations(
-    billingInvoices,
-    ({ one, many }) => ({
-      tenant: one(tenants, {
-        fields: [
-          billingInvoices.tenantId,
-        ],
-        references: [
-          tenants.id,
-        ],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          billingInvoices.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          billingInvoices.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-
-      encounter: one(encounters, {
-        fields: [
-          billingInvoices.encounterId,
-        ],
-        references: [
-          encounters.id,
-        ],
-      }),
-
-      items: many(
-        billingItems,
-      ),
-
-      payments: many(
-        billingPayments,
-      ),
-
-      claims: many(
-        insuranceClaims,
-      ),
-    }),
-  );
-
-
-export const billingItemsRelations =
-  relations(
-    billingItems,
-    ({ one }) => ({
-      invoice: one(
-        billingInvoices,
-        {
-          fields: [
-            billingItems.invoiceId,
-          ],
-          references: [
-            billingInvoices.id,
-          ],
-        },
-      ),
-    }),
-  );
-
-
-export const billingPaymentsRelations =
-  relations(
-    billingPayments,
-    ({ one }) => ({
-      invoice: one(
-        billingInvoices,
-        {
-          fields: [
-            billingPayments.invoiceId,
-          ],
-          references: [
-            billingInvoices.id,
-          ],
-        },
-      ),
-    }),
-  );
-
-
-export const insuranceClaimsRelations =
-  relations(
-    insuranceClaims,
-    ({ one }) => ({
-      tenant: one(tenants, {
-        fields: [
-          insuranceClaims.tenantId,
-        ],
-        references: [
-          tenants.id,
-        ],
-      }),
-
-      facility: one(facilities, {
-        fields: [
-          insuranceClaims.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-
-      patient: one(patients, {
-        fields: [
-          insuranceClaims.patientId,
-        ],
-        references: [
-          patients.id,
-        ],
-      }),
-
-      invoice: one(
-        billingInvoices,
-        {
-          fields: [
-            insuranceClaims.invoiceId,
-          ],
-          references: [
-            billingInvoices.id,
-          ],
-        },
-      ),
-    }),
-  );
-
-
-export const publicHealthReportsRelations =
-  relations(
-    publicHealthReports,
-    ({ one }) => ({
-      facility: one(facilities, {
-        fields: [
-          publicHealthReports.facilityId,
-        ],
-        references: [
-          facilities.id,
-        ],
-      }),
-    }),
-  );
-
+}));
+
+export const passwordResetsRelations = relations(passwordResets, ({ one }) => ({
+  user: one(users, {
+    fields: [passwordResets.userId],
+    references: [users.id],
+  }),
+}));
+
+export const facilityOnboardingRelations = relations(facilityOnboarding, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [facilityOnboarding.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [facilityOnboarding.facilityId],
+    references: [facilities.id],
+  }),
+}));
+
+export const facilityDocumentsRelations = relations(facilityDocuments, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [facilityDocuments.facilityId],
+    references: [facilities.id],
+  }),
+}));
+
+export const facilityAdminInvitationsRelations = relations(facilityAdminInvitations, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [facilityAdminInvitations.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [facilityAdminInvitations.facilityId],
+    references: [facilities.id],
+  }),
+
+  acceptedUser: one(users, {
+    fields: [facilityAdminInvitations.acceptedUserId],
+    references: [users.id],
+  }),
+}));
+
+export const userInvitationsRelations = relations(userInvitations, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [userInvitations.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [userInvitations.facilityId],
+    references: [facilities.id],
+  }),
+
+  role: one(roles, {
+    fields: [userInvitations.roleId],
+    references: [roles.id],
+  }),
+
+  acceptedUser: one(users, {
+    fields: [userInvitations.acceptedUserId],
+    references: [users.id],
+  }),
+}));
+
+export const practitionersRelations = relations(practitioners, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [practitioners.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [practitioners.facilityId],
+    references: [facilities.id],
+  }),
+
+  user: one(users, {
+    fields: [practitioners.userId],
+    references: [users.id],
+  }),
+
+  department: one(departments, {
+    fields: [practitioners.departmentId],
+    references: [departments.id],
+  }),
+}));
+
+export const patientsRelations = relations(patients, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [patients.tenantId],
+    references: [tenants.id],
+  }),
+
+  registrationFacility: one(facilities, {
+    fields: [patients.registrationFacilityId],
+    references: [facilities.id],
+  }),
+
+  encounters: many(encounters),
+
+  appointments: many(appointments),
+
+  invoices: many(billingInvoices),
+
+  admissions: many(admissions),
+
+  identifiers: many(patientIdentifiers),
+}));
+
+export const patientIdentifiersRelations = relations(patientIdentifiers, ({ one }) => ({
+  patient: one(patients, {
+    fields: [patientIdentifiers.patientId],
+    references: [patients.id],
+  }),
+}));
+
+export const encountersRelations = relations(encounters, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [encounters.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [encounters.facilityId],
+    references: [facilities.id],
+  }),
+
+  patient: one(patients, {
+    fields: [encounters.patientId],
+    references: [patients.id],
+  }),
+
+  practitioner: one(practitioners, {
+    fields: [encounters.practitionerId],
+    references: [practitioners.id],
+  }),
+
+  department: one(departments, {
+    fields: [encounters.departmentId],
+    references: [departments.id],
+  }),
+
+  observations: many(observations),
+
+  diagnoses: many(diagnoses),
+
+  medications: many(medications),
+
+  labOrders: many(labOrders),
+}));
+
+export const observationsRelations = relations(observations, ({ one }) => ({
+  encounter: one(encounters, {
+    fields: [observations.encounterId],
+    references: [encounters.id],
+  }),
+
+  patient: one(patients, {
+    fields: [observations.patientId],
+    references: [patients.id],
+  }),
+}));
+
+export const diagnosesRelations = relations(diagnoses, ({ one }) => ({
+  encounter: one(encounters, {
+    fields: [diagnoses.encounterId],
+    references: [encounters.id],
+  }),
+
+  patient: one(patients, {
+    fields: [diagnoses.patientId],
+    references: [patients.id],
+  }),
+}));
+
+export const medicationsRelations = relations(medications, ({ one, many }) => ({
+  encounter: one(encounters, {
+    fields: [medications.encounterId],
+    references: [encounters.id],
+  }),
+
+  patient: one(patients, {
+    fields: [medications.patientId],
+    references: [patients.id],
+  }),
+
+  dispensations: many(pharmacyDispensations),
+}));
+
+export const wardsRelations = relations(wards, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [wards.facilityId],
+    references: [facilities.id],
+  }),
+
+  beds: many(beds),
+
+  admissions: many(admissions),
+}));
+
+export const bedsRelations = relations(beds, ({ one }) => ({
+  ward: one(wards, {
+    fields: [beds.wardId],
+    references: [wards.id],
+  }),
+
+  currentPatient: one(patients, {
+    fields: [beds.currentPatientId],
+    references: [patients.id],
+  }),
+}));
+
+export const admissionsRelations = relations(admissions, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [admissions.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [admissions.facilityId],
+    references: [facilities.id],
+  }),
+
+  patient: one(patients, {
+    fields: [admissions.patientId],
+    references: [patients.id],
+  }),
+
+  encounter: one(encounters, {
+    fields: [admissions.encounterId],
+    references: [encounters.id],
+  }),
+
+  ward: one(wards, {
+    fields: [admissions.wardId],
+    references: [wards.id],
+  }),
+
+  bed: one(beds, {
+    fields: [admissions.bedId],
+    references: [beds.id],
+  }),
+}));
+
+export const theatreCasesRelations = relations(theatreCases, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [theatreCases.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [theatreCases.facilityId],
+    references: [facilities.id],
+  }),
+
+  patient: one(patients, {
+    fields: [theatreCases.patientId],
+    references: [patients.id],
+  }),
+}));
+
+export const labTestsRelations = relations(labTests, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [labTests.facilityId],
+    references: [facilities.id],
+  }),
+
+  orders: many(labOrders),
+}));
+
+export const labOrdersRelations = relations(labOrders, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [labOrders.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [labOrders.facilityId],
+    references: [facilities.id],
+  }),
+
+  patient: one(patients, {
+    fields: [labOrders.patientId],
+    references: [patients.id],
+  }),
+
+  encounter: one(encounters, {
+    fields: [labOrders.encounterId],
+    references: [encounters.id],
+  }),
+
+  test: one(labTests, {
+    fields: [labOrders.testId],
+    references: [labTests.id],
+  }),
+
+  results: many(labResults),
+}));
+
+export const labResultsRelations = relations(labResults, ({ one }) => ({
+  order: one(labOrders, {
+    fields: [labResults.orderId],
+    references: [labOrders.id],
+  }),
+
+  patient: one(patients, {
+    fields: [labResults.patientId],
+    references: [patients.id],
+  }),
+}));
+
+export const radiologyOrdersRelations = relations(radiologyOrders, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [radiologyOrders.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [radiologyOrders.facilityId],
+    references: [facilities.id],
+  }),
+
+  patient: one(patients, {
+    fields: [radiologyOrders.patientId],
+    references: [patients.id],
+  }),
+
+  encounter: one(encounters, {
+    fields: [radiologyOrders.encounterId],
+    references: [encounters.id],
+  }),
+}));
+
+export const inventoryItemsRelations = relations(inventoryItems, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [inventoryItems.facilityId],
+    references: [facilities.id],
+  }),
+
+  batches: many(inventoryBatches),
+
+  dispensations: many(pharmacyDispensations),
+}));
+
+export const inventoryBatchesRelations = relations(inventoryBatches, ({ one }) => ({
+  item: one(inventoryItems, {
+    fields: [inventoryBatches.itemId],
+    references: [inventoryItems.id],
+  }),
+}));
+
+export const pharmacyDispensationsRelations = relations(pharmacyDispensations, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [pharmacyDispensations.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [pharmacyDispensations.facilityId],
+    references: [facilities.id],
+  }),
+
+  prescription: one(medications, {
+    fields: [pharmacyDispensations.prescriptionId],
+    references: [medications.id],
+  }),
+
+  patient: one(patients, {
+    fields: [pharmacyDispensations.patientId],
+    references: [patients.id],
+  }),
+
+  item: one(inventoryItems, {
+    fields: [pharmacyDispensations.itemId],
+    references: [inventoryItems.id],
+  }),
+}));
+
+export const suppliersRelations = relations(suppliers, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [suppliers.tenantId],
+    references: [tenants.id],
+  }),
+
+  purchaseOrders: many(purchaseOrders),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [purchaseOrders.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [purchaseOrders.facilityId],
+    references: [facilities.id],
+  }),
+
+  supplier: one(suppliers, {
+    fields: [purchaseOrders.supplierId],
+    references: [suppliers.id],
+  }),
+}));
+
+export const billingInvoicesRelations = relations(billingInvoices, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [billingInvoices.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [billingInvoices.facilityId],
+    references: [facilities.id],
+  }),
+
+  patient: one(patients, {
+    fields: [billingInvoices.patientId],
+    references: [patients.id],
+  }),
+
+  encounter: one(encounters, {
+    fields: [billingInvoices.encounterId],
+    references: [encounters.id],
+  }),
+
+  items: many(billingItems),
+
+  payments: many(billingPayments),
+
+  claims: many(insuranceClaims),
+}));
+
+export const billingItemsRelations = relations(billingItems, ({ one }) => ({
+  invoice: one(billingInvoices, {
+    fields: [billingItems.invoiceId],
+    references: [billingInvoices.id],
+  }),
+}));
+
+export const billingPaymentsRelations = relations(billingPayments, ({ one }) => ({
+  invoice: one(billingInvoices, {
+    fields: [billingPayments.invoiceId],
+    references: [billingInvoices.id],
+  }),
+}));
+
+export const insuranceClaimsRelations = relations(insuranceClaims, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [insuranceClaims.tenantId],
+    references: [tenants.id],
+  }),
+
+  facility: one(facilities, {
+    fields: [insuranceClaims.facilityId],
+    references: [facilities.id],
+  }),
+
+  patient: one(patients, {
+    fields: [insuranceClaims.patientId],
+    references: [patients.id],
+  }),
+
+  invoice: one(billingInvoices, {
+    fields: [insuranceClaims.invoiceId],
+    references: [billingInvoices.id],
+  }),
+}));
+
+export const publicHealthReportsRelations = relations(publicHealthReports, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [publicHealthReports.facilityId],
+    references: [facilities.id],
+  }),
+}));
 
 /* ============================================================
    END OF JALICARE SCHEMA
    ============================================================ */
-
 
 /* ============================================================
    DHA / AFYACONNECT INTEGRATION AUDIT
@@ -5425,87 +3934,81 @@ export const publicHealthReportsRelations =
  * details. The registration number is retained because the whole point is
  * to be able to show, later, what was checked.
  */
-export const staffProfessionalCredentials = pgTable(
-  'staff_professional_credentials',
-  {
-    id: serial('id').primaryKey(),
+export const staffProfessionalCredentials = pgTable('staff_professional_credentials', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id').notNull(),
-    facilityId: integer('facility_id').notNull(),
+  tenantId: integer('tenant_id').notNull(),
+  facilityId: integer('facility_id').notNull(),
 
-    /** Set once the person accepts an invitation and has a user row. */
-    userId: integer('user_id'),
-    invitationId: integer('invitation_id'),
+  /** Set once the person accepts an invitation and has a user row. */
+  userId: integer('user_id'),
+  invitationId: integer('invitation_id'),
 
-    regulator: text('regulator').notNull(),
-    registrationNumber: text('registration_number').notNull(),
+  regulator: text('regulator').notNull(),
+  registrationNumber: text('registration_number').notNull(),
 
-    licenceNumber: text('licence_number'),
-    professionalCategory: text('professional_category'),
-    specialty: text('specialty'),
+  licenceNumber: text('licence_number'),
+  professionalCategory: text('professional_category'),
+  specialty: text('specialty'),
 
-    status: text('status').default('NOT_VERIFIED').notNull(),
+  status: text('status').default('NOT_VERIFIED').notNull(),
 
-    /** Raw regulator wording, kept separate from the licence fields. */
-    registrationStatus: text('registration_status'),
-    licenceStatus: text('licence_status'),
+  /** Raw regulator wording, kept separate from the licence fields. */
+  registrationStatus: text('registration_status'),
+  licenceStatus: text('licence_status'),
 
-    licenceExpiry: date('licence_expiry'),
-    lastVerifiedAt: timestamp('last_verified_at'),
+  licenceExpiry: date('licence_expiry'),
+  lastVerifiedAt: timestamp('last_verified_at'),
 
-    verificationSource: text('verification_source'),
-    externalReference: text('external_reference'),
-    responseReference: text('response_reference'),
-    mode: text('mode'),
+  verificationSource: text('verification_source'),
+  externalReference: text('external_reference'),
+  responseReference: text('response_reference'),
+  mode: text('mode'),
 
-    verifiedBy: integer('verified_by'),
+  verifiedBy: integer('verified_by'),
 
-    manualReviewReason: text('manual_review_reason'),
-    manualSource: text('manual_source'),
-    manualCheckedAt: timestamp('manual_checked_at'),
+  manualReviewReason: text('manual_review_reason'),
+  manualSource: text('manual_source'),
+  manualCheckedAt: timestamp('manual_checked_at'),
 
-    /** Concerns raised by the normaliser, in plain language. */
-    warnings: jsonb('warnings'),
-    /** Candidate keys that matched; no values are stored here. */
-    matchedFields: jsonb('matched_fields'),
+  /** Concerns raised by the normaliser, in plain language. */
+  warnings: jsonb('warnings'),
+  /** Candidate keys that matched; no values are stored here. */
+  matchedFields: jsonb('matched_fields'),
 
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-);
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /**
  * Append-only history. Every verification attempt, manual check and
  * administrative decision is recorded here, including the failures, so a
  * gap in the audit trail cannot be mistaken for a clean record.
  */
-export const professionalVerificationEvents = pgTable(
-  'professional_verification_events',
-  {
-    id: serial('id').primaryKey(),
+export const professionalVerificationEvents = pgTable('professional_verification_events', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id').notNull(),
-    facilityId: integer('facility_id').notNull(),
+  tenantId: integer('tenant_id').notNull(),
+  facilityId: integer('facility_id').notNull(),
 
-    credentialId: integer('credential_id'),
-    userId: integer('user_id'),
-    invitationId: integer('invitation_id'),
+  credentialId: integer('credential_id'),
+  userId: integer('user_id'),
+  invitationId: integer('invitation_id'),
 
-    action: text('action').notNull(),
-    statusBefore: text('status_before'),
-    statusAfter: text('status_after'),
+  action: text('action').notNull(),
+  statusBefore: text('status_before'),
+  statusAfter: text('status_after'),
 
-    source: text('source'),
-    mode: text('mode'),
-    httpStatus: integer('http_status'),
-    errorCode: text('error_code'),
+  source: text('source'),
+  mode: text('mode'),
+  httpStatus: integer('http_status'),
+  errorCode: text('error_code'),
 
-    performedBy: integer('performed_by'),
-    notes: text('notes'),
+  performedBy: integer('performed_by'),
+  notes: text('notes'),
 
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-);
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    DHA SERVICE-AREA MAPPINGS
@@ -5522,57 +4025,50 @@ export const professionalVerificationEvents = pgTable(
  * A unique index on (facility_id, service_area) lives in migration 0013,
  * so a claim line can never resolve to two codes.
  */
-export const dhaServiceMappings = pgTable(
-  'dha_service_mappings',
-  {
-    id: serial('id').primaryKey(),
+export const dhaServiceMappings = pgTable('dha_service_mappings', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id').notNull(),
-    facilityId: integer('facility_id').notNull(),
+  tenantId: integer('tenant_id').notNull(),
+  facilityId: integer('facility_id').notNull(),
 
-    /* One of DhaServiceAreaId, validated in dha.service-areas.ts. */
-    serviceArea: text('service_area').notNull(),
+  /* One of DhaServiceAreaId, validated in dha.service-areas.ts. */
+  serviceArea: text('service_area').notNull(),
 
-    interventionCode: text('intervention_code').notNull(),
+  interventionCode: text('intervention_code').notNull(),
 
-    /* Documented DHA enums. Null until the administrator records them. */
-    accessPoint: text('access_point'),
-    paymentMechanism: text('payment_mechanism'),
-    fund: text('fund'),
-    needsPreauth: boolean('needs_preauth'),
+  /* Documented DHA enums. Null until the administrator records them. */
+  accessPoint: text('access_point'),
+  paymentMechanism: text('payment_mechanism'),
+  fund: text('fund'),
+  needsPreauth: boolean('needs_preauth'),
 
-    notes: text('notes'),
-    createdBy: integer('created_by'),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
 
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-);
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
-export const dhaApiCalls = pgTable(
-  'dha_api_calls',
-  {
-    id: serial('id').primaryKey(),
+export const dhaApiCalls = pgTable('dha_api_calls', {
+  id: serial('id').primaryKey(),
 
-    tenantId: integer('tenant_id'),
-    facilityId: integer('facility_id'),
-    userId: integer('user_id'),
+  tenantId: integer('tenant_id'),
+  facilityId: integer('facility_id'),
+  userId: integer('user_id'),
 
-    mode: text('mode').notNull(),
-    operation: text('operation').notNull(),
-    method: text('method').notNull(),
-    path: text('path').notNull(),
+  mode: text('mode').notNull(),
+  operation: text('operation').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
 
-    status: integer('status'),
-    durationMs: integer('duration_ms').default(0).notNull(),
-    outcome: text('outcome').notNull(),
-    errorCode: text('error_code'),
-    requestId: text('request_id'),
+  status: integer('status'),
+  durationMs: integer('duration_ms').default(0).notNull(),
+  outcome: text('outcome').notNull(),
+  errorCode: text('error_code'),
+  requestId: text('request_id'),
 
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-);
-
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 /* ============================================================
    PATIENT DIGITAL HEALTH RECORD PORTAL
@@ -5595,8 +4091,7 @@ export const patientPortalAccounts = pgTable(
       .references(() => tenants.id)
       .notNull(),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id),
+    facilityId: integer('facility_id').references(() => facilities.id),
 
     patientId: integer('patient_id')
       .references(() => patients.id)
@@ -5613,13 +4108,9 @@ export const patientPortalAccounts = pgTable(
     */
     status: text('status').default('ACTIVE').notNull(),
 
-    mustChangePassword: boolean('must_change_password')
-      .default(false)
-      .notNull(),
+    mustChangePassword: boolean('must_change_password').default(false).notNull(),
 
-    failedLoginAttempts: integer('failed_login_attempts')
-      .default(0)
-      .notNull(),
+    failedLoginAttempts: integer('failed_login_attempts').default(0).notNull(),
 
     lockedUntil: timestamp('locked_until'),
 
@@ -5629,15 +4120,13 @@ export const patientPortalAccounts = pgTable(
 
     suspendedAt: timestamp('suspended_at'),
 
-    suspendedByUserId: integer('suspended_by_user_id')
-      .references(() => users.id),
+    suspendedByUserId: integer('suspended_by_user_id').references(() => users.id),
 
     suspendedReason: text('suspended_reason'),
 
     revokedAt: timestamp('revoked_at'),
 
-    revokedByUserId: integer('revoked_by_user_id')
-      .references(() => users.id),
+    revokedByUserId: integer('revoked_by_user_id').references(() => users.id),
 
     revokedReason: text('revoked_reason'),
 
@@ -5654,17 +4143,15 @@ export const patientPortalAccounts = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    patientIdx: uniqueIndex(
-      'patient_portal_accounts_patient_idx',
-    ).on(table.patientId),
+    patientIdx: uniqueIndex('patient_portal_accounts_patient_idx').on(table.patientId),
 
-    loginIdx: uniqueIndex(
-      'patient_portal_accounts_login_idx',
-    ).on(table.loginIdentifier),
+    loginIdx: uniqueIndex('patient_portal_accounts_login_idx').on(table.loginIdentifier),
 
-    scopeIdx: index(
-      'patient_portal_accounts_scope_idx',
-    ).on(table.tenantId, table.facilityId, table.status),
+    scopeIdx: index('patient_portal_accounts_scope_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.status,
+    ),
   }),
 );
 
@@ -5687,13 +4174,9 @@ export const patientPortalInvitations = pgTable(
 
     tokenHash: text('token_hash').notNull(),
 
-    deliveryChannel: text('delivery_channel')
-      .default('MANUAL')
-      .notNull(),
+    deliveryChannel: text('delivery_channel').default('MANUAL').notNull(),
 
-    deliveryStatus: text('delivery_status')
-      .default('PENDING')
-      .notNull(),
+    deliveryStatus: text('delivery_status').default('PENDING').notNull(),
 
     status: text('status').default('PENDING').notNull(),
 
@@ -5701,16 +4184,13 @@ export const patientPortalInvitations = pgTable(
 
     contactHint: text('contact_hint'),
 
-    deliveryAttempts: integer('delivery_attempts')
-      .default(0)
-      .notNull(),
+    deliveryAttempts: integer('delivery_attempts').default(0).notNull(),
 
     lastDeliveryError: text('last_delivery_error'),
 
     expiresAt: timestamp('expires_at').notNull(),
 
-    createdByUserId: integer('created_by_user_id')
-      .references(() => users.id),
+    createdByUserId: integer('created_by_user_id').references(() => users.id),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
 
@@ -5722,25 +4202,25 @@ export const patientPortalInvitations = pgTable(
 
     revokedAt: timestamp('revoked_at'),
 
-    revokedByUserId: integer('revoked_by_user_id')
-      .references(() => users.id),
+    revokedByUserId: integer('revoked_by_user_id').references(() => users.id),
 
     revokedReason: text('revoked_reason'),
 
     supersededBy: integer('superseded_by'),
   },
   (table) => ({
-    tokenIdx: uniqueIndex(
-      'patient_portal_invitations_token_idx',
-    ).on(table.tokenHash),
+    tokenIdx: uniqueIndex('patient_portal_invitations_token_idx').on(table.tokenHash),
 
-    patientIdx: index(
-      'patient_portal_invitations_patient_idx',
-    ).on(table.patientId, table.createdAt),
+    patientIdx: index('patient_portal_invitations_patient_idx').on(
+      table.patientId,
+      table.createdAt,
+    ),
 
-    scopeIdx: index(
-      'patient_portal_invitations_scope_idx',
-    ).on(table.tenantId, table.facilityId, table.status),
+    scopeIdx: index('patient_portal_invitations_scope_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.status,
+    ),
   }),
 );
 
@@ -5757,17 +4237,17 @@ export const patientPortalInvitationEvents = pgTable(
 
     detail: text('detail'),
 
-    actorUserId: integer('actor_user_id')
-      .references(() => users.id),
+    actorUserId: integer('actor_user_id').references(() => users.id),
 
     ipAddress: text('ip_address'),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    invitationIdx: index(
-      'patient_portal_events_invitation_idx',
-    ).on(table.invitationId, table.createdAt),
+    invitationIdx: index('patient_portal_events_invitation_idx').on(
+      table.invitationId,
+      table.createdAt,
+    ),
   }),
 );
 
@@ -5788,9 +4268,7 @@ export const patientPortalSessions = pgTable(
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    lastActivityAt: timestamp('last_activity_at')
-      .defaultNow()
-      .notNull(),
+    lastActivityAt: timestamp('last_activity_at').defaultNow().notNull(),
 
     expiresAt: timestamp('expires_at').notNull(),
 
@@ -5799,13 +4277,9 @@ export const patientPortalSessions = pgTable(
     revokeReason: text('revoke_reason'),
   },
   (table) => ({
-    tokenIdx: uniqueIndex(
-      'patient_portal_sessions_token_idx',
-    ).on(table.sessionTokenHash),
+    tokenIdx: uniqueIndex('patient_portal_sessions_token_idx').on(table.sessionTokenHash),
 
-    accountIdx: index(
-      'patient_portal_sessions_account_idx',
-    ).on(table.accountId, table.expiresAt),
+    accountIdx: index('patient_portal_sessions_account_idx').on(table.accountId, table.expiresAt),
   }),
 );
 
@@ -5822,15 +4296,11 @@ export const patientPortalSettings = pgTable(
       .references(() => tenants.id)
       .notNull(),
 
-    invitationExpiryHours: integer('invitation_expiry_hours')
-      .default(72)
-      .notNull(),
+    invitationExpiryHours: integer('invitation_expiry_hours').default(72).notNull(),
 
     maxResends: integer('max_resends').default(3).notNull(),
 
-    allowManualDelivery: boolean('allow_manual_delivery')
-      .default(true)
-      .notNull(),
+    allowManualDelivery: boolean('allow_manual_delivery').default(true).notNull(),
 
     allowSms: boolean('allow_sms').default(false).notNull(),
 
@@ -5844,21 +4314,16 @@ export const patientPortalSettings = pgTable(
 
     showAllergies: boolean('show_allergies').default(true).notNull(),
 
-    showDischargeSummaries: boolean('show_discharge_summaries')
-      .default(true)
-      .notNull(),
+    showDischargeSummaries: boolean('show_discharge_summaries').default(true).notNull(),
 
     allowDownloads: boolean('allow_downloads').default(true).notNull(),
 
-    updatedByUserId: integer('updated_by_user_id')
-      .references(() => users.id),
+    updatedByUserId: integer('updated_by_user_id').references(() => users.id),
 
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityIdx: uniqueIndex(
-      'patient_portal_settings_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: uniqueIndex('patient_portal_settings_facility_idx').on(table.facilityId),
   }),
 );
 
@@ -5893,18 +4358,16 @@ export const patientRecordSharingGrants = pgTable(
 
     redeemedAt: timestamp('redeemed_at'),
 
-    redeemedByUserId: integer('redeemed_by_user_id')
-      .references(() => users.id),
+    redeemedByUserId: integer('redeemed_by_user_id').references(() => users.id),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    codeIdx: uniqueIndex(
-      'patient_record_sharing_grants_code_idx',
-    ).on(table.codeHash),
+    codeIdx: uniqueIndex('patient_record_sharing_grants_code_idx').on(table.codeHash),
 
-    patientIdx: index(
-      'patient_record_sharing_grants_patient_idx',
-    ).on(table.patientId, table.createdAt),
+    patientIdx: index('patient_record_sharing_grants_patient_idx').on(
+      table.patientId,
+      table.createdAt,
+    ),
   }),
 );

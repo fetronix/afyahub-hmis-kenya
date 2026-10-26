@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 
-import {
-  useHmis,
-  type ModuleId,
-} from '../context/HmisContext.tsx';
+import { useHmis, type ModuleId } from '../context/HmisContext.tsx';
 
 import { navSections, superAdminNavSections } from './Sidebar.tsx';
 
@@ -62,9 +59,7 @@ const sectionLabel = (id: ModuleId, isSuperAdmin: boolean): string | null => {
     ? [...superAdminNavSections, ...navSections]
     : [...navSections, ...superAdminNavSections];
 
-  const match = sections.find((section) =>
-    section.items.some((item) => item.id === id)
-  );
+  const match = sections.find((section) => section.items.some((item) => item.id === id));
 
   if (!match) return null;
 
@@ -102,10 +97,7 @@ export const Header: React.FC = () => {
   |
   */
 
-  const displayName =
-    authenticatedUser?.fullName ||
-    currentUser?.name ||
-    'Authenticated User';
+  const displayName = authenticatedUser?.fullName || currentUser?.name || 'Authenticated User';
 
   const username = authenticatedUser?.username || '';
   const email = authenticatedUser?.email || '';
@@ -114,8 +106,7 @@ export const Header: React.FC = () => {
   const professionalId = currentUser?.license || '';
 
   const isSuperAdmin = Boolean(
-    authenticatedUser?.isSuperAdmin ||
-    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+    authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
 
   const group = sectionLabel(activeModule, isSuperAdmin);
@@ -158,11 +149,7 @@ export const Header: React.FC = () => {
           className="-ml-1 rounded-lg p-2 text-ink-soft transition-colors hover:bg-slate-100 hover:text-ink md:hidden"
           aria-label="Toggle navigation menu"
         >
-          {isMobileMenuOpen ? (
-            <X className="h-5 w-5" />
-          ) : (
-            <Menu className="h-5 w-5" />
-          )}
+          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
 
         <div className="flex items-center gap-2.5">
@@ -284,14 +271,10 @@ export const Header: React.FC = () => {
                     </span>
 
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-navy-900">
-                        {displayName}
-                      </div>
+                      <div className="truncate font-semibold text-navy-900">{displayName}</div>
 
                       {username && (
-                        <div className="mt-0.5 truncate text-2xs text-muted">
-                          @{username}
-                        </div>
+                        <div className="mt-0.5 truncate text-2xs text-muted">@{username}</div>
                       )}
 
                       <div className="mt-0.5 text-2xs font-semibold text-brand-700">
@@ -326,9 +309,7 @@ export const Header: React.FC = () => {
                       <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
                         Professional ID
                       </div>
-                      <div className="mt-0.5 font-mono text-xs text-ink-soft">
-                        {professionalId}
-                      </div>
+                      <div className="mt-0.5 font-mono text-xs text-ink-soft">{professionalId}</div>
                     </div>
                   )}
 

@@ -103,10 +103,7 @@ function tokenTests(): void {
   const second = generateInvitationToken();
 
   assert(first !== second, 'Two generated tokens differ');
-  assert(
-    first.length >= 40,
-    'An invitation token carries at least 240 bits of base64url text',
-  );
+  assert(first.length >= 40, 'An invitation token carries at least 240 bits of base64url text');
   assert(
     /^[A-Za-z0-9_-]+$/.test(first),
     'The token is URL-safe, so it can travel in a fragment without escaping',
@@ -115,24 +112,12 @@ function tokenTests(): void {
   const hash = hashInvitationToken(first);
 
   assert(/^[0-9a-f]{64}$/.test(hash), 'The stored form is a SHA-256 hex digest');
-  assert(
-    hash !== first,
-    'The stored form is not the token itself',
-  );
-  assert(
-    !hash.includes(first),
-    'The token cannot be recovered from the hash',
-  );
-  assert(
-    hashInvitationToken(first) === hash,
-    'Hashing is deterministic, so lookup by hash works',
-  );
+  assert(hash !== first, 'The stored form is not the token itself');
+  assert(!hash.includes(first), 'The token cannot be recovered from the hash');
+  assert(hashInvitationToken(first) === hash, 'Hashing is deterministic, so lookup by hash works');
 
   assert(hashesMatch(hash, hash), 'Identical hashes compare equal');
-  assert(
-    !hashesMatch(hash, hashInvitationToken(second)),
-    'Different tokens do not compare equal',
-  );
+  assert(!hashesMatch(hash, hashInvitationToken(second)), 'Different tokens do not compare equal');
   const flipped = `${hash.slice(0, 63)}${hash.endsWith('0') ? '1' : '0'}`;
 
   assert(!hashesMatch(hash, flipped), 'A one-character difference is rejected');
@@ -192,10 +177,8 @@ function expiryTests(): void {
   );
 
   assert(
-    deriveInvitationStatus(
-      { status: 'PENDING', expiresAt: at(HOUR).toISOString() },
-      NOW,
-    ) === 'PENDING',
+    deriveInvitationStatus({ status: 'PENDING', expiresAt: at(HOUR).toISOString() }, NOW) ===
+      'PENDING',
     'An ISO string expiry is parsed, not treated as invalid',
   );
 
@@ -285,13 +268,9 @@ function resendTests(): void {
     expiresAt: LONG_AGO,
   });
 
+  assert(!expiredActivation.allowed, 'An expired activation link is not resent');
   assert(
-    !expiredActivation.allowed,
-    'An expired activation link is not resent',
-  );
-  assert(
-    typeof expiredActivation.reason === 'string' &&
-      expiredActivation.reason.includes('expired'),
+    typeof expiredActivation.reason === 'string' && expiredActivation.reason.includes('expired'),
     'The refusal explains that the link expired and a new invitation is needed',
   );
 
@@ -336,10 +315,7 @@ function contactTests(): void {
     new Set(normalised).size === 1,
     'Every spelling of one Kenyan number normalises to one identifier',
   );
-  assert(
-    normalised[0] === '254712345678',
-    'A leading zero becomes the 254 country code',
-  );
+  assert(normalised[0] === '254712345678', 'A leading zero becomes the 254 country code');
 
   assert(
     normaliseEmail('  Patient@Example.COM ') === 'patient@example.com',
@@ -364,18 +340,15 @@ function contactTests(): void {
     normaliseContact({ phone: '123', email: 'not-an-email' }) === null,
     'A junk phone with a junk email returns null',
   );
-  assert(
-    normaliseContact({ phone: '   ', email: '   ' }) === null,
-    'Whitespace is not a contact',
-  );
+  assert(normaliseContact({ phone: '   ', email: '   ' }) === null, 'Whitespace is not a contact');
 
   const maskedPhone = maskContact('254712345678', 'PHONE');
 
-  assert(maskedPhone !== null && !maskedPhone.includes('712345678'), 'A masked phone hides the middle');
   assert(
-    maskedPhone === '2547***678',
-    'The desk sees a prefix and the last three digits only',
+    maskedPhone !== null && !maskedPhone.includes('712345678'),
+    'A masked phone hides the middle',
   );
+  assert(maskedPhone === '2547***678', 'The desk sees a prefix and the last three digits only');
 
   const maskedEmail = maskContact('patient@example.com', 'EMAIL');
 
@@ -383,14 +356,8 @@ function contactTests(): void {
     maskedEmail === 'p******@example.com',
     'A masked email keeps the first letter and the domain',
   );
-  assert(
-    maskContact(null, 'PHONE') === null,
-    'There is nothing to mask when there is no contact',
-  );
-  assert(
-    maskContact('123', 'PHONE') === '***',
-    'Too short to mask partially is fully masked',
-  );
+  assert(maskContact(null, 'PHONE') === null, 'There is nothing to mask when there is no contact');
+  assert(maskContact('123', 'PHONE') === '***', 'Too short to mask partially is fully masked');
   assert(
     maskContact('no-at-sign', 'EMAIL') === '***',
     'A malformed email is fully masked rather than echoed',
@@ -420,22 +387,10 @@ function passwordTests(): void {
     'Eleven characters is still too short',
   );
   assert(checkPortalPassword('abcdefghijkl').ok, 'Twelve characters is accepted');
-  assert(
-    !checkPortalPassword('x'.repeat(12)).ok,
-    'One repeated character is not a password',
-  );
-  assert(
-    !checkPortalPassword(' '.repeat(12)).ok,
-    'Twelve spaces is not a password',
-  );
-  assert(
-    checkPortalPassword('correct horse battery staple').ok,
-    'A long passphrase is accepted',
-  );
-  assert(
-    !checkPortalPassword('a'.repeat(201)).ok,
-    'Beyond the maximum length is rejected',
-  );
+  assert(!checkPortalPassword('x'.repeat(12)).ok, 'One repeated character is not a password');
+  assert(!checkPortalPassword(' '.repeat(12)).ok, 'Twelve spaces is not a password');
+  assert(checkPortalPassword('correct horse battery staple').ok, 'A long passphrase is accepted');
+  assert(!checkPortalPassword('a'.repeat(201)).ok, 'Beyond the maximum length is rejected');
 }
 
 /* ============================================================
@@ -554,10 +509,7 @@ function sharingTests(): void {
   assert(valid.categories.length === 2, 'The selected categories are kept');
   assert(valid.hours === 12, 'A duration inside the bounds is kept');
 
-  assertThrows(
-    () => validateSharingRequest(null),
-    'A null sharing request is refused',
-  );
+  assertThrows(() => validateSharingRequest(null), 'A null sharing request is refused');
   assertThrows(
     () => validateSharingRequest({ purpose: 'x', categories: ['demographics'], hours: 1 }),
     'A sharing request without a recipient is refused',
@@ -610,10 +562,7 @@ function sharingTests(): void {
     hours: 10000,
   });
 
-  assert(
-    manyHours.hours === MAX_SHARING_HOURS,
-    'A duration beyond the maximum is clamped',
-  );
+  assert(manyHours.hours === MAX_SHARING_HOURS, 'A duration beyond the maximum is clamped');
 
   const noHours = validateSharingRequest({
     recipientName: 'Dr A. Mwangi',
@@ -621,10 +570,7 @@ function sharingTests(): void {
     categories: ['demographics'],
   });
 
-  assert(
-    noHours.hours === 24,
-    'A missing duration uses the 24-hour default',
-  );
+  assert(noHours.hours === 24, 'A missing duration uses the 24-hour default');
 
   const duplicates = validateSharingRequest({
     recipientName: 'Dr A. Mwangi',
@@ -633,10 +579,7 @@ function sharingTests(): void {
     hours: 4,
   });
 
-  assert(
-    duplicates.categories.length === 2,
-    'A repeated category is stored once',
-  );
+  assert(duplicates.categories.length === 2, 'A repeated category is stored once');
 
   assert(
     SHARING_CATEGORIES.includes('laboratory') &&
@@ -676,10 +619,7 @@ function qrTests(): void {
     !isPlausibleQrCode(`${QR_PREFIX}${'a'.repeat(200)}`),
     'An over-long payload is not plausible',
   );
-  assert(
-    !isPlausibleQrCode(`jc-p${'a'.repeat(20)}`),
-    'The prefix check is case-sensitive',
-  );
+  assert(!isPlausibleQrCode(`jc-p${'a'.repeat(20)}`), 'The prefix check is case-sensitive');
 
   /*
    * The encoded payload is the code and nothing else. This is checked
@@ -694,9 +634,7 @@ function qrTests(): void {
   const encodeStart = qrSource.indexOf('QRCode.toString(');
   const encodeEnd = qrSource.indexOf('});', encodeStart);
   const encodeCall =
-    encodeStart === -1 || encodeEnd === -1
-      ? ''
-      : qrSource.slice(encodeStart, encodeEnd + 3);
+    encodeStart === -1 || encodeEnd === -1 ? '' : qrSource.slice(encodeStart, encodeEnd + 3);
 
   assert(encodeStart !== -1, 'The renderer encodes the symbol with the qrcode library');
   assert(
@@ -749,20 +687,11 @@ function sourceTests(): void {
     !/req\.query\.patientId/.test(routes),
     'No portal route reads the patient id from the query string',
   );
-  assert(
-    !/body\.patientId/.test(routes),
-    'The patient id is never taken from a client payload',
-  );
+  assert(!/body\.patientId/.test(routes), 'The patient id is never taken from a client payload');
 
   /* --- Tokens never appear where they can leak --- */
-  assert(
-    !/console\.(log|error)\([^)]*token/i.test(auth),
-    'The auth service does not log a token',
-  );
-  assert(
-    !/logAuditEvent\([^)]*token/i.test(service),
-    'Audit rows never receive a raw token',
-  );
+  assert(!/console\.(log|error)\([^)]*token/i.test(auth), 'The auth service does not log a token');
+  assert(!/logAuditEvent\([^)]*token/i.test(service), 'Audit rows never receive a raw token');
   assert(
     routes.includes('req.body') && routes.includes('token'),
     'The activation token arrives in the body',
@@ -775,10 +704,7 @@ function sourceTests(): void {
   /* --- Generic errors on activation --- */
   const activation = service.slice(service.indexOf('export async function activateInvitation'));
 
-  assert(
-    /INVALID_INVITATION/.test(activation),
-    'Activation has a generic refusal code',
-  );
+  assert(/INVALID_INVITATION/.test(activation), 'Activation has a generic refusal code');
   assert(
     (activation.match(/INVALID_INVITATION/g) ?? []).length >= 3,
     'Unknown, expired, used, revoked and superseded tokens all return that one code',
@@ -795,13 +721,10 @@ function sourceTests(): void {
   /* --- Clinical release rules --- */
   const records = code('src/portal/portal-records.service.ts');
 
-  assert(
-    records.includes("'Verified'"),
-    'Laboratory results are gated on the Verified status',
-  );
+  assert(records.includes("'Verified'"), 'Laboratory results are gated on the Verified status');
   assert(
     !/labResults\.status\)\s*!==\s*'Verified'/.test(records) ||
-      records.includes('row.status !== \'Verified\''),
+      records.includes("row.status !== 'Verified'"),
     'Unverified results are filtered out of the released set',
   );
   assert(
@@ -809,7 +732,7 @@ function sourceTests(): void {
     'Record reads are scoped through the session’s allowed facilities',
   );
   assert(
-    records.includes("eq(schema.patients.id, session.patientId)") ||
+    records.includes('eq(schema.patients.id, session.patientId)') ||
       records.includes('session.patientId'),
     'Reads are keyed on the session patient, never a request parameter',
   );
@@ -836,8 +759,10 @@ function sourceTests(): void {
     'Prescriptions inherit the encounter’s facility filter',
   );
   assert(
-    (records.match(/inArray\(schema\.patientAllergies\.facilityId, (facilities|facilityIds)\)/g) ?? [])
-      .length >= 2,
+    (
+      records.match(/inArray\(schema\.patientAllergies\.facilityId, (facilities|facilityIds)\)/g) ??
+      []
+    ).length >= 2,
     'Allergies are filtered by facility in both the dashboard and the download',
   );
 
@@ -846,10 +771,7 @@ function sourceTests(): void {
     !/\.update\(schema\.(patients|diagnoses|encounters|labResults|medications)\)/.test(records),
     'The portal never writes to a clinical table',
   );
-  assert(
-    records.includes('requestRecordCorrection'),
-    'Corrections are requests, not edits',
-  );
+  assert(records.includes('requestRecordCorrection'), 'Corrections are requests, not edits');
 
   /* --- Audit --- */
   assert(
@@ -918,30 +840,15 @@ function persistenceTests(): void {
     /token_hash[\s\S]{0,120}UNIQUE|UNIQUE[\s\S]{0,120}token_hash/i.test(sql),
     'Invitation tokens are unique hashes',
   );
-  assert(
-    /qr_token_hash/.test(sql),
-    'The card stores a hash, not a code',
-  );
+  assert(/qr_token_hash/.test(sql), 'The card stores a hash, not a code');
   assert(
     /qr_token_sealed/.test(sql),
     'The card also stores a sealed copy, so it can be re-rendered without weakening the hash',
   );
-  assert(
-    !/DROP TABLE/i.test(sql),
-    'The migration never drops a table',
-  );
-  assert(
-    !/DROP COLUMN/i.test(sql),
-    'The migration never drops a column',
-  );
-  assert(
-    !/TRUNCATE/i.test(sql),
-    'The migration never truncates',
-  );
-  assert(
-    !/UPDATE\s+patients/i.test(sql),
-    'The migration does not rewrite patient rows',
-  );
+  assert(!/DROP TABLE/i.test(sql), 'The migration never drops a table');
+  assert(!/DROP COLUMN/i.test(sql), 'The migration never drops a column');
+  assert(!/TRUNCATE/i.test(sql), 'The migration never truncates');
+  assert(!/UPDATE\s+patients/i.test(sql), 'The migration does not rewrite patient rows');
 
   assert(
     schema.includes("'patient_portal_accounts'"),
@@ -951,7 +858,7 @@ function persistenceTests(): void {
     /qrTokenSealed:\s*text\('qr_token_sealed'\)/.test(schema),
     'The Drizzle schema declares the sealed card column',
   );
-  const accountTableStart = schema.indexOf("export const patientPortalAccounts = pgTable(");
+  const accountTableStart = schema.indexOf('export const patientPortalAccounts = pgTable(');
   const accountTableEnd = schema.indexOf('export const', accountTableStart + 10);
   const accountTable =
     accountTableStart === -1
@@ -987,16 +894,10 @@ function permissionTests(): void {
     'portal.audit.read',
     'portal.settings.manage',
   ]) {
-    assert(
-      permissions.includes(`code: '${permission}'`),
-      `${permission} is seeded`,
-    );
+    assert(permissions.includes(`code: '${permission}'`), `${permission} is seeded`);
   }
 
-  assert(
-    catalogue.includes("'portal.invite'"),
-    'The receptionist role can invite patients',
-  );
+  assert(catalogue.includes("'portal.invite'"), 'The receptionist role can invite patients');
   assert(
     !catalogue.includes("'portal.accounts.manage'"),
     'The receptionist role cannot administer accounts',
@@ -1078,8 +979,8 @@ function activationLinkTests(): void {
    * by the same Express app, so this is the normal production case.
    */
   assert(
-    buildActivationLink(token, { APP_BASE_URL: 'https://hmis.example.ke' })
-      === 'https://hmis.example.ke/portal/activate#raw-token-value',
+    buildActivationLink(token, { APP_BASE_URL: 'https://hmis.example.ke' }) ===
+      'https://hmis.example.ke/portal/activate#raw-token-value',
     'APP_BASE_URL is used when no portal address is set',
   );
 
@@ -1089,8 +990,8 @@ function activationLinkTests(): void {
    * through, so a development server produces an absolute URL.
    */
   assert(
-    buildActivationLink(token, {}, 'http://localhost:3000')
-      === 'http://localhost:3000/portal/activate#raw-token-value',
+    buildActivationLink(token, {}, 'http://localhost:3000') ===
+      'http://localhost:3000/portal/activate#raw-token-value',
     'the request origin fills the gap in development',
   );
 
@@ -1115,20 +1016,18 @@ function activationLinkTests(): void {
    * A trailing-slash base must not produce a double slash before /portal.
    */
   assert(
-    portalBaseUrl({ APP_BASE_URL: 'https://hmis.example.ke//' })
-      === 'https://hmis.example.ke',
+    portalBaseUrl({ APP_BASE_URL: 'https://hmis.example.ke//' }) === 'https://hmis.example.ke',
     'trailing slashes are trimmed',
   );
 
   /* Request origin, as the browser addressed the server. */
   assert(
-    requestOrigin({ protocol: 'http', get: () => 'localhost:3000' })
-      === 'http://localhost:3000',
+    requestOrigin({ protocol: 'http', get: () => 'localhost:3000' }) === 'http://localhost:3000',
     'the request origin keeps the http protocol in development',
   );
   assert(
-    requestOrigin({ protocol: 'https', get: () => 'hmis.example.ke' })
-      === 'https://hmis.example.ke',
+    requestOrigin({ protocol: 'https', get: () => 'hmis.example.ke' }) ===
+      'https://hmis.example.ke',
     'and https in production',
   );
   assert(
@@ -1158,10 +1057,7 @@ function activationLinkTests(): void {
     adminMount < staffGate,
     'portal administration is mounted before it too (it applies requireAuth itself)',
   );
-  assert(
-    adminMount < portalMount,
-    'the admin router is matched before the patient router',
-  );
+  assert(adminMount < portalMount, 'the admin router is matched before the patient router');
 
   /* The patient router must still guard everything but activation/login. */
   const portalRouter = code('src/portal/portal.routes.ts');
@@ -1169,10 +1065,7 @@ function activationLinkTests(): void {
     portalRouter.includes('router.use(requirePortalAuth)'),
     'the patient router guards itself, so moving it changes nothing else',
   );
-  assert(
-    !portalRouter.includes('requireAuth('),
-    'the patient router never accepts a staff token',
-  );
+  assert(!portalRouter.includes('requireAuth('), 'the patient router never accepts a staff token');
 
   const adminRouter = code('src/portal/portal-admin.routes.ts');
   assert(

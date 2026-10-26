@@ -106,9 +106,7 @@ const ExpiryCountdown: React.FC<{
 
   if (!parts) {
     return (
-      <span className={`font-mono text-2xs text-slate-400 ${className}`}>
-        no expiry recorded
-      </span>
+      <span className={`font-mono text-2xs text-slate-400 ${className}`}>no expiry recorded</span>
     );
   }
 
@@ -130,8 +128,7 @@ const ExpiryCountdown: React.FC<{
       className={`font-mono text-2xs tabular-nums ${tone} ${className}`}
       title={`Usable until the end of ${expiryDate}`}
     >
-      {parts.days}d {pad(parts.hours)}h
-      {short ? '' : ` ${pad(parts.minutes)}m`} left
+      {parts.days}d {pad(parts.hours)}h{short ? '' : ` ${pad(parts.minutes)}m`} left
     </span>
   );
 };

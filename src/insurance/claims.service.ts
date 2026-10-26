@@ -39,11 +39,7 @@ import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import { getFacilityByIdScoped } from '../db/queries.ts';
 
-import {
-  classifySettlement,
-  formatCents,
-  parseMoneyToCents,
-} from '../billing/settlement.ts';
+import { classifySettlement, formatCents, parseMoneyToCents } from '../billing/settlement.ts';
 
 export type ClaimErrorCode =
   | 'INVALID_INPUT'
@@ -114,9 +110,7 @@ async function resolveFacility(
   requestedFacilityId?: number | string | null,
 ) {
   const parsed =
-    requestedFacilityId === undefined ||
-    requestedFacilityId === null ||
-    requestedFacilityId === ''
+    requestedFacilityId === undefined || requestedFacilityId === null || requestedFacilityId === ''
       ? null
       : Number(requestedFacilityId);
 
@@ -133,10 +127,7 @@ async function resolveFacility(
     throw new ClaimDomainError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
   }
 
-  if (
-    !Array.isArray(facility.enabledModules) ||
-    !facility.enabledModules.includes('insurance')
-  ) {
+  if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('insurance')) {
     throw new ClaimDomainError(
       'FACILITY_MODULE_DISABLED',
       'The insurance module is disabled for this facility.',
@@ -529,12 +520,7 @@ export async function adjudicateClaimScoped(
   }
 
   return db.transaction(async (tx) => {
-    const { claim } = await loadClaimForUpdate(
-      tx,
-      context,
-      claimId,
-      input?.facilityId,
-    );
+    const { claim } = await loadClaimForUpdate(tx, context, claimId, input?.facilityId);
 
     if (claim.status !== 'Submitted') {
       throw new ClaimDomainError(
@@ -590,12 +576,7 @@ export async function settleClaimScoped(
   }
 
   return db.transaction(async (tx) => {
-    const { claim, facility } = await loadClaimForUpdate(
-      tx,
-      context,
-      claimId,
-      requestedFacilityId,
-    );
+    const { claim, facility } = await loadClaimForUpdate(tx, context, claimId, requestedFacilityId);
 
     if (claim.status !== 'Approved') {
       throw new ClaimDomainError(

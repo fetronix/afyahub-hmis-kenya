@@ -16,10 +16,10 @@
  * there is no parameter a caller can point at another site.
  */
 
-import { Router } from "express";
+import { Router } from 'express';
 
-import { requireAuth, type AuthRequest } from "./auth.middleware";
-import { requirePermission } from "./authorization.middleware";
+import { requireAuth, type AuthRequest } from './auth.middleware';
+import { requirePermission } from './authorization.middleware';
 
 import {
   assignStaffRoles,
@@ -29,8 +29,8 @@ import {
   setStaffAccountStatus,
   StaffRoleError,
   updateRolePermissions,
-} from "./staff-roles.service";
-import { ProfessionalVerificationError } from "../integrations/professional/professional-verification.service.ts";
+} from './staff-roles.service';
+import { ProfessionalVerificationError } from '../integrations/professional/professional-verification.service.ts';
 
 const router = Router();
 
@@ -45,9 +45,9 @@ function getScope(req: AuthRequest) {
     !Number.isSafeInteger(context.facilityId)
   ) {
     throw new StaffRoleError(
-      "Your account must be assigned to a tenant and facility.",
+      'Your account must be assigned to a tenant and facility.',
       403,
-      "FACILITY_SCOPE_REQUIRED",
+      'FACILITY_SCOPE_REQUIRED',
     );
   }
 
@@ -77,12 +77,12 @@ function sendError(res: any, error: unknown) {
     });
   }
 
-  console.error("Staff roles API error:", error);
+  console.error('Staff roles API error:', error);
 
   return res.status(500).json({
     success: false,
-    code: "INTERNAL_ERROR",
-    message: "The staff role request could not be completed.",
+    code: 'INTERNAL_ERROR',
+    message: 'The staff role request could not be completed.',
   });
 }
 
@@ -93,45 +93,37 @@ function sendError(res: any, error: unknown) {
  * same tenant: a role picker built from a second request could offer a
  * role the directory has already ruled out.
  */
-router.get(
-  "/",
-  requirePermission("users.invite"),
-  async (req: AuthRequest, res) => {
-    try {
-      const scope = getScope(req);
-      const search = typeof req.query.search === "string" ? req.query.search : null;
+router.get('/', requirePermission('users.invite'), async (req: AuthRequest, res) => {
+  try {
+    const scope = getScope(req);
+    const search = typeof req.query.search === 'string' ? req.query.search : null;
 
-      const overview = await getStaffRolesOverview({
-        tenantId: scope.tenantId,
-        facilityId: scope.facilityId,
-        actorUserId: scope.userId,
-        search,
-      });
+    const overview = await getStaffRolesOverview({
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      actorUserId: scope.userId,
+      search,
+    });
 
-      return res.json({
-        success: true,
-        ...overview,
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  },
-);
+    return res.json({
+      success: true,
+      ...overview,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 
-router.get(
-  "/roles",
-  requirePermission("users.invite"),
-  async (req: AuthRequest, res) => {
-    try {
-      const scope = getScope(req);
-      const roles = await listAssignableStaffRoles(scope.tenantId);
+router.get('/roles', requirePermission('users.invite'), async (req: AuthRequest, res) => {
+  try {
+    const scope = getScope(req);
+    const roles = await listAssignableStaffRoles(scope.tenantId);
 
-      return res.json({ success: true, roles });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  },
-);
+    return res.json({ success: true, roles });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 
 /**
  * Replace the assignable roles on one staff account.
@@ -141,58 +133,50 @@ router.get(
  * [NURSE, BILLING_CLERK] removes the billing role. Roles the facility
  * may no longer offer are left untouched rather than silently revoked.
  */
-router.put(
-  "/:userId/roles",
-  requirePermission("users.invite"),
-  async (req: AuthRequest, res) => {
-    try {
-      const scope = getScope(req);
-      const targetUserId = Number(req.params.userId);
-      const body = (req.body ?? {}) as { roleIds?: unknown };
+router.put('/:userId/roles', requirePermission('users.invite'), async (req: AuthRequest, res) => {
+  try {
+    const scope = getScope(req);
+    const targetUserId = Number(req.params.userId);
+    const body = (req.body ?? {}) as { roleIds?: unknown };
 
-      if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
-        return res.status(400).json({
-          success: false,
-          code: "INVALID_STAFF_ID",
-          message: "A valid staff account is required.",
-        });
-      }
-
-      if (
-        !Array.isArray(body.roleIds) ||
-        body.roleIds.some(
-          (roleId) => !Number.isSafeInteger(Number(roleId)) || Number(roleId) <= 0,
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          code: "INVALID_ROLE_SELECTION",
-          message: "roleIds must be an array of role identifiers.",
-        });
-      }
-
-      const result = await assignStaffRoles({
-        tenantId: scope.tenantId,
-        facilityId: scope.facilityId,
-        actorUserId: scope.userId,
-        actorRoleNames: scope.roles,
-        isSuperAdmin: scope.isSuperAdmin,
-        targetUserId,
-        roleIds: body.roleIds.map((roleId) => Number(roleId)),
+    if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_STAFF_ID',
+        message: 'A valid staff account is required.',
       });
-
-      return res.json({
-        success: true,
-        message: result.changed
-          ? "Roles updated."
-          : "No role change was needed.",
-        ...result,
-      });
-    } catch (error) {
-      return sendError(res, error);
     }
-  },
-);
+
+    if (
+      !Array.isArray(body.roleIds) ||
+      body.roleIds.some((roleId) => !Number.isSafeInteger(Number(roleId)) || Number(roleId) <= 0)
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_ROLE_SELECTION',
+        message: 'roleIds must be an array of role identifiers.',
+      });
+    }
+
+    const result = await assignStaffRoles({
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      actorUserId: scope.userId,
+      actorRoleNames: scope.roles,
+      isSuperAdmin: scope.isSuperAdmin,
+      targetUserId,
+      roleIds: body.roleIds.map((roleId) => Number(roleId)),
+    });
+
+    return res.json({
+      success: true,
+      message: result.changed ? 'Roles updated.' : 'No role change was needed.',
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 
 /**
  * The tasks one staff role may perform, beside the tasks this facility
@@ -200,8 +184,8 @@ router.put(
  * checkbox the save would refuse.
  */
 router.get(
-  "/roles/:roleId/permissions",
-  requirePermission("users.invite"),
+  '/roles/:roleId/permissions',
+  requirePermission('users.invite'),
   async (req: AuthRequest, res) => {
     try {
       const scope = getScope(req);
@@ -210,8 +194,8 @@ router.get(
       if (!Number.isSafeInteger(roleId) || roleId <= 0) {
         return res.status(400).json({
           success: false,
-          code: "INVALID_ROLE_ID",
-          message: "A valid role is required.",
+          code: 'INVALID_ROLE_ID',
+          message: 'A valid role is required.',
         });
       }
 
@@ -236,8 +220,8 @@ router.get(
  * against the delegable allowlist before a single row is written.
  */
 router.put(
-  "/roles/:roleId/permissions",
-  requirePermission("users.invite"),
+  '/roles/:roleId/permissions',
+  requirePermission('users.invite'),
   async (req: AuthRequest, res) => {
     try {
       const scope = getScope(req);
@@ -247,21 +231,19 @@ router.put(
       if (!Number.isSafeInteger(roleId) || roleId <= 0) {
         return res.status(400).json({
           success: false,
-          code: "INVALID_ROLE_ID",
-          message: "A valid role is required.",
+          code: 'INVALID_ROLE_ID',
+          message: 'A valid role is required.',
         });
       }
 
       if (
         !Array.isArray(body.permissionIds) ||
-        body.permissionIds.some(
-          (id) => !Number.isSafeInteger(Number(id)) || Number(id) <= 0,
-        )
+        body.permissionIds.some((id) => !Number.isSafeInteger(Number(id)) || Number(id) <= 0)
       ) {
         return res.status(400).json({
           success: false,
-          code: "INVALID_PERMISSION_SELECTION",
-          message: "permissionIds must be an array of permission identifiers.",
+          code: 'INVALID_PERMISSION_SELECTION',
+          message: 'permissionIds must be an array of permission identifiers.',
         });
       }
 
@@ -277,9 +259,7 @@ router.put(
 
       return res.json({
         success: true,
-        message: result.changed
-          ? "Role tasks updated."
-          : "No task change was needed.",
+        message: result.changed ? 'Role tasks updated.' : 'No task change was needed.',
         ...result,
       });
     } catch (error) {
@@ -295,63 +275,59 @@ router.put(
  * and bumps `security_version`. The auth middleware re-reads the account
  * on every request, so an open session stops at its next call as well.
  */
-router.put(
-  "/:userId/status",
-  requirePermission("users.invite"),
-  async (req: AuthRequest, res) => {
-    try {
-      const scope = getScope(req);
-      const targetUserId = Number(req.params.userId);
-      const body = (req.body ?? {}) as { active?: unknown; reason?: unknown };
+router.put('/:userId/status', requirePermission('users.invite'), async (req: AuthRequest, res) => {
+  try {
+    const scope = getScope(req);
+    const targetUserId = Number(req.params.userId);
+    const body = (req.body ?? {}) as { active?: unknown; reason?: unknown };
 
-      if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
-        return res.status(400).json({
-          success: false,
-          code: "INVALID_STAFF_ID",
-          message: "A valid staff account is required.",
-        });
-      }
-
-      if (typeof body.active !== "boolean") {
-        return res.status(400).json({
-          success: false,
-          code: "INVALID_STATUS",
-          message: "active must be true or false.",
-        });
-      }
-
-      if (body.reason !== undefined && typeof body.reason !== "string") {
-        return res.status(400).json({
-          success: false,
-          code: "INVALID_REASON",
-          message: "reason must be text.",
-        });
-      }
-
-      const result = await setStaffAccountStatus({
-        tenantId: scope.tenantId,
-        facilityId: scope.facilityId,
-        actorUserId: scope.userId,
-        actorRoleNames: scope.roles,
-        isSuperAdmin: scope.isSuperAdmin,
-        targetUserId,
-        active: body.active,
-        reason: typeof body.reason === "string" ? body.reason : null,
+    if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_STAFF_ID',
+        message: 'A valid staff account is required.',
       });
-
-      return res.json({
-        success: true,
-        message: result.changed
-          ? result.active
-            ? "Account activated."
-            : "Account deactivated."
-          : "No status change was needed.",
-        ...result,
-      });
-    } catch (error) {
-      return sendError(res, error);
     }
-  },
-);
+
+    if (typeof body.active !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_STATUS',
+        message: 'active must be true or false.',
+      });
+    }
+
+    if (body.reason !== undefined && typeof body.reason !== 'string') {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_REASON',
+        message: 'reason must be text.',
+      });
+    }
+
+    const result = await setStaffAccountStatus({
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      actorUserId: scope.userId,
+      actorRoleNames: scope.roles,
+      isSuperAdmin: scope.isSuperAdmin,
+      targetUserId,
+      active: body.active,
+      reason: typeof body.reason === 'string' ? body.reason : null,
+    });
+
+    return res.json({
+      success: true,
+      message: result.changed
+        ? result.active
+          ? 'Account activated.'
+          : 'Account deactivated.'
+        : 'No status change was needed.',
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 
 export default router;

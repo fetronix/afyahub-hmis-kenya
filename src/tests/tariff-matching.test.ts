@@ -162,9 +162,11 @@ function testMeaningfulDistinctionsSurvive(): void {
    * Case, spacing and punctuation are not distinctions. "Follow-up" and
    * "general" are: they are 300 and 150 on this very price list.
    */
-  assertEqual(words('  General   OUTPATIENT  consultation '),
+  assertEqual(
+    words('  General   OUTPATIENT  consultation '),
     ['general', 'outpatient', 'consultation'],
-    'case and whitespace collapse');
+    'case and whitespace collapse',
+  );
 
   assertEqual(words('Follow-up'), words('follow up'), 'hyphens are spacing');
 
@@ -192,12 +194,18 @@ function testMeaningfulDistinctionsSurvive(): void {
     codes: ['OPD-001'],
   });
 
-  assertEqual(caseMatch.tariff?.code, ' opd-001 ',
-    'a lower-case, space-padded stored code is still matched');
+  assertEqual(
+    caseMatch.tariff?.code,
+    ' opd-001 ',
+    'a lower-case, space-padded stored code is still matched',
+  );
   assertEqual(caseMatch.rule, 'CODE', 'by the code rule');
 
-  assertEqual(words('Full Blood Count (FBC/CBC)').slice(0, 3),
-    ['full', 'blood', 'count'], 'brackets do not become words');
+  assertEqual(
+    words('Full Blood Count (FBC/CBC)').slice(0, 3),
+    ['full', 'blood', 'count'],
+    'brackets do not become words',
+  );
 
   assert(
     !words('Follow-up consultation').includes('general'),
@@ -298,10 +306,7 @@ function testFacilityScoping(): void {
    * asserts the filter is still there — a price from another facility
    * is the one failure mode that would be both silent and wrong.
    */
-  const source = readFileSync(
-    resolve(process.cwd(), 'src/billing/billing.service.ts'),
-    'utf8',
-  );
+  const source = readFileSync(resolve(process.cwd(), 'src/billing/billing.service.ts'), 'utf8');
 
   assert(
     source.includes('eq(schema.facilityServiceTariffs.facilityId, facilityId)'),
@@ -316,11 +321,17 @@ function testFacilityScoping(): void {
   /*
    * Department scoping keeps a pharmacy row from pricing a blood test.
    */
-  assertEqual(normaliseDepartment('OPD / Outpatient'), 'opd',
-    'the department label and the module id resolve to one bucket');
+  assertEqual(
+    normaliseDepartment('OPD / Outpatient'),
+    'opd',
+    'the department label and the module id resolve to one bucket',
+  );
 
-  assertEqual(departmentsForFamily('LABORATORY'), ['laboratory'],
-    'a laboratory charge is priced from laboratory tariffs only');
+  assertEqual(
+    departmentsForFamily('LABORATORY'),
+    ['laboratory'],
+    'a laboratory charge is priced from laboratory tariffs only',
+  );
 
   assert(
     !departmentsForFamily('LABORATORY').includes('pharmacy'),
@@ -366,8 +377,11 @@ function testLaboratoryNames(): void {
     }),
   });
 
-  assertEqual(outcome.tariff?.code, 'LAB-006',
-    'the ordered test "Full Blood Count" prices from LAB-006');
+  assertEqual(
+    outcome.tariff?.code,
+    'LAB-006',
+    'the ordered test "Full Blood Count" prices from LAB-006',
+  );
   assertEqual(outcome.tariff?.fee, '800.00', 'at the facility fee of 800');
   assertEqual(outcome.tariff?.unit, 'Test', 'with its billing unit');
 
@@ -386,9 +400,7 @@ function testLaboratoryNames(): void {
 
 function testLinksStillWin(): void {
   const linked = opdTariffs.map((row) =>
-    row.code === 'OPD-001'
-      ? { ...row, billingKey: ' CONSULTATION ' }
-      : row,
+    row.code === 'OPD-001' ? { ...row, billingKey: ' CONSULTATION ' } : row,
   );
 
   const outcome = matchTariff({
@@ -525,19 +537,13 @@ function testRetryAfterFixingThePriceList(): void {
     resolve(process.cwd(), 'drizzle/0020_billing_charge_attempts.sql'),
     'utf8',
   );
-  const journal = readFileSync(
-    resolve(process.cwd(), 'drizzle/meta/_journal.json'),
-    'utf8',
-  );
+  const journal = readFileSync(resolve(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8');
   const panel = readFileSync(
     resolve(process.cwd(), 'src/components/modules/FacilityServiceTariffsPanel.tsx'),
     'utf8',
   );
 
-  assert(
-    app.includes("'/api/billing/charge-attempts/:id/retry'"),
-    'a route retries one charge',
-  );
+  assert(app.includes("'/api/billing/charge-attempts/:id/retry'"), 'a route retries one charge');
   assert(
     app.includes("'/api/billing/charge-attempts/retry'"),
     'a route retries everything waiting',
@@ -562,18 +568,14 @@ function testRetryAfterFixingThePriceList(): void {
     !/DROP\s+TABLE/i.test(migration) && !/TRUNCATE/i.test(migration),
     'the migration destroys nothing',
   );
+  assert(journal.includes('0020_billing_charge_attempts'), 'and is recorded in the journal');
   assert(
-    journal.includes('0020_billing_charge_attempts'),
-    'and is recorded in the journal',
+    panel.includes('Charges that could not be priced'),
+    'the queue is visible on the tariff screen',
   );
-  assert(panel.includes('Charges that could not be priced'),
-    'the queue is visible on the tariff screen');
   assert(panel.includes('Retry all'), 'with a retry action');
 
-  const queue = readFileSync(
-    resolve(process.cwd(), 'src/billing/charge-attempts.ts'),
-    'utf8',
-  );
+  const queue = readFileSync(resolve(process.cwd(), 'src/billing/charge-attempts.ts'), 'utf8');
 
   assert(
     queue.includes("result.reason !== 'TARIFF_NOT_CONFIGURED'"),
@@ -621,11 +623,7 @@ function testEveryFamilyHasACodePath(): void {
       codes.every((code) => code.trim() !== ''),
       `${family} codes are never empty strings`,
     );
-    assertEqual(
-      new Set(codes).size,
-      codes.length,
-      `${family} does not repeat a code`,
-    );
+    assertEqual(new Set(codes).size, codes.length, `${family} does not repeat a code`);
   }
 
   assertEqual(
@@ -717,11 +715,13 @@ function testExplanationNamesTheRows(): void {
   const retired = explanation.rows.find((row) => row.tariff.code === 'OPD-009');
   const followUp = explanation.rows.find((row) => row.tariff.code === 'OPD-002');
 
-  assertEqual(matched?.verdict, 'MATCHED_DESCRIPTION',
-    'OPD-001 is reported as the row that matched');
+  assertEqual(
+    matched?.verdict,
+    'MATCHED_DESCRIPTION',
+    'OPD-001 is reported as the row that matched',
+  );
   assertEqual(retired?.verdict, 'INACTIVE', 'the retired row is reported inactive');
-  assertEqual(followUp?.verdict, 'NO_MATCH',
-    'the follow-up row is reported as not this service');
+  assertEqual(followUp?.verdict, 'NO_MATCH', 'the follow-up row is reported as not this service');
 
   console.log('  ✓ The screen can name the facility’s own rows');
 }

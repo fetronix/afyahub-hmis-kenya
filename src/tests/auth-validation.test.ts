@@ -5,27 +5,22 @@ import {
   validateSessionToken,
   validateEmail,
   AuthValidationError,
-} from "../auth/auth.validation";
+} from '../auth/auth.validation';
 
-function assert(
-  condition: boolean,
-  message: string
-): void {
+function assert(condition: boolean, message: string): void {
   if (!condition) {
-    throw new Error(
-      `ASSERTION FAILED: ${message}`
-    );
+    throw new Error(`ASSERTION FAILED: ${message}`);
   }
 
   console.log(`✓ ${message}`);
 }
 
 async function runValidationTests() {
-  console.log("");
-  console.log("==============================================");
-  console.log("JaliCare HMIS - Authentication Validation Test");
-  console.log("==============================================");
-  console.log("");
+  console.log('');
+  console.log('==============================================');
+  console.log('JaliCare HMIS - Authentication Validation Test');
+  console.log('==============================================');
+  console.log('');
 
   /*
   |--------------------------------------------------------------------------
@@ -33,26 +28,18 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log(
-    "TEST 1: Validating legitimate login request..."
-  );
+  console.log('TEST 1: Validating legitimate login request...');
 
   const login = validateLoginInput({
-    identifier: "admin",
-    password: "ValidTestPassword123!",
-    ipAddress: "127.0.0.1",
-    userAgent: "JaliCare-Test",
+    identifier: 'admin',
+    password: 'ValidTestPassword123!',
+    ipAddress: '127.0.0.1',
+    userAgent: 'JaliCare-Test',
   });
 
-  assert(
-    login.identifier === "admin",
-    "Valid identifier accepted"
-  );
+  assert(login.identifier === 'admin', 'Valid identifier accepted');
 
-  assert(
-    login.password === "ValidTestPassword123!",
-    "Valid password accepted"
-  );
+  assert(login.password === 'ValidTestPassword123!', 'Valid password accepted');
 
   /*
   |--------------------------------------------------------------------------
@@ -60,20 +47,12 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 2: Testing identifier normalization..."
-  );
+  console.log('');
+  console.log('TEST 2: Testing identifier normalization...');
 
-  const identifier =
-    validateIdentifier(
-      "  ADMIN@JALICARE.CO.KE  "
-    );
+  const identifier = validateIdentifier('  ADMIN@JALICARE.CO.KE  ');
 
-  assert(
-    identifier === "admin@jalicare.co.ke",
-    "Identifier is normalized"
-  );
+  assert(identifier === 'admin@jalicare.co.ke', 'Identifier is normalized');
 
   /*
   |--------------------------------------------------------------------------
@@ -81,24 +60,18 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 3: Rejecting short passwords..."
-  );
+  console.log('');
+  console.log('TEST 3: Rejecting short passwords...');
 
   let rejected = false;
 
   try {
-    validatePassword("short");
+    validatePassword('short');
   } catch (error) {
-    rejected =
-      error instanceof AuthValidationError;
+    rejected = error instanceof AuthValidationError;
   }
 
-  assert(
-    rejected,
-    "Short password is rejected"
-  );
+  assert(rejected, 'Short password is rejected');
 
   /*
   |--------------------------------------------------------------------------
@@ -106,26 +79,18 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 4: Rejecting oversized passwords..."
-  );
+  console.log('');
+  console.log('TEST 4: Rejecting oversized passwords...');
 
   rejected = false;
 
   try {
-    validatePassword(
-      "A".repeat(129)
-    );
+    validatePassword('A'.repeat(129));
   } catch (error) {
-    rejected =
-      error instanceof AuthValidationError;
+    rejected = error instanceof AuthValidationError;
   }
 
-  assert(
-    rejected,
-    "Oversized password is rejected"
-  );
+  assert(rejected, 'Oversized password is rejected');
 
   /*
   |--------------------------------------------------------------------------
@@ -133,24 +98,18 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 5: Rejecting missing identifier..."
-  );
+  console.log('');
+  console.log('TEST 5: Rejecting missing identifier...');
 
   rejected = false;
 
   try {
-    validateIdentifier("");
+    validateIdentifier('');
   } catch (error) {
-    rejected =
-      error instanceof AuthValidationError;
+    rejected = error instanceof AuthValidationError;
   }
 
-  assert(
-    rejected,
-    "Missing identifier is rejected"
-  );
+  assert(rejected, 'Missing identifier is rejected');
 
   /*
   |--------------------------------------------------------------------------
@@ -158,26 +117,18 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 6: Rejecting control characters..."
-  );
+  console.log('');
+  console.log('TEST 6: Rejecting control characters...');
 
   rejected = false;
 
   try {
-    validateIdentifier(
-      "admin\nattack"
-    );
+    validateIdentifier('admin\nattack');
   } catch (error) {
-    rejected =
-      error instanceof AuthValidationError;
+    rejected = error instanceof AuthValidationError;
   }
 
-  assert(
-    rejected,
-    "Control characters are rejected"
-  );
+  assert(rejected, 'Control characters are rejected');
 
   /*
   |--------------------------------------------------------------------------
@@ -185,26 +136,18 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 7: Rejecting invalid session tokens..."
-  );
+  console.log('');
+  console.log('TEST 7: Rejecting invalid session tokens...');
 
   rejected = false;
 
   try {
-    validateSessionToken(
-      "invalid-session-token"
-    );
+    validateSessionToken('invalid-session-token');
   } catch (error) {
-    rejected =
-      error instanceof AuthValidationError;
+    rejected = error instanceof AuthValidationError;
   }
 
-  assert(
-    rejected,
-    "Invalid session token is rejected"
-  );
+  assert(rejected, 'Invalid session token is rejected');
 
   /*
   |--------------------------------------------------------------------------
@@ -212,23 +155,14 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 8: Accepting valid session-token format..."
-  );
+  console.log('');
+  console.log('TEST 8: Accepting valid session-token format...');
 
-  const validToken =
-    "A".repeat(64);
+  const validToken = 'A'.repeat(64);
 
-  const validatedToken =
-    validateSessionToken(
-      validToken
-    );
+  const validatedToken = validateSessionToken(validToken);
 
-  assert(
-    validatedToken === validToken,
-    "Valid session-token format is accepted"
-  );
+  assert(validatedToken === validToken, 'Valid session-token format is accepted');
 
   /*
   |--------------------------------------------------------------------------
@@ -236,26 +170,18 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 9: Rejecting invalid email..."
-  );
+  console.log('');
+  console.log('TEST 9: Rejecting invalid email...');
 
   rejected = false;
 
   try {
-    validateEmail(
-      "not-an-email"
-    );
+    validateEmail('not-an-email');
   } catch (error) {
-    rejected =
-      error instanceof AuthValidationError;
+    rejected = error instanceof AuthValidationError;
   }
 
-  assert(
-    rejected,
-    "Invalid email is rejected"
-  );
+  assert(rejected, 'Invalid email is rejected');
 
   /*
   |--------------------------------------------------------------------------
@@ -263,20 +189,12 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "TEST 10: Validating legitimate email..."
-  );
+  console.log('');
+  console.log('TEST 10: Validating legitimate email...');
 
-  const email =
-    validateEmail(
-      "  ADMIN@JALICARE.CO.KE "
-    );
+  const email = validateEmail('  ADMIN@JALICARE.CO.KE ');
 
-  assert(
-    email === "admin@jalicare.co.ke",
-    "Email is normalized"
-  );
+  assert(email === 'admin@jalicare.co.ke', 'Email is normalized');
 
   /*
   |--------------------------------------------------------------------------
@@ -284,34 +202,21 @@ async function runValidationTests() {
   |--------------------------------------------------------------------------
   */
 
-  console.log("");
-  console.log(
-    "=============================================="
-  );
-  console.log(
-    "AUTHENTICATION VALIDATION TEST PASSED"
-  );
-  console.log(
-    "=============================================="
-  );
-  console.log("");
+  console.log('');
+  console.log('==============================================');
+  console.log('AUTHENTICATION VALIDATION TEST PASSED');
+  console.log('==============================================');
+  console.log('');
 }
 
-runValidationTests()
-  .catch((error) => {
-    console.error("");
-    console.error(
-      "=============================================="
-    );
-    console.error(
-      "AUTHENTICATION VALIDATION TEST FAILED"
-    );
-    console.error(
-      "=============================================="
-    );
-    console.error("");
-    console.error(error);
-    console.error("");
+runValidationTests().catch((error) => {
+  console.error('');
+  console.error('==============================================');
+  console.error('AUTHENTICATION VALIDATION TEST FAILED');
+  console.error('==============================================');
+  console.error('');
+  console.error(error);
+  console.error('');
 
-    process.exitCode = 1;
-  });
+  process.exitCode = 1;
+});

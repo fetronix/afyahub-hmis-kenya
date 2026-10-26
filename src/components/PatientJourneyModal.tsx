@@ -2,20 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useHmis } from '../context/HmisContext.tsx';
 import { api } from '../api/client.ts';
 import { PatientConsentAllergyPanel } from './PatientConsentAllergyPanel.tsx';
-import { Patient, Encounter, Observation, Diagnosis, Medication, LabOrder, LabResult, BillingInvoice } from '../types/index.ts';
-import { 
-  X, 
-  User, 
-  Heart, 
-  AlertTriangle, 
-  Stethoscope, 
-  Pill, 
-  FlaskConical, 
-  Receipt, 
+import {
+  Patient,
+  Encounter,
+  Observation,
+  Diagnosis,
+  Medication,
+  LabOrder,
+  LabResult,
+  BillingInvoice,
+} from '../types/index.ts';
+import {
+  X,
+  User,
+  Heart,
+  AlertTriangle,
+  Stethoscope,
+  Pill,
+  FlaskConical,
+  Receipt,
   FileText,
   Clock,
   Shield,
-  Download
+  Download,
 } from 'lucide-react';
 
 export const PatientJourneyModal: React.FC = () => {
@@ -27,7 +36,9 @@ export const PatientJourneyModal: React.FC = () => {
   const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
   const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'vitals' | 'diagnoses' | 'meds' | 'labs' | 'billing' | 'consent' | 'fhir'>('timeline');
+  const [activeTab, setActiveTab] = useState<
+    'timeline' | 'vitals' | 'diagnoses' | 'meds' | 'labs' | 'billing' | 'consent' | 'fhir'
+  >('timeline');
   const [fhirJson, setFhirJson] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
@@ -87,28 +98,41 @@ export const PatientJourneyModal: React.FC = () => {
         <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs border-2 border-orange-400">
-              {selectedPatient.firstName[0]}{selectedPatient.lastName[0]}
+              {selectedPatient.firstName[0]}
+              {selectedPatient.lastName[0]}
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <h2 className="text-sm sm:text-base font-bold text-slate-900 truncate">
-                  {selectedPatient.firstName} {selectedPatient.middleName ? `${selectedPatient.middleName} ` : ''}{selectedPatient.lastName}
+                  {selectedPatient.firstName}{' '}
+                  {selectedPatient.middleName ? `${selectedPatient.middleName} ` : ''}
+                  {selectedPatient.lastName}
                 </h2>
                 <span className="font-mono text-2xs sm:text-xs px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-semibold">
                   {selectedPatient.mrn}
                 </span>
                 <span className="text-2xs sm:text-xs px-2 py-0.5 bg-orange-50 text-orange-900 border border-orange-200 rounded font-semibold">
-                  {selectedPatient.payerType} {selectedPatient.shaNumber ? `· ${selectedPatient.shaNumber}` : ''}
+                  {selectedPatient.payerType}{' '}
+                  {selectedPatient.shaNumber ? `· ${selectedPatient.shaNumber}` : ''}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-2xs sm:text-xs text-slate-500 mt-1">
-                <span>DOB: <strong className="text-slate-700">{selectedPatient.dateOfBirth}</strong></span>
+                <span>
+                  DOB: <strong className="text-slate-700">{selectedPatient.dateOfBirth}</strong>
+                </span>
                 <span className="hidden sm:inline">·</span>
-                <span>Gender: <strong className="text-slate-700">{selectedPatient.gender}</strong></span>
+                <span>
+                  Gender: <strong className="text-slate-700">{selectedPatient.gender}</strong>
+                </span>
                 <span className="hidden sm:inline">·</span>
-                <span>Phone: <strong className="font-mono text-slate-700">{selectedPatient.phone}</strong></span>
+                <span>
+                  Phone:{' '}
+                  <strong className="font-mono text-slate-700">{selectedPatient.phone}</strong>
+                </span>
                 <span className="hidden sm:inline">·</span>
-                <span>County: <strong className="text-slate-700">{selectedPatient.county}</strong></span>
+                <span>
+                  County: <strong className="text-slate-700">{selectedPatient.county}</strong>
+                </span>
               </div>
             </div>
           </div>
@@ -135,16 +159,30 @@ export const PatientJourneyModal: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <div className="flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 text-orange-600 shrink-0" />
-              <span>Allergies: <strong className="text-orange-900">{selectedPatient.allergies || 'None known'}</strong></span>
+              <span>
+                Allergies:{' '}
+                <strong className="text-orange-900">
+                  {selectedPatient.allergies || 'None known'}
+                </strong>
+              </span>
             </div>
             <span className="hidden sm:inline">·</span>
             <div>
-              <span>Chronic Conditions: <strong className="text-orange-900">{selectedPatient.chronicConditions || 'None known'}</strong></span>
+              <span>
+                Chronic Conditions:{' '}
+                <strong className="text-orange-900">
+                  {selectedPatient.chronicConditions || 'None known'}
+                </strong>
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-1 text-2xs text-orange-800">
             <span>Next of Kin:</span>
-            <strong>{selectedPatient.emergencyContactName || 'None'} ({selectedPatient.emergencyContactRelationship || 'N/A'}) - {selectedPatient.emergencyContactPhone || ''}</strong>
+            <strong>
+              {selectedPatient.emergencyContactName || 'None'} (
+              {selectedPatient.emergencyContactRelationship || 'N/A'}) -{' '}
+              {selectedPatient.emergencyContactPhone || ''}
+            </strong>
           </div>
         </div>
 
@@ -190,7 +228,10 @@ export const PatientJourneyModal: React.FC = () => {
                     </div>
                   ) : (
                     encounters.map((enc) => (
-                      <div key={enc.id} className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs">
+                      <div
+                        key={enc.id}
+                        className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs"
+                      >
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-slate-900 text-sm">
@@ -218,20 +259,32 @@ export const PatientJourneyModal: React.FC = () => {
                           )}
                           {enc.historyOfPresentIllness && (
                             <div>
-                              <span className="text-slate-500 font-medium">History of Present Illness: </span>
-                              <p className="text-slate-700 mt-0.5 leading-relaxed">{enc.historyOfPresentIllness}</p>
+                              <span className="text-slate-500 font-medium">
+                                History of Present Illness:{' '}
+                              </span>
+                              <p className="text-slate-700 mt-0.5 leading-relaxed">
+                                {enc.historyOfPresentIllness}
+                              </p>
                             </div>
                           )}
                           {enc.physicalExamination && (
                             <div>
-                              <span className="text-slate-500 font-medium">Physical Examination: </span>
-                              <p className="text-slate-700 mt-0.5 leading-relaxed">{enc.physicalExamination}</p>
+                              <span className="text-slate-500 font-medium">
+                                Physical Examination:{' '}
+                              </span>
+                              <p className="text-slate-700 mt-0.5 leading-relaxed">
+                                {enc.physicalExamination}
+                              </p>
                             </div>
                           )}
                           {enc.clinicalNotes && (
                             <div>
-                              <span className="text-slate-500 font-medium">Clinical Notes & Assessment: </span>
-                              <p className="text-slate-700 mt-0.5 leading-relaxed">{enc.clinicalNotes}</p>
+                              <span className="text-slate-500 font-medium">
+                                Clinical Notes & Assessment:{' '}
+                              </span>
+                              <p className="text-slate-700 mt-0.5 leading-relaxed">
+                                {enc.clinicalNotes}
+                              </p>
                             </div>
                           )}
                         </div>
@@ -267,13 +320,21 @@ export const PatientJourneyModal: React.FC = () => {
                             {obs.systolicBp}/{obs.diastolicBp} mmHg
                           </td>
                           <td className="px-4 py-2.5 text-slate-800">{obs.pulseRate || '—'}</td>
-                          <td className="px-4 py-2.5 text-slate-800">{obs.temperatureC || '—'} °C</td>
-                          <td className="px-4 py-2.5 text-slate-800">{obs.respiratoryRate || '—'}</td>
-                          <td className="px-4 py-2.5 text-slate-800">{obs.spo2Percent ? `${obs.spo2Percent}%` : '—'}</td>
+                          <td className="px-4 py-2.5 text-slate-800">
+                            {obs.temperatureC || '—'} °C
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-800">
+                            {obs.respiratoryRate || '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-800">
+                            {obs.spo2Percent ? `${obs.spo2Percent}%` : '—'}
+                          </td>
                           <td className="px-4 py-2.5 text-slate-800">
                             {obs.weightKg ? `${obs.weightKg} kg (BMI: ${obs.bmi || '—'})` : '—'}
                           </td>
-                          <td className="px-4 py-2.5 text-slate-600 font-sans">{obs.recordedBy || 'Nurse'}</td>
+                          <td className="px-4 py-2.5 text-slate-600 font-sans">
+                            {obs.recordedBy || 'Nurse'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -298,15 +359,21 @@ export const PatientJourneyModal: React.FC = () => {
                     <tbody className="divide-y divide-slate-100">
                       {diagnoses.map((d) => (
                         <tr key={d.id} className="hover:bg-slate-50/70">
-                          <td className="px-4 py-2.5 font-mono font-bold text-teal-800">{d.icd10Code}</td>
-                          <td className="px-4 py-2.5 font-medium text-slate-900">{d.icd10Description}</td>
+                          <td className="px-4 py-2.5 font-mono font-bold text-teal-800">
+                            {d.icd10Code}
+                          </td>
+                          <td className="px-4 py-2.5 font-medium text-slate-900">
+                            {d.icd10Description}
+                          </td>
                           <td className="px-4 py-2.5 text-slate-600">{d.diagnosisType}</td>
                           <td className="px-4 py-2.5">
                             <span className="px-2 py-0.5 rounded text-2xs bg-emerald-50 text-emerald-700 font-medium">
                               {d.status}
                             </span>
                           </td>
-                          <td className="px-4 py-2.5 text-slate-600">{d.diagnosedBy || 'Physician'}</td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {d.diagnosedBy || 'Physician'}
+                          </td>
                           <td className="px-4 py-2.5 text-slate-400 font-mono text-2xs">
                             {new Date(d.diagnosedAt).toLocaleDateString()}
                           </td>
@@ -335,17 +402,29 @@ export const PatientJourneyModal: React.FC = () => {
                       {medications.map((m) => (
                         <tr key={m.id} className="hover:bg-slate-50/70">
                           <td className="px-4 py-2.5 font-semibold text-slate-900">{m.drugName}</td>
-                          <td className="px-4 py-2.5 text-slate-700">{m.dosage} · {m.frequency}</td>
-                          <td className="px-4 py-2.5 text-slate-600">{m.duration} ({m.route})</td>
-                          <td className="px-4 py-2.5 text-slate-600">{m.instructions || 'As instructed'}</td>
+                          <td className="px-4 py-2.5 text-slate-700">
+                            {m.dosage} · {m.frequency}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {m.duration} ({m.route})
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {m.instructions || 'As instructed'}
+                          </td>
                           <td className="px-4 py-2.5">
-                            <span className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                              m.status === 'Dispensed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                            }`}>
+                            <span
+                              className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                                m.status === 'Dispensed'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-amber-50 text-amber-700'
+                              }`}
+                            >
                               {m.status}
                             </span>
                           </td>
-                          <td className="px-4 py-2.5 text-slate-600">{m.prescribedBy || 'Doctor'}</td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {m.prescribedBy || 'Doctor'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -357,43 +436,59 @@ export const PatientJourneyModal: React.FC = () => {
               {activeTab === 'labs' && (
                 <div className="space-y-4">
                   {labOrders.map((lo) => (
-                    <div key={lo.id} className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
+                    <div
+                      key={lo.id}
+                      className="bg-white border border-slate-200 rounded-lg p-4 shadow-xs"
+                    >
                       <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                         <div>
-                          <span className="font-semibold text-slate-900 text-sm">{lo.testName}</span>
+                          <span className="font-semibold text-slate-900 text-sm">
+                            {lo.testName}
+                          </span>
                           <span className="ml-2 font-mono text-2xs text-slate-400">
                             {lo.sampleAccessionNumber || 'Accession Pending'}
                           </span>
                         </div>
-                        <span className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                          lo.status === 'Published' ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'
-                        }`}>
+                        <span
+                          className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                            lo.status === 'Published'
+                              ? 'bg-emerald-50 text-emerald-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
                           {lo.status}
                         </span>
                       </div>
                       <div className="mt-2 text-xs text-slate-600 flex items-center justify-between">
-                        <span>Ordered by: <strong>{lo.orderedBy || 'Clinician'}</strong></span>
+                        <span>
+                          Ordered by: <strong>{lo.orderedBy || 'Clinician'}</strong>
+                        </span>
                         <span className="font-mono text-slate-400 text-2xs">
                           {new Date(lo.orderedAt).toLocaleString('en-KE')}
                         </span>
                       </div>
 
-                      {labResults.filter(result => result.orderId === lo.id).length > 0 && (
+                      {labResults.filter((result) => result.orderId === lo.id).length > 0 && (
                         <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
                           <h4 className="text-xs font-bold text-slate-800">Laboratory Results</h4>
                           {labResults
-                            .filter(result => result.orderId === lo.id)
-                            .map(result => (
-                              <div key={result.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            .filter((result) => result.orderId === lo.id)
+                            .map((result) => (
+                              <div
+                                key={result.id}
+                                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                              >
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                   <span className="text-sm font-semibold text-slate-800">
                                     {result.parameterName}
                                   </span>
-                                  <span className={`text-xs font-semibold rounded px-2 py-1 ${
-                                    result.flag?.toLowerCase() === 'normal'
-                                      ? 'bg-emerald-50 text-emerald-800'
-                                      : 'bg-amber-50 text-amber-800'
-                                  }`}>
+                                  <span
+                                    className={`text-xs font-semibold rounded px-2 py-1 ${
+                                      result.flag?.toLowerCase() === 'normal'
+                                        ? 'bg-emerald-50 text-emerald-800'
+                                        : 'bg-amber-50 text-amber-800'
+                                    }`}
+                                  >
                                     {result.flag || 'Unflagged'}
                                   </span>
                                 </div>
@@ -444,7 +539,9 @@ export const PatientJourneyModal: React.FC = () => {
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {invoices.map((inv) => (
                         <tr key={inv.id} className="hover:bg-slate-50/70">
-                          <td className="px-4 py-2.5 font-bold text-slate-900">{inv.invoiceNumber}</td>
+                          <td className="px-4 py-2.5 font-bold text-slate-900">
+                            {inv.invoiceNumber}
+                          </td>
                           <td className="px-4 py-2.5 text-slate-700 font-sans">
                             {inv.payerType} {inv.payerName ? `(${inv.payerName})` : ''}
                           </td>
@@ -458,9 +555,13 @@ export const PatientJourneyModal: React.FC = () => {
                             KES {Number(inv.balanceAmount).toLocaleString()}
                           </td>
                           <td className="px-4 py-2.5 font-sans">
-                            <span className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                              inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-                            }`}>
+                            <span
+                              className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                                inv.status === 'Paid'
+                                  ? 'bg-emerald-50 text-emerald-800'
+                                  : 'bg-amber-50 text-amber-800'
+                              }`}
+                            >
                               {inv.status}
                             </span>
                           </td>

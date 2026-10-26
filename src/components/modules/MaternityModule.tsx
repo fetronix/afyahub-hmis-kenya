@@ -70,18 +70,13 @@ function text(value: string): string | undefined {
   return trimmed === '' ? undefined : trimmed;
 }
 
-function formatGestation(
-  gestation: { weeks: number; days: number } | null | undefined,
-): string {
+function formatGestation(gestation: { weeks: number; days: number } | null | undefined): string {
   if (!gestation) return '—';
 
   return `${gestation.weeks}w ${gestation.days}d`;
 }
 
-function patientName(patient: {
-  firstName: string;
-  lastName: string;
-}): string {
+function patientName(patient: { firstName: string; lastName: string }): string {
   return `${patient.firstName} ${patient.lastName}`.trim();
 }
 
@@ -110,12 +105,7 @@ const PERINEUM_OPTIONS = [
   'Not examined',
 ];
 const BREAST_OPTIONS = ['Normal', 'Engorged', 'Cracked nipples', 'Mastitis'];
-const BREASTFEEDING_OPTIONS = [
-  'Exclusive',
-  'Mixed',
-  'Formula',
-  'Not breastfeeding',
-];
+const BREASTFEEDING_OPTIONS = ['Exclusive', 'Mixed', 'Formula', 'Not breastfeeding'];
 const MOOD_OPTIONS = ['Not screened', 'No concern', 'Concern — referred'];
 
 /** Children under five, for the immunisation card picker. */
@@ -158,26 +148,23 @@ export const MaternityModule: React.FC = () => {
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
 
-  const [selectedPregnancy, setSelectedPregnancy] =
-    useState<MaternityPregnancyDetail | null>(null);
+  const [selectedPregnancy, setSelectedPregnancy] = useState<MaternityPregnancyDetail | null>(null);
   const [selectedLabour, setSelectedLabour] = useState<LabourRecord | null>(null);
 
   /* ---------------- postnatal ---------------- */
   const [postnatalRegister, setPostnatalRegister] = useState<PostnatalVisit[]>([]);
-  const [postnatalPregnancy, setPostnatalPregnancy] =
-    useState<MaternityPregnancyDetail | null>(null);
+  const [postnatalPregnancy, setPostnatalPregnancy] = useState<MaternityPregnancyDetail | null>(
+    null,
+  );
   const [postnatalVisits, setPostnatalVisits] = useState<PostnatalVisit[]>([]);
   const [postnatalOpen, setPostnatalOpen] = useState(false);
 
   /* ---------------- immunisation ---------------- */
-  const [immunisationSchedule, setImmunisationSchedule] = useState<
-    ImmunisationAntigen[]
-  >([]);
+  const [immunisationSchedule, setImmunisationSchedule] = useState<ImmunisationAntigen[]>([]);
   const [immunisationDue, setImmunisationDue] = useState<ImmunisationDueRow[]>([]);
   const [immunisationAsOf, setImmunisationAsOf] = useState<string | null>(null);
   const [immunisationNote, setImmunisationNote] = useState<string | null>(null);
-  const [immunisationCard, setImmunisationCard] =
-    useState<ImmunisationCard | null>(null);
+  const [immunisationCard, setImmunisationCard] = useState<ImmunisationCard | null>(null);
   const [immunisationOpen, setImmunisationOpen] = useState(false);
 
   /*
@@ -278,7 +265,16 @@ export const MaternityModule: React.FC = () => {
       apgar5: string;
       resuscitation: string;
     }>
-  >([{ outcome: 'Live Birth', sex: '', birthWeightGrams: '', apgar1: '', apgar5: '', resuscitation: '' }]);
+  >([
+    {
+      outcome: 'Live Birth',
+      sex: '',
+      birthWeightGrams: '',
+      apgar1: '',
+      apgar5: '',
+      resuscitation: '',
+    },
+  ]);
 
   /* ---------------- postnatal form ---------------- */
   const [pn, setPn] = useState({
@@ -358,9 +354,7 @@ export const MaternityModule: React.FC = () => {
       setImmunisationAsOf(dueResult?.asOf ?? null);
       setImmunisationNote(dueResult?.note ?? scheduleResult.note);
     } catch (err) {
-      setError(
-        errorMessage(err, 'The maternity register could not be loaded.'),
-      );
+      setError(errorMessage(err, 'The maternity register could not be loaded.'));
     } finally {
       setLoading(false);
     }
@@ -370,10 +364,7 @@ export const MaternityModule: React.FC = () => {
     void loadAll();
   }, [loadAll]);
 
-  const runAction = async (
-    action: () => Promise<void>,
-    fallback: string,
-  ): Promise<void> => {
+  const runAction = async (action: () => Promise<void>, fallback: string): Promise<void> => {
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -596,9 +587,7 @@ export const MaternityModule: React.FC = () => {
         bloodLossMl: num(delivery.bloodLossMl),
         perineum: text(delivery.perineum),
         placentaComplete:
-          delivery.placentaComplete === ''
-            ? undefined
-            : delivery.placentaComplete === 'Yes',
+          delivery.placentaComplete === '' ? undefined : delivery.placentaComplete === 'Yes',
         oxytocinGiven: delivery.oxytocinGiven,
         complications: text(delivery.complications),
         notes: text(delivery.notes),
@@ -616,16 +605,21 @@ export const MaternityModule: React.FC = () => {
         ? patientName(created.delivery.patient)
         : `Patient #${created.delivery.patientId}`;
 
-      setLastCharge(
-        created.billing ? { patient: mother, charge: created.billing } : null,
-      );
+      setLastCharge(created.billing ? { patient: mother, charge: created.billing } : null);
 
       setNotice(
         `Delivery recorded: ${created.babies.length} ${created.babies.length === 1 ? 'baby' : 'babies'}.`,
       );
       setDeliveryOpen(false);
       setBabies([
-        { outcome: 'Live Birth', sex: '', birthWeightGrams: '', apgar1: '', apgar5: '', resuscitation: '' },
+        {
+          outcome: 'Live Birth',
+          sex: '',
+          birthWeightGrams: '',
+          apgar1: '',
+          apgar5: '',
+          resuscitation: '',
+        },
       ]);
 
       await loadAll();
@@ -706,9 +700,7 @@ export const MaternityModule: React.FC = () => {
     if (!immunisationCard) return;
 
     const patientId = immunisationCard.patient.id;
-    const antigen = immunisationSchedule.find(
-      (candidate) => candidate.code === imm.antigenCode,
-    );
+    const antigen = immunisationSchedule.find((candidate) => candidate.code === imm.antigenCode);
 
     await runAction(async () => {
       const created = await api.recordImmunisation({
@@ -768,8 +760,7 @@ export const MaternityModule: React.FC = () => {
             Maternity &amp; MCH
           </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Antenatal care, labour with a partograph, and delivery — recorded
-            against one pregnancy.
+            Antenatal care, labour with a partograph, and delivery — recorded against one pregnancy.
           </p>
           <p className="mt-2 text-2xs font-semibold uppercase tracking-[0.12em] text-brand-700">
             Maternity &rarr; Antenatal register is the first tab below
@@ -856,9 +847,7 @@ export const MaternityModule: React.FC = () => {
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <section className="overflow-hidden rounded-xl border border-hair bg-surface">
             <div className="flex items-center justify-between border-b border-hair bg-canvas px-4 py-3">
-              <h2 className="text-sm font-bold text-slate-800">
-                Booked pregnancies
-              </h2>
+              <h2 className="text-sm font-bold text-slate-800">Booked pregnancies</h2>
               <button
                 type="button"
                 onClick={() => setBookingOpen((open) => !open)}
@@ -897,9 +886,7 @@ export const MaternityModule: React.FC = () => {
                       type="date"
                       required
                       value={booking.bookedAt}
-                      onChange={(event) =>
-                        setBooking({ ...booking, bookedAt: event.target.value })
-                      }
+                      onChange={(event) => setBooking({ ...booking, bookedAt: event.target.value })}
                       className={fieldClass}
                     />
                   </div>
@@ -909,9 +896,7 @@ export const MaternityModule: React.FC = () => {
                     <input
                       type="date"
                       value={booking.lmpDate}
-                      onChange={(event) =>
-                        setBooking({ ...booking, lmpDate: event.target.value })
-                      }
+                      onChange={(event) => setBooking({ ...booking, lmpDate: event.target.value })}
                       className={fieldClass}
                     />
                   </div>
@@ -921,9 +906,7 @@ export const MaternityModule: React.FC = () => {
                     <input
                       type="date"
                       value={booking.eddDate}
-                      onChange={(event) =>
-                        setBooking({ ...booking, eddDate: event.target.value })
-                      }
+                      onChange={(event) => setBooking({ ...booking, eddDate: event.target.value })}
                       className={fieldClass}
                     />
                     <p className="mt-1 text-2xs text-slate-500">
@@ -935,9 +918,7 @@ export const MaternityModule: React.FC = () => {
                     <label className={labelClass}>EDD basis</label>
                     <select
                       value={booking.eddBasis}
-                      onChange={(event) =>
-                        setBooking({ ...booking, eddBasis: event.target.value })
-                      }
+                      onChange={(event) => setBooking({ ...booking, eddBasis: event.target.value })}
                       className={fieldClass}
                     >
                       <option value="LMP">LMP</option>
@@ -1026,22 +1007,16 @@ export const MaternityModule: React.FC = () => {
                           {pregnancy.patient?.mrn ?? ''}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-600">
-                        {pregnancy.bookedAt}
-                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-600">{pregnancy.bookedAt}</td>
                       <td className="px-4 py-2.5 font-mono text-slate-700">
                         {pregnancy.eddDate}
-                        <span className="ml-1 text-2xs text-slate-400">
-                          {pregnancy.eddBasis}
-                        </span>
+                        <span className="ml-1 text-2xs text-slate-400">{pregnancy.eddBasis}</span>
                       </td>
                       <td className="px-4 py-2.5 font-mono">
                         {formatGestation(pregnancy.gestation)}
                       </td>
                       <td className="px-4 py-2.5">
-                        <span className={statusClass(pregnancy.status)}>
-                          {pregnancy.status}
-                        </span>
+                        <span className={statusClass(pregnancy.status)}>{pregnancy.status}</span>
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <button
@@ -1073,19 +1048,19 @@ export const MaternityModule: React.FC = () => {
               <div className="space-y-4">
                 <div className="border-b border-slate-100 pb-3">
                   <h2 className="text-sm font-bold text-slate-900">
-                    {patientName(selectedPregnancy.patient ?? {
-                      firstName: `Patient #${selectedPregnancy.patientId}`,
-                      lastName: '',
-                    })}
+                    {patientName(
+                      selectedPregnancy.patient ?? {
+                        firstName: `Patient #${selectedPregnancy.patientId}`,
+                        lastName: '',
+                      },
+                    )}
                   </h2>
                   <p className="mt-1 text-xs text-slate-600">
-                    EDD {selectedPregnancy.eddDate} ·{' '}
-                    {formatGestation(selectedPregnancy.gestation)} ·{' '}
-                    {selectedPregnancy.status}
+                    EDD {selectedPregnancy.eddDate} · {formatGestation(selectedPregnancy.gestation)}{' '}
+                    · {selectedPregnancy.status}
                   </p>
                   <p className="mt-1 text-2xs text-slate-500">
-                    G{selectedPregnancy.gravida ?? '—'} P
-                    {selectedPregnancy.para ?? '—'} ·{' '}
+                    G{selectedPregnancy.gravida ?? '—'} P{selectedPregnancy.para ?? '—'} ·{' '}
                     {selectedPregnancy.ancVisits.length} visit
                     {selectedPregnancy.ancVisits.length === 1 ? '' : 's'}
                   </p>
@@ -1112,7 +1087,10 @@ export const MaternityModule: React.FC = () => {
                 </div>
 
                 {ancOpen && (
-                  <form onSubmit={submitAnc} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <form
+                    onSubmit={submitAnc}
+                    className="space-y-2 rounded-lg border border-slate-200 p-3"
+                  >
                     <div className="grid grid-cols-2 gap-2">
                       <Field label="Visit date *">
                         <input
@@ -1133,47 +1111,114 @@ export const MaternityModule: React.FC = () => {
                         />
                       </Field>
                       <Field label="Weight (kg)">
-                        <input type="number" step="0.1" value={anc.weightKg} onChange={(e) => setAnc({ ...anc, weightKg: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={anc.weightKg}
+                          onChange={(e) => setAnc({ ...anc, weightKg: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="BP systolic">
-                        <input type="number" value={anc.bpSystolic} onChange={(e) => setAnc({ ...anc, bpSystolic: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={anc.bpSystolic}
+                          onChange={(e) => setAnc({ ...anc, bpSystolic: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="BP diastolic">
-                        <input type="number" value={anc.bpDiastolic} onChange={(e) => setAnc({ ...anc, bpDiastolic: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={anc.bpDiastolic}
+                          onChange={(e) => setAnc({ ...anc, bpDiastolic: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Pulse">
-                        <input type="number" value={anc.pulseBpm} onChange={(e) => setAnc({ ...anc, pulseBpm: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={anc.pulseBpm}
+                          onChange={(e) => setAnc({ ...anc, pulseBpm: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Fundal height (cm)">
-                        <input type="number" step="0.1" value={anc.fundalHeightCm} onChange={(e) => setAnc({ ...anc, fundalHeightCm: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={anc.fundalHeightCm}
+                          onChange={(e) => setAnc({ ...anc, fundalHeightCm: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Fetal heart rate">
-                        <input type="number" value={anc.fetalHeartRateBpm} onChange={(e) => setAnc({ ...anc, fetalHeartRateBpm: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={anc.fetalHeartRateBpm}
+                          onChange={(e) => setAnc({ ...anc, fetalHeartRateBpm: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Presentation">
-                        <input type="text" value={anc.presentation} onChange={(e) => setAnc({ ...anc, presentation: e.target.value })} className={fieldClass} placeholder="Cephalic" />
+                        <input
+                          type="text"
+                          value={anc.presentation}
+                          onChange={(e) => setAnc({ ...anc, presentation: e.target.value })}
+                          className={fieldClass}
+                          placeholder="Cephalic"
+                        />
                       </Field>
                       <Field label="Urine protein">
-                        <select value={anc.urineProtein} onChange={(e) => setAnc({ ...anc, urineProtein: e.target.value })} className={fieldClass}>
+                        <select
+                          value={anc.urineProtein}
+                          onChange={(e) => setAnc({ ...anc, urineProtein: e.target.value })}
+                          className={fieldClass}
+                        >
                           <option value="">Not tested</option>
                           {['Negative', 'Trace', '+', '++', '+++'].map((v) => (
-                            <option key={v} value={v}>{v}</option>
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
                           ))}
                         </select>
                       </Field>
                       <Field label="Hb (g/dL)">
-                        <input type="number" step="0.1" value={anc.haemoglobinGdl} onChange={(e) => setAnc({ ...anc, haemoglobinGdl: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={anc.haemoglobinGdl}
+                          onChange={(e) => setAnc({ ...anc, haemoglobinGdl: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="TT dose">
-                        <input type="number" min={1} max={5} value={anc.ttDose} onChange={(e) => setAnc({ ...anc, ttDose: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          min={1}
+                          max={5}
+                          value={anc.ttDose}
+                          onChange={(e) => setAnc({ ...anc, ttDose: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Next visit">
-                        <input type="date" value={anc.nextVisitDate} onChange={(e) => setAnc({ ...anc, nextVisitDate: e.target.value })} className={fieldClass} />
+                        <input
+                          type="date"
+                          value={anc.nextVisitDate}
+                          onChange={(e) => setAnc({ ...anc, nextVisitDate: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                     </div>
 
                     <Field label="Danger signs">
-                      <textarea rows={2} value={anc.dangerSigns} onChange={(e) => setAnc({ ...anc, dangerSigns: e.target.value })} className={fieldClass} />
+                      <textarea
+                        rows={2}
+                        value={anc.dangerSigns}
+                        onChange={(e) => setAnc({ ...anc, dangerSigns: e.target.value })}
+                        className={fieldClass}
+                      />
                     </Field>
 
                     <button
@@ -1188,9 +1233,7 @@ export const MaternityModule: React.FC = () => {
 
                 <ul className="space-y-2">
                   {selectedPregnancy.ancVisits.length === 0 && (
-                    <li className="text-xs text-slate-500">
-                      No antenatal visits recorded yet.
-                    </li>
+                    <li className="text-xs text-slate-500">No antenatal visits recorded yet.</li>
                   )}
                   {selectedPregnancy.ancVisits.map((visit) => (
                     <li key={visit.id} className="rounded-lg border border-slate-200 px-3 py-2">
@@ -1203,8 +1246,18 @@ export const MaternityModule: React.FC = () => {
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-2xs text-slate-600">
-                        <Reading label="Gest" value={visit.gestationWeeks !== null ? `${visit.gestationWeeks}w` : null} />
-                        <Reading label="BP" value={visit.bpSystolic && visit.bpDiastolic ? `${visit.bpSystolic}/${visit.bpDiastolic}` : null} />
+                        <Reading
+                          label="Gest"
+                          value={visit.gestationWeeks !== null ? `${visit.gestationWeeks}w` : null}
+                        />
+                        <Reading
+                          label="BP"
+                          value={
+                            visit.bpSystolic && visit.bpDiastolic
+                              ? `${visit.bpSystolic}/${visit.bpDiastolic}`
+                              : null
+                          }
+                        />
                         <Reading label="Fundal" value={visit.fundalHeightCm} />
                         <Reading label="FHR" value={visit.fetalHeartRateBpm} />
                         <Reading label="Hb" value={visit.haemoglobinGdl} />
@@ -1217,9 +1270,7 @@ export const MaternityModule: React.FC = () => {
                         </p>
                       )}
                       {visit.nextVisitDate && (
-                        <p className="mt-1 text-2xs text-slate-500">
-                          Next: {visit.nextVisitDate}
-                        </p>
+                        <p className="mt-1 text-2xs text-slate-500">Next: {visit.nextVisitDate}</p>
                       )}
                     </li>
                   ))}
@@ -1258,18 +1309,37 @@ export const MaternityModule: React.FC = () => {
                     <option value="">Select a booked pregnancy</option>
                     {activePregnancies.map((pregnancy) => (
                       <option key={pregnancy.id} value={pregnancy.id}>
-                        {pregnancy.patient ? patientName(pregnancy.patient) : `#${pregnancy.patientId}`} · EDD {pregnancy.eddDate}
+                        {pregnancy.patient
+                          ? patientName(pregnancy.patient)
+                          : `#${pregnancy.patientId}`}{' '}
+                        · EDD {pregnancy.eddDate}
                       </option>
                     ))}
                   </select>
                 </Field>
                 <Field label="Admitted at">
-                  <input type="datetime-local" value={labourForm.admittedAt} onChange={(e) => setLabourForm({ ...labourForm, admittedAt: e.target.value })} className={fieldClass} />
+                  <input
+                    type="datetime-local"
+                    value={labourForm.admittedAt}
+                    onChange={(e) => setLabourForm({ ...labourForm, admittedAt: e.target.value })}
+                    className={fieldClass}
+                  />
                 </Field>
                 <Field label="Labour onset">
-                  <input type="datetime-local" value={labourForm.labourOnsetAt} onChange={(e) => setLabourForm({ ...labourForm, labourOnsetAt: e.target.value })} className={fieldClass} />
+                  <input
+                    type="datetime-local"
+                    value={labourForm.labourOnsetAt}
+                    onChange={(e) =>
+                      setLabourForm({ ...labourForm, labourOnsetAt: e.target.value })
+                    }
+                    className={fieldClass}
+                  />
                 </Field>
-                <button type="submit" disabled={busy} className="w-full rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="w-full rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+                >
                   {busy ? 'Saving…' : 'Open labour record'}
                 </button>
               </form>
@@ -1297,7 +1367,9 @@ export const MaternityModule: React.FC = () => {
                   >
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-xs font-semibold text-slate-900">
-                        {labour.patient ? patientName(labour.patient) : `Patient #${labour.patientId}`}
+                        {labour.patient
+                          ? patientName(labour.patient)
+                          : `Patient #${labour.patientId}`}
                       </span>
                       <span className={statusClass(labour.status)}>{labour.status}</span>
                     </div>
@@ -1353,70 +1425,150 @@ export const MaternityModule: React.FC = () => {
                           {selectedLabour.guidance.hoursBeyondAlert}h beyond the alert line
                         </span>
                       )}
-                    <p className="mt-1 text-2xs opacity-80">
-                      {selectedLabour.guidance.note}
-                    </p>
+                    <p className="mt-1 text-2xs opacity-80">{selectedLabour.guidance.note}</p>
                   </div>
                 )}
 
                 {selectedLabour.status === 'In Labour' && (
-                  <form onSubmit={submitPartograph} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <form
+                    onSubmit={submitPartograph}
+                    className="space-y-2 rounded-lg border border-slate-200 p-3"
+                  >
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       <Field label="Reading time">
-                        <input type="datetime-local" value={pg.recordedAt} onChange={(e) => setPg({ ...pg, recordedAt: e.target.value })} className={fieldClass} />
+                        <input
+                          type="datetime-local"
+                          value={pg.recordedAt}
+                          onChange={(e) => setPg({ ...pg, recordedAt: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Dilatation (cm)">
-                        <input type="number" step="0.5" min={0} max={10} value={pg.cervicalDilatationCm} onChange={(e) => setPg({ ...pg, cervicalDilatationCm: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          step="0.5"
+                          min={0}
+                          max={10}
+                          value={pg.cervicalDilatationCm}
+                          onChange={(e) => setPg({ ...pg, cervicalDilatationCm: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Descent (−3…+3)">
-                        <input type="number" min={-3} max={3} value={pg.descentStation} onChange={(e) => setPg({ ...pg, descentStation: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          min={-3}
+                          max={3}
+                          value={pg.descentStation}
+                          onChange={(e) => setPg({ ...pg, descentStation: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Contractions /10 min">
-                        <input type="number" min={0} max={7} value={pg.contractionsPer10Min} onChange={(e) => setPg({ ...pg, contractionsPer10Min: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          min={0}
+                          max={7}
+                          value={pg.contractionsPer10Min}
+                          onChange={(e) => setPg({ ...pg, contractionsPer10Min: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Duration (s)">
-                        <input type="number" min={0} max={120} value={pg.contractionDurationSec} onChange={(e) => setPg({ ...pg, contractionDurationSec: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          min={0}
+                          max={120}
+                          value={pg.contractionDurationSec}
+                          onChange={(e) => setPg({ ...pg, contractionDurationSec: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="FHR">
-                        <input type="number" value={pg.fetalHeartRateBpm} onChange={(e) => setPg({ ...pg, fetalHeartRateBpm: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={pg.fetalHeartRateBpm}
+                          onChange={(e) => setPg({ ...pg, fetalHeartRateBpm: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Membranes">
-                        <select value={pg.membranes} onChange={(e) => setPg({ ...pg, membranes: e.target.value })} className={fieldClass}>
+                        <select
+                          value={pg.membranes}
+                          onChange={(e) => setPg({ ...pg, membranes: e.target.value })}
+                          className={fieldClass}
+                        >
                           <option value="">Not recorded</option>
                           <option value="Intact">Intact</option>
                           <option value="Ruptured">Ruptured</option>
                         </select>
                       </Field>
                       <Field label="Liquor">
-                        <select value={pg.liquor} onChange={(e) => setPg({ ...pg, liquor: e.target.value })} className={fieldClass}>
+                        <select
+                          value={pg.liquor}
+                          onChange={(e) => setPg({ ...pg, liquor: e.target.value })}
+                          className={fieldClass}
+                        >
                           <option value="">Not recorded</option>
-                          {['Clear', 'Meconium I', 'Meconium II', 'Meconium III', 'Bloody', 'Absent'].map((v) => (
-                            <option key={v} value={v}>{v}</option>
+                          {[
+                            'Clear',
+                            'Meconium I',
+                            'Meconium II',
+                            'Meconium III',
+                            'Bloody',
+                            'Absent',
+                          ].map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
                           ))}
                         </select>
                       </Field>
                       <Field label="Maternal pulse">
-                        <input type="number" value={pg.maternalPulseBpm} onChange={(e) => setPg({ ...pg, maternalPulseBpm: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={pg.maternalPulseBpm}
+                          onChange={(e) => setPg({ ...pg, maternalPulseBpm: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="BP systolic">
-                        <input type="number" value={pg.bpSystolic} onChange={(e) => setPg({ ...pg, bpSystolic: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={pg.bpSystolic}
+                          onChange={(e) => setPg({ ...pg, bpSystolic: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="BP diastolic">
-                        <input type="number" value={pg.bpDiastolic} onChange={(e) => setPg({ ...pg, bpDiastolic: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          value={pg.bpDiastolic}
+                          onChange={(e) => setPg({ ...pg, bpDiastolic: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                       <Field label="Temp (°C)">
-                        <input type="number" step="0.1" value={pg.temperatureC} onChange={(e) => setPg({ ...pg, temperatureC: e.target.value })} className={fieldClass} />
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={pg.temperatureC}
+                          onChange={(e) => setPg({ ...pg, temperatureC: e.target.value })}
+                          className={fieldClass}
+                        />
                       </Field>
                     </div>
-                    <button type="submit" disabled={busy} className="w-full rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="w-full rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+                    >
                       {busy ? 'Saving…' : 'Add partograph reading'}
                     </button>
                   </form>
                 )}
 
-                {selectedLabour.plot && (
-                  <PartographChart plot={selectedLabour.plot} />
-                )}
+                {selectedLabour.plot && <PartographChart plot={selectedLabour.plot} />}
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-2xs">
@@ -1434,24 +1586,33 @@ export const MaternityModule: React.FC = () => {
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {(selectedLabour.entries ?? []).length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-2 py-4 text-center font-sans text-slate-500">
+                          <td
+                            colSpan={7}
+                            className="px-2 py-4 text-center font-sans text-slate-500"
+                          >
                             No partograph readings yet.
                           </td>
                         </tr>
                       )}
                       {(selectedLabour.entries ?? []).map((entry: PartographEntry) => (
                         <tr key={entry.id}>
-                          <td className="px-2 py-1.5">{entry.recordedAt.replace('T', ' ').slice(5, 16)}</td>
+                          <td className="px-2 py-1.5">
+                            {entry.recordedAt.replace('T', ' ').slice(5, 16)}
+                          </td>
                           <td className="px-2 py-1.5">{entry.cervicalDilatationCm ?? '—'}</td>
                           <td className="px-2 py-1.5">{entry.descentStation ?? '—'}</td>
                           <td className="px-2 py-1.5">
                             {entry.contractionsPer10Min ?? '—'}
-                            {entry.contractionDurationSec ? `/${entry.contractionDurationSec}s` : ''}
+                            {entry.contractionDurationSec
+                              ? `/${entry.contractionDurationSec}s`
+                              : ''}
                           </td>
                           <td className="px-2 py-1.5">{entry.fetalHeartRateBpm ?? '—'}</td>
                           <td className="px-2 py-1.5">{entry.liquor ?? '—'}</td>
                           <td className="px-2 py-1.5">
-                            {entry.bpSystolic && entry.bpDiastolic ? `${entry.bpSystolic}/${entry.bpDiastolic}` : '—'}
+                            {entry.bpSystolic && entry.bpDiastolic
+                              ? `${entry.bpSystolic}/${entry.bpDiastolic}`
+                              : '—'}
                           </td>
                         </tr>
                       ))}
@@ -1495,58 +1656,121 @@ export const MaternityModule: React.FC = () => {
           </div>
 
           {deliveryOpen && (
-            <form onSubmit={submitDelivery} className="space-y-3 rounded-xl border border-hair bg-surface p-4">
+            <form
+              onSubmit={submitDelivery}
+              className="space-y-3 rounded-xl border border-hair bg-surface p-4"
+            >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Pregnancy *">
-                  <select required value={delivery.pregnancyId} onChange={(e) => setDelivery({ ...delivery, pregnancyId: e.target.value })} className={fieldClass}>
+                  <select
+                    required
+                    value={delivery.pregnancyId}
+                    onChange={(e) => setDelivery({ ...delivery, pregnancyId: e.target.value })}
+                    className={fieldClass}
+                  >
                     <option value="">Select an active pregnancy</option>
                     {activePregnancies.map((pregnancy) => (
                       <option key={pregnancy.id} value={pregnancy.id}>
-                        {pregnancy.patient ? patientName(pregnancy.patient) : `#${pregnancy.patientId}`} · EDD {pregnancy.eddDate}
+                        {pregnancy.patient
+                          ? patientName(pregnancy.patient)
+                          : `#${pregnancy.patientId}`}{' '}
+                        · EDD {pregnancy.eddDate}
                       </option>
                     ))}
                   </select>
                 </Field>
                 <Field label="Labour record (optional)">
-                  <select value={delivery.labourRecordId} onChange={(e) => setDelivery({ ...delivery, labourRecordId: e.target.value })} className={fieldClass}>
+                  <select
+                    value={delivery.labourRecordId}
+                    onChange={(e) => setDelivery({ ...delivery, labourRecordId: e.target.value })}
+                    className={fieldClass}
+                  >
                     <option value="">Not linked</option>
-                    {inLabour.concat(labours.filter((l) => l.status === 'Delivered')).map((labour) => (
-                      <option key={labour.id} value={labour.id}>
-                        #{labour.id} · {labour.patient ? patientName(labour.patient) : 'patient'}
+                    {inLabour
+                      .concat(labours.filter((l) => l.status === 'Delivered'))
+                      .map((labour) => (
+                        <option key={labour.id} value={labour.id}>
+                          #{labour.id} · {labour.patient ? patientName(labour.patient) : 'patient'}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Delivered at">
+                  <input
+                    type="datetime-local"
+                    value={delivery.deliveredAt}
+                    onChange={(e) => setDelivery({ ...delivery, deliveredAt: e.target.value })}
+                    className={fieldClass}
+                  />
+                </Field>
+                <Field label="Mode *">
+                  <select
+                    value={delivery.deliveryMode}
+                    onChange={(e) => setDelivery({ ...delivery, deliveryMode: e.target.value })}
+                    className={fieldClass}
+                  >
+                    {[
+                      'Spontaneous Vertex',
+                      'Assisted Vaginal',
+                      'Breech',
+                      'Vacuum',
+                      'Forceps',
+                      'Caesarean Section',
+                    ].map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode}
                       </option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Delivered at">
-                  <input type="datetime-local" value={delivery.deliveredAt} onChange={(e) => setDelivery({ ...delivery, deliveredAt: e.target.value })} className={fieldClass} />
-                </Field>
-                <Field label="Mode *">
-                  <select value={delivery.deliveryMode} onChange={(e) => setDelivery({ ...delivery, deliveryMode: e.target.value })} className={fieldClass}>
-                    {['Spontaneous Vertex', 'Assisted Vaginal', 'Breech', 'Vacuum', 'Forceps', 'Caesarean Section'].map((mode) => (
-                      <option key={mode} value={mode}>{mode}</option>
-                    ))}
-                  </select>
-                </Field>
                 <Field label="Blood loss (ml)">
-                  <input type="number" min={0} value={delivery.bloodLossMl} onChange={(e) => setDelivery({ ...delivery, bloodLossMl: e.target.value })} className={fieldClass} />
+                  <input
+                    type="number"
+                    min={0}
+                    value={delivery.bloodLossMl}
+                    onChange={(e) => setDelivery({ ...delivery, bloodLossMl: e.target.value })}
+                    className={fieldClass}
+                  />
                 </Field>
                 <Field label="Perineum">
-                  <select value={delivery.perineum} onChange={(e) => setDelivery({ ...delivery, perineum: e.target.value })} className={fieldClass}>
+                  <select
+                    value={delivery.perineum}
+                    onChange={(e) => setDelivery({ ...delivery, perineum: e.target.value })}
+                    className={fieldClass}
+                  >
                     <option value="">Not recorded</option>
-                    {['Intact', '1st Degree', '2nd Degree', '3rd Degree', '4th Degree', 'Episiotomy'].map((state) => (
-                      <option key={state} value={state}>{state}</option>
+                    {[
+                      'Intact',
+                      '1st Degree',
+                      '2nd Degree',
+                      '3rd Degree',
+                      '4th Degree',
+                      'Episiotomy',
+                    ].map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
                     ))}
                   </select>
                 </Field>
                 <Field label="Placenta complete">
-                  <select value={delivery.placentaComplete} onChange={(e) => setDelivery({ ...delivery, placentaComplete: e.target.value })} className={fieldClass}>
+                  <select
+                    value={delivery.placentaComplete}
+                    onChange={(e) => setDelivery({ ...delivery, placentaComplete: e.target.value })}
+                    className={fieldClass}
+                  >
                     <option value="">Not recorded</option>
                     <option value="Yes">Yes</option>
                     <option value="No">No</option>
                   </select>
                 </Field>
                 <Field label="Complications">
-                  <input type="text" value={delivery.complications} onChange={(e) => setDelivery({ ...delivery, complications: e.target.value })} className={fieldClass} />
+                  <input
+                    type="text"
+                    value={delivery.complications}
+                    onChange={(e) => setDelivery({ ...delivery, complications: e.target.value })}
+                    className={fieldClass}
+                  />
                 </Field>
               </div>
 
@@ -1561,7 +1785,14 @@ export const MaternityModule: React.FC = () => {
                       onClick={() =>
                         setBabies((current) => [
                           ...current,
-                          { outcome: 'Live Birth', sex: '', birthWeightGrams: '', apgar1: '', apgar5: '', resuscitation: '' },
+                          {
+                            outcome: 'Live Birth',
+                            sex: '',
+                            birthWeightGrams: '',
+                            apgar1: '',
+                            apgar5: '',
+                            resuscitation: '',
+                          },
                         ])
                       }
                       className="rounded border border-slate-300 px-2 py-1 text-2xs font-semibold text-slate-700 hover:bg-slate-50"
@@ -1574,14 +1805,35 @@ export const MaternityModule: React.FC = () => {
                 {babies.map((baby, index) => (
                   <div key={index} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     <Field label={`Baby ${index + 1} outcome`}>
-                      <select value={baby.outcome} onChange={(e) => setBabies(updateBaby(babies, setBabies, index, { outcome: e.target.value }))} className={fieldClass}>
-                        {['Live Birth', 'Stillbirth Fresh', 'Stillbirth Macerated', 'Neonatal Death'].map((outcome) => (
-                          <option key={outcome} value={outcome}>{outcome}</option>
+                      <select
+                        value={baby.outcome}
+                        onChange={(e) =>
+                          setBabies(
+                            updateBaby(babies, setBabies, index, { outcome: e.target.value }),
+                          )
+                        }
+                        className={fieldClass}
+                      >
+                        {[
+                          'Live Birth',
+                          'Stillbirth Fresh',
+                          'Stillbirth Macerated',
+                          'Neonatal Death',
+                        ].map((outcome) => (
+                          <option key={outcome} value={outcome}>
+                            {outcome}
+                          </option>
                         ))}
                       </select>
                     </Field>
                     <Field label="Sex">
-                      <select value={baby.sex} onChange={(e) => setBabies(updateBaby(babies, setBabies, index, { sex: e.target.value }))} className={fieldClass}>
+                      <select
+                        value={baby.sex}
+                        onChange={(e) =>
+                          setBabies(updateBaby(babies, setBabies, index, { sex: e.target.value }))
+                        }
+                        className={fieldClass}
+                      >
                         <option value="">Not recorded</option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
@@ -1589,23 +1841,64 @@ export const MaternityModule: React.FC = () => {
                       </select>
                     </Field>
                     <Field label="Weight (g)">
-                      <input type="number" value={baby.birthWeightGrams} onChange={(e) => setBabies(updateBaby(babies, setBabies, index, { birthWeightGrams: e.target.value }))} className={fieldClass} />
+                      <input
+                        type="number"
+                        value={baby.birthWeightGrams}
+                        onChange={(e) =>
+                          setBabies(
+                            updateBaby(babies, setBabies, index, {
+                              birthWeightGrams: e.target.value,
+                            }),
+                          )
+                        }
+                        className={fieldClass}
+                      />
                     </Field>
                     <Field label="Apgar 1′">
-                      <input type="number" min={0} max={10} value={baby.apgar1} onChange={(e) => setBabies(updateBaby(babies, setBabies, index, { apgar1: e.target.value }))} className={fieldClass} />
+                      <input
+                        type="number"
+                        min={0}
+                        max={10}
+                        value={baby.apgar1}
+                        onChange={(e) =>
+                          setBabies(
+                            updateBaby(babies, setBabies, index, { apgar1: e.target.value }),
+                          )
+                        }
+                        className={fieldClass}
+                      />
                     </Field>
                     <Field label="Apgar 5′">
-                      <input type="number" min={0} max={10} value={baby.apgar5} onChange={(e) => setBabies(updateBaby(babies, setBabies, index, { apgar5: e.target.value }))} className={fieldClass} />
+                      <input
+                        type="number"
+                        min={0}
+                        max={10}
+                        value={baby.apgar5}
+                        onChange={(e) =>
+                          setBabies(
+                            updateBaby(babies, setBabies, index, { apgar5: e.target.value }),
+                          )
+                        }
+                        className={fieldClass}
+                      />
                     </Field>
                   </div>
                 ))}
               </div>
 
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setDeliveryOpen(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setDeliveryOpen(false)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={busy} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+                >
                   {busy ? 'Saving…' : 'Record delivery'}
                 </button>
               </div>
@@ -1627,21 +1920,16 @@ export const MaternityModule: React.FC = () => {
                   {lastCharge.charge.invoiceNumber
                     ? `invoice ${lastCharge.charge.invoiceNumber}`
                     : 'added to an open invoice'}
-                  {lastCharge.charge.totalAmount
-                    ? ` · KES ${lastCharge.charge.totalAmount}`
-                    : ''}
-                  {lastCharge.charge.tariffCode
-                    ? ` · tariff ${lastCharge.charge.tariffCode}`
-                    : ''}
-                  .
+                  {lastCharge.charge.totalAmount ? ` · KES ${lastCharge.charge.totalAmount}` : ''}
+                  {lastCharge.charge.tariffCode ? ` · tariff ${lastCharge.charge.tariffCode}` : ''}.
                 </>
               ) : (
                 <>
                   <strong>Recorded, not billed.</strong>{' '}
                   {lastCharge.charge.reason === 'TARIFF_NOT_CONFIGURED'
                     ? 'This facility has no active delivery tariff, so no invoice line was raised. Add one under Finance → Service tariffs; the delivery itself is saved.'
-                    : lastCharge.charge.message ??
-                      'The billing engine did not raise an invoice line.'}
+                    : (lastCharge.charge.message ??
+                      'The billing engine did not raise an invoice line.')}
                 </>
               )}
             </div>
@@ -1672,7 +1960,9 @@ export const MaternityModule: React.FC = () => {
                     </tr>
                   )}
                   {deliveries.map((record) => {
-                    const recordBabies = (record as DeliveryRecord & { babies?: Array<{ outcome: string }> }).babies ?? [];
+                    const recordBabies =
+                      (record as DeliveryRecord & { babies?: Array<{ outcome: string }> }).babies ??
+                      [];
 
                     return (
                       <tr key={record.id} className="hover:bg-slate-50/70">
@@ -1711,9 +2001,7 @@ export const MaternityModule: React.FC = () => {
           <section className="overflow-hidden rounded-xl border border-hair bg-surface">
             <div className="flex items-center justify-between border-b border-hair bg-canvas px-4 py-3">
               <h2 className="text-sm font-bold text-slate-800">Postnatal contacts</h2>
-              <span className="text-2xs text-slate-500">
-                {postnatalRegister.length} recent
-              </span>
+              <span className="text-2xs text-slate-500">{postnatalRegister.length} recent</span>
             </div>
 
             <div className="border-b border-hair p-4">
@@ -1741,9 +2029,8 @@ export const MaternityModule: React.FC = () => {
               </Field>
 
               <p className="mt-2 text-2xs leading-relaxed text-slate-500">
-                Postnatal care is filed against the pregnancy, not the
-                delivery, so a woman who delivered elsewhere still has a
-                record here.
+                Postnatal care is filed against the pregnancy, not the delivery, so a woman who
+                delivered elsewhere still has a record here.
               </p>
             </div>
 
@@ -1765,9 +2052,7 @@ export const MaternityModule: React.FC = () => {
                       )
                     }
                     className={`w-full px-4 py-3 text-left hover:bg-slate-50 ${
-                      postnatalPregnancy?.id === visit.pregnancyId
-                        ? 'bg-teal-50'
-                        : ''
+                      postnatalPregnancy?.id === visit.pregnancyId ? 'bg-teal-50' : ''
                     }`}
                   >
                     <div className="flex items-baseline justify-between gap-2">
@@ -1775,16 +2060,12 @@ export const MaternityModule: React.FC = () => {
                         {visit.patient ? patientName(visit.patient) : `Patient #${visit.patientId}`}
                       </span>
                       <span className="font-mono text-2xs text-slate-500">
-                        {visit.dayPostpartum !== null
-                          ? `day ${visit.dayPostpartum}`
-                          : 'day —'}
+                        {visit.dayPostpartum !== null ? `day ${visit.dayPostpartum}` : 'day —'}
                       </span>
                     </div>
                     <div className="mt-1 font-mono text-2xs text-slate-500">
                       {visit.visitDate}
-                      {visit.babyWeightGrams !== null
-                        ? ` · baby ${visit.babyWeightGrams} g`
-                        : ''}
+                      {visit.babyWeightGrams !== null ? ` · baby ${visit.babyWeightGrams} g` : ''}
                     </div>
                   </button>
                 </li>
@@ -1795,8 +2076,7 @@ export const MaternityModule: React.FC = () => {
           <section className="rounded-xl border border-hair bg-surface p-4">
             {!postnatalPregnancy ? (
               <p className="text-sm text-slate-500">
-                Select a mother on the left to see her postnatal contacts and
-                record the next one.
+                Select a mother on the left to see her postnatal contacts and record the next one.
               </p>
             ) : (
               <div className="space-y-4">
@@ -1915,7 +2195,9 @@ export const MaternityModule: React.FC = () => {
                         >
                           <option value="">Not examined</option>
                           {INVOLUTION_OPTIONS.map((value) => (
-                            <option key={value} value={value}>{value}</option>
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
                           ))}
                         </select>
                       </Field>
@@ -1927,7 +2209,9 @@ export const MaternityModule: React.FC = () => {
                         >
                           <option value="">Not examined</option>
                           {LOCHIA_OPTIONS.map((value) => (
-                            <option key={value} value={value}>{value}</option>
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
                           ))}
                         </select>
                       </Field>
@@ -1939,7 +2223,9 @@ export const MaternityModule: React.FC = () => {
                         >
                           <option value="">Not examined</option>
                           {PERINEUM_OPTIONS.map((value) => (
-                            <option key={value} value={value}>{value}</option>
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
                           ))}
                         </select>
                       </Field>
@@ -1951,7 +2237,9 @@ export const MaternityModule: React.FC = () => {
                         >
                           <option value="">Not recorded</option>
                           {BREAST_OPTIONS.map((value) => (
-                            <option key={value} value={value}>{value}</option>
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
                           ))}
                         </select>
                       </Field>
@@ -1963,7 +2251,9 @@ export const MaternityModule: React.FC = () => {
                         >
                           <option value="">Not recorded</option>
                           {BREASTFEEDING_OPTIONS.map((value) => (
-                            <option key={value} value={value}>{value}</option>
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
                           ))}
                         </select>
                       </Field>
@@ -1975,7 +2265,9 @@ export const MaternityModule: React.FC = () => {
                         >
                           <option value="">Not screened</option>
                           {MOOD_OPTIONS.map((value) => (
-                            <option key={value} value={value}>{value}</option>
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
                           ))}
                         </select>
                       </Field>
@@ -2058,9 +2350,15 @@ export const MaternityModule: React.FC = () => {
                               : '—'}
                           </td>
                           <td className="px-3 py-2 font-mono">{visit.pulseBpm ?? '—'}</td>
-                          <td className="px-3 py-2 text-2xs text-slate-600">{visit.involution ?? '—'}</td>
-                          <td className="px-3 py-2 text-2xs text-slate-600">{visit.lochia ?? '—'}</td>
-                          <td className="px-3 py-2 text-2xs text-slate-600">{visit.breastfeeding ?? '—'}</td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">
+                            {visit.involution ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">
+                            {visit.lochia ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">
+                            {visit.breastfeeding ?? '—'}
+                          </td>
                           <td className="px-3 py-2 font-mono">
                             {visit.babyWeightGrams !== null ? `${visit.babyWeightGrams} g` : '—'}
                           </td>
@@ -2156,8 +2454,8 @@ export const MaternityModule: React.FC = () => {
           <section className="rounded-xl border border-hair bg-surface p-4">
             {!immunisationCard ? (
               <p className="text-sm text-slate-500">
-                Select a child on the left to see the doses given and what the
-                reference schedule says is outstanding.
+                Select a child on the left to see the doses given and what the reference schedule
+                says is outstanding.
               </p>
             ) : (
               <div className="space-y-4">
@@ -2216,7 +2514,9 @@ export const MaternityModule: React.FC = () => {
                           className={fieldClass}
                         >
                           {[1, 2, 3, 4].map((dose) => (
-                            <option key={dose} value={dose}>{dose}</option>
+                            <option key={dose} value={dose}>
+                              {dose}
+                            </option>
                           ))}
                         </select>
                       </Field>
@@ -2265,8 +2565,8 @@ export const MaternityModule: React.FC = () => {
                     </button>
 
                     <p className="text-2xs text-slate-500">
-                      The database refuses a second dose of the same antigen at
-                      the same dose number.
+                      The database refuses a second dose of the same antigen at the same dose
+                      number.
                     </p>
                   </form>
                 )}
@@ -2285,8 +2585,7 @@ export const MaternityModule: React.FC = () => {
                       {immunisationCard.statuses.length === 0 && (
                         <tr>
                           <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
-                            Due dates need a date of birth. Doses can still be
-                            recorded below.
+                            Due dates need a date of birth. Doses can still be recorded below.
                           </td>
                         </tr>
                       )}
@@ -2303,7 +2602,9 @@ export const MaternityModule: React.FC = () => {
                             week {dose.scheduledWeeks}
                           </td>
                           <td className="px-3 py-2">
-                            <span className={`rounded-full px-2 py-0.5 text-2xs font-semibold ${doseStatusClass(dose.status)}`}>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-2xs font-semibold ${doseStatusClass(dose.status)}`}
+                            >
                               {dose.status}
                             </span>
                           </td>
@@ -2338,20 +2639,26 @@ export const MaternityModule: React.FC = () => {
 
                       {immunisationCard.records.map((record) => (
                         <tr key={record.id} className="hover:bg-slate-50/70">
-                          <td className="px-3 py-2 font-mono text-slate-700">{record.administeredOn}</td>
-                          <td className="px-3 py-2 font-semibold text-slate-800">{record.antigenCode}</td>
+                          <td className="px-3 py-2 font-mono text-slate-700">
+                            {record.administeredOn}
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-slate-800">
+                            {record.antigenCode}
+                          </td>
                           <td className="px-3 py-2 font-mono">{record.doseNumber}</td>
-                          <td className="px-3 py-2 font-mono text-2xs text-slate-600">{record.batchNumber ?? '—'}</td>
-                          <td className="px-3 py-2 text-2xs text-slate-600">{record.site ?? '—'}</td>
+                          <td className="px-3 py-2 font-mono text-2xs text-slate-600">
+                            {record.batchNumber ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-2xs text-slate-600">
+                            {record.site ?? '—'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
 
-                <p className="text-2xs leading-relaxed text-slate-500">
-                  {immunisationNote}
-                </p>
+                <p className="text-2xs leading-relaxed text-slate-500">{immunisationNote}</p>
               </div>
             )}
           </section>
@@ -2360,9 +2667,8 @@ export const MaternityModule: React.FC = () => {
 
       <p className="text-2xs text-slate-500">
         <ClipboardList className="mr-1 inline h-3 w-3" />
-        Empty fields are stored as absent, not as zero. The partograph line is a
-        plotting aid against the reference curve; it does not recommend an
-        intervention.
+        Empty fields are stored as absent, not as zero. The partograph line is a plotting aid
+        against the reference curve; it does not recommend an intervention.
       </p>
     </div>
   );
@@ -2385,30 +2691,20 @@ function updateBaby(
   index: number,
   patch: Partial<(typeof babies)[number]>,
 ) {
-  return babies.map((baby, position) =>
-    position === index ? { ...baby, ...patch } : baby,
-  );
+  return babies.map((baby, position) => (position === index ? { ...baby, ...patch } : baby));
 }
 
-const Field: React.FC<{ label: string; children: React.ReactNode }> = ({
-  label,
-  children,
-}) => (
+const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div>
     <label className={labelClass}>{label}</label>
     {children}
   </div>
 );
 
-const Reading: React.FC<{ label: string; value: string | number | null }> = ({
-  label,
-  value,
-}) => (
+const Reading: React.FC<{ label: string; value: string | number | null }> = ({ label, value }) => (
   <span>
     <span className="text-slate-400">{label} </span>
-    <span className="font-mono text-slate-700">
-      {value === null || value === '' ? '—' : value}
-    </span>
+    <span className="font-mono text-slate-700">{value === null || value === '' ? '—' : value}</span>
   </span>
 );
 
@@ -2427,9 +2723,7 @@ const SummaryChip: React.FC<{
     }`}
   >
     <span className="block font-semibold uppercase tracking-wider">{label}</span>
-    <span className="font-mono text-sm font-bold">
-      {value === undefined ? '—' : value}
-    </span>
+    <span className="font-mono text-sm font-bold">{value === undefined ? '—' : value}</span>
   </span>
 );
 

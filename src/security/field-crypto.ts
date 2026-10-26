@@ -65,9 +65,7 @@ function readKey(): Buffer | null {
   try {
     key = Buffer.from(raw.trim(), 'base64');
   } catch {
-    throw new FieldCryptoError(
-      'FIELD_ENCRYPTION_KEY is not valid base64.',
-    );
+    throw new FieldCryptoError('FIELD_ENCRYPTION_KEY is not valid base64.');
   }
 
   if (key.length !== KEY_BYTES) {
@@ -107,9 +105,7 @@ export function describeFieldEncryption(): FieldEncryptionStatus {
     return {
       configured: false,
       detail:
-        error instanceof Error
-          ? error.message
-          : 'FIELD_ENCRYPTION_KEY is present but unusable.',
+        error instanceof Error ? error.message : 'FIELD_ENCRYPTION_KEY is present but unusable.',
     };
   }
 
@@ -136,9 +132,7 @@ export function isEncryptedField(value: unknown): boolean {
  * Null, undefined and empty strings stay as they are: encrypting an
  * absent identifier would invent one.
  */
-export function encryptField(
-  value: string | null | undefined,
-): string | null {
+export function encryptField(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
 
   const plaintext = String(value);
@@ -153,10 +147,7 @@ export function encryptField(
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
 
-  const ciphertext = Buffer.concat([
-    cipher.update(plaintext, 'utf8'),
-    cipher.final(),
-  ]);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
 
   const tag = cipher.getAuthTag();
 
@@ -176,9 +167,7 @@ export function encryptField(
  * authentication throws rather than returning garbage — a tampered
  * identifier must never be silently accepted.
  */
-export function decryptField(
-  value: string | null | undefined,
-): string | null {
+export function decryptField(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
 
   const stored = String(value);
@@ -213,10 +202,7 @@ export function decryptField(
   decipher.setAuthTag(tag);
 
   try {
-    return Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]).toString('utf8');
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
   } catch {
     throw new FieldCryptoError(
       'An encrypted field failed authentication: the key is wrong or the value was altered.',
@@ -255,10 +241,7 @@ export function normaliseIdentifier(value: string): string {
  * by `purpose` so the same national ID used as a SHA number cannot
  * collide across columns.
  */
-export function blindIndex(
-  value: string | null | undefined,
-  purpose: string,
-): string | null {
+export function blindIndex(value: string | null | undefined, purpose: string): string | null {
   if (value === null || value === undefined) return null;
 
   const normalised = normaliseIdentifier(String(value));
@@ -269,9 +252,7 @@ export function blindIndex(
 
   if (!key) return null;
 
-  return createHmac('sha256', key)
-    .update(`${purpose}:${normalised}`)
-    .digest('hex');
+  return createHmac('sha256', key).update(`${purpose}:${normalised}`).digest('hex');
 }
 
 /** Constant-time comparison, for callers that check a token themselves. */

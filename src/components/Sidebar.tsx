@@ -37,9 +37,7 @@ export interface NavSection {
 export const superAdminNavSections: NavSection[] = [
   {
     title: 'PLATFORM MANAGEMENT',
-    items: [
-      { id: 'dashboard', label: 'Platform Management', icon: LayoutDashboard },
-    ],
+    items: [{ id: 'dashboard', label: 'Platform Management', icon: LayoutDashboard }],
   },
   {
     title: 'ORGANIZATIONS & BILLING',
@@ -62,9 +60,7 @@ export const superAdminNavSections: NavSection[] = [
      * facility rail; it is now here and nowhere else.
      */
     title: 'INTEGRATIONS & READINESS',
-    items: [
-      { id: 'interoperability', label: 'DHA Readiness & FHIR', icon: Network },
-    ],
+    items: [{ id: 'interoperability', label: 'DHA Readiness & FHIR', icon: Network }],
   },
 ];
 
@@ -170,12 +166,10 @@ export const Sidebar: React.FC = () => {
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const isSuperAdmin = Boolean(
-    authenticatedUser?.isSuperAdmin ||
-    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+    authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
 
-  const can = (permission: string) =>
-    isSuperAdmin || permissions.has(permission);
+  const can = (permission: string) => isSuperAdmin || permissions.has(permission);
 
   const isFacilityModuleEnabled = (id: ModuleId): boolean => {
     // Platform administration is not an operational facility module.
@@ -198,10 +192,27 @@ export const Sidebar: React.FC = () => {
     // Dashboard is available when at least one operational module is enabled.
     if (id === 'dashboard') {
       return [
-        'registration', 'reception', 'opd', 'inpatient', 'maternity', 'theatre',
-        'specialty', 'laboratory', 'radiology', 'pharmacy', 'inventory',
-        'procurement', 'finance', 'insurance', 'claims', 'public_health',
-        'analytics', 'interoperability', 'configuration', 'patient_portal', 'audit'
+        'registration',
+        'reception',
+        'opd',
+        'inpatient',
+        'maternity',
+        'theatre',
+        'specialty',
+        'laboratory',
+        'radiology',
+        'pharmacy',
+        'inventory',
+        'procurement',
+        'finance',
+        'insurance',
+        'claims',
+        'public_health',
+        'analytics',
+        'interoperability',
+        'configuration',
+        'patient_portal',
+        'audit',
       ].some((moduleId) => enabledModules.has(moduleId));
     }
 
@@ -222,9 +233,15 @@ export const Sidebar: React.FC = () => {
 
     const required: Partial<Record<ModuleId, string[]>> = {
       dashboard: [
-        'patients.read', 'appointments.read', 'clinical.read',
-        'inpatient.read', 'laboratory.read', 'pharmacy.read',
-        'inventory.read', 'billing.read', 'reports.read'
+        'patients.read',
+        'appointments.read',
+        'clinical.read',
+        'inpatient.read',
+        'laboratory.read',
+        'pharmacy.read',
+        'inventory.read',
+        'billing.read',
+        'reports.read',
       ],
       registration: ['patients.read'],
       reception: ['appointments.read', 'clinical.read', 'patients.read'],
@@ -244,15 +261,17 @@ export const Sidebar: React.FC = () => {
       public_health: ['reports.read'],
       interoperability: ['interop.fhir.patient.read'],
       configuration: [
-        'system.settings.manage', 'users.roles.manage',
-        'roles.permissions.manage', 'facilities.update',
+        'system.settings.manage',
+        'users.roles.manage',
+        'roles.permissions.manage',
+        'facilities.update',
         /*
          * A facility administrator holds none of the four above on a
          * fresh install; they hold users.invite, which is what the
          * staff screen needs. Without this the Staff tab — and the
          * invitation screen that was already there — had no way in.
          */
-        'users.invite'
+        'users.invite',
       ],
       /*
        * Portal administration is a separate duty from configuration.
@@ -261,7 +280,7 @@ export const Sidebar: React.FC = () => {
        * their rail while the invitation button in reception still works.
        */
       patient_portal: ['portal.accounts.manage'],
-      audit: ['audit.read', 'audit.security.read']
+      audit: ['audit.read', 'audit.security.read'],
     };
 
     return (required[id] ?? []).some(can);
@@ -296,9 +315,7 @@ export const Sidebar: React.FC = () => {
       >
         {/* Mobile Header Close */}
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 md:hidden">
-          <span className="text-sm font-semibold tracking-tight text-white">
-            JaliCare HMIS
-          </span>
+          <span className="text-sm font-semibold tracking-tight text-white">JaliCare HMIS</span>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
             className="rounded-lg p-1.5 text-navy-200 transition-colors hover:bg-white/10 hover:text-white"
@@ -384,62 +401,64 @@ export const Sidebar: React.FC = () => {
                 )}
 
                 <div className="space-y-0.5">
-                  {sec.items.filter((item) => isModuleVisible(item.id)).map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeModule === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => handleSelectModule(item.id)}
-                        aria-current={isActive ? 'page' : undefined}
-                        title={collapsed ? item.label : undefined}
-                        className={`relative flex min-h-[40px] w-full items-center rounded-lg text-left text-xs transition-colors md:min-h-0 ${
-                          collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-2.5 py-2'
-                        } ${
-                          isActive
-                            ? 'bg-brand-600/30 font-semibold text-white'
-                            : 'font-medium text-navy-100/85 hover:bg-white/[0.06] hover:text-white'
-                        }`}
-                      >
-                        {isActive && (
-                          <span
-                            aria-hidden="true"
-                            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-ember-500"
-                          />
-                        )}
+                  {sec.items
+                    .filter((item) => isModuleVisible(item.id))
+                    .map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeModule === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => handleSelectModule(item.id)}
+                          aria-current={isActive ? 'page' : undefined}
+                          title={collapsed ? item.label : undefined}
+                          className={`relative flex min-h-[40px] w-full items-center rounded-lg text-left text-xs transition-colors md:min-h-0 ${
+                            collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-2.5 py-2'
+                          } ${
+                            isActive
+                              ? 'bg-brand-600/30 font-semibold text-white'
+                              : 'font-medium text-navy-100/85 hover:bg-white/[0.06] hover:text-white'
+                          }`}
+                        >
+                          {isActive && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-ember-500"
+                            />
+                          )}
 
-                        {collapsed ? (
-                          <Icon
-                            className={`h-[18px] w-[18px] shrink-0 ${
-                              isActive ? 'text-white' : 'text-brand-300/80'
-                            }`}
-                          />
-                        ) : (
-                          <>
-                            <span className="flex min-w-0 items-center gap-2.5 truncate">
-                              <Icon
-                                className={`h-4 w-4 shrink-0 ${
-                                  isActive ? 'text-ember-300' : 'text-brand-300/80'
-                                }`}
-                              />
-                              <span className="truncate">{item.label}</span>
-                            </span>
-                            {item.badge && (
-                              <span
-                                className={`rounded px-1.5 font-mono text-2xs font-semibold ${
-                                  isActive
-                                    ? 'bg-ember-500 text-white'
-                                    : 'bg-white/10 text-navy-100'
-                                }`}
-                              >
-                                {item.badge}
+                          {collapsed ? (
+                            <Icon
+                              className={`h-[18px] w-[18px] shrink-0 ${
+                                isActive ? 'text-white' : 'text-brand-300/80'
+                              }`}
+                            />
+                          ) : (
+                            <>
+                              <span className="flex min-w-0 items-center gap-2.5 truncate">
+                                <Icon
+                                  className={`h-4 w-4 shrink-0 ${
+                                    isActive ? 'text-ember-300' : 'text-brand-300/80'
+                                  }`}
+                                />
+                                <span className="truncate">{item.label}</span>
                               </span>
-                            )}
-                          </>
-                        )}
-                      </button>
-                    );
-                  })}
+                              {item.badge && (
+                                <span
+                                  className={`rounded px-1.5 font-mono text-2xs font-semibold ${
+                                    isActive
+                                      ? 'bg-ember-500 text-white'
+                                      : 'bg-white/10 text-navy-100'
+                                  }`}
+                                >
+                                  {item.badge}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
             ))}
@@ -468,7 +487,9 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Footer Info */}
-        <div className={`border-t border-white/10 text-3xs text-navy-300 ${collapsed ? 'px-2 py-3' : 'px-4 py-3'}`}>
+        <div
+          className={`border-t border-white/10 text-3xs text-navy-300 ${collapsed ? 'px-2 py-3' : 'px-4 py-3'}`}
+        >
           {collapsed ? (
             <div className="flex justify-center">
               <span className="h-1.5 w-1.5 rounded-full bg-ember-500" title="Kenya MOH ready" />

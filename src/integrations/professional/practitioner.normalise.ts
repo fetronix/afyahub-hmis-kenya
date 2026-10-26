@@ -65,13 +65,7 @@ const KEYS = {
     'category',
     'designation',
   ],
-  specialty: [
-    'specialty',
-    'speciality',
-    'specialization',
-    'specialisation',
-    'specialties',
-  ],
+  specialty: ['specialty', 'speciality', 'specialization', 'specialisation', 'specialties'],
   registrationStatus: ['registrationStatus', 'registration_status', 'regStatus', 'reg_status'],
   licenceStatus: [
     'licenseStatus',
@@ -192,7 +186,8 @@ function parseDateish(value: string | null): Date | null {
 
 const INACTIVE_WORDS = /inactive|withdrawn|suspend|revok|cancel|struck|deregist|removed/i;
 const EXPIRED_WORDS = /expired|expiry|lapsed|not\s*current/i;
-const ACTIVE_WORDS = /active|valid|current|registered|licensed|licenced|good\s*standing|in\s*good\s*standing/i;
+const ACTIVE_WORDS =
+  /active|valid|current|registered|licensed|licenced|good\s*standing|in\s*good\s*standing/i;
 
 export interface NormaliseInput {
   /** The `message` member of the response body. */
@@ -269,7 +264,8 @@ export function normalisePractitioner(input: NormaliseInput): NormalisationResul
   }
 
   const record: PractitionerRecord = {
-    fullName: read(bag, KEYS.fullName).value ??
+    fullName:
+      read(bag, KEYS.fullName).value ??
       (fullNameFromParts.length > 0 ? fullNameFromParts.join(' ') : null),
     registrationNumber: take(KEYS.registrationNumber),
     licenceNumber: take(KEYS.licenceNumber),
@@ -287,9 +283,7 @@ export function normalisePractitioner(input: NormaliseInput): NormalisationResul
     matchedFields.push(read(bag, KEYS.fullName).key as string);
   }
 
-  const unrecognisedKeys = Object.keys(bag).filter(
-    (key) => !matchedFields.includes(key),
-  );
+  const unrecognisedKeys = Object.keys(bag).filter((key) => !matchedFields.includes(key));
 
   /* ----------------------------------------------------------
      Identity
@@ -313,7 +307,9 @@ export function normalisePractitioner(input: NormaliseInput): NormalisationResul
       );
     }
   } else if (!record.fullName) {
-    warnings.push('The response did not include a practitioner name, so identity could not be compared.');
+    warnings.push(
+      'The response did not include a practitioner name, so identity could not be compared.',
+    );
   }
 
   if (
@@ -338,7 +334,10 @@ export function normalisePractitioner(input: NormaliseInput): NormalisationResul
       record,
       status: 'REGISTRATION_INACTIVE',
       matchedFields,
-      warnings: [...warnings, `The register reports this registration as "${record.registrationStatus}".`],
+      warnings: [
+        ...warnings,
+        `The register reports this registration as "${record.registrationStatus}".`,
+      ],
       mapping: 'provisional',
       unrecognisedKeys,
     };

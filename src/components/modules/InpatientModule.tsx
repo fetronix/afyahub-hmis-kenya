@@ -30,7 +30,6 @@ import {
   Building2,
 } from 'lucide-react';
 
-
 const EMPTY_WARD_FORM = {
   id: null as number | null,
   name: '',
@@ -49,7 +48,17 @@ const EMPTY_BEDS_FORM = {
 };
 
 export const InpatientModule: React.FC = () => {
-  const { currentTenant, currentFacility, currentUser, authenticatedUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentTenant,
+    currentFacility,
+    currentUser,
+    authenticatedUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
 
   /*
    * Buttons are hidden from users who cannot use them. This is courtesy,
@@ -61,8 +70,7 @@ export const InpatientModule: React.FC = () => {
     authenticatedUser?.isSuperAdmin === true ||
     (authenticatedUser?.roles ?? []).includes('SUPER_ADMIN');
 
-  const can = (permission: string) =>
-    isSuperAdmin || permissions.has(permission);
+  const can = (permission: string) => isSuperAdmin || permissions.has(permission);
 
   const canCreateWard = can('inpatient.wards.create');
   const canUpdateWard = can('inpatient.wards.update');
@@ -334,8 +342,7 @@ export const InpatientModule: React.FC = () => {
         startNumber: numberText(bedsForm.startNumber),
         count: numberText(bedsForm.count),
         bedType: bedsForm.bedType.trim(),
-        dailyCharge:
-          bedsForm.dailyCharge.trim() === '' ? null : bedsForm.dailyCharge.trim(),
+        dailyCharge: bedsForm.dailyCharge.trim() === '' ? null : bedsForm.dailyCharge.trim(),
       });
 
       showToast(`Added ${result.created.length} bed(s) to ${selectedWard.name}.`);
@@ -370,8 +377,7 @@ export const InpatientModule: React.FC = () => {
       await api.updateBed(bedEditTarget.id, {
         bedNumber: bedEdit.bedNumber.trim(),
         bedType: bedEdit.bedType.trim(),
-        dailyCharge:
-          bedEdit.dailyCharge.trim() === '' ? null : bedEdit.dailyCharge.trim(),
+        dailyCharge: bedEdit.dailyCharge.trim() === '' ? null : bedEdit.dailyCharge.trim(),
         // Occupancy is set by admitting, never by this form.
         ...(bedEditTarget.status !== 'Occupied' ? { status: bedEdit.status } : {}),
       });
@@ -425,9 +431,7 @@ export const InpatientModule: React.FC = () => {
        * bed-day tariff; a facility that has not priced one gets a
        * discharge and an untouched invoice, and needs to be told.
        */
-      const nightsBilled = (discharged.billing?.bedDays ?? []).filter(
-        (charge) => charge?.charged,
-      );
+      const nightsBilled = (discharged.billing?.bedDays ?? []).filter((charge) => charge?.charged);
       const nightsUnbilled = (discharged.billing?.bedDays ?? []).filter(
         (charge) => charge && !charge.charged,
       );
@@ -462,7 +466,7 @@ export const InpatientModule: React.FC = () => {
   };
 
   const getPatientName = (patientId: number) => {
-    const p = patients.find(x => x.id === patientId);
+    const p = patients.find((x) => x.id === patientId);
     return p ? `${p.firstName} ${p.lastName}` : `Patient #${patientId}`;
   };
 
@@ -482,9 +486,12 @@ export const InpatientModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Inpatient Care, Wards & Bed Board</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Inpatient Care, Wards & Bed Board
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Monitor bed occupancy rates, admitting doctor reviews, nursing care, and discharge clearance.
+            Monitor bed occupancy rates, admitting doctor reviews, nursing care, and discharge
+            clearance.
           </p>
         </div>
 
@@ -511,13 +518,13 @@ export const InpatientModule: React.FC = () => {
 
           <button
             onClick={() => {
-              const activeWards = wards.filter(w => w.isActive !== false);
+              const activeWards = wards.filter((w) => w.isActive !== false);
 
               if (activeWards.length > 0) {
-                const firstWardBeds = beds.filter(b => b.wardId === activeWards[0].id);
-                const firstAvailable = firstWardBeds.find(b => b.status === 'Available');
+                const firstWardBeds = beds.filter((b) => b.wardId === activeWards[0].id);
+                const firstAvailable = firstWardBeds.find((b) => b.status === 'Available');
 
-                setAdmitForm(prev => ({
+                setAdmitForm((prev) => ({
                   ...prev,
                   wardId: activeWards[0].id.toString(),
                   patientId: patients[0]?.id.toString() || '',
@@ -574,9 +581,8 @@ export const InpatientModule: React.FC = () => {
           <Building2 className="w-6 h-6 text-teal-700 mx-auto" />
           <h2 className="text-sm font-bold text-slate-900">No wards yet</h2>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
-            A patient cannot be admitted until at least one ward exists, and a
-            ward cannot take patients until it has beds. Create the ward first,
-            then add its beds.
+            A patient cannot be admitted until at least one ward exists, and a ward cannot take
+            patients until it has beds. Create the ward first, then add its beds.
           </p>
           {canCreateWard ? (
             <button
@@ -589,10 +595,10 @@ export const InpatientModule: React.FC = () => {
           ) : (
             <p className="text-2xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
               You do not have the <span className="font-mono">inpatient.wards.create</span>{' '}
-              permission. A facility administrator can grant it under
-              Administration → Platform Administration → Facilities →
-              <span className="font-semibold"> Facility Role Permissions</span>,
-              or can create the ward for you.
+              permission. A facility administrator can grant it under Administration → Platform
+              Administration → Facilities →
+              <span className="font-semibold"> Facility Role Permissions</span>, or can create the
+              ward for you.
             </p>
           )}
         </div>
@@ -608,7 +614,8 @@ export const InpatientModule: React.FC = () => {
             <span className="text-2xs text-slate-500">
               {selectedWard ? (
                 <>
-                  Type: {selectedWard.wardType} · Allocation: {selectedWard.genderAllocation} · Daily rate:{' '}
+                  Type: {selectedWard.wardType} · Allocation: {selectedWard.genderAllocation} ·
+                  Daily rate:{' '}
                   {selectedWard.dailyRate === null
                     ? 'not set'
                     : `KES ${Number(selectedWard.dailyRate).toLocaleString()} / day`}
@@ -685,136 +692,139 @@ export const InpatientModule: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-          {selectedWard &&
-            beds.filter((b) => b.wardId === selectedWard.id).length === 0 && (
-              <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center">
-                <p className="text-xs text-slate-600">
-                  This ward has no beds yet, so nobody can be admitted here.
+          {selectedWard && beds.filter((b) => b.wardId === selectedWard.id).length === 0 && (
+            <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center">
+              <p className="text-xs text-slate-600">
+                This ward has no beds yet, so nobody can be admitted here.
+              </p>
+              {canCreateBeds ? (
+                <button
+                  onClick={() => setBedsFormOpen(true)}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-1.5 text-2xs font-semibold text-white hover:bg-teal-800"
+                >
+                  <Plus className="w-3 h-3" /> Add the first beds
+                </button>
+              ) : (
+                <p className="mt-2 text-2xs text-amber-800">
+                  Adding beds needs <span className="font-mono">inpatient.beds.create</span>.
                 </p>
-                {canCreateBeds ? (
-                  <button
-                    onClick={() => setBedsFormOpen(true)}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-1.5 text-2xs font-semibold text-white hover:bg-teal-800"
-                  >
-                    <Plus className="w-3 h-3" /> Add the first beds
-                  </button>
-                ) : (
-                  <p className="mt-2 text-2xs text-amber-800">
-                    Adding beds needs <span className="font-mono">inpatient.beds.create</span>.
-                  </p>
-                )}
-              </div>
-            )}
+              )}
+            </div>
+          )}
 
-          {beds.filter((b) => b.wardId === selectedWard?.id).map((b) => {
-            const isOccupied = b.status === 'Occupied';
-            const isCleaning = b.status === 'Cleaning';
-            const occupant = b.currentPatientId ? patients.find(p => p.id === b.currentPatientId) : null;
+          {beds
+            .filter((b) => b.wardId === selectedWard?.id)
+            .map((b) => {
+              const isOccupied = b.status === 'Occupied';
+              const isCleaning = b.status === 'Cleaning';
+              const occupant = b.currentPatientId
+                ? patients.find((p) => p.id === b.currentPatientId)
+                : null;
 
-            // Vitals status for this bed, from the facility board.
-            const bedBoard = board?.rows.find((row) => row.bedId === b.id);
-            const hasCritical = (bedBoard?.lastVitalsFlags ?? []).some(
-              (flag) => flag.severity === 'critical',
-            );
-            const vitalsOverdue = Boolean(bedBoard?.vitalsOverdue);
+              // Vitals status for this bed, from the facility board.
+              const bedBoard = board?.rows.find((row) => row.bedId === b.id);
+              const hasCritical = (bedBoard?.lastVitalsFlags ?? []).some(
+                (flag) => flag.severity === 'critical',
+              );
+              const vitalsOverdue = Boolean(bedBoard?.vitalsOverdue);
 
-            return (
-              <div
-                key={b.id}
-                className={`relative p-3 rounded-xl border text-center transition-all flex flex-col justify-between ${
-                  isOccupied
-                    ? 'border-teal-700 bg-teal-50/40 text-teal-950'
-                    : isCleaning
-                    ? 'border-amber-400 bg-amber-50/50 text-amber-900'
-                    : 'border-slate-200 bg-white hover:border-emerald-500 text-slate-700'
-                }`}
-              >
-                {(canUpdateBed || (canDeleteBed && !isOccupied)) && (
-                  <div className="absolute right-1 top-1 flex items-center gap-0.5">
-                    {canUpdateBed && (
-                      <button
-                        onClick={() => openBedEdit(b)}
-                        title={`Edit bed ${b.bedNumber}`}
-                        className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    )}
-                    {canDeleteBed && !isOccupied && (
-                      <button
-                        onClick={() => void handleDeleteBed(b)}
-                        title={`Delete bed ${b.bedNumber}`}
-                        className="rounded p-1 text-slate-400 hover:bg-white hover:text-rose-700"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <div>
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <BedDouble className={`w-4 h-4 ${isOccupied ? 'text-teal-700' : isCleaning ? 'text-amber-600' : 'text-emerald-600'}`} />
-                  </div>
-                  <div className="font-mono font-bold text-xs">{b.bedNumber}</div>
-                  <div className="text-3xs text-slate-400 truncate">{b.bedType}</div>
-                </div>
-
-                {bedBoard && (
-                  <div className="mt-1">
-                    <span
-                      className={`text-3xs font-semibold px-1 py-0.5 rounded ${
-                        hasCritical
-                          ? 'bg-rose-600 text-white'
-                          : vitalsOverdue
-                            ? 'bg-orange-100 text-orange-900'
-                            : 'bg-emerald-50 text-emerald-800'
-                      }`}
-                      title={
-                        bedBoard.lastVitalsAt
-                          ? `Last vitals ${new Date(bedBoard.lastVitalsAt).toLocaleString()}`
-                          : 'No vitals recorded'
-                      }
-                    >
-                      {hasCritical
-                        ? '⚠ CRITICAL'
-                        : vitalsOverdue
-                          ? 'Vitals due'
-                          : 'Vitals ok'}
-                    </span>
-                  </div>
-                )}
-
-                <div className="mt-2 pt-1 border-t border-slate-100">
-                  {occupant ? (
-                    <button
-                      onClick={() => {
-                        setSelectedPatient(occupant);
-                        setIsJourneyModalOpen(true);
-                      }}
-                      className="text-2xs font-semibold text-teal-900 hover:underline block truncate w-full"
-                    >
-                      {occupant.firstName} {occupant.lastName[0]}.
-                    </button>
-                  ) : isCleaning ? (
-                    <button
-                      onClick={() => handleReleaseBed(b)}
-                      title="Terminal cleaning complete — return bed to service"
-                      className="w-full text-3xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 rounded px-1.5 py-1 transition-colors truncate"
-                    >
-                      Mark Clean → Available
-                    </button>
-                  ) : (
-                    <span className={`text-3xs font-medium uppercase tracking-wider ${
-                      isCleaning ? 'text-amber-700' : 'text-emerald-700'
-                    }`}>
-                      {b.status}
-                    </span>
+              return (
+                <div
+                  key={b.id}
+                  className={`relative p-3 rounded-xl border text-center transition-all flex flex-col justify-between ${
+                    isOccupied
+                      ? 'border-teal-700 bg-teal-50/40 text-teal-950'
+                      : isCleaning
+                        ? 'border-amber-400 bg-amber-50/50 text-amber-900'
+                        : 'border-slate-200 bg-white hover:border-emerald-500 text-slate-700'
+                  }`}
+                >
+                  {(canUpdateBed || (canDeleteBed && !isOccupied)) && (
+                    <div className="absolute right-1 top-1 flex items-center gap-0.5">
+                      {canUpdateBed && (
+                        <button
+                          onClick={() => openBedEdit(b)}
+                          title={`Edit bed ${b.bedNumber}`}
+                          className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+                      {canDeleteBed && !isOccupied && (
+                        <button
+                          onClick={() => void handleDeleteBed(b)}
+                          title={`Delete bed ${b.bedNumber}`}
+                          className="rounded p-1 text-slate-400 hover:bg-white hover:text-rose-700"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   )}
+
+                  <div>
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <BedDouble
+                        className={`w-4 h-4 ${isOccupied ? 'text-teal-700' : isCleaning ? 'text-amber-600' : 'text-emerald-600'}`}
+                      />
+                    </div>
+                    <div className="font-mono font-bold text-xs">{b.bedNumber}</div>
+                    <div className="text-3xs text-slate-400 truncate">{b.bedType}</div>
+                  </div>
+
+                  {bedBoard && (
+                    <div className="mt-1">
+                      <span
+                        className={`text-3xs font-semibold px-1 py-0.5 rounded ${
+                          hasCritical
+                            ? 'bg-rose-600 text-white'
+                            : vitalsOverdue
+                              ? 'bg-orange-100 text-orange-900'
+                              : 'bg-emerald-50 text-emerald-800'
+                        }`}
+                        title={
+                          bedBoard.lastVitalsAt
+                            ? `Last vitals ${new Date(bedBoard.lastVitalsAt).toLocaleString()}`
+                            : 'No vitals recorded'
+                        }
+                      >
+                        {hasCritical ? '⚠ CRITICAL' : vitalsOverdue ? 'Vitals due' : 'Vitals ok'}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="mt-2 pt-1 border-t border-slate-100">
+                    {occupant ? (
+                      <button
+                        onClick={() => {
+                          setSelectedPatient(occupant);
+                          setIsJourneyModalOpen(true);
+                        }}
+                        className="text-2xs font-semibold text-teal-900 hover:underline block truncate w-full"
+                      >
+                        {occupant.firstName} {occupant.lastName[0]}.
+                      </button>
+                    ) : isCleaning ? (
+                      <button
+                        onClick={() => handleReleaseBed(b)}
+                        title="Terminal cleaning complete — return bed to service"
+                        className="w-full text-3xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 rounded px-1.5 py-1 transition-colors truncate"
+                      >
+                        Mark Clean → Available
+                      </button>
+                    ) : (
+                      <span
+                        className={`text-3xs font-medium uppercase tracking-wider ${
+                          isCleaning ? 'text-amber-700' : 'text-emerald-700'
+                        }`}
+                      >
+                        {b.status}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
 
@@ -824,7 +834,9 @@ export const InpatientModule: React.FC = () => {
           <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
             Active Hospital Inpatient Roster ({admissions.length})
           </h2>
-          <span className="text-2xs text-slate-400 font-mono">Daily Inpatient Chargeable Ledger</span>
+          <span className="text-2xs text-slate-400 font-mono">
+            Daily Inpatient Chargeable Ledger
+          </span>
         </div>
 
         <div className="overflow-x-auto">
@@ -842,9 +854,9 @@ export const InpatientModule: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 font-mono">
               {admissions.map((adm) => {
-                const patient = patients.find(p => p.id === adm.patientId);
-                const ward = wards.find(w => w.id === adm.wardId);
-                const bed = beds.find(b => b.id === adm.bedId);
+                const patient = patients.find((p) => p.id === adm.patientId);
+                const ward = wards.find((w) => w.id === adm.wardId);
+                const bed = beds.find((b) => b.id === adm.bedId);
 
                 return (
                   <tr key={adm.id} className="hover:bg-slate-50/70">
@@ -871,7 +883,9 @@ export const InpatientModule: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{adm.admissionDate}</td>
-                    <td className="px-4 py-3 font-sans text-slate-700">{adm.admittingDoctor || 'Consultant'}</td>
+                    <td className="px-4 py-3 font-sans text-slate-700">
+                      {adm.admittingDoctor || 'Consultant'}
+                    </td>
                     <td className="px-4 py-3 font-sans text-slate-700 max-w-xs truncate">
                       {adm.provisionalDiagnosis}
                     </td>
@@ -884,7 +898,9 @@ export const InpatientModule: React.FC = () => {
                       <button
                         onClick={() => {
                           setDischargeTarget(adm);
-                          setDischargeSummary(`Patient condition stabilized on medical management. Vitals normal. Discharge medications dispensed.`);
+                          setDischargeSummary(
+                            `Patient condition stabilized on medical management. Vitals normal. Discharge medications dispensed.`,
+                          );
                         }}
                         className="px-2.5 py-1 text-2xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded transition-colors flex items-center gap-1 ml-auto"
                       >
@@ -906,13 +922,15 @@ export const InpatientModule: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900">Inpatient Admission Workflow</h3>
-              <p className="text-2xs text-slate-500">Allocate patient to ward, allocate bed, and commence bed charges.</p>
+              <p className="text-2xs text-slate-500">
+                Allocate patient to ward, allocate bed, and commence bed charges.
+              </p>
             </div>
 
             {activeWards.length === 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-900">
-                This facility has no active ward, so there is nowhere to admit a
-                patient. {canCreateWard
+                This facility has no active ward, so there is nowhere to admit a patient.{' '}
+                {canCreateWard
                   ? 'Close this dialog and use “Add Ward” on the board.'
                   : 'Ask a facility administrator to create a ward.'}
               </div>
@@ -920,8 +938,7 @@ export const InpatientModule: React.FC = () => {
 
             {activeWards.length > 0 && availableBedsForForm.length === 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-900">
-                The selected ward has no available bed. Add beds to it, or choose
-                another ward.
+                The selected ward has no available bed. Add beds to it, or choose another ward.
               </div>
             )}
 
@@ -934,7 +951,7 @@ export const InpatientModule: React.FC = () => {
                   onChange={(e) => setAdmitForm({ ...admitForm, patientId: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
-                  {patients.map(p => (
+                  {patients.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.firstName} {p.lastName} ({p.mrn} · {p.payerType})
                     </option>
@@ -950,9 +967,9 @@ export const InpatientModule: React.FC = () => {
                     value={admitForm.wardId}
                     onChange={(e) => {
                       const wid = e.target.value;
-                      const wardBeds = beds.filter(b => b.wardId === Number(wid));
-                      const avail = wardBeds.find(x => x.status === 'Available');
-                      setAdmitForm(prev => ({
+                      const wardBeds = beds.filter((b) => b.wardId === Number(wid));
+                      const avail = wardBeds.find((x) => x.status === 'Available');
+                      setAdmitForm((prev) => ({
                         ...prev,
                         wardId: wid,
                         bedId: avail ? avail.id.toString() : '',
@@ -960,11 +977,11 @@ export const InpatientModule: React.FC = () => {
                     }}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   >
-                    {activeWards.length === 0 && (
-                      <option value="">No wards available</option>
-                    )}
-                    {activeWards.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                    {activeWards.length === 0 && <option value="">No wards available</option>}
+                    {activeWards.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.code})
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -979,12 +996,13 @@ export const InpatientModule: React.FC = () => {
                     {availableBedsForForm.length === 0 && (
                       <option value="">No available bed</option>
                     )}
-                    {availableBedsForForm.map(b => (
+                    {availableBedsForForm.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.bedNumber} ({b.bedType}
                         {b.dailyCharge === null
                           ? ' · rate not set'
-                          : ` - KES ${Number(b.dailyCharge).toLocaleString()}/d`})
+                          : ` - KES ${Number(b.dailyCharge).toLocaleString()}/d`}
+                        )
                       </option>
                     ))}
                   </select>
@@ -993,7 +1011,9 @@ export const InpatientModule: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Admission Date & Time</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Admission Date & Time
+                  </label>
                   <input
                     type="text"
                     value={admitForm.admissionDate}
@@ -1016,19 +1036,25 @@ export const InpatientModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Provisional Diagnosis *</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Provisional Diagnosis *
+                </label>
                 <input
                   type="text"
                   required
                   value={admitForm.provisionalDiagnosis}
-                  onChange={(e) => setAdmitForm({ ...admitForm, provisionalDiagnosis: e.target.value })}
+                  onChange={(e) =>
+                    setAdmitForm({ ...admitForm, provisionalDiagnosis: e.target.value })
+                  }
                   placeholder="Enter the working diagnosis"
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 />
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Nursing Care & Treatment Instructions</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Nursing Care & Treatment Instructions
+                </label>
                 <textarea
                   rows={2}
                   value={admitForm.nursingNotes}
@@ -1064,29 +1090,44 @@ export const InpatientModule: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Inpatient Clinical Discharge & Clearance</h3>
+              <h3 className="text-sm font-bold text-slate-900">
+                Inpatient Clinical Discharge & Clearance
+              </h3>
               <p className="text-2xs text-slate-500">
-                Patient: <strong className="text-slate-800">{getPatientName(dischargeTarget.patientId)}</strong>
+                Patient:{' '}
+                <strong className="text-slate-800">
+                  {getPatientName(dischargeTarget.patientId)}
+                </strong>
               </p>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Discharge Disposition</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Discharge Disposition
+                </label>
                 <select
                   value={dischargeType}
                   onChange={(e) => setDischargeType(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
-                  <option value="Routine Discharge (Recovered / Improved)">Routine Discharge (Recovered / Improved)</option>
-                  <option value="Discharge on Request / Against Medical Advice (DAMA)">Discharge on Request / DAMA</option>
-                  <option value="Transferred to Higher Level Facility">Transferred to Level 5/6 Facility</option>
+                  <option value="Routine Discharge (Recovered / Improved)">
+                    Routine Discharge (Recovered / Improved)
+                  </option>
+                  <option value="Discharge on Request / Against Medical Advice (DAMA)">
+                    Discharge on Request / DAMA
+                  </option>
+                  <option value="Transferred to Higher Level Facility">
+                    Transferred to Level 5/6 Facility
+                  </option>
                   <option value="Deceased">Deceased</option>
                 </select>
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Discharge Summary & Medication Instructions *</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Discharge Summary & Medication Instructions *
+                </label>
                 <textarea
                   rows={3}
                   value={dischargeSummary}
@@ -1098,7 +1139,9 @@ export const InpatientModule: React.FC = () => {
 
               <div className="p-3 rounded-lg bg-teal-50 border border-teal-200 text-2xs text-teal-900 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-teal-700 shrink-0" />
-                <span>Bed will automatically be freed and scheduled for housekeeping terminal cleaning.</span>
+                <span>
+                  Bed will automatically be freed and scheduled for housekeeping terminal cleaning.
+                </span>
               </div>
             </div>
 
@@ -1129,8 +1172,8 @@ export const InpatientModule: React.FC = () => {
                 {wardForm.id === null ? 'Create a ward' : `Edit ward ${wardForm.code}`}
               </h3>
               <p className="text-2xs text-slate-500">
-                {currentFacility?.name ?? 'This facility'} · a ward's capacity is
-                counted from the beds you add to it.
+                {currentFacility?.name ?? 'This facility'} · a ward's capacity is counted from the
+                beds you add to it.
               </p>
             </div>
 
@@ -1196,7 +1239,9 @@ export const InpatientModule: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   >
                     {GENDER_ALLOCATIONS.map((option) => (
-                      <option key={option} value={option}>{option}</option>
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -1212,8 +1257,8 @@ export const InpatientModule: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
                   />
                   <p className="mt-1 text-3xs text-slate-500">
-                    Shown on the board only. Inpatient billing prices from
-                    Finance → Service tariffs.
+                    Shown on the board only. Inpatient billing prices from Finance → Service
+                    tariffs.
                   </p>
                 </div>
               </div>
@@ -1234,11 +1279,7 @@ export const InpatientModule: React.FC = () => {
                   disabled={setupBusy}
                   className="px-4 py-1.5 bg-teal-700 text-white rounded-md font-semibold hover:bg-teal-800 disabled:opacity-50"
                 >
-                  {setupBusy
-                    ? 'Saving…'
-                    : wardForm.id === null
-                      ? 'Create ward'
-                      : 'Save changes'}
+                  {setupBusy ? 'Saving…' : wardForm.id === null ? 'Create ward' : 'Save changes'}
                 </button>
               </div>
             </form>
@@ -1251,12 +1292,10 @@ export const InpatientModule: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">
-                Add beds to {selectedWard.name}
-              </h3>
+              <h3 className="text-sm font-bold text-slate-900">Add beds to {selectedWard.name}</h3>
               <p className="text-2xs text-slate-500">
-                Beds are numbered from the prefix and the first number, so a
-                twenty-bed ward is one form, not twenty.
+                Beds are numbered from the prefix and the first number, so a twenty-bed ward is one
+                form, not twenty.
               </p>
             </div>
 
@@ -1309,8 +1348,11 @@ export const InpatientModule: React.FC = () => {
                         return 'Enter how many beds to preview the numbers.';
                       }
 
-                      const preview = Array.from({ length: Math.min(total, 5) }, (_, i) =>
-                        `${bedsForm.prefix.trim().toUpperCase()}-${String(start + i).padStart(2, '0')}`);
+                      const preview = Array.from(
+                        { length: Math.min(total, 5) },
+                        (_, i) =>
+                          `${bedsForm.prefix.trim().toUpperCase()}-${String(start + i).padStart(2, '0')}`,
+                      );
 
                       return total > 5
                         ? `Will create ${preview.join(', ')}, … ${bedsForm.prefix.trim().toUpperCase()}-${String(start + total - 1).padStart(2, '0')} (${total} beds)`
@@ -1337,7 +1379,9 @@ export const InpatientModule: React.FC = () => {
                   </datalist>
                 </div>
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Daily charge (KES)</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Daily charge (KES)
+                  </label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -1382,8 +1426,7 @@ export const InpatientModule: React.FC = () => {
                 Edit bed {bedEditTarget.bedNumber}
               </h3>
               <p className="text-2xs text-slate-500">
-                Occupancy is never set here — only admitting a patient marks a
-                bed occupied.
+                Occupancy is never set here — only admitting a patient marks a bed occupied.
               </p>
             </div>
 
@@ -1416,7 +1459,9 @@ export const InpatientModule: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Daily charge (KES)</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Daily charge (KES)
+                  </label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -1470,7 +1515,6 @@ export const InpatientModule: React.FC = () => {
         board={board}
         onRefresh={triggerRefresh}
       />
-
     </div>
   );
 };

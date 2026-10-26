@@ -70,25 +70,22 @@ function routeBlock(startMarker: string, length = 2200): string {
 
 function testGuards(): void {
   const guarded: Array<[string, string]> = [
-    ['app.get(\n    \'/api/theatre-cases\'', 'clinical.read'],
-    ['app.post(\n    \'/api/theatre-cases\'', 'clinical.create'],
-    ['app.put(\n    \'/api/theatre-cases/:id\'', 'clinical.update'],
-    ['app.get(\n    \'/api/radiology-orders\'', 'clinical.read'],
-    ['app.post(\n    \'/api/radiology-orders\'', 'clinical.create'],
-    ['app.put(\n    \'/api/radiology-orders/:id/report\'', 'clinical.update'],
-    ['app.get(\n    \'/api/suppliers\'', 'procurement.read'],
-    ['app.get(\n    \'/api/purchase-orders\'', 'procurement.read'],
-    ['app.post(\n    \'/api/purchase-orders\'', 'procurement.create'],
+    ["app.get(\n    '/api/theatre-cases'", 'clinical.read'],
+    ["app.post(\n    '/api/theatre-cases'", 'clinical.create'],
+    ["app.put(\n    '/api/theatre-cases/:id'", 'clinical.update'],
+    ["app.get(\n    '/api/radiology-orders'", 'clinical.read'],
+    ["app.post(\n    '/api/radiology-orders'", 'clinical.create'],
+    ["app.put(\n    '/api/radiology-orders/:id/report'", 'clinical.update'],
+    ["app.get(\n    '/api/suppliers'", 'procurement.read'],
+    ["app.get(\n    '/api/purchase-orders'", 'procurement.read'],
+    ["app.post(\n    '/api/purchase-orders'", 'procurement.create'],
   ];
 
   for (const [marker, permission] of guarded) {
     const block = routeBlock(marker, 400);
 
     assert(block.length > 0, `Route ${marker.split('\n')[1]} is present`);
-    assert(
-      block.includes(permission),
-      `Route ${marker.split('\n')[1]} requires ${permission}`,
-    );
+    assert(block.includes(permission), `Route ${marker.split('\n')[1]} requires ${permission}`);
   }
 }
 
@@ -115,13 +112,9 @@ function testScoping(): void {
     );
   }
 
+  assert(app.includes('const requireScopedFacility = async'), 'The scope helper exists');
   assert(
-    app.includes('const requireScopedFacility = async'),
-    'The scope helper exists',
-  );
-  assert(
-    app.includes('queries.getFacilityByIdScoped(') &&
-      app.includes('resolveFacilityScope('),
+    app.includes('queries.getFacilityByIdScoped(') && app.includes('resolveFacilityScope('),
     'The helper re-reads the facility through the scoped query',
   );
 
@@ -137,8 +130,7 @@ function testScoping(): void {
     const block = routeBlock(marker, 1800);
 
     assert(
-      /facilityId:\s*facility\.id/.test(block) &&
-        /tenantId:\s*facility\.tenantId/.test(block),
+      /facilityId:\s*facility\.id/.test(block) && /tenantId:\s*facility\.tenantId/.test(block),
       `${marker.split('\n')[1]} overwrites facility and tenant from the session`,
     );
   }
@@ -191,10 +183,7 @@ function testNoFacilityFallback(): void {
       !/tenantId:\s*current(?:Facility|Tenant)\?\.\w+\s*\|\|\s*1/.test(text),
       `${name} does not file records against tenant 1`,
     );
-    assert(
-      text.includes('currentFacility.id'),
-      `${name} uses the selected facility explicitly`,
-    );
+    assert(text.includes('currentFacility.id'), `${name} uses the selected facility explicitly`);
   }
 }
 
@@ -216,15 +205,11 @@ function testPublicHealthHonesty(): void {
   ];
 
   for (const phrase of forbidden) {
-    assert(
-      !text.includes(phrase),
-      `The screen no longer says "${phrase}"`,
-    );
+    assert(!text.includes(phrase), `The screen no longer says "${phrase}"`);
   }
 
   assert(
-    text.includes('not a national submission') ||
-      text.includes('Local record only'),
+    text.includes('not a national submission') || text.includes('Local record only'),
     'The screen states that a report is not a national submission',
   );
 
@@ -238,10 +223,7 @@ function testPublicHealthHonesty(): void {
     'The MOH 705 section shows the server refusal instead of an empty table',
   );
 
-  assert(
-    text.includes('currentEpiWeek'),
-    'The reporting period is computed, not hard-coded',
-  );
+  assert(text.includes('currentEpiWeek'), 'The reporting period is computed, not hard-coded');
 
   assert(
     text.includes('Promise.allSettled'),

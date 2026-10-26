@@ -139,11 +139,7 @@ async function resolveFacility(
   const facility = await getFacilityByIdScoped(context, facilityId);
 
   if (!facility) {
-    throw new InventoryDomainError(
-      'FACILITY_NOT_FOUND',
-      'Facility not found.',
-      404,
-    );
+    throw new InventoryDomainError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
   }
 
   return { facilityId: facility.id, tenantId: facility.tenantId };
@@ -165,10 +161,7 @@ function parsePositiveInt(value: unknown, label: string, max: number): number {
   }
 
   if (parsed > max) {
-    throw new InventoryDomainError(
-      'INVALID_INPUT',
-      `${label} must not exceed ${max}.`,
-    );
+    throw new InventoryDomainError('INVALID_INPUT', `${label} must not exceed ${max}.`);
   }
 
   return parsed;
@@ -180,10 +173,7 @@ function parseCost(value: unknown): string {
   const parsed = typeof value === 'number' ? value : Number(String(value));
 
   if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new InventoryDomainError(
-      'INVALID_INPUT',
-      'Cost per unit must be zero or more.',
-    );
+    throw new InventoryDomainError('INVALID_INPUT', 'Cost per unit must be zero or more.');
   }
 
   return parsed.toFixed(2);
@@ -201,8 +191,7 @@ export async function receiveBatchScoped(
 ) {
   const { facilityId } = await resolveFacility(context, requestedFacilityId);
 
-  const batchNumber =
-    typeof input.batchNumber === 'string' ? input.batchNumber.trim() : '';
+  const batchNumber = typeof input.batchNumber === 'string' ? input.batchNumber.trim() : '';
 
   if (batchNumber.length === 0 || batchNumber.length > 64) {
     throw new InventoryDomainError(
@@ -211,8 +200,7 @@ export async function receiveBatchScoped(
     );
   }
 
-  const expiryRaw =
-    typeof input.expiryDate === 'string' ? input.expiryDate.trim() : '';
+  const expiryRaw = typeof input.expiryDate === 'string' ? input.expiryDate.trim() : '';
 
   const expiry = parseIsoDate(expiryRaw);
 
@@ -242,10 +230,7 @@ export async function receiveBatchScoped(
     .select()
     .from(schema.inventoryItems)
     .where(
-      and(
-        eq(schema.inventoryItems.id, itemId),
-        eq(schema.inventoryItems.facilityId, facilityId),
-      ),
+      and(eq(schema.inventoryItems.id, itemId), eq(schema.inventoryItems.facilityId, facilityId)),
     )
     .limit(1);
 
@@ -270,10 +255,7 @@ export async function receiveBatchScoped(
         costPerUnit,
       })
       .onConflictDoUpdate({
-        target: [
-          schema.inventoryBatches.itemId,
-          schema.inventoryBatches.batchNumber,
-        ],
+        target: [schema.inventoryBatches.itemId, schema.inventoryBatches.batchNumber],
         set: {
           quantityRemaining: sql`${schema.inventoryBatches.quantityRemaining} + ${quantity}`,
           costPerUnit,
@@ -297,8 +279,7 @@ export async function receiveBatchScoped(
       },
       item: updatedItem,
       received: quantity,
-      expiryMismatch:
-        batch && batch.expiryDate !== expiryRaw ? batch.expiryDate : null,
+      expiryMismatch: batch && batch.expiryDate !== expiryRaw ? batch.expiryDate : null,
     };
   });
 }
@@ -337,10 +318,7 @@ export async function getBatchesScoped(
       costPerUnit: schema.inventoryBatches.costPerUnit,
     })
     .from(schema.inventoryBatches)
-    .innerJoin(
-      schema.inventoryItems,
-      eq(schema.inventoryBatches.itemId, schema.inventoryItems.id),
-    )
+    .innerJoin(schema.inventoryItems, eq(schema.inventoryBatches.itemId, schema.inventoryItems.id))
     .where(and(...conditions))
     .orderBy(asc(schema.inventoryBatches.expiryDate), asc(schema.inventoryBatches.id));
 
@@ -497,11 +475,7 @@ export async function dispenseFefoScoped(
   );
 
   const patientId = parsePositiveInt(input.patientId, 'Patient ID', 2_147_483_647);
-  const quantity = parsePositiveInt(
-    input.quantityDispensed,
-    'Quantity dispensed',
-    100_000,
-  );
+  const quantity = parsePositiveInt(input.quantityDispensed, 'Quantity dispensed', 100_000);
 
   const dispensedBy =
     typeof input.dispensedBy === 'string' && input.dispensedBy.trim()
@@ -515,18 +489,14 @@ export async function dispenseFefoScoped(
   }
 
   const itemId =
-    typeof input.itemId === 'number' && Number.isSafeInteger(input.itemId)
-      ? input.itemId
-      : null;
+    typeof input.itemId === 'number' && Number.isSafeInteger(input.itemId) ? input.itemId : null;
 
   const prescriptionId =
-    typeof input.prescriptionId === 'number' &&
-    Number.isSafeInteger(input.prescriptionId)
+    typeof input.prescriptionId === 'number' && Number.isSafeInteger(input.prescriptionId)
       ? input.prescriptionId
       : null;
 
-  const notes =
-    typeof input.notes === 'string' ? input.notes.slice(0, 2000) : null;
+  const notes = typeof input.notes === 'string' ? input.notes.slice(0, 2000) : null;
 
   const today = todayKey();
 
@@ -543,7 +513,7 @@ export async function dispenseFefoScoped(
      * result reports. TypeScript agrees (TS2454 without it); the
      * lint rule cannot see the branch.
      */
-     
+
     let allocations: DispenseResult['allocations'] = [];
     let stockTracking: 'FEFO' | 'untracked' = 'untracked';
     let stockAfter: number | null = null;
@@ -561,11 +531,7 @@ export async function dispenseFefoScoped(
         .limit(1);
 
       if (!found) {
-        throw new InventoryDomainError(
-          'ITEM_NOT_FOUND',
-          'Stock item not found.',
-          404,
-        );
+        throw new InventoryDomainError('ITEM_NOT_FOUND', 'Stock item not found.', 404);
       }
 
       item = found;
@@ -693,10 +659,7 @@ export async function getItemBatchStockScoped(
       quantityRemaining: schema.inventoryBatches.quantityRemaining,
     })
     .from(schema.inventoryBatches)
-    .innerJoin(
-      schema.inventoryItems,
-      eq(schema.inventoryBatches.itemId, schema.inventoryItems.id),
-    )
+    .innerJoin(schema.inventoryItems, eq(schema.inventoryBatches.itemId, schema.inventoryItems.id))
     .where(where);
 
   const today = todayKey();

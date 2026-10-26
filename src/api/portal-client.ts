@@ -77,9 +77,7 @@ async function portalFetch<T>(path: string, options: RequestInit = {}): Promise<
   });
 
   if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({}) as Record<string, unknown>);
+    const body = await response.json().catch(() => ({}) as Record<string, unknown>);
 
     if (response.status === 401) {
       clearPortalToken();
@@ -279,10 +277,7 @@ export async function activatePortalAccount(input: {
   });
 }
 
-export async function loginPortal(input: {
-  identifier: string;
-  password: string;
-}): Promise<{
+export async function loginPortal(input: { identifier: string; password: string }): Promise<{
   success: boolean;
   sessionToken: string;
   expiresAt: string;
@@ -372,10 +367,10 @@ export const portalApi = {
   card: () => portalFetch<{ svg: string; issuedAt: string | null }>('/card'),
 
   issueCard: () =>
-    portalFetch<{ success: boolean; svg: string; issuedAt: string; message: string }>(
-      '/card',
-      { method: 'POST', body: '{}' },
-    ),
+    portalFetch<{ success: boolean; svg: string; issuedAt: string; message: string }>('/card', {
+      method: 'POST',
+      body: '{}',
+    }),
 
   requestCorrection: (input: { recordType: string; detail: string }) =>
     portalFetch<{ success: boolean; requestId: string; message: string }>(
@@ -513,9 +508,7 @@ export const portalAdminApi = {
 
     const suffix = query.toString();
 
-    return staffFetch<PortalAuditResponse>(
-      `/api/portal/admin/audit${suffix ? `?${suffix}` : ''}`,
-    );
+    return staffFetch<PortalAuditResponse>(`/api/portal/admin/audit${suffix ? `?${suffix}` : ''}`);
   },
 
   risks: () =>
@@ -526,9 +519,7 @@ export const portalAdminApi = {
     }>('/api/portal/admin/risks'),
 
   getSettings: () =>
-    staffFetch<{ facilityId: number; policy: PortalPolicy }>(
-      '/api/portal/admin/settings',
-    ),
+    staffFetch<{ facilityId: number; policy: PortalPolicy }>('/api/portal/admin/settings'),
 
   saveSettings: (policy: Partial<PortalPolicy>) =>
     staffFetch<{ success: boolean; policy: PortalPolicy }>('/api/portal/admin/settings', {

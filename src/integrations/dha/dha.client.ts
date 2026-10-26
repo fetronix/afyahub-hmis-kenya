@@ -14,11 +14,7 @@
  * service-account token.
  */
 
-import {
-  DhaError,
-  safeProviderMessage,
-  statusToCode,
-} from './dha.errors.ts';
+import { DhaError, safeProviderMessage, statusToCode } from './dha.errors.ts';
 
 import type { DhaConfig, DhaMode } from './dha.config.ts';
 import type { DhaTokenResponse } from './dha.contracts.ts';
@@ -74,8 +70,7 @@ function tokenCacheKey(config: DhaConfig): string {
 
 function requestId(): string {
   return (
-    globalThis.crypto?.randomUUID?.() ??
-    `req-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+    globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   );
 }
 
@@ -222,15 +217,12 @@ async function rawRequest<T>(
 
         lastError = error;
       } else {
-        const aborted =
-          error instanceof Error && error.name === 'AbortError';
+        const aborted = error instanceof Error && error.name === 'AbortError';
 
         lastError = new DhaError(
           aborted ? 'TIMEOUT' : 'NETWORK_ERROR',
           request.operation,
-          aborted
-            ? 'The DHA request timed out.'
-            : 'The DHA service could not be reached.',
+          aborted ? 'The DHA request timed out.' : 'The DHA service could not be reached.',
           { retryable: true },
         );
 
@@ -265,10 +257,7 @@ async function rawRequest<T>(
   );
 }
 
-async function audit(
-  context: DhaCallContext,
-  event: DhaAuditEvent,
-): Promise<void> {
+async function audit(context: DhaCallContext, event: DhaAuditEvent): Promise<void> {
   if (!context.onAudit) return;
 
   try {
@@ -289,10 +278,7 @@ async function audit(
  * expire. They are never written to disk, logged, or returned to a
  * caller outside this module.
  */
-export async function getAccessToken(
-  config: DhaConfig,
-  context: DhaCallContext,
-): Promise<string> {
+export async function getAccessToken(config: DhaConfig, context: DhaCallContext): Promise<string> {
   assertUsable(config);
 
   if (config.mode === 'mock') {
@@ -326,12 +312,9 @@ export async function getAccessToken(
   });
 
   if (!response?.access_token) {
-    throw new DhaError(
-      'AUTH_FAILED',
-      'auth.token',
-      'DHA did not return an access token.',
-      { retryable: false },
-    );
+    throw new DhaError('AUTH_FAILED', 'auth.token', 'DHA did not return an access token.', {
+      retryable: false,
+    });
   }
 
   const lifetimeMs = Math.max(0, (response.expires_in ?? 0) * 1000);

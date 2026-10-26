@@ -93,11 +93,7 @@ function invalid(fields: FieldError[]): never {
 }
 
 function notFound(what: string): never {
-  throw new MaternityDomainError(
-    'NOT_FOUND',
-    `${what} was not found.`,
-    404,
-  );
+  throw new MaternityDomainError('NOT_FOUND', `${what} was not found.`, 404);
 }
 
 /* ============================================================
@@ -111,11 +107,7 @@ async function facilityInScope(
   const parsed = Number(facilityId);
 
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new MaternityDomainError(
-      'FACILITY_REQUIRED',
-      'A valid facilityId is required.',
-      400,
-    );
+    throw new MaternityDomainError('FACILITY_REQUIRED', 'A valid facilityId is required.', 400);
   }
 
   /*
@@ -130,18 +122,11 @@ async function facilityInScope(
   return parsed;
 }
 
-async function patientInScope(
-  context: AuthorizationContext,
-  patientId: unknown,
-) {
+async function patientInScope(context: AuthorizationContext, patientId: unknown) {
   const parsed = Number(patientId);
 
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new MaternityDomainError(
-      'PATIENT_REQUIRED',
-      'A valid patientId is required.',
-      400,
-    );
+    throw new MaternityDomainError('PATIENT_REQUIRED', 'A valid patientId is required.', 400);
   }
 
   const [patient] = await db
@@ -160,18 +145,11 @@ async function patientInScope(
   return patient;
 }
 
-export async function resolvePregnancy(
-  context: AuthorizationContext,
-  pregnancyId: unknown,
-) {
+export async function resolvePregnancy(context: AuthorizationContext, pregnancyId: unknown) {
   const parsed = Number(pregnancyId);
 
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new MaternityDomainError(
-      'PREGNANCY_REQUIRED',
-      'A valid pregnancyId is required.',
-      400,
-    );
+    throw new MaternityDomainError('PREGNANCY_REQUIRED', 'A valid pregnancyId is required.', 400);
   }
 
   const [pregnancy] = await db
@@ -183,10 +161,7 @@ export async function resolvePregnancy(
   if (!pregnancy) notFound('The pregnancy record');
 
   /* Another facility's record answers the same way as a missing one. */
-  const facility = await getFacilityByIdScoped(
-    context,
-    pregnancy.facilityId,
-  ).catch(() => null);
+  const facility = await getFacilityByIdScoped(context, pregnancy.facilityId).catch(() => null);
 
   if (!facility || facility.tenantId !== pregnancy.tenantId) {
     notFound('The pregnancy record');
@@ -195,18 +170,11 @@ export async function resolvePregnancy(
   return pregnancy;
 }
 
-async function resolveLabour(
-  context: AuthorizationContext,
-  labourRecordId: unknown,
-) {
+async function resolveLabour(context: AuthorizationContext, labourRecordId: unknown) {
   const parsed = Number(labourRecordId);
 
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new MaternityDomainError(
-      'LABOUR_REQUIRED',
-      'A valid labourRecordId is required.',
-      400,
-    );
+    throw new MaternityDomainError('LABOUR_REQUIRED', 'A valid labourRecordId is required.', 400);
   }
 
   const [labour] = await db
@@ -217,10 +185,7 @@ async function resolveLabour(
 
   if (!labour) notFound('The labour record');
 
-  const facility = await getFacilityByIdScoped(
-    context,
-    labour.facilityId,
-  ).catch(() => null);
+  const facility = await getFacilityByIdScoped(context, labour.facilityId).catch(() => null);
 
   if (!facility || facility.tenantId !== labour.tenantId) {
     notFound('The labour record');
@@ -233,10 +198,7 @@ async function resolveLabour(
    INPUT HELPERS
    ============================================================ */
 
-function requireIsoDate(
-  value: unknown,
-  field: string,
-): string {
+function requireIsoDate(value: unknown, field: string): string {
   if (!isIsoDate(value)) {
     invalid([{ field, message: `${field} must be a valid date (YYYY-MM-DD).` }]);
   }
@@ -244,10 +206,7 @@ function requireIsoDate(
   return value.trim();
 }
 
-function optionalIsoDate(
-  value: unknown,
-  field: string,
-): string | null {
+function optionalIsoDate(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === '') return null;
 
   if (!isIsoDate(value)) {
@@ -257,10 +216,7 @@ function optionalIsoDate(
   return value.trim();
 }
 
-function optionalTimestamp(
-  value: unknown,
-  field: string,
-): string | null {
+function optionalTimestamp(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === '') return null;
 
   if (typeof value !== 'string' || Number.isNaN(new Date(value).getTime())) {
@@ -287,10 +243,7 @@ function optionalText(value: unknown, max = 2000): string | null {
   return trimmed.slice(0, max);
 }
 
-function collect<T>(
-  result: { value: T; error?: FieldError },
-  errors: FieldError[],
-): T {
+function collect<T>(result: { value: T; error?: FieldError }, errors: FieldError[]): T {
   if (result.error) {
     errors.push(result.error);
     return null as unknown as T;
@@ -338,10 +291,7 @@ export type BookPregnancyInput = {
   riskFactors?: string | null;
 };
 
-export async function bookPregnancy(
-  context: AuthorizationContext,
-  input: BookPregnancyInput,
-) {
+export async function bookPregnancy(context: AuthorizationContext, input: BookPregnancyInput) {
   const patient = await patientInScope(context, input.patientId);
   const facilityId = await facilityInScope(context, input.facilityId);
 
@@ -349,10 +299,7 @@ export async function bookPregnancy(
 
   const bookedAt = requireIsoDate(input.bookedAt, 'Booked date');
   const lmpDate = optionalIsoDate(input.lmpDate, 'Last menstrual period');
-  const eddBasis = collect(
-    oneOf(input.eddBasis ?? 'LMP', 'EDD basis', EDD_BASES),
-    errors,
-  ) ?? 'LMP';
+  const eddBasis = collect(oneOf(input.eddBasis ?? 'LMP', 'EDD basis', EDD_BASES), errors) ?? 'LMP';
 
   let eddDate = optionalIsoDate(input.eddDate, 'Expected delivery date');
 
@@ -407,23 +354,14 @@ export async function bookPregnancy(
     ]);
   }
 
-  const gravida = collect(
-    numberInRange(input.gravida, 'Gravida', 0, 30),
-    errors,
-  );
+  const gravida = collect(numberInRange(input.gravida, 'Gravida', 0, 30), errors);
   const para = collect(numberInRange(input.para, 'Para', 0, 30), errors);
-  const abortions = collect(
-    numberInRange(input.abortions, 'Abortions', 0, 30),
-    errors,
-  );
+  const abortions = collect(numberInRange(input.abortions, 'Abortions', 0, 30), errors);
   const livingChildren = collect(
     numberInRange(input.livingChildren, 'Living children', 0, 30),
     errors,
   );
-  const heightCm = collect(
-    numberInRange(input.heightCm, 'Height', 50, 250, 'cm'),
-    errors,
-  );
+  const heightCm = collect(numberInRange(input.heightCm, 'Height', 50, 250, 'cm'), errors);
   const haemoglobinGdl = collect(
     numberInRange(input.haemoglobinGdl, 'Haemoglobin', 2, 25, 'g/dL'),
     errors,
@@ -431,12 +369,7 @@ export async function bookPregnancy(
 
   if (errors.length > 0) invalid(errors);
 
-  if (
-    gravida !== null &&
-    para !== null &&
-    abortions !== null &&
-    para + abortions > gravida
-  ) {
+  if (gravida !== null && para !== null && abortions !== null && para + abortions > gravida) {
     invalid([
       {
         field: 'gravida',
@@ -464,8 +397,7 @@ export async function bookPregnancy(
         heightCm: heightCm === null ? null : String(heightCm),
         bloodGroup: optionalText(input.bloodGroup, 8),
         rhesus: optionalText(input.rhesus, 16),
-        haemoglobinGdl:
-          haemoglobinGdl === null ? null : String(haemoglobinGdl),
+        haemoglobinGdl: haemoglobinGdl === null ? null : String(haemoglobinGdl),
         riskFactors: optionalText(input.riskFactors, 4000),
         status: 'Active',
         createdBy: context.userId,
@@ -503,9 +435,7 @@ export async function listPregnancies(
     const facilityId = await facilityInScope(context, query.facilityId);
     conditions.push(eq(schema.maternityPregnancies.facilityId, facilityId));
   } else if (context.facilityId) {
-    conditions.push(
-      eq(schema.maternityPregnancies.facilityId, context.facilityId),
-    );
+    conditions.push(eq(schema.maternityPregnancies.facilityId, context.facilityId));
   }
 
   if (query.patientId !== undefined) {
@@ -518,9 +448,7 @@ export async function listPregnancies(
 
     if (status.error) invalid([status.error]);
 
-    conditions.push(
-      eq(schema.maternityPregnancies.status, status.value!),
-    );
+    conditions.push(eq(schema.maternityPregnancies.status, status.value!));
   }
 
   const limit = Math.min(Math.max(Number(query.limit) || 100, 1), 200);
@@ -537,10 +465,7 @@ export async function listPregnancies(
       },
     })
     .from(schema.maternityPregnancies)
-    .innerJoin(
-      schema.patients,
-      eq(schema.patients.id, schema.maternityPregnancies.patientId),
-    )
+    .innerJoin(schema.patients, eq(schema.patients.id, schema.maternityPregnancies.patientId))
     .where(and(...conditions))
     .orderBy(desc(schema.maternityPregnancies.bookedAt))
     .limit(limit);
@@ -555,10 +480,7 @@ export async function listPregnancies(
   }));
 }
 
-export async function getPregnancy(
-  context: AuthorizationContext,
-  pregnancyId: number,
-) {
+export async function getPregnancy(context: AuthorizationContext, pregnancyId: number) {
   const pregnancy = await resolvePregnancy(context, pregnancyId);
 
   const visits = await db
@@ -721,10 +643,7 @@ export type AncVisitInput = {
   nextVisitDate?: string | null;
 };
 
-export async function recordAncVisit(
-  context: AuthorizationContext,
-  input: AncVisitInput,
-) {
+export async function recordAncVisit(context: AuthorizationContext, input: AncVisitInput) {
   const pregnancy = await resolvePregnancy(context, input.pregnancyId);
 
   if (pregnancy.status !== 'Active') {
@@ -747,21 +666,11 @@ export async function recordAncVisit(
   const computed = gestationAt(pregnancy.eddDate, visitDate);
 
   const gestationWeeks = collect(
-    numberInRange(
-      input.gestationWeeks ?? computed?.weeks,
-      'Gestation weeks',
-      0,
-      45,
-    ),
+    numberInRange(input.gestationWeeks ?? computed?.weeks, 'Gestation weeks', 0, 45),
     errors,
   );
   const gestationDays = collect(
-    numberInRange(
-      input.gestationDays ?? computed?.days,
-      'Gestation days',
-      0,
-      6,
-    ),
+    numberInRange(input.gestationDays ?? computed?.days, 'Gestation days', 0, 6),
     errors,
   );
 
@@ -773,12 +682,7 @@ export async function recordAncVisit(
     pulseBpm: numberInRange(input.pulseBpm, 'Pulse', 20, 250),
     temperatureC: numberInRange(input.temperatureC, 'Temperature', 30, 45, '°C'),
     fundalHeightCm: numberInRange(input.fundalHeightCm, 'Fundal height', 4, 60, 'cm'),
-    fetalHeartRateBpm: numberInRange(
-      input.fetalHeartRateBpm,
-      'Fetal heart rate',
-      50,
-      240,
-    ),
+    fetalHeartRateBpm: numberInRange(input.fetalHeartRateBpm, 'Fetal heart rate', 50, 240),
     haemoglobinGdl: numberInRange(input.haemoglobinGdl, 'Haemoglobin', 2, 25, 'g/dL'),
     ttDose: numberInRange(input.ttDose, 'Tetanus toxoid dose', 1, 5),
   };
@@ -798,18 +702,9 @@ export async function recordAncVisit(
     });
   }
 
-  const presentation = collect(
-    oneOf(input.presentation, 'Presentation', PRESENTATIONS),
-    errors,
-  );
-  const urineProtein = collect(
-    oneOf(input.urineProtein, 'Urine protein', URINE_DIPSTICK),
-    errors,
-  );
-  const urineGlucose = collect(
-    oneOf(input.urineGlucose, 'Urine glucose', URINE_DIPSTICK),
-    errors,
-  );
+  const presentation = collect(oneOf(input.presentation, 'Presentation', PRESENTATIONS), errors);
+  const urineProtein = collect(oneOf(input.urineProtein, 'Urine protein', URINE_DIPSTICK), errors);
+  const urineGlucose = collect(oneOf(input.urineGlucose, 'Urine glucose', URINE_DIPSTICK), errors);
 
   const nextVisitDate = optionalIsoDate(input.nextVisitDate, 'Next visit date');
 
@@ -861,10 +756,7 @@ function toNumeric(value: number | null): string | null {
   return value === null ? null : String(value);
 }
 
-export async function listAncVisits(
-  context: AuthorizationContext,
-  pregnancyId: number,
-) {
+export async function listAncVisits(context: AuthorizationContext, pregnancyId: number) {
   const pregnancy = await resolvePregnancy(context, pregnancyId);
 
   return db
@@ -888,10 +780,7 @@ export type StartLabourInput = {
   encounterId?: number;
 };
 
-export async function startLabour(
-  context: AuthorizationContext,
-  input: StartLabourInput,
-) {
+export async function startLabour(context: AuthorizationContext, input: StartLabourInput) {
   const pregnancy = await resolvePregnancy(context, input.pregnancyId);
 
   if (pregnancy.status !== 'Active') {
@@ -933,10 +822,7 @@ export async function startLabour(
   }
 
   const labourOnsetAt = optionalTimestamp(input.labourOnsetAt, 'Labour onset time');
-  const membranesRupturedAt = optionalTimestamp(
-    input.membranesRupturedAt,
-    'Membranes ruptured at',
-  );
+  const membranesRupturedAt = optionalTimestamp(input.membranesRupturedAt, 'Membranes ruptured at');
 
   if (labourOnsetAt && admittedAt && labourOnsetAt > admittedAt) {
     errors.push({
@@ -986,10 +872,7 @@ export async function startLabour(
   return created;
 }
 
-export async function getLabour(
-  context: AuthorizationContext,
-  labourRecordId: number,
-) {
+export async function getLabour(context: AuthorizationContext, labourRecordId: number) {
   const labour = await resolveLabour(context, labourRecordId);
 
   const entries = await db
@@ -1012,9 +895,7 @@ export async function getLabour(
       entries.map((entry) => ({
         recordedAt: entry.recordedAt,
         cervicalDilatationCm:
-          entry.cervicalDilatationCm === null
-            ? null
-            : Number(entry.cervicalDilatationCm),
+          entry.cervicalDilatationCm === null ? null : Number(entry.cervicalDilatationCm),
       })),
     ),
     /*
@@ -1043,10 +924,7 @@ export async function listLabours(
 
   if (query.facilityId !== undefined) {
     conditions.push(
-      eq(
-        schema.labourRecords.facilityId,
-        await facilityInScope(context, query.facilityId),
-      ),
+      eq(schema.labourRecords.facilityId, await facilityInScope(context, query.facilityId)),
     );
   } else if (context.facilityId) {
     conditions.push(eq(schema.labourRecords.facilityId, context.facilityId));
@@ -1067,10 +945,7 @@ export async function listLabours(
       },
     })
     .from(schema.labourRecords)
-    .innerJoin(
-      schema.patients,
-      eq(schema.patients.id, schema.labourRecords.patientId),
-    )
+    .innerJoin(schema.patients, eq(schema.patients.id, schema.labourRecords.patientId))
     .where(and(...conditions))
     .orderBy(desc(schema.labourRecords.admittedAt))
     .limit(100);
@@ -1095,12 +970,7 @@ export async function updateLabour(
   const patch: Record<string, unknown> = { updatedAt: new Date() };
 
   if (input.status !== undefined) {
-    const status = oneOf(input.status, 'Status', [
-      'In Labour',
-      'Delivered',
-      'Referred',
-      'Closed',
-    ]);
+    const status = oneOf(input.status, 'Status', ['In Labour', 'Delivered', 'Referred', 'Closed']);
 
     if (status.error) errors.push(status.error);
     else patch.status = status.value;
@@ -1119,11 +989,7 @@ export async function updateLabour(
 
   if (errors.length > 0) invalid(errors);
 
-  if (
-    labour.status === 'Delivered' &&
-    patch.status !== undefined &&
-    patch.status !== 'Delivered'
-  ) {
+  if (labour.status === 'Delivered' && patch.status !== undefined && patch.status !== 'Delivered') {
     throw new MaternityDomainError(
       'LABOUR_DELIVERED',
       'This labour already has a delivery recorded and cannot be reopened.',
@@ -1163,10 +1029,7 @@ export type PartographInput = {
   notes?: string | null;
 };
 
-export async function recordPartographEntry(
-  context: AuthorizationContext,
-  input: PartographInput,
-) {
+export async function recordPartographEntry(context: AuthorizationContext, input: PartographInput) {
   const labour = await resolveLabour(context, input.labourRecordId);
 
   if (labour.status !== 'In Labour') {
@@ -1202,12 +1065,7 @@ export async function recordPartographEntry(
       'cm',
     ),
     descentStation: numberInRange(input.descentStation, 'Descent station', -3, 3),
-    contractionsPer10Min: numberInRange(
-      input.contractionsPer10Min,
-      'Contractions',
-      0,
-      7,
-    ),
+    contractionsPer10Min: numberInRange(input.contractionsPer10Min, 'Contractions', 0, 7),
     contractionDurationSec: numberInRange(
       input.contractionDurationSec,
       'Contraction duration',
@@ -1215,12 +1073,7 @@ export async function recordPartographEntry(
       120,
       'seconds',
     ),
-    fetalHeartRateBpm: numberInRange(
-      input.fetalHeartRateBpm,
-      'Fetal heart rate',
-      50,
-      240,
-    ),
+    fetalHeartRateBpm: numberInRange(input.fetalHeartRateBpm, 'Fetal heart rate', 50, 240),
     maternalPulseBpm: numberInRange(input.maternalPulseBpm, 'Maternal pulse', 30, 220),
     bpSystolic: numberInRange(input.bpSystolic, 'Systolic blood pressure', 50, 300),
     bpDiastolic: numberInRange(input.bpDiastolic, 'Diastolic blood pressure', 20, 200),
@@ -1319,10 +1172,7 @@ export type RecordDeliveryInput = {
   babies: DeliveryBabyInput[];
 };
 
-export async function recordDelivery(
-  context: AuthorizationContext,
-  input: RecordDeliveryInput,
-) {
+export async function recordDelivery(context: AuthorizationContext, input: RecordDeliveryInput) {
   const pregnancy = await resolvePregnancy(context, input.pregnancyId);
 
   if (pregnancy.status === 'Delivered') {
@@ -1373,10 +1223,7 @@ export async function recordDelivery(
     });
   }
 
-  const deliveryMode = collect(
-    oneOf(input.deliveryMode, 'Delivery mode', DELIVERY_MODES),
-    errors,
-  );
+  const deliveryMode = collect(oneOf(input.deliveryMode, 'Delivery mode', DELIVERY_MODES), errors);
 
   if (!deliveryMode) {
     errors.push({
@@ -1393,10 +1240,7 @@ export async function recordDelivery(
     if (check.error) errors.push(check.error);
   }
 
-  const perineum = collect(
-    oneOf(input.perineum, 'Perineum', PERINEUM_STATES),
-    errors,
-  );
+  const perineum = collect(oneOf(input.perineum, 'Perineum', PERINEUM_STATES), errors);
 
   if (!Array.isArray(input.babies) || input.babies.length === 0) {
     errors.push({
@@ -1406,7 +1250,8 @@ export async function recordDelivery(
   } else if (input.babies.length > 6) {
     errors.push({
       field: 'babies',
-      message: 'Six babies is the limit this record accepts. Split the entry if this is a higher-order multiple.',
+      message:
+        'Six babies is the limit this record accepts. Split the entry if this is a higher-order multiple.',
     });
   }
 
@@ -1423,21 +1268,16 @@ export async function recordDelivery(
       });
     }
 
-    const sex = oneOf(
-      baby.sex,
-      `${label} sex`,
-      ['Male', 'Female', 'Ambiguous', 'Not recorded'] as const,
-    );
+    const sex = oneOf(baby.sex, `${label} sex`, [
+      'Male',
+      'Female',
+      'Ambiguous',
+      'Not recorded',
+    ] as const);
 
     if (sex.error) errors.push(sex.error);
 
-    const weight = numberInRange(
-      baby.birthWeightGrams,
-      `${label} birth weight`,
-      200,
-      8000,
-      'g',
-    );
+    const weight = numberInRange(baby.birthWeightGrams, `${label} birth weight`, 200, 8000, 'g');
     if (weight.error) errors.push(weight.error);
 
     const apgar1 = numberInRange(baby.apgar1, `${label} Apgar at 1 min`, 0, 10);
@@ -1463,10 +1303,7 @@ export async function recordDelivery(
 
   if (errors.length > 0) invalid(errors);
 
-  const placentaDeliveredAt = optionalTimestamp(
-    input.placentaDeliveredAt,
-    'Placenta delivered at',
-  );
+  const placentaDeliveredAt = optionalTimestamp(input.placentaDeliveredAt, 'Placenta delivered at');
 
   const result = await db.transaction(async (tx) => {
     const [delivery] = await tx
@@ -1482,9 +1319,7 @@ export async function recordDelivery(
         bloodLossMl: checks.bloodLossMl.value,
         perineum,
         placentaComplete:
-          typeof input.placentaComplete === 'boolean'
-            ? input.placentaComplete
-            : null,
+          typeof input.placentaComplete === 'boolean' ? input.placentaComplete : null,
         placentaDeliveredAt,
         oxytocinGiven: input.oxytocinGiven === true,
         complications: optionalText(input.complications, 2000),
@@ -1537,18 +1372,11 @@ export async function recordDelivery(
   return result;
 }
 
-export async function getDelivery(
-  context: AuthorizationContext,
-  deliveryId: number,
-) {
+export async function getDelivery(context: AuthorizationContext, deliveryId: number) {
   const parsed = Number(deliveryId);
 
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new MaternityDomainError(
-      'DELIVERY_REQUIRED',
-      'A valid deliveryId is required.',
-      400,
-    );
+    throw new MaternityDomainError('DELIVERY_REQUIRED', 'A valid deliveryId is required.', 400);
   }
 
   const [delivery] = await db
@@ -1559,10 +1387,7 @@ export async function getDelivery(
 
   if (!delivery) notFound('The delivery record');
 
-  const facility = await getFacilityByIdScoped(
-    context,
-    delivery.facilityId,
-  ).catch(() => null);
+  const facility = await getFacilityByIdScoped(context, delivery.facilityId).catch(() => null);
 
   if (!facility || facility.tenantId !== delivery.tenantId) {
     notFound('The delivery record');
@@ -1590,10 +1415,7 @@ export async function listDeliveries(
 
   if (query.facilityId !== undefined) {
     conditions.push(
-      eq(
-        schema.deliveries.facilityId,
-        await facilityInScope(context, query.facilityId),
-      ),
+      eq(schema.deliveries.facilityId, await facilityInScope(context, query.facilityId)),
     );
   } else if (context.facilityId) {
     conditions.push(eq(schema.deliveries.facilityId, context.facilityId));
@@ -1633,9 +1455,7 @@ export async function listDeliveries(
     ? await db
         .select()
         .from(schema.deliveryBabies)
-        .where(
-          inArray(schema.deliveryBabies.deliveryId, ids),
-        )
+        .where(inArray(schema.deliveryBabies.deliveryId, ids))
         .orderBy(asc(schema.deliveryBabies.babyNumber))
     : [];
 
@@ -1654,14 +1474,9 @@ export async function listDeliveries(
  * Counts for the module header. Every number is a count of rows that
  * exist; nothing is estimated or extrapolated.
  */
-export async function maternitySummary(
-  context: AuthorizationContext,
-  facilityId?: number,
-) {
+export async function maternitySummary(context: AuthorizationContext, facilityId?: number) {
   const scopedFacilityId =
-    facilityId !== undefined
-      ? await facilityInScope(context, facilityId)
-      : context.facilityId;
+    facilityId !== undefined ? await facilityInScope(context, facilityId) : context.facilityId;
 
   if (!scopedFacilityId) {
     throw new MaternityDomainError(
@@ -1717,10 +1532,7 @@ export async function maternitySummary(
   const [babiesThisMonth] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(schema.deliveryBabies)
-    .innerJoin(
-      schema.deliveries,
-      eq(schema.deliveries.id, schema.deliveryBabies.deliveryId),
-    )
+    .innerJoin(schema.deliveries, eq(schema.deliveries.id, schema.deliveryBabies.deliveryId))
     .where(
       and(
         eq(schema.deliveryBabies.facilityId, scopedFacilityId),

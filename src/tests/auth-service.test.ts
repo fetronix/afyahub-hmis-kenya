@@ -1,22 +1,14 @@
-import "dotenv/config";
-import crypto from "crypto";
+import 'dotenv/config';
+import crypto from 'crypto';
 
-import { eq } from "drizzle-orm";
+import { eq } from 'drizzle-orm';
 
-import { db } from "../db";
-import {
-  users,
-  sessions,
-  loginAttempts,
-} from "../db/schema";
+import { db } from '../db';
+import { users, sessions, loginAttempts } from '../db/schema';
 
-import { hashPassword } from "../utils/password";
+import { hashPassword } from '../utils/password';
 
-import {
-  login,
-  validateSession,
-  revokeSession,
-} from "../auth/auth.service";
+import { login, validateSession, revokeSession } from '../auth/auth.service';
 
 /*
 |--------------------------------------------------------------------------
@@ -24,10 +16,10 @@ import {
 |--------------------------------------------------------------------------
 */
 
-const TEST_PASSWORD = "JaliCareTestPassword2026!";
+const TEST_PASSWORD = 'JaliCareTestPassword2026!';
 
-const TEST_IP = "127.0.0.1";
-const TEST_USER_AGENT = "JaliCare-Authentication-Test";
+const TEST_IP = '127.0.0.1';
+const TEST_USER_AGENT = 'JaliCare-Authentication-Test';
 
 /*
 |--------------------------------------------------------------------------
@@ -36,16 +28,10 @@ const TEST_USER_AGENT = "JaliCare-Authentication-Test";
 */
 
 function hashSessionToken(token: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(token)
-    .digest("hex");
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function assert(
-  condition: boolean,
-  message: string
-): void {
+function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`ASSERTION FAILED: ${message}`);
   }
@@ -60,20 +46,18 @@ function assert(
 */
 
 async function runAuthenticationServiceTest() {
-  console.log("");
-  console.log("==============================================");
-  console.log("JaliCare HMIS - Authentication Service Test");
-  console.log("==============================================");
-  console.log("");
+  console.log('');
+  console.log('==============================================');
+  console.log('JaliCare HMIS - Authentication Service Test');
+  console.log('==============================================');
+  console.log('');
 
   let temporaryUserId: number | null = null;
   let adminUserId: number | null = null;
 
-  const temporaryUsername =
-    `auth_test_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const temporaryUsername = `auth_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
-  const temporaryEmail =
-    `${temporaryUsername}@test.jalicare.local`;
+  const temporaryEmail = `${temporaryUsername}@test.jalicare.local`;
 
   try {
     /*
@@ -82,9 +66,7 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log(
-      "TEST 1: Creating a platform administrator and logging in..."
-    );
+    console.log('TEST 1: Creating a platform administrator and logging in...');
 
     /*
      * This suite used to sign in as an administrator that was assumed to
@@ -100,8 +82,7 @@ async function runAuthenticationServiceTest() {
      * the test.
      */
 
-    const adminUsername =
-      `auth_admin_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const adminUsername = `auth_admin_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
     const adminPassword = TEST_PASSWORD;
 
@@ -113,13 +94,13 @@ async function runAuthenticationServiceTest() {
         facilityId: null,
         username: adminUsername,
         email: `${adminUsername}@test.jalicare.local`,
-        fullName: "JaliCare Authentication Test Administrator",
+        fullName: 'JaliCare Authentication Test Administrator',
         phone: null,
-        designation: "Platform Administrator",
+        designation: 'Platform Administrator',
         passwordHash: await hashPassword(adminPassword),
         passwordChangedAt: new Date(),
         mustChangePassword: false,
-        accountStatus: "ACTIVE",
+        accountStatus: 'ACTIVE',
         failedLoginAttempts: 0,
         lastFailedLoginAt: null,
         lockedUntil: null,
@@ -141,10 +122,7 @@ async function runAuthenticationServiceTest() {
 
     adminUserId = insertedAdmins[0].id;
 
-    assert(
-      adminUserId > 0,
-      "Test administrator was created"
-    );
+    assert(adminUserId > 0, 'Test administrator was created');
 
     const adminLogin = await login({
       identifier: adminUsername,
@@ -153,25 +131,13 @@ async function runAuthenticationServiceTest() {
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      adminLogin.success === true,
-      "Administrator can authenticate through AuthService"
-    );
+    assert(adminLogin.success === true, 'Administrator can authenticate through AuthService');
 
-    assert(
-      !!adminLogin.sessionToken,
-      "Administrator receives a session token"
-    );
+    assert(!!adminLogin.sessionToken, 'Administrator receives a session token');
 
-    assert(
-      !!adminLogin.expiresAt,
-      "Administrator session has an expiration time"
-    );
+    assert(!!adminLogin.expiresAt, 'Administrator session has an expiration time');
 
-    assert(
-      adminLogin.user?.username === adminUsername,
-      "Authenticated user is the administrator"
-    );
+    assert(adminLogin.user?.username === adminUsername, 'Authenticated user is the administrator');
 
     const adminSessionToken = adminLogin.sessionToken!;
 
@@ -181,36 +147,27 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log("TEST 2: Validating administrator session...");
+    console.log('');
+    console.log('TEST 2: Validating administrator session...');
 
-    const adminSessionHash =
-      hashSessionToken(adminSessionToken);
+    const adminSessionHash = hashSessionToken(adminSessionToken);
 
     const adminSessionRows = await db
       .select()
       .from(sessions)
-      .where(
-        eq(
-          sessions.sessionTokenHash,
-          adminSessionHash
-        )
-      )
+      .where(eq(sessions.sessionTokenHash, adminSessionHash))
       .limit(1);
 
-    assert(
-      adminSessionRows.length === 1,
-      "Administrator session exists in database"
-    );
+    assert(adminSessionRows.length === 1, 'Administrator session exists in database');
 
     assert(
       adminSessionRows[0].userId === adminLogin.user?.id,
-      "Administrator session belongs to administrator"
+      'Administrator session belongs to administrator',
     );
 
     assert(
       adminSessionRows[0].sessionTokenHash !== adminSessionToken,
-      "Raw administrator session token is not stored"
+      'Raw administrator session token is not stored',
     );
 
     /*
@@ -219,20 +176,16 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log("TEST 3: Testing session validation...");
+    console.log('');
+    console.log('TEST 3: Testing session validation...');
 
-    const validatedAdminSession =
-      await validateSession(adminSessionToken);
+    const validatedAdminSession = await validateSession(adminSessionToken);
 
-    assert(
-      validatedAdminSession !== null,
-      "Administrator session validates successfully"
-    );
+    assert(validatedAdminSession !== null, 'Administrator session validates successfully');
 
     assert(
       validatedAdminSession?.user.id === adminLogin.user?.id,
-      "Validated session belongs to administrator"
+      'Validated session belongs to administrator',
     );
 
     /*
@@ -241,25 +194,18 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log("TEST 4: Testing administrator session revocation...");
+    console.log('');
+    console.log('TEST 4: Testing administrator session revocation...');
 
-    const adminRevoked = await revokeSession(
-      adminSessionToken,
-      "AUTH_SERVICE_TEST"
-    );
+    const adminRevoked = await revokeSession(adminSessionToken, 'AUTH_SERVICE_TEST');
 
-    assert(
-      adminRevoked === true,
-      "Administrator session can be revoked"
-    );
+    assert(adminRevoked === true, 'Administrator session can be revoked');
 
-    const revokedAdminSession =
-      await validateSession(adminSessionToken);
+    const revokedAdminSession = await validateSession(adminSessionToken);
 
     assert(
       revokedAdminSession === null,
-      "Revoked administrator session can no longer authenticate"
+      'Revoked administrator session can no longer authenticate',
     );
 
     /*
@@ -268,13 +214,10 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 5: Creating temporary authentication test user..."
-    );
+    console.log('');
+    console.log('TEST 5: Creating temporary authentication test user...');
 
-    const testPasswordHash =
-      await hashPassword(TEST_PASSWORD);
+    const testPasswordHash = await hashPassword(TEST_PASSWORD);
 
     const insertedUsers = await db
       .insert(users)
@@ -284,13 +227,13 @@ async function runAuthenticationServiceTest() {
         facilityId: null,
         username: temporaryUsername,
         email: temporaryEmail,
-        fullName: "JaliCare Authentication Test User",
+        fullName: 'JaliCare Authentication Test User',
         phone: null,
-        designation: "Authentication Test Account",
+        designation: 'Authentication Test Account',
         passwordHash: testPasswordHash,
         passwordChangedAt: new Date(),
         mustChangePassword: false,
-        accountStatus: "ACTIVE",
+        accountStatus: 'ACTIVE',
         failedLoginAttempts: 0,
         lastFailedLoginAt: null,
         lockedUntil: null,
@@ -312,10 +255,7 @@ async function runAuthenticationServiceTest() {
 
     temporaryUserId = insertedUsers[0].id;
 
-    assert(
-      temporaryUserId > 0,
-      "Temporary authentication test user was created"
-    );
+    assert(temporaryUserId > 0, 'Temporary authentication test user was created');
 
     /*
     |--------------------------------------------------------------------------
@@ -323,31 +263,21 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log("TEST 6: Testing failed login attempt #1...");
+    console.log('');
+    console.log('TEST 6: Testing failed login attempt #1...');
 
     const attempt1 = await login({
       identifier: temporaryUsername,
-      password: "WrongPassword-1!",
+      password: 'WrongPassword-1!',
       ipAddress: TEST_IP,
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      attempt1.success === false,
-      "Incorrect password #1 is rejected"
-    );
+    assert(attempt1.success === false, 'Incorrect password #1 is rejected');
 
-    let testUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, temporaryUserId))
-      .limit(1);
+    let testUser = await db.select().from(users).where(eq(users.id, temporaryUserId)).limit(1);
 
-    assert(
-      testUser[0].failedLoginAttempts === 1,
-      "Failed login counter is 1"
-    );
+    assert(testUser[0].failedLoginAttempts === 1, 'Failed login counter is 1');
 
     /*
     |--------------------------------------------------------------------------
@@ -355,20 +285,17 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log("TEST 7: Testing failed login attempt #2...");
+    console.log('');
+    console.log('TEST 7: Testing failed login attempt #2...');
 
     const attempt2 = await login({
       identifier: temporaryUsername,
-      password: "WrongPassword-2!",
+      password: 'WrongPassword-2!',
       ipAddress: TEST_IP,
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      attempt2.success === false,
-      "Incorrect password #2 is rejected"
-    );
+    assert(attempt2.success === false, 'Incorrect password #2 is rejected');
 
     /*
     |--------------------------------------------------------------------------
@@ -376,20 +303,17 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log("TEST 8: Testing failed login attempt #3...");
+    console.log('');
+    console.log('TEST 8: Testing failed login attempt #3...');
 
     const attempt3 = await login({
       identifier: temporaryUsername,
-      password: "WrongPassword-3!",
+      password: 'WrongPassword-3!',
       ipAddress: TEST_IP,
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      attempt3.success === false,
-      "Incorrect password #3 is rejected"
-    );
+    assert(attempt3.success === false, 'Incorrect password #3 is rejected');
 
     /*
     |--------------------------------------------------------------------------
@@ -397,20 +321,17 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log("TEST 9: Testing failed login attempt #4...");
+    console.log('');
+    console.log('TEST 9: Testing failed login attempt #4...');
 
     const attempt4 = await login({
       identifier: temporaryUsername,
-      password: "WrongPassword-4!",
+      password: 'WrongPassword-4!',
       ipAddress: TEST_IP,
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      attempt4.success === false,
-      "Incorrect password #4 is rejected"
-    );
+    assert(attempt4.success === false, 'Incorrect password #4 is rejected');
 
     /*
     |--------------------------------------------------------------------------
@@ -418,28 +339,21 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 10: Testing failed login attempt #5 and lockout..."
-    );
+    console.log('');
+    console.log('TEST 10: Testing failed login attempt #5 and lockout...');
 
     const attempt5 = await login({
       identifier: temporaryUsername,
-      password: "WrongPassword-5!",
+      password: 'WrongPassword-5!',
       ipAddress: TEST_IP,
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      attempt5.success === false,
-      "Incorrect password #5 is rejected"
-    );
+    assert(attempt5.success === false, 'Incorrect password #5 is rejected');
 
     assert(
-      (attempt5.message ?? "")
-        .toLowerCase()
-        .includes("locked"),
-      "Account reports lockout after threshold is reached"
+      (attempt5.message ?? '').toLowerCase().includes('locked'),
+      'Account reports lockout after threshold is reached',
     );
 
     /*
@@ -448,31 +362,16 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 11: Verifying database-backed lockout..."
-    );
+    console.log('');
+    console.log('TEST 11: Verifying database-backed lockout...');
 
-    testUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, temporaryUserId))
-      .limit(1);
+    testUser = await db.select().from(users).where(eq(users.id, temporaryUserId)).limit(1);
 
-    assert(
-      testUser[0].failedLoginAttempts === 5,
-      "Database failedLoginAttempts is exactly 5"
-    );
+    assert(testUser[0].failedLoginAttempts === 5, 'Database failedLoginAttempts is exactly 5');
 
-    assert(
-      testUser[0].lockedUntil !== null,
-      "Database lockedUntil is set"
-    );
+    assert(testUser[0].lockedUntil !== null, 'Database lockedUntil is set');
 
-    assert(
-      testUser[0].lockedUntil!.getTime() > Date.now(),
-      "lockedUntil is in the future"
-    );
+    assert(testUser[0].lockedUntil!.getTime() > Date.now(), 'lockedUntil is in the future');
 
     /*
     |--------------------------------------------------------------------------
@@ -480,10 +379,8 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 12: Testing correct password while account is locked..."
-    );
+    console.log('');
+    console.log('TEST 12: Testing correct password while account is locked...');
 
     const lockedLogin = await login({
       identifier: temporaryUsername,
@@ -492,16 +389,11 @@ async function runAuthenticationServiceTest() {
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      lockedLogin.success === false,
-      "Correct password is rejected while account is locked"
-    );
+    assert(lockedLogin.success === false, 'Correct password is rejected while account is locked');
 
     assert(
-      (lockedLogin.message ?? "")
-        .toLowerCase()
-        .includes("locked"),
-      "Authentication service identifies locked account"
+      (lockedLogin.message ?? '').toLowerCase().includes('locked'),
+      'Authentication service identifies locked account',
     );
 
     /*
@@ -510,10 +402,8 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 13: Expiring temporary account lockout..."
-    );
+    console.log('');
+    console.log('TEST 13: Expiring temporary account lockout...');
 
     await db
       .update(users)
@@ -522,16 +412,9 @@ async function runAuthenticationServiceTest() {
       })
       .where(eq(users.id, temporaryUserId));
 
-    testUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, temporaryUserId))
-      .limit(1);
+    testUser = await db.select().from(users).where(eq(users.id, temporaryUserId)).limit(1);
 
-    assert(
-      testUser[0].lockedUntil!.getTime() < Date.now(),
-      "Temporary lockout has expired"
-    );
+    assert(testUser[0].lockedUntil!.getTime() < Date.now(), 'Temporary lockout has expired');
 
     /*
     |--------------------------------------------------------------------------
@@ -539,10 +422,8 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 14: Testing successful login after lockout expires..."
-    );
+    console.log('');
+    console.log('TEST 14: Testing successful login after lockout expires...');
 
     const recoveredLogin = await login({
       identifier: temporaryUsername,
@@ -551,15 +432,9 @@ async function runAuthenticationServiceTest() {
       userAgent: TEST_USER_AGENT,
     });
 
-    assert(
-      recoveredLogin.success === true,
-      "Correct password is accepted after lockout expires"
-    );
+    assert(recoveredLogin.success === true, 'Correct password is accepted after lockout expires');
 
-    assert(
-      !!recoveredLogin.sessionToken,
-      "New session is created after successful login"
-    );
+    assert(!!recoveredLogin.sessionToken, 'New session is created after successful login');
 
     /*
     |--------------------------------------------------------------------------
@@ -567,31 +442,16 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 15: Verifying security counters reset after login..."
-    );
+    console.log('');
+    console.log('TEST 15: Verifying security counters reset after login...');
 
-    testUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, temporaryUserId))
-      .limit(1);
+    testUser = await db.select().from(users).where(eq(users.id, temporaryUserId)).limit(1);
 
-    assert(
-      testUser[0].failedLoginAttempts === 0,
-      "Failed login counter resets to zero"
-    );
+    assert(testUser[0].failedLoginAttempts === 0, 'Failed login counter resets to zero');
 
-    assert(
-      testUser[0].lockedUntil === null,
-      "Lockout is cleared after successful login"
-    );
+    assert(testUser[0].lockedUntil === null, 'Lockout is cleared after successful login');
 
-    assert(
-      testUser[0].lastLoginAt !== null,
-      "lastLoginAt is recorded"
-    );
+    assert(testUser[0].lastLoginAt !== null, 'lastLoginAt is recorded');
 
     /*
     |--------------------------------------------------------------------------
@@ -599,25 +459,14 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 16: Validating recovered login session..."
-    );
+    console.log('');
+    console.log('TEST 16: Validating recovered login session...');
 
-    const recoveredSession =
-      await validateSession(
-        recoveredLogin.sessionToken!
-      );
+    const recoveredSession = await validateSession(recoveredLogin.sessionToken!);
 
-    assert(
-      recoveredSession !== null,
-      "Recovered session validates successfully"
-    );
+    assert(recoveredSession !== null, 'Recovered session validates successfully');
 
-    assert(
-      recoveredSession?.user.id === temporaryUserId,
-      "Recovered session belongs to test user"
-    );
+    assert(recoveredSession?.user.id === temporaryUserId, 'Recovered session belongs to test user');
 
     /*
     |--------------------------------------------------------------------------
@@ -625,31 +474,16 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 17: Revoking recovered session..."
-    );
+    console.log('');
+    console.log('TEST 17: Revoking recovered session...');
 
-    const recoveredRevoked =
-      await revokeSession(
-        recoveredLogin.sessionToken!,
-        "AUTH_SERVICE_TEST"
-      );
+    const recoveredRevoked = await revokeSession(recoveredLogin.sessionToken!, 'AUTH_SERVICE_TEST');
 
-    assert(
-      recoveredRevoked === true,
-      "Recovered session can be revoked"
-    );
+    assert(recoveredRevoked === true, 'Recovered session can be revoked');
 
-    const revokedRecoveredSession =
-      await validateSession(
-        recoveredLogin.sessionToken!
-      );
+    const revokedRecoveredSession = await validateSession(recoveredLogin.sessionToken!);
 
-    assert(
-      revokedRecoveredSession === null,
-      "Revoked session is rejected"
-    );
+    assert(revokedRecoveredSession === null, 'Revoked session is rejected');
 
     /*
     |--------------------------------------------------------------------------
@@ -657,47 +491,23 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "TEST 18: Verifying login attempt audit records..."
-    );
+    console.log('');
+    console.log('TEST 18: Verifying login attempt audit records...');
 
     const attempts = await db
       .select()
       .from(loginAttempts)
-      .where(
-        eq(
-          loginAttempts.userId,
-          temporaryUserId
-        )
-      );
+      .where(eq(loginAttempts.userId, temporaryUserId));
 
-    assert(
-      attempts.length >= 7,
-      "Authentication attempts were recorded"
-    );
+    assert(attempts.length >= 7, 'Authentication attempts were recorded');
 
-    const successfulAttempts =
-      attempts.filter(
-        (attempt) =>
-          attempt.successful === true
-      );
+    const successfulAttempts = attempts.filter((attempt) => attempt.successful === true);
 
-    const failedAttempts =
-      attempts.filter(
-        (attempt) =>
-          attempt.successful === false
-      );
+    const failedAttempts = attempts.filter((attempt) => attempt.successful === false);
 
-    assert(
-      successfulAttempts.length >= 1,
-      "Successful login was recorded"
-    );
+    assert(successfulAttempts.length >= 1, 'Successful login was recorded');
 
-    assert(
-      failedAttempts.length >= 5,
-      "Failed login attempts were recorded"
-    );
+    assert(failedAttempts.length >= 5, 'Failed login attempts were recorded');
 
     /*
     |--------------------------------------------------------------------------
@@ -705,32 +515,26 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "=============================================="
-    );
-    console.log(
-      "AUTHENTICATION SERVICE TEST PASSED"
-    );
-    console.log(
-      "=============================================="
-    );
-    console.log("");
+    console.log('');
+    console.log('==============================================');
+    console.log('AUTHENTICATION SERVICE TEST PASSED');
+    console.log('==============================================');
+    console.log('');
 
-    console.log("Verified:");
-    console.log("✓ Real administrator login");
-    console.log("✓ Administrator session creation");
-    console.log("✓ Raw session token is not stored");
-    console.log("✓ Session validation");
-    console.log("✓ Session revocation");
-    console.log("✓ Failed login tracking");
-    console.log("✓ Database-backed lockout after 5 failures");
-    console.log("✓ Correct password rejected while locked");
-    console.log("✓ Lockout expiration");
-    console.log("✓ Successful login after lockout expiration");
-    console.log("✓ Failed-attempt counter reset");
-    console.log("✓ Login audit records");
-    console.log("");
+    console.log('Verified:');
+    console.log('✓ Real administrator login');
+    console.log('✓ Administrator session creation');
+    console.log('✓ Raw session token is not stored');
+    console.log('✓ Session validation');
+    console.log('✓ Session revocation');
+    console.log('✓ Failed login tracking');
+    console.log('✓ Database-backed lockout after 5 failures');
+    console.log('✓ Correct password rejected while locked');
+    console.log('✓ Lockout expiration');
+    console.log('✓ Successful login after lockout expiration');
+    console.log('✓ Failed-attempt counter reset');
+    console.log('✓ Login audit records');
+    console.log('');
   } finally {
     /*
     |--------------------------------------------------------------------------
@@ -738,59 +542,30 @@ async function runAuthenticationServiceTest() {
     |--------------------------------------------------------------------------
     */
 
-    console.log("");
-    console.log(
-      "Cleaning up authentication test records..."
-    );
+    console.log('');
+    console.log('Cleaning up authentication test records...');
 
     if (adminUserId !== null) {
-      await db
-        .delete(sessions)
-        .where(eq(sessions.userId, adminUserId));
+      await db.delete(sessions).where(eq(sessions.userId, adminUserId));
 
-      await db
-        .delete(loginAttempts)
-        .where(eq(loginAttempts.userId, adminUserId));
+      await db.delete(loginAttempts).where(eq(loginAttempts.userId, adminUserId));
 
-      await db
-        .delete(users)
-        .where(eq(users.id, adminUserId));
+      await db.delete(users).where(eq(users.id, adminUserId));
     }
 
     if (temporaryUserId !== null) {
-      await db
-        .delete(sessions)
-        .where(
-          eq(
-            sessions.userId,
-            temporaryUserId
-          )
-        );
+      await db.delete(sessions).where(eq(sessions.userId, temporaryUserId));
 
-      await db
-        .delete(loginAttempts)
-        .where(
-          eq(
-            loginAttempts.userId,
-            temporaryUserId
-          )
-        );
+      await db.delete(loginAttempts).where(eq(loginAttempts.userId, temporaryUserId));
 
-      await db
-        .delete(users)
-        .where(
-          eq(
-            users.id,
-            temporaryUserId
-          )
-        );
+      await db.delete(users).where(eq(users.id, temporaryUserId));
     }
 
-    console.log("✓ Temporary sessions removed");
-    console.log("✓ Temporary login attempts removed");
-    console.log("✓ Temporary test user removed");
-    console.log("✓ Temporary administrator removed");
-    console.log("");
+    console.log('✓ Temporary sessions removed');
+    console.log('✓ Temporary login attempts removed');
+    console.log('✓ Temporary test user removed');
+    console.log('✓ Temporary administrator removed');
+    console.log('');
   }
 }
 
@@ -800,21 +575,14 @@ async function runAuthenticationServiceTest() {
 |--------------------------------------------------------------------------
 */
 
-runAuthenticationServiceTest()
-  .catch((error) => {
-    console.error("");
-    console.error(
-      "=============================================="
-    );
-    console.error(
-      "AUTHENTICATION SERVICE TEST FAILED"
-    );
-    console.error(
-      "=============================================="
-    );
-    console.error("");
-    console.error(error);
-    console.error("");
+runAuthenticationServiceTest().catch((error) => {
+  console.error('');
+  console.error('==============================================');
+  console.error('AUTHENTICATION SERVICE TEST FAILED');
+  console.error('==============================================');
+  console.error('');
+  console.error(error);
+  console.error('');
 
-    process.exitCode = 1;
-  });
+  process.exitCode = 1;
+});

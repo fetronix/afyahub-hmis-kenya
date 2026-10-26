@@ -47,48 +47,38 @@ export const roles = pgTable(
       SUPER_ADMIN
     */
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id),
+    tenantId: integer('tenant_id').references(() => tenants.id),
 
     name: text('name').notNull(),
 
     description: text('description'),
 
-    isSystem: boolean('is_system')
-      .default(false)
-      .notNull(),
+    isSystem: boolean('is_system').default(false).notNull(),
 
-    isActive: boolean('is_active')
-      .default(true)
-      .notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
 
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    tenantRoleIdx: uniqueIndex(
-      'roles_tenant_name_idx',
-    ).on(table.tenantId, table.name),
+    tenantRoleIdx: uniqueIndex('roles_tenant_name_idx').on(table.tenantId, table.name),
   }),
 );
 
-export const permissions = pgTable(
-  'permissions',
-  {
-    id: serial('id').primaryKey(),
+export const permissions = pgTable('permissions', {
+  id: serial('id').primaryKey(),
 
-    code: text('code').notNull().unique(),
+  code: text('code').notNull().unique(),
 
-    name: text('name').notNull(),
+  name: text('name').notNull(),
 
-    module: text('module').notNull(),
+  module: text('module').notNull(),
 
-    description: text('description'),
+  description: text('description'),
 
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-);
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 export const rolePermissions = pgTable(
   'role_permissions',
@@ -103,14 +93,13 @@ export const rolePermissions = pgTable(
       .references(() => permissions.id)
       .notNull(),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    rolePermissionIdx: uniqueIndex(
-      'role_permissions_role_permission_idx',
-    ).on(table.roleId, table.permissionId),
+    rolePermissionIdx: uniqueIndex('role_permissions_role_permission_idx').on(
+      table.roleId,
+      table.permissionId,
+    ),
   }),
 );
 
@@ -118,19 +107,27 @@ export const facilityRolePermissionOverrides = pgTable(
   'facility_role_permission_overrides',
   {
     id: serial('id').primaryKey(),
-    tenantId: integer('tenant_id').references(() => tenants.id).notNull(),
-    facilityId: integer('facility_id').references(() => facilities.id).notNull(),
-    roleId: integer('role_id').references(() => roles.id).notNull(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    roleId: integer('role_id')
+      .references(() => roles.id)
+      .notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityRoleIdx: uniqueIndex(
-      'facility_role_permission_overrides_facility_role_idx',
-    ).on(table.facilityId, table.roleId),
-    tenantFacilityIdx: index(
-      'facility_role_permission_overrides_tenant_facility_idx',
-    ).on(table.tenantId, table.facilityId),
+    facilityRoleIdx: uniqueIndex('facility_role_permission_overrides_facility_role_idx').on(
+      table.facilityId,
+      table.roleId,
+    ),
+    tenantFacilityIdx: index('facility_role_permission_overrides_tenant_facility_idx').on(
+      table.tenantId,
+      table.facilityId,
+    ),
   }),
 );
 
@@ -141,7 +138,9 @@ export const facilityRolePermissionOverridePermissions = pgTable(
     overrideId: integer('override_id')
       .references(() => facilityRolePermissionOverrides.id, { onDelete: 'cascade' })
       .notNull(),
-    permissionId: integer('permission_id').references(() => permissions.id).notNull(),
+    permissionId: integer('permission_id')
+      .references(() => permissions.id)
+      .notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
@@ -163,32 +162,24 @@ export const users = pgTable(
       usr_01HXYZ...
     */
 
-    uid: text('uid')
-      .notNull()
-      .unique(),
+    uid: text('uid').notNull().unique(),
 
-    tenantId: integer('tenant_id')
-      .references(() => tenants.id),
+    tenantId: integer('tenant_id').references(() => tenants.id),
 
-    facilityId: integer('facility_id')
-      .references(() => facilities.id),
+    facilityId: integer('facility_id').references(() => facilities.id),
 
     /*
       Login username.
       Normalized to lowercase by application code.
     */
 
-    username: text('username')
-      .notNull()
-      .unique(),
+    username: text('username').notNull().unique(),
 
     /*
       Email is also normalized by application code.
     */
 
-    email: text('email')
-      .notNull()
-      .unique(),
+    email: text('email').notNull().unique(),
 
     emailVerifiedAt: timestamp('email_verified_at'),
 
@@ -210,9 +201,7 @@ export const users = pgTable(
 
     passwordChangedAt: timestamp('password_changed_at'),
 
-    mustChangePassword: boolean('must_change_password')
-      .default(false)
-      .notNull(),
+    mustChangePassword: boolean('must_change_password').default(false).notNull(),
 
     /*
       Account lifecycle.
@@ -224,17 +213,13 @@ export const users = pgTable(
       DISABLED
     */
 
-    accountStatus: text('account_status')
-      .default('PENDING')
-      .notNull(),
+    accountStatus: text('account_status').default('PENDING').notNull(),
 
     /*
       Brute-force protection.
     */
 
-    failedLoginAttempts: integer('failed_login_attempts')
-      .default(0)
-      .notNull(),
+    failedLoginAttempts: integer('failed_login_attempts').default(0).notNull(),
 
     lastFailedLoginAt: timestamp('last_failed_login_at'),
 
@@ -250,13 +235,9 @@ export const users = pgTable(
       MFA readiness.
     */
 
-    mfaEnabled: boolean('mfa_enabled')
-      .default(false)
-      .notNull(),
+    mfaEnabled: boolean('mfa_enabled').default(false).notNull(),
 
-    mfaRequired: boolean('mfa_required')
-      .default(false)
-      .notNull(),
+    mfaRequired: boolean('mfa_required').default(false).notNull(),
 
     /*
       Store encrypted MFA secret only if/when MFA is implemented.
@@ -270,46 +251,28 @@ export const users = pgTable(
       after important security changes.
     */
 
-    securityVersion: integer('security_version')
-      .default(1)
-      .notNull(),
+    securityVersion: integer('security_version').default(1).notNull(),
 
-    isActive: boolean('is_active')
-      .default(true)
-      .notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    updatedAt: timestamp('updated_at')
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
 
     deactivatedAt: timestamp('deactivated_at'),
 
     deactivationReason: text('deactivation_reason'),
   },
   (table) => ({
-    usernameIdx: uniqueIndex(
-      'users_username_idx',
-    ).on(table.username),
+    usernameIdx: uniqueIndex('users_username_idx').on(table.username),
 
-    emailIdx: uniqueIndex(
-      'users_email_idx',
-    ).on(table.email),
+    emailIdx: uniqueIndex('users_email_idx').on(table.email),
 
-    tenantIdx: index(
-      'users_tenant_idx',
-    ).on(table.tenantId),
+    tenantIdx: index('users_tenant_idx').on(table.tenantId),
 
-    facilityIdx: index(
-      'users_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('users_facility_idx').on(table.facilityId),
 
-    accountStatusIdx: index(
-      'users_account_status_idx',
-    ).on(table.accountStatus),
+    accountStatusIdx: index('users_account_status_idx').on(table.accountStatus),
   }),
 );
 
@@ -328,28 +291,18 @@ export const userRoles = pgTable(
 
     assignedBy: text('assigned_by'),
 
-    assignedAt: timestamp('assigned_at')
-      .defaultNow()
-      .notNull(),
+    assignedAt: timestamp('assigned_at').defaultNow().notNull(),
 
     revokedAt: timestamp('revoked_at'),
 
-    isActive: boolean('is_active')
-      .default(true)
-      .notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
   },
   (table) => ({
-    userRoleIdx: uniqueIndex(
-      'user_roles_user_role_idx',
-    ).on(table.userId, table.roleId),
+    userRoleIdx: uniqueIndex('user_roles_user_role_idx').on(table.userId, table.roleId),
 
-    userIdx: index(
-      'user_roles_user_idx',
-    ).on(table.userId),
+    userIdx: index('user_roles_user_idx').on(table.userId),
 
-    roleIdx: index(
-      'user_roles_role_idx',
-    ).on(table.roleId),
+    roleIdx: index('user_roles_role_idx').on(table.roleId),
   }),
 );
 
@@ -368,24 +321,17 @@ export const sessions = pgTable(
       The actual token exists only in the user's browser cookie.
     */
 
-    sessionTokenHash: text('session_token_hash')
-      .notNull()
-      .unique(),
+    sessionTokenHash: text('session_token_hash').notNull().unique(),
 
     ipAddress: text('ip_address'),
 
     userAgent: text('user_agent'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 
-    lastActivityAt: timestamp('last_activity_at')
-      .defaultNow()
-      .notNull(),
+    lastActivityAt: timestamp('last_activity_at').defaultNow().notNull(),
 
-    expiresAt: timestamp('expires_at')
-      .notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
 
     revokedAt: timestamp('revoked_at'),
 
@@ -396,22 +342,14 @@ export const sessions = pgTable(
       If user.securityVersion changes, sessions can be rejected.
     */
 
-    securityVersion: integer('security_version')
-      .default(1)
-      .notNull(),
+    securityVersion: integer('security_version').default(1).notNull(),
   },
   (table) => ({
-    userIdx: index(
-      'sessions_user_idx',
-    ).on(table.userId),
+    userIdx: index('sessions_user_idx').on(table.userId),
 
-    expiryIdx: index(
-      'sessions_expiry_idx',
-    ).on(table.expiresAt),
+    expiryIdx: index('sessions_expiry_idx').on(table.expiresAt),
 
-    activeSessionIdx: index(
-      'sessions_active_idx',
-    ).on(table.userId, table.revokedAt),
+    activeSessionIdx: index('sessions_active_idx').on(table.userId, table.revokedAt),
   }),
 );
 
@@ -425,38 +363,26 @@ export const loginAttempts = pgTable(
       privacy requirements later require hashing it.
     */
 
-    usernameOrEmail: text('username_or_email')
-      .notNull(),
+    usernameOrEmail: text('username_or_email').notNull(),
 
-    userId: integer('user_id')
-      .references(() => users.id),
+    userId: integer('user_id').references(() => users.id),
 
     ipAddress: text('ip_address'),
 
     userAgent: text('user_agent'),
 
-    successful: boolean('successful')
-      .default(false)
-      .notNull(),
+    successful: boolean('successful').default(false).notNull(),
 
     failureReason: text('failure_reason'),
 
-    attemptedAt: timestamp('attempted_at')
-      .defaultNow()
-      .notNull(),
+    attemptedAt: timestamp('attempted_at').defaultNow().notNull(),
   },
   (table) => ({
-    userAttemptIdx: index(
-      'login_attempts_user_idx',
-    ).on(table.userId),
+    userAttemptIdx: index('login_attempts_user_idx').on(table.userId),
 
-    ipAttemptIdx: index(
-      'login_attempts_ip_idx',
-    ).on(table.ipAddress),
+    ipAttemptIdx: index('login_attempts_ip_idx').on(table.ipAddress),
 
-    timeIdx: index(
-      'login_attempts_time_idx',
-    ).on(table.attemptedAt),
+    timeIdx: index('login_attempts_time_idx').on(table.attemptedAt),
   }),
 );
 
@@ -473,12 +399,9 @@ export const passwordResets = pgTable(
       Store only a hash of the reset token.
     */
 
-    tokenHash: text('token_hash')
-      .notNull()
-      .unique(),
+    tokenHash: text('token_hash').notNull().unique(),
 
-    expiresAt: timestamp('expires_at')
-      .notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
 
     usedAt: timestamp('used_at'),
 
@@ -486,18 +409,12 @@ export const passwordResets = pgTable(
 
     requestedUserAgent: text('requested_user_agent'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdx: index(
-      'password_resets_user_idx',
-    ).on(table.userId),
+    userIdx: index('password_resets_user_idx').on(table.userId),
 
-    expiryIdx: index(
-      'password_resets_expiry_idx',
-    ).on(table.expiresAt),
+    expiryIdx: index('password_resets_expiry_idx').on(table.expiresAt),
   }),
 );
 
@@ -520,47 +437,33 @@ export const facilityAdminInvitations = pgTable(
 
     phone: text('phone'),
 
-    designation: text('designation')
-      .default('Facility Administrator'),
+    designation: text('designation').default('Facility Administrator'),
 
     /*
       Hash only.
       The actual invitation token is sent to the recipient.
     */
 
-    invitationTokenHash: text('invitation_token_hash')
-      .notNull()
-      .unique(),
+    invitationTokenHash: text('invitation_token_hash').notNull().unique(),
 
-    expiresAt: timestamp('expires_at')
-      .notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
 
     acceptedAt: timestamp('accepted_at'),
 
-    acceptedUserId: integer('accepted_user_id')
-      .references(() => users.id),
+    acceptedUserId: integer('accepted_user_id').references(() => users.id),
 
-    invitedBy: text('invited_by')
-      .notNull(),
+    invitedBy: text('invited_by').notNull(),
 
     revokedAt: timestamp('revoked_at'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityIdx: index(
-      'facility_admin_invitations_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('facility_admin_invitations_facility_idx').on(table.facilityId),
 
-    emailIdx: index(
-      'facility_admin_invitations_email_idx',
-    ).on(table.email),
+    emailIdx: index('facility_admin_invitations_email_idx').on(table.email),
 
-    expiryIdx: index(
-      'facility_admin_invitations_expiry_idx',
-    ).on(table.expiresAt),
+    expiryIdx: index('facility_admin_invitations_expiry_idx').on(table.expiresAt),
   }),
 );
 
@@ -589,38 +492,25 @@ export const userInvitations = pgTable(
       .references(() => roles.id)
       .notNull(),
 
-    invitationTokenHash: text('invitation_token_hash')
-      .notNull()
-      .unique(),
+    invitationTokenHash: text('invitation_token_hash').notNull().unique(),
 
-    expiresAt: timestamp('expires_at')
-      .notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
 
     acceptedAt: timestamp('accepted_at'),
 
-    acceptedUserId: integer('accepted_user_id')
-      .references(() => users.id),
+    acceptedUserId: integer('accepted_user_id').references(() => users.id),
 
-    invitedBy: text('invited_by')
-      .notNull(),
+    invitedBy: text('invited_by').notNull(),
 
     revokedAt: timestamp('revoked_at'),
 
-    createdAt: timestamp('created_at')
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityIdx: index(
-      'user_invitations_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('user_invitations_facility_idx').on(table.facilityId),
 
-    emailIdx: index(
-      'user_invitations_email_idx',
-    ).on(table.email),
+    emailIdx: index('user_invitations_email_idx').on(table.email),
 
-    expiryIdx: index(
-      'user_invitations_expiry_idx',
-    ).on(table.expiresAt),
+    expiryIdx: index('user_invitations_expiry_idx').on(table.expiresAt),
   }),
 );

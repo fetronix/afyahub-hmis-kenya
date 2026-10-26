@@ -130,14 +130,9 @@ export const facilities = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    tenantCodeIdx: uniqueIndex('facilities_tenant_code_idx').on(
-      table.tenantId,
-      table.code,
-    ),
+    tenantCodeIdx: uniqueIndex('facilities_tenant_code_idx').on(table.tenantId, table.code),
 
-    mflCodeIdx: uniqueIndex('facilities_mfl_code_idx').on(
-      table.mflCode,
-    ),
+    mflCodeIdx: uniqueIndex('facilities_mfl_code_idx').on(table.mflCode),
   }),
 );
 
@@ -154,9 +149,7 @@ export const facilityOnboarding = pgTable(
       .references(() => facilities.id)
       .notNull(),
 
-    status: text('status')
-      .default('PROSPECT')
-      .notNull(),
+    status: text('status').default('PROSPECT').notNull(),
 
     /*
       PROSPECT
@@ -200,13 +193,12 @@ export const facilityOnboarding = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityIdx: uniqueIndex(
-      'facility_onboarding_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: uniqueIndex('facility_onboarding_facility_idx').on(table.facilityId),
 
-    tenantStatusIdx: index(
-      'facility_onboarding_tenant_status_idx',
-    ).on(table.tenantId, table.status),
+    tenantStatusIdx: index('facility_onboarding_tenant_status_idx').on(
+      table.tenantId,
+      table.status,
+    ),
   }),
 );
 
@@ -244,9 +236,7 @@ export const facilityDocuments = pgTable(
 
     documentHash: text('document_hash'),
 
-    verificationStatus: text('verification_status')
-      .default('PENDING')
-      .notNull(),
+    verificationStatus: text('verification_status').default('PENDING').notNull(),
 
     /*
       PENDING
@@ -258,9 +248,7 @@ export const facilityDocuments = pgTable(
 
     verifiedBy: text('verified_by'),
 
-    uploadedAt: timestamp('uploaded_at')
-      .defaultNow()
-      .notNull(),
+    uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
 
     verifiedAt: timestamp('verified_at'),
 
@@ -269,13 +257,9 @@ export const facilityDocuments = pgTable(
     metadata: jsonb('metadata').default({}),
   },
   (table) => ({
-    facilityIdx: index(
-      'facility_documents_facility_idx',
-    ).on(table.facilityId),
+    facilityIdx: index('facility_documents_facility_idx').on(table.facilityId),
 
-    verificationIdx: index(
-      'facility_documents_verification_idx',
-    ).on(table.verificationStatus),
+    verificationIdx: index('facility_documents_verification_idx').on(table.verificationStatus),
   }),
 );
 
@@ -301,9 +285,7 @@ export const departments = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityCodeIdx: uniqueIndex(
-      'departments_facility_code_idx',
-    ).on(table.facilityId, table.code),
+    facilityCodeIdx: uniqueIndex('departments_facility_code_idx').on(table.facilityId, table.code),
   }),
 );
 
@@ -331,12 +313,9 @@ export const facilitySubscriptionAccess = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityUnique: uniqueIndex('facility_subscription_access_facility_uidx')
-      .on(table.facilityId),
-    tenantIdx: index('facility_subscription_access_tenant_idx')
-      .on(table.tenantId),
-    statusIdx: index('facility_subscription_access_status_idx')
-      .on(table.accessStatus),
+    facilityUnique: uniqueIndex('facility_subscription_access_facility_uidx').on(table.facilityId),
+    tenantIdx: index('facility_subscription_access_tenant_idx').on(table.tenantId),
+    statusIdx: index('facility_subscription_access_status_idx').on(table.accessStatus),
   }),
 );
 
@@ -368,14 +347,10 @@ export const facilitySubscriptionPeriods = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    facilityIdx: index('facility_subscription_periods_facility_idx')
-      .on(table.facilityId),
-    tenantIdx: index('facility_subscription_periods_tenant_idx')
-      .on(table.tenantId),
-    statusIdx: index('facility_subscription_periods_status_idx')
-      .on(table.status),
-    periodStartIdx: index('facility_subscription_periods_start_idx')
-      .on(table.periodStart),
+    facilityIdx: index('facility_subscription_periods_facility_idx').on(table.facilityId),
+    tenantIdx: index('facility_subscription_periods_tenant_idx').on(table.tenantId),
+    statusIdx: index('facility_subscription_periods_status_idx').on(table.status),
+    periodStartIdx: index('facility_subscription_periods_start_idx').on(table.periodStart),
   }),
 );
 
@@ -407,15 +382,14 @@ export const facilitySubscriptionPayments = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    transactionCodeUnique: uniqueIndex(
-      'facility_subscription_payments_transaction_code_uidx',
-    ).on(table.transactionCode),
-    periodIdx: index('facility_subscription_payments_period_idx')
-      .on(table.subscriptionPeriodId),
-    facilityIdx: index('facility_subscription_payments_facility_idx')
-      .on(table.facilityId),
-    verificationIdx: index('facility_subscription_payments_verification_idx')
-      .on(table.verificationStatus),
+    transactionCodeUnique: uniqueIndex('facility_subscription_payments_transaction_code_uidx').on(
+      table.transactionCode,
+    ),
+    periodIdx: index('facility_subscription_payments_period_idx').on(table.subscriptionPeriodId),
+    facilityIdx: index('facility_subscription_payments_facility_idx').on(table.facilityId),
+    verificationIdx: index('facility_subscription_payments_verification_idx').on(
+      table.verificationStatus,
+    ),
   }),
 );
 
@@ -448,9 +422,9 @@ export const facilitySubscriptionPriceChanges = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    periodIdx: index('facility_subscription_price_changes_period_idx')
-      .on(table.subscriptionPeriodId),
-    facilityIdx: index('facility_subscription_price_changes_facility_idx')
-      .on(table.facilityId),
+    periodIdx: index('facility_subscription_price_changes_period_idx').on(
+      table.subscriptionPeriodId,
+    ),
+    facilityIdx: index('facility_subscription_price_changes_facility_idx').on(table.facilityId),
   }),
 );

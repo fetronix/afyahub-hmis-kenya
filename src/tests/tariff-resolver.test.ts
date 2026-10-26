@@ -225,7 +225,14 @@ function testLabBloodIsNotAGenericMatch(): void {
     input({
       serviceId: 7,
       links: [
-        { id: 1, serviceType: 'LAB_TEST', serviceId: 7, tariffId: 108, autoBill: true, isActive: true },
+        {
+          id: 1,
+          serviceType: 'LAB_TEST',
+          serviceId: 7,
+          tariffId: 108,
+          autoBill: true,
+          isActive: true,
+        },
       ],
     }),
   );
@@ -243,7 +250,14 @@ function testLabBloodIsNotAGenericMatch(): void {
 
 function testLinksByStableId(): void {
   const links: TariffLink[] = [
-    { id: 11, serviceType: 'LAB_TEST', serviceId: 5, tariffId: 105, autoBill: true, isActive: true },
+    {
+      id: 11,
+      serviceType: 'LAB_TEST',
+      serviceId: 5,
+      tariffId: 105,
+      autoBill: true,
+      isActive: true,
+    },
   ];
 
   const resolution = resolveFromRows(
@@ -276,12 +290,17 @@ function testLinksByStableId(): void {
 
 function testFamilyLink(): void {
   const links: TariffLink[] = [
-    { id: 21, serviceType: 'LAB_TEST', serviceId: null, tariffId: 107, autoBill: true, isActive: true },
+    {
+      id: 21,
+      serviceType: 'LAB_TEST',
+      serviceId: null,
+      tariffId: 107,
+      autoBill: true,
+      isActive: true,
+    },
   ];
 
-  const resolution = resolveFromRows(
-    input({ serviceId: 3, serviceName: 'Urinalysis', links }),
-  );
+  const resolution = resolveFromRows(input({ serviceId: 3, serviceName: 'Urinalysis', links }));
 
   assertEqual(resolution.rule, 'FAMILY_LINK', 'a family link applies when no specific one exists');
   assertEqual(resolution.tariff?.code, 'LAB-008', 'and prices from the family tariff');
@@ -291,13 +310,23 @@ function testFamilyLink(): void {
       serviceId: 3,
       links: [
         ...links,
-        { id: 22, serviceType: 'LAB_TEST', serviceId: 3, tariffId: 103, autoBill: true, isActive: true },
+        {
+          id: 22,
+          serviceType: 'LAB_TEST',
+          serviceId: 3,
+          tariffId: 103,
+          autoBill: true,
+          isActive: true,
+        },
       ],
     }),
   );
 
-  assertEqual(specificWins.tariff?.code, 'LAB-003',
-    'a service-specific link beats the family link');
+  assertEqual(
+    specificWins.tariff?.code,
+    'LAB-003',
+    'a service-specific link beats the family link',
+  );
   assertEqual(specificWins.rule, 'LINK', 'and is reported as a direct link');
 
   console.log('  ✓ Family links apply, and a specific link beats them');
@@ -322,7 +351,11 @@ function testInactiveIsRejectedWithAReason(): void {
   );
 
   assertEqual(resolution.tariff, null, 'an inactive tariff is not used');
-  assertEqual(resolution.failure?.code, 'INACTIVE', 'and the reason is "inactive", not "not found"');
+  assertEqual(
+    resolution.failure?.code,
+    'INACTIVE',
+    'and the reason is "inactive", not "not found"',
+  );
   assert(
     (resolution.failure?.message ?? '').includes('LAB-001'),
     'the message names the row that was found and refused',
@@ -335,9 +368,17 @@ function testInactiveIsRejectedWithAReason(): void {
 function testExpiredAndFuture(): void {
   assertEqual(dateVerdict(null, null, TODAY), 'OK', 'no dates means always valid');
   assertEqual(dateVerdict('2026-01-01', '2026-12-31', TODAY), 'OK', 'inside the period is valid');
-  assertEqual(dateVerdict('2026-01-01', '2026-10-21', TODAY), 'EXPIRED', 'a day after the end is expired');
+  assertEqual(
+    dateVerdict('2026-01-01', '2026-10-21', TODAY),
+    'EXPIRED',
+    'a day after the end is expired',
+  );
   assertEqual(dateVerdict('2026-01-01', '2026-10-22', TODAY), 'OK', 'the last day is still valid');
-  assertEqual(dateVerdict('2026-11-01', null, TODAY), 'NOT_YET_EFFECTIVE', 'a future start is not yet valid');
+  assertEqual(
+    dateVerdict('2026-11-01', null, TODAY),
+    'NOT_YET_EFFECTIVE',
+    'a future start is not yet valid',
+  );
 
   const expired = resolveFromRows(
     input({
@@ -361,9 +402,7 @@ function testExpiredAndFuture(): void {
       phrases: ['Urinalysis'],
       codes: ['LAB-003'],
       tariffs: labTariffs.map((row) =>
-        row.code === 'LAB-003'
-          ? { ...row, effectiveFrom: '2027-01-01' }
-          : row,
+        row.code === 'LAB-003' ? { ...row, effectiveFrom: '2027-01-01' } : row,
       ),
     }),
   );
@@ -391,19 +430,33 @@ function testOtherFacilityCannotPrice(): void {
     }),
   );
 
-  assertEqual(otherFacilityOnly.tariff, null,
-    'another facility’s tariff is not visible here, so it cannot price the test');
+  assertEqual(
+    otherFacilityOnly.tariff,
+    null,
+    'another facility’s tariff is not visible here, so it cannot price the test',
+  );
 
   const danglingLink = resolveFromRows(
     input({
       serviceId: 1,
       links: [
-        { id: 31, serviceType: 'LAB_TEST', serviceId: 1, tariffId: 999999, autoBill: true, isActive: true },
+        {
+          id: 31,
+          serviceType: 'LAB_TEST',
+          serviceId: 1,
+          tariffId: 999999,
+          autoBill: true,
+          isActive: true,
+        },
       ],
     }),
   );
 
-  assertEqual(danglingLink.tariff, null, 'a link to a tariff not in this facility does not resolve');
+  assertEqual(
+    danglingLink.tariff,
+    null,
+    'a link to a tariff not in this facility does not resolve',
+  );
   assertEqual(danglingLink.failure?.code, 'NO_TARIFF', 'and is reported');
 
   const migration = readFileSync(
@@ -434,7 +487,11 @@ function testAutomaticBillingFlag(): void {
     }),
   );
 
-  assertEqual(auto.tariff, null, 'a tariff excluded from automatic billing is not used automatically');
+  assertEqual(
+    auto.tariff,
+    null,
+    'a tariff excluded from automatic billing is not used automatically',
+  );
   assertEqual(auto.failure?.code, 'AUTOMATIC_BILLING_DISABLED', 'and says why');
 
   const manual = resolveFromRows(
@@ -461,7 +518,11 @@ function testUnitOfCharge(): void {
   assertEqual(unitVerdict('LAB_TEST', 'Per test'), 'OK', 'per test is fine');
   assertEqual(unitVerdict('LAB_TEST', 'Per day'), 'INCOMPATIBLE', 'a lab test cannot be per day');
   assertEqual(unitVerdict('CONSULTATION', 'Per visit'), 'OK', 'a consultation is per visit');
-  assertEqual(unitVerdict('CONSULTATION', 'Per day'), 'INCOMPATIBLE', 'a consultation cannot be per day');
+  assertEqual(
+    unitVerdict('CONSULTATION', 'Per day'),
+    'INCOMPATIBLE',
+    'a consultation cannot be per day',
+  );
   assertEqual(unitVerdict('BED_DAY', 'Per night'), 'OK', 'a bed-day is per night');
   assertEqual(unitVerdict('LAB_TEST', ''), 'MISSING', 'an empty unit is missing');
 
@@ -477,16 +538,18 @@ function testUnitOfCharge(): void {
   );
 
   assertEqual(incompatible.tariff, null, 'a test priced per day is not charged');
-  assertEqual(incompatible.failure?.code, 'UNIT_INCOMPATIBLE', 'and the unit is named as the problem');
+  assertEqual(
+    incompatible.failure?.code,
+    'UNIT_INCOMPATIBLE',
+    'and the unit is named as the problem',
+  );
 
   const missing = resolveFromRows(
     input({
       serviceName: 'Urinalysis',
       phrases: ['Urinalysis'],
       codes: ['LAB-003'],
-      tariffs: labTariffs.map((row) =>
-        row.code === 'LAB-003' ? { ...row, unit: '' } : row,
-      ),
+      tariffs: labTariffs.map((row) => (row.code === 'LAB-003' ? { ...row, unit: '' } : row)),
     }),
   );
 
@@ -520,11 +583,7 @@ function testAmbiguityFailsClosed(): void {
     ['LAB-001', 'LAB-009'],
     'both codes are named so the facility can decide',
   );
-  assertEqual(
-    toCents('0'),
-    0,
-    'nothing is billed, so nothing can be wrong',
-  );
+  assertEqual(toCents('0'), 0, 'nothing is billed, so nothing can be wrong');
 
   console.log('  ✓ Ambiguity is reported, never resolved by row order');
 }
@@ -554,8 +613,7 @@ function testDiagnosticsCoverEveryStatedCase(): void {
   assertEqual(failureLabel('UNIT_INCOMPATIBLE'), 'Incompatible unit', 'units are named');
 
   assert(
-    CONFIGURATION_FAILURES.includes('NO_TARIFF') &&
-      CONFIGURATION_FAILURES.includes('AMBIGUOUS'),
+    CONFIGURATION_FAILURES.includes('NO_TARIFF') && CONFIGURATION_FAILURES.includes('AMBIGUOUS'),
     'configuration failures are distinguishable from data errors',
   );
 
@@ -604,10 +662,7 @@ function testOldCodesAreReportedNotGuessed(): void {
    * The generic fallbacks remain, because `LAB-GENERAL` only prices
    * anything if the facility deliberately created that row.
    */
-  assert(
-    !codes.includes('LAB-BLOOD'),
-    'LAB-BLOOD is not generated from the word “blood”',
-  );
+  assert(!codes.includes('LAB-BLOOD'), 'LAB-BLOOD is not generated from the word “blood”');
   assert(!codes.includes('BLOOD'), 'nor is the bare word');
   assert(codes.includes('LAB-GENERAL'), 'the generic fallback is still offered');
 
@@ -619,9 +674,7 @@ function testOldCodesAreReportedNotGuessed(): void {
 
   assert(explicit.includes('LAB-BLOOD'), 'a real catalogue code is always tried');
 
-  const resolution = resolveFromRows(
-    input({ serviceName: 'Blood', codes, phrases: ['Blood'] }),
-  );
+  const resolution = resolveFromRows(input({ serviceName: 'Blood', codes, phrases: ['Blood'] }));
 
   assertEqual(resolution.tariff, null, 'trying them does not mean charging one of them');
   assertEqual(resolution.codesTried, codes, 'the codes tried are reported back');
@@ -639,7 +692,11 @@ function testOldCodesAreReportedNotGuessed(): void {
     }),
   );
 
-  assertEqual(withGeneric.tariff?.code, 'LAB-GENERAL', 'an explicit generic tariff still prices a test');
+  assertEqual(
+    withGeneric.tariff?.code,
+    'LAB-GENERAL',
+    'an explicit generic tariff still prices a test',
+  );
   assertEqual(withGeneric.rule, 'CODE', 'by its code, not by the word “laboratory”');
 
   console.log('  ✓ The old codes are tried and reported, never guessed at');
@@ -650,19 +707,13 @@ function testOldCodesAreReportedNotGuessed(): void {
    ============================================================ */
 
 function testOrderCarriesCatalogueIdentity(): void {
-  const queries = readFileSync(
-    resolve(process.cwd(), 'src/db/queries.ts'),
-    'utf8',
-  );
+  const queries = readFileSync(resolve(process.cwd(), 'src/db/queries.ts'), 'utf8');
 
   assert(
     queries.includes('resolveCatalogueTestByName'),
     'free-text investigations are resolved against the catalogue',
   );
-  assert(
-    queries.includes("'AMBIGUOUS'"),
-    'an ambiguous catalogue name is reported, not guessed',
-  );
+  assert(queries.includes("'AMBIGUOUS'"), 'an ambiguous catalogue name is reported, not guessed');
   assert(
     queries.includes('testId: resolution.test.id'),
     'a resolved name attaches the catalogue id to the order',
@@ -672,17 +723,11 @@ function testOrderCarriesCatalogueIdentity(): void {
     'what could not be resolved is reported back to the caller',
   );
 
-  const charges = readFileSync(
-    resolve(process.cwd(), 'src/billing/service-charges.ts'),
-    'utf8',
-  );
+  const charges = readFileSync(resolve(process.cwd(), 'src/billing/service-charges.ts'), 'utf8');
 
+  assert(charges.includes("type: 'LAB_TEST'"), 'the laboratory charge carries its catalogue type');
   assert(
-    charges.includes("type: 'LAB_TEST'"),
-    'the laboratory charge carries its catalogue type',
-  );
-  assert(
-    charges.includes('id: typeof order.testId === \'number\' ? order.testId : null'),
+    charges.includes("id: typeof order.testId === 'number' ? order.testId : null"),
     'and its catalogue id, which is what a link is keyed on',
   );
 
@@ -771,7 +816,11 @@ function testOtherWorkflowsUseTheSameResolver(): void {
 
   assertEqual(opd002.tariff?.code, 'OPD-002', 'a follow-up still prices from OPD-002');
 
-  assertEqual(familyForServiceType('LAB_TEST'), 'LABORATORY', 'LAB_TEST maps to the laboratory family');
+  assertEqual(
+    familyForServiceType('LAB_TEST'),
+    'LABORATORY',
+    'LAB_TEST maps to the laboratory family',
+  );
   assertEqual(familyForServiceType('RADIOLOGY'), 'RADIOLOGY', 'radiology maps to itself');
   assert(isCatalogueServiceType('LAB_TEST'), 'the type vocabulary is closed');
   assert(!isCatalogueServiceType('ANYTHING'), 'and rejects unknown types');
@@ -788,10 +837,7 @@ function testMigrationIsSafeAndApplied(): void {
     resolve(process.cwd(), 'drizzle/0021_service_tariff_links.sql'),
     'utf8',
   );
-  const journal = readFileSync(
-    resolve(process.cwd(), 'drizzle/meta/_journal.json'),
-    'utf8',
-  );
+  const journal = readFileSync(resolve(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8');
 
   assert(
     /ADD COLUMN IF NOT EXISTS "effective_from"/.test(migration),
@@ -840,15 +886,9 @@ function testMigrationIsSafeAndApplied(): void {
    ============================================================ */
 
 function testOneEngine(): void {
-  const billing = readFileSync(
-    resolve(process.cwd(), 'src/billing/billing.service.ts'),
-    'utf8',
-  );
+  const billing = readFileSync(resolve(process.cwd(), 'src/billing/billing.service.ts'), 'utf8');
 
-  assert(
-    billing.includes('resolveServiceTariff('),
-    'the charge path calls the shared resolver',
-  );
+  assert(billing.includes('resolveServiceTariff('), 'the charge path calls the shared resolver');
   assert(
     !billing.includes('insert(schema.billingItems)') ||
       billing.split('insert(schema.billingItems)').length === 2,
@@ -869,10 +909,7 @@ function testOneEngine(): void {
     app.includes("requirePermission('tariffs.manage')"),
     'link changes require the tariff-management permission',
   );
-  assert(
-    app.includes('requireFacilityAdminTariffRole'),
-    'and the facility-admin guard',
-  );
+  assert(app.includes('requireFacilityAdminTariffRole'), 'and the facility-admin guard');
 
   console.log('  ✓ One resolver, one invoice writer, existing permissions');
 }

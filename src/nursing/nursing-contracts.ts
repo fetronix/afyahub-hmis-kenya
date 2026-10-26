@@ -103,33 +103,13 @@ export function assessVitals(observation: {
   check('systolicBp', 'Systolic BP', observation.systolicBp, 80, 180);
   check('diastolicBp', 'Diastolic BP', observation.diastolicBp, 50, 110);
   check('pulseRate', 'Pulse', observation.pulseRate, 45, 130);
-  check(
-    'temperatureC',
-    'Temperature',
-    numeric(observation.temperatureC),
-    35,
-    39.5,
-  );
-  check(
-    'respiratoryRate',
-    'Respiratory rate',
-    observation.respiratoryRate,
-    8,
-    30,
-  );
+  check('temperatureC', 'Temperature', numeric(observation.temperatureC), 35, 39.5);
+  check('respiratoryRate', 'Respiratory rate', observation.respiratoryRate, 8, 30);
   check('spo2Percent', 'SpO2', observation.spo2Percent, 90, undefined);
-  check(
-    'bloodGlucoseMmol',
-    'Blood glucose',
-    numeric(observation.bloodGlucoseMmol),
-    2.8,
-    20,
-  );
+  check('bloodGlucoseMmol', 'Blood glucose', numeric(observation.bloodGlucoseMmol), 2.8, 20);
 
   /* Rank critical flags first so the UI can surface them immediately. */
-  return flags.sort((a, b) =>
-    a.severity === b.severity ? 0 : a.severity === 'critical' ? -1 : 1,
-  );
+  return flags.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'critical' ? -1 : 1));
 }
 
 /**
@@ -176,4 +156,3 @@ export function dateKey(value: Date | string): string {
 
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
-

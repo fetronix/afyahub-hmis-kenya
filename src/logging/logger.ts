@@ -60,9 +60,7 @@ const isTest = process.env.NODE_ENV === 'test';
  * a failing-payment test should not print a stack trace that looks like a
  * real incident in CI output.
  */
-const level =
-  process.env.LOG_LEVEL ??
-  (isTest ? 'silent' : isProduction ? 'info' : 'debug');
+const level = process.env.LOG_LEVEL ?? (isTest ? 'silent' : isProduction ? 'info' : 'debug');
 
 /**
  * Every path here is redacted to `[REDACTED]`.

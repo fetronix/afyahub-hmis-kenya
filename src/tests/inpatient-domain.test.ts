@@ -38,10 +38,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 /* ============================================================
@@ -49,13 +46,7 @@ function assertEqual<T>(actual: T, expected: T, label: string): void {
    ============================================================ */
 
 function testBedStatusContract(): void {
-  const expected = [
-    'Available',
-    'Occupied',
-    'Cleaning',
-    'Maintenance',
-    'Reserved',
-  ];
+  const expected = ['Available', 'Occupied', 'Cleaning', 'Maintenance', 'Reserved'];
 
   assertEqual(
     BED_STATUSES.join(','),
@@ -70,10 +61,7 @@ function testBedStatusContract(): void {
   );
 
   for (const settable of ['Available', 'Cleaning', 'Maintenance', 'Reserved']) {
-    assert(
-      BED_STATUS_SETTABLE.has(settable),
-      `'${settable}' remains directly settable`,
-    );
+    assert(BED_STATUS_SETTABLE.has(settable), `'${settable}' remains directly settable`);
   }
 
   console.log('  ✓ Bed status contract passed');
@@ -84,11 +72,7 @@ function testBedStatusContract(): void {
    ============================================================ */
 
 function testAdmissionStatusContract(): void {
-  assertEqual(
-    ADMISSION_STATUSES.join(','),
-    'Admitted,Discharged',
-    'admission status vocabulary',
-  );
+  assertEqual(ADMISSION_STATUSES.join(','), 'Admitted,Discharged', 'admission status vocabulary');
 
   console.log('  ✓ Admission status contract passed');
 }
@@ -98,18 +82,11 @@ function testAdmissionStatusContract(): void {
    ============================================================ */
 
 function testDomainErrors(): void {
-  const invalid = new InpatientDomainError(
-    'INVALID_INPUT',
-    'bad input',
-    400,
-  );
+  const invalid = new InpatientDomainError('INVALID_INPUT', 'bad input', 400);
 
   assertEqual(invalid.status, 400, 'invalid input maps to HTTP 400');
   assertEqual(invalid.code, 'INVALID_INPUT', 'invalid input keeps its code');
-  assert(
-    invalid instanceof Error,
-    'InpatientDomainError is an Error subclass',
-  );
+  assert(invalid instanceof Error, 'InpatientDomainError is an Error subclass');
   assertEqual(invalid.name, 'InpatientDomainError', 'error name is stable');
 
   assertEqual(
@@ -119,11 +96,7 @@ function testDomainErrors(): void {
   );
 
   assertEqual(
-    new InpatientDomainError(
-      'ADMISSION_ALREADY_CLOSED',
-      'closed',
-      409,
-    ).status,
+    new InpatientDomainError('ADMISSION_ALREADY_CLOSED', 'closed', 409).status,
     409,
     'closed admission maps to HTTP 409',
   );
@@ -156,10 +129,7 @@ function testRolePermissions(): void {
 
   assert(doctor.includes('inpatient.read'), 'DOCTOR can read inpatient');
   assert(doctor.includes('inpatient.admit'), 'DOCTOR can admit patients');
-  assert(
-    doctor.includes('inpatient.discharge'),
-    'DOCTOR can discharge patients',
-  );
+  assert(doctor.includes('inpatient.discharge'), 'DOCTOR can discharge patients');
 
   const nurse = permissionsFor('NURSE');
 
@@ -202,11 +172,7 @@ function stripWhitespace(source: string): string {
   return source.replace(/\s+/g, '');
 }
 
-function routeIsGuarded(
-  source: string,
-  routePath: string,
-  permission: string,
-): boolean {
+function routeIsGuarded(source: string, routePath: string, permission: string): boolean {
   let index = source.indexOf(routePath);
 
   while (index >= 0) {
@@ -222,11 +188,7 @@ function routeIsGuarded(
   return false;
 }
 
-function routeAcceptsAuthRequest(
-  source: string,
-  routePath: string,
-  permission: string,
-): boolean {
+function routeAcceptsAuthRequest(source: string, routePath: string, permission: string): boolean {
   let index = source.indexOf(routePath);
 
   while (index >= 0) {
@@ -246,10 +208,7 @@ function routeAcceptsAuthRequest(
 }
 
 function testRouteWiring(): void {
-  const appSource = readFileSync(
-    resolve(import.meta.dirname, '../app.ts'),
-    'utf8',
-  );
+  const appSource = readFileSync(resolve(import.meta.dirname, '../app.ts'), 'utf8');
 
   const expectations: Array<{ route: string; permission: string }> = [
     { route: "'/api/wards'", permission: 'inpatient.read' },
@@ -265,10 +224,7 @@ function testRouteWiring(): void {
   ];
 
   for (const expectation of expectations) {
-    assert(
-      appSource.includes(expectation.route),
-      `route ${expectation.route} exists`,
-    );
+    assert(appSource.includes(expectation.route), `route ${expectation.route} exists`);
 
     assert(
       routeIsGuarded(appSource, expectation.route, expectation.permission),
@@ -276,11 +232,7 @@ function testRouteWiring(): void {
     );
 
     assert(
-      routeAcceptsAuthRequest(
-        appSource,
-        expectation.route,
-        expectation.permission,
-      ),
+      routeAcceptsAuthRequest(appSource, expectation.route, expectation.permission),
       `route ${expectation.route} with ${expectation.permission} receives an AuthRequest`,
     );
   }
@@ -294,10 +246,7 @@ function testRouteWiring(): void {
     'queries.dischargeAdmission(',
     'queries.updateBedStatus(',
   ]) {
-    assert(
-      !appSource.includes(legacy),
-      `legacy unscoped call ${legacy} is gone`,
-    );
+    assert(!appSource.includes(legacy), `legacy unscoped call ${legacy} is gone`);
   }
 
   // Tenancy must never be read from the request body.
@@ -323,30 +272,21 @@ function testRouteWiring(): void {
  *   - a ward or bed that has held a patient cannot be deleted.
  */
 function testWardBedSetup(): void {
-  const appSource = readFileSync(
-    resolve(import.meta.dirname, '../app.ts'),
-    'utf8',
-  );
+  const appSource = readFileSync(resolve(import.meta.dirname, '../app.ts'), 'utf8');
 
   const service = readFileSync(
     resolve(import.meta.dirname, '../inpatient/ward-bed.service.ts'),
     'utf8',
   );
 
-  const seed = readFileSync(
-    resolve(import.meta.dirname, '../seeds/permissions.ts'),
-    'utf8',
-  );
+  const seed = readFileSync(resolve(import.meta.dirname, '../seeds/permissions.ts'), 'utf8');
 
   const screen = readFileSync(
     resolve(import.meta.dirname, '../components/modules/InpatientModule.tsx'),
     'utf8',
   );
 
-  const client = readFileSync(
-    resolve(import.meta.dirname, '../api/client.ts'),
-    'utf8',
-  );
+  const client = readFileSync(resolve(import.meta.dirname, '../api/client.ts'), 'utf8');
 
   /* ---- permissions ---- */
   const requiredPermissions = [
@@ -359,10 +299,7 @@ function testWardBedSetup(): void {
   ];
 
   for (const permission of requiredPermissions) {
-    assert(
-      seed.includes(`'${permission}'`),
-      `${permission} is in the permission seed`,
-    );
+    assert(seed.includes(`'${permission}'`), `${permission} is in the permission seed`);
   }
 
   /*
@@ -370,8 +307,7 @@ function testWardBedSetup(): void {
    * user the board but not the ward list.
    */
   assert(
-    !seed.includes("'inpatient.wards.read'") &&
-      !seed.includes("'inpatient.beds.read'"),
+    !seed.includes("'inpatient.wards.read'") && !seed.includes("'inpatient.beds.read'"),
     'reading wards and beds uses the existing inpatient.read',
   );
 
@@ -390,10 +326,7 @@ function testWardBedSetup(): void {
   for (const { route, method, permission } of routes) {
     const marker = stripWhitespace(`${method}(${route},`);
 
-    assert(
-      flatApp.includes(marker),
-      `${method} ${route} is registered`,
-    );
+    assert(flatApp.includes(marker), `${method} ${route} is registered`);
 
     const index = flatApp.indexOf(marker);
     const block = flatApp.slice(index, index + 250);
@@ -410,10 +343,7 @@ function testWardBedSetup(): void {
     'the service never invents a ward or bed price',
   );
 
-  assert(
-    service.includes('optionalMoney('),
-    'rates go through a validator that can return NULL',
-  );
+  assert(service.includes('optionalMoney('), 'rates go through a validator that can return NULL');
 
   assert(
     service.includes('dailyRate,') && service.includes('dailyCharge,'),
@@ -425,10 +355,7 @@ function testWardBedSetup(): void {
     'a new ward starts with a counted capacity of zero, not the column default of 20',
   );
 
-  assert(
-    service.includes('syncWardCapacity('),
-    "a ward's capacity is recounted from its beds",
-  );
+  assert(service.includes('syncWardCapacity('), "a ward's capacity is recounted from its beds");
 
   /* ---- duplicate and history handling ---- */
   assert(
@@ -437,20 +364,17 @@ function testWardBedSetup(): void {
   );
 
   assert(
-    service.includes("'WARD_CODE_EXISTS'") &&
-      service.includes("'BED_NUMBER_EXISTS'"),
+    service.includes("'WARD_CODE_EXISTS'") && service.includes("'BED_NUMBER_EXISTS'"),
     'duplicates are reported by name rather than as a 500',
   );
 
   assert(
-    service.includes("'WARD_HAS_HISTORY'") &&
-      service.includes("'BED_HAS_HISTORY'"),
+    service.includes("'WARD_HAS_HISTORY'") && service.includes("'BED_HAS_HISTORY'"),
     'a ward or bed with admission history refuses deletion',
   );
 
   assert(
-    service.includes('Retire it instead') ||
-      service.includes('Set it to Maintenance instead'),
+    service.includes('Retire it instead') || service.includes('Set it to Maintenance instead'),
     'the refusal tells the user what to do instead',
   );
 
@@ -465,10 +389,7 @@ function testWardBedSetup(): void {
     'the facility is resolved from the session scope',
   );
 
-  assert(
-    !service.includes('req.body'),
-    'the service reads no request object',
-  );
+  assert(!service.includes('req.body'), 'the service reads no request object');
 
   assert(
     !appSource.includes('req.body.facilityId)'),
@@ -497,10 +418,7 @@ function testWardBedSetup(): void {
     'an empty facility is told why the dropdown is empty',
   );
 
-  assert(
-    screen.includes('Create the first ward'),
-    'and is given the way out of it',
-  );
+  assert(screen.includes('Create the first ward'), 'and is given the way out of it');
 
   assert(
     screen.includes('activeWards') && screen.includes("b.status === 'Available'"),
@@ -508,7 +426,7 @@ function testWardBedSetup(): void {
   );
 
   assert(
-    !screen.includes("Severe community acquired pneumonia"),
+    !screen.includes('Severe community acquired pneumonia'),
     'the admission form ships no pre-filled diagnosis',
   );
 

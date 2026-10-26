@@ -51,7 +51,10 @@ export async function getTenantById(id: number) {
 export async function getFacilities(tenantId?: number) {
   try {
     if (tenantId) {
-      return await db.select().from(schema.facilities).where(eq(schema.facilities.tenantId, tenantId));
+      return await db
+        .select()
+        .from(schema.facilities)
+        .where(eq(schema.facilities.tenantId, tenantId));
     }
     return await db.select().from(schema.facilities);
   } catch (error) {
@@ -72,45 +75,25 @@ export async function getFacilities(tenantId?: number) {
  * This function performs the authorization check BEFORE
  * returning tenant data.
  */
-export async function getTenantByIdScoped(
-  context: AuthorizationContext,
-  tenantId: number,
-) {
+export async function getTenantByIdScoped(context: AuthorizationContext, tenantId: number) {
   try {
-    requireTenantScope(
-      context,
-      tenantId,
-    );
+    requireTenantScope(context, tenantId);
 
     const result = await db
       .select()
       .from(schema.tenants)
-      .where(
-        and(
-          eq(schema.tenants.id, tenantId),
-          eq(schema.tenants.isActive, true),
-        ),
-      )
+      .where(and(eq(schema.tenants.id, tenantId), eq(schema.tenants.isActive, true)))
       .limit(1);
 
     return result[0] || null;
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === 'ScopeAccessError'
-    ) {
+    if (error instanceof Error && error.name === 'ScopeAccessError') {
       throw error;
     }
 
-    console.error(
-      'Error fetching scoped tenant:',
-      error,
-    );
+    console.error('Error fetching scoped tenant:', error);
 
-    throw new Error(
-      'Failed to fetch tenant',
-      { cause: error },
-    );
+    throw new Error('Failed to fetch tenant', { cause: error });
   }
 }
 
@@ -126,49 +109,20 @@ export async function getTenantByIdScoped(
  * Facility user:
  *   Only their own tenant.
  */
-export async function getTenantsScoped(
-  context: AuthorizationContext,
-) {
+export async function getTenantsScoped(context: AuthorizationContext) {
   try {
-    if (
-      context.tenantId === null
-    ) {
-      return await db
-        .select()
-        .from(schema.tenants)
-        .where(
-          eq(
-            schema.tenants.isActive,
-            true,
-          ),
-        );
+    if (context.tenantId === null) {
+      return await db.select().from(schema.tenants).where(eq(schema.tenants.isActive, true));
     }
 
     return await db
       .select()
       .from(schema.tenants)
-      .where(
-        and(
-          eq(
-            schema.tenants.id,
-            context.tenantId,
-          ),
-          eq(
-            schema.tenants.isActive,
-            true,
-          ),
-        ),
-      );
+      .where(and(eq(schema.tenants.id, context.tenantId), eq(schema.tenants.isActive, true)));
   } catch (error) {
-    console.error(
-      'Error fetching scoped tenants:',
-      error,
-    );
+    console.error('Error fetching scoped tenants:', error);
 
-    throw new Error(
-      'Failed to fetch tenants',
-      { cause: error },
-    );
+    throw new Error('Failed to fetch tenants', { cause: error });
   }
 }
 
@@ -198,31 +152,17 @@ export async function getFacilitiesScoped(
      * They can request a specific tenant's facilities.
      * If no tenant is supplied, they can see all facilities.
      */
-    if (
-      context.tenantId === null
-    ) {
-      if (
-        requestedTenantId !== undefined
-      ) {
-        requireTenantScope(
-          context,
-          requestedTenantId,
-        );
+    if (context.tenantId === null) {
+      if (requestedTenantId !== undefined) {
+        requireTenantScope(context, requestedTenantId);
 
         return await db
           .select()
           .from(schema.facilities)
-          .where(
-            eq(
-              schema.facilities.tenantId,
-              requestedTenantId,
-            ),
-          );
+          .where(eq(schema.facilities.tenantId, requestedTenantId));
       }
 
-      return await db
-        .select()
-        .from(schema.facilities);
+      return await db.select().from(schema.facilities);
     }
 
     /*
@@ -230,47 +170,30 @@ export async function getFacilitiesScoped(
      *
      * The authenticated tenant is authoritative.
      */
-    const tenantId =
-      context.tenantId;
+    const tenantId = context.tenantId;
 
-    requireTenantScope(
-      context,
-      tenantId,
-    );
+    requireTenantScope(context, tenantId);
 
     /*
      * If the frontend supplied another tenantId,
      * requireTenantScope above will reject it.
      */
-    if (
-      requestedTenantId !== undefined
-    ) {
-      requireTenantScope(
-        context,
-        requestedTenantId,
-      );
+    if (requestedTenantId !== undefined) {
+      requireTenantScope(context, requestedTenantId);
     }
 
     /*
      * Facility-level user:
      * return ONLY their facility.
      */
-    if (
-      context.facilityId !== null
-    ) {
+    if (context.facilityId !== null) {
       return await db
         .select()
         .from(schema.facilities)
         .where(
           and(
-            eq(
-              schema.facilities.id,
-              context.facilityId,
-            ),
-            eq(
-              schema.facilities.tenantId,
-              tenantId,
-            ),
+            eq(schema.facilities.id, context.facilityId),
+            eq(schema.facilities.tenantId, tenantId),
           ),
         );
     }
@@ -283,29 +206,15 @@ export async function getFacilitiesScoped(
     return await db
       .select()
       .from(schema.facilities)
-      .where(
-        eq(
-          schema.facilities.tenantId,
-          tenantId,
-        ),
-      );
+      .where(eq(schema.facilities.tenantId, tenantId));
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === 'ScopeAccessError'
-    ) {
+    if (error instanceof Error && error.name === 'ScopeAccessError') {
       throw error;
     }
 
-    console.error(
-      'Error fetching scoped facilities:',
-      error,
-    );
+    console.error('Error fetching scoped facilities:', error);
 
-    throw new Error(
-      'Failed to fetch facilities',
-      { cause: error },
-    );
+    throw new Error('Failed to fetch facilities', { cause: error });
   }
 }
 
@@ -316,25 +225,15 @@ export async function getFacilitiesScoped(
  * The facility's tenantId is read FROM THE DATABASE.
  * It is never trusted from the request.
  */
-export async function getFacilityByIdScoped(
-  context: AuthorizationContext,
-  facilityId: number,
-) {
+export async function getFacilityByIdScoped(context: AuthorizationContext, facilityId: number) {
   try {
-    const facilityResult =
-      await db
-        .select()
-        .from(schema.facilities)
-        .where(
-          eq(
-            schema.facilities.id,
-            facilityId,
-          ),
-        )
-        .limit(1);
+    const facilityResult = await db
+      .select()
+      .from(schema.facilities)
+      .where(eq(schema.facilities.id, facilityId))
+      .limit(1);
 
-    const facility =
-      facilityResult[0];
+    const facility = facilityResult[0];
 
     if (!facility) {
       return null;
@@ -350,30 +249,17 @@ export async function getFacilityByIdScoped(
      * req.query.tenantId
      * req.body.tenantId
      */
-    requireFacilityScope(
-      context,
-      facility.tenantId,
-      facility.id,
-    );
+    requireFacilityScope(context, facility.tenantId, facility.id);
 
     return facility;
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === 'ScopeAccessError'
-    ) {
+    if (error instanceof Error && error.name === 'ScopeAccessError') {
       throw error;
     }
 
-    console.error(
-      'Error fetching scoped facility:',
-      error,
-    );
+    console.error('Error fetching scoped facility:', error);
 
-    throw new Error(
-      'Failed to fetch facility',
-      { cause: error },
-    );
+    throw new Error('Failed to fetch facility', { cause: error });
   }
 }
 
@@ -381,7 +267,10 @@ export async function getFacilityByIdScoped(
 export async function getDepartments(facilityId?: number) {
   try {
     if (facilityId) {
-      return await db.select().from(schema.departments).where(eq(schema.departments.facilityId, facilityId));
+      return await db
+        .select()
+        .from(schema.departments)
+        .where(eq(schema.departments.facilityId, facilityId));
     }
     return await db.select().from(schema.departments);
   } catch (error) {
@@ -421,10 +310,7 @@ export async function getDepartmentsScoped(
   }
 
   if (context.facilityId) {
-    if (
-      requestedFacilityId !== undefined &&
-      requestedFacilityId !== context.facilityId
-    ) {
+    if (requestedFacilityId !== undefined && requestedFacilityId !== context.facilityId) {
       throw new ScopeAccessError(
         'You can only see departments of your own facility.',
         'FACILITY_ACCESS_DENIED',
@@ -457,28 +343,17 @@ export async function getDepartmentsScoped(
 }
 
 // Patients
-export async function getPatients(
-  tenantId?: number,
-  facilityId?: number,
-  search?: string,
-) {
+export async function getPatients(tenantId?: number, facilityId?: number, search?: string) {
   try {
     const query = db.select().from(schema.patients);
     const conditions = [];
 
     if (tenantId) {
-      conditions.push(
-        eq(schema.patients.tenantId, tenantId),
-      );
+      conditions.push(eq(schema.patients.tenantId, tenantId));
     }
 
     if (facilityId) {
-      conditions.push(
-        eq(
-          schema.patients.registrationFacilityId,
-          facilityId,
-        ),
-      );
+      conditions.push(eq(schema.patients.registrationFacilityId, facilityId));
     }
 
     if (search && search.trim() !== '') {
@@ -517,18 +392,13 @@ export async function getPatients(
       return openPatientRows(rows);
     }
 
-    const rows = await query
-      .orderBy(desc(schema.patients.createdAt))
-      .limit(50);
+    const rows = await query.orderBy(desc(schema.patients.createdAt)).limit(50);
 
     return openPatientRows(rows);
   } catch (error) {
     console.error('Error fetching patients:', error);
 
-    throw new Error(
-      'Failed to fetch patients',
-      { cause: error },
-    );
+    throw new Error('Failed to fetch patients', { cause: error });
   }
 }
 
@@ -544,10 +414,7 @@ export async function getPatientById(id: number) {
 
 export async function createPatient(data: typeof schema.patients.$inferInsert) {
   try {
-    const res = await db
-      .insert(schema.patients)
-      .values(sealPatientIdentifiers(data))
-      .returning();
+    const res = await db.insert(schema.patients).values(sealPatientIdentifiers(data)).returning();
 
     return res[0] ? openPatientIdentifiers(res[0]) : res[0];
   } catch (error) {
@@ -606,26 +473,14 @@ export async function createPatientScoped(
 ) {
   const requestedFacilityId = data.registrationFacilityId;
 
-  if (
-    !Number.isInteger(requestedFacilityId) ||
-    Number(requestedFacilityId) <= 0
-  ) {
-    throw new ScopeAccessError(
-      'A valid registration facility is required.',
-      'FACILITY_REQUIRED',
-    );
+  if (!Number.isInteger(requestedFacilityId) || Number(requestedFacilityId) <= 0) {
+    throw new ScopeAccessError('A valid registration facility is required.', 'FACILITY_REQUIRED');
   }
 
-  const facility = await getFacilityByIdScoped(
-    context,
-    Number(requestedFacilityId),
-  );
+  const facility = await getFacilityByIdScoped(context, Number(requestedFacilityId));
 
   if (!facility) {
-    throw new ScopeAccessError(
-      'Registration facility not found.',
-      'FACILITY_ACCESS_DENIED',
-    );
+    throw new ScopeAccessError('Registration facility not found.', 'FACILITY_ACCESS_DENIED');
   }
 
   const {
@@ -638,9 +493,7 @@ export async function createPatientScoped(
   } = data;
 
   const suppliedMrn =
-    typeof safeData.mrn === 'string' && safeData.mrn.trim() !== ''
-      ? safeData.mrn.trim()
-      : null;
+    typeof safeData.mrn === 'string' && safeData.mrn.trim() !== '' ? safeData.mrn.trim() : null;
 
   /*
    * Six attempts: a generated number may lose a race to a concurrent
@@ -650,8 +503,7 @@ export async function createPatientScoped(
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const mrn =
-      suppliedMrn ?? (await nextPatientMrn());
+    const mrn = suppliedMrn ?? (await nextPatientMrn());
 
     try {
       const [patient] = await db
@@ -669,8 +521,7 @@ export async function createPatientScoped(
       return openPatientIdentifiers(patient);
     } catch (error) {
       const code =
-        (error as { code?: string })?.code ??
-        (error as { cause?: { code?: string } })?.cause?.code;
+        (error as { code?: string })?.code ?? (error as { cause?: { code?: string } })?.cause?.code;
 
       if (code !== '23505') throw error;
 
@@ -685,7 +536,10 @@ export async function createPatientScoped(
     : new Error('Could not allocate a patient number. Try again.');
 }
 
-export async function updatePatient(id: number, data: Partial<typeof schema.patients.$inferInsert>) {
+export async function updatePatient(
+  id: number,
+  data: Partial<typeof schema.patients.$inferInsert>,
+) {
   try {
     const res = await db
       .update(schema.patients)
@@ -709,7 +563,10 @@ export async function getEncounters(patientId?: number, facilityId?: number) {
     if (facilityId) conditions.push(eq(schema.encounters.facilityId, facilityId));
 
     if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.encounters.startedAt)).limit(50);
+      return await query
+        .where(and(...conditions))
+        .orderBy(desc(schema.encounters.startedAt))
+        .limit(50);
     }
     return await query.orderBy(desc(schema.encounters.startedAt)).limit(50);
   } catch (error) {
@@ -728,9 +585,16 @@ export async function createEncounter(data: typeof schema.encounters.$inferInser
   }
 }
 
-export async function updateEncounter(id: number, data: Partial<typeof schema.encounters.$inferInsert>) {
+export async function updateEncounter(
+  id: number,
+  data: Partial<typeof schema.encounters.$inferInsert>,
+) {
   try {
-    const res = await db.update(schema.encounters).set(data).where(eq(schema.encounters.id, id)).returning();
+    const res = await db
+      .update(schema.encounters)
+      .set(data)
+      .where(eq(schema.encounters.id, id))
+      .returning();
     return res[0];
   } catch (error) {
     console.error('Error updating encounter:', error);
@@ -738,31 +602,28 @@ export async function updateEncounter(id: number, data: Partial<typeof schema.en
   }
 }
 
-
 /**
  * Scope-aware encounter operations.
  * Facility ownership is verified against the database.
  * Tenant/facility ownership fields are never accepted from update payloads.
  */
 const encounterWritableFields = [
-  "practitionerId",
-  "departmentId",
-  "encounterType",
-  "status",
-  "triageCategory",
-  "chiefComplaint",
-  "historyOfPresentIllness",
-  "physicalExamination",
-  "clinicalNotes",
-  "followUpDate",
-  "referralFacility",
-  "startedAt",
-  "endedAt",
+  'practitionerId',
+  'departmentId',
+  'encounterType',
+  'status',
+  'triageCategory',
+  'chiefComplaint',
+  'historyOfPresentIllness',
+  'physicalExamination',
+  'clinicalNotes',
+  'followUpDate',
+  'referralFacility',
+  'startedAt',
+  'endedAt',
 ] as const;
 
-function pickEncounterWritableFields(
-  data: Record<string, unknown>,
-): Record<string, unknown> {
+function pickEncounterWritableFields(data: Record<string, unknown>): Record<string, unknown> {
   const allowed = new Set<string>(encounterWritableFields);
   const result: Record<string, unknown> = {};
 
@@ -780,7 +641,7 @@ export async function requirePatientInTenant(
   tenantId: number,
 ) {
   if (!Number.isSafeInteger(patientId) || patientId <= 0) {
-    throw new Error("A valid patient ID is required.");
+    throw new Error('A valid patient ID is required.');
   }
 
   const [patient] = await db
@@ -798,8 +659,8 @@ export async function requirePatientInTenant(
 
   if (patient.tenantId !== tenantId) {
     throw new ScopeAccessError(
-      "Patient is outside the authorized tenant.",
-      "FACILITY_ACCESS_DENIED",
+      'Patient is outside the authorized tenant.',
+      'FACILITY_ACCESS_DENIED',
     );
   }
 
@@ -814,23 +675,25 @@ async function validateEncounterReferences(
   if (data.practitionerId !== undefined && data.practitionerId !== null) {
     const practitionerId = Number(data.practitionerId);
     if (!Number.isSafeInteger(practitionerId) || practitionerId <= 0) {
-      throw new Error("Invalid practitioner ID.");
+      throw new Error('Invalid practitioner ID.');
     }
 
     const [practitioner] = await db
       .select({ id: schema.practitioners.id })
       .from(schema.practitioners)
-      .where(and(
-        eq(schema.practitioners.id, practitionerId),
-        eq(schema.practitioners.tenantId, tenantId),
-        eq(schema.practitioners.facilityId, facilityId),
-      ))
+      .where(
+        and(
+          eq(schema.practitioners.id, practitionerId),
+          eq(schema.practitioners.tenantId, tenantId),
+          eq(schema.practitioners.facilityId, facilityId),
+        ),
+      )
       .limit(1);
 
     if (!practitioner) {
       throw new ScopeAccessError(
-        "Practitioner is not assigned to the authorized facility.",
-        "FACILITY_ACCESS_DENIED",
+        'Practitioner is not assigned to the authorized facility.',
+        'FACILITY_ACCESS_DENIED',
       );
     }
   }
@@ -838,22 +701,21 @@ async function validateEncounterReferences(
   if (data.departmentId !== undefined && data.departmentId !== null) {
     const departmentId = Number(data.departmentId);
     if (!Number.isSafeInteger(departmentId) || departmentId <= 0) {
-      throw new Error("Invalid department ID.");
+      throw new Error('Invalid department ID.');
     }
 
     const [department] = await db
       .select({ id: schema.departments.id })
       .from(schema.departments)
-      .where(and(
-        eq(schema.departments.id, departmentId),
-        eq(schema.departments.facilityId, facilityId),
-      ))
+      .where(
+        and(eq(schema.departments.id, departmentId), eq(schema.departments.facilityId, facilityId)),
+      )
       .limit(1);
 
     if (!department) {
       throw new ScopeAccessError(
-        "Department is not part of the authorized facility.",
-        "FACILITY_ACCESS_DENIED",
+        'Department is not part of the authorized facility.',
+        'FACILITY_ACCESS_DENIED',
       );
     }
   }
@@ -868,7 +730,7 @@ export async function getEncountersScoped(
   const facility = await getFacilityByIdScoped(context, facilityId);
 
   if (!facility) {
-    throw new ScopeAccessError("Facility not found.", "FACILITY_ACCESS_DENIED");
+    throw new ScopeAccessError('Facility not found.', 'FACILITY_ACCESS_DENIED');
   }
 
   const conditions = [
@@ -877,11 +739,7 @@ export async function getEncountersScoped(
   ];
 
   if (patientId !== undefined) {
-    const patient = await requirePatientInTenant(
-      context,
-      patientId,
-      facility.tenantId,
-    );
+    const patient = await requirePatientInTenant(context, patientId, facility.tenantId);
 
     if (!patient) return [];
 
@@ -904,22 +762,16 @@ export async function createEncounterScoped(
   const facility = await getFacilityByIdScoped(context, facilityId);
 
   if (!facility) {
-    throw new ScopeAccessError("Facility not found.", "FACILITY_ACCESS_DENIED");
+    throw new ScopeAccessError('Facility not found.', 'FACILITY_ACCESS_DENIED');
   }
 
-  const patient = await requirePatientInTenant(
-    context,
-    data.patientId,
-    facility.tenantId,
-  );
+  const patient = await requirePatientInTenant(context, data.patientId, facility.tenantId);
 
   if (!patient) {
-    throw new Error("Patient not found.");
+    throw new Error('Patient not found.');
   }
 
-  const safeData = pickEncounterWritableFields(
-    data as Record<string, unknown>,
-  );
+  const safeData = pickEncounterWritableFields(data as Record<string, unknown>);
 
   await validateEncounterReferences(facility.id, facility.tenantId, safeData);
 
@@ -942,7 +794,7 @@ export async function updateEncounterScoped(
   data: Partial<typeof schema.encounters.$inferInsert>,
 ) {
   if (!Number.isSafeInteger(encounterId) || encounterId <= 0) {
-    throw new Error("Invalid encounter ID.");
+    throw new Error('Invalid encounter ID.');
   }
 
   const [current] = await db
@@ -957,23 +809,18 @@ export async function updateEncounterScoped(
 
   if (!facility || facility.tenantId !== current.tenantId) {
     throw new ScopeAccessError(
-      "Encounter is outside the authorized facility.",
-      "FACILITY_ACCESS_DENIED",
+      'Encounter is outside the authorized facility.',
+      'FACILITY_ACCESS_DENIED',
     );
   }
 
-  if (
-    data.patientId !== undefined &&
-    data.patientId !== current.patientId
-  ) {
+  if (data.patientId !== undefined && data.patientId !== current.patientId) {
     throw new Error(
-      "Changing the patient on an existing encounter is not allowed. Use the authorized patient-correction workflow.",
+      'Changing the patient on an existing encounter is not allowed. Use the authorized patient-correction workflow.',
     );
   }
 
-  const safeData = pickEncounterWritableFields(
-    data as Record<string, unknown>,
-  );
+  const safeData = pickEncounterWritableFields(data as Record<string, unknown>);
 
   /*
    * Completing a visit ends it. The screen sends `status` only; a
@@ -992,11 +839,13 @@ export async function updateEncounterScoped(
       ...safeData,
       updatedAt: new Date(),
     } as Partial<typeof schema.encounters.$inferInsert>)
-    .where(and(
-      eq(schema.encounters.id, encounterId),
-      eq(schema.encounters.tenantId, facility.tenantId),
-      eq(schema.encounters.facilityId, facility.id),
-    ))
+    .where(
+      and(
+        eq(schema.encounters.id, encounterId),
+        eq(schema.encounters.tenantId, facility.tenantId),
+        eq(schema.encounters.facilityId, facility.id),
+      ),
+    )
     .returning();
 
   return updated ?? null;
@@ -1010,7 +859,10 @@ export async function getQueues(facilityId?: number, queueType?: string) {
     if (queueType && queueType !== 'All') conditions.push(eq(schema.queues.queueType, queueType));
 
     if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.queues.createdAt)).limit(100);
+      return await query
+        .where(and(...conditions))
+        .orderBy(desc(schema.queues.createdAt))
+        .limit(100);
     }
     return await query.orderBy(desc(schema.queues.createdAt)).limit(100);
   } catch (error) {
@@ -1032,7 +884,7 @@ async function resolveQueueOrLabScope(
 
   if (data.encounterId !== undefined && data.encounterId !== null) {
     if (!Number.isSafeInteger(data.encounterId) || data.encounterId <= 0) {
-      throw new Error("A valid encounter ID is required.");
+      throw new Error('A valid encounter ID is required.');
     }
 
     const [found] = await db
@@ -1042,7 +894,7 @@ async function resolveQueueOrLabScope(
       .limit(1);
 
     if (!found) {
-      throw new Error("Encounter not found.");
+      throw new Error('Encounter not found.');
     }
 
     encounter = found;
@@ -1055,56 +907,43 @@ async function resolveQueueOrLabScope(
   const facility = await getFacilityByIdScoped(context, facilityId);
 
   if (!facility) {
-    throw new ScopeAccessError("Facility not found.", "FACILITY_ACCESS_DENIED");
+    throw new ScopeAccessError('Facility not found.', 'FACILITY_ACCESS_DENIED');
   }
 
   if (data.tenantId != null && data.tenantId !== facility.tenantId) {
     throw new ScopeAccessError(
-      "The requested tenant does not match the authorized facility.",
-      "FACILITY_ACCESS_DENIED",
+      'The requested tenant does not match the authorized facility.',
+      'FACILITY_ACCESS_DENIED',
     );
   }
 
   if (
     encounter &&
-    (encounter.facilityId !== facility.id ||
-      encounter.tenantId !== facility.tenantId)
+    (encounter.facilityId !== facility.id || encounter.tenantId !== facility.tenantId)
   ) {
     throw new ScopeAccessError(
-      "The encounter is outside the authorized facility.",
-      "FACILITY_ACCESS_DENIED",
+      'The encounter is outside the authorized facility.',
+      'FACILITY_ACCESS_DENIED',
     );
   }
 
-  if (
-    encounter &&
-    data.patientId != null &&
-    data.patientId !== encounter.patientId
-  ) {
+  if (encounter && data.patientId != null && data.patientId !== encounter.patientId) {
     throw new ScopeAccessError(
-      "The patient does not match the encounter.",
-      "FACILITY_ACCESS_DENIED",
+      'The patient does not match the encounter.',
+      'FACILITY_ACCESS_DENIED',
     );
   }
 
   const patientId = encounter ? encounter.patientId : data.patientId;
 
-  if (
-    typeof patientId !== "number" ||
-    !Number.isSafeInteger(patientId) ||
-    patientId <= 0
-  ) {
-    throw new Error("A valid patient ID is required.");
+  if (typeof patientId !== 'number' || !Number.isSafeInteger(patientId) || patientId <= 0) {
+    throw new Error('A valid patient ID is required.');
   }
 
-  const patient = await requirePatientInTenant(
-    context,
-    patientId,
-    facility.tenantId,
-  );
+  const patient = await requirePatientInTenant(context, patientId, facility.tenantId);
 
   if (!patient) {
-    throw new Error("Patient not found.");
+    throw new Error('Patient not found.');
   }
 
   return {
@@ -1154,13 +993,12 @@ export function queueTokenPrefix(queueType: string): string {
  * `Math.random()` both call the same patient, and the person holding
  * the second slip has no way to know.
  */
-export async function nextQueueToken(
-  facilityId: number,
-  queueType: string,
-): Promise<string> {
+export async function nextQueueToken(facilityId: number, queueType: string): Promise<string> {
   const [row] = await db
     .select({
-      highest: sql<number | null>`MAX((substring(${schema.queues.tokenNumber} from '([0-9]+)$'))::int)`,
+      highest: sql<
+        number | null
+      >`MAX((substring(${schema.queues.tokenNumber} from '([0-9]+)$'))::int)`,
     })
     .from(schema.queues)
     .where(
@@ -1193,8 +1031,7 @@ export async function createQueueEntry(
       ? data.tokenNumber.trim()
       : null;
 
-  const tokenNumber =
-    suppliedToken ?? (await nextQueueToken(scope.facilityId, data.queueType));
+  const tokenNumber = suppliedToken ?? (await nextQueueToken(scope.facilityId, data.queueType));
 
   try {
     const res = await db
@@ -1245,21 +1082,14 @@ export async function updateQueueStatusScoped(
 
   if (!token) return null;
 
-  const facility = await getFacilityByIdScoped(context, token.facilityId).catch(
-    () => null,
-  );
+  const facility = await getFacilityByIdScoped(context, token.facilityId).catch(() => null);
 
   if (!facility) return null;
 
   const [updated] = await db
     .update(schema.queues)
     .set({ status })
-    .where(
-      and(
-        eq(schema.queues.id, queueId),
-        eq(schema.queues.facilityId, facility.id),
-      ),
-    )
+    .where(and(eq(schema.queues.id, queueId), eq(schema.queues.facilityId, facility.id)))
     .returning();
 
   return updated ?? null;
@@ -1300,7 +1130,10 @@ export async function getAppointments(facilityId?: number, practitionerId?: numb
     if (practitionerId) conditions.push(eq(schema.appointments.practitionerId, practitionerId));
 
     if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.appointments.createdAt)).limit(50);
+      return await query
+        .where(and(...conditions))
+        .orderBy(desc(schema.appointments.createdAt))
+        .limit(50);
     }
     return await query.orderBy(desc(schema.appointments.createdAt)).limit(50);
   } catch (error) {
@@ -1328,7 +1161,10 @@ export async function getObservations(encounterId?: number, patientId?: number) 
     if (patientId) conditions.push(eq(schema.observations.patientId, patientId));
 
     if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.observations.recordedAt)).limit(20);
+      return await query
+        .where(and(...conditions))
+        .orderBy(desc(schema.observations.recordedAt))
+        .limit(20);
     }
     return await query.orderBy(desc(schema.observations.recordedAt)).limit(20);
   } catch (error) {
@@ -1375,7 +1211,6 @@ export async function recordDiagnosis(data: typeof schema.diagnoses.$inferInsert
   }
 }
 
-
 /* ============================================================
    CLINICAL RECORD SCOPING
    ============================================================ */
@@ -1391,10 +1226,7 @@ export async function recordDiagnosis(data: typeof schema.diagnoses.$inferInsert
  * cover the two paths that were still open.
  */
 
-async function loadEncounterInScope(
-  context: AuthorizationContext,
-  encounterId: number,
-) {
+async function loadEncounterInScope(context: AuthorizationContext, encounterId: number) {
   if (!Number.isSafeInteger(encounterId) || encounterId <= 0) {
     throw new ScopeAccessError('A valid encounter is required.', 'ENCOUNTER_REQUIRED');
   }
@@ -1425,10 +1257,7 @@ async function loadEncounterInScope(
   return encounter;
 }
 
-async function loadPatientInScope(
-  context: AuthorizationContext,
-  patientId: number,
-) {
+async function loadPatientInScope(context: AuthorizationContext, patientId: number) {
   if (!Number.isSafeInteger(patientId) || patientId <= 0) {
     throw new ScopeAccessError('A valid patient is required.', 'PATIENT_REQUIRED');
   }
@@ -1488,10 +1317,7 @@ export async function getDiagnosesScoped(
      * Refusing an unfiltered read is the point. Returning "everything"
      * would leak every facility's clinical record to any signed-in user.
      */
-    throw new ScopeAccessError(
-      'Supply an encounterId or patientId.',
-      'SCOPE_FILTER_REQUIRED',
-    );
+    throw new ScopeAccessError('Supply an encounterId or patientId.', 'SCOPE_FILTER_REQUIRED');
   }
 
   return db
@@ -1537,10 +1363,7 @@ export async function getProceduresScoped(
 
     conditions.push(eq(schema.clinicalProcedures.patientId, patient.id));
   } else {
-    throw new ScopeAccessError(
-      'Supply an encounterId or patientId.',
-      'SCOPE_FILTER_REQUIRED',
-    );
+    throw new ScopeAccessError('Supply an encounterId or patientId.', 'SCOPE_FILTER_REQUIRED');
   }
 
   return db
@@ -1580,7 +1403,9 @@ export async function getProcedures(encounterId?: number, patientId?: number) {
     if (patientId) conditions.push(eq(schema.clinicalProcedures.patientId, patientId));
 
     if (conditions.length > 0) {
-      return await query.where(and(...conditions)).orderBy(desc(schema.clinicalProcedures.performedAt));
+      return await query
+        .where(and(...conditions))
+        .orderBy(desc(schema.clinicalProcedures.performedAt));
     }
     return await query.orderBy(desc(schema.clinicalProcedures.performedAt));
   } catch (error) {
@@ -1629,7 +1454,11 @@ export async function createMedication(data: typeof schema.medications.$inferIns
 
 export async function updateMedicationStatus(id: number, status: string) {
   try {
-    const res = await db.update(schema.medications).set({ status }).where(eq(schema.medications.id, id)).returning();
+    const res = await db
+      .update(schema.medications)
+      .set({ status })
+      .where(eq(schema.medications.id, id))
+      .returning();
     return res[0];
   } catch (error) {
     console.error('Error updating medication status:', error);
@@ -1672,11 +1501,7 @@ function requirePositiveId(value: unknown, field: string): number {
   const id = Number(value);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      `A valid ${field} is required.`,
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', `A valid ${field} is required.`, 400);
   }
 
   return id;
@@ -1723,11 +1548,7 @@ async function requireInpatientFacility(
   const facility = await getFacilityByIdScoped(context, facilityId);
 
   if (!facility) {
-    throw new InpatientDomainError(
-      'FACILITY_NOT_FOUND',
-      'Facility not found.',
-      404,
-    );
+    throw new InpatientDomainError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
   }
 
   return facility;
@@ -1737,22 +1558,11 @@ async function requireInpatientFacility(
  * Load a bed and prove that its ward belongs to a facility the
  * authenticated user may access.
  */
-async function requireBedInScope(
-  context: AuthorizationContext,
-  bedId: number,
-) {
-  const [bed] = await db
-    .select()
-    .from(schema.beds)
-    .where(eq(schema.beds.id, bedId))
-    .limit(1);
+async function requireBedInScope(context: AuthorizationContext, bedId: number) {
+  const [bed] = await db.select().from(schema.beds).where(eq(schema.beds.id, bedId)).limit(1);
 
   if (!bed) {
-    throw new InpatientDomainError(
-      'BED_NOT_FOUND',
-      'Bed not found.',
-      404,
-    );
+    throw new InpatientDomainError('BED_NOT_FOUND', 'Bed not found.', 404);
   }
 
   const [ward] = await db
@@ -1762,11 +1572,7 @@ async function requireBedInScope(
     .limit(1);
 
   if (!ward) {
-    throw new InpatientDomainError(
-      'BED_NOT_FOUND',
-      'Bed is not attached to a ward.',
-      404,
-    );
+    throw new InpatientDomainError('BED_NOT_FOUND', 'Bed is not attached to a ward.', 404);
   }
 
   const facility = await getFacilityByIdScoped(context, ward.facilityId);
@@ -1790,10 +1596,7 @@ export async function getWardsScoped(
   context: AuthorizationContext,
   requestedFacilityId?: number | null,
 ) {
-  const facility = await requireInpatientFacility(
-    context,
-    requestedFacilityId,
-  );
+  const facility = await requireInpatientFacility(context, requestedFacilityId);
 
   return db
     .select()
@@ -1806,25 +1609,14 @@ export async function getWardsScoped(
    BEDS
    ------------------------------------------------------------ */
 
-export async function getBedsScoped(
-  context: AuthorizationContext,
-  wardId?: number | null,
-) {
+export async function getBedsScoped(context: AuthorizationContext, wardId?: number | null) {
   if (wardId !== undefined && wardId !== null) {
     const id = requirePositiveId(wardId, 'ward ID');
 
-    const [ward] = await db
-      .select()
-      .from(schema.wards)
-      .where(eq(schema.wards.id, id))
-      .limit(1);
+    const [ward] = await db.select().from(schema.wards).where(eq(schema.wards.id, id)).limit(1);
 
     if (!ward) {
-      throw new InpatientDomainError(
-        'WARD_NOT_FOUND',
-        'Ward not found.',
-        404,
-      );
+      throw new InpatientDomainError('WARD_NOT_FOUND', 'Ward not found.', 404);
     }
 
     const facility = await getFacilityByIdScoped(context, ward.facilityId);
@@ -1874,14 +1666,9 @@ export async function getAdmissionsScoped(
   requestedFacilityId?: number | null,
   status?: string | null,
 ) {
-  const facility = await requireInpatientFacility(
-    context,
-    requestedFacilityId,
-  );
+  const facility = await requireInpatientFacility(context, requestedFacilityId);
 
-  const conditions = [
-    eq(schema.admissions.facilityId, facility.id),
-  ];
+  const conditions = [eq(schema.admissions.facilityId, facility.id)];
 
   if (typeof status === 'string' && status.trim()) {
     const normalised = status.trim();
@@ -1904,10 +1691,7 @@ export async function getAdmissionsScoped(
     .orderBy(desc(schema.admissions.createdAt));
 }
 
-export async function getAdmissionByIdScoped(
-  context: AuthorizationContext,
-  admissionId: number,
-) {
+export async function getAdmissionByIdScoped(context: AuthorizationContext, admissionId: number) {
   const id = requirePositiveId(admissionId, 'admission ID');
 
   const [admission] = await db
@@ -1919,11 +1703,7 @@ export async function getAdmissionByIdScoped(
   if (!admission) return null;
 
   requireTenantScope(context, admission.tenantId);
-  requireFacilityScope(
-    context,
-    admission.tenantId,
-    admission.facilityId,
-  );
+  requireFacilityScope(context, admission.tenantId, admission.facilityId);
 
   return admission;
 }
@@ -1953,16 +1733,9 @@ export async function createAdmissionScoped(
   const wardId = requirePositiveId(input?.wardId, 'ward ID');
   const bedId = requirePositiveId(input?.bedId, 'bed ID');
 
-  const facility = await requireInpatientFacility(
-    context,
-    input?.facilityId,
-  );
+  const facility = await requireInpatientFacility(context, input?.facilityId);
 
-  const patient = await requirePatientInTenant(
-    context,
-    patientId,
-    facility.tenantId,
-  );
+  const patient = await requirePatientInTenant(context, patientId, facility.tenantId);
 
   if (!patient) {
     throw new InpatientDomainError(
@@ -1983,19 +1756,13 @@ export async function createAdmissionScoped(
   }
 
   const admissionDate = normaliseTimestamp(input?.admissionDate);
-  const admissionType =
-    optionalText(input?.admissionType, 60) ?? 'Emergency';
+  const admissionType = optionalText(input?.admissionType, 60) ?? 'Emergency';
 
   return await db.transaction(async (tx) => {
     const [ward] = await tx
       .select()
       .from(schema.wards)
-      .where(
-        and(
-          eq(schema.wards.id, wardId),
-          eq(schema.wards.facilityId, facility.id),
-        ),
-      )
+      .where(and(eq(schema.wards.id, wardId), eq(schema.wards.facilityId, facility.id)))
       .limit(1);
 
     if (!ward) {
@@ -2009,20 +1776,11 @@ export async function createAdmissionScoped(
     const [bed] = await tx
       .select()
       .from(schema.beds)
-      .where(
-        and(
-          eq(schema.beds.id, bedId),
-          eq(schema.beds.wardId, ward.id),
-        ),
-      )
+      .where(and(eq(schema.beds.id, bedId), eq(schema.beds.wardId, ward.id)))
       .limit(1);
 
     if (!bed) {
-      throw new InpatientDomainError(
-        'BED_NOT_FOUND',
-        'Bed not found in the selected ward.',
-        404,
-      );
+      throw new InpatientDomainError('BED_NOT_FOUND', 'Bed not found in the selected ward.', 404);
     }
 
     if (encounterId !== null) {
@@ -2120,10 +1878,7 @@ export async function createAdmissionScoped(
         admissionDate,
         admissionType,
         admittingDoctor: optionalText(input?.admittingDoctor, 120),
-        provisionalDiagnosis: optionalText(
-          input?.provisionalDiagnosis,
-          2000,
-        ),
+        provisionalDiagnosis: optionalText(input?.provisionalDiagnosis, 2000),
         nursingNotes: optionalText(input?.nursingNotes, 4000),
         status: ACTIVE_ADMISSION_STATUS,
       })
@@ -2169,19 +1924,11 @@ export async function dischargeAdmissionScoped(
       .limit(1);
 
     if (!admission) {
-      throw new InpatientDomainError(
-        'ADMISSION_NOT_FOUND',
-        'Admission not found.',
-        404,
-      );
+      throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
     }
 
     requireTenantScope(context, admission.tenantId);
-    requireFacilityScope(
-      context,
-      admission.tenantId,
-      admission.facilityId,
-    );
+    requireFacilityScope(context, admission.tenantId, admission.facilityId);
 
     if (admission.status !== ACTIVE_ADMISSION_STATUS) {
       throw new InpatientDomainError(
@@ -2242,10 +1989,7 @@ export async function setBedStatusScoped(
 ) {
   const id = requirePositiveId(bedId, 'bed ID');
 
-  if (
-    typeof nextStatus !== 'string' ||
-    !BED_STATUS_SET.has(nextStatus)
-  ) {
+  if (typeof nextStatus !== 'string' || !BED_STATUS_SET.has(nextStatus)) {
     throw new InpatientDomainError(
       'INVALID_INPUT',
       `Bed status must be one of: ${BED_STATUSES.join(', ')}.`,
@@ -2292,18 +2036,12 @@ export async function setBedStatusScoped(
  * Without this, every discharge removes a bed from the usable board
  * permanently, because nothing else ever restores 'Available'.
  */
-export async function releaseBedScoped(
-  context: AuthorizationContext,
-  bedId: number,
-) {
+export async function releaseBedScoped(context: AuthorizationContext, bedId: number) {
   const id = requirePositiveId(bedId, 'bed ID');
 
   const { bed } = await requireBedInScope(context, id);
 
-  if (
-    bed.currentPatientId !== null &&
-    bed.currentPatientId !== undefined
-  ) {
+  if (bed.currentPatientId !== null && bed.currentPatientId !== undefined) {
     throw new InpatientDomainError(
       'BED_STATUS_CONFLICT',
       'This bed still has a patient assigned. Discharge or transfer the patient first.',
@@ -2336,7 +2074,11 @@ export async function releaseBedScoped(
 export async function getTheatreCases(facilityId?: number) {
   try {
     if (facilityId) {
-      return await db.select().from(schema.theatreCases).where(eq(schema.theatreCases.facilityId, facilityId)).orderBy(desc(schema.theatreCases.createdAt));
+      return await db
+        .select()
+        .from(schema.theatreCases)
+        .where(eq(schema.theatreCases.facilityId, facilityId))
+        .orderBy(desc(schema.theatreCases.createdAt));
     }
     return await db.select().from(schema.theatreCases).orderBy(desc(schema.theatreCases.createdAt));
   } catch (error) {
@@ -2352,19 +2094,11 @@ export async function getTheatreCases(facilityId?: number) {
  * who reached the route could rewrite a case belonging to another
  * facility by guessing its number.
  */
-export async function getTheatreCaseScoped(
-  id: number,
-  facilityId: number,
-) {
+export async function getTheatreCaseScoped(id: number, facilityId: number) {
   const [row] = await db
     .select()
     .from(schema.theatreCases)
-    .where(
-      and(
-        eq(schema.theatreCases.id, id),
-        eq(schema.theatreCases.facilityId, facilityId),
-      ),
-    )
+    .where(and(eq(schema.theatreCases.id, id), eq(schema.theatreCases.facilityId, facilityId)))
     .limit(1);
 
   return row ?? null;
@@ -2380,9 +2114,16 @@ export async function createTheatreCase(data: typeof schema.theatreCases.$inferI
   }
 }
 
-export async function updateTheatreCase(id: number, data: Partial<typeof schema.theatreCases.$inferInsert>) {
+export async function updateTheatreCase(
+  id: number,
+  data: Partial<typeof schema.theatreCases.$inferInsert>,
+) {
   try {
-    const res = await db.update(schema.theatreCases).set(data).where(eq(schema.theatreCases.id, id)).returning();
+    const res = await db
+      .update(schema.theatreCases)
+      .set(data)
+      .where(eq(schema.theatreCases.id, id))
+      .returning();
     return res[0];
   } catch (error) {
     console.error('Error updating theatre case:', error);
@@ -2394,7 +2135,10 @@ export async function updateTheatreCase(id: number, data: Partial<typeof schema.
 export async function getLabTests(facilityId?: number) {
   try {
     if (facilityId) {
-      return await db.select().from(schema.labTests).where(and(eq(schema.labTests.facilityId, facilityId), eq(schema.labTests.isActive, true)));
+      return await db
+        .select()
+        .from(schema.labTests)
+        .where(and(eq(schema.labTests.facilityId, facilityId), eq(schema.labTests.isActive, true)));
     }
     return await db.select().from(schema.labTests).where(eq(schema.labTests.isActive, true));
   } catch (error) {
@@ -2465,11 +2209,7 @@ export async function createLabOrder(
       (!Number.isSafeInteger(order.testId) || (order.testId ?? 0) <= 0) &&
       typeof order.testName === 'string'
     ) {
-      const resolution = await resolveCatalogueTestByName(
-        db,
-        order.facilityId,
-        order.testName,
-      );
+      const resolution = await resolveCatalogueTestByName(db, order.facilityId, order.testName);
 
       if (resolution.test) {
         const [updated] = await db
@@ -2492,10 +2232,12 @@ export async function createLabOrder(
       const [test] = await db
         .select({ code: schema.labTests.code })
         .from(schema.labTests)
-        .where(and(
-          eq(schema.labTests.id, order.testId as number),
-          eq(schema.labTests.facilityId, order.facilityId),
-        ))
+        .where(
+          and(
+            eq(schema.labTests.id, order.testId as number),
+            eq(schema.labTests.facilityId, order.facilityId),
+          ),
+        )
         .limit(1);
 
       testCode = test?.code ?? null;
@@ -2548,8 +2290,7 @@ export async function updateLabOrderStatus(
   if (status === 'Sample Collected') {
     updateData.sampleCollectedAt = new Date();
     updateData.sampleAccessionNumber =
-      accessionNumber?.trim() ||
-      `ACC-${Date.now().toString().slice(-6)}`;
+      accessionNumber?.trim() || `ACC-${Date.now().toString().slice(-6)}`;
   }
 
   const updated = await db
@@ -2629,9 +2370,7 @@ export async function getLabResults(
       and(
         eq(schema.labOrders.facilityId, facility.id),
         eq(schema.labOrders.tenantId, facility.tenantId),
-        ...(patientId !== undefined
-          ? [eq(schema.labOrders.patientId, patientId)]
-          : []),
+        ...(patientId !== undefined ? [eq(schema.labOrders.patientId, patientId)] : []),
       ),
     );
 
@@ -2642,7 +2381,12 @@ export async function getLabResults(
   return db
     .select()
     .from(schema.labResults)
-    .where(inArray(schema.labResults.orderId, orders.map((order) => order.id)))
+    .where(
+      inArray(
+        schema.labResults.orderId,
+        orders.map((order) => order.id),
+      ),
+    )
     .orderBy(desc(schema.labResults.verifiedAt));
 }
 
@@ -2787,18 +2531,12 @@ export async function getRadiologyOrders(facilityId?: number, patientId?: number
  * Read one radiology order inside a facility, for the same reason as
  * `getTheatreCaseScoped`: reporting a study is a facility-bound act.
  */
-export async function getRadiologyOrderScoped(
-  id: number,
-  facilityId: number,
-) {
+export async function getRadiologyOrderScoped(id: number, facilityId: number) {
   const [row] = await db
     .select()
     .from(schema.radiologyOrders)
     .where(
-      and(
-        eq(schema.radiologyOrders.id, id),
-        eq(schema.radiologyOrders.facilityId, facilityId),
-      ),
+      and(eq(schema.radiologyOrders.id, id), eq(schema.radiologyOrders.facilityId, facilityId)),
     )
     .limit(1);
 
@@ -2815,15 +2553,24 @@ export async function createRadiologyOrder(data: typeof schema.radiologyOrders.$
   }
 }
 
-export async function updateRadiologyReport(id: number, findings: string, impression: string, reportedBy: string) {
+export async function updateRadiologyReport(
+  id: number,
+  findings: string,
+  impression: string,
+  reportedBy: string,
+) {
   try {
-    const res = await db.update(schema.radiologyOrders).set({
-      status: 'Reported',
-      radiologistFindings: findings,
-      impression,
-      reportedBy,
-      reportedAt: new Date()
-    }).where(eq(schema.radiologyOrders.id, id)).returning();
+    const res = await db
+      .update(schema.radiologyOrders)
+      .set({
+        status: 'Reported',
+        radiologistFindings: findings,
+        impression,
+        reportedBy,
+        reportedAt: new Date(),
+      })
+      .where(eq(schema.radiologyOrders.id, id))
+      .returning();
     return res[0];
   } catch (error) {
     console.error('Error saving radiology report:', error);
@@ -2835,7 +2582,11 @@ export async function updateRadiologyReport(id: number, findings: string, impres
 export async function getInventoryItems(facilityId?: number) {
   try {
     if (facilityId) {
-      return await db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.facilityId, facilityId)).orderBy(schema.inventoryItems.name);
+      return await db
+        .select()
+        .from(schema.inventoryItems)
+        .where(eq(schema.inventoryItems.facilityId, facilityId))
+        .orderBy(schema.inventoryItems.name);
     }
     return await db.select().from(schema.inventoryItems).orderBy(schema.inventoryItems.name);
   } catch (error) {
@@ -2859,13 +2610,17 @@ export async function dispenseMedication(data: typeof schema.pharmacyDispensatio
     const res = await db.insert(schema.pharmacyDispensations).values(data).returning();
     // deduct from inventory if item specified
     if (data.itemId) {
-      await db.update(schema.inventoryItems)
-        .set({ currentStock: sql`${schema.inventoryItems.currentStock} - ${data.quantityDispensed}` })
+      await db
+        .update(schema.inventoryItems)
+        .set({
+          currentStock: sql`${schema.inventoryItems.currentStock} - ${data.quantityDispensed}`,
+        })
         .where(eq(schema.inventoryItems.id, data.itemId));
     }
     // update prescription status if linked
     if (data.prescriptionId) {
-      await db.update(schema.medications)
+      await db
+        .update(schema.medications)
         .set({ status: 'Dispensed' })
         .where(eq(schema.medications.id, data.prescriptionId));
     }
@@ -2880,7 +2635,10 @@ export async function dispenseMedication(data: typeof schema.pharmacyDispensatio
 export async function getSuppliers(tenantId?: number) {
   try {
     if (tenantId) {
-      return await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, tenantId));
+      return await db
+        .select()
+        .from(schema.suppliers)
+        .where(eq(schema.suppliers.tenantId, tenantId));
     }
     return await db.select().from(schema.suppliers);
   } catch (error) {
@@ -2892,9 +2650,16 @@ export async function getSuppliers(tenantId?: number) {
 export async function getPurchaseOrders(facilityId?: number) {
   try {
     if (facilityId) {
-      return await db.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.facilityId, facilityId)).orderBy(desc(schema.purchaseOrders.createdAt));
+      return await db
+        .select()
+        .from(schema.purchaseOrders)
+        .where(eq(schema.purchaseOrders.facilityId, facilityId))
+        .orderBy(desc(schema.purchaseOrders.createdAt));
     }
-    return await db.select().from(schema.purchaseOrders).orderBy(desc(schema.purchaseOrders.createdAt));
+    return await db
+      .select()
+      .from(schema.purchaseOrders)
+      .orderBy(desc(schema.purchaseOrders.createdAt));
   } catch (error) {
     console.error('Error fetching purchase orders:', error);
     throw new Error('Failed to fetch purchase orders', { cause: error });
@@ -2931,14 +2696,11 @@ export async function getInvoices(facilityId?: number, patientId?: number) {
 
 export async function createInvoice(
   invoiceData: typeof schema.billingInvoices.$inferInsert,
-  items: Array<Omit<typeof schema.billingItems.$inferInsert, 'invoiceId'>>
+  items: Array<Omit<typeof schema.billingItems.$inferInsert, 'invoiceId'>>,
 ) {
   try {
     return await db.transaction(async (tx) => {
-      const [invoice] = await tx
-        .insert(schema.billingInvoices)
-        .values(invoiceData)
-        .returning();
+      const [invoice] = await tx.insert(schema.billingInvoices).values(invoiceData).returning();
 
       if (!invoice) {
         throw new Error('Invoice insert returned no record');
@@ -2962,16 +2724,17 @@ export async function createInvoice(
 }
 export async function getInvoiceItems(invoiceId: number) {
   try {
-    return await db.select().from(schema.billingItems).where(eq(schema.billingItems.invoiceId, invoiceId));
+    return await db
+      .select()
+      .from(schema.billingItems)
+      .where(eq(schema.billingItems.invoiceId, invoiceId));
   } catch (error) {
     console.error('Error fetching invoice items:', error);
     throw new Error('Failed to fetch invoice line items', { cause: error });
   }
 }
 
-export async function recordPayment(
-  paymentData: typeof schema.billingPayments.$inferInsert
-) {
+export async function recordPayment(paymentData: typeof schema.billingPayments.$inferInsert) {
   try {
     return await db.transaction(async (tx) => {
       // Lock the invoice so simultaneous payments cannot both spend
@@ -3002,18 +2765,11 @@ export async function recordPayment(
       const newPaidCents = paidCents + amountCents;
       const newBalanceCents = Math.max(0, totalCents - newPaidCents);
       const newStatus =
-        newBalanceCents === 0
-          ? 'Paid'
-          : newPaidCents > 0
-            ? 'Partially Paid'
-            : 'Unpaid';
+        newBalanceCents === 0 ? 'Paid' : newPaidCents > 0 ? 'Partially Paid' : 'Unpaid';
 
       // Both writes are part of the same transaction. If either fails,
       // PostgreSQL rolls back both.
-      const [payment] = await tx
-        .insert(schema.billingPayments)
-        .values(paymentData)
-        .returning();
+      const [payment] = await tx.insert(schema.billingPayments).values(paymentData).returning();
 
       if (!payment) {
         throw new Error('Payment insert returned no record');
@@ -3039,9 +2795,16 @@ export async function recordPayment(
 export async function getClaims(facilityId?: number) {
   try {
     if (facilityId) {
-      return await db.select().from(schema.insuranceClaims).where(eq(schema.insuranceClaims.facilityId, facilityId)).orderBy(desc(schema.insuranceClaims.claimNumber));
+      return await db
+        .select()
+        .from(schema.insuranceClaims)
+        .where(eq(schema.insuranceClaims.facilityId, facilityId))
+        .orderBy(desc(schema.insuranceClaims.claimNumber));
     }
-    return await db.select().from(schema.insuranceClaims).orderBy(desc(schema.insuranceClaims.claimNumber));
+    return await db
+      .select()
+      .from(schema.insuranceClaims)
+      .orderBy(desc(schema.insuranceClaims.claimNumber));
   } catch (error) {
     console.error('Error fetching insurance claims:', error);
     throw new Error('Failed to fetch claims', { cause: error });
@@ -3058,12 +2821,21 @@ export async function createClaim(data: typeof schema.insuranceClaims.$inferInse
   }
 }
 
-export async function updateClaimStatus(id: number, status: string, approvedAmount?: string, notes?: string) {
+export async function updateClaimStatus(
+  id: number,
+  status: string,
+  approvedAmount?: string,
+  notes?: string,
+) {
   try {
     const updateData: any = { status };
     if (approvedAmount !== undefined) updateData.approvedAmount = approvedAmount;
     if (notes !== undefined) updateData.adjudicationNotes = notes;
-    const res = await db.update(schema.insuranceClaims).set(updateData).where(eq(schema.insuranceClaims.id, id)).returning();
+    const res = await db
+      .update(schema.insuranceClaims)
+      .set(updateData)
+      .where(eq(schema.insuranceClaims.id, id))
+      .returning();
     return res[0];
   } catch (error) {
     console.error('Error updating claim status:', error);
@@ -3094,10 +2866,7 @@ export async function recordPublicHealthReport(
   data: typeof schema.publicHealthReports.$inferInsert,
 ) {
   try {
-    const res = await db
-      .insert(schema.publicHealthReports)
-      .values(data)
-      .returning();
+    const res = await db.insert(schema.publicHealthReports).values(data).returning();
 
     return res[0];
   } catch (error) {
@@ -3107,7 +2876,15 @@ export async function recordPublicHealthReport(
 }
 
 // Audit Logs
-export async function logAuditEvent(tenantId: number | null, facilityId: number | null, userId: string | null, action: string, resource: string, resourceId: string | null, details: string) {
+export async function logAuditEvent(
+  tenantId: number | null,
+  facilityId: number | null,
+  userId: string | null,
+  action: string,
+  resource: string,
+  resourceId: string | null,
+  details: string,
+) {
   try {
     await db.insert(schema.auditLogs).values({
       tenantId,
@@ -3123,44 +2900,28 @@ export async function logAuditEvent(tenantId: number | null, facilityId: number 
   }
 }
 
-export async function getAuditLogs(
-  context: AuthorizationContext,
-  requestedFacilityId?: number,
-) {
+export async function getAuditLogs(context: AuthorizationContext, requestedFacilityId?: number) {
   try {
     const conditions = [];
 
     if (context.isSuperAdmin) {
       if (requestedFacilityId !== undefined) {
-        conditions.push(
-          eq(schema.auditLogs.facilityId, requestedFacilityId),
-        );
+        conditions.push(eq(schema.auditLogs.facilityId, requestedFacilityId));
       }
     } else if (context.facilityId !== null) {
-      if (
-        requestedFacilityId !== undefined &&
-        requestedFacilityId !== context.facilityId
-      ) {
-        throw new Error(
-          "You are not authorized to view another facility's audit logs.",
-        );
+      if (requestedFacilityId !== undefined && requestedFacilityId !== context.facilityId) {
+        throw new Error("You are not authorized to view another facility's audit logs.");
       }
 
-      conditions.push(
-        eq(schema.auditLogs.facilityId, context.facilityId),
-      );
+      conditions.push(eq(schema.auditLogs.facilityId, context.facilityId));
     } else if (context.tenantId !== null) {
-      conditions.push(
-        eq(schema.auditLogs.tenantId, context.tenantId),
-      );
+      conditions.push(eq(schema.auditLogs.tenantId, context.tenantId));
 
       if (requestedFacilityId !== undefined) {
-        conditions.push(
-          eq(schema.auditLogs.facilityId, requestedFacilityId),
-        );
+        conditions.push(eq(schema.auditLogs.facilityId, requestedFacilityId));
       }
     } else {
-      throw new Error("Audit log authorization scope is unavailable.");
+      throw new Error('Audit log authorization scope is unavailable.');
     }
 
     if (conditions.length === 0) {
@@ -3178,7 +2939,7 @@ export async function getAuditLogs(
       .orderBy(desc(schema.auditLogs.timestamp))
       .limit(50);
   } catch (error) {
-    console.error("Error fetching scoped audit logs:", error);
+    console.error('Error fetching scoped audit logs:', error);
     throw error;
   }
 }
@@ -3194,12 +2955,9 @@ export async function getAuditLogs(
  * implemented separately using patientFacilities and the
  * relevant patient-consent/access policies.
  */
-export async function getPatientByIdScoped(
-  context: AuthorizationContext,
-  patientId: number,
-) {
+export async function getPatientByIdScoped(context: AuthorizationContext, patientId: number) {
   if (!Number.isInteger(patientId) || patientId <= 0) {
-    throw new Error("Invalid patient ID.");
+    throw new Error('Invalid patient ID.');
   }
 
   const [patient] = await db
@@ -3212,11 +2970,7 @@ export async function getPatientByIdScoped(
 
   requireTenantScope(context, patient.tenantId);
 
-  requireFacilityScope(
-    context,
-    patient.tenantId,
-    patient.registrationFacilityId,
-  );
+  requireFacilityScope(context, patient.tenantId, patient.registrationFacilityId);
 
   return openPatientIdentifiers(patient);
 }
@@ -3240,86 +2994,47 @@ export async function getPatientsScoped(
       !Number.isInteger(requestedTenantId) ||
       requestedTenantId <= 0
     ) {
-      throw new Error(
-        "Super Admin must specify a valid target tenant.",
-      );
+      throw new Error('Super Admin must specify a valid target tenant.');
     }
 
-    conditions.push(
-      eq(schema.patients.tenantId, requestedTenantId),
-    );
+    conditions.push(eq(schema.patients.tenantId, requestedTenantId));
 
     if (requestedFacilityId !== undefined) {
-      const facility = await getFacilityByIdScoped(
-        context,
-        requestedFacilityId,
-      );
+      const facility = await getFacilityByIdScoped(context, requestedFacilityId);
 
       if (!facility || facility.tenantId !== requestedTenantId) {
-        throw new Error(
-          "The facility does not belong to the requested tenant.",
-        );
+        throw new Error('The facility does not belong to the requested tenant.');
       }
 
-      conditions.push(
-        eq(
-          schema.patients.registrationFacilityId,
-          requestedFacilityId,
-        ),
-      );
+      conditions.push(eq(schema.patients.registrationFacilityId, requestedFacilityId));
     }
   } else {
     if (context.tenantId === null) {
-      throw new Error("Your account has no tenant assignment.");
+      throw new Error('Your account has no tenant assignment.');
     }
 
     requireTenantScope(context, context.tenantId);
 
-    if (
-      requestedTenantId !== undefined &&
-      requestedTenantId !== context.tenantId
-    ) {
+    if (requestedTenantId !== undefined && requestedTenantId !== context.tenantId) {
       requireTenantScope(context, requestedTenantId);
     }
 
-    conditions.push(
-      eq(schema.patients.tenantId, context.tenantId),
-    );
+    conditions.push(eq(schema.patients.tenantId, context.tenantId));
 
     if (context.facilityId !== null) {
-      if (
-        requestedFacilityId !== undefined &&
-        requestedFacilityId !== context.facilityId
-      ) {
-        throw new Error(
-          "You are not authorized to access this facility.",
-        );
+      if (requestedFacilityId !== undefined && requestedFacilityId !== context.facilityId) {
+        throw new Error('You are not authorized to access this facility.');
       }
 
-      conditions.push(
-        eq(
-          schema.patients.registrationFacilityId,
-          context.facilityId,
-        ),
-      );
+      conditions.push(eq(schema.patients.registrationFacilityId, context.facilityId));
     } else if (requestedFacilityId !== undefined) {
-      const facility = await getFacilityByIdScoped(
-        context,
-        requestedFacilityId,
-      );
+      const facility = await getFacilityByIdScoped(context, requestedFacilityId);
 
       if (!facility || facility.tenantId !== context.tenantId) {
-        throw new Error(
-          "The facility does not belong to your tenant.",
-        );
+        throw new Error('The facility does not belong to your tenant.');
       }
 
-      conditions.push(
-        eq(
-          schema.patients.registrationFacilityId,
-          requestedFacilityId,
-        ),
-      );
+      conditions.push(eq(schema.patients.registrationFacilityId, requestedFacilityId));
     }
   }
 
@@ -3386,18 +3101,13 @@ export async function updatePatientScoped(
       and(
         eq(schema.patients.id, patientId),
         eq(schema.patients.tenantId, patient.tenantId),
-        eq(
-          schema.patients.registrationFacilityId,
-          patient.registrationFacilityId,
-        ),
+        eq(schema.patients.registrationFacilityId, patient.registrationFacilityId),
       ),
     )
     .returning();
 
-  return updated ? openPatientIdentifiers(updated) : updated ?? null;
+  return updated ? openPatientIdentifiers(updated) : (updated ?? null);
 }
-
-
 
 /**
  * Find the catalogue row a free-text investigation name refers to.
@@ -3423,9 +3133,10 @@ async function resolveCatalogueTestByName(
   },
   facilityId: number,
   rawName: string,
-): Promise<
-  | { test: { id: number; code: string; name: string } | null; reason: 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS' }
-> {
+): Promise<{
+  test: { id: number; code: string; name: string } | null;
+  reason: 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS';
+}> {
   const name = rawName.trim();
   const key = normaliseCatalogueKey(name);
 
@@ -3540,7 +3251,7 @@ export async function createLabOrderBatch(
     if (!Array.isArray(testIds) || testIds.length === 0) {
       throw new Error('Enter at least one laboratory investigation.');
     }
-    if (testIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+    if (testIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
       throw new Error('One or more laboratory test IDs are invalid.');
     }
     if (new Set(testIds).size !== testIds.length) {
@@ -3577,11 +3288,7 @@ export async function createLabOrderBatch(
          * are reported back so the requirement is visible.
          */
         for (const name of investigations) {
-          const resolution = await resolveCatalogueTestByName(
-            tx,
-            scope.facilityId,
-            name,
-          );
+          const resolution = await resolveCatalogueTestByName(tx, scope.facilityId, name);
 
           tests.push({
             id: resolution.test?.id ?? null,
@@ -3595,11 +3302,13 @@ export async function createLabOrderBatch(
           const [test] = await tx
             .select()
             .from(schema.labTests)
-            .where(and(
-              eq(schema.labTests.id, testId),
-              eq(schema.labTests.facilityId, scope.facilityId),
-              eq(schema.labTests.isActive, true),
-            ))
+            .where(
+              and(
+                eq(schema.labTests.id, testId),
+                eq(schema.labTests.facilityId, scope.facilityId),
+                eq(schema.labTests.isActive, true),
+              ),
+            )
             .limit(1);
 
           if (!test) {
@@ -3669,9 +3378,7 @@ export async function createLabOrderBatch(
         .filter((test) => test.id === null && test.match !== undefined)
         .map((test) => test.name);
 
-      const ambiguous = tests
-        .filter((test) => test.match === 'AMBIGUOUS')
-        .map((test) => test.name);
+      const ambiguous = tests.filter((test) => test.match === 'AMBIGUOUS').map((test) => test.name);
 
       return { orders, queue, unresolved, ambiguous };
     });
@@ -3713,11 +3420,7 @@ export async function accrueBedDaysScoped(
   const admission = await getAdmissionByIdScoped(context, admissionId);
 
   if (!admission) {
-    throw new InpatientDomainError(
-      'ADMISSION_NOT_FOUND',
-      'Admission not found.',
-      404,
-    );
+    throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
   }
 
   /*
@@ -3757,9 +3460,7 @@ export async function accrueBedDaysScoped(
       toWardId: transfer.toWardId,
       transferredAt: transfer.transferredAt,
       ward: wardsById.get(transfer.toWardId) ?? null,
-      fromWard: transfer.fromWardId
-        ? wardsById.get(transfer.fromWardId) ?? null
-        : null,
+      fromWard: transfer.fromWardId ? (wardsById.get(transfer.fromWardId) ?? null) : null,
     })),
   });
 
@@ -3835,11 +3536,7 @@ export async function transferAdmissionScoped(
   const admission = await getAdmissionByIdScoped(context, admissionId);
 
   if (!admission) {
-    throw new InpatientDomainError(
-      'ADMISSION_NOT_FOUND',
-      'Admission not found.',
-      404,
-    );
+    throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
   }
 
   if (admission.status !== 'Admitted') {
@@ -3854,31 +3551,18 @@ export async function transferAdmissionScoped(
   const toBedId = Number(input?.toBedId);
 
   if (!Number.isSafeInteger(toWardId) || toWardId <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A valid destination ward is required.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid destination ward is required.', 400);
   }
 
   if (!Number.isSafeInteger(toBedId) || toBedId <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A valid destination bed is required.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid destination bed is required.', 400);
   }
 
   return await db.transaction(async (tx) => {
     const [ward] = await tx
       .select()
       .from(schema.wards)
-      .where(
-        and(
-          eq(schema.wards.id, toWardId),
-          eq(schema.wards.facilityId, admission.facilityId),
-        ),
-      )
+      .where(and(eq(schema.wards.id, toWardId), eq(schema.wards.facilityId, admission.facilityId)))
       .limit(1);
 
     if (!ward) {
@@ -3892,12 +3576,7 @@ export async function transferAdmissionScoped(
     const [bed] = await tx
       .select()
       .from(schema.beds)
-      .where(
-        and(
-          eq(schema.beds.id, toBedId),
-          eq(schema.beds.wardId, ward.id),
-        ),
-      )
+      .where(and(eq(schema.beds.id, toBedId), eq(schema.beds.wardId, ward.id)))
       .limit(1);
 
     if (!bed) {
@@ -3911,12 +3590,7 @@ export async function transferAdmissionScoped(
     const [activeOnBed] = await tx
       .select({ id: schema.admissions.id })
       .from(schema.admissions)
-      .where(
-        and(
-          eq(schema.admissions.bedId, bed.id),
-          eq(schema.admissions.status, 'Admitted'),
-        ),
-      )
+      .where(and(eq(schema.admissions.bedId, bed.id), eq(schema.admissions.status, 'Admitted')))
       .limit(1);
 
     if (activeOnBed) {
@@ -3936,11 +3610,7 @@ export async function transferAdmissionScoped(
     }
 
     if (bed.id === admission.bedId) {
-      throw new InpatientDomainError(
-        'INVALID_INPUT',
-        'The patient is already in that bed.',
-        400,
-      );
+      throw new InpatientDomainError('INVALID_INPUT', 'The patient is already in that bed.', 400);
     }
 
     const [transfer] = await tx
@@ -4044,21 +3714,13 @@ export async function createNursingNoteScoped(
   const patientId = Number(input?.patientId);
 
   if (!Number.isSafeInteger(patientId) || patientId <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A valid patient is required.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid patient is required.', 400);
   }
 
   const note = typeof input?.note === 'string' ? input.note.trim() : '';
 
   if (!note) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A nursing note cannot be empty.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A nursing note cannot be empty.', 400);
   }
 
   if (note.length > 8000) {
@@ -4078,17 +3740,10 @@ export async function createNursingNoteScoped(
   let facilityId: number;
 
   if (input.admissionId !== undefined && input.admissionId !== null) {
-    const admission = await getAdmissionByIdScoped(
-      context,
-      Number(input.admissionId),
-    );
+    const admission = await getAdmissionByIdScoped(context, Number(input.admissionId));
 
     if (!admission) {
-      throw new InpatientDomainError(
-        'ADMISSION_NOT_FOUND',
-        'Admission not found.',
-        404,
-      );
+      throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
     }
 
     if (admission.patientId !== patientId) {
@@ -4103,11 +3758,7 @@ export async function createNursingNoteScoped(
     tenantId = admission.tenantId;
     facilityId = admission.facilityId;
   } else {
-    const patient = await requirePatientInTenant(
-      context,
-      patientId,
-      context.tenantId ?? 0,
-    );
+    const patient = await requirePatientInTenant(context, patientId, context.tenantId ?? 0);
 
     if (!patient) {
       throw new InpatientDomainError(
@@ -4158,27 +3809,18 @@ export async function getNursingNotesScoped(
   const conditions = [];
 
   if (filters.admissionId !== undefined) {
-    const admission = await getAdmissionByIdScoped(
-      context,
-      Number(filters.admissionId),
-    );
+    const admission = await getAdmissionByIdScoped(context, Number(filters.admissionId));
 
     if (!admission) return [];
 
-    conditions.push(
-      eq(schema.nursingNotes.admissionId, admission.id),
-    );
+    conditions.push(eq(schema.nursingNotes.admissionId, admission.id));
   }
 
   if (filters.patientId !== undefined) {
     const patientId = Number(filters.patientId);
 
     if (!Number.isSafeInteger(patientId) || patientId <= 0) {
-      throw new InpatientDomainError(
-        'INVALID_INPUT',
-        'A valid patient ID is required.',
-        400,
-      );
+      throw new InpatientDomainError('INVALID_INPUT', 'A valid patient ID is required.', 400);
     }
 
     await requirePatientInTenant(context, patientId, context.tenantId ?? 0);
@@ -4204,18 +3846,11 @@ export async function getNursingNotesScoped(
    INVOICE LIFECYCLE
    ------------------------------------------------------------ */
 
-export async function getInvoiceDetailScoped(
-  context: AuthorizationContext,
-  invoiceId: number,
-) {
+export async function getInvoiceDetailScoped(context: AuthorizationContext, invoiceId: number) {
   const id = Number(invoiceId);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A valid invoice ID is required.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid invoice ID is required.', 400);
   }
 
   const [invoice] = await db
@@ -4258,11 +3893,7 @@ export async function voidInvoiceScoped(
   const detail = await getInvoiceDetailScoped(context, invoiceId);
 
   if (!detail) {
-    throw new InpatientDomainError(
-      'ADMISSION_NOT_FOUND',
-      'Invoice not found.',
-      404,
-    );
+    throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Invoice not found.', 404);
   }
 
   if (detail.invoice.voidedAt) {
@@ -4300,4 +3931,3 @@ function toCentsPositive(value: string | null | undefined): number {
 
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
 }
-

@@ -101,10 +101,7 @@ export function createSystemRouter(): express.Router {
        * unauthenticated and often public: a connection error message names
        * the host, the port and sometimes the user.
        */
-      log.error(
-        { code: detail.code, err: error },
-        'readiness.database_unreachable',
-      );
+      log.error({ code: detail.code, err: error }, 'readiness.database_unreachable');
     }
 
     const latencyMs = Date.now() - started;

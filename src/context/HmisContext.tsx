@@ -1,22 +1,8 @@
-﻿import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+﻿import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-import {
-  api,
-  type AuthenticatedUser,
-} from '../api/client.ts';
+import { api, type AuthenticatedUser } from '../api/client.ts';
 
-import type {
-  Tenant,
-  Facility,
-  Patient,
-} from '../types/index.ts';
+import type { Tenant, Facility, Patient } from '../types/index.ts';
 
 /*
 |--------------------------------------------------------------------------
@@ -77,7 +63,8 @@ export interface StaffUser {
 
 export type ModuleId =
   | 'dashboard'
-  | 'platform_administration' | 'registration'
+  | 'platform_administration'
+  | 'registration'
   | 'reception'
   | 'opd'
   | 'inpatient'
@@ -119,7 +106,7 @@ interface HmisContextType {
 
   login: (
     identifier: string,
-    password: string
+    password: string,
   ) => Promise<{
     success: boolean;
     message?: string;
@@ -139,17 +126,13 @@ interface HmisContextType {
 
   currentTenant: Tenant | null;
 
-  setCurrentTenant: (
-    tenant: Tenant
-  ) => Promise<void>;
+  setCurrentTenant: (tenant: Tenant) => Promise<void>;
 
   facilities: Facility[];
 
   currentFacility: Facility | null;
 
-  setCurrentFacility: (
-    facility: Facility
-  ) => void;
+  setCurrentFacility: (facility: Facility) => void;
 
   /*
   |--------------------------------------------------------------------------
@@ -180,9 +163,7 @@ interface HmisContextType {
   |
   */
 
-  setCurrentUser: (
-    user: StaffUser
-  ) => void;
+  setCurrentUser: (user: StaffUser) => void;
 
   /*
   |--------------------------------------------------------------------------
@@ -192,9 +173,7 @@ interface HmisContextType {
 
   activeModule: ModuleId;
 
-  setActiveModule: (
-    mod: ModuleId
-  ) => void;
+  setActiveModule: (mod: ModuleId) => void;
 
   /*
   |--------------------------------------------------------------------------
@@ -204,15 +183,11 @@ interface HmisContextType {
 
   selectedPatient: Patient | null;
 
-  setSelectedPatient: (
-    patient: Patient | null
-  ) => void;
+  setSelectedPatient: (patient: Patient | null) => void;
 
   isJourneyModalOpen: boolean;
 
-  setIsJourneyModalOpen: (
-    open: boolean
-  ) => void;
+  setIsJourneyModalOpen: (open: boolean) => void;
 
   /*
   |--------------------------------------------------------------------------
@@ -222,9 +197,7 @@ interface HmisContextType {
 
   isMobileMenuOpen: boolean;
 
-  setIsMobileMenuOpen: (
-    open: boolean
-  ) => void;
+  setIsMobileMenuOpen: (open: boolean) => void;
 
   /*
   |--------------------------------------------------------------------------
@@ -234,10 +207,7 @@ interface HmisContextType {
 
   notifications: AppNotification[];
 
-  showToast: (
-    msg: string,
-    options?: ShowToastOptions
-  ) => void;
+  showToast: (msg: string, options?: ShowToastOptions) => void;
 
   dismissNotification: (id: number) => void;
 
@@ -297,9 +267,7 @@ const emptyStaffUser: StaffUser = {
 |
 */
 
-function mapAuthenticatedUserToStaffUser(
-  user: AuthenticatedUser
-): StaffUser {
+function mapAuthenticatedUserToStaffUser(user: AuthenticatedUser): StaffUser {
   const assignedRoles = user.roles ?? [];
 
   let role = user.designation?.trim() ?? '';
@@ -327,10 +295,7 @@ function mapAuthenticatedUserToStaffUser(
 |--------------------------------------------------------------------------
 */
 
-const HmisContext =
-  createContext<
-    HmisContextType | undefined
-  >(undefined);
+const HmisContext = createContext<HmisContextType | undefined>(undefined);
 
 /*
 |--------------------------------------------------------------------------
@@ -340,32 +305,18 @@ const HmisContext =
 
 export const HmisProvider: React.FC<{
   children: React.ReactNode;
-}> = ({
-  children,
-}) => {
+}> = ({ children }) => {
   /*
   |--------------------------------------------------------------------------
   | Authentication State
   |--------------------------------------------------------------------------
   */
 
-  const [
-    isAuthenticated,
-    setIsAuthenticated,
-  ] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const [
-    authenticatedUser,
-    setAuthenticatedUser,
-  ] =
-    useState<AuthenticatedUser | null>(
-      null
-    );
+  const [authenticatedUser, setAuthenticatedUser] = useState<AuthenticatedUser | null>(null);
 
-  const [
-    authLoading,
-    setAuthLoading,
-  ] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
 
   /*
   |--------------------------------------------------------------------------
@@ -373,16 +324,9 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const [
-    tenants,
-    setTenants,
-  ] = useState<Tenant[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
 
-  const [
-    currentTenant,
-    setCurrentTenantState,
-  ] =
-    useState<Tenant | null>(null);
+  const [currentTenant, setCurrentTenantState] = useState<Tenant | null>(null);
 
   /*
   |--------------------------------------------------------------------------
@@ -390,17 +334,9 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const [
-    facilities,
-    setFacilities,
-  ] =
-    useState<Facility[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
 
-  const [
-    currentFacility,
-    setCurrentFacilityState,
-  ] =
-    useState<Facility | null>(null);
+  const [currentFacility, setCurrentFacilityState] = useState<Facility | null>(null);
 
   /*
   |--------------------------------------------------------------------------
@@ -408,48 +344,19 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const [
-    activeModule,
-    setActiveModule,
-  ] =
-    useState<ModuleId>(
-      'dashboard'
-    );
+  const [activeModule, setActiveModule] = useState<ModuleId>('dashboard');
 
-  const [
-    selectedPatient,
-    setSelectedPatient,
-  ] =
-    useState<Patient | null>(
-      null
-    );
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
-  const [
-    isJourneyModalOpen,
-    setIsJourneyModalOpen,
-  ] =
-    useState(false);
+  const [isJourneyModalOpen, setIsJourneyModalOpen] = useState(false);
 
-  const [
-    isMobileMenuOpen,
-    setIsMobileMenuOpen,
-  ] =
-    useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const [
-    notifications,
-    setNotifications,
-  ] = useState<AppNotification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  const [
-    refreshKey,
-    setRefreshKey,
-  ] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   /*
   |--------------------------------------------------------------------------
@@ -460,21 +367,16 @@ export const HmisProvider: React.FC<{
   const notificationSequence = useRef(0);
   const notificationTimers = useRef(new Map<number, number>());
 
-  const dismissNotification = useCallback(
-    (id: number) => {
-      const timer = notificationTimers.current.get(id);
+  const dismissNotification = useCallback((id: number) => {
+    const timer = notificationTimers.current.get(id);
 
-      if (timer !== undefined) {
-        window.clearTimeout(timer);
-        notificationTimers.current.delete(id);
-      }
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      notificationTimers.current.delete(id);
+    }
 
-      setNotifications((current) =>
-        current.filter((notification) => notification.id !== id)
-      );
-    },
-    []
-  );
+    setNotifications((current) => current.filter((notification) => notification.id !== id));
+  }, []);
 
   const dismissAllNotifications = useCallback(() => {
     for (const timer of notificationTimers.current.values()) {
@@ -499,7 +401,7 @@ export const HmisProvider: React.FC<{
 
       notificationTimers.current.clear();
     },
-    []
+    [],
   );
 
   const showToast = useCallback(
@@ -517,8 +419,7 @@ export const HmisProvider: React.FC<{
          * two paths, and a queue of identical rows is noise.
          */
         const duplicate = current.find(
-          (notification) =>
-            notification.message === message && notification.tone === tone
+          (notification) => notification.message === message && notification.tone === tone,
         );
 
         if (duplicate) {
@@ -530,10 +431,7 @@ export const HmisProvider: React.FC<{
 
           notificationTimers.current.set(
             duplicate.id,
-            window.setTimeout(
-              () => dismissNotification(duplicate.id),
-              NOTIFICATION_LIFETIME_MS
-            )
+            window.setTimeout(() => dismissNotification(duplicate.id), NOTIFICATION_LIFETIME_MS),
           );
 
           return current;
@@ -541,17 +439,11 @@ export const HmisProvider: React.FC<{
 
         const id = (notificationSequence.current += 1);
 
-        const next = [
-          ...current,
-          { id, message, tone, createdAt: Date.now() },
-        ];
+        const next = [...current, { id, message, tone, createdAt: Date.now() }];
 
         notificationTimers.current.set(
           id,
-          window.setTimeout(
-            () => dismissNotification(id),
-            NOTIFICATION_LIFETIME_MS
-          )
+          window.setTimeout(() => dismissNotification(id), NOTIFICATION_LIFETIME_MS),
         );
 
         return next.length > NOTIFICATION_QUEUE_LIMIT
@@ -559,7 +451,7 @@ export const HmisProvider: React.FC<{
           : next;
       });
     },
-    [dismissNotification]
+    [dismissNotification],
   );
 
   /*
@@ -569,10 +461,7 @@ export const HmisProvider: React.FC<{
   */
 
   const triggerRefresh = () => {
-    setRefreshKey(
-      (current) =>
-        current + 1
-    );
+    setRefreshKey((current) => current + 1);
   };
 
   /*
@@ -590,14 +479,11 @@ export const HmisProvider: React.FC<{
   |
   */
 
-  const loadTenantAndFacilityContext =
-    async (
-      user: AuthenticatedUser
-    ) => {
-      setLoading(true);
+  const loadTenantAndFacilityContext = async (user: AuthenticatedUser) => {
+    setLoading(true);
 
-      try {
-        /*
+    try {
+      /*
         |--------------------------------------------------------------------------
         | Platform Administrator
         |--------------------------------------------------------------------------
@@ -606,199 +492,121 @@ export const HmisProvider: React.FC<{
         |
         */
 
-        if (
-          user.tenantId === null
-        ) {
-          const tenantList =
-            await api.getTenants();
+      if (user.tenantId === null) {
+        const tenantList = await api.getTenants();
 
-          setTenants(
-            tenantList
-          );
+        setTenants(tenantList);
 
-          if (
-            tenantList.length ===
-            0
-          ) {
-            setCurrentTenantState(
-              null
-            );
+        if (tenantList.length === 0) {
+          setCurrentTenantState(null);
 
-            setFacilities([]);
+          setFacilities([]);
 
-            setCurrentFacilityState(
-              null
-            );
+          setCurrentFacilityState(null);
 
-            return;
-          }
+          return;
+        }
 
-          const selectedTenant =
-            tenantList[0];
+        const selectedTenant = tenantList[0];
 
-          setCurrentTenantState(
-            selectedTenant
-          );
+        setCurrentTenantState(selectedTenant);
 
-          const facilityList =
-            await api.getFacilities(
-              selectedTenant.id
-            );
+        const facilityList = await api.getFacilities(selectedTenant.id);
 
-          setFacilities(
-            facilityList
-          );
+        setFacilities(facilityList);
 
-          /*
+        /*
           |--------------------------------------------------------------------------
           | Respect an assigned facility if one exists.
           |--------------------------------------------------------------------------
           */
 
-          if (
-            user.facilityId !==
-            null
-          ) {
-            const assignedFacility =
-              facilityList.find(
-                (facility) =>
-                  facility.id ===
-                  user.facilityId
-              ) ?? null;
+        if (user.facilityId !== null) {
+          const assignedFacility =
+            facilityList.find((facility) => facility.id === user.facilityId) ?? null;
 
-            setCurrentFacilityState(
-              assignedFacility
-            );
-          } else {
-            setCurrentFacilityState(
-              facilityList[0] ??
-                null
-            );
-          }
-
-          return;
+          setCurrentFacilityState(assignedFacility);
+        } else {
+          setCurrentFacilityState(facilityList[0] ?? null);
         }
 
-        /*
+        return;
+      }
+
+      /*
         |--------------------------------------------------------------------------
         | Tenant-bound user
         |--------------------------------------------------------------------------
         */
 
-        const tenantList =
-          await api.getTenants();
+      const tenantList = await api.getTenants();
 
-        const authorizedTenant =
-          tenantList.find(
-            (tenant) =>
-              tenant.id ===
-              user.tenantId
-          ) ?? null;
+      const authorizedTenant = tenantList.find((tenant) => tenant.id === user.tenantId) ?? null;
 
-        if (
-          !authorizedTenant
-        ) {
-          setTenants([]);
+      if (!authorizedTenant) {
+        setTenants([]);
 
-          setCurrentTenantState(
-            null
-          );
+        setCurrentTenantState(null);
 
-          setFacilities([]);
+        setFacilities([]);
 
-          setCurrentFacilityState(
-            null
-          );
+        setCurrentFacilityState(null);
 
-          return;
-        }
+        return;
+      }
 
-        setTenants([
-          authorizedTenant,
-        ]);
+      setTenants([authorizedTenant]);
 
-        setCurrentTenantState(
-          authorizedTenant
-        );
+      setCurrentTenantState(authorizedTenant);
 
-        /*
+      /*
         |--------------------------------------------------------------------------
         | Load facilities for authorized tenant
         |--------------------------------------------------------------------------
         */
 
-        const facilityList =
-          await api.getFacilities(
-            authorizedTenant.id
-          );
+      const facilityList = await api.getFacilities(authorizedTenant.id);
 
-        /*
+      /*
         |--------------------------------------------------------------------------
         | Facility-bound user
         |--------------------------------------------------------------------------
         */
 
-        if (
-          user.facilityId !==
-          null
-        ) {
-          const authorizedFacility =
-            facilityList.find(
-              (facility) =>
-                facility.id ===
-                user.facilityId
-            ) ?? null;
+      if (user.facilityId !== null) {
+        const authorizedFacility =
+          facilityList.find((facility) => facility.id === user.facilityId) ?? null;
 
-          setFacilities(
-            authorizedFacility
-              ? [
-                  authorizedFacility,
-                ]
-              : []
-          );
+        setFacilities(authorizedFacility ? [authorizedFacility] : []);
 
-          setCurrentFacilityState(
-            authorizedFacility
-          );
+        setCurrentFacilityState(authorizedFacility);
 
-          return;
-        }
+        return;
+      }
 
-        /*
+      /*
         |--------------------------------------------------------------------------
         | Tenant-level user without facility restriction
         |--------------------------------------------------------------------------
         */
 
-        setFacilities(
-          facilityList
-        );
+      setFacilities(facilityList);
 
-        setCurrentFacilityState(
-          facilityList[0] ??
-            null
-        );
-      } catch (error) {
-        console.error(
-          'Failed to initialize authorized tenant/facility context:',
-          error
-        );
+      setCurrentFacilityState(facilityList[0] ?? null);
+    } catch (error) {
+      console.error('Failed to initialize authorized tenant/facility context:', error);
 
-        setTenants([]);
+      setTenants([]);
 
-        setCurrentTenantState(
-          null
-        );
+      setCurrentTenantState(null);
 
-        setFacilities([]);
+      setFacilities([]);
 
-        setCurrentFacilityState(
-          null
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
+      setCurrentFacilityState(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -809,50 +617,35 @@ export const HmisProvider: React.FC<{
   useEffect(() => {
     let mounted = true;
 
-    const restoreSession =
-      async () => {
-        setAuthLoading(true);
+    const restoreSession = async () => {
+      setAuthLoading(true);
 
-        try {
-          /*
+      try {
+        /*
           |--------------------------------------------------------------------------
           | getSession() will fail if there is no valid token.
           |--------------------------------------------------------------------------
           */
 
-          const session =
-            await api.getSession();
+        const session = await api.getSession();
 
-          if (!mounted) {
-            return;
-          }
+        if (!mounted) {
+          return;
+        }
 
-          if (
-            session.success &&
-            session.user
-          ) {
-            setAuthenticatedUser(
-              session.user
-            );
+        if (session.success && session.user) {
+          setAuthenticatedUser(session.user);
 
-            setIsAuthenticated(
-              true
-            );
+          setIsAuthenticated(true);
 
-            await loadTenantAndFacilityContext(
-              session.user
-            );
-          } else {
-            setAuthenticatedUser(
-              null
-            );
+          await loadTenantAndFacilityContext(session.user);
+        } else {
+          setAuthenticatedUser(null);
 
-            setIsAuthenticated(
-              false
-            );
-          }
-        } catch (error) {
-          /*
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        /*
           |--------------------------------------------------------------------------
           | No valid session.
           |--------------------------------------------------------------------------
@@ -861,42 +654,29 @@ export const HmisProvider: React.FC<{
           |
           */
 
-          if (
-            import.meta.env.DEV
-          ) {
-            console.debug(
-              'No valid existing authentication session.',
-              error
-            );
-          }
-
-          if (mounted) {
-            setAuthenticatedUser(
-              null
-            );
-
-            setIsAuthenticated(
-              false
-            );
-
-            setTenants([]);
-
-            setCurrentTenantState(
-              null
-            );
-
-            setFacilities([]);
-
-            setCurrentFacilityState(
-              null
-            );
-          }
-        } finally {
-          if (mounted) {
-            setAuthLoading(false);
-          }
+        if (import.meta.env.DEV) {
+          console.debug('No valid existing authentication session.', error);
         }
-      };
+
+        if (mounted) {
+          setAuthenticatedUser(null);
+
+          setIsAuthenticated(false);
+
+          setTenants([]);
+
+          setCurrentTenantState(null);
+
+          setFacilities([]);
+
+          setCurrentFacilityState(null);
+        }
+      } finally {
+        if (mounted) {
+          setAuthLoading(false);
+        }
+      }
+    };
 
     void restoreSession();
 
@@ -911,18 +691,11 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const login = async (
-    identifier: string,
-    password: string
-  ) => {
+  const login = async (identifier: string, password: string) => {
     setAuthLoading(true);
 
     try {
-      const result =
-        await api.login(
-          identifier,
-          password
-        );
+      const result = await api.login(identifier, password);
 
       /*
       |--------------------------------------------------------------------------
@@ -936,15 +709,11 @@ export const HmisProvider: React.FC<{
       |
       */
 
-      if (
-        result.requiresMfa
-      ) {
+      if (result.requiresMfa) {
         return {
           success: true,
           requiresMfa: true,
-          message:
-            result.message ??
-            'Additional authentication is required.',
+          message: result.message ?? 'Additional authentication is required.',
         };
       }
 
@@ -954,13 +723,10 @@ export const HmisProvider: React.FC<{
       |--------------------------------------------------------------------------
       */
 
-      if (
-        !result.user
-      ) {
+      if (!result.user) {
         return {
           success: false,
-          message:
-            'Authentication succeeded but no authenticated user was returned.',
+          message: 'Authentication succeeded but no authenticated user was returned.',
         };
       }
 
@@ -987,13 +753,9 @@ export const HmisProvider: React.FC<{
 
       const authenticatedSessionUser = sessionResult.user;
 
-      setAuthenticatedUser(
-        authenticatedSessionUser
-      );
+      setAuthenticatedUser(authenticatedSessionUser);
 
-      setIsAuthenticated(
-        true
-      );
+      setIsAuthenticated(true);
 
       /*
       |--------------------------------------------------------------------------
@@ -1003,18 +765,14 @@ export const HmisProvider: React.FC<{
 
       setActiveModule(
         authenticatedSessionUser.isSuperAdmin ||
-        authenticatedSessionUser.roles?.includes('SUPER_ADMIN')
+          authenticatedSessionUser.roles?.includes('SUPER_ADMIN')
           ? 'platform_administration'
-          : 'dashboard'
+          : 'dashboard',
       );
 
-      setSelectedPatient(
-        null
-      );
+      setSelectedPatient(null);
 
-      setIsJourneyModalOpen(
-        false
-      );
+      setIsJourneyModalOpen(false);
 
       /*
       |--------------------------------------------------------------------------
@@ -1022,22 +780,15 @@ export const HmisProvider: React.FC<{
       |--------------------------------------------------------------------------
       */
 
-      await loadTenantAndFacilityContext(
-        authenticatedSessionUser
-      );
+      await loadTenantAndFacilityContext(authenticatedSessionUser);
 
       return {
         success: true,
-        requiresPasswordChange:
-          result.requiresPasswordChange,
-        message:
-          result.message,
+        requiresPasswordChange: result.requiresPasswordChange,
+        message: result.message,
       };
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Login failed.';
+      const message = error instanceof Error ? error.message : 'Login failed.';
 
       return {
         success: false,
@@ -1054,81 +805,61 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const logout =
-    async () => {
-      setAuthLoading(true);
+  const logout = async () => {
+    setAuthLoading(true);
 
-      try {
-        await api.logout();
-      } catch (error) {
-        console.error(
-          'Logout request failed:',
-          error
-        );
-      } finally {
-        /*
+    try {
+      await api.logout();
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    } finally {
+      /*
         |--------------------------------------------------------------------------
         | Destroy local authentication state.
         |--------------------------------------------------------------------------
         */
 
-        setAuthenticatedUser(
-          null
-        );
+      setAuthenticatedUser(null);
 
-        setIsAuthenticated(
-          false
-        );
+      setIsAuthenticated(false);
 
-        /*
+      /*
         |--------------------------------------------------------------------------
         | Clear tenant/facility state.
         |--------------------------------------------------------------------------
         */
 
-        setTenants([]);
+      setTenants([]);
 
-        setCurrentTenantState(
-          null
-        );
+      setCurrentTenantState(null);
 
-        setFacilities([]);
+      setFacilities([]);
 
-        setCurrentFacilityState(
-          null
-        );
+      setCurrentFacilityState(null);
 
-        /*
+      /*
         |--------------------------------------------------------------------------
         | Clear sensitive UI state.
         |--------------------------------------------------------------------------
         */
 
-        setSelectedPatient(
-          null
-        );
+      setSelectedPatient(null);
 
-        setIsJourneyModalOpen(
-          false
-        );
+      setIsJourneyModalOpen(false);
 
-        setIsMobileMenuOpen(
-          false
-        );
+      setIsMobileMenuOpen(false);
 
-        /*
+      /*
         |--------------------------------------------------------------------------
         | Reset navigation.
         |--------------------------------------------------------------------------
         */
 
-        setActiveModule(
-          'dashboard'
-        );
+      setActiveModule('dashboard');
 
-        setAuthLoading(false);
-      }
-    };
+      setAuthLoading(false);
+    }
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -1136,172 +867,103 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const handleTenantChange =
-    async (
-      tenant: Tenant
-    ) => {
-      if (
-        !authenticatedUser
-      ) {
-        showToast(
-          'Authentication is required.'
-        );
+  const handleTenantChange = async (tenant: Tenant) => {
+    if (!authenticatedUser) {
+      showToast('Authentication is required.');
 
-        return;
-      }
+      return;
+    }
 
-      /*
+    /*
       |--------------------------------------------------------------------------
       | Platform administrator
       |--------------------------------------------------------------------------
       */
 
-      if (
-        authenticatedUser.tenantId ===
-        null
-      ) {
-        setLoading(true);
+    if (authenticatedUser.tenantId === null) {
+      setLoading(true);
 
-        try {
-          const facilityList =
-            await api.getFacilities(
-              tenant.id
-            );
+      try {
+        const facilityList = await api.getFacilities(tenant.id);
 
-          setCurrentTenantState(
-            tenant
-          );
+        setCurrentTenantState(tenant);
 
-          setFacilities(
-            facilityList
-          );
+        setFacilities(facilityList);
 
-          if (
-            authenticatedUser.facilityId !==
-            null
-          ) {
-            const assignedFacility =
-              facilityList.find(
-                (facility) =>
-                  facility.id ===
-                  authenticatedUser.facilityId
-              ) ?? null;
+        if (authenticatedUser.facilityId !== null) {
+          const assignedFacility =
+            facilityList.find((facility) => facility.id === authenticatedUser.facilityId) ?? null;
 
-            setCurrentFacilityState(
-              assignedFacility
-            );
-          } else {
-            setCurrentFacilityState(
-              facilityList[0] ??
-                null
-            );
-          }
-
-          triggerRefresh();
-        } catch (error) {
-          console.error(
-            'Failed to change tenant facilities:',
-            error
-          );
-
-          showToast(
-            'Unable to load facilities for this organization.'
-          );
-        } finally {
-          setLoading(false);
+          setCurrentFacilityState(assignedFacility);
+        } else {
+          setCurrentFacilityState(facilityList[0] ?? null);
         }
 
-        return;
+        triggerRefresh();
+      } catch (error) {
+        console.error('Failed to change tenant facilities:', error);
+
+        showToast('Unable to load facilities for this organization.');
+      } finally {
+        setLoading(false);
       }
 
-      /*
+      return;
+    }
+
+    /*
       |--------------------------------------------------------------------------
       | Tenant-bound users cannot switch tenants
       |--------------------------------------------------------------------------
       */
 
-      if (
-        authenticatedUser.tenantId !==
-        tenant.id
-      ) {
-        showToast(
-          'You are not authorized to switch to this organization.'
-        );
+    if (authenticatedUser.tenantId !== tenant.id) {
+      showToast('You are not authorized to switch to this organization.');
 
-        return;
-      }
+      return;
+    }
 
-      setLoading(true);
+    setLoading(true);
 
-      try {
-        const facilityList =
-          await api.getFacilities(
-            tenant.id
-          );
+    try {
+      const facilityList = await api.getFacilities(tenant.id);
 
-        setCurrentTenantState(
-          tenant
-        );
+      setCurrentTenantState(tenant);
 
-        /*
+      /*
         |--------------------------------------------------------------------------
         | Facility-bound tenant user
         |--------------------------------------------------------------------------
         */
 
-        if (
-          authenticatedUser.facilityId !==
-          null
-        ) {
-          const authorizedFacility =
-            facilityList.find(
-              (facility) =>
-                facility.id ===
-                authenticatedUser.facilityId
-            ) ?? null;
+      if (authenticatedUser.facilityId !== null) {
+        const authorizedFacility =
+          facilityList.find((facility) => facility.id === authenticatedUser.facilityId) ?? null;
 
-          setFacilities(
-            authorizedFacility
-              ? [
-                  authorizedFacility,
-                ]
-              : []
-          );
+        setFacilities(authorizedFacility ? [authorizedFacility] : []);
 
-          setCurrentFacilityState(
-            authorizedFacility
-          );
-        } else {
-          /*
+        setCurrentFacilityState(authorizedFacility);
+      } else {
+        /*
           |--------------------------------------------------------------------------
           | Tenant-level user
           |--------------------------------------------------------------------------
           */
 
-          setFacilities(
-            facilityList
-          );
+        setFacilities(facilityList);
 
-          setCurrentFacilityState(
-            facilityList[0] ??
-              null
-          );
-        }
-
-        triggerRefresh();
-      } catch (error) {
-        console.error(
-          'Failed to change tenant facilities:',
-          error
-        );
-
-        showToast(
-          'Unable to load facilities for this organization.'
-        );
-      } finally {
-        setLoading(false);
+        setCurrentFacilityState(facilityList[0] ?? null);
       }
-    };
+
+      triggerRefresh();
+    } catch (error) {
+      console.error('Failed to change tenant facilities:', error);
+
+      showToast('Unable to load facilities for this organization.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -1309,63 +971,41 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const handleFacilityChange =
-    (
-      facility: Facility
-    ) => {
-      if (
-        !authenticatedUser
-      ) {
-        showToast(
-          'Authentication is required.'
-        );
+  const handleFacilityChange = (facility: Facility) => {
+    if (!authenticatedUser) {
+      showToast('Authentication is required.');
 
-        return;
-      }
+      return;
+    }
 
-      /*
+    /*
       |--------------------------------------------------------------------------
       | Verify selected facility belongs to selected tenant
       |--------------------------------------------------------------------------
       */
 
-      if (
-        currentTenant &&
-        facility.tenantId !==
-          currentTenant.id
-      ) {
-        showToast(
-          'This facility does not belong to the selected organization.'
-        );
+    if (currentTenant && facility.tenantId !== currentTenant.id) {
+      showToast('This facility does not belong to the selected organization.');
 
-        return;
-      }
+      return;
+    }
 
-      /*
+    /*
       |--------------------------------------------------------------------------
       | Facility-bound users cannot switch facilities
       |--------------------------------------------------------------------------
       */
 
-      if (
-        authenticatedUser.facilityId !==
-          null &&
-        authenticatedUser.facilityId !==
-          facility.id
-      ) {
-        showToast(
-          'You are not authorized to access this facility.'
-        );
+    if (authenticatedUser.facilityId !== null && authenticatedUser.facilityId !== facility.id) {
+      showToast('You are not authorized to access this facility.');
 
-        return;
-      }
+      return;
+    }
 
-      setCurrentFacilityState(
-        facility
-      );
+    setCurrentFacilityState(facility);
 
-      triggerRefresh();
-    };
+    triggerRefresh();
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -1377,12 +1017,9 @@ export const HmisProvider: React.FC<{
   |
   */
 
-  const currentUser: StaffUser =
-    authenticatedUser
-      ? mapAuthenticatedUserToStaffUser(
-          authenticatedUser
-        )
-      : emptyStaffUser;
+  const currentUser: StaffUser = authenticatedUser
+    ? mapAuthenticatedUserToStaffUser(authenticatedUser)
+    : emptyStaffUser;
 
   /*
   |--------------------------------------------------------------------------
@@ -1398,11 +1035,9 @@ export const HmisProvider: React.FC<{
   |
   */
 
-  const setCurrentUser = (
-    user: StaffUser
-  ): void => {
+  const setCurrentUser = (user: StaffUser): void => {
     console.warn(
-      'setCurrentUser is deprecated. User identity and roles are managed by backend authentication and RBAC.'
+      'setCurrentUser is deprecated. User identity and roles are managed by backend authentication and RBAC.',
     );
 
     /*
@@ -1450,15 +1085,13 @@ export const HmisProvider: React.FC<{
 
         currentTenant,
 
-        setCurrentTenant:
-          handleTenantChange,
+        setCurrentTenant: handleTenantChange,
 
         facilities,
 
         currentFacility,
 
-        setCurrentFacility:
-          handleFacilityChange,
+        setCurrentFacility: handleFacilityChange,
 
         /*
         |--------------------------------------------------------------------------
@@ -1548,20 +1181,12 @@ export const HmisProvider: React.FC<{
 |--------------------------------------------------------------------------
 */
 
-export const useHmis =
-  (): HmisContextType => {
-    const context =
-      useContext(
-        HmisContext
-      );
+export const useHmis = (): HmisContextType => {
+  const context = useContext(HmisContext);
 
-    if (!context) {
-      throw new Error(
-        'useHmis must be used within HmisProvider'
-      );
-    }
+  if (!context) {
+    throw new Error('useHmis must be used within HmisProvider');
+  }
 
-    return context;
-  };
-
-
+  return context;
+};

@@ -57,31 +57,19 @@ function testRegister(): void {
 
   assert(new Set(ids).size === ids.length, 'Requirement ids are unique');
 
-  assert(
-    DHA_REQUIREMENTS.length >= 30,
-    'The register covers the assessment areas, not a sample',
-  );
+  assert(DHA_REQUIREMENTS.length >= 30, 'The register covers the assessment areas, not a sample');
 
   const categories = new Set(DHA_REQUIREMENTS.map((item) => item.category));
 
-  assert(
-    categories.size === 4,
-    'All four scored categories are present',
-  );
+  assert(categories.size === 4, 'All four scored categories are present');
 
   for (const category of categories) {
-    assert(
-      typeof DHA_CATEGORY_WEIGHTS[category] === 'number',
-      `${category} has a weight`,
-    );
+    assert(typeof DHA_CATEGORY_WEIGHTS[category] === 'number', `${category} has a weight`);
   }
 
   const weightSum = Object.values(DHA_CATEGORY_WEIGHTS).reduce((a, b) => a + b, 0);
 
-  assert(
-    Math.abs(weightSum - 1) < 1e-9,
-    'The four weights sum to exactly 1 (35 / 30 / 20 / 15)',
-  );
+  assert(Math.abs(weightSum - 1) < 1e-9, 'The four weights sum to exactly 1 (35 / 30 / 20 / 15)');
 
   for (const item of DHA_REQUIREMENTS) {
     assert(item.evidence.trim().length > 10, `${item.id} cites evidence`);
@@ -195,14 +183,8 @@ function testScoring(): void {
 
   const functionality = scoreCategory('functionality', fixture);
 
-  assert(
-    functionality.assessed === 2,
-    'NOT_APPLICABLE is excluded from the denominator',
-  );
-  assert(
-    functionality.score === 75,
-    'VERIFIED + PARTIAL scores (1 + 0.5) / 2 = 75%',
-  );
+  assert(functionality.assessed === 2, 'NOT_APPLICABLE is excluded from the denominator');
+  assert(functionality.score === 75, 'VERIFIED + PARTIAL scores (1 + 0.5) / 2 = 75%');
 
   const security = scoreCategory('security', fixture);
 
@@ -217,10 +199,7 @@ function testScoring(): void {
     report.overallScore === 75,
     'A fixture without critical gaps reports its weighted average',
   );
-  assert(
-    report.certification === false,
-    'The report never claims certification',
-  );
+  assert(report.certification === false, 'The report never claims certification');
 
   /*
    * The gate. One critical MISSING row must pull the whole figure
@@ -249,14 +228,8 @@ function testScoring(): void {
     gated.overallScore <= CRITICAL_GAP_CEILING,
     'A critical gap caps the reported score below a pass',
   );
-  assert(
-    gated.overallScore < MINIMUM_READINESS_SCORE,
-    'The cap is below the pass threshold',
-  );
-  assert(
-    gated.readyForSubmission === false,
-    'A capped assessment is not ready for submission',
-  );
+  assert(gated.overallScore < MINIMUM_READINESS_SCORE, 'The cap is below the pass threshold');
+  assert(gated.readyForSubmission === false, 'A capped assessment is not ready for submission');
 
   assert(
     STATUS_CREDIT.BLOCKED === 0 && STATUS_CREDIT.MISSING === 0,
@@ -305,10 +278,7 @@ function testRealAssessment(): void {
     'Every requirement is included in the report',
   );
 
-  assert(
-    report.criticalGateTriggered,
-    'The real assessment acknowledges its critical gaps',
-  );
+  assert(report.criticalGateTriggered, 'The real assessment acknowledges its critical gaps');
 
   assert(
     report.overallScore <= CRITICAL_GAP_CEILING,
@@ -325,10 +295,7 @@ function testRealAssessment(): void {
     'The system does not describe itself as ready to submit',
   );
 
-  const sum = report.categories.reduce(
-    (total, category) => total + category.assessed,
-    0,
-  );
+  const sum = report.categories.reduce((total, category) => total + category.assessed, 0);
 
   assert(
     sum === DHA_REQUIREMENTS.filter((item) => item.status !== 'NOT_APPLICABLE').length,
@@ -359,10 +326,7 @@ function testWiring(): void {
     route.includes('router.use(requireAuth, requireSuperAdmin())'),
     'The guard is on the router, so a route added here later is closed by default',
   );
-  assert(
-    !route.includes('requireAnyPermission'),
-    'No permission list opens the assessment',
-  );
+  assert(!route.includes('requireAnyPermission'), 'No permission list opens the assessment');
   assert(
     !/router\.get\(\s*'\/dha'\s*,\s*require/.test(route),
     'The /dha route carries no second, weaker guard',
@@ -381,20 +345,15 @@ function testWiring(): void {
     'The compliance router is mounted',
   );
 
-  assert(
-    panel.includes('api.getDhaCompliance'),
-    'The panel reads the assessment from the server',
-  );
-  assert(
-    !/overallScore\s*[:=]\s*\d/.test(panel),
-    'The panel hard-codes no score',
-  );
+  assert(panel.includes('api.getDhaCompliance'), 'The panel reads the assessment from the server');
+  assert(!/overallScore\s*[:=]\s*\d/.test(panel), 'The panel hard-codes no score');
   assert(
     panel.includes('Not certified. Only DHA can certify.'),
     'The panel states what the score is not',
   );
   assert(
-    panel.includes('criticalGaps') && panel.includes('capped because a critical requirement is unmet'),
+    panel.includes('criticalGaps') &&
+      panel.includes('capped because a critical requirement is unmet'),
     'The panel shows the cap rather than only the total',
   );
 

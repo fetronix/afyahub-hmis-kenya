@@ -87,11 +87,7 @@ export class PortalError extends Error {
  * that needs to show an administrator the address a patient will get.
  * Re-exported here because this is where callers expect it.
  */
-export {
-  portalBaseUrl,
-  buildActivationLink,
-  requestOrigin,
-} from './portal-policy.ts';
+export { portalBaseUrl, buildActivationLink, requestOrigin } from './portal-policy.ts';
 
 async function writeEvent(input: {
   invitationId: number;
@@ -161,10 +157,7 @@ function requireTenant(context: AuthorizationContext): number {
   return context.tenantId;
 }
 
-async function loadInvitablePatient(
-  context: AuthorizationContext,
-  rawPatientId: unknown,
-) {
+async function loadInvitablePatient(context: AuthorizationContext, rawPatientId: unknown) {
   const patientId = Number(rawPatientId);
 
   if (!Number.isSafeInteger(patientId) || patientId <= 0) {
@@ -186,12 +179,7 @@ async function loadInvitablePatient(
       email: schema.patients.email,
     })
     .from(schema.patients)
-    .where(
-      and(
-        eq(schema.patients.id, patientId),
-        eq(schema.patients.tenantId, tenantId),
-      ),
-    )
+    .where(and(eq(schema.patients.id, patientId), eq(schema.patients.tenantId, tenantId)))
     .limit(1);
 
   if (!patient) {
@@ -401,11 +389,19 @@ export async function issueInvitation(
   }
 
   if (channel === 'SMS' && !policy.allowSms) {
-    throw new PortalError('SMS invitations are switched off for this facility.', 409, 'CHANNEL_DISABLED');
+    throw new PortalError(
+      'SMS invitations are switched off for this facility.',
+      409,
+      'CHANNEL_DISABLED',
+    );
   }
 
   if (channel === 'EMAIL' && !policy.allowEmail) {
-    throw new PortalError('Email invitations are switched off for this facility.', 409, 'CHANNEL_DISABLED');
+    throw new PortalError(
+      'Email invitations are switched off for this facility.',
+      409,
+      'CHANNEL_DISABLED',
+    );
   }
 
   const contactSource = input.contactOverride?.trim()
@@ -502,11 +498,7 @@ export async function issueInvitation(
       deliveryStatus: 'PENDING',
       deliveryChannel: channel,
       expiresAt,
-      activationLink: buildActivationLink(
-        rawToken,
-        process.env,
-        request?.origin ?? null,
-      ),
+      activationLink: buildActivationLink(rawToken, process.env, request?.origin ?? null),
     };
   }
 
@@ -526,11 +518,7 @@ export async function issueInvitation(
 
   const message = buildInvitationMessage({
     facilityName: facility?.name ?? 'Your facility',
-    link: buildActivationLink(
-      rawToken,
-      process.env,
-      request?.origin ?? null,
-    ),
+    link: buildActivationLink(rawToken, process.env, request?.origin ?? null),
     expiryHours: policy.invitationExpiryHours,
   });
 
@@ -703,7 +691,11 @@ export async function reissueManualLink(
   });
 
   if (!resend.allowed) {
-    throw new PortalError(resend.reason ?? 'This invitation cannot be reissued.', 409, 'RESEND_NOT_ALLOWED');
+    throw new PortalError(
+      resend.reason ?? 'This invitation cannot be reissued.',
+      409,
+      'RESEND_NOT_ALLOWED',
+    );
   }
 
   /*
@@ -743,11 +735,7 @@ export async function reissueManualLink(
   );
 
   return {
-    activationLink: buildActivationLink(
-      rawToken,
-      process.env,
-      request?.origin ?? null,
-    ),
+    activationLink: buildActivationLink(rawToken, process.env, request?.origin ?? null),
     expiresAt,
   };
 }
@@ -944,7 +932,11 @@ export async function activateInvitation(
   const passwordCheck = checkPortalPassword(password);
 
   if (!passwordCheck.ok) {
-    throw new PortalError(passwordCheck.reason ?? 'Choose a stronger password.', 400, 'WEAK_PASSWORD');
+    throw new PortalError(
+      passwordCheck.reason ?? 'Choose a stronger password.',
+      400,
+      'WEAK_PASSWORD',
+    );
   }
 
   const result = await db.transaction(async (tx) => {
@@ -1008,8 +1000,7 @@ export async function activateInvitation(
      * identity proofing.
      */
     if (patient.dateOfBirth) {
-      const supplied =
-        typeof input.dateOfBirth === 'string' ? input.dateOfBirth.trim() : '';
+      const supplied = typeof input.dateOfBirth === 'string' ? input.dateOfBirth.trim() : '';
 
       if (supplied !== '' && supplied !== patient.dateOfBirth) {
         throw new PortalError(
@@ -1099,7 +1090,10 @@ export async function activateInvitation(
      * verify identity in person before deciding what to do.
      */
     const [contactOwner] = await tx
-      .select({ id: schema.patientPortalAccounts.id, patientId: schema.patientPortalAccounts.patientId })
+      .select({
+        id: schema.patientPortalAccounts.id,
+        patientId: schema.patientPortalAccounts.patientId,
+      })
       .from(schema.patientPortalAccounts)
       .where(eq(schema.patientPortalAccounts.loginIdentifier, contact.value))
       .limit(1);
@@ -1203,16 +1197,16 @@ export async function activateInvitation(
  * else. The invitation stays PENDING so the same person can try again
  * after staff have sorted the identifier out.
  */
-export async function flagVerificationRequired(
-  rawPatientId: unknown,
-  note: string,
-): Promise<void> {
+export async function flagVerificationRequired(rawPatientId: unknown, note: string): Promise<void> {
   const patientId = Number(rawPatientId);
 
   if (!Number.isSafeInteger(patientId) || patientId <= 0) return;
 
   const [patient] = await db
-    .select({ tenantId: schema.patients.tenantId, registrationFacilityId: schema.patients.registrationFacilityId })
+    .select({
+      tenantId: schema.patients.tenantId,
+      registrationFacilityId: schema.patients.registrationFacilityId,
+    })
     .from(schema.patients)
     .where(eq(schema.patients.id, patientId))
     .limit(1);

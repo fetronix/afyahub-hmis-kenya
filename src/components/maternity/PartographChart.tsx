@@ -31,8 +31,7 @@ const MAX_CM = 10;
 export const PartographChart: React.FC<{ plot: PartographPlot }> = ({ plot }) => {
   const maxHour = Math.max(1, plot.maxHour);
 
-  const x = (hour: number) =>
-    PAD.left + (Math.max(0, Math.min(hour, maxHour)) / maxHour) * PLOT_W;
+  const x = (hour: number) => PAD.left + (Math.max(0, Math.min(hour, maxHour)) / maxHour) * PLOT_W;
 
   const y = (cm: number) =>
     PAD.top + PLOT_H - (Math.max(0, Math.min(cm, MAX_CM)) / MAX_CM) * PLOT_H;
@@ -68,21 +67,12 @@ export const PartographChart: React.FC<{ plot: PartographPlot }> = ({ plot }) =>
   return (
     <figure className="rounded-xl border border-slate-200 bg-white p-3">
       <figcaption className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-800">
-          Cervical dilatation against time
-        </h3>
+        <h3 className="text-sm font-bold text-slate-800">Cervical dilatation against time</h3>
 
         <div className="flex flex-wrap items-center gap-3 text-2xs text-slate-600">
           <span className="inline-flex items-center gap-1.5">
             <svg width="18" height="8" aria-hidden="true">
-              <line
-                x1="0"
-                y1="4"
-                x2="18"
-                y2="4"
-                stroke="#0f766e"
-                strokeWidth="2.5"
-              />
+              <line x1="0" y1="4" x2="18" y2="4" stroke="#0f766e" strokeWidth="2.5" />
             </svg>
             Readings
           </span>
@@ -146,13 +136,7 @@ export const PartographChart: React.FC<{ plot: PartographPlot }> = ({ plot }) =>
               stroke={cm === 4 ? '#94a3b8' : '#e2e8f0'}
               strokeWidth={cm === 4 ? 1.2 : 1}
             />
-            <text
-              x={PAD.left - 8}
-              y={y(cm) + 3}
-              textAnchor="end"
-              fontSize="10"
-              fill="#475569"
-            >
+            <text x={PAD.left - 8} y={y(cm) + 3} textAnchor="end" fontSize="10" fill="#475569">
               {cm}
             </text>
           </g>
@@ -265,9 +249,7 @@ export const PartographChart: React.FC<{ plot: PartographPlot }> = ({ plot }) =>
         )}
       </svg>
 
-      <p className="mt-2 text-2xs leading-relaxed text-slate-500">
-        {plot.note}
-      </p>
+      <p className="mt-2 text-2xs leading-relaxed text-slate-500">{plot.note}</p>
     </figure>
   );
 };

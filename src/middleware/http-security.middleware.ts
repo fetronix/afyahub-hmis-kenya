@@ -84,18 +84,13 @@ export function resolveAllowedOrigins(
  * Those are allowed through; the decision only matters when a browser
  * says where the request came from.
  */
-export function isOriginAllowed(
-  origin: string | undefined,
-  allowed: string[],
-): boolean {
+export function isOriginAllowed(origin: string | undefined, allowed: string[]): boolean {
   if (!origin) return true;
 
   return allowed.includes(origin);
 }
 
-export function createCorsMiddleware(
-  env: Record<string, string | undefined> = process.env,
-) {
+export function createCorsMiddleware(env: Record<string, string | undefined> = process.env) {
   const allowed = resolveAllowedOrigins(env);
 
   return cors({
@@ -131,9 +126,7 @@ export function createCorsMiddleware(
  * the SPA through Vite, which injects inline scripts for HMR, and a
  * policy strict enough to be worth having would break the dev loop.
  */
-export function createHelmetMiddleware(
-  env: Record<string, string | undefined> = process.env,
-) {
+export function createHelmetMiddleware(env: Record<string, string | undefined> = process.env) {
   const isProduction = env.NODE_ENV === 'production';
 
   return helmet({
@@ -196,9 +189,7 @@ export function createAuthRateLimiter(env: Record<string, string | undefined> = 
     legacyHeaders: false,
     skipSuccessfulRequests: true,
     handler(_req: Request, res: Response, _next: NextFunction) {
-      res.status(429).json(
-        limitBody('Too many failed attempts. Try again in a few minutes.'),
-      );
+      res.status(429).json(limitBody('Too many failed attempts. Try again in a few minutes.'));
     },
   });
 }
@@ -211,9 +202,7 @@ export function createApiRateLimiter(env: Record<string, string | undefined> = p
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     handler(_req: Request, res: Response, _next: NextFunction) {
-      res.status(429).json(
-        limitBody('Too many requests. Slow down and try again shortly.'),
-      );
+      res.status(429).json(limitBody('Too many requests. Slow down and try again shortly.'));
     },
   });
 }

@@ -102,7 +102,9 @@ function StatusPill({ status }: { status: string }) {
           : 'border-brand-200 bg-brand-50 text-brand-900';
 
   return (
-    <span className={cx('inline-flex rounded-full border px-2 py-0.5 text-2xs font-semibold', tone)}>
+    <span
+      className={cx('inline-flex rounded-full border px-2 py-0.5 text-2xs font-semibold', tone)}
+    >
       {status.replace(/_/g, ' ')}
     </span>
   );
@@ -171,7 +173,11 @@ function OverviewTab({ onOpenAccount }: { onOpenAccount: () => void }) {
   }
 
   if (error || !data) {
-    return <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-900">{error}</div>;
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-900">
+        {error}
+      </div>
+    );
   }
 
   const activated = data.invitations.activated;
@@ -205,7 +211,11 @@ function OverviewTab({ onOpenAccount }: { onOpenAccount: () => void }) {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Suspended" value={data.suspendedAccounts} hint="Access paused; record untouched." />
+        <Stat
+          label="Suspended"
+          value={data.suspendedAccounts}
+          hint="Access paused; record untouched."
+        />
         <Stat label="Revoked" value={data.revokedAccounts} hint="Access ended permanently." />
         <Stat
           label="Invitations waiting"
@@ -215,7 +225,11 @@ function OverviewTab({ onOpenAccount }: { onOpenAccount: () => void }) {
         <Stat
           label="Delivery failed"
           value={data.invitations.failedDelivery + data.invitations.notConfigured}
-          tone={data.invitations.failedDelivery + data.invitations.notConfigured > 0 ? 'warn' : 'default'}
+          tone={
+            data.invitations.failedDelivery + data.invitations.notConfigured > 0
+              ? 'warn'
+              : 'default'
+          }
           hint={`${data.invitations.notConfigured} had no provider configured — those were never sent.`}
         />
       </div>
@@ -224,9 +238,9 @@ function OverviewTab({ onOpenAccount }: { onOpenAccount: () => void }) {
         <header className="panel-header">
           <h2 className="text-sm font-semibold text-ink">Invitation states</h2>
           <p className="mt-0.5 text-xs text-ink-soft">
-            An invitation is one row through its life. Delivery is tracked separately from activation:
-            a message a provider accepted is not an activated account, and this page never treats it as
-            one.
+            An invitation is one row through its life. Delivery is tracked separately from
+            activation: a message a provider accepted is not an activated account, and this page
+            never treats it as one.
           </p>
         </header>
 
@@ -258,8 +272,8 @@ function OverviewTab({ onOpenAccount }: { onOpenAccount: () => void }) {
           <header className="panel-header">
             <h2 className="text-sm font-semibold text-ink">Recent account administration</h2>
             <p className="mt-0.5 text-xs text-ink-soft">
-              Actions taken by staff, from the audit trail. Reading this page does not create an entry;
-              reading the Audit tab does.
+              Actions taken by staff, from the audit trail. Reading this page does not create an
+              entry; reading the Audit tab does.
             </p>
           </header>
 
@@ -376,10 +390,9 @@ function AccountsTab() {
       if (action === 'reset') {
         const result = await portalAdminApi.forceReset(detail.account.id);
 
-        showToast(
-          `Password reset forced. ${result.sessionsRevoked} session(s) signed out.`,
-          { tone: 'success' },
-        );
+        showToast(`Password reset forced. ${result.sessionsRevoked} session(s) signed out.`, {
+          tone: 'success',
+        });
       } else {
         const result =
           action === 'suspend'
@@ -430,7 +443,11 @@ function AccountsTab() {
 
           <label>
             <span className="field-label">Status</span>
-            <select className="field-input w-[180px]" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <select
+              className="field-input w-[180px]"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
               <option value="">All statuses</option>
               <option value="ACTIVE">Active</option>
               <option value="PENDING_VERIFICATION">Pending verification</option>
@@ -439,7 +456,12 @@ function AccountsTab() {
             </select>
           </label>
 
-          <button type="button" className="btn-quiet" onClick={() => void load()} disabled={loading}>
+          <button
+            type="button"
+            className="btn-quiet"
+            onClick={() => void load()}
+            disabled={loading}
+          >
             <RefreshCw className={cx('h-4 w-4', loading && 'animate-spin')} />
             Refresh
           </button>
@@ -451,8 +473,8 @@ function AccountsTab() {
           <p className="px-4 pb-4 text-xs text-ink-soft">Reading accounts…</p>
         ) : rows.length === 0 ? (
           <p className="px-4 pb-4 text-xs text-ink-soft">
-            No portal account matches this search. Patients are invited from the reception screen, not
-            created here.
+            No portal account matches this search. Patients are invited from the reception screen,
+            not created here.
           </p>
         ) : (
           <div className="overflow-x-auto px-4 pb-4">
@@ -606,9 +628,9 @@ function AccountsTab() {
               </div>
 
               <p className="text-2xs leading-relaxed text-slate-500">
-                Suspension pauses portal access only. The clinical record is not changed and nothing is
-                deleted. Revocation is permanent; the way back is a fresh invitation, which re-establishes
-                identity.
+                Suspension pauses portal access only. The clinical record is not changed and nothing
+                is deleted. Revocation is permanent; the way back is a fresh invitation, which
+                re-establishes identity.
               </p>
             </div>
 
@@ -861,10 +883,15 @@ function SettingsTab() {
   }
 
   const toggle = (key: keyof PortalPolicy) => (
-    <label key={key} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+    <label
+      key={key}
+      className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5"
+    >
       <span>
         <span className="block text-xs font-semibold text-ink">{LABELS[key].label}</span>
-        <span className="mt-0.5 block text-2xs leading-relaxed text-slate-500">{LABELS[key].hint}</span>
+        <span className="mt-0.5 block text-2xs leading-relaxed text-slate-500">
+          {LABELS[key].hint}
+        </span>
       </span>
 
       <input
@@ -901,8 +928,8 @@ function SettingsTab() {
               }
             />
             <span className="mt-1 block text-2xs text-slate-500">
-              {bounds.minExpiryHours}–{bounds.maxExpiryHours} hours. A link that never expires is not an
-              option this build offers.
+              {bounds.minExpiryHours}–{bounds.maxExpiryHours} hours. A link that never expires is
+              not an option this build offers.
             </span>
           </label>
 
@@ -917,8 +944,8 @@ function SettingsTab() {
               onChange={(event) => setPolicy({ ...policy, maxResends: Number(event.target.value) })}
             />
             <span className="mt-1 block text-2xs text-slate-500">
-              0–{bounds.maxResends}. Counting resends stops an invitation being mailed repeatedly to a
-              wrong number.
+              0–{bounds.maxResends}. Counting resends stops an invitation being mailed repeatedly to
+              a wrong number.
             </span>
           </label>
         </div>
@@ -929,8 +956,8 @@ function SettingsTab() {
           <h2 className="text-sm font-semibold text-ink">Delivery channels</h2>
           <p className="mt-0.5 text-xs text-ink-soft">
             Only a channel with a configured provider can actually send. Enabling SMS here does not
-            create a provider — until one exists, the invitation is recorded as not sent and the desk
-            is offered the printed handover instead.
+            create a provider — until one exists, the invitation is recorded as not sent and the
+            desk is offered the printed handover instead.
           </p>
         </header>
 
@@ -945,9 +972,9 @@ function SettingsTab() {
         <header className="panel-header">
           <h2 className="text-sm font-semibold text-ink">What the portal releases</h2>
           <p className="mt-0.5 text-xs text-ink-soft">
-            These switches change what a patient sees. They cannot switch off verification of laboratory
-            results, the audit trail, invitation expiry, single use or session limits — those are not
-            settings.
+            These switches change what a patient sees. They cannot switch off verification of
+            laboratory results, the audit trail, invitation expiry, single use or session limits —
+            those are not settings.
           </p>
         </header>
 
@@ -964,12 +991,16 @@ function SettingsTab() {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-surface px-4 py-3">
         <p className="flex items-start gap-2 text-2xs leading-relaxed text-slate-600">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-          Mandatory controls — single-use invitations, expiry, hash-only token storage, session limits,
-          audit immutability — are enforced in code and the database, not in this form.
+          Mandatory controls — single-use invitations, expiry, hash-only token storage, session
+          limits, audit immutability — are enforced in code and the database, not in this form.
         </p>
 
         <button type="button" className="btn-primary" onClick={() => void save()} disabled={saving}>
-          {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          {saving ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4" />
+          )}
           Save settings
         </button>
       </div>
@@ -1088,7 +1119,9 @@ function AuditTab() {
         </header>
 
         {rows.length === 0 ? (
-          <p className="px-4 py-4 text-xs text-ink-soft">No portal audit entry has been written yet.</p>
+          <p className="px-4 py-4 text-xs text-ink-soft">
+            No portal audit entry has been written yet.
+          </p>
         ) : (
           <div className="overflow-x-auto px-4 pb-4">
             <table className="table-quiet w-full min-w-[720px]">
@@ -1189,8 +1222,8 @@ function CardTab() {
         <header className="panel-header">
           <h2 className="text-sm font-semibold text-ink">Find a patient from a card</h2>
           <p className="mt-0.5 text-xs text-ink-soft">
-            Scanning a card never grants access. This lookup runs under your staff session, inside your
-            facility, rate-limited, and every successful lookup is written to the access log.
+            Scanning a card never grants access. This lookup runs under your staff session, inside
+            your facility, rate-limited, and every successful lookup is written to the access log.
           </p>
         </header>
 
@@ -1240,8 +1273,8 @@ function CardTab() {
         <p className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            A card proves possession, not identity. Before acting on a record, confirm the person in front
-            of you — a shared household phone or a borrowed card is common.
+            A card proves possession, not identity. Before acting on a record, confirm the person in
+            front of you — a shared household phone or a borrowed card is common.
           </span>
         </p>
       </div>
@@ -1263,8 +1296,8 @@ export const PatientPortalModule: React.FC = () => {
           <p className="eyebrow">Patient portal</p>
           <h1 className="display-title mt-1">Patient Portal Management</h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ink-soft">
-            Invitations, accounts, settings and oversight for the patient-facing record portal. Patients
-            are invited from the reception screen; this section manages the programme.
+            Invitations, accounts, settings and oversight for the patient-facing record portal.
+            Patients are invited from the reception screen; this section manages the programme.
           </p>
         </div>
 
@@ -1305,8 +1338,8 @@ export const PatientPortalModule: React.FC = () => {
 
       <p className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-2xs leading-relaxed text-slate-600">
         <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-        Portal actions are audited. Answers to patients are generic by design: this application will not
-        confirm whether a given phone number belongs to a patient, and neither should the desk.
+        Portal actions are audited. Answers to patients are generic by design: this application will
+        not confirm whether a given phone number belongs to a patient, and neither should the desk.
       </p>
     </div>
   );

@@ -97,9 +97,7 @@ describe('the redaction list itself', () => {
 
     for (const key of required) {
       expect(REDACT_PATHS, `${key} missing at top level`).toContain(key);
-      expect(REDACT_PATHS, `${key} missing two levels down`).toContain(
-        `*.*.${key}`,
-      );
+      expect(REDACT_PATHS, `${key} missing two levels down`).toContain(`*.*.${key}`);
     }
   });
 
@@ -171,10 +169,7 @@ describe('redaction', () => {
   it('redacts a client secret nested inside a config object', () => {
     const { log, lines } = capture();
 
-    log.info(
-      { dha: { credentials: { clientSecret: 'shh-this-is-the-secret' } } },
-      'dha.auth',
-    );
+    log.info({ dha: { credentials: { clientSecret: 'shh-this-is-the-secret' } } }, 'dha.auth');
 
     expect(JSON.stringify(lines())).not.toContain('shh-this-is-the-secret');
   });
@@ -182,10 +177,7 @@ describe('redaction', () => {
   it('keeps the fields that are safe and useful', () => {
     const { log, lines } = capture();
 
-    log.info(
-      { invoiceId: 42, facilityId: 7, password: 'secret' },
-      'invoice.created',
-    );
+    log.info({ invoiceId: 42, facilityId: 7, password: 'secret' }, 'invoice.created');
 
     const line = lines()[0]!;
 

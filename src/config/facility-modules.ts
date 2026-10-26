@@ -142,8 +142,7 @@ export const FACILITY_MODULES: readonly FacilityModuleDefinition[] = Object.free
     id: 'patient_portal',
     label: 'Patient portal management',
     group: 'Administration',
-    description:
-      'Invitations, patient accounts, portal policy and portal audit oversight.',
+    description: 'Invitations, patient accounts, portal policy and portal audit oversight.',
   },
   {
     id: 'audit',

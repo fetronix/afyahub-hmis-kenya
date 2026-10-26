@@ -1,8 +1,7 @@
+import { and, eq, gt, isNull, or } from 'drizzle-orm';
+import { createHash, randomUUID } from 'node:crypto';
 
-import { and, eq, gt, isNull, or } from "drizzle-orm";
-import { createHash, randomUUID } from "node:crypto";
-
-import { db } from "../db";
+import { db } from '../db';
 import {
   facilityAdminInvitations,
   facilities,
@@ -11,17 +10,17 @@ import {
   roles,
   rolePermissions,
   userRoles,
-} from "../db/schema";
-import { hashPassword } from "../utils/password";
+} from '../db/schema';
+import { hashPassword } from '../utils/password';
 
 export class FacilityAdminInvitationError extends Error {
   constructor(
     message: string,
     public readonly statusCode: number = 400,
-    public readonly code: string = "INVITATION_ERROR",
+    public readonly code: string = 'INVITATION_ERROR',
   ) {
     super(message);
-    this.name = "FacilityAdminInvitationError";
+    this.name = 'FacilityAdminInvitationError';
   }
 }
 
@@ -32,7 +31,7 @@ export interface AcceptFacilityAdminInvitationInput {
 }
 
 function hashInvitationToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+  return createHash('sha256').update(token).digest('hex');
 }
 
 function normalizeUsername(username: string): string {
@@ -42,9 +41,9 @@ function normalizeUsername(username: string): string {
 function validateUsername(username: string): void {
   if (!/^[a-z0-9._-]{3,50}$/.test(username)) {
     throw new FacilityAdminInvitationError(
-      "Username must be 3–50 characters and contain only letters, numbers, dots, underscores, or hyphens.",
+      'Username must be 3–50 characters and contain only letters, numbers, dots, underscores, or hyphens.',
       400,
-      "INVALID_USERNAME",
+      'INVALID_USERNAME',
     );
   }
 }
@@ -56,25 +55,25 @@ function assertInvitationIsUsable(invitation: {
 }): void {
   if (invitation.acceptedAt) {
     throw new FacilityAdminInvitationError(
-      "This invitation has already been accepted.",
+      'This invitation has already been accepted.',
       409,
-      "INVITATION_ALREADY_ACCEPTED",
+      'INVITATION_ALREADY_ACCEPTED',
     );
   }
 
   if (invitation.revokedAt) {
     throw new FacilityAdminInvitationError(
-      "This invitation has been revoked.",
+      'This invitation has been revoked.',
       410,
-      "INVITATION_REVOKED",
+      'INVITATION_REVOKED',
     );
   }
 
   if (invitation.expiresAt.getTime() <= Date.now()) {
     throw new FacilityAdminInvitationError(
-      "This invitation has expired. Please request a new invitation.",
+      'This invitation has expired. Please request a new invitation.',
       410,
-      "INVITATION_EXPIRED",
+      'INVITATION_EXPIRED',
     );
   }
 }
@@ -86,9 +85,9 @@ function assertInvitationIsUsable(invitation: {
 export async function validateFacilityAdminInvitation(token: string) {
   if (!token || token.length < 20 || token.length > 500) {
     throw new FacilityAdminInvitationError(
-      "The invitation link is invalid.",
+      'The invitation link is invalid.',
       400,
-      "INVALID_INVITATION",
+      'INVALID_INVITATION',
     );
   }
 
@@ -112,9 +111,9 @@ export async function validateFacilityAdminInvitation(token: string) {
 
   if (!invitation) {
     throw new FacilityAdminInvitationError(
-      "The invitation link is invalid.",
+      'The invitation link is invalid.',
       404,
-      "INVITATION_NOT_FOUND",
+      'INVITATION_NOT_FOUND',
     );
   }
 
@@ -131,15 +130,11 @@ export async function validateFacilityAdminInvitation(token: string) {
     .where(eq(facilities.id, invitation.facilityId))
     .limit(1);
 
-  if (
-    !facility ||
-    !facility.isActive ||
-    facility.tenantId !== invitation.tenantId
-  ) {
+  if (!facility || !facility.isActive || facility.tenantId !== invitation.tenantId) {
     throw new FacilityAdminInvitationError(
-      "The facility associated with this invitation is unavailable.",
+      'The facility associated with this invitation is unavailable.',
       409,
-      "FACILITY_UNAVAILABLE",
+      'FACILITY_UNAVAILABLE',
     );
   }
 
@@ -154,9 +149,9 @@ export async function validateFacilityAdminInvitation(token: string) {
 
   if (!tenant || !tenant.isActive) {
     throw new FacilityAdminInvitationError(
-      "The organization associated with this invitation is unavailable.",
+      'The organization associated with this invitation is unavailable.',
       409,
-      "TENANT_UNAVAILABLE",
+      'TENANT_UNAVAILABLE',
     );
   }
 
@@ -175,28 +170,26 @@ export async function validateFacilityAdminInvitation(token: string) {
  * The invitation token is stored only as a SHA-256 hash in the database.
  * The password is hashed using the project's existing Argon2id utility.
  */
-export async function acceptFacilityAdminInvitation(
-  input: AcceptFacilityAdminInvitationInput,
-) {
+export async function acceptFacilityAdminInvitation(input: AcceptFacilityAdminInvitationInput) {
   const token = input.token?.trim();
-  const username = normalizeUsername(input.username ?? "");
-  const password = input.password ?? "";
+  const username = normalizeUsername(input.username ?? '');
+  const password = input.password ?? '';
 
   if (!token || token.length < 20 || token.length > 500) {
     throw new FacilityAdminInvitationError(
-      "The invitation link is invalid.",
+      'The invitation link is invalid.',
       400,
-      "INVALID_INVITATION",
+      'INVALID_INVITATION',
     );
   }
 
   validateUsername(username);
 
-  if (typeof password !== "string" || password.length < 12) {
+  if (typeof password !== 'string' || password.length < 12) {
     throw new FacilityAdminInvitationError(
-      "Password must be at least 12 characters long.",
+      'Password must be at least 12 characters long.',
       400,
-      "INVALID_PASSWORD",
+      'INVALID_PASSWORD',
     );
   }
 
@@ -217,9 +210,9 @@ export async function acceptFacilityAdminInvitation(
 
   if (!initialInvitation) {
     throw new FacilityAdminInvitationError(
-      "The invitation link is invalid.",
+      'The invitation link is invalid.',
       404,
-      "INVITATION_NOT_FOUND",
+      'INVITATION_NOT_FOUND',
     );
   }
 
@@ -235,17 +228,15 @@ export async function acceptFacilityAdminInvitation(
       const [invitation] = await tx
         .select()
         .from(facilityAdminInvitations)
-        .where(
-          eq(facilityAdminInvitations.invitationTokenHash, tokenHash),
-        )
+        .where(eq(facilityAdminInvitations.invitationTokenHash, tokenHash))
         .limit(1)
-        .for("update");
+        .for('update');
 
       if (!invitation) {
         throw new FacilityAdminInvitationError(
-          "The invitation link is invalid.",
+          'The invitation link is invalid.',
           404,
-          "INVITATION_NOT_FOUND",
+          'INVITATION_NOT_FOUND',
         );
       }
 
@@ -257,15 +248,11 @@ export async function acceptFacilityAdminInvitation(
         .where(eq(facilities.id, invitation.facilityId))
         .limit(1);
 
-      if (
-        !facility ||
-        !facility.isActive ||
-        facility.tenantId !== invitation.tenantId
-      ) {
+      if (!facility || !facility.isActive || facility.tenantId !== invitation.tenantId) {
         throw new FacilityAdminInvitationError(
-          "The facility associated with this invitation is unavailable.",
+          'The facility associated with this invitation is unavailable.',
           409,
-          "FACILITY_UNAVAILABLE",
+          'FACILITY_UNAVAILABLE',
         );
       }
 
@@ -277,9 +264,9 @@ export async function acceptFacilityAdminInvitation(
 
       if (!tenant || !tenant.isActive) {
         throw new FacilityAdminInvitationError(
-          "The organization associated with this invitation is unavailable.",
+          'The organization associated with this invitation is unavailable.',
           409,
-          "TENANT_UNAVAILABLE",
+          'TENANT_UNAVAILABLE',
         );
       }
 
@@ -291,26 +278,16 @@ export async function acceptFacilityAdminInvitation(
           username: users.username,
         })
         .from(users)
-        .where(
-          or(
-            eq(users.email, invitation.email.toLowerCase()),
-            eq(users.username, username),
-          ),
-        )
+        .where(or(eq(users.email, invitation.email.toLowerCase()), eq(users.username, username)))
         .limit(1);
 
       if (existingUser) {
         const conflict =
-          existingUser.email.toLowerCase() ===
-          invitation.email.toLowerCase()
-            ? "An account already exists for this invitation email."
-            : "This username is already taken.";
+          existingUser.email.toLowerCase() === invitation.email.toLowerCase()
+            ? 'An account already exists for this invitation email.'
+            : 'This username is already taken.';
 
-        throw new FacilityAdminInvitationError(
-          conflict,
-          409,
-          "ACCOUNT_CONFLICT",
-        );
+        throw new FacilityAdminInvitationError(conflict, 409, 'ACCOUNT_CONFLICT');
       }
 
       // Only allow the facility-admin role belonging to this tenant.
@@ -324,7 +301,7 @@ export async function acceptFacilityAdminInvitation(
         .from(roles)
         .where(
           and(
-            eq(roles.name, "FACILITY_ADMIN"),
+            eq(roles.name, 'FACILITY_ADMIN'),
             eq(roles.tenantId, invitation.tenantId),
             eq(roles.isActive, true),
           ),
@@ -334,12 +311,12 @@ export async function acceptFacilityAdminInvitation(
       if (
         !facilityAdminRole ||
         facilityAdminRole.tenantId !== invitation.tenantId ||
-        facilityAdminRole.name !== "FACILITY_ADMIN"
+        facilityAdminRole.name !== 'FACILITY_ADMIN'
       ) {
         throw new FacilityAdminInvitationError(
-          "The facility administrator role has not been configured for this organization. Contact the platform administrator.",
+          'The facility administrator role has not been configured for this organization. Contact the platform administrator.',
           500,
-          "FACILITY_ADMIN_ROLE_NOT_CONFIGURED",
+          'FACILITY_ADMIN_ROLE_NOT_CONFIGURED',
         );
       }
 
@@ -352,9 +329,9 @@ export async function acceptFacilityAdminInvitation(
 
       if (!rolePermission) {
         throw new FacilityAdminInvitationError(
-          "The facility administrator role has no permissions configured. Contact the platform administrator.",
+          'The facility administrator role has no permissions configured. Contact the platform administrator.',
           500,
-          "FACILITY_ADMIN_PERMISSIONS_NOT_CONFIGURED",
+          'FACILITY_ADMIN_PERMISSIONS_NOT_CONFIGURED',
         );
       }
 
@@ -369,12 +346,11 @@ export async function acceptFacilityAdminInvitation(
           emailVerifiedAt: now,
           fullName: invitation.fullName,
           phone: invitation.phone,
-          designation:
-            invitation.designation ?? "Facility Administrator",
+          designation: invitation.designation ?? 'Facility Administrator',
           passwordHash,
           passwordChangedAt: now,
           mustChangePassword: false,
-          accountStatus: "ACTIVE",
+          accountStatus: 'ACTIVE',
           failedLoginAttempts: 0,
           mfaEnabled: false,
           mfaRequired: false,
@@ -392,7 +368,7 @@ export async function acceptFacilityAdminInvitation(
         });
 
       if (!newUser) {
-        throw new Error("User creation failed.");
+        throw new Error('User creation failed.');
       }
 
       await tx.insert(userRoles).values({
@@ -423,16 +399,16 @@ export async function acceptFacilityAdminInvitation(
 
       if (acceptedRows.length !== 1) {
         throw new FacilityAdminInvitationError(
-          "This invitation is no longer valid. Request a new invitation.",
+          'This invitation is no longer valid. Request a new invitation.',
           409,
-          "INVITATION_NO_LONGER_VALID",
+          'INVITATION_NO_LONGER_VALID',
         );
       }
 
       // No password hash, invitation token, or session token is returned.
       return {
         success: true as const,
-        message: "Your facility administrator account has been created. You can now sign in.",
+        message: 'Your facility administrator account has been created. You can now sign in.',
         user: newUser,
       };
     });
@@ -444,11 +420,11 @@ export async function acceptFacilityAdminInvitation(
     // Covers unique-constraint races not caught by the earlier lookup.
     const dbError = error as { code?: string };
 
-    if (dbError?.code === "23505") {
+    if (dbError?.code === '23505') {
       throw new FacilityAdminInvitationError(
-        "The username or email is already registered.",
+        'The username or email is already registered.',
         409,
-        "ACCOUNT_CONFLICT",
+        'ACCOUNT_CONFLICT',
       );
     }
 

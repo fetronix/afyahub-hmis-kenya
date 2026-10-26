@@ -38,11 +38,7 @@ import {
   type DhaEligibilityResponse,
 } from '../integrations/dha/dha.contracts.ts';
 
-import {
-  dhaCall,
-  clearTokenCache,
-  getAccessToken,
-} from '../integrations/dha/dha.client.ts';
+import { dhaCall, clearTokenCache, getAccessToken } from '../integrations/dha/dha.client.ts';
 
 import { DhaError } from '../integrations/dha/dha.errors.ts';
 import { buildReadinessReport, DHA_OPERATIONS } from '../integrations/dha/dha.readiness.ts';
@@ -68,10 +64,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function readRepoFile(path: string): string {
@@ -177,7 +170,13 @@ function testMasking(): void {
    ============================================================ */
 
 function testConfiguration(): void {
-  const mock = loadDhaConfig({ mode: 'mock', baseUrl: null, clientId: null, clientSecret: null, facilityCode: null });
+  const mock = loadDhaConfig({
+    mode: 'mock',
+    baseUrl: null,
+    clientId: null,
+    clientSecret: null,
+    facilityCode: null,
+  });
   assert(mock.enabled, 'mock mode is enabled without credentials');
   assertEqual(mock.disabledReason, null, 'mock has no blocker');
 
@@ -296,11 +295,7 @@ function testEndpoints(): void {
     '/patients/benefits/interventions',
     'interventions path',
   );
-  assertEqual(
-    DHA_ENDPOINTS.utilization,
-    '/patients/benefits/utilization',
-    'utilization path',
-  );
+  assertEqual(DHA_ENDPOINTS.utilization, '/patients/benefits/utilization', 'utilization path');
   assertEqual(DHA_ENDPOINTS.subBenefits, '/patients/sub-benefits', 'sub-benefits path');
   assertEqual(DHA_ENDPOINTS.pomsfBalances, '/patients/pomsf-balances', 'POMSF path');
   assertEqual(DHA_ENDPOINTS.authorize, '/claims/authorize', 'authorize path');
@@ -331,7 +326,13 @@ function testEndpoints(): void {
    ============================================================ */
 
 function testMockClient(): void {
-  const config = loadDhaConfig({ mode: 'mock', baseUrl: null, clientId: null, clientSecret: null, facilityCode: null });
+  const config = loadDhaConfig({
+    mode: 'mock',
+    baseUrl: null,
+    clientId: null,
+    clientSecret: null,
+    facilityCode: null,
+  });
 
   assert(isMockableOperation('eligibility.check'), 'eligibility has a fixture');
   assert(!isMockableOperation('remittance.read'), 'remittance has no fixture');
@@ -364,14 +365,24 @@ function testMockClient(): void {
 }
 
 async function testMockCallIsMarkedSimulated(): Promise<void> {
-  const config = loadDhaConfig({ mode: 'mock', baseUrl: null, clientId: null, clientSecret: null, facilityCode: null });
-
-  const response = await dhaCall<DhaEligibilityResponse>(config, {}, {
-    operation: 'eligibility.check',
-    method: 'GET',
-    path: DHA_ENDPOINTS.eligibility,
-    query: { identification_number: '12345678', identification_type: 'National ID' },
+  const config = loadDhaConfig({
+    mode: 'mock',
+    baseUrl: null,
+    clientId: null,
+    clientSecret: null,
+    facilityCode: null,
   });
+
+  const response = await dhaCall<DhaEligibilityResponse>(
+    config,
+    {},
+    {
+      operation: 'eligibility.check',
+      method: 'GET',
+      path: DHA_ENDPOINTS.eligibility,
+      query: { identification_number: '12345678', identification_type: 'National ID' },
+    },
+  );
 
   assertEqual(response.simulated, true, 'mock results are marked simulated');
   assertEqual(response.mode, 'mock', 'the mode is reported');
@@ -381,11 +392,15 @@ async function testMockCallIsMarkedSimulated(): Promise<void> {
   let refused: DhaError | null = null;
 
   try {
-    await dhaCall(config, {}, {
-      operation: 'remittance.read',
-      method: 'GET',
-      path: '/remittance',
-    });
+    await dhaCall(
+      config,
+      {},
+      {
+        operation: 'remittance.read',
+        method: 'GET',
+        path: '/remittance',
+      },
+    );
   } catch (error) {
     refused = error instanceof DhaError ? error : null;
   }
@@ -460,12 +475,16 @@ async function testHeadersAndAuth(): Promise<void> {
   }) as typeof fetch;
 
   try {
-    const response = await dhaCall<DhaEligibilityResponse>(config, {}, {
-      operation: 'eligibility.check',
-      method: 'GET',
-      path: DHA_ENDPOINTS.eligibility,
-      query: { identification_number: '123', identification_type: 'National ID' },
-    });
+    const response = await dhaCall<DhaEligibilityResponse>(
+      config,
+      {},
+      {
+        operation: 'eligibility.check',
+        method: 'GET',
+        path: DHA_ENDPOINTS.eligibility,
+        query: { identification_number: '123', identification_type: 'National ID' },
+      },
+    );
 
     assertEqual(calls.length, 2, 'a token call precedes the business call');
     assert(calls[0].url.endsWith('/tenants/token'), 'the token endpoint is documented');
@@ -481,29 +500,18 @@ async function testHeadersAndAuth(): Promise<void> {
         business.url.includes('identification_type=National%20ID'),
       'the documented query parameter is sent',
     );
-    assertEqual(
-      business.headers.Authorization,
-      'Bearer tok-123',
-      'the access token is attached',
-    );
+    assertEqual(business.headers.Authorization, 'Bearer tok-123', 'the access token is attached');
     assertEqual(
       business.headers['X-Facility-Id'],
       'FID-47-115307-8',
       'the facility registry code is sent',
     );
-    assertEqual(
-      business.headers['X-Facility-Id-Type'],
-      'fr-code',
-      'the facility id type is sent',
-    );
+    assertEqual(business.headers['X-Facility-Id-Type'], 'fr-code', 'the facility id type is sent');
     assertEqual(response.simulated, false, 'a real call is not marked simulated');
 
     /* The token request must not carry a bearer header or facility id. */
     assert(!calls[0].headers.Authorization, 'the token call sends no bearer token');
-    assert(
-      !calls[0].headers['X-Facility-Id'],
-      'the token call sends no facility header',
-    );
+    assert(!calls[0].headers['X-Facility-Id'], 'the token call sends no facility header');
   } finally {
     globalThis.fetch = originalFetch;
     clearTokenCache();
@@ -552,7 +560,13 @@ async function testTokenCache(): Promise<void> {
 
 async function testReadiness(): Promise<void> {
   const mock = await buildReadinessReport({
-    config: loadDhaConfig({ mode: 'mock', baseUrl: null, clientId: null, clientSecret: null, facilityCode: null }),
+    config: loadDhaConfig({
+      mode: 'mock',
+      baseUrl: null,
+      clientId: null,
+      clientSecret: null,
+      facilityCode: null,
+    }),
   });
 
   assert(mock.ready, 'mock mode is ready with no configuration');
@@ -602,18 +616,12 @@ function testServiceAreas(): void {
 
   for (const area of DHA_SERVICE_AREAS) {
     assert(area.sourceTypes.length > 0, `${area.id} resolves from provenance`);
-    assert(
-      ['OP', 'IP'].includes(area.accessPoint),
-      `${area.id} uses a documented access point`,
-    );
+    assert(['OP', 'IP'].includes(area.accessPoint), `${area.id} uses a documented access point`);
     assert(
       ['PER_DIEM', 'FEE_FOR_SERVICE'].includes(area.paymentMechanism),
       `${area.id} uses a documented payment mechanism`,
     );
-    assert(
-      ['SHIF', 'UHC', 'ECCIF'].includes(area.fund),
-      `${area.id} uses a documented fund`,
-    );
+    assert(['SHIF', 'UHC', 'ECCIF'].includes(area.fund), `${area.id} uses a documented fund`);
 
     /* The definition must not carry a code. Codes come from DHA only. */
     assert(
@@ -636,11 +644,31 @@ function testServiceAreas(): void {
     assert(ids.has(required as never), `${required} is covered`);
   }
 
-  assertEqual(resolveServiceArea({ sourceType: 'LAB_ORDER' })?.id, 'laboratory', 'a lab order resolves to laboratory');
-  assertEqual(resolveServiceArea({ sourceType: 'BED_DAY' })?.id, 'inpatient_admission', 'a bed day resolves to inpatient');
-  assertEqual(resolveServiceArea({ sourceType: 'RADIOLOGY' })?.id, 'imaging', 'radiology resolves to imaging');
-  assertEqual(resolveServiceArea({ sourceType: 'PHARMACY' })?.id, 'pharmacy', 'pharmacy resolves to pharmacy');
-  assertEqual(resolveServiceArea({ sourceType: 'PROCEDURE', department: 'theatre' })?.id, 'theatre_procedure', 'theatre resolves to procedures');
+  assertEqual(
+    resolveServiceArea({ sourceType: 'LAB_ORDER' })?.id,
+    'laboratory',
+    'a lab order resolves to laboratory',
+  );
+  assertEqual(
+    resolveServiceArea({ sourceType: 'BED_DAY' })?.id,
+    'inpatient_admission',
+    'a bed day resolves to inpatient',
+  );
+  assertEqual(
+    resolveServiceArea({ sourceType: 'RADIOLOGY' })?.id,
+    'imaging',
+    'radiology resolves to imaging',
+  );
+  assertEqual(
+    resolveServiceArea({ sourceType: 'PHARMACY' })?.id,
+    'pharmacy',
+    'pharmacy resolves to pharmacy',
+  );
+  assertEqual(
+    resolveServiceArea({ sourceType: 'PROCEDURE', department: 'theatre' })?.id,
+    'theatre_procedure',
+    'theatre resolves to procedures',
+  );
 
   /* Ambiguous provenance falls back to the department. */
   assertEqual(
@@ -649,14 +677,25 @@ function testServiceAreas(): void {
     'an emergency consultation is not billed as a routine visit',
   );
 
-  assertEqual(resolveServiceArea({ department: 'maternity' })?.id, 'maternity', 'maternity resolves from the department alone');
+  assertEqual(
+    resolveServiceArea({ department: 'maternity' })?.id,
+    'maternity',
+    'maternity resolves from the department alone',
+  );
   assertEqual(resolveServiceArea({}) ?? null, null, 'an empty line resolves to nothing');
-  assertEqual(resolveServiceArea({ sourceType: 'MANUAL' }) ?? null, null, 'a manual line with no department resolves to nothing');
+  assertEqual(
+    resolveServiceArea({ sourceType: 'MANUAL' }) ?? null,
+    null,
+    'a manual line with no department resolves to nothing',
+  );
 
   /* Coverage reporting */
   const empty = describeServiceAreaCoverage([]);
   assertEqual(empty.length, 8, 'coverage lists every area');
-  assert(empty.every((item) => !item.mapped), 'nothing is mapped by default');
+  assert(
+    empty.every((item) => !item.mapped),
+    'nothing is mapped by default',
+  );
   assertEqual(unmappedServiceAreas([]).length, 8, 'all eight start unmapped');
 
   const mappings: ServiceAreaMapping[] = [
@@ -679,7 +718,10 @@ function testServiceAreas(): void {
   ];
 
   const covered = describeServiceAreaCoverage(mappings);
-  assert(covered.find((item) => item.serviceArea === 'laboratory')?.mapped === true, 'a configured area reports as mapped');
+  assert(
+    covered.find((item) => item.serviceArea === 'laboratory')?.mapped === true,
+    'a configured area reports as mapped',
+  );
   assert(
     covered.find((item) => item.serviceArea === 'pharmacy')?.mapped === false,
     'whitespace is not an intervention code',
@@ -708,7 +750,10 @@ function testRoutes(): void {
     ['post', '/api/integrations/dha/patients/:id/eligibility'],
     ['get', '/api/integrations/dha/patients/:id/coverage'],
   ] as const) {
-    assert(app.includes(`app.${method}(\n    '${route}'`), `${method.toUpperCase()} ${route} is registered`);
+    assert(
+      app.includes(`app.${method}(\n    '${route}'`),
+      `${method.toUpperCase()} ${route} is registered`,
+    );
   }
 
   for (const [method, route] of [
@@ -716,7 +761,10 @@ function testRoutes(): void {
     ['put', '/api/integrations/dha/service-mappings'],
     ['get', '/api/integrations/dha/invoices/:id/interventions'],
   ] as const) {
-    assert(app.includes(`app.${method}(\n    '${route}'`), `${method.toUpperCase()} ${route} is registered`);
+    assert(
+      app.includes(`app.${method}(\n    '${route}'`),
+      `${method.toUpperCase()} ${route} is registered`,
+    );
   }
 
   const mappingWrite = app.indexOf("'/api/integrations/dha/service-mappings'");

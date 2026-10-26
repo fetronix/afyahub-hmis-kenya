@@ -1,20 +1,8 @@
-
 import { Router, type Request, type Response } from 'express';
 
+import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
 
-import {
-  and,
-  desc,
-  eq,
-  gt,
-  inArray,
-  isNull,
-} from 'drizzle-orm';
-
-import {
-  createHash,
-  randomBytes,
-} from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { STAFF_ROLE_CATALOGUE } from '../auth/staff-role-catalogue.ts';
@@ -50,10 +38,7 @@ function textValue(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function optionalText(
-  body: Record<string, unknown>,
-  key: string,
-): string | null | undefined {
+function optionalText(body: Record<string, unknown>, key: string): string | null | undefined {
   if (!(key in body)) return undefined;
 
   if (body[key] === null || body[key] === '') {
@@ -73,22 +58,17 @@ function validCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
 
   const parsed = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.getTime()) &&
-    parsed.toISOString().slice(0, 10) === value;
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function parseMoneyCents(value: unknown): number | null {
-  const raw = typeof value === 'number'
-    ? String(value)
-    : typeof value === 'string'
-      ? value.trim()
-      : '';
+  const raw =
+    typeof value === 'number' ? String(value) : typeof value === 'string' ? value.trim() : '';
 
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(raw)) return null;
 
   const [whole, fraction = ''] = raw.split('.');
-  const cents = Number(whole) * 100 +
-    Number((fraction + '00').slice(0, 2));
+  const cents = Number(whole) * 100 + Number((fraction + '00').slice(0, 2));
 
   return Number.isSafeInteger(cents) ? cents : null;
 }
@@ -137,9 +117,6 @@ function handleError(res: Response, error: unknown): void {
   });
 }
 
-
-
-
 const FACILITY_ADMIN_PERMISSION_CODES = [
   'appointments.cancel',
   'appointments.create',
@@ -185,10 +162,6 @@ const FACILITY_ADMIN_PERMISSION_CODES = [
   'users.update',
 ] as const;
 
-
-
-
-
 /**
  * POST /api/platform/tenants
  * Create a tenant.
@@ -204,7 +177,10 @@ router.post('/tenants', async (req: Request, res: Response) => {
 
   const slug = (
     suppliedSlug ??
-    name?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    name
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
   )?.toLowerCase();
 
   if (!name || name.length > 200 || !slug || !validSlug(slug)) {
@@ -273,26 +249,14 @@ router.post('/tenants', async (req: Request, res: Response) => {
           code: schema.permissions.code,
         })
         .from(schema.permissions)
-        .where(
-          inArray(
-            schema.permissions.code,
-            [...FACILITY_ADMIN_PERMISSION_CODES],
-          ),
-        );
+        .where(inArray(schema.permissions.code, [...FACILITY_ADMIN_PERMISSION_CODES]));
 
-      const foundCodes = new Set(
-        permissionRows.map((permission) => permission.code),
-      );
+      const foundCodes = new Set(permissionRows.map((permission) => permission.code));
 
-      const missingCodes =
-        FACILITY_ADMIN_PERMISSION_CODES.filter(
-          (code) => !foundCodes.has(code),
-        );
+      const missingCodes = FACILITY_ADMIN_PERMISSION_CODES.filter((code) => !foundCodes.has(code));
 
       if (missingCodes.length > 0) {
-        throw new Error(
-          `FACILITY_ADMIN_PERMISSIONS_MISSING: ${missingCodes.join(', ')}`,
-        );
+        throw new Error(`FACILITY_ADMIN_PERMISSIONS_MISSING: ${missingCodes.join(', ')}`);
       }
 
       // 3. Create a tenant-scoped role, never a global role.
@@ -301,8 +265,7 @@ router.post('/tenants', async (req: Request, res: Response) => {
         .values({
           tenantId: createdTenant.id,
           name: 'FACILITY_ADMIN',
-          description:
-            'Facility administrator for this healthcare organization.',
+          description: 'Facility administrator for this healthcare organization.',
           isSystem: false,
           isActive: true,
         })
@@ -311,16 +274,13 @@ router.post('/tenants', async (req: Request, res: Response) => {
         });
 
       // 4. Assign the approved permission set.
-      await tx
-        .insert(schema.rolePermissions)
-        .values(
-          permissionRows.map((permission) => ({
-            roleId: facilityAdminRole.id,
-            permissionId: permission.id,
-          })),
-        );
+      await tx.insert(schema.rolePermissions).values(
+        permissionRows.map((permission) => ({
+          roleId: facilityAdminRole.id,
+          permissionId: permission.id,
+        })),
+      );
 
-      
       // 5. Provision the standard staff roles for the new tenant.
       const staffPermissionCodes = [
         ...new Set(STAFF_ROLE_CATALOGUE.flatMap((role) => [...role.permissions])),
@@ -334,18 +294,12 @@ router.post('/tenants', async (req: Request, res: Response) => {
         .from(schema.permissions)
         .where(inArray(schema.permissions.code, staffPermissionCodes));
 
-      const staffFoundCodes = new Set(
-        staffPermissionRows.map((permission) => permission.code),
-      );
+      const staffFoundCodes = new Set(staffPermissionRows.map((permission) => permission.code));
 
-      const missingStaffCodes = staffPermissionCodes.filter(
-        (code) => !staffFoundCodes.has(code),
-      );
+      const missingStaffCodes = staffPermissionCodes.filter((code) => !staffFoundCodes.has(code));
 
       if (missingStaffCodes.length > 0) {
-        throw new Error(
-          `STAFF_ROLE_PERMISSIONS_MISSING: ${missingStaffCodes.join(', ')}`,
-        );
+        throw new Error(`STAFF_ROLE_PERMISSIONS_MISSING: ${missingStaffCodes.join(', ')}`);
       }
 
       for (const staffRole of STAFF_ROLE_CATALOGUE) {
@@ -369,9 +323,7 @@ router.post('/tenants', async (req: Request, res: Response) => {
             permissionId: permission.id,
           }));
 
-        await tx
-          .insert(schema.rolePermissions)
-          .values(rolePermissionRows);
+        await tx.insert(schema.rolePermissions).values(rolePermissionRows);
       }
       return createdTenant;
     });
@@ -391,7 +343,6 @@ router.post('/tenants', async (req: Request, res: Response) => {
   } catch (error) {
     handleError(res, error);
   }
-
 });
 
 /**
@@ -443,12 +394,7 @@ router.patch('/tenants/:id', async (req: Request, res: Response) => {
     updates.slug = slug;
   }
 
-  for (const key of [
-    'domain',
-    'logoUrl',
-    'brandColor',
-    'contactPhone',
-  ] as const) {
+  for (const key of ['domain', 'logoUrl', 'brandColor', 'contactPhone'] as const) {
     const value = optionalText(body, key);
 
     if (value === undefined) continue;
@@ -589,8 +535,7 @@ router.post('/facilities', async (req: Request, res: Response) => {
   const tenantId =
     typeof body.tenantId === 'number'
       ? body.tenantId
-      : typeof body.tenantId === 'string' &&
-          /^[1-9]\d*$/.test(body.tenantId)
+      : typeof body.tenantId === 'string' && /^[1-9]\d*$/.test(body.tenantId)
         ? Number(body.tenantId)
         : NaN;
 
@@ -718,73 +663,66 @@ router.post('/facilities', async (req: Request, res: Response) => {
   }
 });
 
-
 /**
  * GET /api/platform/facilities/:id/onboarding
  * Retrieve the existing onboarding record for a facility.
  */
-router.get(
-  '/facilities/:id/onboarding',
-  async (req: Request, res: Response) => {
-    if (!requireSuperAdmin(req, res)) return;
+router.get('/facilities/:id/onboarding', async (req: Request, res: Response) => {
+  if (!requireSuperAdmin(req, res)) return;
 
-    const facilityId = parseId(req.params.id);
+  const facilityId = parseId(req.params.id);
 
-    if (!facilityId) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Invalid facility ID.',
+  if (!facilityId) {
+    res.status(400).json({
+      error: 'VALIDATION_ERROR',
+      message: 'Invalid facility ID.',
+    });
+    return;
+  }
+
+  try {
+    const [facility] = await db
+      .select({
+        id: schema.facilities.id,
+        tenantId: schema.facilities.tenantId,
+        name: schema.facilities.name,
+      })
+      .from(schema.facilities)
+      .where(eq(schema.facilities.id, facilityId))
+      .limit(1);
+
+    if (!facility) {
+      res.status(404).json({
+        error: 'NOT_FOUND',
+        message: 'Facility not found.',
       });
       return;
     }
 
-    try {
-      const [facility] = await db
-        .select({
-          id: schema.facilities.id,
-          tenantId: schema.facilities.tenantId,
-          name: schema.facilities.name,
-        })
-        .from(schema.facilities)
-        .where(eq(schema.facilities.id, facilityId))
-        .limit(1);
+    const [onboarding] = await db
+      .select()
+      .from(schema.facilityOnboarding)
+      .where(eq(schema.facilityOnboarding.facilityId, facilityId))
+      .limit(1);
 
-      if (!facility) {
-        res.status(404).json({
-          error: 'NOT_FOUND',
-          message: 'Facility not found.',
-        });
-        return;
-      }
-
-      const [onboarding] = await db
-        .select()
-        .from(schema.facilityOnboarding)
-        .where(
-          eq(schema.facilityOnboarding.facilityId, facilityId),
-        )
-        .limit(1);
-
-      if (!onboarding) {
-        res.status(404).json({
-          error: 'ONBOARDING_NOT_FOUND',
-          message: 'No onboarding record exists for this facility.',
-        });
-        return;
-      }
-
-      res.status(200).json({
-        data: {
-          facility,
-          onboarding,
-        },
+    if (!onboarding) {
+      res.status(404).json({
+        error: 'ONBOARDING_NOT_FOUND',
+        message: 'No onboarding record exists for this facility.',
       });
-    } catch (error) {
-      handleError(res, error);
+      return;
     }
-  },
-);
 
+    res.status(200).json({
+      data: {
+        facility,
+        onboarding,
+      },
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 /**
  * PATCH /api/platform/facilities/:id
@@ -912,10 +850,7 @@ router.patch('/facilities/:id', async (req: Request, res: Response) => {
     if (
       !Array.isArray(body.enabledModules) ||
       !body.enabledModules.every(
-        (item) =>
-          typeof item === 'string' &&
-          item.trim().length > 0 &&
-          item.length <= 80,
+        (item) => typeof item === 'string' && item.trim().length > 0 && item.length <= 80,
       )
     ) {
       res.status(400).json({
@@ -926,9 +861,7 @@ router.patch('/facilities/:id', async (req: Request, res: Response) => {
     }
 
     updates.enabledModules = [
-      ...new Set(
-        (body.enabledModules as string[]).map((item) => item.trim()),
-      ),
+      ...new Set((body.enabledModules as string[]).map((item) => item.trim())),
     ];
   }
 
@@ -991,97 +924,92 @@ router.patch('/facilities/:id', async (req: Request, res: Response) => {
  * POST /api/platform/facilities/:id/onboarding
  * Create onboarding only when no record exists.
  */
-router.post(
-  '/facilities/:id/onboarding',
-  async (req: Request, res: Response) => {
-    if (!requireSuperAdmin(req, res)) return;
+router.post('/facilities/:id/onboarding', async (req: Request, res: Response) => {
+  if (!requireSuperAdmin(req, res)) return;
 
-    const context = getContext(req)!;
-    const facilityId = parseId(req.params.id);
+  const context = getContext(req)!;
+  const facilityId = parseId(req.params.id);
 
-    if (!facilityId) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Invalid facility ID.',
+  if (!facilityId) {
+    res.status(400).json({
+      error: 'VALIDATION_ERROR',
+      message: 'Invalid facility ID.',
+    });
+    return;
+  }
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [facility] = await tx
+        .select({
+          id: schema.facilities.id,
+          tenantId: schema.facilities.tenantId,
+          name: schema.facilities.name,
+        })
+        .from(schema.facilities)
+        .where(eq(schema.facilities.id, facilityId))
+        .limit(1);
+
+      if (!facility) {
+        return { missingFacility: true as const };
+      }
+
+      const [existing] = await tx
+        .select({
+          id: schema.facilityOnboarding.id,
+        })
+        .from(schema.facilityOnboarding)
+        .where(eq(schema.facilityOnboarding.facilityId, facilityId))
+        .limit(1);
+
+      if (existing) {
+        return { alreadyExists: true as const };
+      }
+
+      const [onboarding] = await tx
+        .insert(schema.facilityOnboarding)
+        .values({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          status: 'PROSPECT',
+          notes: 'Initial onboarding record created by platform administrator.',
+        })
+        .returning();
+
+      return { facility, onboarding };
+    });
+
+    if ('missingFacility' in result) {
+      res.status(404).json({
+        error: 'NOT_FOUND',
+        message: 'Facility not found.',
       });
       return;
     }
 
-    try {
-      const result = await db.transaction(async (tx) => {
-        const [facility] = await tx
-          .select({
-            id: schema.facilities.id,
-            tenantId: schema.facilities.tenantId,
-            name: schema.facilities.name,
-          })
-          .from(schema.facilities)
-          .where(eq(schema.facilities.id, facilityId))
-          .limit(1);
-
-        if (!facility) {
-          return { missingFacility: true as const };
-        }
-
-        const [existing] = await tx
-          .select({
-            id: schema.facilityOnboarding.id,
-          })
-          .from(schema.facilityOnboarding)
-          .where(eq(schema.facilityOnboarding.facilityId, facilityId))
-          .limit(1);
-
-        if (existing) {
-          return { alreadyExists: true as const };
-        }
-
-        const [onboarding] = await tx
-          .insert(schema.facilityOnboarding)
-          .values({
-            tenantId: facility.tenantId,
-            facilityId: facility.id,
-            status: 'PROSPECT',
-            notes: 'Initial onboarding record created by platform administrator.',
-          })
-          .returning();
-
-        return { facility, onboarding };
+    if ('alreadyExists' in result) {
+      res.status(409).json({
+        error: 'ONBOARDING_EXISTS',
+        message: 'This facility already has an onboarding record.',
       });
-
-      if ('missingFacility' in result) {
-        res.status(404).json({
-          error: 'NOT_FOUND',
-          message: 'Facility not found.',
-        });
-        return;
-      }
-
-      if ('alreadyExists' in result) {
-        res.status(409).json({
-          error: 'ONBOARDING_EXISTS',
-          message: 'This facility already has an onboarding record.',
-        });
-        return;
-      }
-
-      await queries.logAuditEvent(
-        result.facility.tenantId,
-        result.facility.id,
-        auditActor(context),
-        'CREATE',
-        'FACILITY_ONBOARDING',
-        String(result.onboarding.id),
-        `Created onboarding record for facility "${result.facility.name}".`,
-      );
-
-      res.status(201).json({ data: result.onboarding });
-    } catch (error) {
-      handleError(res, error);
+      return;
     }
-  },
-);
 
+    await queries.logAuditEvent(
+      result.facility.tenantId,
+      result.facility.id,
+      auditActor(context),
+      'CREATE',
+      'FACILITY_ONBOARDING',
+      String(result.onboarding.id),
+      `Created onboarding record for facility "${result.facility.name}".`,
+    );
 
+    res.status(201).json({ data: result.onboarding });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 /**
  * POST /api/platform/facility-admin-invitations
@@ -1089,264 +1017,215 @@ router.post(
  * Create a secure invitation for a facility administrator.
  * Only the Platform Super Admin may issue this invitation.
  */
-router.post(
-  '/facility-admin-invitations',
-  async (req: Request, res: Response) => {
-    if (!requireSuperAdmin(req, res)) return;
+router.post('/facility-admin-invitations', async (req: Request, res: Response) => {
+  if (!requireSuperAdmin(req, res)) return;
 
-    const context = getContext(req)!;
-    const body = (req.body ?? {}) as Record<string, unknown>;
+  const context = getContext(req)!;
+  const body = (req.body ?? {}) as Record<string, unknown>;
 
-    const facilityId =
-      typeof body.facilityId === 'number'
-        ? body.facilityId
-        : typeof body.facilityId === 'string'
-          ? Number(body.facilityId)
-          : NaN;
+  const facilityId =
+    typeof body.facilityId === 'number'
+      ? body.facilityId
+      : typeof body.facilityId === 'string'
+        ? Number(body.facilityId)
+        : NaN;
 
-    const fullName = textValue(body.fullName);
-    const email = textValue(body.email)?.toLowerCase();
-    const phone = textValue(body.phone);
+  const fullName = textValue(body.fullName);
+  const email = textValue(body.email)?.toLowerCase();
+  const phone = textValue(body.phone);
 
-    if (
-      !Number.isSafeInteger(facilityId) ||
-      facilityId < 1 ||
-      !fullName ||
-      fullName.length > 200 ||
-      !email ||
-      email.length > 254 ||
-      !validEmail(email)
-    ) {
-      res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message:
-          'Provide a valid facilityId, fullName, and email.',
+  if (
+    !Number.isSafeInteger(facilityId) ||
+    facilityId < 1 ||
+    !fullName ||
+    fullName.length > 200 ||
+    !email ||
+    email.length > 254 ||
+    !validEmail(email)
+  ) {
+    res.status(400).json({
+      error: 'VALIDATION_ERROR',
+      message: 'Provide a valid facilityId, fullName, and email.',
+    });
+    return;
+  }
+
+  const baseUrl = process.env.APP_BASE_URL?.trim();
+
+  if (!baseUrl) {
+    res.status(500).json({
+      error: 'CONFIGURATION_ERROR',
+      message: 'APP_BASE_URL must be configured before issuing invitations.',
+    });
+    return;
+  }
+
+  let invitationUrl: URL;
+
+  try {
+    invitationUrl = new URL(baseUrl);
+
+    if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
+      throw new Error('HTTPS is required.');
+    }
+  } catch {
+    res.status(500).json({
+      error: 'CONFIGURATION_ERROR',
+      message: 'APP_BASE_URL is invalid.',
+    });
+    return;
+  }
+
+  try {
+    const [facility] = await db
+      .select({
+        id: schema.facilities.id,
+        tenantId: schema.facilities.tenantId,
+        name: schema.facilities.name,
+        isActive: schema.facilities.isActive,
+        tenantActive: schema.tenants.isActive,
+      })
+      .from(schema.facilities)
+      .innerJoin(schema.tenants, eq(schema.facilities.tenantId, schema.tenants.id))
+      .where(eq(schema.facilities.id, facilityId))
+      .limit(1);
+
+    if (!facility) {
+      res.status(404).json({
+        error: 'FACILITY_NOT_FOUND',
+        message: 'The selected facility was not found.',
       });
       return;
     }
 
-    const baseUrl = process.env.APP_BASE_URL?.trim();
+    if (!facility.isActive || !facility.tenantActive) {
+      res.status(409).json({
+        error: 'FACILITY_UNAVAILABLE',
+        message: 'The facility and its tenant must both be active.',
+      });
+      return;
+    }
+    // Verify the tenant-specific facility administrator role.
+    const [facilityAdminRole] = await db
+      .select({
+        id: schema.roles.id,
+      })
+      .from(schema.roles)
+      .where(
+        and(
+          eq(schema.roles.name, 'FACILITY_ADMIN'),
+          eq(schema.roles.tenantId, facility.tenantId),
+          eq(schema.roles.isActive, true),
+        ),
+      )
+      .limit(1);
 
-    if (!baseUrl) {
-      res.status(500).json({
-        error: 'CONFIGURATION_ERROR',
+    if (!facilityAdminRole) {
+      res.status(409).json({
+        error: 'FACILITY_ADMIN_ROLE_NOT_CONFIGURED',
         message:
-          'APP_BASE_URL must be configured before issuing invitations.',
+          'The facility administrator role is not configured for this organization. Contact the platform administrator.',
       });
       return;
     }
 
-    let invitationUrl: URL;
+    // Verify that the role has permission assignments.
+    const [rolePermission] = await db
+      .select({
+        id: schema.rolePermissions.id,
+      })
+      .from(schema.rolePermissions)
+      .where(eq(schema.rolePermissions.roleId, facilityAdminRole.id))
+      .limit(1);
 
-    try {
-      invitationUrl = new URL(baseUrl);
-
-      if (
-        invitationUrl.protocol !== 'https:' &&
-        invitationUrl.hostname !== 'localhost'
-      ) {
-        throw new Error('HTTPS is required.');
-      }
-    } catch {
-      res.status(500).json({
-        error: 'CONFIGURATION_ERROR',
-        message: 'APP_BASE_URL is invalid.',
+    if (!rolePermission) {
+      res.status(409).json({
+        error: 'FACILITY_ADMIN_PERMISSIONS_NOT_CONFIGURED',
+        message:
+          'The facility administrator role has no permissions configured. Contact the platform administrator.',
       });
       return;
     }
 
-    try {
-      const [facility] = await db
-        .select({
-          id: schema.facilities.id,
-          tenantId: schema.facilities.tenantId,
-          name: schema.facilities.name,
-          isActive: schema.facilities.isActive,
-          tenantActive: schema.tenants.isActive,
-        })
-        .from(schema.facilities)
-        .innerJoin(
-          schema.tenants,
-          eq(
-            schema.facilities.tenantId,
-            schema.tenants.id,
-          ),
-        )
-        .where(eq(schema.facilities.id, facilityId))
-        .limit(1);
+    const now = new Date();
 
-      if (!facility) {
-        res.status(404).json({
-          error: 'FACILITY_NOT_FOUND',
-          message: 'The selected facility was not found.',
-        });
-        return;
-      }
+    const [existingInvitation] = await db
+      .select({
+        id: schema.facilityAdminInvitations.id,
+      })
+      .from(schema.facilityAdminInvitations)
+      .where(
+        and(
+          eq(schema.facilityAdminInvitations.facilityId, facilityId),
+          eq(schema.facilityAdminInvitations.email, email),
+          isNull(schema.facilityAdminInvitations.acceptedAt),
+          isNull(schema.facilityAdminInvitations.revokedAt),
+          gt(schema.facilityAdminInvitations.expiresAt, now),
+        ),
+      )
+      .limit(1);
 
-      if (
-        !facility.isActive ||
-        !facility.tenantActive
-      ) {
-        res.status(409).json({
-          error: 'FACILITY_UNAVAILABLE',
-          message:
-            'The facility and its tenant must both be active.',
-        });
-        return;
-      }
-      // Verify the tenant-specific facility administrator role.
-      const [facilityAdminRole] = await db
-        .select({
-          id: schema.roles.id,
-        })
-        .from(schema.roles)
-        .where(
-          and(
-            eq(schema.roles.name, 'FACILITY_ADMIN'),
-            eq(schema.roles.tenantId, facility.tenantId),
-            eq(schema.roles.isActive, true),
-          ),
-        )
-        .limit(1);
-
-      if (!facilityAdminRole) {
-        res.status(409).json({
-          error: 'FACILITY_ADMIN_ROLE_NOT_CONFIGURED',
-          message:
-            'The facility administrator role is not configured for this organization. Contact the platform administrator.',
-        });
-        return;
-      }
-
-      // Verify that the role has permission assignments.
-      const [rolePermission] = await db
-        .select({
-          id: schema.rolePermissions.id,
-        })
-        .from(schema.rolePermissions)
-        .where(
-          eq(
-            schema.rolePermissions.roleId,
-            facilityAdminRole.id,
-          ),
-        )
-        .limit(1);
-
-      if (!rolePermission) {
-        res.status(409).json({
-          error: 'FACILITY_ADMIN_PERMISSIONS_NOT_CONFIGURED',
-          message:
-            'The facility administrator role has no permissions configured. Contact the platform administrator.',
-        });
-        return;
-      }
-
-
-      const now = new Date();
-
-      const [existingInvitation] = await db
-        .select({
-          id: schema.facilityAdminInvitations.id,
-        })
-        .from(schema.facilityAdminInvitations)
-        .where(
-          and(
-            eq(
-              schema.facilityAdminInvitations.facilityId,
-              facilityId,
-            ),
-            eq(
-              schema.facilityAdminInvitations.email,
-              email,
-            ),
-            isNull(
-              schema.facilityAdminInvitations.acceptedAt,
-            ),
-            isNull(
-              schema.facilityAdminInvitations.revokedAt,
-            ),
-            gt(
-              schema.facilityAdminInvitations.expiresAt,
-              now,
-            ),
-          ),
-        )
-        .limit(1);
-
-      if (existingInvitation) {
-        res.status(409).json({
-          error: 'INVITATION_ALREADY_PENDING',
-          message:
-            'An unexpired invitation already exists for this email and facility.',
-        });
-        return;
-      }
-
-      const rawToken = randomBytes(32).toString('base64url');
-      const tokenHash = createHash('sha256')
-        .update(rawToken)
-        .digest('hex');
-
-      const expiresAt = new Date(
-        now.getTime() + 48 * 60 * 60 * 1000,
-      );
-
-      const [invitation] = await db
-        .insert(schema.facilityAdminInvitations)
-        .values({
-          tenantId: facility.tenantId,
-          facilityId: facility.id,
-          email,
-          fullName,
-          ...(phone ? { phone } : {}),
-          designation: 'Facility Administrator',
-          invitationTokenHash: tokenHash,
-          expiresAt,
-          invitedBy: String(context.userId),
-        })
-        .returning({
-          id: schema.facilityAdminInvitations.id,
-          email: schema.facilityAdminInvitations.email,
-          expiresAt: schema.facilityAdminInvitations.expiresAt,
-        });
-
-      await queries.logAuditEvent(
-        facility.tenantId,
-        facility.id,
-        String(context.userId),
-        'CREATE',
-        'FACILITY_ADMIN_INVITATION',
-        String(invitation.id),
-        `Issued a facility administrator invitation for ${email}.`,
-      );
-
-      const link = new URL(
-        '/accept-facility-admin-invitation',
-        invitationUrl,
-      );
-      link.searchParams.set('token', rawToken);
-
-      res.status(201).json({
-        success: true,
-        message:
-          'Facility administrator invitation created.',
-        data: {
-          invitationId: invitation.id,
-          facilityId: facility.id,
-          facilityName: facility.name,
-          email: invitation.email,
-          expiresAt: invitation.expiresAt,
-          invitationLink: link.toString(),
-        },
+    if (existingInvitation) {
+      res.status(409).json({
+        error: 'INVITATION_ALREADY_PENDING',
+        message: 'An unexpired invitation already exists for this email and facility.',
       });
-    } catch (error) {
-      handleError(res, error);
+      return;
     }
-  },
-);
 
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
 
+    const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
+    const [invitation] = await db
+      .insert(schema.facilityAdminInvitations)
+      .values({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        email,
+        fullName,
+        ...(phone ? { phone } : {}),
+        designation: 'Facility Administrator',
+        invitationTokenHash: tokenHash,
+        expiresAt,
+        invitedBy: String(context.userId),
+      })
+      .returning({
+        id: schema.facilityAdminInvitations.id,
+        email: schema.facilityAdminInvitations.email,
+        expiresAt: schema.facilityAdminInvitations.expiresAt,
+      });
+
+    await queries.logAuditEvent(
+      facility.tenantId,
+      facility.id,
+      String(context.userId),
+      'CREATE',
+      'FACILITY_ADMIN_INVITATION',
+      String(invitation.id),
+      `Issued a facility administrator invitation for ${email}.`,
+    );
+
+    const link = new URL('/accept-facility-admin-invitation', invitationUrl);
+    link.searchParams.set('token', rawToken);
+
+    res.status(201).json({
+      success: true,
+      message: 'Facility administrator invitation created.',
+      data: {
+        invitationId: invitation.id,
+        facilityId: facility.id,
+        facilityName: facility.name,
+        email: invitation.email,
+        expiresAt: invitation.expiresAt,
+        invitationLink: link.toString(),
+      },
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 /**
  * GET /api/platform/facility-admin-invitations
@@ -1372,10 +1251,7 @@ router.get('/facility-admin-invitations', async (req: Request, res: Response) =>
         revokedAt: schema.facilityAdminInvitations.revokedAt,
       })
       .from(schema.facilityAdminInvitations)
-      .innerJoin(
-        schema.tenants,
-        eq(schema.facilityAdminInvitations.tenantId, schema.tenants.id),
-      )
+      .innerJoin(schema.tenants, eq(schema.facilityAdminInvitations.tenantId, schema.tenants.id))
       .innerJoin(
         schema.facilities,
         eq(schema.facilityAdminInvitations.facilityId, schema.facilities.id),
@@ -1405,178 +1281,171 @@ router.get('/facility-admin-invitations', async (req: Request, res: Response) =>
  * POST /api/platform/facility-admin-invitations/:id/revoke
  * Revoke an invitation that has not already been accepted or revoked.
  */
-router.post(
-  '/facility-admin-invitations/:id/revoke',
-  async (req: Request, res: Response) => {
-    if (!requireSuperAdmin(req, res)) return;
+router.post('/facility-admin-invitations/:id/revoke', async (req: Request, res: Response) => {
+  if (!requireSuperAdmin(req, res)) return;
 
-    const context = getContext(req)!;
-    const id = parseId(req.params.id);
+  const context = getContext(req)!;
+  const id = parseId(req.params.id);
 
-    if (!id) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Invalid invitation ID.' });
+  if (!id) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Invalid invitation ID.' });
+    return;
+  }
+
+  try {
+    const now = new Date();
+    const [invitation] = await db
+      .update(schema.facilityAdminInvitations)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(schema.facilityAdminInvitations.id, id),
+          isNull(schema.facilityAdminInvitations.acceptedAt),
+          isNull(schema.facilityAdminInvitations.revokedAt),
+        ),
+      )
+      .returning({
+        id: schema.facilityAdminInvitations.id,
+        tenantId: schema.facilityAdminInvitations.tenantId,
+        facilityId: schema.facilityAdminInvitations.facilityId,
+        email: schema.facilityAdminInvitations.email,
+      });
+
+    if (!invitation) {
+      res.status(409).json({
+        error: 'INVITATION_NOT_REVOCABLE',
+        message: 'The invitation may not exist, or it has already been accepted or revoked.',
+      });
       return;
     }
 
-    try {
-      const now = new Date();
-      const [invitation] = await db
-        .update(schema.facilityAdminInvitations)
-        .set({ revokedAt: now })
-        .where(
-          and(
-            eq(schema.facilityAdminInvitations.id, id),
-            isNull(schema.facilityAdminInvitations.acceptedAt),
-            isNull(schema.facilityAdminInvitations.revokedAt),
-          ),
-        )
-        .returning({
-          id: schema.facilityAdminInvitations.id,
-          tenantId: schema.facilityAdminInvitations.tenantId,
-          facilityId: schema.facilityAdminInvitations.facilityId,
-          email: schema.facilityAdminInvitations.email,
-        });
+    await queries.logAuditEvent(
+      invitation.tenantId,
+      invitation.facilityId,
+      auditActor(context),
+      'REVOKE',
+      'FACILITY_ADMIN_INVITATION',
+      String(invitation.id),
+      `Revoked a facility administrator invitation for ${invitation.email}.`,
+    );
 
-      if (!invitation) {
-        res.status(409).json({
-          error: 'INVITATION_NOT_REVOCABLE',
-          message: 'The invitation may not exist, or it has already been accepted or revoked.',
-        });
-        return;
-      }
-
-      await queries.logAuditEvent(
-        invitation.tenantId,
-        invitation.facilityId,
-        auditActor(context),
-        'REVOKE',
-        'FACILITY_ADMIN_INVITATION',
-        String(invitation.id),
-        `Revoked a facility administrator invitation for ${invitation.email}.`,
-      );
-
-      res.json({ success: true, message: 'Invitation revoked.' });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-);
+    res.json({ success: true, message: 'Invitation revoked.' });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 /**
  * POST /api/platform/facility-admin-invitations/:id/reissue
  * Replace the old token and extend the invitation by 48 hours.
  */
-router.post(
-  '/facility-admin-invitations/:id/reissue',
-  async (req: Request, res: Response) => {
-    if (!requireSuperAdmin(req, res)) return;
+router.post('/facility-admin-invitations/:id/reissue', async (req: Request, res: Response) => {
+  if (!requireSuperAdmin(req, res)) return;
 
-    const context = getContext(req)!;
-    const id = parseId(req.params.id);
+  const context = getContext(req)!;
+  const id = parseId(req.params.id);
 
-    if (!id) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Invalid invitation ID.' });
+  if (!id) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Invalid invitation ID.' });
+    return;
+  }
+
+  const baseUrl = process.env.APP_BASE_URL?.trim();
+  let invitationUrl: URL;
+
+  try {
+    if (!baseUrl) throw new Error('Missing APP_BASE_URL.');
+    invitationUrl = new URL(baseUrl);
+    if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
+      throw new Error('HTTPS is required.');
+    }
+  } catch {
+    res.status(500).json({
+      error: 'CONFIGURATION_ERROR',
+      message: 'APP_BASE_URL must be a valid HTTPS URL (localhost is allowed for development).',
+    });
+    return;
+  }
+
+  try {
+    const [existing] = await db
+      .select()
+      .from(schema.facilityAdminInvitations)
+      .where(eq(schema.facilityAdminInvitations.id, id))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: 'NOT_FOUND', message: 'Invitation not found.' });
       return;
     }
 
-    const baseUrl = process.env.APP_BASE_URL?.trim();
-    let invitationUrl: URL;
-
-    try {
-      if (!baseUrl) throw new Error('Missing APP_BASE_URL.');
-      invitationUrl = new URL(baseUrl);
-      if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
-        throw new Error('HTTPS is required.');
-      }
-    } catch {
-      res.status(500).json({
-        error: 'CONFIGURATION_ERROR',
-        message: 'APP_BASE_URL must be a valid HTTPS URL (localhost is allowed for development).',
+    if (existing.acceptedAt || existing.revokedAt) {
+      res.status(409).json({
+        error: 'INVITATION_NOT_REISSUABLE',
+        message: 'Accepted or revoked invitations cannot be reissued.',
       });
       return;
     }
 
-    try {
-      const [existing] = await db
-        .select()
-        .from(schema.facilityAdminInvitations)
-        .where(eq(schema.facilityAdminInvitations.id, id))
-        .limit(1);
+    const now = new Date();
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
-      if (!existing) {
-        res.status(404).json({ error: 'NOT_FOUND', message: 'Invitation not found.' });
-        return;
-      }
-
-      if (existing.acceptedAt || existing.revokedAt) {
-        res.status(409).json({
-          error: 'INVITATION_NOT_REISSUABLE',
-          message: 'Accepted or revoked invitations cannot be reissued.',
-        });
-        return;
-      }
-
-      const now = new Date();
-      const rawToken = randomBytes(32).toString('base64url');
-      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-      const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-
-      const [updated] = await db
-        .update(schema.facilityAdminInvitations)
-        .set({ invitationTokenHash: tokenHash, expiresAt })
-        .where(
-          and(
-            eq(schema.facilityAdminInvitations.id, id),
-            isNull(schema.facilityAdminInvitations.acceptedAt),
-            isNull(schema.facilityAdminInvitations.revokedAt),
-          ),
-        )
-        .returning({
-          id: schema.facilityAdminInvitations.id,
-          tenantId: schema.facilityAdminInvitations.tenantId,
-          facilityId: schema.facilityAdminInvitations.facilityId,
-          email: schema.facilityAdminInvitations.email,
-          fullName: schema.facilityAdminInvitations.fullName,
-          expiresAt: schema.facilityAdminInvitations.expiresAt,
-        });
-
-      if (!updated) {
-        res.status(409).json({
-          error: 'INVITATION_NOT_REISSUABLE',
-          message: 'The invitation changed state. Refresh the list and try again.',
-        });
-        return;
-      }
-
-      await queries.logAuditEvent(
-        updated.tenantId,
-        updated.facilityId,
-        auditActor(context),
-        'UPDATE',
-        'FACILITY_ADMIN_INVITATION',
-        String(updated.id),
-        `Reissued a facility administrator invitation for ${updated.email}.`,
-      );
-
-      const link = new URL('/accept-facility-admin-invitation', invitationUrl);
-      link.searchParams.set('token', rawToken);
-
-      res.json({
-        success: true,
-        message: 'Invitation reissued. The previous token is no longer valid.',
-        data: {
-          invitationId: updated.id,
-          email: updated.email,
-          expiresAt: updated.expiresAt,
-          invitationLink: link.toString(),
-        },
+    const [updated] = await db
+      .update(schema.facilityAdminInvitations)
+      .set({ invitationTokenHash: tokenHash, expiresAt })
+      .where(
+        and(
+          eq(schema.facilityAdminInvitations.id, id),
+          isNull(schema.facilityAdminInvitations.acceptedAt),
+          isNull(schema.facilityAdminInvitations.revokedAt),
+        ),
+      )
+      .returning({
+        id: schema.facilityAdminInvitations.id,
+        tenantId: schema.facilityAdminInvitations.tenantId,
+        facilityId: schema.facilityAdminInvitations.facilityId,
+        email: schema.facilityAdminInvitations.email,
+        fullName: schema.facilityAdminInvitations.fullName,
+        expiresAt: schema.facilityAdminInvitations.expiresAt,
       });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-);
 
+    if (!updated) {
+      res.status(409).json({
+        error: 'INVITATION_NOT_REISSUABLE',
+        message: 'The invitation changed state. Refresh the list and try again.',
+      });
+      return;
+    }
+
+    await queries.logAuditEvent(
+      updated.tenantId,
+      updated.facilityId,
+      auditActor(context),
+      'UPDATE',
+      'FACILITY_ADMIN_INVITATION',
+      String(updated.id),
+      `Reissued a facility administrator invitation for ${updated.email}.`,
+    );
+
+    const link = new URL('/accept-facility-admin-invitation', invitationUrl);
+    link.searchParams.set('token', rawToken);
+
+    res.json({
+      success: true,
+      message: 'Invitation reissued. The previous token is no longer valid.',
+      data: {
+        invitationId: updated.id,
+        email: updated.email,
+        expiresAt: updated.expiresAt,
+        invitationLink: link.toString(),
+      },
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 // SUBSCRIPTION BILLING API - INITIAL IMPLEMENTATION
 // These routes manage subscription records only. They do not yet enforce
@@ -1621,8 +1490,14 @@ router.get('/subscription-periods', async (req: Request, res: Response) => {
       .leftJoin(
         schema.facilitySubscriptionAccess,
         and(
-          eq(schema.facilitySubscriptionAccess.facilityId, schema.facilitySubscriptionPeriods.facilityId),
-          eq(schema.facilitySubscriptionAccess.tenantId, schema.facilitySubscriptionPeriods.tenantId),
+          eq(
+            schema.facilitySubscriptionAccess.facilityId,
+            schema.facilitySubscriptionPeriods.facilityId,
+          ),
+          eq(
+            schema.facilitySubscriptionAccess.tenantId,
+            schema.facilitySubscriptionPeriods.tenantId,
+          ),
         ),
       )
       .orderBy(desc(schema.facilitySubscriptionPeriods.createdAt))
@@ -1647,9 +1522,7 @@ router.post('/subscription-periods', async (req: Request, res: Response) => {
   const facilityId = parseId(String(body.facilityId ?? ''));
   const subscriptionName = textValue(body.subscriptionName);
   const amountDueCents = parseMoneyCents(body.amountDue);
-  const amountDue = amountDueCents === null
-    ? Number.NaN
-    : amountDueCents / 100;
+  const amountDue = amountDueCents === null ? Number.NaN : amountDueCents / 100;
   const periodStart = textValue(body.periodStart);
   const periodEnd = textValue(body.periodEnd);
   const dueDate = textValue(body.dueDate);
@@ -1659,12 +1532,15 @@ router.post('/subscription-periods', async (req: Request, res: Response) => {
     Boolean(value && validCalendarDate(value));
 
   if (
-    !tenantId || !facilityId || !subscriptionName ||
-    !Number.isFinite(amountDue) || amountDue <= 0 ||
-    !validDate(periodStart) || !validDate(periodEnd) ||
+    !tenantId ||
+    !facilityId ||
+    !subscriptionName ||
+    !Number.isFinite(amountDue) ||
+    amountDue <= 0 ||
+    !validDate(periodStart) ||
+    !validDate(periodEnd) ||
     !validDate(dueDate) ||
-    (gracePeriodEnd !== undefined && gracePeriodEnd !== null &&
-      !validDate(gracePeriodEnd))
+    (gracePeriodEnd !== undefined && gracePeriodEnd !== null && !validDate(gracePeriodEnd))
   ) {
     res.status(400).json({
       error: 'VALIDATION_ERROR',
@@ -1673,8 +1549,11 @@ router.post('/subscription-periods', async (req: Request, res: Response) => {
     return;
   }
 
-  if (periodStart > periodEnd || dueDate < periodStart ||
-      (gracePeriodEnd && gracePeriodEnd < dueDate)) {
+  if (
+    periodStart > periodEnd ||
+    dueDate < periodStart ||
+    (gracePeriodEnd && gracePeriodEnd < dueDate)
+  ) {
     res.status(400).json({
       error: 'INVALID_PERIOD_DATES',
       message: 'Check the period start/end, due date, and grace-period end date.',
@@ -1790,20 +1669,22 @@ router.post('/subscription-periods/:id/payments', async (req: Request, res: Resp
   const body = (req.body ?? {}) as Record<string, unknown>;
   const transactionCode = textValue(body.transactionCode);
   const amountCents = parseMoneyCents(body.amount);
-  const amount = amountCents === null
-    ? Number.NaN
-    : amountCents / 100;
+  const amount = amountCents === null ? Number.NaN : amountCents / 100;
   const paymentDateInput = textValue(body.paymentDate);
   const paymentDate = paymentDateInput ? new Date(paymentDateInput) : new Date();
 
   if (
-    !periodId || !transactionCode || transactionCode.length > 100 ||
-    !Number.isFinite(amount) || amount <= 0 ||
+    !periodId ||
+    !transactionCode ||
+    transactionCode.length > 100 ||
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
     Number.isNaN(paymentDate.getTime())
   ) {
     res.status(400).json({
       error: 'VALIDATION_ERROR',
-      message: 'Provide a valid subscription ID, transaction code, positive amount, and optional valid payment date.',
+      message:
+        'Provide a valid subscription ID, transaction code, positive amount, and optional valid payment date.',
     });
     return;
   }
@@ -1908,8 +1789,11 @@ router.post('/subscription-payments/:paymentId/verify', async (req: Request, res
         .for('update')
         .limit(1);
 
-      if (!period || period.tenantId !== payment.tenantId ||
-          period.facilityId !== payment.facilityId) {
+      if (
+        !period ||
+        period.tenantId !== payment.tenantId ||
+        period.facilityId !== payment.facilityId
+      ) {
         throw Object.assign(new Error('Payment subscription references are inconsistent.'), {
           statusCode: 409,
         });
@@ -1929,12 +1813,14 @@ router.post('/subscription-payments/:paymentId/verify', async (req: Request, res
       const verifiedPayments = await tx
         .select({ amount: schema.facilitySubscriptionPayments.amount })
         .from(schema.facilitySubscriptionPayments)
-        .where(and(
-          eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
-          eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
-          eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
-          eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
-        ));
+        .where(
+          and(
+            eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
+            eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
+            eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
+            eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
+          ),
+        );
 
       // Recalculate after either decision, using verified payments only.
       const paidCents = verifiedPayments.reduce(
@@ -1942,8 +1828,8 @@ router.post('/subscription-payments/:paymentId/verify', async (req: Request, res
         0,
       );
       const dueCents = Math.round(Number(period.amountDue) * 100);
-      const nextStatus = paidCents >= dueCents ? 'PAID' :
-        paidCents > 0 ? 'PARTIALLY_PAID' : 'PENDING';
+      const nextStatus =
+        paidCents >= dueCents ? 'PAID' : paidCents > 0 ? 'PARTIALLY_PAID' : 'PENDING';
 
       const [updatedPeriod] = await tx
         .update(schema.facilitySubscriptionPeriods)
@@ -1979,7 +1865,8 @@ router.post('/subscription-payments/:paymentId/verify', async (req: Request, res
     if (statusCode === 409) {
       res.status(409).json({
         error: 'PAYMENT_REVIEW_CONFLICT',
-        message: 'The payment was already reviewed or its subscription references are inconsistent.',
+        message:
+          'The payment was already reviewed or its subscription references are inconsistent.',
       });
       return;
     }
@@ -2020,9 +1907,7 @@ router.post('/subscription-periods/:id/suspend', async (req: Request, res: Respo
       }
 
       // Only allow suspension for a genuinely overdue period with a balance.
-      const suspensionDeadline = String(
-        period.gracePeriodEnd ?? period.dueDate
-      ).slice(0, 10);
+      const suspensionDeadline = String(period.gracePeriodEnd ?? period.dueDate).slice(0, 10);
 
       const suspensionDateParts = new Intl.DateTimeFormat('en', {
         timeZone: 'Africa/Nairobi',
@@ -2034,13 +1919,12 @@ router.post('/subscription-periods/:id/suspend', async (req: Request, res: Respo
       const suspensionDatePart = (type: string) =>
         suspensionDateParts.find((part) => part.type === type)?.value ?? '';
 
-      const suspensionToday =
-        `${suspensionDatePart('year')}-${suspensionDatePart('month')}-${suspensionDatePart('day')}`;
+      const suspensionToday = `${suspensionDatePart('year')}-${suspensionDatePart('month')}-${suspensionDatePart('day')}`;
 
       if (suspensionToday <= suspensionDeadline) {
         throw Object.assign(
           new Error('This subscription has not passed its due date and grace period.'),
-          { statusCode: 422 }
+          { statusCode: 422 },
         );
       }
 
@@ -2049,12 +1933,14 @@ router.post('/subscription-periods/:id/suspend', async (req: Request, res: Respo
           amount: schema.facilitySubscriptionPayments.amount,
         })
         .from(schema.facilitySubscriptionPayments)
-        .where(and(
-          eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
-          eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
-          eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
-          eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
-        ));
+        .where(
+          and(
+            eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
+            eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
+            eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
+            eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
+          ),
+        );
 
       const suspensionPaidCents = suspensionPayments.reduce(
         (total, payment) => total + Math.round(Number(payment.amount) * 100),
@@ -2063,10 +1949,9 @@ router.post('/subscription-periods/:id/suspend', async (req: Request, res: Respo
       const suspensionDueCents = Math.round(Number(period.amountDue) * 100);
 
       if (suspensionPaidCents >= suspensionDueCents) {
-        throw Object.assign(
-          new Error('This subscription has no outstanding balance.'),
-          { statusCode: 422 }
-        );
+        throw Object.assign(new Error('This subscription has no outstanding balance.'), {
+          statusCode: 422,
+        });
       }
 
       const [existing] = await tx
@@ -2126,7 +2011,11 @@ router.post('/subscription-periods/:id/suspend', async (req: Request, res: Respo
         action: 'SUSPEND',
         resource: 'FACILITY_SUBSCRIPTION_ACCESS',
         resourceId: String(period.facilityId),
-        details: 'Facility access suspended through subscription period ' + period.id + '. Reason: ' + reason,
+        details:
+          'Facility access suspended through subscription period ' +
+          period.id +
+          '. Reason: ' +
+          reason,
         severity: 'HIGH',
       });
 
@@ -2199,12 +2088,14 @@ router.post('/subscription-periods/:id/reactivate', async (req: Request, res: Re
       const verifiedPayments = await tx
         .select({ amount: schema.facilitySubscriptionPayments.amount })
         .from(schema.facilitySubscriptionPayments)
-        .where(and(
-          eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
-          eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
-          eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
-          eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
-        ));
+        .where(
+          and(
+            eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
+            eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
+            eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
+            eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
+          ),
+        );
 
       const paidCents = verifiedPayments.reduce(
         (total, item) => total + Math.round(Number(item.amount) * 100),
@@ -2226,10 +2117,12 @@ router.post('/subscription-periods/:id/reactivate', async (req: Request, res: Re
           gracePeriodEnd: schema.facilitySubscriptionPeriods.gracePeriodEnd,
         })
         .from(schema.facilitySubscriptionPeriods)
-        .where(and(
-          eq(schema.facilitySubscriptionPeriods.facilityId, period.facilityId),
-          eq(schema.facilitySubscriptionPeriods.tenantId, period.tenantId),
-        ));
+        .where(
+          and(
+            eq(schema.facilitySubscriptionPeriods.facilityId, period.facilityId),
+            eq(schema.facilitySubscriptionPeriods.tenantId, period.tenantId),
+          ),
+        );
 
       const facilityVerifiedPayments = await tx
         .select({
@@ -2237,11 +2130,13 @@ router.post('/subscription-periods/:id/reactivate', async (req: Request, res: Re
           amount: schema.facilitySubscriptionPayments.amount,
         })
         .from(schema.facilitySubscriptionPayments)
-        .where(and(
-          eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
-          eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
-          eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
-        ));
+        .where(
+          and(
+            eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
+            eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
+            eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
+          ),
+        );
 
       const paidByPeriod = new Map<number, number>();
       for (const payment of facilityVerifiedPayments) {
@@ -2262,8 +2157,7 @@ router.post('/subscription-periods/:id/reactivate', async (req: Request, res: Re
       const reactivationDatePart = (type: string) =>
         reactivationDateParts.find((part) => part.type === type)?.value ?? '';
 
-      const reactivationToday =
-        `${reactivationDatePart('year')}-${reactivationDatePart('month')}-${reactivationDatePart('day')}`;
+      const reactivationToday = `${reactivationDatePart('year')}-${reactivationDatePart('month')}-${reactivationDatePart('day')}`;
 
       const overdueUnpaidPeriods = facilityPeriods.filter((item) => {
         const deadline = String(item.gracePeriodEnd ?? item.dueDate).slice(0, 10);
@@ -2276,7 +2170,7 @@ router.post('/subscription-periods/:id/reactivate', async (req: Request, res: Re
       if (overdueUnpaidPeriods.length > 0) {
         throw Object.assign(
           new Error('Other overdue subscription balances must be cleared before reactivation.'),
-          { statusCode: 422 }
+          { statusCode: 422 },
         );
       }
 
@@ -2300,7 +2194,14 @@ router.post('/subscription-periods/:id/reactivate', async (req: Request, res: Re
         action: 'REACTIVATE',
         resource: 'FACILITY_SUBSCRIPTION_ACCESS',
         resourceId: String(period.facilityId),
-        details: 'Facility access reactivated after checking verified payments for subscription period ' + period.id + '. Verified total: ' + (paidCents / 100).toFixed(2) + ' ' + period.currency + '.',
+        details:
+          'Facility access reactivated after checking verified payments for subscription period ' +
+          period.id +
+          '. Verified total: ' +
+          (paidCents / 100).toFixed(2) +
+          ' ' +
+          period.currency +
+          '.',
         severity: 'HIGH',
       });
 
@@ -2353,7 +2254,8 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
   ) {
     res.status(400).json({
       error: 'VALIDATION_ERROR',
-      message: 'Provide a valid subscription ID, positive fee, effective timing, and reason of up to 1000 characters.',
+      message:
+        'Provide a valid subscription ID, positive fee, effective timing, and reason of up to 1000 characters.',
     });
     return;
   }
@@ -2403,12 +2305,14 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
       const verifiedPayments = await tx
         .select({ amount: schema.facilitySubscriptionPayments.amount })
         .from(schema.facilitySubscriptionPayments)
-        .where(and(
-          eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
-          eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
-          eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
-          eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
-        ));
+        .where(
+          and(
+            eq(schema.facilitySubscriptionPayments.subscriptionPeriodId, period.id),
+            eq(schema.facilitySubscriptionPayments.facilityId, period.facilityId),
+            eq(schema.facilitySubscriptionPayments.tenantId, period.tenantId),
+            eq(schema.facilitySubscriptionPayments.verificationStatus, 'VERIFIED'),
+          ),
+        );
 
       const paidCents = verifiedPayments.reduce(
         (total, payment) => total + Math.round(Number(payment.amount) * 100),
@@ -2421,14 +2325,15 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
       if (effectiveTiming === 'CURRENT_PERIOD') {
         if (paidCents > newAmountCents) {
           throw Object.assign(
-            new Error('The new fee cannot be lower than payments already verified for this period.'),
+            new Error(
+              'The new fee cannot be lower than payments already verified for this period.',
+            ),
             { statusCode: 422 },
           );
         }
 
         const nextStatus =
-          paidCents >= newAmountCents ? 'PAID' :
-          paidCents > 0 ? 'PARTIALLY_PAID' : 'PENDING';
+          paidCents >= newAmountCents ? 'PAID' : paidCents > 0 ? 'PARTIALLY_PAID' : 'PENDING';
 
         const [updatedPeriod] = await tx
           .update(schema.facilitySubscriptionPeriods)
@@ -2446,9 +2351,7 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
         const start = String(period.periodStart).slice(0, 10);
         const end = String(period.periodEnd).slice(0, 10);
         const due = String(period.dueDate).slice(0, 10);
-        const grace = period.gracePeriodEnd
-          ? String(period.gracePeriodEnd).slice(0, 10)
-          : null;
+        const grace = period.gracePeriodEnd ? String(period.gracePeriodEnd).slice(0, 10) : null;
 
         const durationDays = daysBetween(start, end);
         const dueOffset = daysBetween(start, due);
@@ -2460,7 +2363,9 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
           (graceOffset !== null && graceOffset < dueOffset)
         ) {
           throw Object.assign(
-            new Error('The existing subscription dates are invalid. Correct them before changing the fee.'),
+            new Error(
+              'The existing subscription dates are invalid. Correct them before changing the fee.',
+            ),
             { statusCode: 422 },
           );
         }
@@ -2468,9 +2373,7 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
         const nextStart = shiftDate(end, 1);
         const nextEnd = shiftDate(nextStart, durationDays);
         const nextDue = shiftDate(nextStart, dueOffset);
-        const nextGrace = graceOffset === null
-          ? null
-          : shiftDate(nextStart, graceOffset);
+        const nextGrace = graceOffset === null ? null : shiftDate(nextStart, graceOffset);
 
         const existingPeriods = await tx
           .select({
@@ -2479,10 +2382,12 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
             periodEnd: schema.facilitySubscriptionPeriods.periodEnd,
           })
           .from(schema.facilitySubscriptionPeriods)
-          .where(and(
-            eq(schema.facilitySubscriptionPeriods.tenantId, period.tenantId),
-            eq(schema.facilitySubscriptionPeriods.facilityId, period.facilityId),
-          ));
+          .where(
+            and(
+              eq(schema.facilitySubscriptionPeriods.tenantId, period.tenantId),
+              eq(schema.facilitySubscriptionPeriods.facilityId, period.facilityId),
+            ),
+          );
 
         const overlaps = existingPeriods.some((existing) => {
           if (existing.id === period.id) return false;
@@ -2554,9 +2459,10 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
 
     res.status(200).json({
       success: true,
-      message: effectiveTiming === 'CURRENT_PERIOD'
-        ? 'Current subscription fee updated.'
-        : 'Next subscription period created with the revised fee.',
+      message:
+        effectiveTiming === 'CURRENT_PERIOD'
+          ? 'Current subscription fee updated.'
+          : 'Next subscription period created with the revised fee.',
       data: result,
     });
   } catch (error) {
@@ -2592,37 +2498,27 @@ router.post('/subscription-periods/:id/price-changes', async (req: Request, res:
 // ============================================================
 
 function isFacilityAdminContext(context: AuthorizationContext): boolean {
-  return context.isSuperAdmin !== true &&
+  return (
+    context.isSuperAdmin !== true &&
     context.tenantId !== null &&
     context.tenantId !== undefined &&
-    context.roles.includes('FACILITY_ADMIN');
+    context.roles.includes('FACILITY_ADMIN')
+  );
 }
 
-function isRestrictedForFacilityAdmin(permission: {
-  code: string;
-  module: string;
-}): boolean {
+function isRestrictedForFacilityAdmin(permission: { code: string; module: string }): boolean {
   const code = permission.code.toLowerCase();
   const module = permission.module.toLowerCase();
 
-  return [
-    'platform',
-    'tenants',
-    'subscriptions',
-    'security',
-    'rbac',
-  ].includes(module) ||
+  return (
+    ['platform', 'tenants', 'subscriptions', 'security', 'rbac'].includes(module) ||
     code.startsWith('platform.') ||
     code.startsWith('tenants.') ||
     code.startsWith('subscriptions.') ||
     code.startsWith('permissions.') ||
     code.startsWith('users.roles.') ||
-    [
-      'roles.manage',
-      'roles.create',
-      'roles.update',
-      'roles.delete',
-    ].includes(code);
+    ['roles.manage', 'roles.create', 'roles.update', 'roles.delete'].includes(code)
+  );
 }
 
 /**
@@ -2633,10 +2529,7 @@ function isRestrictedForFacilityAdmin(permission: {
 router.get('/rbac/roles', async (req: Request, res: Response) => {
   const context = getContext(req);
 
-  if (!context || (
-    context.isSuperAdmin !== true &&
-    !isFacilityAdminContext(context)
-  )) {
+  if (!context || (context.isSuperAdmin !== true && !isFacilityAdminContext(context))) {
     res.status(403).json({
       error: 'FORBIDDEN',
       message: 'You are not authorized to view role permissions.',
@@ -2671,10 +2564,8 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
 
     if (
       context.isSuperAdmin !== true &&
-      (
-        facility.tenantId !== context.tenantId ||
-        (context.facilityId !== null && context.facilityId !== facility.id)
-      )
+      (facility.tenantId !== context.tenantId ||
+        (context.facilityId !== null && context.facilityId !== facility.id))
     ) {
       res.status(403).json({
         error: 'FACILITY_OUT_OF_SCOPE',
@@ -2700,35 +2591,39 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
 
     const roleIds = roleRows.map((role) => role.id);
 
-    const defaults = roleIds.length > 0
-      ? await db
-          .select()
-          .from(schema.rolePermissions)
-          .where(inArray(schema.rolePermissions.roleId, roleIds))
-      : [];
+    const defaults =
+      roleIds.length > 0
+        ? await db
+            .select()
+            .from(schema.rolePermissions)
+            .where(inArray(schema.rolePermissions.roleId, roleIds))
+        : [];
 
-    const overrides = roleIds.length > 0
-      ? await db
-          .select()
-          .from(schema.facilityRolePermissionOverrides)
-          .where(and(
-            eq(schema.facilityRolePermissionOverrides.tenantId, facility.tenantId),
-            eq(schema.facilityRolePermissionOverrides.facilityId, facility.id),
-            inArray(schema.facilityRolePermissionOverrides.roleId, roleIds),
-          ))
-      : [];
+    const overrides =
+      roleIds.length > 0
+        ? await db
+            .select()
+            .from(schema.facilityRolePermissionOverrides)
+            .where(
+              and(
+                eq(schema.facilityRolePermissionOverrides.tenantId, facility.tenantId),
+                eq(schema.facilityRolePermissionOverrides.facilityId, facility.id),
+                inArray(schema.facilityRolePermissionOverrides.roleId, roleIds),
+              ),
+            )
+        : [];
 
     const overrideIds = overrides.map((override) => override.id);
 
-    const overrideAssignments = overrideIds.length > 0
-      ? await db
-          .select()
-          .from(schema.facilityRolePermissionOverridePermissions)
-          .where(inArray(
-            schema.facilityRolePermissionOverridePermissions.overrideId,
-            overrideIds,
-          ))
-      : [];
+    const overrideAssignments =
+      overrideIds.length > 0
+        ? await db
+            .select()
+            .from(schema.facilityRolePermissionOverridePermissions)
+            .where(
+              inArray(schema.facilityRolePermissionOverridePermissions.overrideId, overrideIds),
+            )
+        : [];
 
     const defaultsByRole = new Map<number, number[]>();
     for (const assignment of defaults) {
@@ -2752,38 +2647,35 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
     const assignedRoleRows = await db
       .select({ roleId: schema.userRoles.roleId })
       .from(schema.userRoles)
-      .where(and(
-        eq(schema.userRoles.userId, context.userId),
-        eq(schema.userRoles.isActive, true),
-        isNull(schema.userRoles.revokedAt),
-      ));
+      .where(
+        and(
+          eq(schema.userRoles.userId, context.userId),
+          eq(schema.userRoles.isActive, true),
+          isNull(schema.userRoles.revokedAt),
+        ),
+      );
 
-    const assignedRoleIds = new Set(
-      assignedRoleRows.map((assignment) => assignment.roleId),
-    );
+    const assignedRoleIds = new Set(assignedRoleRows.map((assignment) => assignment.roleId));
 
     const rolesWithPermissions = roleRows.map((role) => {
       const roleName = role.name.toUpperCase();
 
       const isPlatformProtectedRole =
         role.tenantId === null ||
-        [
-          'SUPER_ADMIN',
-          'PLATFORM_ADMIN',
-          'PLATFORM_ADMINISTRATOR',
-          'TENANT_ADMIN',
-        ].includes(roleName);
+        ['SUPER_ADMIN', 'PLATFORM_ADMIN', 'PLATFORM_ADMINISTRATOR', 'TENANT_ADMIN'].includes(
+          roleName,
+        );
 
       // Super Admin may override FACILITY_ADMIN permissions for a tenant
       // facility. Other system roles and platform-level roles stay protected.
-      const canEdit = context.isSuperAdmin === true
-        ? !isPlatformProtectedRole &&
-          (!role.isSystem || roleName === 'FACILITY_ADMIN')
-        : !isPlatformProtectedRole &&
-          role.isSystem !== true &&
-          roleName !== 'FACILITY_ADMIN' &&
-          role.tenantId === context.tenantId &&
-          !assignedRoleIds.has(role.id);
+      const canEdit =
+        context.isSuperAdmin === true
+          ? !isPlatformProtectedRole && (!role.isSystem || roleName === 'FACILITY_ADMIN')
+          : !isPlatformProtectedRole &&
+            role.isSystem !== true &&
+            roleName !== 'FACILITY_ADMIN' &&
+            role.tenantId === context.tenantId &&
+            !assignedRoleIds.has(role.id);
 
       const overrideId = overrideByRole.get(role.id);
       const hasFacilityOverride = overrideId !== undefined;
@@ -2826,9 +2718,7 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
       permissionRows.map((permission) => [permission.code, permission.id]),
     );
 
-    const roleRowByName = new Map(
-      roleRows.map((role) => [role.name.trim().toUpperCase(), role]),
-    );
+    const roleRowByName = new Map(roleRows.map((role) => [role.name.trim().toUpperCase(), role]));
 
     const catalogueCoverage = STAFF_ROLE_CATALOGUE.map((entry) => {
       const existingRole = roleRowByName.get(entry.name);
@@ -2844,9 +2734,7 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
         ? entry.permissions.filter((permissionCode) => {
             const permissionId = permissionIdByCode.get(permissionCode);
 
-            return (
-              permissionId !== undefined && !assignedIds.has(permissionId)
-            );
+            return permissionId !== undefined && !assignedIds.has(permissionId);
           })
         : [...entry.permissions];
 
@@ -2872,8 +2760,7 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
           name: permission.name,
           module: permission.module,
           description: permission.description,
-          assignable: context.isSuperAdmin === true ||
-            !isRestrictedForFacilityAdmin(permission),
+          assignable: context.isSuperAdmin === true || !isRestrictedForFacilityAdmin(permission),
         })),
         catalogue: {
           roleCount: STAFF_ROLE_CATALOGUE.length,
@@ -2902,10 +2789,7 @@ router.get('/rbac/roles', async (req: Request, res: Response) => {
 router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
   const context = getContext(req);
 
-  if (!context || (
-    context.isSuperAdmin !== true &&
-    !isFacilityAdminContext(context)
-  )) {
+  if (!context || (context.isSuperAdmin !== true && !isFacilityAdminContext(context))) {
     res.status(403).json({
       error: 'FORBIDDEN',
       message: 'You are not authorized to manage role permissions.',
@@ -2934,10 +2818,7 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
   let requestedNames: string[] | null = null;
 
   if (body.roleNames !== undefined) {
-    if (
-      !Array.isArray(body.roleNames) ||
-      body.roleNames.some((name) => typeof name !== 'string')
-    ) {
+    if (!Array.isArray(body.roleNames) || body.roleNames.some((name) => typeof name !== 'string')) {
       res.status(400).json({
         error: 'INVALID_ROLE_NAMES',
         message: 'roleNames must be an array of catalogue role names.',
@@ -2965,10 +2846,8 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
 
     if (
       context.isSuperAdmin !== true &&
-      (
-        facility.tenantId !== context.tenantId ||
-        (context.facilityId !== null && context.facilityId !== facility.id)
-      )
+      (facility.tenantId !== context.tenantId ||
+        (context.facilityId !== null && context.facilityId !== facility.id))
     ) {
       res.status(403).json({
         error: 'FACILITY_OUT_OF_SCOPE',
@@ -2977,13 +2856,9 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
       return;
     }
 
-    const catalogueNames = new Set<string>(
-      STAFF_ROLE_CATALOGUE.map((entry) => entry.name),
-    );
+    const catalogueNames = new Set<string>(STAFF_ROLE_CATALOGUE.map((entry) => entry.name));
 
-    const unknownNames = (requestedNames ?? []).filter(
-      (name) => !catalogueNames.has(name),
-    );
+    const unknownNames = (requestedNames ?? []).filter((name) => !catalogueNames.has(name));
 
     if (unknownNames.length > 0) {
       res.status(400).json({
@@ -2994,9 +2869,7 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
     }
 
     const targets = STAFF_ROLE_CATALOGUE.filter((entry) =>
-      requestedNames === null
-        ? true
-        : requestedNames.includes(entry.name),
+      requestedNames === null ? true : requestedNames.includes(entry.name),
     );
 
     /*
@@ -3004,35 +2877,32 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
      * seeded, not created on the fly: inventing a permission row here
      * would produce a role that holds something no route checks.
      */
-    const requiredCodes = [
-      ...new Set(targets.flatMap((entry) => [...entry.permissions])),
-    ];
+    const requiredCodes = [...new Set(targets.flatMap((entry) => [...entry.permissions]))];
 
-    const permissionRows = requiredCodes.length > 0
-      ? await db
-          .select({
-            id: schema.permissions.id,
-            code: schema.permissions.code,
-          })
-          .from(schema.permissions)
-          .where(inArray(schema.permissions.code, requiredCodes))
-      : [];
+    const permissionRows =
+      requiredCodes.length > 0
+        ? await db
+            .select({
+              id: schema.permissions.id,
+              code: schema.permissions.code,
+            })
+            .from(schema.permissions)
+            .where(inArray(schema.permissions.code, requiredCodes))
+        : [];
 
     const permissionIdByCode = new Map(
       permissionRows.map((permission) => [permission.code, permission.id]),
     );
 
-    const absentCodes = requiredCodes.filter(
-      (code) => !permissionIdByCode.has(code),
-    );
+    const absentCodes = requiredCodes.filter((code) => !permissionIdByCode.has(code));
 
     if (absentCodes.length > 0) {
       res.status(409).json({
         error: 'CATALOGUE_PERMISSIONS_MISSING',
         message:
-          'These permission codes are not seeded in this database, so the catalogue roles cannot be created: '
-          + absentCodes.join(', ')
-          + '. Seed the permission catalogue before retrying.',
+          'These permission codes are not seeded in this database, so the catalogue roles cannot be created: ' +
+          absentCodes.join(', ') +
+          '. Seed the permission catalogue before retrying.',
       });
       return;
     }
@@ -3093,9 +2963,7 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
           .from(schema.rolePermissions)
           .where(eq(schema.rolePermissions.roleId, existing.id));
 
-        const currentIds = new Set(
-          currentLinks.map((link) => link.permissionId),
-        );
+        const currentIds = new Set(currentLinks.map((link) => link.permissionId));
 
         const missingValues = entry.permissions
           .map((code) => permissionIdByCode.get(code)!)
@@ -3132,11 +3000,9 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
             ? `Created catalogue roles: ${result.createdRoles.join(', ')}`
             : null,
           result.toppedUpRoles.length > 0
-            ? `Granted missing catalogue permissions: ${
-                result.toppedUpRoles
-                  .map((entry) => `${entry.name} (+${entry.granted})`)
-                  .join(', ')
-              }`
+            ? `Granted missing catalogue permissions: ${result.toppedUpRoles
+                .map((entry) => `${entry.name} (+${entry.granted})`)
+                .join(', ')}`
             : null,
         ]
           .filter(Boolean)
@@ -3162,283 +3028,256 @@ router.post('/rbac/catalogue/apply', async (req: Request, res: Response) => {
  * PUT /api/platform/rbac/roles/:id/permissions
  * Save a facility-specific permission override without changing shared defaults.
  */
-router.put(
-  '/rbac/roles/:id/permissions',
-  async (req: Request, res: Response) => {
-    const context = getContext(req);
+router.put('/rbac/roles/:id/permissions', async (req: Request, res: Response) => {
+  const context = getContext(req);
 
-    if (!context || (
-      context.isSuperAdmin !== true &&
-      !isFacilityAdminContext(context)
-    )) {
-      res.status(403).json({
-        error: 'FORBIDDEN',
-        message: 'You are not authorized to edit role permissions.',
-      });
-      return;
-    }
+  if (!context || (context.isSuperAdmin !== true && !isFacilityAdminContext(context))) {
+    res.status(403).json({
+      error: 'FORBIDDEN',
+      message: 'You are not authorized to edit role permissions.',
+    });
+    return;
+  }
 
-    const roleId = parseId(req.params.id);
-    const facilityId = Number(req.body?.facilityId);
-    const permissionIdsUnknown = req.body?.permissionIds;
+  const roleId = parseId(req.params.id);
+  const facilityId = Number(req.body?.facilityId);
+  const permissionIdsUnknown = req.body?.permissionIds;
 
-    if (roleId === null) {
-      res.status(400).json({
-        error: 'INVALID_ROLE_ID',
-        message: 'A valid role ID is required.',
-      });
-      return;
-    }
+  if (roleId === null) {
+    res.status(400).json({
+      error: 'INVALID_ROLE_ID',
+      message: 'A valid role ID is required.',
+    });
+    return;
+  }
 
-    if (!Number.isSafeInteger(facilityId) || facilityId < 1) {
-      res.status(400).json({
-        error: 'INVALID_FACILITY_ID',
-        message: 'A valid facilityId is required.',
+  if (!Number.isSafeInteger(facilityId) || facilityId < 1) {
+    res.status(400).json({
+      error: 'INVALID_FACILITY_ID',
+      message: 'A valid facilityId is required.',
+    });
+    return;
+  }
+
+  if (
+    !Array.isArray(permissionIdsUnknown) ||
+    permissionIdsUnknown.some(
+      (id: unknown) => typeof id !== 'number' || !Number.isSafeInteger(id) || id < 1,
+    )
+  ) {
+    res.status(400).json({
+      error: 'INVALID_PERMISSION_IDS',
+      message: 'permissionIds must be an array of positive integer IDs.',
+    });
+    return;
+  }
+
+  const permissionIds = [...new Set(permissionIdsUnknown as number[])];
+
+  if (permissionIds.length !== permissionIdsUnknown.length) {
+    res.status(400).json({
+      error: 'DUPLICATE_PERMISSION_IDS',
+      message: 'Each permission may only be selected once.',
+    });
+    return;
+  }
+
+  try {
+    const [facility] = await db
+      .select()
+      .from(schema.facilities)
+      .where(eq(schema.facilities.id, facilityId))
+      .limit(1);
+
+    if (!facility) {
+      res.status(404).json({
+        error: 'FACILITY_NOT_FOUND',
+        message: 'The selected facility was not found.',
       });
       return;
     }
 
     if (
-      !Array.isArray(permissionIdsUnknown) ||
-      permissionIdsUnknown.some(
-        (id: unknown) =>
-          typeof id !== 'number' ||
-          !Number.isSafeInteger(id) ||
-          id < 1,
-      )
+      context.isSuperAdmin !== true &&
+      (facility.tenantId !== context.tenantId ||
+        (context.facilityId !== null && context.facilityId !== facility.id))
     ) {
-      res.status(400).json({
-        error: 'INVALID_PERMISSION_IDS',
-        message: 'permissionIds must be an array of positive integer IDs.',
+      res.status(403).json({
+        error: 'FACILITY_OUT_OF_SCOPE',
+        message: 'You are not authorized to manage this facility.',
       });
       return;
     }
 
-    const permissionIds = [...new Set(permissionIdsUnknown as number[])];
+    const [role] = await db.select().from(schema.roles).where(eq(schema.roles.id, roleId)).limit(1);
 
-    if (permissionIds.length !== permissionIdsUnknown.length) {
-      res.status(400).json({
-        error: 'DUPLICATE_PERMISSION_IDS',
-        message: 'Each permission may only be selected once.',
+    if (!role) {
+      res.status(404).json({
+        error: 'ROLE_NOT_FOUND',
+        message: 'The requested role was not found.',
       });
       return;
     }
 
-    try {
-      const [facility] = await db
-        .select()
-        .from(schema.facilities)
-        .where(eq(schema.facilities.id, facilityId))
-        .limit(1);
+    // Only roles belonging to the selected facility's tenant can be overridden.
+    if (role.tenantId !== facility.tenantId) {
+      res.status(403).json({
+        error: 'ROLE_OUT_OF_SCOPE',
+        message: 'Only roles belonging to the facility tenant can be overridden.',
+      });
+      return;
+    }
 
-      if (!facility) {
-        res.status(404).json({
-          error: 'FACILITY_NOT_FOUND',
-          message: 'The selected facility was not found.',
-        });
-        return;
-      }
+    if (context.isSuperAdmin !== true) {
+      const isForbiddenRole =
+        role.isSystem === true ||
+        [
+          'SUPER_ADMIN',
+          'PLATFORM_ADMIN',
+          'PLATFORM_ADMINISTRATOR',
+          'FACILITY_ADMIN',
+          'TENANT_ADMIN',
+        ].includes(role.name.toUpperCase());
 
-      if (
-        context.isSuperAdmin !== true &&
-        (
-          facility.tenantId !== context.tenantId ||
-          (context.facilityId !== null && context.facilityId !== facility.id)
-        )
-      ) {
-        res.status(403).json({
-          error: 'FACILITY_OUT_OF_SCOPE',
-          message: 'You are not authorized to manage this facility.',
-        });
-        return;
-      }
-
-      const [role] = await db
-        .select()
-        .from(schema.roles)
-        .where(eq(schema.roles.id, roleId))
-        .limit(1);
-
-      if (!role) {
-        res.status(404).json({
-          error: 'ROLE_NOT_FOUND',
-          message: 'The requested role was not found.',
-        });
-        return;
-      }
-
-      // Only roles belonging to the selected facility's tenant can be overridden.
-      if (role.tenantId !== facility.tenantId) {
+      if (isForbiddenRole) {
         res.status(403).json({
           error: 'ROLE_OUT_OF_SCOPE',
-          message: 'Only roles belonging to the facility tenant can be overridden.',
+          message: 'Facility administrators may edit only eligible staff roles.',
         });
         return;
       }
 
-      if (context.isSuperAdmin !== true) {
-        const isForbiddenRole =
-          role.isSystem === true ||
-          [
-            'SUPER_ADMIN',
-            'PLATFORM_ADMIN',
-            'PLATFORM_ADMINISTRATOR',
-            'FACILITY_ADMIN',
-            'TENANT_ADMIN',
-          ].includes(role.name.toUpperCase());
-
-        if (isForbiddenRole) {
-          res.status(403).json({
-            error: 'ROLE_OUT_OF_SCOPE',
-            message: 'Facility administrators may edit only eligible staff roles.',
-          });
-          return;
-        }
-
-        const [selfAssignment] = await db
-          .select({ id: schema.userRoles.id })
-          .from(schema.userRoles)
-          .where(and(
+      const [selfAssignment] = await db
+        .select({ id: schema.userRoles.id })
+        .from(schema.userRoles)
+        .where(
+          and(
             eq(schema.userRoles.userId, context.userId),
             eq(schema.userRoles.roleId, role.id),
             eq(schema.userRoles.isActive, true),
             isNull(schema.userRoles.revokedAt),
-          ))
-          .limit(1);
+          ),
+        )
+        .limit(1);
 
-        if (selfAssignment) {
-          res.status(403).json({
-            error: 'SELF_ROLE_MODIFICATION_BLOCKED',
-            message: 'You cannot modify a role assigned to your own account.',
-          });
-          return;
-        }
+      if (selfAssignment) {
+        res.status(403).json({
+          error: 'SELF_ROLE_MODIFICATION_BLOCKED',
+          message: 'You cannot modify a role assigned to your own account.',
+        });
+        return;
       }
+    }
 
-      const requestedPermissions = permissionIds.length > 0
+    const requestedPermissions =
+      permissionIds.length > 0
         ? await db
             .select()
             .from(schema.permissions)
             .where(inArray(schema.permissions.id, permissionIds))
         : [];
 
-      if (requestedPermissions.length !== permissionIds.length) {
-        res.status(400).json({
-          error: 'UNKNOWN_PERMISSION',
-          message: 'One or more selected permissions do not exist.',
-        });
-        return;
-      }
+    if (requestedPermissions.length !== permissionIds.length) {
+      res.status(400).json({
+        error: 'UNKNOWN_PERMISSION',
+        message: 'One or more selected permissions do not exist.',
+      });
+      return;
+    }
 
-      if (
-        context.isSuperAdmin !== true &&
-        requestedPermissions.some(isRestrictedForFacilityAdmin)
-      ) {
-        res.status(403).json({
-          error: 'PRIVILEGED_PERMISSION_BLOCKED',
-          message: 'Facility administrators cannot grant platform, tenant-administration, or RBAC-management permissions.',
-        });
-        return;
-      }
+    if (context.isSuperAdmin !== true && requestedPermissions.some(isRestrictedForFacilityAdmin)) {
+      res.status(403).json({
+        error: 'PRIVILEGED_PERMISSION_BLOCKED',
+        message:
+          'Facility administrators cannot grant platform, tenant-administration, or RBAC-management permissions.',
+      });
+      return;
+    }
 
-      await db.transaction(async (tx) => {
-        const [existingOverride] = await tx
-          .select()
-          .from(schema.facilityRolePermissionOverrides)
-          .where(and(
+    await db.transaction(async (tx) => {
+      const [existingOverride] = await tx
+        .select()
+        .from(schema.facilityRolePermissionOverrides)
+        .where(
+          and(
             eq(schema.facilityRolePermissionOverrides.tenantId, facility.tenantId),
             eq(schema.facilityRolePermissionOverrides.facilityId, facility.id),
             eq(schema.facilityRolePermissionOverrides.roleId, role.id),
-          ))
-          .limit(1);
-
-        let overrideId: number;
-
-        if (existingOverride) {
-          overrideId = existingOverride.id;
-
-          await tx
-            .update(schema.facilityRolePermissionOverrides)
-            .set({ updatedAt: new Date() })
-            .where(eq(schema.facilityRolePermissionOverrides.id, overrideId));
-
-          await tx
-            .delete(schema.facilityRolePermissionOverridePermissions)
-            .where(
-              eq(
-                schema.facilityRolePermissionOverridePermissions.overrideId,
-                overrideId,
-              ),
-            );
-        } else {
-          const [createdOverride] = await tx
-            .insert(schema.facilityRolePermissionOverrides)
-            .values({
-              tenantId: facility.tenantId,
-              facilityId: facility.id,
-              roleId: role.id,
-            })
-            .returning({
-              id: schema.facilityRolePermissionOverrides.id,
-            });
-
-          overrideId = createdOverride.id;
-        }
-
-        if (permissionIds.length > 0) {
-          await tx
-            .insert(schema.facilityRolePermissionOverridePermissions)
-            .values(permissionIds.map((permissionId) => ({
-              overrideId,
-              permissionId,
-            })));
-        }
-
-        await tx.insert(schema.auditLogs).values({
-          tenantId: facility.tenantId,
-          facilityId: facility.id,
-          userId: String(context.userId),
-          action: 'UPDATE',
-          resource: 'facility_role_permission_override',
-          resourceId: String(overrideId),
-          details: JSON.stringify({
-            facilityId: facility.id,
-            facilityName: facility.name,
-            roleId: role.id,
-            roleName: role.name,
-            permissionIds,
-            permissionCodes: requestedPermissions.map(
-              (permission) => permission.code,
-            ),
-            hasFacilityOverride: true,
-            changedBy: context.userId,
-          }),
-          severity: 'HIGH',
-        });
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'Facility-specific role permissions updated successfully.',
-        data: {
-          facilityId: facility.id,
-          roleId: role.id,
-          permissionIds,
-          permissionCodes: requestedPermissions.map(
-            (permission) => permission.code,
           ),
+        )
+        .limit(1);
+
+      let overrideId: number;
+
+      if (existingOverride) {
+        overrideId = existingOverride.id;
+
+        await tx
+          .update(schema.facilityRolePermissionOverrides)
+          .set({ updatedAt: new Date() })
+          .where(eq(schema.facilityRolePermissionOverrides.id, overrideId));
+
+        await tx
+          .delete(schema.facilityRolePermissionOverridePermissions)
+          .where(eq(schema.facilityRolePermissionOverridePermissions.overrideId, overrideId));
+      } else {
+        const [createdOverride] = await tx
+          .insert(schema.facilityRolePermissionOverrides)
+          .values({
+            tenantId: facility.tenantId,
+            facilityId: facility.id,
+            roleId: role.id,
+          })
+          .returning({
+            id: schema.facilityRolePermissionOverrides.id,
+          });
+
+        overrideId = createdOverride.id;
+      }
+
+      if (permissionIds.length > 0) {
+        await tx.insert(schema.facilityRolePermissionOverridePermissions).values(
+          permissionIds.map((permissionId) => ({
+            overrideId,
+            permissionId,
+          })),
+        );
+      }
+
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        userId: String(context.userId),
+        action: 'UPDATE',
+        resource: 'facility_role_permission_override',
+        resourceId: String(overrideId),
+        details: JSON.stringify({
+          facilityId: facility.id,
+          facilityName: facility.name,
+          roleId: role.id,
+          roleName: role.name,
+          permissionIds,
+          permissionCodes: requestedPermissions.map((permission) => permission.code),
           hasFacilityOverride: true,
-        },
+          changedBy: context.userId,
+        }),
+        severity: 'HIGH',
       });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-);
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Facility-specific role permissions updated successfully.',
+      data: {
+        facilityId: facility.id,
+        roleId: role.id,
+        permissionIds,
+        permissionCodes: requestedPermissions.map((permission) => permission.code),
+        hasFacilityOverride: true,
+      },
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 export default router;
-
-
-
-
-
-

@@ -14,15 +14,11 @@ import {
   isSuperAdmin,
   canAccessTenant,
   canAccessFacility,
-} from "../auth/authorization.service";
+} from '../auth/authorization.service';
 
-import type {
-  AuthorizationContext,
-} from "../auth/authorization.types";
+import type { AuthorizationContext } from '../auth/authorization.types';
 
-function createContext(
-  overrides: Partial<AuthorizationContext> = {}
-): AuthorizationContext {
+function createContext(overrides: Partial<AuthorizationContext> = {}): AuthorizationContext {
   return {
     userId: 1,
     tenantId: 1,
@@ -37,20 +33,17 @@ function createContext(
   };
 }
 
-function assert(
-  condition: boolean,
-  message: string
-): void {
+function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`ASSERTION FAILED: ${message}`);
   }
 }
 
 async function runAuthorizationTests() {
-  console.log("");
-  console.log("==============================================");
-  console.log("JALICARE HMIS RBAC AUTHORIZATION TESTS");
-  console.log("==============================================");
+  console.log('');
+  console.log('==============================================');
+  console.log('JALICARE HMIS RBAC AUTHORIZATION TESTS');
+  console.log('==============================================');
 
   /*
    * =========================================================
@@ -63,84 +56,53 @@ async function runAuthorizationTests() {
     tenantId: null,
     facilityId: null,
 
-    roles: ["SUPER_ADMIN"],
+    roles: ['SUPER_ADMIN'],
 
     permissions: [
-      "platform.read",
-      "platform.manage",
-      "tenants.read",
-      "tenants.create",
-      "facilities.read",
-      "patients.read",
+      'platform.read',
+      'platform.manage',
+      'tenants.read',
+      'tenants.create',
+      'facilities.read',
+      'patients.read',
     ],
 
     isSuperAdmin: true,
   });
 
+  assert(isSuperAdmin(superAdmin), 'SUPER_ADMIN should be recognized as super admin');
+
+  assert(hasRole(superAdmin, 'SUPER_ADMIN'), 'SUPER_ADMIN should have SUPER_ADMIN role');
+
+  assert(hasPermission(superAdmin, 'platform.read'), 'SUPER_ADMIN should have platform.read');
+
+  assert(hasPermission(superAdmin, 'tenants.create'), 'SUPER_ADMIN should have tenants.create');
+
   assert(
-    isSuperAdmin(superAdmin),
-    "SUPER_ADMIN should be recognized as super admin"
+    hasAllPermissions(superAdmin, ['platform.read', 'tenants.read', 'facilities.read']),
+    'SUPER_ADMIN should have all required permissions',
   );
 
   assert(
-    hasRole(superAdmin, "SUPER_ADMIN"),
-    "SUPER_ADMIN should have SUPER_ADMIN role"
-  );
-
-  assert(
-    hasPermission(superAdmin, "platform.read"),
-    "SUPER_ADMIN should have platform.read"
-  );
-
-  assert(
-    hasPermission(superAdmin, "tenants.create"),
-    "SUPER_ADMIN should have tenants.create"
-  );
-
-  assert(
-    hasAllPermissions(superAdmin, [
-      "platform.read",
-      "tenants.read",
-      "facilities.read",
-    ]),
-    "SUPER_ADMIN should have all required permissions"
-  );
-
-  assert(
-    hasAnyPermission(superAdmin, [
-      "nonexistent.permission",
-      "tenants.create",
-    ]),
-    "SUPER_ADMIN should have at least one requested permission"
+    hasAnyPermission(superAdmin, ['nonexistent.permission', 'tenants.create']),
+    'SUPER_ADMIN should have at least one requested permission',
   );
 
   /*
    * SUPER_ADMIN tenant access
    */
 
-  assert(
-    canAccessTenant(superAdmin, 1),
-    "SUPER_ADMIN should access tenant 1"
-  );
+  assert(canAccessTenant(superAdmin, 1), 'SUPER_ADMIN should access tenant 1');
 
-  assert(
-    canAccessTenant(superAdmin, 999),
-    "SUPER_ADMIN should access tenant 999"
-  );
+  assert(canAccessTenant(superAdmin, 999), 'SUPER_ADMIN should access tenant 999');
 
   /*
    * SUPER_ADMIN facility access
    */
 
-  assert(
-    canAccessFacility(superAdmin, 1, 10),
-    "SUPER_ADMIN should access facility 10"
-  );
+  assert(canAccessFacility(superAdmin, 1, 10), 'SUPER_ADMIN should access facility 10');
 
-  assert(
-    canAccessFacility(superAdmin, 999, 999),
-    "SUPER_ADMIN should access facility 999"
-  );
+  assert(canAccessFacility(superAdmin, 999, 999), 'SUPER_ADMIN should access facility 999');
 
   /*
    * =========================================================
@@ -155,90 +117,61 @@ async function runAuthorizationTests() {
 
     facilityId: null,
 
-    roles: ["TENANT_ADMIN"],
+    roles: ['TENANT_ADMIN'],
 
     permissions: [
-      "tenants.read",
-      "facilities.read",
-      "facilities.create",
-      "facilities.update",
-      "users.read",
-      "users.create",
-      "patients.read",
+      'tenants.read',
+      'facilities.read',
+      'facilities.create',
+      'facilities.update',
+      'users.read',
+      'users.create',
+      'patients.read',
     ],
 
     isSuperAdmin: false,
   });
 
+  assert(!isSuperAdmin(tenantAdmin), 'TENANT_ADMIN must not be recognized as SUPER_ADMIN');
+
+  assert(hasRole(tenantAdmin, 'TENANT_ADMIN'), 'TENANT_ADMIN should have TENANT_ADMIN role');
+
   assert(
-    !isSuperAdmin(tenantAdmin),
-    "TENANT_ADMIN must not be recognized as SUPER_ADMIN"
+    hasPermission(tenantAdmin, 'facilities.create'),
+    'TENANT_ADMIN should have facilities.create',
   );
 
   assert(
-    hasRole(tenantAdmin, "TENANT_ADMIN"),
-    "TENANT_ADMIN should have TENANT_ADMIN role"
-  );
-
-  assert(
-    hasPermission(
-      tenantAdmin,
-      "facilities.create"
-    ),
-    "TENANT_ADMIN should have facilities.create"
-  );
-
-  assert(
-    !hasPermission(
-      tenantAdmin,
-      "platform.manage"
-    ),
-    "TENANT_ADMIN should not have platform.manage"
+    !hasPermission(tenantAdmin, 'platform.manage'),
+    'TENANT_ADMIN should not have platform.manage',
   );
 
   /*
    * Own tenant
    */
 
-  assert(
-    canAccessTenant(tenantAdmin, 1),
-    "TENANT_ADMIN should access own tenant"
-  );
+  assert(canAccessTenant(tenantAdmin, 1), 'TENANT_ADMIN should access own tenant');
 
   /*
    * Different tenant
    */
 
-  assert(
-    !canAccessTenant(tenantAdmin, 2),
-    "TENANT_ADMIN must not access another tenant"
-  );
+  assert(!canAccessTenant(tenantAdmin, 2), 'TENANT_ADMIN must not access another tenant');
 
-  assert(
-    !canAccessTenant(tenantAdmin, 999),
-    "TENANT_ADMIN must not access arbitrary tenant"
-  );
+  assert(!canAccessTenant(tenantAdmin, 999), 'TENANT_ADMIN must not access arbitrary tenant');
 
   /*
    * Own tenant facilities
    */
 
   assert(
-    canAccessFacility(
-      tenantAdmin,
-      1,
-      10
-    ),
-    "TENANT_ADMIN should access facility in own tenant"
+    canAccessFacility(tenantAdmin, 1, 10),
+    'TENANT_ADMIN should access facility in own tenant',
   );
 
   assert(
-    canAccessFacility(
-      tenantAdmin,
-      1,
-      20
-    ),
-    "TENANT_ADMIN should access another facility in own tenant"
+    canAccessFacility(tenantAdmin, 1, 20),
+    'TENANT_ADMIN should access another facility in own tenant',
   );
 
   /*
@@ -246,12 +179,8 @@ async function runAuthorizationTests() {
    */
 
   assert(
-    !canAccessFacility(
-      tenantAdmin,
-      2,
-      30
-    ),
-    "TENANT_ADMIN must not access facility belonging to another tenant"
+    !canAccessFacility(tenantAdmin, 2, 30),
+    'TENANT_ADMIN must not access facility belonging to another tenant',
   );
 
   /*
@@ -267,98 +196,60 @@ async function runAuthorizationTests() {
 
     facilityId: 10,
 
-    roles: ["FACILITY_ADMIN"],
+    roles: ['FACILITY_ADMIN'],
 
     permissions: [
-      "facilities.read",
-      "users.read",
-      "users.create",
-      "patients.read",
-      "patients.create",
-      "patients.update",
-      "clinical.read",
+      'facilities.read',
+      'users.read',
+      'users.create',
+      'patients.read',
+      'patients.create',
+      'patients.update',
+      'clinical.read',
     ],
 
     isSuperAdmin: false,
   });
 
+  assert(!isSuperAdmin(facilityAdmin), 'FACILITY_ADMIN must not be SUPER_ADMIN');
+
+  assert(hasRole(facilityAdmin, 'FACILITY_ADMIN'), 'FACILITY_ADMIN role should be detected');
+
   assert(
-    !isSuperAdmin(facilityAdmin),
-    "FACILITY_ADMIN must not be SUPER_ADMIN"
+    hasPermission(facilityAdmin, 'patients.create'),
+    'FACILITY_ADMIN should have patients.create',
   );
 
   assert(
-    hasRole(
-      facilityAdmin,
-      "FACILITY_ADMIN"
-    ),
-    "FACILITY_ADMIN role should be detected"
-  );
-
-  assert(
-    hasPermission(
-      facilityAdmin,
-      "patients.create"
-    ),
-    "FACILITY_ADMIN should have patients.create"
-  );
-
-  assert(
-    !hasPermission(
-      facilityAdmin,
-      "platform.manage"
-    ),
-    "FACILITY_ADMIN should not have platform.manage"
+    !hasPermission(facilityAdmin, 'platform.manage'),
+    'FACILITY_ADMIN should not have platform.manage',
   );
 
   /*
    * Own tenant
    */
 
-  assert(
-    canAccessTenant(
-      facilityAdmin,
-      1
-    ),
-    "FACILITY_ADMIN should access own tenant"
-  );
+  assert(canAccessTenant(facilityAdmin, 1), 'FACILITY_ADMIN should access own tenant');
 
   /*
    * Different tenant
    */
 
-  assert(
-    !canAccessTenant(
-      facilityAdmin,
-      2
-    ),
-    "FACILITY_ADMIN must not access another tenant"
-  );
+  assert(!canAccessTenant(facilityAdmin, 2), 'FACILITY_ADMIN must not access another tenant');
 
   /*
    * Own facility
    */
 
-  assert(
-    canAccessFacility(
-      facilityAdmin,
-      1,
-      10
-    ),
-    "FACILITY_ADMIN should access own facility"
-  );
+  assert(canAccessFacility(facilityAdmin, 1, 10), 'FACILITY_ADMIN should access own facility');
 
   /*
    * Another facility in same tenant
    */
 
   assert(
-    !canAccessFacility(
-      facilityAdmin,
-      1,
-      20
-    ),
-    "FACILITY_ADMIN must not access another facility"
+    !canAccessFacility(facilityAdmin, 1, 20),
+    'FACILITY_ADMIN must not access another facility',
   );
 
   /*
@@ -366,12 +257,8 @@ async function runAuthorizationTests() {
    */
 
   assert(
-    !canAccessFacility(
-      facilityAdmin,
-      2,
-      30
-    ),
-    "FACILITY_ADMIN must not access another tenant facility"
+    !canAccessFacility(facilityAdmin, 2, 30),
+    'FACILITY_ADMIN must not access another tenant facility',
   );
 
   /*
@@ -387,7 +274,7 @@ async function runAuthorizationTests() {
 
     facilityId: 10,
 
-    roles: ["STAFF"],
+    roles: ['STAFF'],
 
     permissions: [],
 
@@ -395,33 +282,18 @@ async function runAuthorizationTests() {
   });
 
   assert(
-    !hasPermission(
-      noPermissionUser,
-      "patients.read"
-    ),
-    "User without permission must be denied"
+    !hasPermission(noPermissionUser, 'patients.read'),
+    'User without permission must be denied',
   );
 
   assert(
-    !hasAllPermissions(
-      noPermissionUser,
-      [
-        "patients.read",
-        "patients.create",
-      ]
-    ),
-    "User without permissions must fail all-permissions check"
+    !hasAllPermissions(noPermissionUser, ['patients.read', 'patients.create']),
+    'User without permissions must fail all-permissions check',
   );
 
   assert(
-    !hasAnyPermission(
-      noPermissionUser,
-      [
-        "patients.read",
-        "patients.create",
-      ]
-    ),
-    "User without permissions must fail any-permission check"
+    !hasAnyPermission(noPermissionUser, ['patients.read', 'patients.create']),
+    'User without permissions must fail any-permission check',
   );
 
   /*
@@ -450,19 +322,13 @@ async function runAuthorizationTests() {
   });
 
   assert(
-    !hasRole(
-      revokedRoleUser,
-      "FACILITY_ADMIN"
-    ),
-    "Revoked role must not appear in authorization context"
+    !hasRole(revokedRoleUser, 'FACILITY_ADMIN'),
+    'Revoked role must not appear in authorization context',
   );
 
   assert(
-    !hasPermission(
-      revokedRoleUser,
-      "patients.read"
-    ),
-    "Revoked role must provide no permissions"
+    !hasPermission(revokedRoleUser, 'patients.read'),
+    'Revoked role must provide no permissions',
   );
 
   /*
@@ -478,42 +344,18 @@ async function runAuthorizationTests() {
 
     facilityId: 10,
 
-    roles: [
-      "DOCTOR",
-      "CLINICAL_OFFICER",
-    ],
+    roles: ['DOCTOR', 'CLINICAL_OFFICER'],
 
-    permissions: [
-      "patients.read",
-      "clinical.read",
-    ],
+    permissions: ['patients.read', 'clinical.read'],
 
     isSuperAdmin: false,
   });
 
-  assert(
-    hasRole(
-      multiRoleUser,
-      "DOCTOR"
-    ),
-    "DOCTOR role should be detected"
-  );
+  assert(hasRole(multiRoleUser, 'DOCTOR'), 'DOCTOR role should be detected');
 
-  assert(
-    hasRole(
-      multiRoleUser,
-      "CLINICAL_OFFICER"
-    ),
-    "CLINICAL_OFFICER role should be detected"
-  );
+  assert(hasRole(multiRoleUser, 'CLINICAL_OFFICER'), 'CLINICAL_OFFICER role should be detected');
 
-  assert(
-    !hasRole(
-      multiRoleUser,
-      "PHARMACIST"
-    ),
-    "PHARMACIST role should not be detected"
-  );
+  assert(!hasRole(multiRoleUser, 'PHARMACIST'), 'PHARMACIST role should not be detected');
 
   /*
    * =========================================================
@@ -521,39 +363,13 @@ async function runAuthorizationTests() {
    * =========================================================
    */
 
-  assert(
-    !canAccessTenant(
-      tenantAdmin,
-      0
-    ),
-    "Tenant ID 0 must be rejected"
-  );
+  assert(!canAccessTenant(tenantAdmin, 0), 'Tenant ID 0 must be rejected');
 
-  assert(
-    !canAccessTenant(
-      tenantAdmin,
-      -1
-    ),
-    "Negative tenant ID must be rejected"
-  );
+  assert(!canAccessTenant(tenantAdmin, -1), 'Negative tenant ID must be rejected');
 
-  assert(
-    !canAccessFacility(
-      facilityAdmin,
-      0,
-      10
-    ),
-    "Invalid tenant ID must be rejected"
-  );
+  assert(!canAccessFacility(facilityAdmin, 0, 10), 'Invalid tenant ID must be rejected');
 
-  assert(
-    !canAccessFacility(
-      facilityAdmin,
-      1,
-      0
-    ),
-    "Invalid facility ID must be rejected"
-  );
+  assert(!canAccessFacility(facilityAdmin, 1, 0), 'Invalid facility ID must be rejected');
 
   /*
    * =========================================================
@@ -561,30 +377,30 @@ async function runAuthorizationTests() {
    * =========================================================
    */
 
-  console.log("");
-  console.log("✓ SUPER_ADMIN authorization passed");
-  console.log("✓ TENANT_ADMIN authorization passed");
-  console.log("✓ FACILITY_ADMIN authorization passed");
-  console.log("✓ Permission checks passed");
-  console.log("✓ Role checks passed");
-  console.log("✓ Tenant isolation checks passed");
-  console.log("✓ Facility isolation checks passed");
-  console.log("✓ Revoked/inactive role behavior passed");
-  console.log("✓ Invalid ID protection passed");
+  console.log('');
+  console.log('✓ SUPER_ADMIN authorization passed');
+  console.log('✓ TENANT_ADMIN authorization passed');
+  console.log('✓ FACILITY_ADMIN authorization passed');
+  console.log('✓ Permission checks passed');
+  console.log('✓ Role checks passed');
+  console.log('✓ Tenant isolation checks passed');
+  console.log('✓ Facility isolation checks passed');
+  console.log('✓ Revoked/inactive role behavior passed');
+  console.log('✓ Invalid ID protection passed');
 
-  console.log("");
-  console.log("==============================================");
-  console.log("RBAC AUTHORIZATION TEST PASSED");
-  console.log("==============================================");
-  console.log("");
+  console.log('');
+  console.log('==============================================');
+  console.log('RBAC AUTHORIZATION TEST PASSED');
+  console.log('==============================================');
+  console.log('');
 }
 
 runAuthorizationTests().catch((error) => {
-  console.error("");
-  console.error("==============================================");
-  console.error("RBAC AUTHORIZATION TEST FAILED");
-  console.error("==============================================");
-  console.error("");
+  console.error('');
+  console.error('==============================================');
+  console.error('RBAC AUTHORIZATION TEST FAILED');
+  console.error('==============================================');
+  console.error('');
   console.error(error);
   process.exit(1);
 });

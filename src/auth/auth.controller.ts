@@ -2,37 +2,27 @@
   validateStaffInvitation,
   acceptStaffInvitation,
   StaffInvitationError,
-} from "./staff-invitation.service";
-import type { Request, Response } from "express";
+} from './staff-invitation.service';
+import type { Request, Response } from 'express';
 
-import {
-  login,
-  validateSession,
-  revokeSession,
-} from "./auth.service";
+import { login, validateSession, revokeSession } from './auth.service';
 
-import {
-  validateLoginInput,
-  validateSessionToken,
-  AuthValidationError,
-} from "./auth.validation";
+import { validateLoginInput, validateSessionToken, AuthValidationError } from './auth.validation';
 
-import type { LoginInput } from "./auth.types";
-import { loadAuthorizationContext } from "./authorization.service";
-
+import type { LoginInput } from './auth.types';
+import { loadAuthorizationContext } from './authorization.service';
 
 import {
   validateFacilityAdminInvitation,
   acceptFacilityAdminInvitation,
   FacilityAdminInvitationError,
-} from "./facility-admin-invitation.service";
-
+} from './facility-admin-invitation.service';
 
 function getClientIp(req: Request): string | null {
-  const forwardedFor = req.headers["x-forwarded-for"];
+  const forwardedFor = req.headers['x-forwarded-for'];
 
-  if (typeof forwardedFor === "string") {
-    return forwardedFor.split(",")[0].trim() || null;
+  if (typeof forwardedFor === 'string') {
+    return forwardedFor.split(',')[0].trim() || null;
   }
 
   if (Array.isArray(forwardedFor)) {
@@ -43,60 +33,43 @@ function getClientIp(req: Request): string | null {
 }
 
 function getUserAgent(req: Request): string | null {
-  const userAgent = req.headers["user-agent"];
+  const userAgent = req.headers['user-agent'];
 
-  return typeof userAgent === "string"
-    ? userAgent
-    : null;
+  return typeof userAgent === 'string' ? userAgent : null;
 }
 
 /**
  * POST /api/auth/login
  */
-export async function loginController(
-  req: Request,
-  res: Response
-): Promise<void> {
+export async function loginController(req: Request, res: Response): Promise<void> {
   try {
-    const validated =
-      validateLoginInput({
-        ...(req.body ?? {}),
-        ipAddress:
-          getClientIp(req),
-        userAgent:
-          getUserAgent(req),
-      });
+    const validated = validateLoginInput({
+      ...(req.body ?? {}),
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
 
     const input: LoginInput = {
-      identifier:
-        validated.identifier,
-      password:
-        validated.password,
-      ipAddress:
-        validated.ipAddress,
-      userAgent:
-        validated.userAgent,
+      identifier: validated.identifier,
+      password: validated.password,
+      ipAddress: validated.ipAddress,
+      userAgent: validated.userAgent,
     };
 
-    const result =
-      await login(input);
+    const result = await login(input);
 
     if (!result.success) {
       const status =
-        result.error === "ACCOUNT_LOCKED"
+        result.error === 'ACCOUNT_LOCKED'
           ? 423
-          : result.error === "ACCOUNT_UNAVAILABLE"
+          : result.error === 'ACCOUNT_UNAVAILABLE'
             ? 403
             : 401;
 
       res.status(status).json({
         success: false,
-        message:
-          result.message ??
-          "Authentication failed.",
-        error:
-          result.error ??
-          "AUTHENTICATION_FAILED",
+        message: result.message ?? 'Authentication failed.',
+        error: result.error ?? 'AUTHENTICATION_FAILED',
       });
 
       return;
@@ -109,13 +82,10 @@ export async function loginController(
     if (result.requiresMfa) {
       res.status(200).json({
         success: true,
-        message:
-          result.message ??
-          "MFA verification required.",
+        message: result.message ?? 'MFA verification required.',
         user: result.user,
         requiresMfa: true,
-        requiresPasswordChange:
-          result.requiresPasswordChange ?? false,
+        requiresPasswordChange: result.requiresPasswordChange ?? false,
       });
 
       return;
@@ -123,23 +93,15 @@ export async function loginController(
 
     res.status(200).json({
       success: true,
-      message:
-        result.message ??
-        "Login successful.",
+      message: result.message ?? 'Login successful.',
       user: result.user,
-      sessionToken:
-        result.sessionToken,
-      expiresAt:
-        result.expiresAt,
+      sessionToken: result.sessionToken,
+      expiresAt: result.expiresAt,
       requiresMfa: false,
-      requiresPasswordChange:
-        result.requiresPasswordChange ?? false,
+      requiresPasswordChange: result.requiresPasswordChange ?? false,
     });
   } catch (error) {
-    if (
-      error instanceof
-      AuthValidationError
-    ) {
+    if (error instanceof AuthValidationError) {
       res.status(400).json({
         success: false,
         error: error.code,
@@ -149,16 +111,12 @@ export async function loginController(
       return;
     }
 
-    console.error(
-      "Login controller error:",
-      error
-    );
+    console.error('Login controller error:', error);
 
     res.status(500).json({
       success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message:
-        "An unexpected authentication error occurred.",
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'An unexpected authentication error occurred.',
     });
   }
 }
@@ -168,49 +126,31 @@ export async function loginController(
  *
  * Validates the currently supplied Bearer session.
  */
-export async function sessionController(
-  req: Request,
-  res: Response
-): Promise<void> {
+export async function sessionController(req: Request, res: Response): Promise<void> {
   try {
-    const authorization =
-      req.headers.authorization;
+    const authorization = req.headers.authorization;
 
-    if (
-      !authorization ||
-      !authorization.startsWith("Bearer ")
-    ) {
+    if (!authorization || !authorization.startsWith('Bearer ')) {
       res.status(401).json({
         success: false,
-        error: "UNAUTHORIZED",
-        message:
-          "Authentication session is required.",
+        error: 'UNAUTHORIZED',
+        message: 'Authentication session is required.',
       });
 
       return;
     }
 
-    const rawToken =
-      authorization
-        .slice(7)
-        .trim();
+    const rawToken = authorization.slice(7).trim();
 
-    const sessionToken =
-      validateSessionToken(
-        rawToken
-      );
+    const sessionToken = validateSessionToken(rawToken);
 
-    const result =
-      await validateSession(
-        sessionToken
-      );
+    const result = await validateSession(sessionToken);
 
     if (!result) {
       res.status(401).json({
         success: false,
-        error: "INVALID_SESSION",
-        message:
-          "Your session is invalid, expired, or revoked.",
+        error: 'INVALID_SESSION',
+        message: 'Your session is invalid, expired, or revoked.',
       });
 
       return;
@@ -221,7 +161,7 @@ export async function sessionController(
     if (!authorizationContext) {
       res.status(403).json({
         success: false,
-        error: "AUTHORIZATION_CONTEXT_UNAVAILABLE",
+        error: 'AUTHORIZATION_CONTEXT_UNAVAILABLE',
         message: "Unable to load the user's authorization context.",
       });
       return;
@@ -230,51 +170,30 @@ export async function sessionController(
     res.status(200).json({
       success: true,
       user: {
-        id:
-          result.user.id,
-        uid:
-          result.user.uid,
-        username:
-          result.user.username,
-        email:
-          result.user.email,
-        fullName:
-          result.user.fullName,
-        tenantId:
-          result.user.tenantId,
-        facilityId:
-          result.user.facilityId,
-        designation:
-          result.user.designation ?? null,
-        roles:
-          authorizationContext.roles,
-        permissions:
-          authorizationContext.permissions,
-        isSuperAdmin:
-          authorizationContext.isSuperAdmin,
-        accountStatus:
-          result.user.accountStatus,
-        mustChangePassword:
-          result.user.mustChangePassword,
-        mfaEnabled:
-          result.user.mfaEnabled,
-        mfaRequired:
-          result.user.mfaRequired,
+        id: result.user.id,
+        uid: result.user.uid,
+        username: result.user.username,
+        email: result.user.email,
+        fullName: result.user.fullName,
+        tenantId: result.user.tenantId,
+        facilityId: result.user.facilityId,
+        designation: result.user.designation ?? null,
+        roles: authorizationContext.roles,
+        permissions: authorizationContext.permissions,
+        isSuperAdmin: authorizationContext.isSuperAdmin,
+        accountStatus: result.user.accountStatus,
+        mustChangePassword: result.user.mustChangePassword,
+        mfaEnabled: result.user.mfaEnabled,
+        mfaRequired: result.user.mfaRequired,
       },
       session: {
-        id:
-          result.session.id,
-        expiresAt:
-          result.session.expiresAt,
-        lastActivityAt:
-          result.session.lastActivityAt,
+        id: result.session.id,
+        expiresAt: result.session.expiresAt,
+        lastActivityAt: result.session.lastActivityAt,
       },
     });
   } catch (error) {
-    if (
-      error instanceof
-      AuthValidationError
-    ) {
+    if (error instanceof AuthValidationError) {
       res.status(401).json({
         success: false,
         error: error.code,
@@ -284,16 +203,12 @@ export async function sessionController(
       return;
     }
 
-    console.error(
-      "Session validation controller error:",
-      error
-    );
+    console.error('Session validation controller error:', error);
 
     res.status(500).json({
       success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message:
-        "Unable to validate authentication session.",
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'Unable to validate authentication session.',
     });
   }
 }
@@ -301,77 +216,48 @@ export async function sessionController(
 /**
  * POST /api/auth/logout
  */
-export async function logoutController(
-  req: Request,
-  res: Response
-): Promise<void> {
+export async function logoutController(req: Request, res: Response): Promise<void> {
   try {
-    const authorization =
-      req.headers.authorization;
+    const authorization = req.headers.authorization;
 
-    if (
-      !authorization ||
-      !authorization.startsWith("Bearer ")
-    ) {
+    if (!authorization || !authorization.startsWith('Bearer ')) {
       res.status(200).json({
         success: true,
-        message: "Already logged out.",
+        message: 'Already logged out.',
       });
 
       return;
     }
 
-    const rawToken =
-      authorization
-        .slice(7)
-        .trim();
+    const rawToken = authorization.slice(7).trim();
 
-    const sessionToken =
-      validateSessionToken(
-        rawToken
-      );
+    const sessionToken = validateSessionToken(rawToken);
 
-    const revoked =
-      await revokeSession(
-        sessionToken,
-        "USER_LOGOUT"
-      );
+    const revoked = await revokeSession(sessionToken, 'USER_LOGOUT');
 
     res.status(200).json({
       success: true,
-      message:
-        revoked
-          ? "Logout successful."
-          : "Session already inactive.",
+      message: revoked ? 'Logout successful.' : 'Session already inactive.',
     });
   } catch (error) {
-    if (
-      error instanceof
-      AuthValidationError
-    ) {
+    if (error instanceof AuthValidationError) {
       res.status(200).json({
         success: true,
-        message:
-          "Logout completed.",
+        message: 'Logout completed.',
       });
 
       return;
     }
 
-    console.error(
-      "Logout controller error:",
-      error
-    );
+    console.error('Logout controller error:', error);
 
     res.status(500).json({
       success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message:
-        "Unable to complete logout.",
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'Unable to complete logout.',
     });
   }
 }
-
 
 /**
  * GET /api/auth/facility-admin-invitations/validate?token=...
@@ -385,17 +271,16 @@ export async function validateFacilityAdminInvitationController(
   try {
     const token = req.query.token;
 
-    if (typeof token !== "string" || !token.trim()) {
+    if (typeof token !== 'string' || !token.trim()) {
       res.status(400).json({
         success: false,
-        error: "INVALID_INVITATION_TOKEN",
-        message: "A valid invitation token is required.",
+        error: 'INVALID_INVITATION_TOKEN',
+        message: 'A valid invitation token is required.',
       });
       return;
     }
 
-    const invitation =
-      await validateFacilityAdminInvitation(token.trim());
+    const invitation = await validateFacilityAdminInvitation(token.trim());
 
     res.status(200).json({
       success: true,
@@ -411,15 +296,12 @@ export async function validateFacilityAdminInvitationController(
       return;
     }
 
-    console.error(
-      "Facility admin invitation validation error:",
-      error,
-    );
+    console.error('Facility admin invitation validation error:', error);
 
     res.status(500).json({
       success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message: "Unable to validate this invitation.",
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'Unable to validate this invitation.',
     });
   }
 }
@@ -438,15 +320,11 @@ export async function acceptFacilityAdminInvitationController(
     const body = req.body ?? {};
     const { token, username, password } = body;
 
-    if (
-      typeof token !== "string" ||
-      typeof username !== "string" ||
-      typeof password !== "string"
-    ) {
+    if (typeof token !== 'string' || typeof username !== 'string' || typeof password !== 'string') {
       res.status(400).json({
         success: false,
-        error: "INVALID_REQUEST",
-        message: "Token, username, and password are required.",
+        error: 'INVALID_REQUEST',
+        message: 'Token, username, and password are required.',
       });
       return;
     }
@@ -468,15 +346,12 @@ export async function acceptFacilityAdminInvitationController(
       return;
     }
 
-    console.error(
-      "Facility admin invitation acceptance error:",
-      error,
-    );
+    console.error('Facility admin invitation acceptance error:', error);
 
     res.status(500).json({
       success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message: "Unable to complete invitation acceptance.",
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'Unable to complete invitation acceptance.',
     });
   }
 }
@@ -489,11 +364,11 @@ export async function validateStaffInvitationController(
   try {
     const token = req.query.token;
 
-    if (typeof token !== "string" || !token.trim()) {
+    if (typeof token !== 'string' || !token.trim()) {
       res.status(400).json({
         success: false,
-        error: "INVALID_INVITATION_TOKEN",
-        message: "A valid invitation token is required.",
+        error: 'INVALID_INVITATION_TOKEN',
+        message: 'A valid invitation token is required.',
       });
       return;
     }
@@ -510,33 +385,26 @@ export async function validateStaffInvitationController(
       return;
     }
 
-    console.error("Staff invitation validation error:", error);
+    console.error('Staff invitation validation error:', error);
     res.status(500).json({
       success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message: "Unable to validate this invitation.",
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'Unable to validate this invitation.',
     });
   }
 }
 
 // Public endpoint: the invited staff member sets their own credentials.
-export async function acceptStaffInvitationController(
-  req: Request,
-  res: Response,
-): Promise<void> {
+export async function acceptStaffInvitationController(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body ?? {};
     const { token, username, password } = body;
 
-    if (
-      typeof token !== "string" ||
-      typeof username !== "string" ||
-      typeof password !== "string"
-    ) {
+    if (typeof token !== 'string' || typeof username !== 'string' || typeof password !== 'string') {
       res.status(400).json({
         success: false,
-        error: "INVALID_REQUEST",
-        message: "Token, username and password are required.",
+        error: 'INVALID_REQUEST',
+        message: 'Token, username and password are required.',
       });
       return;
     }
@@ -558,13 +426,11 @@ export async function acceptStaffInvitationController(
       return;
     }
 
-    console.error("Staff invitation acceptance controller error:", error);
+    console.error('Staff invitation acceptance controller error:', error);
     res.status(500).json({
       success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message: "Unable to accept this invitation.",
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'Unable to accept this invitation.',
     });
   }
 }
-
-

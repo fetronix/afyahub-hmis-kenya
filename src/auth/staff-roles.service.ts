@@ -29,17 +29,9 @@
  *     transaction
  */
 
-import {
-  and,
-  asc,
-  eq,
-  ilike,
-  inArray,
-  isNull,
-  or,
-} from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 
-import { db } from "../db";
+import { db } from '../db';
 import {
   auditLogs,
   facilityRolePermissionOverridePermissions,
@@ -49,7 +41,7 @@ import {
   roles,
   userRoles,
   users,
-} from "../db/schema";
+} from '../db/schema';
 
 import {
   isAdministratorRoleName,
@@ -58,24 +50,24 @@ import {
   MAX_PERMISSIONS_PER_ROLE,
   MAX_ROLES_PER_STAFF_MEMBER,
   MIN_PERMISSIONS_PER_ROLE,
-} from "./staff-role-policy";
+} from './staff-role-policy';
 import {
   regulatorForStaffRole,
   requiresProfessionalVerification,
-} from "../integrations/professional/practitioner.contracts.ts";
+} from '../integrations/professional/practitioner.contracts.ts';
 import {
   findVerifiedCredentialForUser,
   listUsableCredentialsForStaff,
-} from "../integrations/professional/professional-verification.service.ts";
+} from '../integrations/professional/professional-verification.service.ts';
 
 export class StaffRoleError extends Error {
   constructor(
     message: string,
     public readonly statusCode = 400,
-    public readonly code = "STAFF_ROLE_ERROR",
+    public readonly code = 'STAFF_ROLE_ERROR',
   ) {
     super(message);
-    this.name = "StaffRoleError";
+    this.name = 'StaffRoleError';
   }
 }
 
@@ -89,7 +81,7 @@ export {
   isRestrictedRolePermission,
   MAX_ROLES_PER_STAFF_MEMBER,
   MIN_PERMISSIONS_PER_ROLE,
-} from "./staff-role-policy";
+} from './staff-role-policy';
 
 export type AssignableRole = {
   id: number;
@@ -104,9 +96,7 @@ export type AssignableRole = {
   regulatorName: string | null;
 };
 
-export type StaffRoleExecutor =
-  | typeof db
-  | Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type StaffRoleExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 type RolePermissionRow = {
   roleId: number;
@@ -125,7 +115,14 @@ async function loadTenantRoles(
   executor: StaffRoleExecutor,
   tenantId: number,
 ): Promise<
-  Map<number, { name: string; description: string | null; permissions: { code: string; module: string | null }[] }>
+  Map<
+    number,
+    {
+      name: string;
+      description: string | null;
+      permissions: { code: string; module: string | null }[];
+    }
+  >
 > {
   const rows: RolePermissionRow[] = await executor
     .select({
@@ -231,7 +228,7 @@ export async function loadAssignableRoleCatalogue(
   tenantId: number,
 ): Promise<AssignableRoleCatalogue> {
   if (!Number.isSafeInteger(tenantId) || tenantId <= 0) {
-    throw new StaffRoleError("Invalid tenant.", 400, "INVALID_TENANT");
+    throw new StaffRoleError('Invalid tenant.', 400, 'INVALID_TENANT');
   }
 
   const grouped = await loadTenantRoles(executor, tenantId);
@@ -248,9 +245,7 @@ export async function loadAssignableRoleCatalogue(
   return { knownRoleIds: new Set(grouped.keys()), offered };
 }
 
-export async function listAssignableStaffRoles(
-  tenantId: number,
-): Promise<AssignableRole[]> {
+export async function listAssignableStaffRoles(tenantId: number): Promise<AssignableRole[]> {
   const catalogue = await loadAssignableRoleCatalogue(db, tenantId);
   return Array.from(catalogue.offered.values());
 }
@@ -278,16 +273,16 @@ export function pickAssignableRoles(
        */
       if (catalogue.knownRoleIds.has(roleId)) {
         throw new StaffRoleError(
-          "That role carries administrative permissions and cannot be assigned here.",
+          'That role carries administrative permissions and cannot be assigned here.',
           403,
-          "ROLE_NOT_ASSIGNABLE",
+          'ROLE_NOT_ASSIGNABLE',
         );
       }
 
       throw new StaffRoleError(
-        "Choose an active role belonging to this tenant.",
+        'Choose an active role belonging to this tenant.',
         400,
-        "INVALID_STAFF_ROLE",
+        'INVALID_STAFF_ROLE',
       );
     }
 
@@ -302,10 +297,7 @@ export async function assertStaffRolesAssignable(
   tenantId: number,
   roleIds: number[],
 ): Promise<Map<number, AssignableRole>> {
-  return pickAssignableRoles(
-    await loadAssignableRoleCatalogue(executor, tenantId),
-    roleIds,
-  );
+  return pickAssignableRoles(await loadAssignableRoleCatalogue(executor, tenantId), roleIds);
 }
 
 /** Single-role form used by the invitation path. */
@@ -319,9 +311,9 @@ export async function assertStaffRoleAssignable(
 
   if (!role) {
     throw new StaffRoleError(
-      "Choose an active role belonging to this tenant.",
+      'Choose an active role belonging to this tenant.',
       400,
-      "INVALID_STAFF_ROLE",
+      'INVALID_STAFF_ROLE',
     );
   }
 
@@ -362,24 +354,20 @@ export async function getStaffRolesOverview(input: {
   search?: string | null;
 }) {
   if (!Number.isSafeInteger(input.facilityId) || input.facilityId <= 0) {
-    throw new StaffRoleError("Invalid facility.", 400, "INVALID_FACILITY");
+    throw new StaffRoleError('Invalid facility.', 400, 'INVALID_FACILITY');
   }
 
   const assignableRoles = await listAssignableStaffRoles(input.tenantId);
   const assignableIds = new Set(assignableRoles.map((role) => role.id));
 
-  const search = (input.search ?? "").trim();
+  const search = (input.search ?? '').trim();
 
   if (search.length > 80) {
-    throw new StaffRoleError(
-      "The search text is too long.",
-      400,
-      "INVALID_SEARCH",
-    );
+    throw new StaffRoleError('The search text is too long.', 400, 'INVALID_SEARCH');
   }
 
   // Escape LIKE wildcards so a searched '%' stays a literal.
-  const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+  const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
 
   const scopeCondition = and(
     eq(users.tenantId, input.tenantId),
@@ -499,11 +487,10 @@ export async function getStaffRolesOverview(input: {
     let protectionReason: string | null = null;
 
     if (isSelf) {
-      protectionReason =
-        "This is your own account. Another administrator must change your roles.";
+      protectionReason = 'This is your own account. Another administrator must change your roles.';
     } else if (holdsAdministratorRole) {
       protectionReason =
-        "This account holds an administrator role. Only a platform administrator can change it here.";
+        'This account holds an administrator role. Only a platform administrator can change it here.';
     }
 
     return {
@@ -549,19 +536,11 @@ export async function assignStaffRoles(input: {
   roleIds: number[];
 }) {
   if (!Number.isSafeInteger(input.targetUserId) || input.targetUserId <= 0) {
-    throw new StaffRoleError(
-      "A valid staff account is required.",
-      400,
-      "INVALID_STAFF_ID",
-    );
+    throw new StaffRoleError('A valid staff account is required.', 400, 'INVALID_STAFF_ID');
   }
 
   if (!Array.isArray(input.roleIds)) {
-    throw new StaffRoleError(
-      "A list of roles is required.",
-      400,
-      "INVALID_ROLE_SELECTION",
-    );
+    throw new StaffRoleError('A list of roles is required.', 400, 'INVALID_ROLE_SELECTION');
   }
 
   const uniqueRoleIds = Array.from(new Set(input.roleIds));
@@ -574,7 +553,7 @@ export async function assignStaffRoles(input: {
     throw new StaffRoleError(
       `Choose between 1 and ${MAX_ROLES_PER_STAFF_MEMBER} roles.`,
       400,
-      "INVALID_ROLE_SELECTION",
+      'INVALID_ROLE_SELECTION',
     );
   }
 
@@ -585,14 +564,13 @@ export async function assignStaffRoles(input: {
    * is checked here as well — a permission on its own is not enough.
    */
   const isAdministrator =
-    input.isSuperAdmin ||
-    input.actorRoleNames.some((name) => isAdministratorRoleName(name));
+    input.isSuperAdmin || input.actorRoleNames.some((name) => isAdministratorRoleName(name));
 
   if (!isAdministrator) {
     throw new StaffRoleError(
-      "Only a facility or platform administrator can change staff roles.",
+      'Only a facility or platform administrator can change staff roles.',
       403,
-      "ADMINISTRATOR_ROLE_REQUIRED",
+      'ADMINISTRATOR_ROLE_REQUIRED',
     );
   }
 
@@ -611,30 +589,26 @@ export async function assignStaffRoles(input: {
       .from(users)
       .where(eq(users.id, input.targetUserId))
       .limit(1)
-      .for("update");
+      .for('update');
 
     /*
      * An account in another facility or another tenant is reported as
      * not found. Saying "forbidden" would confirm that the account
      * exists somewhere the caller cannot see.
      */
-    if (
-      !target ||
-      target.tenantId !== input.tenantId ||
-      target.facilityId !== input.facilityId
-    ) {
+    if (!target || target.tenantId !== input.tenantId || target.facilityId !== input.facilityId) {
       throw new StaffRoleError(
-        "That staff account was not found at this facility.",
+        'That staff account was not found at this facility.',
         404,
-        "STAFF_NOT_FOUND",
+        'STAFF_NOT_FOUND',
       );
     }
 
     if (target.id === input.actorUserId) {
       throw new StaffRoleError(
-        "You cannot change your own roles. Another administrator must do it.",
+        'You cannot change your own roles. Another administrator must do it.',
         403,
-        "SELF_ROLE_CHANGE_NOT_ALLOWED",
+        'SELF_ROLE_CHANGE_NOT_ALLOWED',
       );
     }
 
@@ -672,9 +646,9 @@ export async function assignStaffRoles(input: {
 
     if (holdsAdministratorRole) {
       throw new StaffRoleError(
-        "This account holds an administrator role. Only a platform administrator can change it here.",
+        'This account holds an administrator role. Only a platform administrator can change it here.',
         403,
-        "ADMINISTRATOR_ACCOUNT_PROTECTED",
+        'ADMINISTRATOR_ACCOUNT_PROTECTED',
       );
     }
 
@@ -702,9 +676,9 @@ export async function assignStaffRoles(input: {
 
       if (!credential) {
         throw new StaffRoleError(
-          `${role.name} is a clinical role. Verify ${target.fullName}'s professional registration with ${role.regulatorName ?? "the regulator"} before assigning it.`,
+          `${role.name} is a clinical role. Verify ${target.fullName}'s professional registration with ${role.regulatorName ?? 'the regulator'} before assigning it.`,
           409,
-          "VERIFICATION_REQUIRED",
+          'VERIFICATION_REQUIRED',
         );
       }
     }
@@ -715,9 +689,7 @@ export async function assignStaffRoles(input: {
      * assignable set, it does not quietly strip access.
      */
     const fixedHeldRoleIds = new Set(
-      Array.from(heldRoleIds).filter(
-        (roleId) => !catalogue.offered.has(roleId),
-      ),
+      Array.from(heldRoleIds).filter((roleId) => !catalogue.offered.has(roleId)),
     );
 
     const heldAssignableRoleIds = Array.from(heldRoleIds).filter((roleId) =>
@@ -725,9 +697,7 @@ export async function assignStaffRoles(input: {
     );
 
     const toAdd = uniqueRoleIds.filter((roleId) => !heldRoleIds.has(roleId));
-    const toRemove = heldAssignableRoleIds.filter(
-      (roleId) => !uniqueRoleIds.includes(roleId),
-    );
+    const toRemove = heldAssignableRoleIds.filter((roleId) => !uniqueRoleIds.includes(roleId));
 
     if (toAdd.length === 0 && toRemove.length === 0) {
       return {
@@ -760,9 +730,7 @@ export async function assignStaffRoles(input: {
       const [existing] = await tx
         .select({ id: userRoles.id })
         .from(userRoles)
-        .where(
-          and(eq(userRoles.userId, target.id), eq(userRoles.roleId, roleId)),
-        )
+        .where(and(eq(userRoles.userId, target.id), eq(userRoles.roleId, roleId)))
         .limit(1);
 
       if (existing) {
@@ -785,30 +753,23 @@ export async function assignStaffRoles(input: {
       }
     }
 
-    const addedNames = toAdd.map(
-      (roleId) => assignableById.get(roleId)?.name ?? String(roleId),
-    );
+    const addedNames = toAdd.map((roleId) => assignableById.get(roleId)?.name ?? String(roleId));
     const removedNames = toRemove.map(
-      (roleId) =>
-        heldRows.find((row) => row.roleId === roleId)?.roleName ??
-        String(roleId),
+      (roleId) => heldRows.find((row) => row.roleId === roleId)?.roleName ?? String(roleId),
     );
 
     await tx.insert(auditLogs).values({
       tenantId: input.tenantId,
       facilityId: input.facilityId,
       userId: actor,
-      action: "UPDATE",
-      resource: "USER_ROLES",
+      action: 'UPDATE',
+      resource: 'USER_ROLES',
       resourceId: String(target.id),
-      details: `Changed roles for ${target.fullName}: added ${addedNames.length > 0 ? addedNames.join(", ") : "none"}; removed ${removedNames.length > 0 ? removedNames.join(", ") : "none"}.`,
-      severity: "INFO",
+      details: `Changed roles for ${target.fullName}: added ${addedNames.length > 0 ? addedNames.join(', ') : 'none'}; removed ${removedNames.length > 0 ? removedNames.join(', ') : 'none'}.`,
+      severity: 'INFO',
     });
 
-    const finalRoleIds = [
-      ...Array.from(fixedHeldRoleIds),
-      ...uniqueRoleIds,
-    ];
+    const finalRoleIds = [...Array.from(fixedHeldRoleIds), ...uniqueRoleIds];
 
     return {
       userId: target.id,
@@ -819,7 +780,6 @@ export async function assignStaffRoles(input: {
     };
   });
 }
-
 
 /* ============================================================
    TASK-LEVEL PERMISSIONS ON A ROLE
@@ -838,14 +798,13 @@ function assertActorIsAdministrator(input: {
   isSuperAdmin: boolean;
 }): void {
   const isAdministrator =
-    input.isSuperAdmin ||
-    input.actorRoleNames.some((name) => isAdministratorRoleName(name));
+    input.isSuperAdmin || input.actorRoleNames.some((name) => isAdministratorRoleName(name));
 
   if (!isAdministrator) {
     throw new StaffRoleError(
-      "Only a facility or platform administrator can change staff access.",
+      'Only a facility or platform administrator can change staff access.',
       403,
-      "ADMINISTRATOR_ROLE_REQUIRED",
+      'ADMINISTRATOR_ROLE_REQUIRED',
     );
   }
 }
@@ -875,7 +834,7 @@ export type RoleTaskCatalogue = {
     permissionCount: number;
   };
   /** Where a save from this screen will write. */
-  writeScope: "FACILITY_OVERRIDE" | "TENANT_DEFAULT";
+  writeScope: 'FACILITY_OVERRIDE' | 'TENANT_DEFAULT';
   /**
    * Grants held by the role that sit outside the delegable allowlist
    * (a custom permission, for example). They are shown, left untouched
@@ -901,7 +860,7 @@ export async function getRoleTaskCatalogue(input: {
   facilityId?: number | null;
 }): Promise<RoleTaskCatalogue> {
   if (!Number.isSafeInteger(input.roleId) || input.roleId <= 0) {
-    throw new StaffRoleError("A valid role is required.", 400, "INVALID_ROLE_ID");
+    throw new StaffRoleError('A valid role is required.', 400, 'INVALID_ROLE_ID');
   }
 
   const [role] = await db
@@ -916,18 +875,14 @@ export async function getRoleTaskCatalogue(input: {
     .limit(1);
 
   if (!role) {
-    throw new StaffRoleError(
-      "That role was not found at this tenant.",
-      404,
-      "ROLE_NOT_FOUND",
-    );
+    throw new StaffRoleError('That role was not found at this tenant.', 404, 'ROLE_NOT_FOUND');
   }
 
   if (!role.isActive) {
     throw new StaffRoleError(
-      "That role has been deactivated. Activate it before editing its tasks.",
+      'That role has been deactivated. Activate it before editing its tasks.',
       409,
-      "ROLE_INACTIVE",
+      'ROLE_INACTIVE',
     );
   }
 
@@ -936,9 +891,9 @@ export async function getRoleTaskCatalogue(input: {
 
   if (!described) {
     throw new StaffRoleError(
-      "This is an administrator role. Task-level changes here would let it reach the platform, so it is not editable from the facility.",
+      'This is an administrator role. Task-level changes here would let it reach the platform, so it is not editable from the facility.',
       403,
-      "ROLE_NOT_EDITABLE",
+      'ROLE_NOT_EDITABLE',
     );
   }
 
@@ -960,7 +915,9 @@ export async function getRoleTaskCatalogue(input: {
    * change look applied while the staff kept the override.
    */
   const facilityId =
-    typeof input.facilityId === "number" && Number.isSafeInteger(input.facilityId) && input.facilityId > 0
+    typeof input.facilityId === 'number' &&
+    Number.isSafeInteger(input.facilityId) &&
+    input.facilityId > 0
       ? input.facilityId
       : null;
 
@@ -986,12 +943,7 @@ export async function getRoleTaskCatalogue(input: {
           permissions,
           eq(permissions.id, facilityRolePermissionOverridePermissions.permissionId),
         )
-        .where(
-          eq(
-            facilityRolePermissionOverridePermissions.overrideId,
-            override.id,
-          ),
-        )
+        .where(eq(facilityRolePermissionOverridePermissions.overrideId, override.id))
     : await db
         .select({ code: permissions.code })
         .from(rolePermissions)
@@ -1050,7 +1002,7 @@ export async function getRoleTaskCatalogue(input: {
       facilityId,
       permissionCount: grantedCodes.length,
     },
-    writeScope: override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT",
+    writeScope: override ? 'FACILITY_OVERRIDE' : 'TENANT_DEFAULT',
   };
 }
 
@@ -1075,15 +1027,11 @@ export async function updateRolePermissions(input: {
   permissionIds: number[];
 }) {
   if (!Number.isSafeInteger(input.roleId) || input.roleId <= 0) {
-    throw new StaffRoleError("A valid role is required.", 400, "INVALID_ROLE_ID");
+    throw new StaffRoleError('A valid role is required.', 400, 'INVALID_ROLE_ID');
   }
 
   if (!Array.isArray(input.permissionIds)) {
-    throw new StaffRoleError(
-      "A list of tasks is required.",
-      400,
-      "INVALID_PERMISSION_SELECTION",
-    );
+    throw new StaffRoleError('A list of tasks is required.', 400, 'INVALID_PERMISSION_SELECTION');
   }
 
   const uniqueIds = Array.from(new Set(input.permissionIds));
@@ -1096,7 +1044,7 @@ export async function updateRolePermissions(input: {
     throw new StaffRoleError(
       `Choose between ${MIN_PERMISSIONS_PER_ROLE} and ${MAX_PERMISSIONS_PER_ROLE} tasks.`,
       400,
-      "INVALID_PERMISSION_SELECTION",
+      'INVALID_PERMISSION_SELECTION',
     );
   }
 
@@ -1114,21 +1062,17 @@ export async function updateRolePermissions(input: {
       .from(roles)
       .where(and(eq(roles.id, input.roleId), eq(roles.tenantId, input.tenantId)))
       .limit(1)
-      .for("update");
+      .for('update');
 
     if (!target) {
-      throw new StaffRoleError(
-        "That role was not found at this tenant.",
-        404,
-        "ROLE_NOT_FOUND",
-      );
+      throw new StaffRoleError('That role was not found at this tenant.', 404, 'ROLE_NOT_FOUND');
     }
 
     if (!target.isActive) {
       throw new StaffRoleError(
-        "That role has been deactivated. Activate it before editing its tasks.",
+        'That role has been deactivated. Activate it before editing its tasks.',
         409,
-        "ROLE_INACTIVE",
+        'ROLE_INACTIVE',
       );
     }
 
@@ -1136,9 +1080,9 @@ export async function updateRolePermissions(input: {
 
     if (!catalogue.offered.has(target.id)) {
       throw new StaffRoleError(
-        "This is an administrator role. Task-level changes here would let it reach the platform, so it is not editable from the facility.",
+        'This is an administrator role. Task-level changes here would let it reach the platform, so it is not editable from the facility.',
         403,
-        "ROLE_NOT_EDITABLE",
+        'ROLE_NOT_EDITABLE',
       );
     }
 
@@ -1153,9 +1097,9 @@ export async function updateRolePermissions(input: {
 
     if (wanted.length !== uniqueIds.length) {
       throw new StaffRoleError(
-        "One of the selected tasks no longer exists. Reload the screen and try again.",
+        'One of the selected tasks no longer exists. Reload the screen and try again.',
         400,
-        "UNKNOWN_PERMISSION",
+        'UNKNOWN_PERMISSION',
       );
     }
 
@@ -1164,7 +1108,7 @@ export async function updateRolePermissions(input: {
         throw new StaffRoleError(
           `"${permission.code}" belongs to administration and cannot be granted from the facility.`,
           403,
-          "PERMISSION_NOT_DELEGABLE",
+          'PERMISSION_NOT_DELEGABLE',
         );
       }
     }
@@ -1225,17 +1169,9 @@ export async function updateRolePermissions(input: {
           .from(facilityRolePermissionOverridePermissions)
           .innerJoin(
             permissions,
-            eq(
-              permissions.id,
-              facilityRolePermissionOverridePermissions.permissionId,
-            ),
+            eq(permissions.id, facilityRolePermissionOverridePermissions.permissionId),
           )
-          .where(
-            eq(
-              facilityRolePermissionOverridePermissions.overrideId,
-              override.id,
-            ),
-          )
+          .where(eq(facilityRolePermissionOverridePermissions.overrideId, override.id))
       : [];
 
     /*
@@ -1247,14 +1183,9 @@ export async function updateRolePermissions(input: {
       .filter((row) => !isDelegablePermission(row))
       .map((row) => row.permissionId);
 
-    const overrideWantedIds = new Set<number>([
-      ...uniqueIds,
-      ...preservedOverrideIds,
-    ]);
+    const overrideWantedIds = new Set<number>([...uniqueIds, ...preservedOverrideIds]);
 
-    const overrideCurrentIds = new Set(
-      overrideRows.map((row) => row.permissionId),
-    );
+    const overrideCurrentIds = new Set(overrideRows.map((row) => row.permissionId));
 
     const overrideToAdd = override
       ? Array.from(overrideWantedIds).filter((id) => !overrideCurrentIds.has(id))
@@ -1264,8 +1195,7 @@ export async function updateRolePermissions(input: {
       .map((row) => row.permissionId);
 
     const globalChanged = toAdd.length > 0 || toRemove.length > 0;
-    const overrideChanged =
-      overrideToAdd.length > 0 || overrideToRemove.length > 0;
+    const overrideChanged = overrideToAdd.length > 0 || overrideToRemove.length > 0;
 
     if (!globalChanged && !overrideChanged) {
       return {
@@ -1273,7 +1203,7 @@ export async function updateRolePermissions(input: {
         roleName: target.name,
         changed: false,
         facilityOverrideUpdated: false,
-        writeScope: override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT",
+        writeScope: override ? 'FACILITY_OVERRIDE' : 'TENANT_DEFAULT',
         added: [] as string[],
         removed: [] as string[],
         permissions: wanted.map((row) => row.code).sort(),
@@ -1305,14 +1235,8 @@ export async function updateRolePermissions(input: {
         .delete(facilityRolePermissionOverridePermissions)
         .where(
           and(
-            eq(
-              facilityRolePermissionOverridePermissions.overrideId,
-              override.id,
-            ),
-            inArray(
-              facilityRolePermissionOverridePermissions.permissionId,
-              overrideToRemove,
-            ),
+            eq(facilityRolePermissionOverridePermissions.overrideId, override.id),
+            inArray(facilityRolePermissionOverridePermissions.permissionId, overrideToRemove),
           ),
         );
     }
@@ -1365,10 +1289,8 @@ export async function updateRolePermissions(input: {
       ]),
     ).sort();
 
-    const writeScope = override ? "FACILITY_OVERRIDE" : "TENANT_DEFAULT";
-    const savedPermissionCodes = Array.from(
-      override ? overrideWantedIds : wantedIds,
-    )
+    const writeScope = override ? 'FACILITY_OVERRIDE' : 'TENANT_DEFAULT';
+    const savedPermissionCodes = Array.from(override ? overrideWantedIds : wantedIds)
       .map((id) => codeById.get(id) ?? String(id))
       .sort();
 
@@ -1376,19 +1298,17 @@ export async function updateRolePermissions(input: {
       tenantId: input.tenantId,
       facilityId: input.facilityId,
       userId: actor,
-      action: "UPDATE",
-      resource: "ROLE_PERMISSIONS",
+      action: 'UPDATE',
+      resource: 'ROLE_PERMISSIONS',
       resourceId: String(target.id),
       details: `Changed tasks for role ${target.name}: added ${
-        addedCodes.length > 0 ? addedCodes.join(", ") : "none"
-      }; removed ${
-        removedCodes.length > 0 ? removedCodes.join(", ") : "none"
-      }. ${
+        addedCodes.length > 0 ? addedCodes.join(', ') : 'none'
+      }; removed ${removedCodes.length > 0 ? removedCodes.join(', ') : 'none'}. ${
         override
           ? `Facility ${input.facilityId} override synchronized (${overrideToAdd.length} added, ${overrideToRemove.length} removed).`
-          : "Tenant default updated; facilities with their own override are unaffected."
+          : 'Tenant default updated; facilities with their own override are unaffected.'
       }`,
-      severity: override ? "HIGH" : "WARNING",
+      severity: override ? 'HIGH' : 'WARNING',
     });
 
     return {
@@ -1428,29 +1348,17 @@ export async function setStaffAccountStatus(input: {
   reason?: string | null;
 }) {
   if (!Number.isSafeInteger(input.targetUserId) || input.targetUserId <= 0) {
-    throw new StaffRoleError(
-      "A valid staff account is required.",
-      400,
-      "INVALID_STAFF_ID",
-    );
+    throw new StaffRoleError('A valid staff account is required.', 400, 'INVALID_STAFF_ID');
   }
 
-  if (typeof input.active !== "boolean") {
-    throw new StaffRoleError(
-      "active must be true or false.",
-      400,
-      "INVALID_STATUS",
-    );
+  if (typeof input.active !== 'boolean') {
+    throw new StaffRoleError('active must be true or false.', 400, 'INVALID_STATUS');
   }
 
-  const reason = (input.reason ?? "").trim();
+  const reason = (input.reason ?? '').trim();
 
   if (reason.length > 200) {
-    throw new StaffRoleError(
-      "Keep the reason under 200 characters.",
-      400,
-      "INVALID_REASON",
-    );
+    throw new StaffRoleError('Keep the reason under 200 characters.', 400, 'INVALID_REASON');
   }
 
   assertActorIsAdministrator(input);
@@ -1471,29 +1379,25 @@ export async function setStaffAccountStatus(input: {
       .from(users)
       .where(eq(users.id, input.targetUserId))
       .limit(1)
-      .for("update");
+      .for('update');
 
     /*
      * An account in another facility or another tenant is reported as
      * not found, not forbidden: a 403 would confirm it exists.
      */
-    if (
-      !target ||
-      target.tenantId !== input.tenantId ||
-      target.facilityId !== input.facilityId
-    ) {
+    if (!target || target.tenantId !== input.tenantId || target.facilityId !== input.facilityId) {
       throw new StaffRoleError(
-        "That staff account was not found at this facility.",
+        'That staff account was not found at this facility.',
         404,
-        "STAFF_NOT_FOUND",
+        'STAFF_NOT_FOUND',
       );
     }
 
     if (target.id === input.actorUserId) {
       throw new StaffRoleError(
-        "You cannot deactivate your own account. Another administrator must do it.",
+        'You cannot deactivate your own account. Another administrator must do it.',
         403,
-        "SELF_STATUS_CHANGE_NOT_ALLOWED",
+        'SELF_STATUS_CHANGE_NOT_ALLOWED',
       );
     }
 
@@ -1503,11 +1407,11 @@ export async function setStaffAccountStatus(input: {
      * be undone by the person clicking the link, so it is refused and
      * the invitation is named as the thing to revoke.
      */
-    if (target.accountStatus === "PENDING") {
+    if (target.accountStatus === 'PENDING') {
       throw new StaffRoleError(
-        "This person has not accepted their invitation yet. Revoke the invitation instead of deactivating the account.",
+        'This person has not accepted their invitation yet. Revoke the invitation instead of deactivating the account.',
         409,
-        "ACCOUNT_PENDING_INVITATION",
+        'ACCOUNT_PENDING_INVITATION',
       );
     }
 
@@ -1541,9 +1445,9 @@ export async function setStaffAccountStatus(input: {
 
     if (holdsAdministratorRole) {
       throw new StaffRoleError(
-        "This account holds an administrator role. Only a platform administrator can change its status here.",
+        'This account holds an administrator role. Only a platform administrator can change its status here.',
         403,
-        "ADMINISTRATOR_ACCOUNT_PROTECTED",
+        'ADMINISTRATOR_ACCOUNT_PROTECTED',
       );
     }
 
@@ -1565,7 +1469,7 @@ export async function setStaffAccountStatus(input: {
         input.active
           ? {
               isActive: true,
-              accountStatus: "ACTIVE",
+              accountStatus: 'ACTIVE',
               deactivatedAt: null,
               deactivationReason: null,
               failedLoginAttempts: 0,
@@ -1576,7 +1480,7 @@ export async function setStaffAccountStatus(input: {
             }
           : {
               isActive: false,
-              accountStatus: "DISABLED",
+              accountStatus: 'DISABLED',
               deactivatedAt: now,
               deactivationReason: reason || null,
               securityVersion: target.securityVersion + 1,
@@ -1593,22 +1497,20 @@ export async function setStaffAccountStatus(input: {
       tenantId: input.tenantId,
       facilityId: input.facilityId,
       userId: actor,
-      action: input.active ? "ACTIVATE" : "DEACTIVATE",
-      resource: "USER",
+      action: input.active ? 'ACTIVATE' : 'DEACTIVATE',
+      resource: 'USER',
       resourceId: String(target.id),
       details: input.active
         ? `Reactivated the account for ${target.fullName}.`
-        : `Deactivated the account for ${target.fullName}${
-            reason ? `: ${reason}` : "."
-          }`,
-      severity: input.active ? "INFO" : "WARNING",
+        : `Deactivated the account for ${target.fullName}${reason ? `: ${reason}` : '.'}`,
+      severity: input.active ? 'INFO' : 'WARNING',
     });
 
     return {
       userId: target.id,
       fullName: target.fullName,
       active: input.active,
-      accountStatus: updated?.accountStatus ?? (input.active ? "ACTIVE" : "DISABLED"),
+      accountStatus: updated?.accountStatus ?? (input.active ? 'ACTIVE' : 'DISABLED'),
       changed: true,
     };
   });

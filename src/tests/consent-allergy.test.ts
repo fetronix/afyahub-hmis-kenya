@@ -111,16 +111,19 @@ async function main(): Promise<void> {
   });
 
   assert(valid.purpose === 'TREATMENT', 'A valid purpose survives validation');
-  assert(
-    valid.scope.patientProfile === true,
-    'A granted scope survives validation',
-  );
+  assert(valid.scope.patientProfile === true, 'A granted scope survives validation');
 
   for (const [input, label] of [
-    [{ purpose: 'EVERYTHING', method: 'WRITTEN', scope: { encounters: true } }, 'an unknown purpose'],
+    [
+      { purpose: 'EVERYTHING', method: 'WRITTEN', scope: { encounters: true } },
+      'an unknown purpose',
+    ],
     [{ purpose: 'TREATMENT', method: 'GUESSED', scope: { encounters: true } }, 'an unknown method'],
     [{ purpose: 'TREATMENT', method: 'WRITTEN', scope: {} }, 'an empty scope'],
-    [{ purpose: 'TREATMENT', method: 'WRITTEN', scope: { encounters: false } }, 'a scope that grants nothing'],
+    [
+      { purpose: 'TREATMENT', method: 'WRITTEN', scope: { encounters: false } },
+      'a scope that grants nothing',
+    ],
     [{ purpose: 'TREATMENT', method: 'WRITTEN' }, 'a missing scope'],
     [null, 'a null body'],
     [[], 'an array body'],
@@ -132,10 +135,7 @@ async function main(): Promise<void> {
       throw new Error(`FAILED: ${label} was accepted`);
     } catch (error) {
       if (error instanceof consent.ConsentError) {
-        assert(
-          error.statusCode === 400,
-          `${label} is refused with 400 (${error.code})`,
-        );
+        assert(error.statusCode === 400, `${label} is refused with 400 (${error.code})`);
       } else if (String(error).includes('FAILED:')) {
         throw error;
       }
@@ -149,8 +149,7 @@ async function main(): Promise<void> {
   );
 
   assert(
-    consent.CONSENT_SCOPES.includes('laboratory') &&
-      consent.CONSENT_SCOPES.includes('billing'),
+    consent.CONSENT_SCOPES.includes('laboratory') && consent.CONSENT_SCOPES.includes('billing'),
     'A consent can be limited by data category',
   );
 
@@ -158,10 +157,7 @@ async function main(): Promise<void> {
      3. Medication matching
      ============================================================ */
 
-  assert(
-    allergy.matchesMedication('Penicillin', 'Penicillin') === true,
-    'An exact match warns',
-  );
+  assert(allergy.matchesMedication('Penicillin', 'Penicillin') === true, 'An exact match warns');
   assert(
     allergy.matchesMedication('penicillin', 'PENICILLIN V') === true,
     'Case and a brand suffix do not hide a match',
@@ -178,10 +174,7 @@ async function main(): Promise<void> {
     allergy.matchesMedication('Penicillin', 'Paracetamol') === false,
     'An unrelated drug does not warn',
   );
-  assert(
-    allergy.matchesMedication('', 'Penicillin') === false,
-    'An empty allergen never matches',
-  );
+  assert(allergy.matchesMedication('', 'Penicillin') === false, 'An empty allergen never matches');
   assert(
     allergy.matchesMedication('Penicillin', '') === false,
     'An empty medication never matches',
@@ -209,7 +202,7 @@ async function main(): Promise<void> {
   const routes = code('src/clinical/clinical-records.routes.ts');
 
   assert(
-    routes.includes("router.use(requireAuth)"),
+    routes.includes('router.use(requireAuth)'),
     'Every consent and allergy route requires authentication',
   );
 
@@ -241,7 +234,7 @@ async function main(): Promise<void> {
   const consentService = code('src/clinical/consent.service.ts');
 
   assert(
-    allergyService.includes("eq(schema.patients.tenantId, scope.tenantId)"),
+    allergyService.includes('eq(schema.patients.tenantId, scope.tenantId)'),
     'Allergy lookups filter patients by tenant',
   );
   assert(
@@ -260,12 +253,11 @@ async function main(): Promise<void> {
      5. Consent is not deletable, only revocable
      ============================================================ */
 
-  assert(
-    !/router\.delete/.test(routes),
-    'No route physically deletes a consent or an allergy',
-  );
+  assert(!/router\.delete/.test(routes), 'No route physically deletes a consent or an allergy');
 
-  const revoke = consentService.slice(consentService.indexOf('export async function revokeConsent'));
+  const revoke = consentService.slice(
+    consentService.indexOf('export async function revokeConsent'),
+  );
 
   assert(
     revoke.includes('revokedAt') && revoke.includes('revokedByUserId'),
@@ -287,15 +279,11 @@ async function main(): Promise<void> {
    * Locate the POST by its route, not by the first string match: an
    * earlier module guard also mentions /api/medications.
    */
-  const prescriptionMatch =
-    /app\.post\(\s*'\/api\/medications',\s*requirePermission/.exec(app);
+  const prescriptionMatch = /app\.post\(\s*'\/api\/medications',\s*requirePermission/.exec(app);
 
   assert(prescriptionMatch !== null, 'The prescription route exists');
 
-  const prescriptionBlock = app.slice(
-    prescriptionMatch!.index,
-    prescriptionMatch!.index + 4000,
-  );
+  const prescriptionBlock = app.slice(prescriptionMatch!.index, prescriptionMatch!.index + 4000);
 
   assert(
     prescriptionBlock.includes('checkMedicationAllergies'),
@@ -329,10 +317,7 @@ async function main(): Promise<void> {
     outpatient.includes('allergyAcknowledged: true'),
     'The screen can retry with an acknowledgement when the prescriber confirms',
   );
-  assert(
-    outpatient.includes('Nothing was saved'),
-    'Cancelling the warning writes nothing',
-  );
+  assert(outpatient.includes('Nothing was saved'), 'Cancelling the warning writes nothing');
 
   /* ============================================================
      7. The capability is visible
@@ -349,10 +334,7 @@ async function main(): Promise<void> {
     panel.includes('getPatientAllergies') && panel.includes('recordPatientAllergy'),
     'The panel can read and record allergies',
   );
-  assert(
-    panel.includes('revokePatientConsent'),
-    'The panel can revoke consent',
-  );
+  assert(panel.includes('revokePatientConsent'), 'The panel can revoke consent');
   assert(
     panel.includes('setPatientAllergyStatus'),
     'The panel can resolve or reactivate an allergy',
@@ -362,8 +344,7 @@ async function main(): Promise<void> {
     'A failed read is never presented as "no allergies"',
   );
   assert(
-    journey.includes('PatientConsentAllergyPanel') &&
-      journey.includes("id: 'consent'"),
+    journey.includes('PatientConsentAllergyPanel') && journey.includes("id: 'consent'"),
     'The panel is reachable from the patient record as its own tab',
   );
 
@@ -371,10 +352,7 @@ async function main(): Promise<void> {
    * Displayed scope keys must be the ones the server validates.
    */
   for (const scopeKey of ['patientProfile', 'encounters', 'laboratory', 'billing']) {
-    assert(
-      panel.includes(`value: '${scopeKey}'`),
-      `The consent form offers the ${scopeKey} scope`,
-    );
+    assert(panel.includes(`value: '${scopeKey}'`), `The consent form offers the ${scopeKey} scope`);
   }
 
   /* ============================================================
@@ -387,23 +365,11 @@ async function main(): Promise<void> {
     accessLog.includes('insert(schema.patientRecordAccessLogs)'),
     'The access log service writes to the access table',
   );
-  assert(
-    accessLog.includes('ACCESS_PURPOSES'),
-    'Every access carries a purpose from a fixed list',
-  );
+  assert(accessLog.includes('ACCESS_PURPOSES'), 'Every access carries a purpose from a fixed list');
 
-  assert(
-    app.includes('logPatientAccess('),
-    'Patient routes write an access row',
-  );
-  assert(
-    app.includes("action: 'VIEW'"),
-    'Reading a patient record is logged as VIEW',
-  );
-  assert(
-    app.includes("action: 'UPDATE'"),
-    'Editing a patient record is logged as UPDATE',
-  );
+  assert(app.includes('logPatientAccess('), 'Patient routes write an access row');
+  assert(app.includes("action: 'VIEW'"), 'Reading a patient record is logged as VIEW');
+  assert(app.includes("action: 'UPDATE'"), 'Editing a patient record is logged as UPDATE');
   assert(
     app.includes("action: 'EXPORT'") && app.includes("channel: 'FHIR'"),
     'Serving a FHIR patient is logged as an FHIR export',
@@ -428,8 +394,7 @@ async function main(): Promise<void> {
     'The migration defines an append-only guard for the audit log',
   );
   assert(
-    migration.includes('CREATE TRIGGER') &&
-      migration.includes('BEFORE UPDATE OR DELETE'),
+    migration.includes('CREATE TRIGGER') && migration.includes('BEFORE UPDATE OR DELETE'),
     'The guard is a trigger on update and delete',
   );
   assert(
@@ -441,8 +406,7 @@ async function main(): Promise<void> {
     'The migration creates the allergy table idempotently',
   );
   assert(
-    migration.includes('national_id_bidx') &&
-      migration.includes('sha_number_bidx'),
+    migration.includes('national_id_bidx') && migration.includes('sha_number_bidx'),
     'The migration adds the blind-index columns',
   );
   assert(
@@ -463,10 +427,7 @@ async function main(): Promise<void> {
 
   const catalogue = code('src/auth/staff-role-catalogue.ts');
 
-  assert(
-    catalogue.includes("'patients.update'"),
-    'At least one staff role can record consent',
-  );
+  assert(catalogue.includes("'patients.update'"), 'At least one staff role can record consent');
 
   /* ------------------------------------------------------------
      What is NOT covered

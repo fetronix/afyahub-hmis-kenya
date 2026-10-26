@@ -55,9 +55,7 @@ import {
  * Transaction handle. Queries are executed either on the pool or inside
  * a `db.transaction()` callback, so the type covers both.
  */
-type Executor =
-  | typeof database
-  | Parameters<Parameters<typeof database.transaction>[0]>[0];
+type Executor = typeof database | Parameters<Parameters<typeof database.transaction>[0]>[0];
 
 export type BillingSourceType =
   | 'CONSULTATION'
@@ -71,10 +69,7 @@ export type BillingSourceType =
   | 'MANUAL';
 
 export type ChargeSkipReason =
-  | 'TARIFF_NOT_CONFIGURED'
-  | 'DUPLICATE'
-  | 'INVOICE_CLOSED'
-  | 'INVALID_INPUT';
+  'TARIFF_NOT_CONFIGURED' | 'DUPLICATE' | 'INVOICE_CLOSED' | 'INVALID_INPUT';
 
 export interface ChargeRequest {
   tenantId: number;
@@ -457,9 +452,7 @@ export async function resolveTariffForCharge(
     serviceId?: number | null;
   },
 ): Promise<ChargeMatch> {
-  const serviceType =
-    request.serviceType ??
-    serviceTypeForCharge({ family: request.family });
+  const serviceType = request.serviceType ?? serviceTypeForCharge({ family: request.family });
 
   const phrases = request.family
     ? phrasesForCharge({
@@ -524,9 +517,7 @@ export async function resolveTariffForCharge(
           code: resolution.failure.code,
           label: failureLabel(resolution.failure.code),
           message: resolution.failure.message,
-          ...(resolution.failure.candidates
-            ? { candidates: resolution.failure.candidates }
-            : {}),
+          ...(resolution.failure.candidates ? { candidates: resolution.failure.candidates } : {}),
         }
       : null,
     linkId: resolution.linkId,
@@ -630,9 +621,7 @@ export async function explainFacilityTariffMatch(
         });
 
   const linkedKeys =
-    input.serviceKeys && input.serviceKeys.length > 0
-      ? [...input.serviceKeys]
-      : [input.family];
+    input.serviceKeys && input.serviceKeys.length > 0 ? [...input.serviceKeys] : [input.family];
 
   const phrases = phrasesForCharge({
     family: input.family,
@@ -705,9 +694,7 @@ export function pickTariffForCodes<T extends { code: string }>(
 
   for (const candidate of candidates) {
     const upper = candidate.toUpperCase();
-    const match = rows.find(
-      (row) => row.code.trim().toUpperCase() === upper,
-    );
+    const match = rows.find((row) => row.code.trim().toUpperCase() === upper);
 
     if (match) return match;
   }
@@ -722,20 +709,14 @@ export function pickTariffForCodes<T extends { code: string }>(
 const OPEN_INVOICE_STATUSES = ['Pending', 'Unpaid', 'Partially Paid'];
 
 /** Statuses that accept new charges. */
-const CHARGEABLE_STATUSES = new Set<string>([
-  'Pending',
-  'Unpaid',
-  'Partially Paid',
-]);
+const CHARGEABLE_STATUSES = new Set<string>(['Pending', 'Unpaid', 'Partially Paid']);
 
 /**
  * Read the next value of the invoice-number sequence.
  * The sequence is created by migration 0009.
  */
 async function nextInvoiceNumber(executor: Executor): Promise<string> {
-  const result = await executor.execute(
-    sql`SELECT nextval('billing_invoice_number_seq') AS value`,
-  );
+  const result = await executor.execute(sql`SELECT nextval('billing_invoice_number_seq') AS value`);
 
   const rows = (result as unknown as { rows?: Array<{ value: string }> }).rows;
 
@@ -755,10 +736,7 @@ async function nextInvoiceNumber(executor: Executor): Promise<string> {
  * Encounter-scoped invoices are preferred: an OPD visit produces one
  * bill, and an admission produces its own.
  */
-async function findOrCreateOpenInvoice(
-  executor: Executor,
-  request: ChargeRequest,
-) {
+async function findOrCreateOpenInvoice(executor: Executor, request: ChargeRequest) {
   const scope = and(
     eq(schema.billingInvoices.facilityId, request.facilityId),
     eq(schema.billingInvoices.patientId, request.patientId),
@@ -812,10 +790,7 @@ async function findOrCreateOpenInvoice(
  * Totals are derived, never incremented, so they cannot drift out of
  * sync with the lines the patient can actually see.
  */
-export async function recalculateInvoiceTotals(
-  executor: Executor,
-  invoiceId: number,
-) {
+export async function recalculateInvoiceTotals(executor: Executor, invoiceId: number) {
   const [summed] = await executor
     .select({
       total: sql<string>`COALESCE(SUM(${schema.billingItems.totalAmount}), 0)`,
@@ -888,10 +863,7 @@ export async function chargeForService(
   executor: Executor,
   request: ChargeRequest,
 ): Promise<ChargeResult> {
-  if (
-    !Number.isSafeInteger(request.facilityId) ||
-    !Number.isSafeInteger(request.patientId)
-  ) {
+  if (!Number.isSafeInteger(request.facilityId) || !Number.isSafeInteger(request.patientId)) {
     return {
       charged: false,
       reason: 'INVALID_INPUT',
@@ -904,8 +876,7 @@ export async function chargeForService(
       ? Number(request.quantity)
       : 1;
 
-  const quantityLabel =
-    quantity === 1 ? '' : ` × ${quantity}`;
+  const quantityLabel = quantity === 1 ? '' : ` × ${quantity}`;
 
   /* ---- 1. Price it from the facility tariff ---------------------- */
 
@@ -937,9 +908,7 @@ export async function chargeForService(
 
   const tariff = match.tariff;
 
-  const unitPriceCents = tariff
-    ? toCents(tariff.fee)
-    : toCents(request.fallbackUnitPrice);
+  const unitPriceCents = tariff ? toCents(tariff.fee) : toCents(request.fallbackUnitPrice);
 
   if (unitPriceCents <= 0) {
     return {
@@ -952,9 +921,7 @@ export async function chargeForService(
             diagnosis: {
               code: match.failure.code,
               label: match.failure.label,
-              ...(match.failure.candidates
-                ? { candidates: match.failure.candidates }
-                : {}),
+              ...(match.failure.candidates ? { candidates: match.failure.candidates } : {}),
             },
           }
         : {}),
@@ -1005,10 +972,7 @@ export async function chargeForService(
       tariffId: tariff?.id ?? null,
       tariffCode: tariff?.code ?? request.codes[0] ?? null,
       sourceType: request.sourceType,
-      sourceId:
-        typeof request.sourceId === 'number'
-          ? request.sourceId
-          : null,
+      sourceId: typeof request.sourceId === 'number' ? request.sourceId : null,
       idempotencyKey,
       itemType: request.itemType,
       description,
@@ -1033,10 +997,7 @@ export async function chargeForService(
 
   /* ---- 4. Re-derive invoice totals ----------------------------- */
 
-  const updatedInvoice = await recalculateInvoiceTotals(
-    executor,
-    invoice.id,
-  );
+  const updatedInvoice = await recalculateInvoiceTotals(executor, invoice.id);
 
   return {
     charged: true,
@@ -1064,9 +1025,14 @@ export async function chargeForService(
 export function bedDayTariffCodes(wardCode?: string | null): string[] {
   const codes: string[] = [];
 
-  const cleaned = typeof wardCode === 'string'
-    ? wardCode.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '')
-    : '';
+  const cleaned =
+    typeof wardCode === 'string'
+      ? wardCode
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+      : '';
 
   if (cleaned) {
     codes.push(`BED-${cleaned}`, `WARD-${cleaned}`);
@@ -1199,10 +1165,7 @@ export function bedDaySegments(input: {
       ? new Date(Math.min(...candidates.map((value) => value.getTime())))
       : null;
 
-  const dates = bedDayDates(
-    input.admissionDate,
-    end ? formatDateKey(end) : null,
-  );
+  const dates = bedDayDates(input.admissionDate, end ? formatDateKey(end) : null);
 
   const transfers = (input.transfers ?? [])
     .map((transfer) => {
@@ -1311,10 +1274,7 @@ export async function getRevenueByServiceType(
       revenue: sql<string>`COALESCE(SUM(${schema.billingItems.totalAmount}), 0)`,
     })
     .from(schema.billingItems)
-    .innerJoin(
-      schema.billingInvoices,
-      eq(schema.billingItems.invoiceId, schema.billingInvoices.id),
-    )
+    .innerJoin(schema.billingInvoices, eq(schema.billingItems.invoiceId, schema.billingInvoices.id))
     .where(
       and(
         eq(schema.billingInvoices.facilityId, facilityId),
@@ -1422,10 +1382,7 @@ export async function getRevenueByPaymentChannel(
   return {
     channels,
     unmappedMethods: Array.from(unmapped).sort(),
-    totalCents: channels.reduce(
-      (sum, channel) => sum + toCents(channel.amount),
-      0,
-    ),
+    totalCents: channels.reduce((sum, channel) => sum + toCents(channel.amount), 0),
   };
 }
 
@@ -1451,10 +1408,7 @@ export async function getRevenueTotals(
     })
     .from(schema.billingInvoices)
     .where(
-      and(
-        eq(schema.billingInvoices.facilityId, facilityId),
-        ...invoiceRangeConditions(range),
-      ),
+      and(eq(schema.billingInvoices.facilityId, facilityId), ...invoiceRangeConditions(range)),
     );
 
   const row = rows[0];

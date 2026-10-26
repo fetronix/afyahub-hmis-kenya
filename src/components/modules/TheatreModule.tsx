@@ -10,11 +10,19 @@ import {
   UserCheck,
   Plus,
   ShieldCheck,
-  FileCheck
+  FileCheck,
 } from 'lucide-react';
 
 export const TheatreModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentFacility,
+    currentUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
   const [cases, setCases] = useState<TheatreCase[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +67,7 @@ export const TheatreModule: React.FC = () => {
         setCases(cList);
         setPatients(pList);
         if (pList.length > 0 && !caseForm.patientId) {
-          setCaseForm(prev => ({ ...prev, patientId: pList[0].id.toString() }));
+          setCaseForm((prev) => ({ ...prev, patientId: pList[0].id.toString() }));
         }
       } catch (err) {
         console.error('Failed to load theatre cases:', err);
@@ -128,7 +136,7 @@ export const TheatreModule: React.FC = () => {
   };
 
   const getPatientName = (patientId: number) => {
-    const p = patients.find(x => x.id === patientId);
+    const p = patients.find((x) => x.id === patientId);
     return p ? `${p.firstName} ${p.lastName}` : `Patient #${patientId}`;
   };
 
@@ -137,9 +145,12 @@ export const TheatreModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Operating Theatre & Surgical Suite</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Operating Theatre & Surgical Suite
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Surgical list booking, WHO safety checklist compliance, theatre team allocation, and intra-operative notes.
+            Surgical list booking, WHO safety checklist compliance, theatre team allocation, and
+            intra-operative notes.
           </p>
         </div>
 
@@ -157,20 +168,37 @@ export const TheatreModule: React.FC = () => {
       {/* Theatre Rooms Status Banner */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { name: 'Main Theatre 1 (Laparoscopy / General)', status: 'Active (Case Running)', surgeon: 'Dr. Angela Omwamba' },
-          { name: 'Main Theatre 2 (Obstetrics & C-Sections)', status: 'Ready / Sanitized', surgeon: 'On-Call OBGYN' },
+          {
+            name: 'Main Theatre 1 (Laparoscopy / General)',
+            status: 'Active (Case Running)',
+            surgeon: 'Dr. Angela Omwamba',
+          },
+          {
+            name: 'Main Theatre 2 (Obstetrics & C-Sections)',
+            status: 'Ready / Sanitized',
+            surgeon: 'On-Call OBGYN',
+          },
           { name: 'Minor Theatre & Day Surgery', status: 'Ready', surgeon: 'Day Care Surgeon' },
         ].map((th, idx) => (
-          <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs space-y-1">
+          <div
+            key={idx}
+            className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs space-y-1"
+          >
             <div className="flex items-center justify-between">
               <span className="font-semibold text-slate-900">{th.name}</span>
-              <span className={`px-2 py-0.5 rounded text-3xs font-medium ${
-                th.status.includes('Active') ? 'bg-teal-50 text-teal-800' : 'bg-emerald-50 text-emerald-800'
-              }`}>
+              <span
+                className={`px-2 py-0.5 rounded text-3xs font-medium ${
+                  th.status.includes('Active')
+                    ? 'bg-teal-50 text-teal-800'
+                    : 'bg-emerald-50 text-emerald-800'
+                }`}
+              >
                 {th.status}
               </span>
             </div>
-            <div className="text-2xs text-slate-500">Lead: <strong>{th.surgeon}</strong></div>
+            <div className="text-2xs text-slate-500">
+              Lead: <strong>{th.surgeon}</strong>
+            </div>
           </div>
         ))}
       </div>
@@ -199,7 +227,7 @@ export const TheatreModule: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 font-mono">
               {cases.map((c) => {
-                const patient = patients.find(p => p.id === c.patientId);
+                const patient = patients.find((p) => p.id === c.patientId);
 
                 return (
                   <tr key={c.id} className="hover:bg-slate-50/70">
@@ -227,8 +255,12 @@ export const TheatreModule: React.FC = () => {
                       <div className="text-2xs text-slate-400">{c.theatreType}</div>
                     </td>
                     <td className="px-4 py-3 font-sans text-slate-700">
-                      <div>Surgeon: <strong>{c.leadSurgeon}</strong></div>
-                      <div className="text-2xs text-slate-500">Anaesth: {c.anaesthetist || 'TBD'}</div>
+                      <div>
+                        Surgeon: <strong>{c.leadSurgeon}</strong>
+                      </div>
+                      <div className="text-2xs text-slate-500">
+                        Anaesth: {c.anaesthetist || 'TBD'}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{c.scheduledStart}</td>
                     <td className="px-4 py-3 font-sans">
@@ -267,7 +299,9 @@ export const TheatreModule: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900">Schedule Operating Theatre Case</h3>
-              <p className="text-2xs text-slate-500">Book surgical room and assign surgical and anaesthesia team.</p>
+              <p className="text-2xs text-slate-500">
+                Book surgical room and assign surgical and anaesthesia team.
+              </p>
             </div>
 
             <form onSubmit={handleCreateCase} className="space-y-4">
@@ -279,7 +313,7 @@ export const TheatreModule: React.FC = () => {
                   onChange={(e) => setCaseForm({ ...caseForm, patientId: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
-                  {patients.map(p => (
+                  {patients.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.firstName} {p.lastName} ({p.mrn} · {p.payerType})
                     </option>
@@ -396,7 +430,8 @@ export const TheatreModule: React.FC = () => {
             <div className="border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900">WHO Surgical Safety Checklist</h3>
               <p className="text-2xs text-slate-500">
-                Case: {activeChecklistCase.procedureName} · Patient: {getPatientName(activeChecklistCase.patientId)}
+                Case: {activeChecklistCase.procedureName} · Patient:{' '}
+                {getPatientName(activeChecklistCase.patientId)}
               </p>
             </div>
 
@@ -408,7 +443,9 @@ export const TheatreModule: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={checklist.patientIdentityConfirmed}
-                  onChange={(e) => setChecklist({ ...checklist, patientIdentityConfirmed: e.target.checked })}
+                  onChange={(e) =>
+                    setChecklist({ ...checklist, patientIdentityConfirmed: e.target.checked })
+                  }
                   className="rounded text-teal-700"
                 />
                 <span>Has the patient confirmed their identity, site, procedure and consent?</span>
@@ -426,7 +463,9 @@ export const TheatreModule: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={checklist.anaesthesiaMachineChecked}
-                  onChange={(e) => setChecklist({ ...checklist, anaesthesiaMachineChecked: e.target.checked })}
+                  onChange={(e) =>
+                    setChecklist({ ...checklist, anaesthesiaMachineChecked: e.target.checked })
+                  }
                   className="rounded text-teal-700"
                 />
                 <span>Anaesthesia machine and medication check complete?</span>
@@ -439,7 +478,9 @@ export const TheatreModule: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={checklist.allTeamMembersIntroduced}
-                  onChange={(e) => setChecklist({ ...checklist, allTeamMembersIntroduced: e.target.checked })}
+                  onChange={(e) =>
+                    setChecklist({ ...checklist, allTeamMembersIntroduced: e.target.checked })
+                  }
                   className="rounded text-teal-700"
                 />
                 <span>Confirm all team members have introduced themselves by name and role</span>
@@ -448,10 +489,15 @@ export const TheatreModule: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={checklist.bloodLossRiskCrossmatched}
-                  onChange={(e) => setChecklist({ ...checklist, bloodLossRiskCrossmatched: e.target.checked })}
+                  onChange={(e) =>
+                    setChecklist({ ...checklist, bloodLossRiskCrossmatched: e.target.checked })
+                  }
                   className="rounded text-teal-700"
                 />
-                <span>Surgeon, Anaesthetist & Nurse verbally confirm anticipated blood loss and crossmatched units</span>
+                <span>
+                  Surgeon, Anaesthetist & Nurse verbally confirm anticipated blood loss and
+                  crossmatched units
+                </span>
               </label>
 
               <div className="font-semibold text-slate-900 text-2xs uppercase tracking-wider text-teal-800 pt-2 border-t border-slate-100">
@@ -461,7 +507,9 @@ export const TheatreModule: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={checklist.spongeInstrumentCountCorrect}
-                  onChange={(e) => setChecklist({ ...checklist, spongeInstrumentCountCorrect: e.target.checked })}
+                  onChange={(e) =>
+                    setChecklist({ ...checklist, spongeInstrumentCountCorrect: e.target.checked })
+                  }
                   className="rounded text-teal-700"
                 />
                 <span>Instrument, sponge and needle counts are correct</span>
@@ -470,7 +518,9 @@ export const TheatreModule: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={checklist.specimenLabelledCorrectly}
-                  onChange={(e) => setChecklist({ ...checklist, specimenLabelledCorrectly: e.target.checked })}
+                  onChange={(e) =>
+                    setChecklist({ ...checklist, specimenLabelledCorrectly: e.target.checked })
+                  }
                   className="rounded text-teal-700"
                 />
                 <span>Specimen is correctly labelled with patient full name and MRN</span>

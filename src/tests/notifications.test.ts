@@ -64,20 +64,14 @@ function testQueue(): void {
     'A notification stays long enough to read and short enough to ignore',
   );
 
-  assert(
-    NOTIFICATION_QUEUE_LIMIT >= 3 && NOTIFICATION_QUEUE_LIMIT <= 6,
-    'The queue is bounded',
-  );
+  assert(NOTIFICATION_QUEUE_LIMIT >= 3 && NOTIFICATION_QUEUE_LIMIT <= 6, 'The queue is bounded');
 
   assert(
     context.includes('notifications: AppNotification[]'),
     'The provider exposes a list, not one overwritten string',
   );
 
-  assert(
-    !/\btoastMessage\b/.test(context),
-    'The single toast string is gone from the provider',
-  );
+  assert(!/\btoastMessage\b/.test(context), 'The single toast string is gone from the provider');
 
   assert(
     context.includes('notificationTimers') && context.includes('clearTimeout'),
@@ -121,15 +115,9 @@ function testDialog(): void {
     'A screen reader is told about the message without an alarm',
   );
 
-  assert(
-    dialog.includes("event.key === 'Escape'"),
-    'Escape closes the queue',
-  );
+  assert(dialog.includes("event.key === 'Escape'"), 'Escape closes the queue');
 
-  assert(
-    dialog.includes('Dismiss all notifications'),
-    'There is a labelled close control',
-  );
+  assert(dialog.includes('Dismiss all notifications'), 'There is a labelled close control');
 
   assert(
     dialog.includes('notification-dialog') &&
@@ -139,22 +127,16 @@ function testDialog(): void {
   );
 
   assert(
-    dialog.includes("info: {") &&
-      dialog.includes("success: {") &&
-      dialog.includes("warning: {") &&
-      dialog.includes("error: {"),
+    dialog.includes('info: {') &&
+      dialog.includes('success: {') &&
+      dialog.includes('warning: {') &&
+      dialog.includes('error: {'),
     'Four tones, each with its own word and colour',
   );
 
-  assert(
-    dialog.includes('Did not go through'),
-    'A failure is labelled as a failure',
-  );
+  assert(dialog.includes('Did not go through'), 'A failure is labelled as a failure');
 
-  assert(
-    dialog.includes('This closes on its own'),
-    'The screen says the message is temporary',
-  );
+  assert(dialog.includes('This closes on its own'), 'The screen says the message is temporary');
 }
 
 /* ============================================================
@@ -162,20 +144,11 @@ function testDialog(): void {
    ============================================================ */
 
 function testSingleSurface(): void {
-  assert(
-    app.includes('<NotificationDialog />'),
-    'App renders the dialog',
-  );
+  assert(app.includes('<NotificationDialog />'), 'App renders the dialog');
 
-  assert(
-    !app.includes('Toast Notification Banner'),
-    'The old bottom-right banner is gone',
-  );
+  assert(!app.includes('Toast Notification Banner'), 'The old bottom-right banner is gone');
 
-  assert(
-    !app.includes('toastMessage'),
-    'App no longer reads the single toast string',
-  );
+  assert(!app.includes('toastMessage'), 'App no longer reads the single toast string');
 
   const moduleFiles = [
     'src/components/modules/DashboardModule.tsx',
@@ -218,10 +191,7 @@ function testMotion(): void {
     'Reduced motion removes the animation rather than shrinking it',
   );
 
-  assert(
-    /260ms/.test(css),
-    'The entrance is short enough to read as feedback, not a transition',
-  );
+  assert(/260ms/.test(css), 'The entrance is short enough to read as feedback, not a transition');
 }
 
 /* ============================================================

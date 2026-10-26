@@ -44,11 +44,7 @@ export interface FefoPlan {
 export function todayKey(now: Date = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, '0');
 
-  return [
-    now.getFullYear(),
-    pad(now.getMonth() + 1),
-    pad(now.getDate()),
-  ].join('-');
+  return [now.getFullYear(), pad(now.getMonth() + 1), pad(now.getDate())].join('-');
 }
 
 /**
@@ -83,10 +79,7 @@ export function parseIsoDate(value: string | null | undefined): Date | null {
 }
 
 /** Whole days from `today` to `expiryDate`; negative once expired. */
-export function daysUntilExpiry(
-  expiryDate: string,
-  today: string,
-): number | null {
+export function daysUntilExpiry(expiryDate: string, today: string): number | null {
   const expiry = parseIsoDate(expiryDate);
   const start = parseIsoDate(today);
 
@@ -139,11 +132,7 @@ function compareLots(a: BatchLot, b: BatchLot): number {
  * shortfall, so the caller can fail the whole transaction with a message
  * that says how many units are expired versus simply absent.
  */
-export function planFefo(
-  lots: BatchLot[],
-  quantity: number,
-  today: string,
-): FefoPlan {
+export function planFefo(lots: BatchLot[], quantity: number, today: string): FefoPlan {
   const requested = Number.isFinite(quantity) ? Math.floor(quantity) : 0;
 
   const plan: FefoPlan = {
@@ -162,9 +151,7 @@ export function planFefo(
   const usable: BatchLot[] = [];
 
   for (const lot of lots) {
-    const remaining = Number.isFinite(lot.quantityRemaining)
-      ? lot.quantityRemaining
-      : 0;
+    const remaining = Number.isFinite(lot.quantityRemaining) ? lot.quantityRemaining : 0;
 
     if (remaining <= 0) continue;
 
@@ -215,9 +202,7 @@ export function stockValueCents(
   let cents = 0;
 
   for (const lot of lots) {
-    const quantity = Number.isFinite(lot.quantityRemaining)
-      ? lot.quantityRemaining
-      : 0;
+    const quantity = Number.isFinite(lot.quantityRemaining) ? lot.quantityRemaining : 0;
 
     const unit = Number(lot.costPerUnit ?? 0);
 

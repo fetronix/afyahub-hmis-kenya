@@ -3,11 +3,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { Patient } from '../../types/index.ts';
 import { DhaCompliancePanel } from './DhaCompliancePanel.tsx';
-import type {
-  DhaCallLog,
-  DhaEligibilityResult,
-  DhaReadinessReport,
-} from '../../types/index.ts';
+import type { DhaCallLog, DhaEligibilityResult, DhaReadinessReport } from '../../types/index.ts';
 import {
   Network,
   ShieldCheck,
@@ -78,14 +74,12 @@ export const InteroperabilityModule: React.FC = () => {
         const report = await api.getDhaReadiness(probe);
         setReadiness(report);
       } catch (err) {
-        setReadinessError(
-          err instanceof Error ? err.message : 'Failed to read DHA readiness.'
-        );
+        setReadinessError(err instanceof Error ? err.message : 'Failed to read DHA readiness.');
       } finally {
         setReadinessLoading(false);
       }
     },
-    [currentFacility?.id]
+    [currentFacility?.id],
   );
 
   useEffect(() => {
@@ -165,9 +159,7 @@ export const InteroperabilityModule: React.FC = () => {
       /* Never leave an identifier in the form after it has been used. */
       setIdentificationNumber('');
     } catch (err) {
-      setEligibilityError(
-        err instanceof Error ? err.message : 'The eligibility check failed.'
-      );
+      setEligibilityError(err instanceof Error ? err.message : 'The eligibility check failed.');
     } finally {
       setEligibilityLoading(false);
     }
@@ -225,14 +217,14 @@ export const InteroperabilityModule: React.FC = () => {
         : 'text-red-700 bg-red-50 border-red-200';
 
   const header = (
-  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
       <div>
         <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
           DHA / AfyaConnect Integration
         </h1>
         <p className="mt-1 text-xs leading-relaxed text-muted">
-          Eligibility, benefit coverage and the FHIR patient resource. Readiness is
-          reported as it is, including what is not implemented.
+          Eligibility, benefit coverage and the FHIR patient resource. Readiness is reported as it
+          is, including what is not implemented.
         </p>
       </div>
 
@@ -249,9 +241,7 @@ export const InteroperabilityModule: React.FC = () => {
           disabled={readinessLoading}
           className="px-3 py-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg flex items-center gap-1"
         >
-          <RefreshCw
-            className={`w-3.5 h-3.5 ${readinessLoading ? 'animate-spin' : ''}`}
-          />
+          <RefreshCw className={`w-3.5 h-3.5 ${readinessLoading ? 'animate-spin' : ''}`} />
           <span>Re-check</span>
         </button>
       </div>
@@ -272,10 +262,9 @@ export const InteroperabilityModule: React.FC = () => {
         <div className="rounded-card border border-brand-200 bg-brand-50 p-4 text-xs leading-relaxed text-navy-800">
           <p className="font-semibold">No facility is selected.</p>
           <p className="mt-1">
-            The connection report, eligibility checks and the FHIR preview all
-            describe one facility. Choose a facility in the header to see them.
-            The self-assessment below is not facility specific and is shown in
-            full.
+            The connection report, eligibility checks and the FHIR preview all describe one
+            facility. Choose a facility in the header to see them. The self-assessment below is not
+            facility specific and is shown in full.
           </p>
         </div>
 
@@ -302,8 +291,8 @@ export const InteroperabilityModule: React.FC = () => {
             <p className="font-semibold">The readiness report could not be read.</p>
             <p className="mt-0.5">{readinessError}</p>
             <p className="mt-1 text-red-700">
-              If this says the module is disabled, an administrator must enable
-              Interoperability for this facility under Configuration.
+              If this says the module is disabled, an administrator must enable Interoperability for
+              this facility under Configuration.
             </p>
           </div>
         </div>
@@ -346,7 +335,7 @@ export const InteroperabilityModule: React.FC = () => {
                   <span className="font-semibold text-slate-900">{check.label}</span>
                   <span
                     className={`px-1.5 py-0.5 rounded border text-2xs font-semibold ${statusStyle(
-                      check.status
+                      check.status,
                     )}`}
                   >
                     {check.status}
@@ -407,8 +396,8 @@ export const InteroperabilityModule: React.FC = () => {
               Operation coverage
             </h2>
             <span className="text-2xs text-slate-400">
-              {readiness.operations.filter((operation) => operation.implemented).length}{' '}
-              of {readiness.operations.length} implemented
+              {readiness.operations.filter((operation) => operation.implemented).length} of{' '}
+              {readiness.operations.length} implemented
             </span>
           </div>
 
@@ -425,9 +414,7 @@ export const InteroperabilityModule: React.FC = () => {
                     <XCircle className="w-4 h-4 text-slate-400 shrink-0" />
                   )}
                   <div>
-                    <p className="text-xs font-semibold text-slate-900">
-                      {operation.operation}
-                    </p>
+                    <p className="text-xs font-semibold text-slate-900">{operation.operation}</p>
                     <p className="text-2xs font-mono text-slate-500">
                       {operation.method} {operation.path}
                     </p>
@@ -457,16 +444,14 @@ export const InteroperabilityModule: React.FC = () => {
             Member eligibility
           </h2>
           <p className="text-2xs text-slate-500 mt-1">
-            Uses the patient's Client Registry id, or their national ID when no CR id
-            is recorded. Identifiers are masked in every response.
+            Uses the patient's Client Registry id, or their national ID when no CR id is recorded.
+            Identifiers are masked in every response.
           </p>
         </div>
 
         <div className="flex flex-col lg:flex-row lg:items-end gap-3">
           <div className="flex-1">
-            <label className="block text-2xs font-semibold text-slate-600 mb-1">
-              Patient
-            </label>
+            <label className="block text-2xs font-semibold text-slate-600 mb-1">Patient</label>
             <select
               value={selectedPatientId}
               onChange={(event) => {
@@ -637,9 +622,7 @@ export const InteroperabilityModule: React.FC = () => {
         </div>
 
         {calls.length === 0 ? (
-          <p className="text-2xs text-slate-500 py-2">
-            No calls recorded for this facility yet.
-          </p>
+          <p className="text-2xs text-slate-500 py-2">No calls recorded for this facility yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-2xs">
@@ -659,14 +642,10 @@ export const InteroperabilityModule: React.FC = () => {
                     <td className="py-1.5 pr-3 text-slate-600">
                       {new Date(call.createdAt).toLocaleString()}
                     </td>
-                    <td className="py-1.5 pr-3 font-mono text-slate-800">
-                      {call.operation}
-                    </td>
+                    <td className="py-1.5 pr-3 font-mono text-slate-800">{call.operation}</td>
                     <td className="py-1.5 pr-3">
                       <span
-                        className={
-                          call.status === 'SUCCESS' ? 'text-emerald-700' : 'text-red-700'
-                        }
+                        className={call.status === 'SUCCESS' ? 'text-emerald-700' : 'text-red-700'}
                       >
                         {call.status}
                         {call.errorCode ? ` (${call.errorCode})` : ''}
@@ -691,9 +670,7 @@ export const InteroperabilityModule: React.FC = () => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-3">
             <Layers className="w-4 h-4 text-slate-500" />
-            <span className="text-xs font-semibold text-slate-700">
-              Inspect patient resource:
-            </span>
+            <span className="text-xs font-semibold text-slate-700">Inspect patient resource:</span>
             <select
               value={selectedPatientId}
               onChange={(event) => {
@@ -743,8 +720,8 @@ export const InteroperabilityModule: React.FC = () => {
         <p className="text-2xs text-slate-500 flex items-start gap-1.5">
           <Network className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>
-            This resource is generated locally from the patient record. It has not been
-            validated against the Shared Health Record and is not submitted anywhere.
+            This resource is generated locally from the patient record. It has not been validated
+            against the Shared Health Record and is not submitted anywhere.
           </span>
         </p>
       </div>

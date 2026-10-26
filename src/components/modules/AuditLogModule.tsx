@@ -2,13 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { AuditLog } from '../../types/index.ts';
-import {
-  ShieldAlert,
-  Search,
-  Lock,
-  Clock,
-  UserCheck
-} from 'lucide-react';
+import { ShieldAlert, Search, Lock, Clock, UserCheck } from 'lucide-react';
 
 export const AuditLogModule: React.FC = () => {
   const { currentFacility, refreshKey } = useHmis();
@@ -31,11 +25,12 @@ export const AuditLogModule: React.FC = () => {
     loadLogs();
   }, [currentFacility, refreshKey]);
 
-  const filteredLogs = logs.filter(l =>
-    l.action.toLowerCase().includes(search.toLowerCase()) ||
-    l.resource.toLowerCase().includes(search.toLowerCase()) ||
-    (l.details && l.details.toLowerCase().includes(search.toLowerCase())) ||
-    (l.userId && l.userId.toLowerCase().includes(search.toLowerCase()))
+  const filteredLogs = logs.filter(
+    (l) =>
+      l.action.toLowerCase().includes(search.toLowerCase()) ||
+      l.resource.toLowerCase().includes(search.toLowerCase()) ||
+      (l.details && l.details.toLowerCase().includes(search.toLowerCase())) ||
+      (l.userId && l.userId.toLowerCase().includes(search.toLowerCase())),
   );
 
   return (
@@ -43,9 +38,12 @@ export const AuditLogModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Security Audit Trail & Compliance Ledger</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Security Audit Trail & Compliance Ledger
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Immutable transaction records under the Kenya Data Protection Act 2019 and Digital Health Agency security requirements.
+            Immutable transaction records under the Kenya Data Protection Act 2019 and Digital
+            Health Agency security requirements.
           </p>
         </div>
 
@@ -69,7 +67,9 @@ export const AuditLogModule: React.FC = () => {
             />
           </div>
 
-          <span className="text-2xs font-mono text-slate-400">{filteredLogs.length} events logged</span>
+          <span className="text-2xs font-mono text-slate-400">
+            {filteredLogs.length} events logged
+          </span>
         </div>
 
         <div className="overflow-x-auto">
@@ -89,15 +89,19 @@ export const AuditLogModule: React.FC = () => {
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-2xs">
                     {new Date(log.timestamp).toLocaleString('en-KE')}
                   </td>
-                  <td className="px-4 py-3 font-semibold text-slate-900">{log.userId || 'System'}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-900">
+                    {log.userId || 'System'}
+                  </td>
                   <td className="px-4 py-3 font-sans">
-                    <span className={`px-2 py-0.5 rounded text-2xs font-bold ${
-                      log.action === 'CREATE'
-                        ? 'bg-emerald-50 text-emerald-800'
-                        : log.action === 'DELETE'
-                        ? 'bg-rose-50 text-rose-800'
-                        : 'bg-teal-50 text-teal-800'
-                    }`}>
+                    <span
+                      className={`px-2 py-0.5 rounded text-2xs font-bold ${
+                        log.action === 'CREATE'
+                          ? 'bg-emerald-50 text-emerald-800'
+                          : log.action === 'DELETE'
+                            ? 'bg-rose-50 text-rose-800'
+                            : 'bg-teal-50 text-teal-800'
+                      }`}
+                    >
                       {log.action}
                     </span>
                   </td>

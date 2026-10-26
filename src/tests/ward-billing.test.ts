@@ -46,10 +46,7 @@ import {
 } from '../billing/tariff-resolver.ts';
 import { phrasesForCharge, codesForFamily } from '../billing/tariff-matching.ts';
 import { billingServiceKeys } from '../billing/tariff-codes.ts';
-import {
-  toChargeRequest,
-  type ChargeAttemptRow,
-} from '../billing/charge-attempts.ts';
+import { toChargeRequest, type ChargeAttemptRow } from '../billing/charge-attempts.ts';
 import * as schema from '../db/schema.ts';
 
 let checks = 0;
@@ -106,21 +103,9 @@ function tariff(
 }
 
 /** The two inpatient rows the facility actually has. */
-const IP_001 = tariff(
-  1,
-  'IP-001',
-  'Inpatient admission administration',
-  '500.00',
-  'Admission',
-);
+const IP_001 = tariff(1, 'IP-001', 'Inpatient admission administration', '500.00', 'Admission');
 
-const IP_002 = tariff(
-  2,
-  'IP-002',
-  'General ward bed charge',
-  '1500.00',
-  'Per day',
-);
+const IP_002 = tariff(2, 'IP-002', 'General ward bed charge', '1500.00', 'Per day');
 
 const priceList = [IP_001, IP_002];
 
@@ -156,9 +141,7 @@ function bedDay(input: {
     codes: codesForFamily({ family: 'BED_DAY', wardCode }),
     serviceKeys: billingServiceKeys('BED_DAY', [wardCode]),
     family: 'BED_DAY',
-    phrases:
-      input.phrases ??
-      phrasesForCharge({ family: 'BED_DAY', wardType, wardName }),
+    phrases: input.phrases ?? phrasesForCharge({ family: 'BED_DAY', wardType, wardName }),
     wardType,
     links: input.links ?? [],
     tariffs: input.tariffs ?? priceList,
@@ -179,14 +162,7 @@ function testTheReportedCodes(): void {
    */
   assertEqual(
     bedDayTariffCodes('FMW001'),
-    [
-      'BED-FMW001',
-      'WARD-FMW001',
-      'BED-DAY',
-      'INPATIENT-BED-DAY',
-      'WARD-DAY',
-      'BED',
-    ],
+    ['BED-FMW001', 'WARD-FMW001', 'BED-DAY', 'INPATIENT-BED-DAY', 'WARD-DAY', 'BED'],
     'the six candidates in the reported warning are unchanged',
   );
 
@@ -277,11 +253,7 @@ function testAdmissionAndBedDayNeverSwap(): void {
     bedDay({ tariffs: [IP_001], links: [link(1)] }),
   );
 
-  assertEqual(
-    bedDayAgainstAdmissionTariff.tariff,
-    null,
-    'IP-001 cannot price a bed-night',
-  );
+  assertEqual(bedDayAgainstAdmissionTariff.tariff, null, 'IP-001 cannot price a bed-night');
   assertEqual(
     bedDayAgainstAdmissionTariff.failure?.code,
     'UNIT_INCOMPATIBLE',
@@ -305,11 +277,7 @@ function testAdmissionAndBedDayNeverSwap(): void {
 
   assertEqual(admission.tariff?.code, 'IP-001', 'the admission fee resolves to IP-001');
   assertEqual(admission.tariff?.fee, '500.00', 'at its existing 500');
-  assertEqual(
-    admission.rule,
-    'CATALOGUE',
-    'by its own words, never by the bed-day vocabulary',
-  );
+  assertEqual(admission.rule, 'CATALOGUE', 'by its own words, never by the bed-day vocabulary');
 
   const admissionAgainstBedTariff = resolveFromRows({
     serviceType: 'ADMISSION',
@@ -336,11 +304,7 @@ function testAdmissionAndBedDayNeverSwap(): void {
     today: TODAY,
   });
 
-  assertEqual(
-    admissionAgainstBedTariff.tariff,
-    null,
-    'IP-002 cannot price the admission fee',
-  );
+  assertEqual(admissionAgainstBedTariff.tariff, null, 'IP-002 cannot price the admission fee');
   assertEqual(
     admissionAgainstBedTariff.failure?.code,
     'UNIT_INCOMPATIBLE',
@@ -372,16 +336,11 @@ function testAdmissionAndBedDayNeverSwap(): void {
    ============================================================ */
 
 function testSpecialBedsAreNotPricedAtTheGeneralRate(): void {
-  const icu = resolveFromRows(
-    bedDay({ wardCode: 'ICU', wardName: 'ICU', wardType: 'ICU' }),
-  );
+  const icu = resolveFromRows(bedDay({ wardCode: 'ICU', wardName: 'ICU', wardType: 'ICU' }));
 
   assertEqual(icu.tariff, null, 'an ICU night is not priced by the general row');
   assertEqual(icu.failure?.code, 'NO_TARIFF', 'it is reported as unconfigured');
-  assert(
-    icu.phrasesTried.includes('icu bed charge'),
-    'the ICU vocabulary is tried',
-  );
+  assert(icu.phrasesTried.includes('icu bed charge'), 'the ICU vocabulary is tried');
   assert(
     !icu.phrasesTried.includes('general ward bed charge'),
     'the general vocabulary is never offered to an ICU bed',
@@ -400,11 +359,7 @@ function testSpecialBedsAreNotPricedAtTheGeneralRate(): void {
     }),
   );
 
-  assertEqual(
-    withFamilyLink.tariff,
-    null,
-    'a family-wide bed-day link does not price an ICU bed',
-  );
+  assertEqual(withFamilyLink.tariff, null, 'a family-wide bed-day link does not price an ICU bed');
   assertEqual(withFamilyLink.failure?.code, 'NO_TARIFF', 'the night is reported');
 
   const explanation = withFamilyLink.rows.find((row) => row.tariff.id === 2);
@@ -428,23 +383,13 @@ function testSpecialBedsAreNotPricedAtTheGeneralRate(): void {
     }),
   );
 
-  assertEqual(
-    wardLinked.tariff?.code,
-    'IP-002',
-    'a ward-specific link prices that ward',
-  );
+  assertEqual(wardLinked.tariff?.code, 'IP-002', 'a ward-specific link prices that ward');
   assertEqual(wardLinked.rule, 'LINK', 'by explicit link, not by a guess');
 
   /*
    * The ordinary answer for a special bed: its own row.
    */
-  const icuRow = tariff(
-    9,
-    'BED-ICU',
-    'ICU bed charge',
-    '5000.00',
-    'Per day',
-  );
+  const icuRow = tariff(9, 'BED-ICU', 'ICU bed charge', '5000.00', 'Per day');
 
   const icuPriced = resolveFromRows(
     bedDay({
@@ -521,9 +466,7 @@ function testBedDayPeriods(): void {
     admissionDate: '2026-10-20',
     dischargeDate: '2026-10-22',
     homeWard: home,
-    transfers: [
-      { toWardId: 2, transferredAt: '2026-10-21T14:30:00', ward: icu },
-    ],
+    transfers: [{ toWardId: 2, transferredAt: '2026-10-21T14:30:00', ward: icu }],
   });
 
   assertEqual(transferred.length, 2, 'the stay splits at the transfer');
@@ -628,9 +571,7 @@ function testBedDayPeriods(): void {
     admissionDate: '2026-10-20',
     dischargeDate: '2026-10-21',
     homeWard: home,
-    transfers: [
-      { toWardId: 2, transferredAt: '2026-10-21T10:00:00', ward: icu },
-    ],
+    transfers: [{ toWardId: 2, transferredAt: '2026-10-21T10:00:00', ward: icu }],
   });
 
   assertEqual(
@@ -648,9 +589,7 @@ function testBedDayPeriods(): void {
     dischargeDate: null,
     untilDate: '2026-10-21',
     homeWard: home,
-    transfers: [
-      { toWardId: 2, transferredAt: '2026-10-22T09:00:00', ward: icu },
-    ],
+    transfers: [{ toWardId: 2, transferredAt: '2026-10-22T09:00:00', ward: icu }],
   });
 
   assertEqual(
@@ -752,11 +691,7 @@ function testOneKeyPerNight(): void {
   const nights = bedDayDates('2026-10-20', '2026-10-22').length;
 
   assertEqual(nights, 3, 'three nights');
-  assertEqual(
-    toCents(IP_002.fee) * nights,
-    450000,
-    'three nights at 1,500 is 4,500.00',
-  );
+  assertEqual(toCents(IP_002.fee) * nights, 450000, 'three nights at 1,500 is 4,500.00');
 
   console.log('  ✓ One key per night; retries cannot duplicate a charge');
 }
@@ -865,10 +800,7 @@ function testUnpricedNightIsRecoverable(): void {
 
   const migration = source('drizzle/0022_bed_day_charge_attempts.sql');
 
-  assert(
-    migration.includes('"idempotency_suffix"'),
-    'migration 0022 adds the night column',
-  );
+  assert(migration.includes('"idempotency_suffix"'), 'migration 0022 adds the night column');
   assert(
     migration.includes('coalesce("idempotency_suffix", \'\')'),
     'and keeps one open row per charge for non-night charges',
@@ -890,7 +822,9 @@ function testUnpricedNightIsRecoverable(): void {
     'a database without migration 0022 keeps recording skips',
   );
   assert(
-    attempts.includes('...(row.idempotencySuffix ? { idempotencySuffix: row.idempotencySuffix } : {})'),
+    attempts.includes(
+      '...(row.idempotencySuffix ? { idempotencySuffix: row.idempotencySuffix } : {})',
+    ),
     'and replayed with it',
   );
 
@@ -915,10 +849,7 @@ function testOneBedDayEngine(): void {
     dischargeRoute.includes('queries.accrueBedDaysScoped('),
     'discharge bills through the shared accrual',
   );
-  assert(
-    !dischargeRoute.includes("family: 'BED_DAY'"),
-    'discharge has no bed-day loop of its own',
-  );
+  assert(!dischargeRoute.includes("family: 'BED_DAY'"), 'discharge has no bed-day loop of its own');
   assert(
     dischargeRoute.indexOf('dischargeAdmissionScoped') <
       dischargeRoute.indexOf('accrueBedDaysScoped'),
@@ -944,30 +875,18 @@ function testOneBedDayEngine(): void {
     queries.indexOf('/* Bed-night tariff code precedence'),
   );
 
-  assert(
-    accrual.includes('bedDaySegments({'),
-    'the accrual prices by occupancy segment',
-  );
+  assert(accrual.includes('bedDaySegments({'), 'the accrual prices by occupancy segment');
   assert(
     accrual.includes('chargeAndRecord(db,'),
     'a missing tariff is recorded for reprocessing, not thrown',
   );
-  assert(
-    accrual.includes("family: 'BED_DAY'"),
-    'the night is charged as a bed-day',
-  );
+  assert(accrual.includes("family: 'BED_DAY'"), 'the night is charged as a bed-day');
   assert(
     accrual.includes('wardType: ward?.wardType ?? null'),
     'the bed category reaches the resolver',
   );
-  assert(
-    accrual.includes('idempotencySuffix: date'),
-    'each night keeps its date in the key',
-  );
-  assert(
-    accrual.includes('sourceId: admission.id'),
-    'the charge stays attached to the admission',
-  );
+  assert(accrual.includes('idempotencySuffix: date'), 'each night keeps its date in the key');
+  assert(accrual.includes('sourceId: admission.id'), 'the charge stays attached to the admission');
   assert(
     accrual.includes('encounterId: admission.encounterId ?? null'),
     'and to the encounter when there is one',
@@ -976,17 +895,14 @@ function testOneBedDayEngine(): void {
     !accrual.includes('.insert(schema.admissionTransfers)'),
     'billing never creates an occupancy event',
   );
-  assert(
-    !accrual.includes('.insert(schema.admissions)'),
-    'and never re-admits the patient',
-  );
+  assert(!accrual.includes('.insert(schema.admissions)'), 'and never re-admits the patient');
 
   /*
    * Facility isolation: the resolver loads this facility's rows only,
    * which is what keeps another branch's price out of this invoice.
    */
   assert(
-    resolver.includes("const where = eq(schema.facilityServiceTariffs.facilityId, facilityId);"),
+    resolver.includes('const where = eq(schema.facilityServiceTariffs.facilityId, facilityId);'),
     'the resolver loads one facility’s price list',
   );
   assert(

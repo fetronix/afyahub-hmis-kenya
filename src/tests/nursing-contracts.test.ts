@@ -39,10 +39,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function readRepoFile(relativePath: string): string {
@@ -99,27 +96,15 @@ function testWarningBoundaries(): void {
   };
 
   /* One unit inside the range is normal; one unit outside is a warning. */
-  assertEqual(
-    assessVitals({ systolicBp: 140 }).length,
-    0,
-    'systolic 140 (upper bound) is normal',
-  );
+  assertEqual(assessVitals({ systolicBp: 140 }).length, 0, 'systolic 140 (upper bound) is normal');
   const systolic = warning({ systolicBp: 141 }, 'systolicBp');
   assertEqual(systolic.direction, 'high', 'systolic 141 flags high');
 
-  assertEqual(
-    assessVitals({ pulseRate: 100 }).length,
-    0,
-    'pulse 100 (upper bound) is normal',
-  );
+  assertEqual(assessVitals({ pulseRate: 100 }).length, 0, 'pulse 100 (upper bound) is normal');
   warning({ pulseRate: 101 }, 'pulseRate');
   warning({ pulseRate: 59 }, 'pulseRate');
 
-  assertEqual(
-    assessVitals({ spo2Percent: 94 }).length,
-    0,
-    'SpO2 94 (lower bound) is normal',
-  );
+  assertEqual(assessVitals({ spo2Percent: 94 }).length, 0, 'SpO2 94 (lower bound) is normal');
   warning({ spo2Percent: 93 }, 'spo2Percent');
 
   /* Strings from Postgres numeric columns are parsed, not compared as text. */
@@ -138,10 +123,8 @@ function testWarningBoundaries(): void {
    ============================================================ */
 
 function testCriticalBoundaries(): void {
-  const severityOf = (
-    payload: Parameters<typeof assessVitals>[0],
-    field: string,
-  ) => assessVitals(payload).find((flag) => flag.field === field)?.severity;
+  const severityOf = (payload: Parameters<typeof assessVitals>[0], field: string) =>
+    assessVitals(payload).find((flag) => flag.field === field)?.severity;
 
   /*
    * Boundaries are inclusive: SpO2 <= 90, systolic <= 80 or >= 180,
@@ -153,7 +136,11 @@ function testCriticalBoundaries(): void {
 
   assertEqual(severityOf({ systolicBp: 80 }, 'systolicBp'), 'critical', 'systolic 80 is critical');
   assertEqual(severityOf({ systolicBp: 81 }, 'systolicBp'), 'warning', 'systolic 81 is warning');
-  assertEqual(severityOf({ systolicBp: 180 }, 'systolicBp'), 'critical', 'systolic 180 is critical');
+  assertEqual(
+    severityOf({ systolicBp: 180 }, 'systolicBp'),
+    'critical',
+    'systolic 180 is critical',
+  );
   assertEqual(severityOf({ systolicBp: 179 }, 'systolicBp'), 'warning', 'systolic 179 is warning');
 
   assertEqual(severityOf({ pulseRate: 45 }, 'pulseRate'), 'critical', 'pulse 45 is critical');
@@ -269,14 +256,8 @@ function testRouteWiring(): void {
     assert(index > -1, `${route} is registered`);
 
     const window = app.slice(index, index + 400);
-    assert(
-      window.includes('requirePermission('),
-      `${route} declares a permission guard`,
-    );
-    assert(
-      window.includes('requireAuthContext'),
-      `${route} resolves the auth context`,
-    );
+    assert(window.includes('requirePermission('), `${route} declares a permission guard`);
+    assert(window.includes('requireAuthContext'), `${route} resolves the auth context`);
   }
 
   /* Unscoped observation writes are the hole this work closed. */
@@ -300,52 +281,28 @@ function testUiWiring(): void {
     inpatient.includes("from './NursingPanel.tsx'"),
     'inpatient module imports the nursing panel',
   );
-  assert(
-    inpatient.includes('<NursingPanel'),
-    'nursing panel is mounted on the ward screen',
-  );
-  assert(
-    inpatient.includes('getInpatientBoard'),
-    'ward screen loads the nursing board',
-  );
+  assert(inpatient.includes('<NursingPanel'), 'nursing panel is mounted on the ward screen');
+  assert(inpatient.includes('getInpatientBoard'), 'ward screen loads the nursing board');
 
   const dashboard = readRepoFile('src/components/modules/DashboardModule.tsx');
-  assert(
-    dashboard.includes('getInpatientBoard'),
-    'dashboard reads the inpatient board',
-  );
+  assert(dashboard.includes('getInpatientBoard'), 'dashboard reads the inpatient board');
   /*
    * The redesign renamed the panel "Ward round"; the nursing columns
    * must still be rendered, so assert the table itself, not the old
    * heading alone.
    */
-  assert(
-    dashboard.includes('Ward round'),
-    'dashboard renders the ward nursing section',
-  );
+  assert(dashboard.includes('Ward round'), 'dashboard renders the ward nursing section');
   for (const column of ['Last vitals', 'Notes today', 'Ward / bed']) {
-    assert(
-      dashboard.includes(column),
-      `dashboard ward table keeps the "${column}" column`,
-    );
+    assert(dashboard.includes(column), `dashboard ward table keeps the "${column}" column`);
   }
-  assert(
-    dashboard.includes('vitalsOverdueCount'),
-    'dashboard surfaces the vitals-overdue KPI',
-  );
+  assert(dashboard.includes('vitalsOverdueCount'), 'dashboard surfaces the vitals-overdue KPI');
 
   const panel = readRepoFile('src/components/modules/NursingPanel.tsx');
   for (const tab of ['Vitals', 'Notes', 'Handover']) {
     assert(panel.includes(tab), `nursing panel has a ${tab} tab`);
   }
-  assert(
-    panel.includes('getShiftHandover'),
-    'nursing panel reads the shift handover',
-  );
-  assert(
-    panel.includes('recordWardVitals'),
-    'nursing panel records ward vitals',
-  );
+  assert(panel.includes('getShiftHandover'), 'nursing panel reads the shift handover');
+  assert(panel.includes('recordWardVitals'), 'nursing panel records ward vitals');
 }
 
 /* ============================================================

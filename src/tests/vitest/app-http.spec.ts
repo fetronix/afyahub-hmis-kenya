@@ -99,9 +99,7 @@ describe('correlation ids', () => {
       headers: { 'x-correlation-id': 'trace-from-proxy-001' },
     });
 
-    expect(response.headers.get('x-correlation-id')).toBe(
-      'trace-from-proxy-001',
-    );
+    expect(response.headers.get('x-correlation-id')).toBe('trace-from-proxy-001');
   });
 
   it('issues one when the client supplies none', async () => {
@@ -185,9 +183,7 @@ describe('unauthenticated access', () => {
   it('refuses it whether or not a patient id is present in the query', async () => {
     /* Authorisation must not depend on the parameters: an attacker who
      * can add a query string must not change the answer. */
-    const response = await fetch(
-      `${baseUrl}/api/patients?nationalId=12345678&facilityId=1`,
-    );
+    const response = await fetch(`${baseUrl}/api/patients?nationalId=12345678&facilityId=1`);
 
     expect(response.status).toBe(401);
   });

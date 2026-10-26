@@ -14,12 +14,7 @@
  * states which rows are still plaintext.
  */
 
-import {
-  blindIndex,
-  decryptField,
-  encryptField,
-  isEncryptedField,
-} from './field-crypto.ts';
+import { blindIndex, decryptField, encryptField, isEncryptedField } from './field-crypto.ts';
 
 export const NATIONAL_ID_INDEX_PURPOSE = 'patients.national_id';
 export const SHA_NUMBER_INDEX_PURPOSE = 'patients.sha_number';
@@ -43,18 +38,12 @@ export function sealPatientIdentifiers<T extends PatientIdentifierColumns>(
   const sealed: PatientIdentifierColumns = { ...data };
 
   if ('nationalId' in data) {
-    sealed.nationalIdBlindIndex = blindIndex(
-      data.nationalId ?? null,
-      NATIONAL_ID_INDEX_PURPOSE,
-    );
+    sealed.nationalIdBlindIndex = blindIndex(data.nationalId ?? null, NATIONAL_ID_INDEX_PURPOSE);
     sealed.nationalId = encryptField(data.nationalId ?? null);
   }
 
   if ('shaNumber' in data) {
-    sealed.shaNumberBlindIndex = blindIndex(
-      data.shaNumber ?? null,
-      SHA_NUMBER_INDEX_PURPOSE,
-    );
+    sealed.shaNumberBlindIndex = blindIndex(data.shaNumber ?? null, SHA_NUMBER_INDEX_PURPOSE);
     sealed.shaNumber = encryptField(data.shaNumber ?? null);
   }
 
@@ -67,32 +56,20 @@ export function sealPatientIdentifiers<T extends PatientIdentifierColumns>(
  * A decryption failure is not swallowed: returning a wrong identifier
  * is worse than returning an error.
  */
-export function openPatientIdentifiers<T extends PatientIdentifierColumns>(
-  row: T,
-): T {
+export function openPatientIdentifiers<T extends PatientIdentifierColumns>(row: T): T {
   return {
     ...row,
-    nationalId:
-      row.nationalId === undefined
-        ? row.nationalId
-        : decryptField(row.nationalId),
-    shaNumber:
-      row.shaNumber === undefined
-        ? row.shaNumber
-        : decryptField(row.shaNumber),
+    nationalId: row.nationalId === undefined ? row.nationalId : decryptField(row.nationalId),
+    shaNumber: row.shaNumber === undefined ? row.shaNumber : decryptField(row.shaNumber),
   };
 }
 
-export function openPatientRows<T extends PatientIdentifierColumns>(
-  rows: T[],
-): T[] {
+export function openPatientRows<T extends PatientIdentifierColumns>(rows: T[]): T[] {
   return rows.map(openPatientIdentifiers);
 }
 
 /** True when this row still holds a plaintext identifier. */
-export function rowHasPlaintextIdentifier(
-  row: PatientIdentifierColumns,
-): boolean {
+export function rowHasPlaintextIdentifier(row: PatientIdentifierColumns): boolean {
   const value = row.nationalId ?? row.shaNumber;
 
   if (!value) return false;
@@ -111,8 +88,6 @@ export function identifierLookup(
 ): string | null {
   return blindIndex(
     value ?? null,
-    field === 'nationalId'
-      ? NATIONAL_ID_INDEX_PURPOSE
-      : SHA_NUMBER_INDEX_PURPOSE,
+    field === 'nationalId' ? NATIONAL_ID_INDEX_PURPOSE : SHA_NUMBER_INDEX_PURPOSE,
   );
 }

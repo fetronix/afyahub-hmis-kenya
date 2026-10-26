@@ -9,11 +9,12 @@ import {
   Plus,
   Building2,
   FileCheck2,
-  DollarSign
+  DollarSign,
 } from 'lucide-react';
 
 export const ProcurementModule: React.FC = () => {
-  const { currentFacility, currentTenant, currentUser, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentFacility, currentTenant, currentUser, showToast, refreshKey, triggerRefresh } =
+    useHmis();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +39,7 @@ export const ProcurementModule: React.FC = () => {
         setSuppliers(sup);
         setPurchaseOrders(po);
         if (sup.length > 0 && !poForm.supplierId) {
-          setPoForm(prev => ({ ...prev, supplierId: sup[0].id.toString() }));
+          setPoForm((prev) => ({ ...prev, supplierId: sup[0].id.toString() }));
         }
       } catch (err) {
         console.error('Failed to load procurement data:', err);
@@ -78,7 +79,7 @@ export const ProcurementModule: React.FC = () => {
   };
 
   const getSupplierName = (id: number) => {
-    const s = suppliers.find(x => x.id === id);
+    const s = suppliers.find((x) => x.id === id);
     return s ? s.name : `Supplier #${id}`;
   };
 
@@ -87,9 +88,12 @@ export const ProcurementModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Hospital Procurement & Purchase Orders</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Hospital Procurement & Purchase Orders
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Vendor management (KEMSA / MEDS), purchase requisitions, and multi-tier clinical approval workflows.
+            Vendor management (KEMSA / MEDS), purchase requisitions, and multi-tier clinical
+            approval workflows.
           </p>
         </div>
 
@@ -107,14 +111,19 @@ export const ProcurementModule: React.FC = () => {
       {/* Approved Suppliers Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {suppliers.map((s) => (
-          <div key={s.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs space-y-1">
+          <div
+            key={s.id}
+            className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs space-y-1"
+          >
             <div className="flex items-center justify-between">
               <span className="font-semibold text-slate-900">{s.name}</span>
               <span className="font-mono text-3xs px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">
                 PIN: {s.kraPin || 'KRA'}
               </span>
             </div>
-            <div className="text-2xs text-slate-500">Contact: {s.contactPerson} · {s.phone}</div>
+            <div className="text-2xs text-slate-500">
+              Contact: {s.contactPerson} · {s.phone}
+            </div>
             <div className="text-2xs text-slate-400 truncate">{s.address}</div>
           </div>
         ))}
@@ -153,15 +162,23 @@ export const ProcurementModule: React.FC = () => {
                   <td className="px-4 py-3 text-right font-bold text-slate-900">
                     KES {Number(po.totalAmount).toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 font-sans text-slate-600">{po.orderedBy || 'Storekeeper'}</td>
-                  <td className="px-4 py-3 font-sans text-slate-600">{po.approvedBy || 'Pending'}</td>
-                  <td className="px-4 py-3 text-slate-500">{new Date(po.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 font-sans text-slate-600">
+                    {po.orderedBy || 'Storekeeper'}
+                  </td>
+                  <td className="px-4 py-3 font-sans text-slate-600">
+                    {po.approvedBy || 'Pending'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {new Date(po.createdAt).toLocaleDateString()}
+                  </td>
                   <td className="px-4 py-3 text-right font-sans">
-                    <span className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                      po.status === 'Approved'
-                        ? 'bg-emerald-50 text-emerald-800'
-                        : 'bg-amber-50 text-amber-800'
-                    }`}>
+                    <span
+                      className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                        po.status === 'Approved'
+                          ? 'bg-emerald-50 text-emerald-800'
+                          : 'bg-amber-50 text-amber-800'
+                      }`}
+                    >
                       {po.status}
                     </span>
                   </td>
@@ -178,13 +195,17 @@ export const ProcurementModule: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900">Create Supplier Purchase Order</h3>
-              <p className="text-2xs text-slate-500">Generate goods requisition order for pharmaceuticals and consumables.</p>
+              <p className="text-2xs text-slate-500">
+                Generate goods requisition order for pharmaceuticals and consumables.
+              </p>
             </div>
 
             <form onSubmit={handleCreatePo} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">PO Tracking Number</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    PO Tracking Number
+                  </label>
                   <input
                     type="text"
                     required
@@ -200,15 +221,19 @@ export const ProcurementModule: React.FC = () => {
                     onChange={(e) => setPoForm({ ...poForm, supplierId: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   >
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Requisition Items Description</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Requisition Items Description
+                </label>
                 <textarea
                   rows={2}
                   value={poForm.description}
@@ -218,7 +243,9 @@ export const ProcurementModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Estimated Total Order Amount (KES) *</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Estimated Total Order Amount (KES) *
+                </label>
                 <input
                   type="text"
                   required

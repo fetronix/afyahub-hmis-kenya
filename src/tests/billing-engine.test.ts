@@ -37,10 +37,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} — expected ${String(expected)}, got ${String(actual)}`,
-  );
+  assert(actual === expected, `${label} — expected ${String(expected)}, got ${String(actual)}`);
 }
 
 /* ============================================================
@@ -63,11 +60,7 @@ function testMoney(): void {
   assertEqual(fromCents(sum), '0.30', '0.10 + 0.20 is exactly 0.30');
 
   // 19.99 * 3 would be 59.97000000000001 in floats.
-  assertEqual(
-    fromCents(toCents('19.99') * 3),
-    '59.97',
-    '19.99 × 3 is exactly 59.97',
-  );
+  assertEqual(fromCents(toCents('19.99') * 3), '59.97', '19.99 × 3 is exactly 59.97');
 
   assertEqual(fromCents(0), '0.00', 'zero formats with two decimals');
   assertEqual(fromCents(5), '0.05', 'single-cent formatting');
@@ -192,11 +185,7 @@ function testTariffCodes(): void {
   assertEqual(generic[0], 'BED-DAY', 'no ward falls straight to BED-DAY');
 
   // Punctuation and case must not produce a code nobody can type.
-  assertEqual(
-    bedDayTariffCodes('icu unit-2')[0],
-    'BED-ICU-UNIT-2',
-    'ward codes are normalised',
-  );
+  assertEqual(bedDayTariffCodes('icu unit-2')[0], 'BED-ICU-UNIT-2', 'ward codes are normalised');
 
   console.log('  ✓ Tariff code precedence passed');
 }
@@ -227,10 +216,7 @@ function testTariffMatching(): void {
    * the more specific code wins however the rows come back.
    */
   assertEqual(
-    pickTariffForCodes(
-      [row('CONSULT'), row('OPD-CONSULT')],
-      consultation,
-    )?.code,
+    pickTariffForCodes([row('CONSULT'), row('OPD-CONSULT')], consultation)?.code,
     'OPD-CONSULT',
     'OPD-CONSULT beats CONSULT regardless of row order',
   );
@@ -256,27 +242,16 @@ function testTariffMatching(): void {
    * created before the write side uppercased does not shadow the row the
    * configuration screen wrote.
    */
-  const exact = pickTariffForCodes(
-    [row('consult'), row('CONSULT')],
-    consultation,
-  );
+  const exact = pickTariffForCodes([row('consult'), row('CONSULT')], consultation);
   assertEqual(exact?.code, 'CONSULT', 'exact case wins over a case variant');
 
-  assertEqual(
-    pickTariffForCodes([], consultation),
-    null,
-    'no rows is null, not an error',
-  );
+  assertEqual(pickTariffForCodes([], consultation), null, 'no rows is null, not an error');
   assertEqual(
     pickTariffForCodes([row('SOMETHING-ELSE')], consultation),
     null,
     'an unrelated code does not price a consultation',
   );
-  assertEqual(
-    pickTariffForCodes([row('CONSULT')], []) ,
-    null,
-    'no candidates is null',
-  );
+  assertEqual(pickTariffForCodes([row('CONSULT')], []), null, 'no candidates is null');
 
   console.log('  ✓ Tariff matching passed');
 }
@@ -291,11 +266,7 @@ function testLabCodes(): void {
     'FULL-BLOOD-COUNT-CBC-FBC-5-PART-DIFF',
     'a long test name becomes a typeable code',
   );
-  assertEqual(
-    normaliseTariffCode('  '),
-    '',
-    'blank text is no code at all',
-  );
+  assertEqual(normaliseTariffCode('  '), '', 'blank text is no code at all');
 
   /*
    * The reported bug: the catalogue shows `LAB-CBC`, the facility prices
@@ -314,11 +285,7 @@ function testLabCodes(): void {
     'the name-derived code is still tried',
   );
   assert(cbc.includes('LAB-GENERAL'), 'the generic laboratory code is tried');
-  assertEqual(
-    new Set(cbc).size,
-    cbc.length,
-    'no candidate is repeated',
-  );
+  assertEqual(new Set(cbc).size, cbc.length, 'no candidate is repeated');
 
   const bare = labTariffCodeCandidates({ code: 'CBC', name: 'Full Blood Count' });
   assertEqual(bare[0], 'CBC', 'a bare catalogue code is kept as typed');
@@ -422,11 +389,7 @@ function testBillingLinks(): void {
   const labKeys = billingServiceKeys('LABORATORY', ['LAB-CBC', 'Full blood count']);
 
   assertEqual(labKeys[0], 'LABORATORY:LAB-CBC', 'the code is tried first');
-  assertEqual(
-    labKeys[1],
-    'LABORATORY:FULL-BLOOD-COUNT',
-    'then the normalised name',
-  );
+  assertEqual(labKeys[1], 'LABORATORY:FULL-BLOOD-COUNT', 'then the normalised name');
   assertEqual(labKeys[labKeys.length - 1], 'LABORATORY', 'the fallback is last');
   assertEqual(new Set(labKeys).size, labKeys.length, 'no key is repeated');
 

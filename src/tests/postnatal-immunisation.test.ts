@@ -29,10 +29,7 @@ import {
   outstandingDoses,
 } from '../immunisation/immunisation-contracts.ts';
 
-import {
-  buildPartographPlot,
-  partographGuidance,
-} from '../maternity/maternity-contracts.ts';
+import { buildPartographPlot, partographGuidance } from '../maternity/maternity-contracts.ts';
 import { schemaSource } from './support/schema-source.ts';
 
 let checks = 0;
@@ -44,10 +41,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function read(path: string): string {
@@ -78,9 +72,7 @@ function testSchedule(): void {
 
   assert(
     ANTIGENS.every((antigen) =>
-      ['Intradermal', 'Subcutaneous', 'Intramuscular', 'Oral'].includes(
-        antigen.route,
-      ),
+      ['Intradermal', 'Subcutaneous', 'Intramuscular', 'Oral'].includes(antigen.route),
     ),
     'every antigen has a route a vaccinator would recognise',
   );
@@ -90,11 +82,7 @@ function testSchedule(): void {
     'every antigen has at least one dose',
   );
 
-  assertEqual(
-    ANTIGEN_BY_CODE.get('BCG')?.weeks,
-    0,
-    'BCG is given at birth',
-  );
+  assertEqual(ANTIGEN_BY_CODE.get('BCG')?.weeks, 0, 'BCG is given at birth');
 
   assertEqual(
     ANTIGEN_BY_CODE.get('PENTA-3')?.weeks,
@@ -214,10 +202,7 @@ function testStatus(): void {
 
   const outstanding = outstandingDoses(atTen);
 
-  assert(
-    outstanding.length > 0,
-    'a child at ten weeks has doses outstanding',
-  );
+  assert(outstanding.length > 0, 'a child at ten weeks has doses outstanding');
 
   assert(
     outstanding.every((dose) => dose.status === 'Due' || dose.status === 'Overdue'),
@@ -268,9 +253,7 @@ function testPlot(): void {
   );
   assertEqual(plot.maxHour, 13, 'which is 12 plus one spare hour');
 
-  const late = buildPartographPlot(ADMITTED, [
-    { recordedAt: at(5), cervicalDilatationCm: 4 },
-  ]);
+  const late = buildPartographPlot(ADMITTED, [{ recordedAt: at(5), cervicalDilatationCm: 4 }]);
 
   assertEqual(late.alertLine?.startHour, 5, 'a late start moves the alert line right');
   assertEqual(late.actionLine?.endHour, 15, 'and the action line with it');
@@ -332,9 +315,7 @@ function testPlot(): void {
   );
 
   /* Nothing is extrapolated past the last reading. */
-  const stalled = buildPartographPlot(ADMITTED, [
-    { recordedAt: at(2), cervicalDilatationCm: 4 },
-  ]);
+  const stalled = buildPartographPlot(ADMITTED, [{ recordedAt: at(2), cervicalDilatationCm: 4 }]);
 
   assertEqual(
     stalled.readings.length,
@@ -350,8 +331,14 @@ function testPlot(): void {
 function testSchema(): void {
   const schema = schemaSource();
 
-  assert(schema.includes("postnatalVisits = pgTable(\n  'postnatal_visits'"), 'postnatal_visits is declared');
-  assert(schema.includes("immunisationRecords = pgTable(\n  'immunisation_records'"), 'immunisation_records is declared');
+  assert(
+    schema.includes("postnatalVisits = pgTable(\n  'postnatal_visits'"),
+    'postnatal_visits is declared',
+  );
+  assert(
+    schema.includes("immunisationRecords = pgTable(\n  'immunisation_records'"),
+    'immunisation_records is declared',
+  );
   assert(
     schema.includes("uniqueIndex('immunisation_records_dose_idx')"),
     'the double-administration guard is a unique index',
@@ -361,23 +348,17 @@ function testSchema(): void {
   const postnatalEnd = schema.indexOf('export const immunisationRecords');
   const postnatalBlock = schema.slice(postnatalStart, postnatalEnd);
 
-  assert(
-    postnatalBlock.length > 1000,
-    'the postnatal table block was located',
-  );
+  assert(postnatalBlock.length > 1000, 'the postnatal table block was located');
+
+  assert(!postnatalBlock.includes('.default('), 'no postnatal clinical column carries a default');
 
   assert(
-    !postnatalBlock.includes('.default('),
-    'no postnatal clinical column carries a default',
-  );
-
-  assert(
-    postnatalBlock.includes(".references(() => maternityPregnancies.id)"),
+    postnatalBlock.includes('.references(() => maternityPregnancies.id)'),
     'a postnatal visit hangs off the pregnancy',
   );
 
   assert(
-    postnatalBlock.includes('dayPostpartum: integer'), 
+    postnatalBlock.includes('dayPostpartum: integer'),
     'the day postpartum is stored, not recomputed on read',
   );
 
@@ -392,14 +373,11 @@ function testSchema(): void {
   );
 
   assert(
-    immunisationBlock.includes("default(1)"),
+    immunisationBlock.includes('default(1)'),
     'the dose number defaults to 1 — it is an index, not a measurement',
   );
 
-  assert(
-    immunisationBlock.includes('antigenCode: text'),
-    'the antigen is stored by code',
-  );
+  assert(immunisationBlock.includes('antigenCode: text'), 'the antigen is stored by code');
 
   assert(
     immunisationBlock.includes('administeredOn: text'),
@@ -418,8 +396,14 @@ function testSchema(): void {
 
   const sql = read('drizzle/0016_postnatal_immunisation.sql');
 
-  assert(sql.includes('CREATE TABLE IF NOT EXISTS "postnatal_visits"'), 'the migration creates postnatal_visits');
-  assert(sql.includes('CREATE TABLE IF NOT EXISTS "immunisation_records"'), 'the migration creates immunisation_records');
+  assert(
+    sql.includes('CREATE TABLE IF NOT EXISTS "postnatal_visits"'),
+    'the migration creates postnatal_visits',
+  );
+  assert(
+    sql.includes('CREATE TABLE IF NOT EXISTS "immunisation_records"'),
+    'the migration creates immunisation_records',
+  );
   assert(
     sql.includes('CREATE UNIQUE INDEX IF NOT EXISTS "immunisation_records_dose_idx"'),
     'the migration creates the unique dose index',
@@ -432,10 +416,7 @@ function testSchema(): void {
     );
   }
 
-  assert(
-    !sql.toUpperCase().includes('INSERT INTO'),
-    'the migration seeds no clinical records',
-  );
+  assert(!sql.toUpperCase().includes('INSERT INTO'), 'the migration seeds no clinical records');
 
   const journal = JSON.parse(read('drizzle/meta/_journal.json')) as {
     entries: Array<{ tag: string }>;
@@ -444,11 +425,7 @@ function testSchema(): void {
   const tags = journal.entries.map((entry) => entry.tag);
 
   assert(tags.includes('0016_postnatal_immunisation'), 'the journal lists the migration');
-  assertEqual(
-    new Set(tags).size,
-    tags.length,
-    'no migration tag appears twice in the journal',
-  );
+  assertEqual(new Set(tags).size, tags.length, 'no migration tag appears twice in the journal');
 }
 
 /* ============================================================
@@ -469,10 +446,7 @@ function testServices(): void {
     'the visit is attributed to the pregnancy’s facility, not the request body',
   );
 
-  assert(
-    postnatal.includes('patientId: pregnancy.patientId'),
-    'and to the pregnancy’s patient',
-  );
+  assert(postnatal.includes('patientId: pregnancy.patientId'), 'and to the pregnancy’s patient');
 
   assert(
     postnatal.includes('DELIVERY_PREGNANCY_MISMATCH'),
@@ -484,10 +458,7 @@ function testServices(): void {
     'the day postpartum is counted from the recorded delivery date',
   );
 
-  assert(
-    !postnatal.includes('?? 0'),
-    'no postpartum measurement is defaulted to zero',
-  );
+  assert(!postnatal.includes('?? 0'), 'no postpartum measurement is defaulted to zero');
 
   assert(
     immunisation.includes("pgErrorCode(error) === '23505'"),
@@ -504,23 +475,17 @@ function testServices(): void {
     'the SQLSTATE is read from the wrapped driver error',
   );
 
-  assert(
-    immunisation.includes("'FUTURE_DATE'"),
-    'a dose cannot be dated in the future',
-  );
+  assert(immunisation.includes("'FUTURE_DATE'"), 'a dose cannot be dated in the future');
 
   assert(
     immunisation.includes("'BEFORE_BIRTH'"),
     'a dose cannot be dated before the child was born',
   );
 
-  assert(
-    immunisation.includes("'UNKNOWN_ANTIGEN'"),
-    'an antigen outside the schedule is refused',
-  );
+  assert(immunisation.includes("'UNKNOWN_ANTIGEN'"), 'an antigen outside the schedule is refused');
 
   assert(
-    immunisation.includes("statusCode = 400") || immunisation.includes('statusCode = 400'),
+    immunisation.includes('statusCode = 400') || immunisation.includes('statusCode = 400'),
     'the domain error carries an HTTP status',
   );
 
@@ -583,14 +548,16 @@ function testRoutes(): void {
   );
 
   assert(
-    app.slice(immunisationPost, immunisationPost + 200).includes("requirePermission('maternity.create')"),
+    app
+      .slice(immunisationPost, immunisationPost + 200)
+      .includes("requirePermission('maternity.create')"),
     'writing a dose needs maternity.create',
   );
 
   /* ---- the delivery charge ---- */
   const deliveryCharge = app.slice(
     app.indexOf('const created = await maternity.recordDelivery'),
-    app.indexOf("res.status(201).json({ ...created, billing: charge });"),
+    app.indexOf('res.status(201).json({ ...created, billing: charge });'),
   );
 
   assert(deliveryCharge.length > 100, 'the delivery route has a billing block');
@@ -620,10 +587,7 @@ function testRoutes(): void {
     'no price is invented when the facility has no delivery tariff',
   );
 
-  assert(
-    !/\d+\.\d{2}/.test(deliveryCharge),
-    'no money literal appears in the delivery charge',
-  );
+  assert(!/\d+\.\d{2}/.test(deliveryCharge), 'no money literal appears in the delivery charge');
 }
 
 /** The charge is raised once for the delivery, outside the babies loop. */
@@ -650,10 +614,7 @@ function testScreen(): void {
   assert(module.includes('api.recordImmunisation('), 'the screen writes a dose');
   assert(module.includes('api.getImmunisationDueList('), 'the screen shows who is due');
   assert(module.includes('TARIFF_NOT_CONFIGURED'), 'the screen says when nothing was billed');
-  assert(
-    module.includes('Recorded, not billed.'),
-    'in words a receptionist can act on',
-  );
+  assert(module.includes('Recorded, not billed.'), 'in words a receptionist can act on');
   assert(module.includes('Delivery register'), 'the delivery register is still there');
 
   assert(
@@ -665,7 +626,10 @@ function testScreen(): void {
    * The table stayed. The chart is an addition, not a replacement: a
    * clinician reading six hours of observations wants the numbers.
    */
-  assert(module.includes('<th className="px-2 py-2 font-medium">Dilat.</th>'), 'the partograph table is still rendered');
+  assert(
+    module.includes('<th className="px-2 py-2 font-medium">Dilat.</th>'),
+    'the partograph table is still rendered',
+  );
 
   assert(chart.includes('<svg'), 'the chart is inline SVG');
   assert(chart.includes('role="img"'), 'the chart is exposed as an image to assistive technology');
@@ -674,10 +638,7 @@ function testScreen(): void {
   assert(chart.includes('plot.actionLine'), 'the action line is drawn from the computed geometry');
   assert(!chart.includes('<canvas'), 'no canvas');
   assert(!chart.includes('recharts'), 'and no charting dependency');
-  assert(
-    !/https?:\/\//.test(chart),
-    'the chart loads nothing from the network',
-  );
+  assert(!/https?:\/\//.test(chart), 'the chart loads nothing from the network');
 
   assert(
     !module.includes('Sample patient') && !module.includes('John Doe'),

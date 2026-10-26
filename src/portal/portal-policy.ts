@@ -45,11 +45,7 @@ export const INVITATION_STATUSES = [
 ] as const;
 export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 
-export const INVITATION_PURPOSES = [
-  'ACTIVATION',
-  'RECOVERY',
-  'REVERIFICATION',
-] as const;
+export const INVITATION_PURPOSES = ['ACTIVATION', 'RECOVERY', 'REVERIFICATION'] as const;
 export type InvitationPurpose = (typeof INVITATION_PURPOSES)[number];
 
 export const ACCOUNT_STATUSES = ['PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'REVOKED'] as const;
@@ -164,8 +160,7 @@ export function portalBaseUrl(
   env: Record<string, string | undefined> = process.env,
   requestOrigin?: string | null,
 ): string {
-  const explicit = env.PATIENT_PORTAL_URL?.trim()
-    || env.APP_BASE_URL?.trim();
+  const explicit = env.PATIENT_PORTAL_URL?.trim() || env.APP_BASE_URL?.trim();
 
   const candidate = explicit || requestOrigin?.trim() || '';
 
@@ -337,9 +332,7 @@ export function deriveInvitationStatus(
   if (invitation.status === 'SUPERSEDED') return 'SUPERSEDED';
 
   const expiry =
-    invitation.expiresAt instanceof Date
-      ? invitation.expiresAt
-      : new Date(invitation.expiresAt);
+    invitation.expiresAt instanceof Date ? invitation.expiresAt : new Date(invitation.expiresAt);
 
   if (Number.isNaN(expiry.getTime())) return 'EXPIRED';
 
@@ -388,7 +381,8 @@ export function canResendInvitation(input: {
   if (status === 'SUPERSEDED') {
     return {
       allowed: false,
-      reason: 'A newer invitation already replaced this one. Resend the current invitation instead.',
+      reason:
+        'A newer invitation already replaced this one. Resend the current invitation instead.',
     };
   }
 
@@ -484,21 +478,12 @@ export function clampPortalPolicy(raw: Partial<Record<keyof PortalPolicy, unknow
       MAX_RESENDS,
       DEFAULT_PORTAL_POLICY.maxResends,
     ),
-    allowManualDelivery: asBool(
-      raw.allowManualDelivery,
-      DEFAULT_PORTAL_POLICY.allowManualDelivery,
-    ),
+    allowManualDelivery: asBool(raw.allowManualDelivery, DEFAULT_PORTAL_POLICY.allowManualDelivery),
     allowSms: asBool(raw.allowSms, DEFAULT_PORTAL_POLICY.allowSms),
     allowEmail: asBool(raw.allowEmail, DEFAULT_PORTAL_POLICY.allowEmail),
     showLabResults: asBool(raw.showLabResults, DEFAULT_PORTAL_POLICY.showLabResults),
-    showAppointments: asBool(
-      raw.showAppointments,
-      DEFAULT_PORTAL_POLICY.showAppointments,
-    ),
-    showPrescriptions: asBool(
-      raw.showPrescriptions,
-      DEFAULT_PORTAL_POLICY.showPrescriptions,
-    ),
+    showAppointments: asBool(raw.showAppointments, DEFAULT_PORTAL_POLICY.showAppointments),
+    showPrescriptions: asBool(raw.showPrescriptions, DEFAULT_PORTAL_POLICY.showPrescriptions),
     showAllergies: asBool(raw.showAllergies, DEFAULT_PORTAL_POLICY.showAllergies),
     showDischargeSummaries: asBool(
       raw.showDischargeSummaries,
@@ -596,8 +581,7 @@ export function validateSharingRequest(input: unknown): {
 
   const body = input as Record<string, unknown>;
 
-  const recipientName =
-    typeof body.recipientName === 'string' ? body.recipientName.trim() : '';
+  const recipientName = typeof body.recipientName === 'string' ? body.recipientName.trim() : '';
 
   if (recipientName.length < 2 || recipientName.length > 160) {
     throw new Error('Name the recipient, between 2 and 160 characters.');

@@ -48,9 +48,7 @@ function readJournal(): JournalEntry[] {
 }
 
 function testNoBom(): void {
-  const files = readdirSync(DRIZZLE_DIR).filter(
-    (name) => name.endsWith('.sql'),
-  );
+  const files = readdirSync(DRIZZLE_DIR).filter((name) => name.endsWith('.sql'));
 
   assert(files.length > 0, 'at least one migration file exists');
 
@@ -58,10 +56,7 @@ function testNoBom(): void {
     const buffer = readFileSync(resolve(DRIZZLE_DIR, file));
 
     const startsWithBom =
-      buffer.length >= 3 &&
-      buffer[0] === 0xef &&
-      buffer[1] === 0xbb &&
-      buffer[2] === 0xbf;
+      buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf;
 
     assert(
       !startsWithBom,
@@ -72,17 +67,12 @@ function testNoBom(): void {
 
 function testJournalMatchesFiles(): void {
   const journal = readJournal();
-  const files = new Set(
-    readdirSync(DRIZZLE_DIR).filter((name) => name.endsWith('.sql')),
-  );
+  const files = new Set(readdirSync(DRIZZLE_DIR).filter((name) => name.endsWith('.sql')));
 
   assert(journal.length > 0, 'journal lists migrations');
 
   for (const entry of journal) {
-    assert(
-      files.has(`${entry.tag}.sql`),
-      `journal entry ${entry.tag} has a matching .sql file`,
-    );
+    assert(files.has(`${entry.tag}.sql`), `journal entry ${entry.tag} has a matching .sql file`);
   }
 
   const journalTags = new Set(journal.map((entry) => entry.tag));
@@ -91,10 +81,7 @@ function testJournalMatchesFiles(): void {
     const tag = file.replace(/\.sql$/, '');
 
     /* .bak copies are ignored. */
-    assert(
-      journalTags.has(tag),
-      `${file} is registered in _journal.json`,
-    );
+    assert(journalTags.has(tag), `${file} is registered in _journal.json`);
   }
 }
 
@@ -110,10 +97,7 @@ function testTimestampsIncreasing(): void {
       `${current.tag} (${current.when}) must be newer than ${previous.tag} (${previous.when}) — drizzle applies a migration only when its timestamp beats the newest recorded one`,
     );
 
-    assert(
-      current.idx === previous.idx + 1,
-      `${current.tag} has a contiguous journal index`,
-    );
+    assert(current.idx === previous.idx + 1, `${current.tag} has a contiguous journal index`);
   }
 }
 
@@ -197,10 +181,7 @@ function testGuardedDdl(): void {
  * and a failed migration must exit rather than hang.
  */
 function testRunnerSafety(): void {
-  const runner = readFileSync(
-    resolve(process.cwd(), 'scripts/migrate.ts'),
-    'utf8',
-  );
+  const runner = readFileSync(resolve(process.cwd(), 'scripts/migrate.ts'), 'utf8');
 
   /*
    * The rule used to be asserted as the literal string `appliedMillis`
@@ -210,7 +191,13 @@ function testRunnerSafety(): void {
    */
   const editedButRecorded = classifyMigrations(
     [
-      { tag: '0002_x', hash: 'hash-after-edit', folderMillis: 2_000, statements: [], bomStripped: false },
+      {
+        tag: '0002_x',
+        hash: 'hash-after-edit',
+        folderMillis: 2_000,
+        statements: [],
+        bomStripped: false,
+      },
     ],
     [{ hash: 'hash-before-edit', createdAt: 2_000 }],
   );
@@ -247,10 +234,7 @@ function testStatementsTerminated(): void {
       .map((statement) => statement.trim())
       .filter((statement) => statement.length > 0);
 
-    assert(
-      statements.length > 0,
-      `${entry.tag} contains at least one statement`,
-    );
+    assert(statements.length > 0, `${entry.tag} contains at least one statement`);
 
     for (const [index, statement] of statements.entries()) {
       const withoutComments = statement

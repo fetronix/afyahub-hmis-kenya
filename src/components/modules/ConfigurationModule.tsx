@@ -4,10 +4,7 @@ import type { ServiceTariff } from '../../types/index.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import { StaffRolesPanel } from './StaffRolesPanel.tsx';
-import {
-  FACILITY_MODULES,
-  resolveFacilityModules,
-} from '../../config/facility-modules.ts';
+import { FACILITY_MODULES, resolveFacilityModules } from '../../config/facility-modules.ts';
 import {
   Sliders,
   Building2,
@@ -39,12 +36,11 @@ export const ConfigurationModule: React.FC = () => {
   const isFacilityAdmin = Boolean(
     authenticatedUser?.roles?.includes('FACILITY_ADMIN') &&
     !authenticatedUser?.isSuperAdmin &&
-    !authenticatedUser?.roles?.includes('SUPER_ADMIN')
+    !authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
 
   const isSuperAdmin = Boolean(
-    authenticatedUser?.isSuperAdmin ||
-    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+    authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
@@ -56,9 +52,7 @@ export const ConfigurationModule: React.FC = () => {
    */
   const canManageStaff = Boolean(
     !isSuperAdmin &&
-    (isFacilityAdmin ||
-      permissions.has('users.invite') ||
-      permissions.has('users.roles.manage'))
+    (isFacilityAdmin || permissions.has('users.invite') || permissions.has('users.roles.manage')),
   );
 
   /*
@@ -73,12 +67,12 @@ export const ConfigurationModule: React.FC = () => {
     canManageStaff &&
     !permissions.has('facilities.update') &&
     !permissions.has('system.settings.manage') &&
-    !permissions.has('roles.permissions.manage')
+    !permissions.has('roles.permissions.manage'),
   );
 
-  const [activeTab, setActiveTab] = useState<'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'>(
-    staffOnly ? 'staff' : 'facility'
-  );
+  const [activeTab, setActiveTab] = useState<
+    'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'
+  >(staffOnly ? 'staff' : 'facility');
 
   useEffect(() => {
     /*
@@ -106,7 +100,7 @@ export const ConfigurationModule: React.FC = () => {
    * through PATCH /api/facilities/:id/modules.
    */
   const [moduleDraft, setModuleDraft] = useState<string[]>(() =>
-    resolveFacilityModules(currentFacility?.enabledModules)
+    resolveFacilityModules(currentFacility?.enabledModules),
   );
   const [moduleSaving, setModuleSaving] = useState(false);
   const [moduleError, setModuleError] = useState('');
@@ -122,9 +116,9 @@ export const ConfigurationModule: React.FC = () => {
    */
   const canProvisionModules = Boolean(
     isSuperAdmin ||
-      isFacilityAdmin ||
-      permissions.has('facilities.modules.manage') ||
-      permissions.has('system.settings.manage')
+    isFacilityAdmin ||
+    permissions.has('facilities.modules.manage') ||
+    permissions.has('system.settings.manage'),
   );
 
   const savedModules = resolveFacilityModules(currentFacility?.enabledModules);
@@ -140,7 +134,7 @@ export const ConfigurationModule: React.FC = () => {
       list.push(module);
       groups.set(module.group, list);
       return groups;
-    }, new Map<string, (typeof FACILITY_MODULES)[number][]>())
+    }, new Map<string, (typeof FACILITY_MODULES)[number][]>()),
   ).map(([group, modules]) => ({ group, modules }));
 
   // Facility-scoped service tariff management.
@@ -178,8 +172,8 @@ export const ConfigurationModule: React.FC = () => {
     ? currentFacility.enabledModules
     : [];
 
-  const availableTariffDepartments = tariffDepartments.filter(
-    (department) => facilityModules.includes(department.id)
+  const availableTariffDepartments = tariffDepartments.filter((department) =>
+    facilityModules.includes(department.id),
   );
 
   const resetTariffForm = () => {
@@ -302,9 +296,7 @@ export const ConfigurationModule: React.FC = () => {
 
     setModuleError('');
     setModuleDraft((current) =>
-      current.includes(moduleId)
-        ? current.filter((id) => id !== moduleId)
-        : [...current, moduleId]
+      current.includes(moduleId) ? current.filter((id) => id !== moduleId) : [...current, moduleId],
     );
   };
 
@@ -339,11 +331,10 @@ export const ConfigurationModule: React.FC = () => {
         parts.length > 0
           ? `Modules saved: ${parts.join('; ')}. The navigation has been updated.`
           : 'Modules saved. Nothing changed.',
-        { tone: 'success' }
+        { tone: 'success' },
       );
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Could not save the module list.';
+      const message = error instanceof Error ? error.message : 'Could not save the module list.';
 
       setModuleError(message);
       showToast(message, { tone: 'error' });
@@ -357,9 +348,12 @@ export const ConfigurationModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Hospital Configuration Engine</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Hospital Configuration Engine
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Zero-code administrative controls: Facility details, enabled modular features, RBAC matrix, and payment gateways.
+            Zero-code administrative controls: Facility details, enabled modular features, RBAC
+            matrix, and payment gateways.
           </p>
         </div>
 
@@ -378,37 +372,39 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'staff', label: 'Staff & Roles', icon: UserPlus },
           { id: 'payments', label: 'M-Pesa & Payment Channels', icon: CreditCard },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
-        ].filter((tab) => {
-          if (tab.id === 'staff') return canManageStaff;
-          if (staffOnly) return false;
-          /*
-           * A facility administrator runs the facility: profile, module
-           * provisioning, staff and tariffs. Payment credentials stay
-           * with the platform. This used to return only `tariffs`,
-           * which is why a facility administrator could never reach the
-           * module switches at all.
-           */
-          if (isFacilityAdmin) return tab.id !== 'payments';
-          return tab.id !== 'tariffs' && (!isSuperAdmin || tab.id !== 'staff');
-        }).map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
+        ]
+          .filter((tab) => {
+            if (tab.id === 'staff') return canManageStaff;
+            if (staffOnly) return false;
+            /*
+             * A facility administrator runs the facility: profile, module
+             * provisioning, staff and tariffs. Payment credentials stay
+             * with the platform. This used to return only `tariffs`,
+             * which is why a facility administrator could never reach the
+             * module switches at all.
+             */
+            if (isFacilityAdmin) return tab.id !== 'payments';
+            return tab.id !== 'tariffs' && (!isSuperAdmin || tab.id !== 'staff');
+          })
+          .map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
 
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
-                isActive
-                  ? 'bg-teal-700 text-white font-semibold shadow-xs'
-                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'bg-teal-700 text-white font-semibold shadow-xs'
+                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
       </div>
 
       {/* STAFF & ROLES TAB — the directory comes before the invitation form */}
@@ -445,9 +441,7 @@ export const ConfigurationModule: React.FC = () => {
               <div key={field.label} className="bg-surface px-5 py-3">
                 <dt className="eyebrow">{field.label}</dt>
                 <dd className="mt-1 text-sm font-semibold text-ink">
-                  {field.value || (
-                    <span className="font-normal text-slate-400">Not recorded</span>
-                  )}
+                  {field.value || <span className="font-normal text-slate-400">Not recorded</span>}
                 </dd>
               </div>
             ))}
@@ -456,9 +450,9 @@ export const ConfigurationModule: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hair px-5 py-3">
             <p className="flex max-w-xl items-start gap-2 text-2xs leading-relaxed text-muted">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-              Facility identity fields are changed by a platform administrator. This table
-              shows what the facility row currently holds; there is no edit form here because
-              this screen has no facility-profile endpoint to call.
+              Facility identity fields are changed by a platform administrator. This table shows
+              what the facility row currently holds; there is no edit form here because this screen
+              has no facility-profile endpoint to call.
             </p>
 
             {isSuperAdmin && (
@@ -483,9 +477,9 @@ export const ConfigurationModule: React.FC = () => {
                 <p className="eyebrow">Provisioning</p>
                 <h2 className="mt-1 text-sm font-bold text-ink">Facility modules</h2>
                 <p className="mt-1 max-w-2xl text-2xs leading-relaxed text-muted">
-                  A switch here decides two things: whether the module appears in the
-                  navigation rail, and whether the server answers that module's API. Records
-                  already stored are kept when a module is switched off.
+                  A switch here decides two things: whether the module appears in the navigation
+                  rail, and whether the server answers that module's API. Records already stored are
+                  kept when a module is switched off.
                 </p>
               </div>
 
@@ -506,9 +500,9 @@ export const ConfigurationModule: React.FC = () => {
 
             {!canProvisionModules && (
               <div className="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-2xs text-amber-900">
-                This account can see the module list but cannot change it. Module
-                provisioning needs the <span className="font-mono">facilities.modules.manage</span>{' '}
-                permission or a facility administrator account.
+                This account can see the module list but cannot change it. Module provisioning needs
+                the <span className="font-mono">facilities.modules.manage</span> permission or a
+                facility administrator account.
               </div>
             )}
 
@@ -624,8 +618,8 @@ export const ConfigurationModule: React.FC = () => {
             <p className="mt-1 max-w-3xl text-2xs leading-relaxed text-brand-800">
               It is inside <strong>Maternity &amp; MCH</strong> &rarr;{' '}
               <strong>Antenatal register</strong>, the first of five tabs (labour, deliveries,
-              postnatal and immunisation follow). When Maternity is switched on above it is
-              added to the Clinical care section of the navigation immediately, with no reload.
+              postnatal and immunisation follow). When Maternity is switched on above it is added to
+              the Clinical care section of the navigation immediately, with no reload.
             </p>
           </div>
         </div>
@@ -642,29 +636,53 @@ export const ConfigurationModule: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 border border-slate-200 rounded-lg space-y-3">
-              <span className="font-bold text-slate-900 text-xs">Safaricom Daraja M-Pesa STK Push</span>
+              <span className="font-bold text-slate-900 text-xs">
+                Safaricom Daraja M-Pesa STK Push
+              </span>
               <div>
                 <label className="block text-slate-600 mb-1">Business Shortcode / Paybill</label>
-                <input type="text" defaultValue="883921" className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono" />
+                <input
+                  type="text"
+                  defaultValue="883921"
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono"
+                />
               </div>
               <div>
                 <label className="block text-slate-600 mb-1">Passkey (Encrypted)</label>
-                <input type="password" defaultValue="bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919" className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono" />
+                <input
+                  type="password"
+                  defaultValue="bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono"
+                />
               </div>
-              <span className="text-2xs text-emerald-700 font-medium">✓ Auto-STK Push Active on Cashier POS</span>
+              <span className="text-2xs text-emerald-700 font-medium">
+                ✓ Auto-STK Push Active on Cashier POS
+              </span>
             </div>
 
             <div className="p-4 border border-slate-200 rounded-lg space-y-3">
-              <span className="font-bold text-slate-900 text-xs">Bank Wire / PDQ Card Terminal</span>
+              <span className="font-bold text-slate-900 text-xs">
+                Bank Wire / PDQ Card Terminal
+              </span>
               <div>
                 <label className="block text-slate-600 mb-1">Bank Name</label>
-                <input type="text" defaultValue="KCB Bank Kenya Ltd" className="w-full px-3 py-1.5 border border-slate-200 rounded" />
+                <input
+                  type="text"
+                  defaultValue="KCB Bank Kenya Ltd"
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded"
+                />
               </div>
               <div>
                 <label className="block text-slate-600 mb-1">Account Number</label>
-                <input type="text" defaultValue="1102948201" className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono" />
+                <input
+                  type="text"
+                  defaultValue="1102948201"
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono"
+                />
               </div>
-              <span className="text-2xs text-emerald-700 font-medium">✓ Card & EFT Reconciliation Active</span>
+              <span className="text-2xs text-emerald-700 font-medium">
+                ✓ Card & EFT Reconciliation Active
+              </span>
             </div>
           </div>
         </div>
@@ -675,8 +693,12 @@ export const ConfigurationModule: React.FC = () => {
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs text-xs">
           <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-bold text-slate-900 uppercase">Facility Tariff & Pricing Schedule</h2>
-              <p className="text-slate-500 mt-1">Manage prices for services offered by this facility.</p>
+              <h2 className="font-bold text-slate-900 uppercase">
+                Facility Tariff & Pricing Schedule
+              </h2>
+              <p className="text-slate-500 mt-1">
+                Manage prices for services offered by this facility.
+              </p>
             </div>
             <button
               type="button"
@@ -703,41 +725,93 @@ export const ConfigurationModule: React.FC = () => {
 
           {availableTariffDepartments.length === 0 && (
             <div className="m-4 p-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
-              No tariff departments are enabled for this facility. Enable the relevant modules first.
+              No tariff departments are enabled for this facility. Enable the relevant modules
+              first.
             </div>
           )}
 
           {tariffFormOpen && (
-            <form onSubmit={saveTariff} className="m-4 p-4 border border-teal-200 rounded-xl bg-teal-50/30 space-y-4">
-              <h3 className="font-bold text-slate-900">{editingTariffId === null ? 'Create tariff' : 'Edit tariff'}</h3>
+            <form
+              onSubmit={saveTariff}
+              className="m-4 p-4 border border-teal-200 rounded-xl bg-teal-50/30 space-y-4"
+            >
+              <h3 className="font-bold text-slate-900">
+                {editingTariffId === null ? 'Create tariff' : 'Edit tariff'}
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 <label className="block">
                   <span className="block mb-1 font-medium text-slate-700">Service code</span>
-                  <input required maxLength={50} value={tariffForm.code} onChange={(event) => setTariffForm({ ...tariffForm, code: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="e.g. SRV-OPD-01" />
+                  <input
+                    required
+                    maxLength={50}
+                    value={tariffForm.code}
+                    onChange={(event) => setTariffForm({ ...tariffForm, code: event.target.value })}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    placeholder="e.g. SRV-OPD-01"
+                  />
                 </label>
                 <label className="block md:col-span-1 lg:col-span-2">
                   <span className="block mb-1 font-medium text-slate-700">Description</span>
-                  <input required maxLength={500} value={tariffForm.description} onChange={(event) => setTariffForm({ ...tariffForm, description: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Service description" />
+                  <input
+                    required
+                    maxLength={500}
+                    value={tariffForm.description}
+                    onChange={(event) =>
+                      setTariffForm({ ...tariffForm, description: event.target.value })
+                    }
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    placeholder="Service description"
+                  />
                 </label>
                 <label className="block">
                   <span className="block mb-1 font-medium text-slate-700">Department</span>
-                  <select required value={tariffForm.department} onChange={(event) => setTariffForm({ ...tariffForm, department: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2">
+                  <select
+                    required
+                    value={tariffForm.department}
+                    onChange={(event) =>
+                      setTariffForm({ ...tariffForm, department: event.target.value })
+                    }
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                  >
                     {availableTariffDepartments.map((department) => (
-                      <option key={department.id} value={department.id}>{department.label}</option>
+                      <option key={department.id} value={department.id}>
+                        {department.label}
+                      </option>
                     ))}
                   </select>
                 </label>
                 <label className="block">
                   <span className="block mb-1 font-medium text-slate-700">Unit</span>
-                  <input required maxLength={50} value={tariffForm.unit} onChange={(event) => setTariffForm({ ...tariffForm, unit: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Service, day, session..." />
+                  <input
+                    required
+                    maxLength={50}
+                    value={tariffForm.unit}
+                    onChange={(event) => setTariffForm({ ...tariffForm, unit: event.target.value })}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    placeholder="Service, day, session..."
+                  />
                 </label>
                 <label className="block">
                   <span className="block mb-1 font-medium text-slate-700">Fee (KES)</span>
-                  <input required inputMode="decimal" pattern="^\d+(\.\d{1,2})?$" value={tariffForm.fee} onChange={(event) => setTariffForm({ ...tariffForm, fee: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="0.00" />
+                  <input
+                    required
+                    inputMode="decimal"
+                    pattern="^\d+(\.\d{1,2})?$"
+                    value={tariffForm.fee}
+                    onChange={(event) => setTariffForm({ ...tariffForm, fee: event.target.value })}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    placeholder="0.00"
+                  />
                 </label>
                 <label className="block">
                   <span className="block mb-1 font-medium text-slate-700">SHA status</span>
-                  <select value={tariffForm.shaStatus} onChange={(event) => setTariffForm({ ...tariffForm, shaStatus: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2">
+                  <select
+                    value={tariffForm.shaStatus}
+                    onChange={(event) =>
+                      setTariffForm({ ...tariffForm, shaStatus: event.target.value })
+                    }
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                  >
                     <option>Not Assessed</option>
                     <option>Covered</option>
                     <option>Not Covered</option>
@@ -746,15 +820,43 @@ export const ConfigurationModule: React.FC = () => {
                   </select>
                 </label>
                 <label className="block md:col-span-2 lg:col-span-2">
-                  <span className="block mb-1 font-medium text-slate-700">SHA notes (optional)</span>
-                  <input maxLength={1000} value={tariffForm.shaNotes} onChange={(event) => setTariffForm({ ...tariffForm, shaNotes: event.target.value })} className="w-full rounded-md border border-slate-300 px-3 py-2" placeholder="Coverage conditions or notes" />
+                  <span className="block mb-1 font-medium text-slate-700">
+                    SHA notes (optional)
+                  </span>
+                  <input
+                    maxLength={1000}
+                    value={tariffForm.shaNotes}
+                    onChange={(event) =>
+                      setTariffForm({ ...tariffForm, shaNotes: event.target.value })
+                    }
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    placeholder="Coverage conditions or notes"
+                  />
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button disabled={tariffSaving || !facilityModules.includes('finance') || availableTariffDepartments.length === 0} type="submit" className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
-                  {tariffSaving ? 'Saving…' : editingTariffId === null ? 'Create tariff' : 'Save changes'}
+                <button
+                  disabled={
+                    tariffSaving ||
+                    !facilityModules.includes('finance') ||
+                    availableTariffDepartments.length === 0
+                  }
+                  type="submit"
+                  className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50"
+                >
+                  {tariffSaving
+                    ? 'Saving…'
+                    : editingTariffId === null
+                      ? 'Create tariff'
+                      : 'Save changes'}
                 </button>
-                <button type="button" onClick={resetTariffForm} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700">Cancel</button>
+                <button
+                  type="button"
+                  onClick={resetTariffForm}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700"
+                >
+                  Cancel
+                </button>
               </div>
             </form>
           )}
@@ -762,8 +864,17 @@ export const ConfigurationModule: React.FC = () => {
           {tariffError && (
             <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
               <p>{tariffError}</p>
-              <p className="mt-1">Confirm the database migration and tariff permissions have been reviewed and applied before retrying.</p>
-              <button type="button" onClick={() => void loadTariffs()} className="mt-2 underline font-semibold">Retry loading</button>
+              <p className="mt-1">
+                Confirm the database migration and tariff permissions have been reviewed and applied
+                before retrying.
+              </p>
+              <button
+                type="button"
+                onClick={() => void loadTariffs()}
+                className="mt-2 underline font-semibold"
+              >
+                Retry loading
+              </button>
             </div>
           )}
 
@@ -789,23 +900,45 @@ export const ConfigurationModule: React.FC = () => {
                       <td className="px-4 py-3 font-mono font-bold text-teal-800">{tariff.code}</td>
                       <td className="px-4 py-3 font-medium text-slate-900">
                         {tariff.description}
-                        {tariff.shaNotes && <p className="mt-1 text-slate-500 font-normal">{tariff.shaNotes}</p>}
+                        {tariff.shaNotes && (
+                          <p className="mt-1 text-slate-500 font-normal">{tariff.shaNotes}</p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
-                        {tariffDepartments.find((department) => department.id === tariff.department)?.label || tariff.department}
+                        {tariffDepartments.find((department) => department.id === tariff.department)
+                          ?.label || tariff.department}
                         <p className="mt-1 text-slate-400">{tariff.unit}</p>
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">{Number(tariff.fee).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
+                        {Number(tariff.fee).toLocaleString('en-KE', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
                       <td className="px-4 py-3 text-slate-600">{tariff.shaStatus}</td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-1 font-semibold ${tariff.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        <span
+                          className={`rounded-full px-2 py-1 font-semibold ${tariff.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+                        >
                           {tariff.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <button type="button" onClick={() => startTariffEdit(tariff)} className="mr-3 font-semibold text-teal-800 hover:underline">Edit</button>
+                        <button
+                          type="button"
+                          onClick={() => startTariffEdit(tariff)}
+                          className="mr-3 font-semibold text-teal-800 hover:underline"
+                        >
+                          Edit
+                        </button>
                         {tariff.isActive && (
-                          <button type="button" onClick={() => void deactivateTariff(tariff)} className="font-semibold text-rose-700 hover:underline">Deactivate</button>
+                          <button
+                            type="button"
+                            onClick={() => void deactivateTariff(tariff)}
+                            className="font-semibold text-rose-700 hover:underline"
+                          >
+                            Deactivate
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -826,4 +959,3 @@ export const ConfigurationModule: React.FC = () => {
     </div>
   );
 };
-

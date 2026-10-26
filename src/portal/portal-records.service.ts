@@ -237,10 +237,7 @@ export async function getPortalOverview(
             prescribedAt: schema.medications.prescribedAt,
           })
           .from(schema.medications)
-          .innerJoin(
-            schema.encounters,
-            eq(schema.medications.encounterId, schema.encounters.id),
-          )
+          .innerJoin(schema.encounters, eq(schema.medications.encounterId, schema.encounters.id))
           .where(
             and(
               eq(schema.medications.patientId, session.patientId),
@@ -492,10 +489,7 @@ export async function listPortalMedications(
       prescribedAt: schema.medications.prescribedAt,
     })
     .from(schema.medications)
-    .innerJoin(
-      schema.encounters,
-      eq(schema.medications.encounterId, schema.encounters.id),
-    )
+    .innerJoin(schema.encounters, eq(schema.medications.encounterId, schema.encounters.id))
     .where(
       and(
         eq(schema.medications.patientId, session.patientId),

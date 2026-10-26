@@ -70,13 +70,7 @@ type SectionProps = {
   action?: React.ReactNode;
 };
 
-const SectionHeading: React.FC<SectionProps> = ({
-  step,
-  title,
-  subtitle,
-  icon: Icon,
-  action,
-}) => (
+const SectionHeading: React.FC<SectionProps> = ({ step, title, subtitle, icon: Icon, action }) => (
   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
     <div className="flex items-start gap-3">
       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-brand-100 bg-brand-50 font-mono text-2xs font-semibold text-brand-700">
@@ -176,20 +170,104 @@ type QuickAction = {
  * sidebar's map; the module must also be enabled for the facility.
  */
 const QUICK_ACTIONS: QuickAction[] = [
-  { module: 'registration', label: 'Register or find a patient', hint: 'Patient directory', icon: UserPlus, permissions: ['patients.read'] },
-  { module: 'reception', label: 'Work the queue', hint: 'Reception & appointments', icon: Users, permissions: ['appointments.read'] },
-  { module: 'opd', label: 'Start a consultation', hint: 'Outpatient & triage', icon: Stethoscope, permissions: ['clinical.read'] },
-  { module: 'laboratory', label: 'Review laboratory work', hint: 'Orders, results, verification', icon: FlaskConical, permissions: ['laboratory.read'] },
-  { module: 'pharmacy', label: 'Dispense a prescription', hint: 'Pharmacy & stock', icon: Pill, permissions: ['pharmacy.read'] },
-  { module: 'inventory', label: 'Check stock levels', hint: 'Inventory & batches', icon: Package, permissions: ['inventory.read'] },
-  { module: 'inpatient', label: 'Open the ward board', hint: 'Admissions & beds', icon: BedDouble, permissions: ['inpatient.read'] },
-  { module: 'maternity', label: 'Maternity & MCH', hint: 'ANC, labour, postnatal', icon: Baby, permissions: ['maternity.read'] },
-  { module: 'theatre', label: 'Theatre list', hint: 'Surgical cases', icon: Scissors, permissions: ['clinical.read', 'inpatient.read'] },
-  { module: 'specialty', label: 'Specialty clinics', hint: 'Dental, eye, ENT, renal', icon: Eye, permissions: ['clinical.read'] },
-  { module: 'finance', label: 'Bill and take payment', hint: 'Billing & cashier', icon: Receipt, permissions: ['billing.read'] },
-  { module: 'claims', label: 'Work the claim queue', hint: 'SHA e-claims', icon: FileCheck2, permissions: ['insurance.read'] },
-  { module: 'analytics', label: 'Open reports', hint: 'Revenue & utilisation', icon: BarChart3, permissions: ['reports.read'] },
-  { module: 'configuration', label: 'Manage staff', hint: 'Staff, roles and settings', icon: Building2, permissions: ['users.invite', 'users.roles.manage'] },
+  {
+    module: 'registration',
+    label: 'Register or find a patient',
+    hint: 'Patient directory',
+    icon: UserPlus,
+    permissions: ['patients.read'],
+  },
+  {
+    module: 'reception',
+    label: 'Work the queue',
+    hint: 'Reception & appointments',
+    icon: Users,
+    permissions: ['appointments.read'],
+  },
+  {
+    module: 'opd',
+    label: 'Start a consultation',
+    hint: 'Outpatient & triage',
+    icon: Stethoscope,
+    permissions: ['clinical.read'],
+  },
+  {
+    module: 'laboratory',
+    label: 'Review laboratory work',
+    hint: 'Orders, results, verification',
+    icon: FlaskConical,
+    permissions: ['laboratory.read'],
+  },
+  {
+    module: 'pharmacy',
+    label: 'Dispense a prescription',
+    hint: 'Pharmacy & stock',
+    icon: Pill,
+    permissions: ['pharmacy.read'],
+  },
+  {
+    module: 'inventory',
+    label: 'Check stock levels',
+    hint: 'Inventory & batches',
+    icon: Package,
+    permissions: ['inventory.read'],
+  },
+  {
+    module: 'inpatient',
+    label: 'Open the ward board',
+    hint: 'Admissions & beds',
+    icon: BedDouble,
+    permissions: ['inpatient.read'],
+  },
+  {
+    module: 'maternity',
+    label: 'Maternity & MCH',
+    hint: 'ANC, labour, postnatal',
+    icon: Baby,
+    permissions: ['maternity.read'],
+  },
+  {
+    module: 'theatre',
+    label: 'Theatre list',
+    hint: 'Surgical cases',
+    icon: Scissors,
+    permissions: ['clinical.read', 'inpatient.read'],
+  },
+  {
+    module: 'specialty',
+    label: 'Specialty clinics',
+    hint: 'Dental, eye, ENT, renal',
+    icon: Eye,
+    permissions: ['clinical.read'],
+  },
+  {
+    module: 'finance',
+    label: 'Bill and take payment',
+    hint: 'Billing & cashier',
+    icon: Receipt,
+    permissions: ['billing.read'],
+  },
+  {
+    module: 'claims',
+    label: 'Work the claim queue',
+    hint: 'SHA e-claims',
+    icon: FileCheck2,
+    permissions: ['insurance.read'],
+  },
+  {
+    module: 'analytics',
+    label: 'Open reports',
+    hint: 'Revenue & utilisation',
+    icon: BarChart3,
+    permissions: ['reports.read'],
+  },
+  {
+    module: 'configuration',
+    label: 'Manage staff',
+    hint: 'Staff, roles and settings',
+    icon: Building2,
+    permissions: ['users.invite', 'users.roles.manage'],
+  },
 ];
 
 /* ----------------------------------------------------------------
@@ -209,11 +287,9 @@ export const DashboardModule: React.FC = () => {
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const isSuperAdmin = Boolean(
-    authenticatedUser?.isSuperAdmin ||
-    authenticatedUser?.roles?.includes('SUPER_ADMIN')
+    authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
-  const can = (permission: string) =>
-    isSuperAdmin || permissions.has(permission);
+  const can = (permission: string) => isSuperAdmin || permissions.has(permission);
   const canAny = (...required: string[]) =>
     isSuperAdmin || required.some((permission) => permissions.has(permission));
 
@@ -225,7 +301,7 @@ export const DashboardModule: React.FC = () => {
 
   const facilityModules = useMemo(
     () => new Set(currentFacility?.enabledModules ?? []),
-    [currentFacility]
+    [currentFacility],
   );
 
   /* The same enablement rule the sidebar uses, for the same reason. */
@@ -272,24 +348,30 @@ export const DashboardModule: React.FC = () => {
 
       if (canReadReports) {
         tasks.push(
-          api.getAnalyticsSummary(currentFacility?.id)
-            .then((value) => { if (active) setSummary(value); })
+          api
+            .getAnalyticsSummary(currentFacility?.id)
+            .then((value) => {
+              if (active) setSummary(value);
+            })
             .catch((err) => {
               console.error('Failed to load analytics summary:', err);
               if (active) {
                 setSummary(null);
                 setLoadError('Some figures could not be loaded.');
               }
-            })
+            }),
         );
 
         tasks.push(
-          api.getPublicHealthReports(currentFacility?.id)
-            .then((value) => { if (active) setSurveillance(value); })
+          api
+            .getPublicHealthReports(currentFacility?.id)
+            .then((value) => {
+              if (active) setSurveillance(value);
+            })
             .catch((err) => {
               console.error('Failed to load surveillance reports:', err);
               if (active) setSurveillance([]);
-            })
+            }),
         );
       } else {
         setSummary(null);
@@ -298,15 +380,18 @@ export const DashboardModule: React.FC = () => {
 
       if (canReadQueues) {
         tasks.push(
-          api.getQueues(currentFacility?.id)
-            .then((value) => { if (active) setQueues(value); })
+          api
+            .getQueues(currentFacility?.id)
+            .then((value) => {
+              if (active) setQueues(value);
+            })
             .catch((err) => {
               console.error('Failed to load queues:', err);
               if (active) {
                 setQueues([]);
                 setLoadError('The patient queue could not be loaded.');
               }
-            })
+            }),
         );
       } else {
         setQueues([]);
@@ -314,15 +399,18 @@ export const DashboardModule: React.FC = () => {
 
       if (canReadInpatient) {
         tasks.push(
-          api.getInpatientBoard(currentFacility?.id)
-            .then((value) => { if (active) setInpatientBoard(value); })
+          api
+            .getInpatientBoard(currentFacility?.id)
+            .then((value) => {
+              if (active) setInpatientBoard(value);
+            })
             .catch((err) => {
               console.error('Failed to load inpatient board:', err);
               if (active) {
                 setInpatientBoard(null);
                 setLoadError('The ward board could not be loaded.');
               }
-            })
+            }),
         );
       } else {
         setInpatientBoard(null);
@@ -335,7 +423,8 @@ export const DashboardModule: React.FC = () => {
        */
       if (canReadInventory) {
         tasks.push(
-          api.getInventoryBatches(currentFacility?.id, { horizonDays: EXPIRY_ALERT_DAYS })
+          api
+            .getInventoryBatches(currentFacility?.id, { horizonDays: EXPIRY_ALERT_DAYS })
             .then((value) => {
               if (!active) return;
 
@@ -351,7 +440,7 @@ export const DashboardModule: React.FC = () => {
             .catch((err) => {
               console.error('Failed to load expiring stock:', err);
               if (active) setExpiringBatches([]);
-            })
+            }),
         );
       } else {
         setExpiringBatches([]);
@@ -364,12 +453,15 @@ export const DashboardModule: React.FC = () => {
        */
       if (canReadAudit && facilityModules.has('audit')) {
         tasks.push(
-          api.getAuditLogs(currentFacility?.id)
-            .then((value) => { if (active) setAuditLogs(value.slice(0, 6)); })
+          api
+            .getAuditLogs(currentFacility?.id)
+            .then((value) => {
+              if (active) setAuditLogs(value.slice(0, 6));
+            })
             .catch((err) => {
               console.error('Failed to load recent activity:', err);
               if (active) setAuditLogs([]);
-            })
+            }),
         );
       } else {
         setAuditLogs([]);
@@ -384,8 +476,19 @@ export const DashboardModule: React.FC = () => {
 
     void loadDashboard();
 
-    return () => { active = false; };
-  }, [currentFacility, refreshKey, canReadReports, canReadQueues, canReadInpatient, canReadAudit, canReadInventory, facilityModules]);
+    return () => {
+      active = false;
+    };
+  }, [
+    currentFacility,
+    refreshKey,
+    canReadReports,
+    canReadQueues,
+    canReadInpatient,
+    canReadAudit,
+    canReadInventory,
+    facilityModules,
+  ]);
 
   /* ----------------------------------------------------------------
      Derived view data — every number below came from the server
@@ -434,20 +537,14 @@ export const DashboardModule: React.FC = () => {
     });
   }
 
-  const expiredBatchCount = expiringBatches.filter(
-    (batch) => (batch.daysToExpiry ?? 0) < 0,
-  ).length;
+  const expiredBatchCount = expiringBatches.filter((batch) => (batch.daysToExpiry ?? 0) < 0).length;
 
   if (expiringBatches.length > 0) {
     alerts.push({
       key: 'expiring-stock-10d',
       tone: expiredBatchCount > 0 ? 'danger' : 'warning',
-      label: `${expiringBatches.length} batch${
-        expiringBatches.length === 1 ? '' : 'es'
-      } ${
-        expiredBatchCount > 0
-          ? `${expiredBatchCount} already expired · `
-          : ''
+      label: `${expiringBatches.length} batch${expiringBatches.length === 1 ? '' : 'es'} ${
+        expiredBatchCount > 0 ? `${expiredBatchCount} already expired · ` : ''
       }expiring within ${EXPIRY_ALERT_DAYS} days`,
       module: 'inventory',
     });
@@ -462,14 +559,10 @@ export const DashboardModule: React.FC = () => {
     });
   }
 
-  const expiringUnits = expiringBatches.reduce(
-    (sum, batch) => sum + batch.quantityRemaining,
-    0,
-  );
+  const expiringUnits = expiringBatches.reduce((sum, batch) => sum + batch.quantityRemaining, 0);
 
   const expiringValueKes = expiringBatches.reduce(
-    (sum, batch) =>
-      sum + Number(batch.costPerUnit || 0) * batch.quantityRemaining,
+    (sum, batch) => sum + Number(batch.costPerUnit || 0) * batch.quantityRemaining,
     0,
   );
 
@@ -479,12 +572,10 @@ export const DashboardModule: React.FC = () => {
   );
 
   const quickActions = QUICK_ACTIONS.filter(
-    (action) => moduleEnabled(action.module) && canAny(...action.permissions)
+    (action) => moduleEnabled(action.module) && canAny(...action.permissions),
   ).slice(0, 6);
 
-  const firstName = (authenticatedUser?.fullName || currentUser?.name || '')
-    .trim()
-    .split(/\s+/)[0];
+  const firstName = (authenticatedUser?.fullName || currentUser?.name || '').trim().split(/\s+/)[0];
 
   const hasAnyKpi =
     can('appointments.read') ||
@@ -536,10 +627,7 @@ export const DashboardModule: React.FC = () => {
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <button
-              onClick={() => setActiveModule('interoperability')}
-              className="btn-quiet"
-            >
+            <button onClick={() => setActiveModule('interoperability')} className="btn-quiet">
               <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
               DHA readiness
               <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
@@ -553,8 +641,8 @@ export const DashboardModule: React.FC = () => {
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"
         >
-          {loadError} Figures shown as an em dash are unknown, not zero. Reload
-          the page to try again.
+          {loadError} Figures shown as an em dash are unknown, not zero. Reload the page to try
+          again.
         </div>
       )}
 
@@ -569,8 +657,8 @@ export const DashboardModule: React.FC = () => {
               alert.tone === 'danger'
                 ? 'border-rose-200 bg-rose-50 text-rose-900 hover:border-rose-300'
                 : alert.tone === 'warning'
-                ? 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300'
-                : 'border-brand-200 bg-brand-50 text-brand-900 hover:border-brand-300';
+                  ? 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300'
+                  : 'border-brand-200 bg-brand-50 text-brand-900 hover:border-brand-300';
 
             return (
               <button
@@ -610,9 +698,7 @@ export const DashboardModule: React.FC = () => {
                 footer={
                   <span className="flex items-center justify-between gap-2">
                     <span>Average triage wait</span>
-                    <strong className="font-mono font-semibold text-slate-600">
-                      not tracked
-                    </strong>
+                    <strong className="font-mono font-semibold text-slate-600">not tracked</strong>
                   </span>
                 }
               />
@@ -701,9 +787,7 @@ export const DashboardModule: React.FC = () => {
                 label="Paid to date"
                 icon={Wallet}
                 value={
-                  summary
-                    ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}`
-                    : '\u2014'
+                  summary ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}` : '\u2014'
                 }
                 footer={
                   <span className="flex items-center justify-between gap-2">
@@ -793,18 +877,12 @@ export const DashboardModule: React.FC = () => {
                           {batch.itemCode}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-700">
-                        {batch.batchNumber}
-                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-700">{batch.batchNumber}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-slate-700">
                         {batch.quantityRemaining}
-                        <span className="ml-1 text-2xs text-slate-400">
-                          {batch.unit ?? ''}
-                        </span>
+                        <span className="ml-1 text-2xs text-slate-400">{batch.unit ?? ''}</span>
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-700">
-                        {batch.expiryDate}
-                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-700">{batch.expiryDate}</td>
                       <td className="px-4 py-2.5">
                         <ExpiryCountdown expiryDate={batch.expiryDate} short />
                       </td>
@@ -822,8 +900,8 @@ export const DashboardModule: React.FC = () => {
           </div>
 
           <p className="border-t border-hair px-5 py-2.5 text-2xs leading-relaxed text-muted">
-            Expired lots are never dispensed and are excluded from available stock. A lot
-            expiring today is still usable until the end of that day.
+            Expired lots are never dispensed and are excluded from available stock. A lot expiring
+            today is still usable until the end of that day.
           </p>
         </section>
       )}
@@ -840,8 +918,8 @@ export const DashboardModule: React.FC = () => {
                 Your workspace
               </h2>
               <p className="mt-0.5 text-2xs text-muted">
-                The tasks that match your role. Everything here is already
-                permitted to this account.
+                The tasks that match your role. Everything here is already permitted to this
+                account.
               </p>
             </div>
           </div>
@@ -862,9 +940,7 @@ export const DashboardModule: React.FC = () => {
                     <span className="block truncate text-xs font-semibold text-navy-900">
                       {action.label}
                     </span>
-                    <span className="block truncate text-2xs text-muted">
-                      {action.hint}
-                    </span>
+                    <span className="block truncate text-2xs text-muted">{action.hint}</span>
                   </span>
                   <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-300 transition-colors group-hover:text-brand-600" />
                 </button>
@@ -886,10 +962,7 @@ export const DashboardModule: React.FC = () => {
             subtitle="The front door: who is waiting, at which desk, and for how long."
             icon={Clock}
             action={
-              <button
-                onClick={() => setActiveModule('reception')}
-                className="btn-quiet self-start"
-              >
+              <button onClick={() => setActiveModule('reception')} className="btn-quiet self-start">
                 Manage all queues
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </button>
@@ -920,16 +993,14 @@ export const DashboardModule: React.FC = () => {
                             q.priority === 'Emergency'
                               ? 'bg-rose-50 text-rose-700'
                               : q.priority === 'Priority'
-                              ? 'border border-ember-200 bg-ember-50 text-ember-700'
-                              : 'bg-slate-100 text-ink-soft'
+                                ? 'border border-ember-200 bg-ember-50 text-ember-700'
+                                : 'bg-slate-100 text-ink-soft'
                           }`}
                         >
                           {q.priority}
                         </span>
                       </td>
-                      <td className="font-mono text-ink-soft">
-                        {q.waitingTimeMinutes} min
-                      </td>
+                      <td className="font-mono text-ink-soft">{q.waitingTimeMinutes} min</td>
                       <td>
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-2xs font-medium ${
@@ -963,8 +1034,8 @@ export const DashboardModule: React.FC = () => {
                   {queues.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
-                        No queue records to display. If activity is expected,
-                        verify queue data access.
+                        No queue records to display. If activity is expected, verify queue data
+                        access.
                       </td>
                     </tr>
                   )}
@@ -999,10 +1070,7 @@ export const DashboardModule: React.FC = () => {
             subtitle="Observations, documentation and escalation for every admitted patient."
             icon={HeartPulse}
             action={
-              <button
-                onClick={() => setActiveModule('inpatient')}
-                className="btn-quiet self-start"
-              >
+              <button onClick={() => setActiveModule('inpatient')} className="btn-quiet self-start">
                 Open ward board
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </button>
@@ -1032,8 +1100,8 @@ export const DashboardModule: React.FC = () => {
                       : 'font-semibold text-emerald-700'
                   }
                 >
-                  <strong className="font-mono">{inpatientBoard.vitalsOverdueCount}</strong>{' '}
-                  vitals overdue
+                  <strong className="font-mono">{inpatientBoard.vitalsOverdueCount}</strong> vitals
+                  overdue
                 </span>
                 {inpatientBoard.criticalVitalsCount > 0 && (
                   <span className="flex items-center gap-1 font-semibold text-rose-700">
@@ -1066,9 +1134,7 @@ export const DashboardModule: React.FC = () => {
                           <td>
                             <div className="font-semibold text-navy-900">{row.patientName}</div>
                             {row.patientMrn && (
-                              <div className="font-mono text-3xs text-muted">
-                                {row.patientMrn}
-                              </div>
+                              <div className="font-mono text-3xs text-muted">{row.patientMrn}</div>
                             )}
                           </td>
                           <td className="text-ink-soft">
@@ -1077,9 +1143,7 @@ export const DashboardModule: React.FC = () => {
                               #{row.bedNumber}
                             </span>
                           </td>
-                          <td className="font-mono text-2xs text-muted">
-                            {row.admissionDate}
-                          </td>
+                          <td className="font-mono text-2xs text-muted">{row.admissionDate}</td>
                           <td>
                             {row.lastVitalsAt ? (
                               <span
@@ -1092,9 +1156,7 @@ export const DashboardModule: React.FC = () => {
                                 {row.hoursSinceVitals}h ago
                               </span>
                             ) : (
-                              <span className="font-semibold text-ember-700">
-                                Never recorded
-                              </span>
+                              <span className="font-semibold text-ember-700">Never recorded</span>
                             )}
                           </td>
                           <td>
@@ -1140,9 +1202,8 @@ export const DashboardModule: React.FC = () => {
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>
                     {inpatientBoard.vitalsOverdueCount} admitted patient
-                    {inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} have no
-                    observation in the last 8 hours. Record vitals from the ward
-                    screen.
+                    {inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} have no observation in the
+                    last 8 hours. Record vitals from the ward screen.
                   </span>
                 </div>
               )}
@@ -1210,9 +1271,7 @@ export const DashboardModule: React.FC = () => {
                         <div className="font-mono text-lg font-semibold tabular-nums text-navy-900">
                           {rep.casesCount}
                         </div>
-                        <div className="text-3xs uppercase tracking-wide text-muted">
-                          cases
-                        </div>
+                        <div className="text-3xs uppercase tracking-wide text-muted">cases</div>
                       </div>
                     </div>
                   </div>
@@ -1235,14 +1294,11 @@ export const DashboardModule: React.FC = () => {
                 Recent activity
               </h2>
               <p className="mt-0.5 text-2xs text-muted">
-                The newest entries on this facility's audit trail. Open the
-                audit screen for the full record.
+                The newest entries on this facility's audit trail. Open the audit screen for the
+                full record.
               </p>
             </div>
-            <button
-              onClick={() => setActiveModule('audit')}
-              className="btn-quiet self-start"
-            >
+            <button onClick={() => setActiveModule('audit')} className="btn-quiet self-start">
               Audit trail
               <ArrowUpRight className="h-3.5 w-3.5" />
             </button>
@@ -1256,9 +1312,7 @@ export const DashboardModule: React.FC = () => {
               >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
-                  <span className="truncate font-medium text-ink-soft">
-                    {log.action}
-                  </span>
+                  <span className="truncate font-medium text-ink-soft">{log.action}</span>
                   <span className="truncate font-mono text-2xs text-muted">
                     {log.resource}
                     {log.resourceId ? ` #${log.resourceId}` : ''}
@@ -1280,9 +1334,9 @@ export const DashboardModule: React.FC = () => {
 
       {/* Scope note. No call to action: the rail already does that. */}
       <p className="pt-1 text-center text-3xs leading-relaxed text-slate-400">
-        Figures cover {currentFacility?.name || 'this facility'} only and are
-        read when this page loads. A queue ticket is a place in line, not a
-        diagnosis; open the encounter for the clinical record.
+        Figures cover {currentFacility?.name || 'this facility'} only and are read when this page
+        loads. A queue ticket is a place in line, not a diagnosis; open the encounter for the
+        clinical record.
       </p>
     </div>
   );

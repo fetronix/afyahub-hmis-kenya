@@ -95,10 +95,7 @@ function run(): void {
 
     const description = describeFieldEncryption();
 
-    assert(
-      description.configured === false,
-      'The description says the control is off',
-    );
+    assert(description.configured === false, 'The description says the control is off');
 
     /*
      * The critical property: without a key, values pass through. A
@@ -110,10 +107,7 @@ function run(): void {
       'Without a key, encryption is a passthrough, not a failure',
     );
 
-    assert(
-      decryptField('12345678') === '12345678',
-      'Without a key, plaintext still reads',
-    );
+    assert(decryptField('12345678') === '12345678', 'Without a key, plaintext still reads');
   });
 
   /* ============================================================
@@ -121,17 +115,11 @@ function run(): void {
      ============================================================ */
 
   withKey('not-even-base64', () => {
-    assert(
-      !isFieldEncryptionConfigured(),
-      'A malformed key does not count as configured',
-    );
+    assert(!isFieldEncryptionConfigured(), 'A malformed key does not count as configured');
   });
 
   withKey(randomBytes(16).toString('base64'), () => {
-    assert(
-      !isFieldEncryptionConfigured(),
-      'A 16-byte key is rejected (AES-256 needs 32 bytes)',
-    );
+    assert(!isFieldEncryptionConfigured(), 'A 16-byte key is rejected (AES-256 needs 32 bytes)');
   });
 
   /* ============================================================
@@ -149,10 +137,7 @@ function run(): void {
     assert(isEncryptedField(sealed), 'The ciphertext carries the version prefix');
     assert(sealed.startsWith('v1:'), 'The prefix is v1');
 
-    assert(
-      decryptField(sealed) === value,
-      'Decryption returns the original value',
-    );
+    assert(decryptField(sealed) === value, 'Decryption returns the original value');
 
     assert(decryptField(null) === null, 'null stays null');
     assert(decryptField(undefined) === null, 'undefined reads as null');
@@ -166,10 +151,7 @@ function run(): void {
     const second = encryptField(value);
 
     assert(first !== second, 'Two seals of the same value differ (random IV)');
-    assert(
-      decryptField(first) === decryptField(second),
-      'Both still decrypt to the same value',
-    );
+    assert(decryptField(first) === decryptField(second), 'Both still decrypt to the same value');
 
     /*
      * Tamper detection. Flip one character of the payload and the
@@ -182,10 +164,7 @@ function run(): void {
 
     const tampered = [parts[0], parts[1], parts[2], payload.toString('base64')].join(':');
 
-    assertThrows(
-      () => decryptField(tampered),
-      'A modified ciphertext fails authentication',
-    );
+    assertThrows(() => decryptField(tampered), 'A modified ciphertext fails authentication');
 
     assertThrows(
       () => decryptField('v1:only:three'),
@@ -276,10 +255,7 @@ function run(): void {
         sealedRow.nationalIdBlindIndex.length > 0,
       'sealPatientIdentifiers writes the blind index',
     );
-    assert(
-      !rowHasPlaintextIdentifier(sealedRow),
-      'The sealed row no longer holds plaintext',
-    );
+    assert(!rowHasPlaintextIdentifier(sealedRow), 'The sealed row no longer holds plaintext');
 
     const opened = openPatientIdentifiers(sealedRow);
 
@@ -320,10 +296,7 @@ function run(): void {
         decryptField(sealedRow.nationalId!);
         throw new Error('decrypt should have thrown');
       } catch (error) {
-        assert(
-          error instanceof FieldCryptoError,
-          'A decryption failure is a FieldCryptoError',
-        );
+        assert(error instanceof FieldCryptoError, 'A decryption failure is a FieldCryptoError');
       }
     });
   });
@@ -336,10 +309,7 @@ function run(): void {
     normaliseIdentifier('  1234-5678 ') === '12345678',
     'Normalisation trims and drops separators',
   );
-  assert(
-    normaliseIdentifier('abc 123') === 'ABC123',
-    'Normalisation uppercases',
-  );
+  assert(normaliseIdentifier('abc 123') === 'ABC123', 'Normalisation uppercases');
   assert(
     normaliseIdentifier('1234-5678') === '12345678',
     'Separators are dropped, so a national ID typed either way finds the same row',
@@ -366,10 +336,7 @@ function run(): void {
     ] as Array<[string, string]>) {
       const start = queries.indexOf(`export async function ${fn}(`);
       const next = queries.indexOf('export async function', start + 1);
-      const block =
-        start === -1
-          ? ''
-          : queries.slice(start, next === -1 ? start + 6000 : next);
+      const block = start === -1 ? '' : queries.slice(start, next === -1 ? start + 6000 : next);
 
       assert(
         block.includes('openPatientIdentifiers(') || block.includes('openPatientRows('),

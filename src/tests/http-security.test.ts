@@ -33,10 +33,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function read(path: string): string {
@@ -54,15 +51,8 @@ function testOrigins(): void {
   });
 
   assertEqual(production.length, 1, 'production allows exactly the app origin');
-  assertEqual(
-    production[0],
-    'https://hmis.example.co.ke',
-    'the path is stripped to the origin',
-  );
-  assert(
-    !production.includes('http://localhost:3000'),
-    'localhost is not allowed in production',
-  );
+  assertEqual(production[0], 'https://hmis.example.co.ke', 'the path is stripped to the origin');
+  assert(!production.includes('http://localhost:3000'), 'localhost is not allowed in production');
 
   const development = resolveAllowedOrigins({
     APP_BASE_URL: 'http://localhost:3000',
@@ -98,10 +88,7 @@ function testOrigins(): void {
     !isOriginAllowed('https://hmis.example.co.ke.evil.com', allowed),
     'a look-alike domain is refused',
   );
-  assert(
-    !isOriginAllowed('http://hmis.example.co.ke', allowed),
-    'a different scheme is refused',
-  );
+  assert(!isOriginAllowed('http://hmis.example.co.ke', allowed), 'a different scheme is refused');
 }
 
 /* ============================================================
@@ -137,8 +124,14 @@ function testWiring(): void {
 
   assert(app.includes('createHelmetMiddleware'), 'helmet is mounted');
   assert(app.includes('createCorsMiddleware'), 'CORS is mounted');
-  assert(app.includes("app.use('/api/auth', createAuthRateLimiter())"), 'the auth limiter covers the auth routes');
-  assert(app.includes("app.use('/api', createApiRateLimiter())"), 'the API limiter covers the rest');
+  assert(
+    app.includes("app.use('/api/auth', createAuthRateLimiter())"),
+    'the auth limiter covers the auth routes',
+  );
+  assert(
+    app.includes("app.use('/api', createApiRateLimiter())"),
+    'the API limiter covers the rest',
+  );
   assert(app.includes("app.disable('x-powered-by')"), 'the framework is not advertised');
   assert(app.includes('express.json({ limit:'), 'the JSON body size is bounded');
   assert(app.includes('1mb'), 'the body limit is 1 MB');
@@ -178,10 +171,7 @@ function testScoping(): void {
   assert(app.includes('queries.recordProcedureScoped('), 'the procedure write is scoped');
 
   /* Each route resolves the authenticated context first. */
-  for (const route of [
-    "'/api/diagnoses'",
-    "'/api/procedures'",
-  ]) {
+  for (const route of ["'/api/diagnoses'", "'/api/procedures'"]) {
     const index = app.indexOf(route);
     assert(index > -1, `${route} exists`);
   }
@@ -239,7 +229,10 @@ function testDependencies(): void {
 
   assert(Boolean(pkg.dependencies.helmet), 'helmet is a runtime dependency');
   assert(Boolean(pkg.dependencies.cors), 'cors is a runtime dependency');
-  assert(Boolean(pkg.dependencies['express-rate-limit']), 'express-rate-limit is a runtime dependency');
+  assert(
+    Boolean(pkg.dependencies['express-rate-limit']),
+    'express-rate-limit is a runtime dependency',
+  );
   assert(Boolean(pkg.devDependencies['@types/cors']), 'cors types are available');
 }
 

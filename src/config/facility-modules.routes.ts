@@ -63,10 +63,7 @@ function parseFacilityId(raw: unknown): number | null {
  * The facility argument is read from the database, so the role check
  * cannot be pointed at another tenant.
  */
-function mayProvisionModules(
-  context: AuthorizationContext,
-  facilityTenantId: number,
-): boolean {
+function mayProvisionModules(context: AuthorizationContext, facilityTenantId: number): boolean {
   if (context.isSuperAdmin) return true;
 
   if (context.permissions.includes('facilities.modules.manage')) return true;
@@ -230,7 +227,7 @@ router.patch('/:id/modules', async (req: AuthRequest, res) => {
         success: false,
         error: 'MODULE_PROVISIONING_FORBIDDEN',
         message:
-          'Your account cannot change this facility\'s modules. Ask a facility administrator or platform administrator.',
+          "Your account cannot change this facility's modules. Ask a facility administrator or platform administrator.",
       });
       return;
     }

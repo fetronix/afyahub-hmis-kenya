@@ -112,9 +112,7 @@ async function resolveScope(
   requestedFacilityId?: number | string | null,
 ) {
   const parsed =
-    requestedFacilityId === undefined ||
-    requestedFacilityId === null ||
-    requestedFacilityId === ''
+    requestedFacilityId === undefined || requestedFacilityId === null || requestedFacilityId === ''
       ? null
       : Number(requestedFacilityId);
 
@@ -128,10 +126,7 @@ async function resolveScope(
   return facility;
 }
 
-async function loadPatient(
-  facility: { id: number; tenantId: number },
-  patientId: number | string,
-) {
+async function loadPatient(facility: { id: number; tenantId: number }, patientId: number | string) {
   const id = Number(patientId);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
@@ -141,12 +136,7 @@ async function loadPatient(
   const [patient] = await db
     .select()
     .from(schema.patients)
-    .where(
-      and(
-        eq(schema.patients.id, id),
-        eq(schema.patients.tenantId, facility.tenantId),
-      ),
-    )
+    .where(and(eq(schema.patients.id, id), eq(schema.patients.tenantId, facility.tenantId)))
     .limit(1);
 
   if (!patient) {
@@ -174,8 +164,7 @@ function identificationFor(
 ): { type: DhaIdentificationType; number: string } {
   if (override?.identificationType && override?.identificationNumber) {
     const type = DHA_IDENTIFICATION_TYPES.find(
-      (candidate) =>
-        candidate.toLowerCase() === override.identificationType?.toLowerCase(),
+      (candidate) => candidate.toLowerCase() === override.identificationType?.toLowerCase(),
     );
 
     if (!type) {
@@ -273,12 +262,11 @@ export async function checkEligibilityScoped(
   await db
     .update(schema.patients)
     .set({
-      dhaEligibilityStatus:
-        verdict.deceased
-          ? 'DECEASED'
-          : verdict.eligible
-            ? 'ELIGIBLE'
-            : 'NOT_ELIGIBLE',
+      dhaEligibilityStatus: verdict.deceased
+        ? 'DECEASED'
+        : verdict.eligible
+          ? 'ELIGIBLE'
+          : 'NOT_ELIGIBLE',
       dhaEligibilityCheckedAt: new Date(),
       dhaEligibilitySchemes: verdict.schemes,
       ...(memberCrNumber && !patient.dhaClientRegistryId
@@ -351,11 +339,17 @@ export async function getBenefitsScoped(
   facilityId?: number | string | null,
   config?: DhaConfig,
 ) {
-  return coverageCall<DhaPaginated<DhaBenefit>>(context, patientId, facilityId, {
-    operation: 'coverage.benefits',
-    path: DHA_ENDPOINTS.benefits,
-    query: {},
-  }, config);
+  return coverageCall<DhaPaginated<DhaBenefit>>(
+    context,
+    patientId,
+    facilityId,
+    {
+      operation: 'coverage.benefits',
+      path: DHA_ENDPOINTS.benefits,
+      query: {},
+    },
+    config,
+  );
 }
 
 export async function getInterventionsScoped(
@@ -372,18 +366,24 @@ export async function getInterventionsScoped(
   facilityId?: number | string | null,
   config?: DhaConfig,
 ) {
-  return coverageCall<DhaPaginated<DhaIntervention>>(context, patientId, facilityId, {
-    operation: 'coverage.interventions',
-    path: DHA_ENDPOINTS.interventions,
-    query: {
-      sub_benefit_code: filters.subBenefitCode ?? null,
-      code: filters.code ?? null,
-      access_point: filters.accessPoint ?? null,
-      search: filters.search ?? null,
-      page: filters.page ?? null,
-      page_size: filters.pageSize ?? null,
+  return coverageCall<DhaPaginated<DhaIntervention>>(
+    context,
+    patientId,
+    facilityId,
+    {
+      operation: 'coverage.interventions',
+      path: DHA_ENDPOINTS.interventions,
+      query: {
+        sub_benefit_code: filters.subBenefitCode ?? null,
+        code: filters.code ?? null,
+        access_point: filters.accessPoint ?? null,
+        search: filters.search ?? null,
+        page: filters.page ?? null,
+        page_size: filters.pageSize ?? null,
+      },
     },
-  }, config);
+    config,
+  );
 }
 
 export async function getSubBenefitsScoped(
@@ -393,11 +393,17 @@ export async function getSubBenefitsScoped(
   facilityId?: number | string | null,
   config?: DhaConfig,
 ) {
-  return coverageCall<DhaPaginated<DhaSubBenefit>>(context, patientId, facilityId, {
-    operation: 'coverage.subBenefits',
-    path: DHA_ENDPOINTS.subBenefits,
-    query: { parent_benefit_code: parentBenefitCode ?? null },
-  }, config);
+  return coverageCall<DhaPaginated<DhaSubBenefit>>(
+    context,
+    patientId,
+    facilityId,
+    {
+      operation: 'coverage.subBenefits',
+      path: DHA_ENDPOINTS.subBenefits,
+      query: { parent_benefit_code: parentBenefitCode ?? null },
+    },
+    config,
+  );
 }
 
 export async function getUtilizationScoped(
@@ -415,11 +421,17 @@ export async function getUtilizationScoped(
     );
   }
 
-  return coverageCall<DhaUtilization[]>(context, patientId, facilityId, {
-    operation: 'coverage.utilization',
-    path: DHA_ENDPOINTS.utilization,
-    query: { intervention_code: interventionCode.trim() },
-  }, config);
+  return coverageCall<DhaUtilization[]>(
+    context,
+    patientId,
+    facilityId,
+    {
+      operation: 'coverage.utilization',
+      path: DHA_ENDPOINTS.utilization,
+      query: { intervention_code: interventionCode.trim() },
+    },
+    config,
+  );
 }
 
 export async function getPomsfBalancesScoped(
@@ -429,11 +441,17 @@ export async function getPomsfBalancesScoped(
   facilityId?: number | string | null,
   config?: DhaConfig,
 ) {
-  return coverageCall<Record<string, unknown>>(context, patientId, facilityId, {
-    operation: 'coverage.pomsf',
-    path: DHA_ENDPOINTS.pomsfBalances,
-    query: { policy_year: policyYear ?? null },
-  }, config);
+  return coverageCall<Record<string, unknown>>(
+    context,
+    patientId,
+    facilityId,
+    {
+      operation: 'coverage.pomsf',
+      path: DHA_ENDPOINTS.pomsfBalances,
+      query: { policy_year: policyYear ?? null },
+    },
+    config,
+  );
 }
 
 /* ============================================================
@@ -488,8 +506,7 @@ export async function listServiceMappingsScoped(
       configured: Boolean(row),
       interventionCode: row?.interventionCode ?? null,
       configuredAccessPoint: (row?.accessPoint as DhaAccessPoint) ?? null,
-      configuredPaymentMechanism:
-        (row?.paymentMechanism as DhaPaymentMechanism) ?? null,
+      configuredPaymentMechanism: (row?.paymentMechanism as DhaPaymentMechanism) ?? null,
       configuredFund: (row?.fund as DhaFund) ?? null,
       configuredNeedsPreauth: row?.needsPreauth ?? null,
       notes: row?.notes ?? null,
@@ -558,21 +575,14 @@ export async function saveServiceMappingScoped(
   const accessPoint = input.accessPoint ? String(input.accessPoint).toUpperCase() : null;
 
   if (accessPoint && !ACCESS_POINTS.includes(accessPoint as DhaAccessPoint)) {
-    throw new DhaError(
-      'VALIDATION_FAILED',
-      'serviceMapping.save',
-      'accessPoint must be IP or OP.',
-    );
+    throw new DhaError('VALIDATION_FAILED', 'serviceMapping.save', 'accessPoint must be IP or OP.');
   }
 
   const paymentMechanism = input.paymentMechanism
     ? String(input.paymentMechanism).toUpperCase()
     : null;
 
-  if (
-    paymentMechanism &&
-    !PAYMENT_MECHANISMS.includes(paymentMechanism as DhaPaymentMechanism)
-  ) {
+  if (paymentMechanism && !PAYMENT_MECHANISMS.includes(paymentMechanism as DhaPaymentMechanism)) {
     throw new DhaError(
       'VALIDATION_FAILED',
       'serviceMapping.save',
@@ -605,10 +615,7 @@ export async function saveServiceMappingScoped(
       createdBy: input.userId ?? null,
     })
     .onConflictDoUpdate({
-      target: [
-        schema.dhaServiceMappings.facilityId,
-        schema.dhaServiceMappings.serviceArea,
-      ],
+      target: [schema.dhaServiceMappings.facilityId, schema.dhaServiceMappings.serviceArea],
       set: {
         interventionCode: code,
         accessPoint,
@@ -657,10 +664,7 @@ export async function resolveInvoiceInterventionsScoped(
     .select()
     .from(schema.billingInvoices)
     .where(
-      and(
-        eq(schema.billingInvoices.id, id),
-        eq(schema.billingInvoices.facilityId, facility.id),
-      ),
+      and(eq(schema.billingInvoices.id, id), eq(schema.billingInvoices.facilityId, facility.id)),
     )
     .limit(1);
 
@@ -728,8 +732,7 @@ export async function resolveInvoiceInterventionsScoped(
         serviceArea: area.id,
         label: area.label,
         interventionCode: config?.interventionCode ?? null,
-        accessPoint:
-          (config?.accessPoint as DhaAccessPoint) ?? area.accessPoint,
+        accessPoint: (config?.accessPoint as DhaAccessPoint) ?? area.accessPoint,
         paymentMechanism:
           (config?.paymentMechanism as DhaPaymentMechanism) ?? area.paymentMechanism,
         fund: (config?.fund as DhaFund) ?? area.fund,

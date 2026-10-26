@@ -44,10 +44,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function readRepoFile(relativePath: string): string {
@@ -146,11 +143,7 @@ function testFefoOrdering(): void {
 
 function testFefoTiesAndEdges(): void {
   /* Same expiry date: the lower id wins, so the result is deterministic. */
-  const tied = planFefo(
-    [lot(9, 'B', '2026-12-01', 5), lot(4, 'A', '2026-12-01', 5)],
-    5,
-    TODAY,
-  );
+  const tied = planFefo([lot(9, 'B', '2026-12-01', 5), lot(4, 'A', '2026-12-01', 5)], 5, TODAY);
 
   assertEqual(tied.allocations[0].batchNumber, 'A', 'ties break on the lower batch id');
 
@@ -190,7 +183,11 @@ function testExpiredExcluded(): void {
   const plan = planFefo(lots, 30, TODAY);
 
   assertEqual(plan.allocations.length, 1, 'only the usable lot is drawn');
-  assertEqual(plan.allocations[0].batchNumber, 'GOOD', 'the expired lots are skipped and the good one used');
+  assertEqual(
+    plan.allocations[0].batchNumber,
+    'GOOD',
+    'the expired lots are skipped and the good one used',
+  );
   assertEqual(plan.expiredUnits, 700, 'expired units are reported');
   assertEqual(plan.usableUnits, 30, 'only usable stock counts toward availability');
   assertEqual(plan.shortfall, 0, 'the usable stock covers the request');
@@ -281,29 +278,20 @@ function testRouteWiring(): void {
   const dispenseIndex = app.indexOf("'/api/pharmacy/dispense'");
   const dispenseBody = app.slice(dispenseIndex, dispenseIndex + 1500);
 
-  assert(
-    dispenseBody.includes('dispenseFefoScoped'),
-    'dispensing uses the FEFO service',
-  );
+  assert(dispenseBody.includes('dispenseFefoScoped'), 'dispensing uses the FEFO service');
   assert(
     !dispenseBody.includes('queries.dispenseMedication'),
     'dispensing no longer uses the non-transactional stock update',
   );
 
   /* The analytics summary feeds the dashboard expiry alert. */
-  assert(
-    app.includes('expiringStockAlerts'),
-    'analytics summary reports expiring batches',
-  );
+  assert(app.includes('expiringStockAlerts'), 'analytics summary reports expiring batches');
 }
 
 function testServiceWiring(): void {
   const service = readRepoFile('src/inventory/inventory.service.ts');
 
-  assert(
-    service.includes(".for('update')"),
-    'batch rows are locked while dispensing',
-  );
+  assert(service.includes(".for('update')"), 'batch rows are locked while dispensing');
   assert(
     service.includes('INSUFFICIENT_STOCK'),
     'the service refuses a draw larger than usable stock',

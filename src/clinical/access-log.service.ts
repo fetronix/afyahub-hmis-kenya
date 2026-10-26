@@ -138,9 +138,7 @@ export async function logPatientAccess(entry: PatientAccessEntry) {
  * consent that is on disk whether or not the log lands. Reads use the
  * strict variant.
  */
-export async function logPatientAccessQuietly(
-  entry: PatientAccessEntry,
-): Promise<void> {
+export async function logPatientAccessQuietly(entry: PatientAccessEntry): Promise<void> {
   try {
     await logPatientAccess(entry);
   } catch (error) {

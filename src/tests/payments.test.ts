@@ -43,10 +43,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  assert(
-    actual === expected,
-    `${label} (expected ${String(expected)}, got ${String(actual)})`,
-  );
+  assert(actual === expected, `${label} (expected ${String(expected)}, got ${String(actual)})`);
 }
 
 function readRepoFile(relativePath: string): string {
@@ -194,10 +191,7 @@ function testTransactionCodes(): void {
   );
   assert(!validateTransactionCode('M-Pesa', '').valid, 'an empty code is rejected');
   assert(!validateTransactionCode('M-Pesa', 'QGH4 XYZ123').valid, 'spaces are rejected');
-  assert(
-    !validateTransactionCode('M-Pesa', 'QGH4XYZ12').valid,
-    'a 9-character code is rejected',
-  );
+  assert(!validateTransactionCode('M-Pesa', 'QGH4XYZ12').valid, 'a 9-character code is rejected');
   assert(
     !validateTransactionCode('M-Pesa', 'QGH4XYZ1234').valid,
     'an 11-character code is rejected',
@@ -207,10 +201,7 @@ function testTransactionCodes(): void {
     'a code not starting with two letters is rejected',
   );
 
-  assert(
-    validateTransactionCode('Airtel Money', 'MP1234567890').valid,
-    'an Airtel code passes',
-  );
+  assert(validateTransactionCode('Airtel Money', 'MP1234567890').valid, 'an Airtel code passes');
   assert(
     !validateTransactionCode('Airtel Money', 'ABCDEFGH').valid,
     'an Airtel code with no digit is rejected',
@@ -235,10 +226,7 @@ function testWiring(): void {
     postWindow.includes("requirePermission('billing.payments.record')"),
     'posting a payment requires billing.payments.record',
   );
-  assert(
-    postWindow.includes('recordSettledPayment'),
-    'the route uses the settlement service',
-  );
+  assert(postWindow.includes('recordSettledPayment'), 'the route uses the settlement service');
 
   const ledgerIndex = app.indexOf("'/api/billing/payments',", postIndex + 1);
   assert(ledgerIndex > -1, 'a payment ledger route exists for reconciliation');
@@ -248,9 +236,15 @@ function testWiring(): void {
   );
 
   const schema = schemaSource();
-  assert(schema.includes("transactionCode: text('transaction_code')"), 'payments store a transaction code');
-  assert(schema.includes("settlementStatus: text('settlement_status')"), 'payments store the settlement outcome');
-  assert(schema.includes("creditBalance: numeric("), 'invoices carry a credit balance');
+  assert(
+    schema.includes("transactionCode: text('transaction_code')"),
+    'payments store a transaction code',
+  );
+  assert(
+    schema.includes("settlementStatus: text('settlement_status')"),
+    'payments store the settlement outcome',
+  );
+  assert(schema.includes('creditBalance: numeric('), 'invoices carry a credit balance');
 
   const migration = readRepoFile('drizzle/0010_mobile_money_settlement.sql');
   assert(
@@ -258,10 +252,7 @@ function testWiring(): void {
     'the migration adds the duplicate-code index',
   );
   assert(migration.includes('billing_receipt_seq'), 'the migration adds the receipt sequence');
-  assert(
-    migration.includes('lower("transaction_code")'),
-    'codes are compared case-insensitively',
-  );
+  assert(migration.includes('lower("transaction_code")'), 'codes are compared case-insensitively');
   assert(
     migration.includes('WHERE "transaction_code" IS NOT NULL'),
     'the index is partial so cash payments are unaffected',
@@ -274,23 +265,14 @@ function testWiring(): void {
 
   for (const entry of journal.entries) {
     const sql = readFileSync(resolve(process.cwd(), 'drizzle', `${entry.tag}.sql`), 'utf8');
-    assert(
-      sql.charCodeAt(0) !== 0xfeff,
-      `${entry.tag} must not start with a UTF-8 BOM`,
-    );
+    assert(sql.charCodeAt(0) !== 0xfeff, `${entry.tag} must not start with a UTF-8 BOM`);
   }
 
   const ui = readRepoFile('src/components/modules/BillingCashierModule.tsx');
   assert(ui.includes('validateTransactionCode'), 'the cashier screen validates the code');
   assert(ui.includes('classifySettlement'), 'the cashier screen previews the outcome');
-  assert(
-    !ui.includes('Simulate STK'),
-    'the fake STK-push button is gone',
-  );
-  assert(
-    !ui.includes('MPESA-${Math.random()'),
-    'the till no longer invents M-Pesa references',
-  );
+  assert(!ui.includes('Simulate STK'), 'the fake STK-push button is gone');
+  assert(!ui.includes('MPESA-${Math.random()'), 'the till no longer invents M-Pesa references');
 }
 
 /* ============================================================

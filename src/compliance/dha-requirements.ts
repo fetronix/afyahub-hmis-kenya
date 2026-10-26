@@ -43,18 +43,9 @@
  */
 
 export type RequirementStatus =
-  | 'VERIFIED'
-  | 'IMPLEMENTED_UNTESTED'
-  | 'PARTIAL'
-  | 'MISSING'
-  | 'BLOCKED'
-  | 'NOT_APPLICABLE';
+  'VERIFIED' | 'IMPLEMENTED_UNTESTED' | 'PARTIAL' | 'MISSING' | 'BLOCKED' | 'NOT_APPLICABLE';
 
-export type RequirementCategory =
-  | 'functionality'
-  | 'security'
-  | 'reporting'
-  | 'interoperability';
+export type RequirementCategory = 'functionality' | 'security' | 'reporting' | 'interoperability';
 
 export type GapSeverity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -100,8 +91,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'FN-01',
     category: 'functionality',
     title: 'Patient registration and MRN',
-    requirement:
-      'Every patient is registered once with a unique medical record number.',
+    requirement: 'Every patient is registered once with a unique medical record number.',
     module: 'Patient Directory · src/components/modules/PatientRegistrationModule.tsx',
     status: 'VERIFIED',
     severity: 'critical',
@@ -126,13 +116,11 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'FN-03',
     category: 'functionality',
     title: 'Next of kin and guardian',
-    requirement:
-      'A next of kin or guardian is recorded, including relationship and contact.',
+    requirement: 'A next of kin or guardian is recorded, including relationship and contact.',
     module: 'Patient Directory',
     status: 'VERIFIED',
     severity: 'high',
-    evidence:
-      'patients.guardian_name, guardian_relationship, guardian_phone, emergency_contact_*',
+    evidence: 'patients.guardian_name, guardian_relationship, guardian_phone, emergency_contact_*',
     verification: 'Schema inspection and registration form review.',
   },
   {
@@ -144,8 +132,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     module: 'Patient Directory · DHA eligibility',
     status: 'VERIFIED',
     severity: 'high',
-    evidence:
-      'patients.national_id, sha_number, dha_client_registry_id; eligibility service',
+    evidence: 'patients.national_id, sha_number, dha_client_registry_id; eligibility service',
     verification: 'Schema and DHA eligibility code inspection.',
   },
   {
@@ -161,8 +148,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
       'Duplicate detection on registration compares national ID, SHA number, phone and name+date-of-birth and warns before saving. Since the portal round the database also enforces one portal account per patient (UNIQUE patient_id) and one account per login identifier; activation refuses to attach a contact already owned by another patient, parks the account as PENDING_VERIFICATION and asks for staff verification instead of merging. The portal administration screen lists shared identifiers and accounts awaiting verification as a review list and corrects nothing automatically.',
     verification:
       'Registration path read; portal constraints and refusal path read; the unique indexes are asserted by test:patient-portal and test:migrations. No database was available, so neither the duplicate query nor the constraints were executed.',
-    note:
-      'Still partial: registration-time matching remains heuristic (it warns, it does not decide), there is no master patient index and no merge or split workflow. The portal closes the two-accounts-for-one-person route, not the identity-resolution problem.',
+    note: 'Still partial: registration-time matching remains heuristic (it warns, it does not decide), there is no master patient index and no merge or split workflow. The portal closes the two-accounts-for-one-person route, not the identity-resolution problem.',
   },
   {
     id: 'FN-06',
@@ -174,25 +160,22 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'Consent can be granted, listed and revoked with purpose, method, scope and expiry; status is derived (ACTIVE / REVOKED / EXPIRED) rather than trusted from the client; revocation is a state change, never a delete; every write is audited. Routes live at /api/patients/:id/consents and the panel is the Consent and Allergies tab of the patient record. Unit tests cover status derivation and input validation (80 assertions, consent-allergy.test.ts). The portal round did not change consent gating: the portal is an access channel for the patient\'s own record and does not read the consent table.',
+      "Consent can be granted, listed and revoked with purpose, method, scope and expiry; status is derived (ACTIVE / REVOKED / EXPIRED) rather than trusted from the client; revocation is a state change, never a delete; every write is audited. Routes live at /api/patients/:id/consents and the panel is the Consent and Allergies tab of the patient record. Unit tests cover status derivation and input validation (80 assertions, consent-allergy.test.ts). The portal round did not change consent gating: the portal is an access channel for the patient's own record and does not read the consent table.",
     verification:
       'Read the service, routes and panel; ran test:consent-allergy. The PostgreSQL paths (grantConsent, revokeConsent, listConsents) have NOT been executed: this environment has no database and migration 0017 is unapplied.',
-    note:
-      'Still partial: consent is captured but does not gate clinical reads. hasActiveConsent() is exposed for that policy decision, which is a clinical-governance call rather than a coding default. The portal adds a disclosure channel that does not consult consent; that is defensible only because the patient is retrieving their own record, and the facility must confirm that reading rather than have it assumed. DHA consent authorisation (OTP) is separately blocked.',
+    note: 'Still partial: consent is captured but does not gate clinical reads. hasActiveConsent() is exposed for that policy decision, which is a clinical-governance call rather than a coding default. The portal adds a disclosure channel that does not consult consent; that is defensible only because the patient is retrieving their own record, and the facility must confirm that reading rather than have it assumed. DHA consent authorisation (OTP) is separately blocked.',
     remainingGap:
-      'Wire consent checks into cross-facility sharing, portal-initiated sharing and insurer submission, not into the treating clinician\'s own access.',
+      "Wire consent checks into cross-facility sharing, portal-initiated sharing and insurer submission, not into the treating clinician's own access.",
   },
   {
     id: 'FN-07',
     category: 'functionality',
     title: 'Computerised medication orders',
-    requirement:
-      'A clinician can order medication, and the order reaches dispensing.',
+    requirement: 'A clinician can order medication, and the order reaches dispensing.',
     module: 'Outpatient · Pharmacy',
     status: 'VERIFIED',
     severity: 'critical',
-    evidence:
-      'prescriptions routes; src/tests/pharmacy-batches.test.ts (80 assertions)',
+    evidence: 'prescriptions routes; src/tests/pharmacy-batches.test.ts (80 assertions)',
     verification: 'Automated test plus route inspection.',
   },
   {
@@ -217,19 +200,16 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     module: 'Radiology',
     status: 'IMPLEMENTED_UNTESTED',
     severity: 'high',
-    evidence:
-      'GET/POST /api/radiology-orders, PUT /api/radiology-orders/:id/report',
+    evidence: 'GET/POST /api/radiology-orders, PUT /api/radiology-orders/:id/report',
     verification:
       'Routes inspected and scoped during this audit; no automated test exercises them.',
-    note:
-      'Before this audit these routes had no permission check and no facility scope.',
+    note: 'Before this audit these routes had no permission check and no facility scope.',
   },
   {
     id: 'FN-10',
     category: 'functionality',
     title: 'Physiotherapy, occupational therapy, nutrition, social work, counselling',
-    requirement:
-      'Allied-health orders and notes are captured as part of the encounter.',
+    requirement: 'Allied-health orders and notes are captured as part of the encounter.',
     module: 'Not implemented',
     status: 'MISSING',
     severity: 'medium',
@@ -251,13 +231,11 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'FN-12',
     category: 'functionality',
     title: 'Vital signs and growth',
-    requirement:
-      'Vital signs are recorded per encounter; BMI and growth are derived for children.',
+    requirement: 'Vital signs are recorded per encounter; BMI and growth are derived for children.',
     module: 'Outpatient · observations',
     status: 'PARTIAL',
     severity: 'high',
-    evidence:
-      'observations routes and table; no BMI or growth-chart derivation found',
+    evidence: 'observations routes and table; no BMI or growth-chart derivation found',
     verification: 'Route and schema inspection.',
   },
   {
@@ -277,21 +255,18 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'FN-14',
     category: 'functionality',
     title: 'Medication catalogue',
-    requirement:
-      'A maintained catalogue supplies the products that can be prescribed.',
+    requirement: 'A maintained catalogue supplies the products that can be prescribed.',
     module: 'Pharmacy',
     status: 'VERIFIED',
     severity: 'high',
-    evidence:
-      'medications table; GET/POST /api/medications; PUT /api/medications/:id/status',
+    evidence: 'medications table; GET/POST /api/medications; PUT /api/medications/:id/status',
     verification: 'Route inspection and pharmacy test suite.',
   },
   {
     id: 'FN-15',
     category: 'functionality',
     title: 'Allergy and interaction checking',
-    requirement:
-      'Known allergies and clinically significant interactions warn the prescriber.',
+    requirement: 'Known allergies and clinically significant interactions warn the prescriber.',
     module: 'src/clinical/allergy.service.ts',
     status: 'PARTIAL',
     severity: 'critical',
@@ -299,8 +274,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
       'A structured allergy registry (allergen type, reaction, severity, status) can be recorded and resolved from the patient record. The prescription route calls checkMedicationAllergies before writing; a match returns 409 ALLERGY_CONFLICT and the prescriber must acknowledge it, which is written to the audit trail as a PRESCRIBE override. Matching is name-based (equal, containment at four characters or more, shared leading word); unit tests cover it.',
     verification:
       'Read the service, the prescription route and the prescribing screen; ran test:consent-allergy. No database was available, so the registry queries were not executed.',
-    note:
-      'Still partial: there is no drug-drug interaction engine and no cross-reactivity table. The UI says an empty check is not a guarantee of safety rather than implying one.',
+    note: 'Still partial: there is no drug-drug interaction engine and no cross-reactivity table. The UI says an empty check is not a guarantee of safety rather than implying one.',
     remainingGap:
       'A pharmacological interaction dataset is a licensed-content decision, not a code change.',
   },
@@ -308,8 +282,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'FN-16',
     category: 'functionality',
     title: 'Clinical decision support',
-    requirement:
-      'Rules evaluate clinical inputs and surface prioritised, non-disappearing alerts.',
+    requirement: 'Rules evaluate clinical inputs and surface prioritised, non-disappearing alerts.',
     module: 'Not implemented',
     status: 'MISSING',
     severity: 'high',
@@ -339,21 +312,18 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     module: 'Outpatient · Pharmacy',
     status: 'VERIFIED',
     severity: 'critical',
-    evidence:
-      'src/tests/pharmacy-batches.test.ts; prescription and dispensing routes',
+    evidence: 'src/tests/pharmacy-batches.test.ts; prescription and dispensing routes',
     verification: 'Automated test plus route inspection.',
   },
   {
     id: 'FN-19',
     category: 'functionality',
     title: 'Quality measures',
-    requirement:
-      'Indicators are calculated from real, period-filtered facility data.',
+    requirement: 'Indicators are calculated from real, period-filtered facility data.',
     module: 'Reports & revenue',
     status: 'PARTIAL',
     severity: 'medium',
-    evidence:
-      'GET /api/analytics/summary, GET /api/analytics/revenue; facility scoping enforced',
+    evidence: 'GET /api/analytics/summary, GET /api/analytics/revenue; facility scoping enforced',
     verification:
       'Route inspection. Operational aggregates exist; no defined quality-indicator set or denominator rules.',
   },
@@ -361,8 +331,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'FN-20',
     category: 'functionality',
     title: 'Maternal and child health',
-    requirement:
-      'Antenatal, labour, delivery, postnatal and immunisation encounters are recorded.',
+    requirement: 'Antenatal, labour, delivery, postnatal and immunisation encounters are recorded.',
     module: 'Maternity & MCH',
     status: 'VERIFIED',
     severity: 'high',
@@ -383,8 +352,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     module: 'Organisational — not software',
     status: 'BLOCKED',
     severity: 'critical',
-    evidence:
-      'No registration certificate, number or entity record exists in the repository.',
+    evidence: 'No registration certificate, number or entity record exists in the repository.',
     verification:
       'Repository search. A registration cannot be inferred from source code, and none was fabricated.',
     externalDependency:
@@ -417,14 +385,14 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     severity: 'critical',
     evidence:
       'Staff: argon2 password hashes, 48-byte random session tokens stored as SHA-256, 8-hour expiry and security_version invalidation. The portal round added a second, separate identity namespace: patient_portal_accounts (argon2id, 12-character minimum, five failures then a 15-minute lock) and patient_portal_sessions (48-byte token, SHA-256 only, 2-hour expiry, revoked on logout, password change, suspension and revocation). A patient token is validated only against the patient session table, so a patient credential can never satisfy a staff route and vice versa. Sign-in verifies the password before it discloses whether an account is suspended, revoked or unverified.',
-    verification: 'Auth service, portal auth service and both middlewares read; test:patient-portal asserts the separation, the generic pre-authentication error and the password rules. No runtime sign-in was performed in this environment.',
+    verification:
+      'Auth service, portal auth service and both middlewares read; test:patient-portal asserts the separation, the generic pre-authentication error and the password rules. No runtime sign-in was performed in this environment.',
   },
   {
     id: 'SP-04',
     category: 'security',
     title: 'Role-based access control',
-    requirement:
-      'Every sensitive endpoint enforces a permission, not merely a session.',
+    requirement: 'Every sensitive endpoint enforces a permission, not merely a session.',
     module: 'src/auth/authorization.middleware.ts',
     status: 'PARTIAL',
     severity: 'critical',
@@ -432,8 +400,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
       'The audit closed 8 of the 13 unguarded /api routes (theatre, radiology, suppliers, purchase orders). The portal round added 38 routes (19 patient, 19 staff) with no unguarded route: every staff endpoint carries requirePermission with one of five new portal codes or patients.read, and every patient endpoint is behind requirePortalAuth, which accepts only a patient session. test:patient-portal fails if a portal staff route lacks a guard or if the patient router reads a patient id from the request.',
     verification:
       'Static enumeration of route declarations and route-by-route reading; automated assertions in test:patient-portal (permission count, requireAuth present, requirePortalAuth absent from the admin router) and test:route-scope. The five pre-existing unguarded routes were not re-reviewed this round and remain.',
-    note:
-      'Still partial for the same reason as before: five pre-existing unguarded routes and the object-level ownership of id-addressed routes outside the portal are unchanged. The portal added guarded surface; it did not fix the legacy surface.',
+    note: 'Still partial for the same reason as before: five pre-existing unguarded routes and the object-level ownership of id-addressed routes outside the portal are unchanged. The portal added guarded surface; it did not fix the legacy surface.',
   },
   {
     id: 'SP-05',
@@ -445,11 +412,10 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'critical',
     evidence:
-      'Theatre cases, radiology orders, suppliers and purchase orders were readable across facilities before the audit and are now scoped. Portal reads are scoped to the patient\'s registration facility union the account facility, applied to encounters, appointments, laboratory orders, admissions, allergies and prescriptions (through encounters), and an empty facility set is refused rather than widening the query. Portal administration is scoped on tenant_id and facility_id and answers 404 rather than 403 for another facility\'s account, so the response cannot confirm that an account exists elsewhere. test:patient-portal asserts each facility filter and the absence of any request-supplied patient id.',
+      "Theatre cases, radiology orders, suppliers and purchase orders were readable across facilities before the audit and are now scoped. Portal reads are scoped to the patient's registration facility union the account facility, applied to encounters, appointments, laboratory orders, admissions, allergies and prescriptions (through encounters), and an empty facility set is refused rather than widening the query. Portal administration is scoped on tenant_id and facility_id and answers 404 rather than 403 for another facility's account, so the response cannot confirm that an account exists elsewhere. test:patient-portal asserts each facility filter and the absence of any request-supplied patient id.",
     verification:
       'Portal record and admin services read line by line; automated source assertions in test:patient-portal. The portal queries have not been executed against a database, so isolation is asserted structurally, not demonstrated with rows.',
-    note:
-      'Still the most serious finding of the audit: the legacy id-addressed routes outside the portal remain unaudited for object-level ownership. The portal is evidence that the pattern can be applied; it is not evidence that it has been applied everywhere.',
+    note: 'Still the most serious finding of the audit: the legacy id-addressed routes outside the portal remain unaudited for object-level ownership. The portal is evidence that the pattern can be applied; it is not evidence that it has been applied everywhere.',
   },
   {
     id: 'SP-06',
@@ -464,15 +430,13 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
       'audit_logs records staff actions; patient_record_access_logs records reads with a purpose and channel. The portal round widened the second: eight patient read paths write an access row with accessChannel PATIENT_PORTAL (dashboard, visits, laboratory, medications, appointments, discharge summaries, download, sharing redemption), card lookup writes one under the staff session, and every portal administration action writes an audit row. Reading the portal audit trail is itself audited. Migration 0017 (append-only triggers plus REVOKE UPDATE, DELETE, TRUNCATE) is written but has not been applied to any database.',
     verification:
       'Read the access-log and audit call sites; test:patient-portal asserts at least eight logPortalRecordAccess calls and that the portal never writes a clinical table. The triggers were not executed.',
-    note:
-      'Still partial: the append-only guarantee exists only in an unapplied migration, so a database that has not run 0017 can still have its audit rows edited by a privileged role. Retention and review ownership are also undecided.',
+    note: 'Still partial: the append-only guarantee exists only in an unapplied migration, so a database that has not run 0017 can still have its audit rows edited by a privileged role. Retention and review ownership are also undecided.',
   },
   {
     id: 'SP-07',
     category: 'security',
     title: 'Encryption in transit',
-    requirement:
-      'Client traffic and database traffic use TLS with certificate verification.',
+    requirement: 'Client traffic and database traffic use TLS with certificate verification.',
     module: 'src/config/env.ts · deployment',
     status: 'PARTIAL',
     severity: 'critical',
@@ -496,8 +460,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
       'Direct identifiers (national ID, SHA number) can be sealed with AES-256-GCM before they reach PostgreSQL, with an HMAC blind index for exact lookups and legacy plaintext passthrough. The key comes from FIELD_ENCRYPTION_KEY and there is no compiled-in default; 48 assertions cover round-trip, tamper detection, wrong-key refusal and key absence. The portal stores the digital-card code the same way: a SHA-256 hash is the lookup key and the sealed copy is readable only by the account that owns the card. Whole-volume, snapshot and backup encryption are untouched.',
     verification:
       'Ran test:field-encryption against the real crypto module; read the card issue and render paths. The volume, its snapshots and backups are NOT encrypted by anything in this repository.',
-    note:
-      'Still an operational control: whole-volume and backup encryption, key custody and rotation remain the hosting provider and facility responsibility. Application-level sealing of two columns does not make the database encrypted at rest.',
+    note: 'Still an operational control: whole-volume and backup encryption, key custody and rotation remain the hosting provider and facility responsibility. Application-level sealing of two columns does not make the database encrypted at rest.',
     externalDependency:
       'Hosting provider or DBA must enable storage encryption and document key custody.',
   },
@@ -520,14 +483,14 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'SP-10',
     category: 'security',
     title: 'Brute-force protection',
-    requirement:
-      'Repeated failed sign-ins are rate limited and lock the account.',
+    requirement: 'Repeated failed sign-ins are rate limited and lock the account.',
     module: 'src/middleware · src/auth/auth.service.ts',
     status: 'VERIFIED',
     severity: 'high',
     evidence:
       'Per-IP rate limits on staff sign-in and the API, plus account lockout. The portal adds public endpoints that need it: activation and login are limited to 10 requests per 15 minutes per address, and a patient account locks for 15 minutes after five failed passwords, counted per account so rotating addresses does not escape it. The lock is checked only after the password verifies, so the endpoint cannot be used to enumerate accounts. http-security and patient-portal tests assert the limiter shape and the lock constants.',
-    verification: 'Read the limiter factory and the login path; ran test:security and test:patient-portal. Rate limiting was not exercised under load and the trust-proxy configuration at the edge is unverified.',
+    verification:
+      'Read the limiter factory and the login path; ran test:security and test:patient-portal. Rate limiting was not exercised under load and the trust-proxy configuration at the edge is unverified.',
   },
   {
     id: 'SP-11',
@@ -545,8 +508,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'SP-12',
     category: 'security',
     title: 'Secrets handling',
-    requirement:
-      'Credentials are not committed, and production secrets are managed and rotated.',
+    requirement: 'Credentials are not committed, and production secrets are managed and rotated.',
     module: '.gitignore · .env.example',
     status: 'PARTIAL',
     severity: 'high',
@@ -577,8 +539,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     id: 'PH-02',
     category: 'reporting',
     title: 'IDSR weekly reporting',
-    requirement:
-      'A weekly IDSR return is generated for the reporting period and submitted.',
+    requirement: 'A weekly IDSR return is generated for the reporting period and submitted.',
     module: 'Not implemented',
     status: 'MISSING',
     severity: 'critical',
@@ -610,22 +571,19 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     evidence:
       'The endpoint deliberately returns 501 MOH705_REPORT_NOT_IMPLEMENTED; the screen now shows that reason.',
     verification: 'Route inspection and UI review.',
-    note:
-      'The previous screen displayed an empty table, a hard-coded period and an export button that downloaded JSON null.',
+    note: 'The previous screen displayed an empty table, a hard-coded period and an export button that downloaded JSON null.',
   },
   {
     id: 'PH-05',
     category: 'reporting',
     title: 'Reporting-period correctness',
-    requirement:
-      'Reports are bound to a computed period, not a constant.',
+    requirement: 'Reports are bound to a computed period, not a constant.',
     module: 'Public health · Maternity',
     status: 'PARTIAL',
     severity: 'medium',
     evidence:
       'The epi-week was hard-coded as 2026-W40 in the screen and is now derived (currentEpiWeek); the server validates the pattern.',
-    verification:
-      'Source inspection before and after the fix. No server-side period table exists.',
+    verification: 'Source inspection before and after the fix. No server-side period table exists.',
   },
   {
     id: 'PH-06',
@@ -657,8 +615,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
       'Three explicit modes; production disabled unless DHA_ALLOW_PRODUCTION=true; token cache and retry; src/tests/dha.test.ts (176 assertions) against fixtures',
     verification:
       'Automated fixture tests. No sandbox credential was available, so no live token exchange was attempted.',
-    externalDependency:
-      'DHA must issue a client id, secret and facility registry code.',
+    externalDependency: 'DHA must issue a client id, secret and facility registry code.',
   },
   {
     id: 'IO-02',
@@ -686,8 +643,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     severity: 'high',
     evidence:
       'Declared not implemented, with the reason recorded per operation; consent capture has no OTP or biometric channel.',
-    verification:
-      'The readiness register is explicit rather than optimistic.',
+    verification: 'The readiness register is explicit rather than optimistic.',
   },
   {
     id: 'IO-04',
@@ -699,8 +655,7 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     severity: 'medium',
     evidence:
       'One read-only Patient resource with an identifier and managing organization; access is audited.',
-    verification:
-      'Route inspection. No validator was run, and no other resource exists.',
+    verification: 'Route inspection. No validator was run, and no other resource exists.',
   },
   {
     id: 'IO-05',
@@ -726,15 +681,13 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     evidence:
       'ICD-10 codes are captured as free text in the public-health form; no KNHTS, LOINC or ATC mapping table exists.',
     verification: 'Schema and form inspection.',
-    externalDependency:
-      'KNHTS release files and the DHA terminology service.',
+    externalDependency: 'KNHTS release files and the DHA terminology service.',
   },
   {
     id: 'IO-07',
     category: 'interoperability',
     title: 'Integration reliability',
-    requirement:
-      'Integrations have timeouts, retries, idempotency, logging and reconciliation.',
+    requirement: 'Integrations have timeouts, retries, idempotency, logging and reconciliation.',
     module: 'src/integrations/dha/dha.client.ts',
     status: 'PARTIAL',
     severity: 'medium',
@@ -752,18 +705,13 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     module: 'Not applicable',
     status: 'NOT_APPLICABLE',
     severity: 'low',
-    evidence:
-      'No supplied DHA requirement or specification calls for SDMX in this deployment.',
-    verification:
-      'The audit did not invent a standard to raise a score.',
-    note:
-      'Re-open if the certification scope names SDMX explicitly.',
+    evidence: 'No supplied DHA requirement or specification calls for SDMX in this deployment.',
+    verification: 'The audit did not invent a standard to raise a score.',
+    note: 'Re-open if the certification scope names SDMX explicitly.',
   },
 ] as const);
 
-export function requirementsByCategory(
-  category: RequirementCategory,
-): DhaRequirement[] {
+export function requirementsByCategory(category: RequirementCategory): DhaRequirement[] {
   return DHA_REQUIREMENTS.filter((item) => item.category === category);
 }
 

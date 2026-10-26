@@ -44,11 +44,46 @@ export const ANTIGENS: Antigen[] = [
   { code: 'ROTA-1', name: 'Rotavirus 1', weeks: 6, doses: 1, route: 'Oral' },
   { code: 'ROTA-2', name: 'Rotavirus 2', weeks: 10, doses: 1, route: 'Oral' },
   { code: 'IPV', name: 'IPV', weeks: 14, doses: 1, route: 'Intramuscular' },
-  { code: 'MR-1', name: 'Measles-Rubella 1', weeks: 39, doses: 1, route: 'Subcutaneous', note: '9 months' },
-  { code: 'MR-2', name: 'Measles-Rubella 2', weeks: 78, doses: 1, route: 'Subcutaneous', note: '18 months' },
-  { code: 'YF', name: 'Yellow fever', weeks: 39, doses: 1, route: 'Subcutaneous', note: '9 months, endemic counties' },
-  { code: 'HPV-1', name: 'HPV 1', weeks: 520, doses: 1, route: 'Intramuscular', note: 'Girls, 10 years' },
-  { code: 'HPV-2', name: 'HPV 2', weeks: 546, doses: 1, route: 'Intramuscular', note: 'Girls, 10 years, second dose' },
+  {
+    code: 'MR-1',
+    name: 'Measles-Rubella 1',
+    weeks: 39,
+    doses: 1,
+    route: 'Subcutaneous',
+    note: '9 months',
+  },
+  {
+    code: 'MR-2',
+    name: 'Measles-Rubella 2',
+    weeks: 78,
+    doses: 1,
+    route: 'Subcutaneous',
+    note: '18 months',
+  },
+  {
+    code: 'YF',
+    name: 'Yellow fever',
+    weeks: 39,
+    doses: 1,
+    route: 'Subcutaneous',
+    note: '9 months, endemic counties',
+  },
+  {
+    code: 'HPV-1',
+    name: 'HPV 1',
+    weeks: 520,
+    doses: 1,
+    route: 'Intramuscular',
+    note: 'Girls, 10 years',
+  },
+  {
+    code: 'HPV-2',
+    name: 'HPV 2',
+    weeks: 546,
+    doses: 1,
+    route: 'Intramuscular',
+    note: 'Girls, 10 years, second dose',
+  },
 ];
 
 export const ANTIGEN_BY_CODE = new Map(ANTIGENS.map((antigen) => [antigen.code, antigen]));
@@ -118,7 +153,5 @@ export function immunisationStatus(
 
 /** Only the doses worth acting on today, of which there are usually few. */
 export function outstandingDoses(statuses: DoseStatus[]): DoseStatus[] {
-  return statuses.filter(
-    (dose) => dose.status === 'Due' || dose.status === 'Overdue',
-  );
+  return statuses.filter((dose) => dose.status === 'Due' || dose.status === 'Overdue');
 }

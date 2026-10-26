@@ -138,9 +138,7 @@ export const VAGUE_WORDS: ReadonlySet<string> = new Set([
  * "Blood" → no. "Full blood count" → yes, because "count" is specific.
  */
 export function isVaguePhrase(value: string | null | undefined): boolean {
-  const meaningful = serviceWords(value).filter(
-    (word) => !NEUTRAL_WORDS.has(word),
-  );
+  const meaningful = serviceWords(value).filter((word) => !NEUTRAL_WORDS.has(word));
 
   if (meaningful.length === 0) return true;
 

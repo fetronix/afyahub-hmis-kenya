@@ -7,7 +7,14 @@ import { Activity, Eye, Smile, Stethoscope } from 'lucide-react';
 type SpecialtyType = 'Dental' | 'Optical' | 'ENT' | 'Renal';
 
 export const SpecialtyModule: React.FC = () => {
-  const { currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey } = useHmis();
+  const {
+    currentFacility,
+    currentUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+  } = useHmis();
   const [activeSpecialty, setActiveSpecialty] = useState<SpecialtyType>('Dental');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
@@ -59,18 +66,20 @@ export const SpecialtyModule: React.FC = () => {
   }, [currentFacility, refreshKey]);
 
   const handleSaveSpecialtyEncounter = () => {
-    const pat = patients.find(p => p.id.toString() === selectedPatientId);
+    const pat = patients.find((p) => p.id.toString() === selectedPatientId);
     showToast(`Logged ${activeSpecialty} clinical record for ${pat?.firstName} ${pat?.lastName}.`);
   };
 
-  const currentPatient = patients.find(p => p.id.toString() === selectedPatientId);
+  const currentPatient = patients.find((p) => p.id.toString() === selectedPatientId);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Specialized Clinical Framework</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Specialized Clinical Framework
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
             Clinical documentation suites for Dental, Optical, ENT and Renal Dialysis.
           </p>
@@ -126,14 +135,16 @@ export const SpecialtyModule: React.FC = () => {
             onChange={(e) => setSelectedPatientId(e.target.value)}
             className="w-full sm:w-auto px-3 py-1.5 border border-slate-200 rounded-md font-medium"
           >
-            {patients.map(p => (
+            {patients.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.firstName} {p.lastName} (MRN: {p.mrn} · Payer: {p.payerType})
               </option>
             ))}
           </select>
         </div>
-        <span className="text-2xs text-slate-500 font-mono hidden sm:inline">Specialist Unit Active</span>
+        <span className="text-2xs text-slate-500 font-mono hidden sm:inline">
+          Specialist Unit Active
+        </span>
       </div>
 
       {/* DENTAL CLINIC VIEW */}
@@ -200,7 +211,9 @@ export const SpecialtyModule: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Procedure Tariff (KES)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Procedure Tariff (KES)
+              </label>
               <input
                 type="text"
                 value={dentalForm.costKes}
@@ -233,29 +246,41 @@ export const SpecialtyModule: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Visual Acuity Right Eye (OD)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Visual Acuity Right Eye (OD)
+              </label>
               <input
                 type="text"
                 value={opticalForm.visualAcuityRight}
-                onChange={(e) => setOpticalForm({ ...opticalForm, visualAcuityRight: e.target.value })}
+                onChange={(e) =>
+                  setOpticalForm({ ...opticalForm, visualAcuityRight: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Visual Acuity Left Eye (OS)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Visual Acuity Left Eye (OS)
+              </label>
               <input
                 type="text"
                 value={opticalForm.visualAcuityLeft}
-                onChange={(e) => setOpticalForm({ ...opticalForm, visualAcuityLeft: e.target.value })}
+                onChange={(e) =>
+                  setOpticalForm({ ...opticalForm, visualAcuityLeft: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Intraocular Pressure (IOP)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Intraocular Pressure (IOP)
+              </label>
               <input
                 type="text"
                 value={opticalForm.intraocularPressure}
-                onChange={(e) => setOpticalForm({ ...opticalForm, intraocularPressure: e.target.value })}
+                onChange={(e) =>
+                  setOpticalForm({ ...opticalForm, intraocularPressure: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
               />
             </div>
@@ -263,7 +288,9 @@ export const SpecialtyModule: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Funduscopy & Retinal Examination</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Funduscopy & Retinal Examination
+              </label>
               <input
                 type="text"
                 value={opticalForm.fundusExam}
@@ -272,11 +299,15 @@ export const SpecialtyModule: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Spectacle Prescription</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Spectacle Prescription
+              </label>
               <input
                 type="text"
                 value={opticalForm.prescribedLenses}
-                onChange={(e) => setOpticalForm({ ...opticalForm, prescribedLenses: e.target.value })}
+                onChange={(e) =>
+                  setOpticalForm({ ...opticalForm, prescribedLenses: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
               />
             </div>
@@ -305,7 +336,9 @@ export const SpecialtyModule: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Target Dry Weight (kg)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Target Dry Weight (kg)
+              </label>
               <input
                 type="text"
                 value={renalForm.dryWeightKg}
@@ -314,7 +347,9 @@ export const SpecialtyModule: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Pre-Dialysis Blood Pressure</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Pre-Dialysis Blood Pressure
+              </label>
               <input
                 type="text"
                 value={renalForm.preDialysisBp}
@@ -335,20 +370,28 @@ export const SpecialtyModule: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Ultrafiltration Target (Liters)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Ultrafiltration Target (Liters)
+              </label>
               <input
                 type="text"
                 value={renalForm.ultrafiltrationGoalL}
-                onChange={(e) => setRenalForm({ ...renalForm, ultrafiltrationGoalL: e.target.value })}
+                onChange={(e) =>
+                  setRenalForm({ ...renalForm, ultrafiltrationGoalL: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Anticoagulation (Heparin)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Anticoagulation (Heparin)
+              </label>
               <input
                 type="text"
                 value={renalForm.heparinLoadingUnits}
-                onChange={(e) => setRenalForm({ ...renalForm, heparinLoadingUnits: e.target.value })}
+                onChange={(e) =>
+                  setRenalForm({ ...renalForm, heparinLoadingUnits: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
               />
             </div>
@@ -357,7 +400,9 @@ export const SpecialtyModule: React.FC = () => {
               <input
                 type="text"
                 value={renalForm.sessionDurationHours}
-                onChange={(e) => setRenalForm({ ...renalForm, sessionDurationHours: e.target.value })}
+                onChange={(e) =>
+                  setRenalForm({ ...renalForm, sessionDurationHours: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
               />
             </div>
@@ -384,7 +429,9 @@ export const SpecialtyModule: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Otoscopy (Right & Left Tympanic Membrane)</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Otoscopy (Right & Left Tympanic Membrane)
+              </label>
               <input
                 type="text"
                 defaultValue="Right TM intact, pearly grey with normal cone of light. Left TM hyperemic, mild retraction."
@@ -392,7 +439,9 @@ export const SpecialtyModule: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Anterior Rhinoscopy & Turbinates</label>
+              <label className="block font-medium text-slate-700 mb-1">
+                Anterior Rhinoscopy & Turbinates
+              </label>
               <input
                 type="text"
                 defaultValue="Nasal septum midline. Moderate hypertrophy of inferior turbinates, pale mucosa."

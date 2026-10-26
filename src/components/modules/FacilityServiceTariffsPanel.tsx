@@ -1,5 +1,5 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
-import { api } from "../../api/client.ts";
+﻿import React, { useCallback, useEffect, useState } from 'react';
+import { api } from '../../api/client.ts';
 import type {
   BillingChargeAttempt,
   BillingChargeAttemptList,
@@ -8,18 +8,14 @@ import type {
   ServiceTariff,
   ServiceTariffLink,
   Ward,
-} from "../../types/index.ts";
+} from '../../types/index.ts';
 import {
   BILLING_FAMILIES as BILLING_LINK_FAMILIES,
   buildBillingKey,
   labTariffCodeCandidates,
   type BillingFamily,
-} from "../../billing/tariff-codes.ts";
-import {
-  codesForFamily,
-  consultationPhrases,
-  matchTariff,
-} from "../../billing/tariff-matching.ts";
+} from '../../billing/tariff-codes.ts';
+import { codesForFamily, consultationPhrases, matchTariff } from '../../billing/tariff-matching.ts';
 
 interface FacilityServiceTariffsPanelProps {
   facilityId: number;
@@ -28,25 +24,25 @@ interface FacilityServiceTariffsPanelProps {
 }
 
 const DEPARTMENTS = [
-  { id: "opd", label: "OPD / Outpatient" },
-  { id: "inpatient", label: "Inpatient" },
-  { id: "theatre", label: "Theatre" },
-  { id: "specialty", label: "Specialty" },
-  { id: "laboratory", label: "Laboratory" },
-  { id: "radiology", label: "Radiology" },
-  { id: "pharmacy", label: "Pharmacy" },
-  { id: "registration", label: "Registration" },
-  { id: "reception", label: "Reception" },
-  { id: "insurance", label: "Insurance / SHA" },
-  { id: "finance", label: "Finance / General" },
+  { id: 'opd', label: 'OPD / Outpatient' },
+  { id: 'inpatient', label: 'Inpatient' },
+  { id: 'theatre', label: 'Theatre' },
+  { id: 'specialty', label: 'Specialty' },
+  { id: 'laboratory', label: 'Laboratory' },
+  { id: 'radiology', label: 'Radiology' },
+  { id: 'pharmacy', label: 'Pharmacy' },
+  { id: 'registration', label: 'Registration' },
+  { id: 'reception', label: 'Reception' },
+  { id: 'insurance', label: 'Insurance / SHA' },
+  { id: 'finance', label: 'Finance / General' },
 ];
 
 const SHA_STATUSES = [
-  "Not Assessed",
-  "Covered",
-  "Not Covered",
-  "Pre-Authorization Required",
-  "Conditional",
+  'Not Assessed',
+  'Covered',
+  'Not Covered',
+  'Pre-Authorization Required',
+  'Conditional',
 ];
 
 /*
@@ -65,23 +61,31 @@ type BillingFamilyRow = {
   codes: string[];
 };
 
-const BILLING_FAMILIES: BillingFamilyRow[] = ([
-  {
-    key: "CONSULTATION",
-    label: "Consultation",
-    encounterType: "OUTPATIENT",
-    phrases: consultationPhrases("OUTPATIENT"),
-    prefixes: ["CONSULT-"],
-    codes: [],
-  },
-  { key: "LABORATORY", label: "Laboratory", phrases: [], prefixes: ["LAB-"], codes: [] },
-  { key: "RADIOLOGY", label: "Radiology", phrases: [], prefixes: ["RAD-"], codes: [] },
-  { key: "PROCEDURE", label: "Procedure", phrases: [], prefixes: ["PROC-"], codes: [] },
-  { key: "PHARMACY", label: "Pharmacy", phrases: [], prefixes: ["DRUG-"], codes: [] },
-  { key: "ADMISSION", label: "Admission", phrases: [], prefixes: ["ADMIT-"], codes: [] },
-  { key: "BED_DAY", label: "Bed-day", phrases: [], prefixes: ["BED-"], codes: [] },
-  { key: "DELIVERY", label: "Maternity delivery", phrases: [], prefixes: ["DELIVERY-"], codes: [] },
-] satisfies BillingFamilyRow[]).map((family) => ({
+const BILLING_FAMILIES: BillingFamilyRow[] = (
+  [
+    {
+      key: 'CONSULTATION',
+      label: 'Consultation',
+      encounterType: 'OUTPATIENT',
+      phrases: consultationPhrases('OUTPATIENT'),
+      prefixes: ['CONSULT-'],
+      codes: [],
+    },
+    { key: 'LABORATORY', label: 'Laboratory', phrases: [], prefixes: ['LAB-'], codes: [] },
+    { key: 'RADIOLOGY', label: 'Radiology', phrases: [], prefixes: ['RAD-'], codes: [] },
+    { key: 'PROCEDURE', label: 'Procedure', phrases: [], prefixes: ['PROC-'], codes: [] },
+    { key: 'PHARMACY', label: 'Pharmacy', phrases: [], prefixes: ['DRUG-'], codes: [] },
+    { key: 'ADMISSION', label: 'Admission', phrases: [], prefixes: ['ADMIT-'], codes: [] },
+    { key: 'BED_DAY', label: 'Bed-day', phrases: [], prefixes: ['BED-'], codes: [] },
+    {
+      key: 'DELIVERY',
+      label: 'Maternity delivery',
+      phrases: [],
+      prefixes: ['DELIVERY-'],
+      codes: [],
+    },
+  ] satisfies BillingFamilyRow[]
+).map((family) => ({
   ...family,
   /*
    * The exact list the engine tries, not a copy maintained by hand. A
@@ -94,46 +98,48 @@ const BILLING_FAMILIES: BillingFamilyRow[] = ([
 }));
 
 const EMPTY_FORM = {
-  code: "",
-  description: "",
-  department: "opd",
-  unit: "Service",
-  fee: "",
-  shaStatus: "Not Assessed",
-  shaNotes: "",
+  code: '',
+  description: '',
+  department: 'opd',
+  unit: 'Service',
+  fee: '',
+  shaStatus: 'Not Assessed',
+  shaNotes: '',
   /*
    * Which automatic charge this tariff answers. A facility numbers its
    * tariffs (OPD-001, LAB-006); the engine looks for codes (OPD-CONSULT,
    * LAB-CBC). This is where the two are connected, once, by the person
    * who knows what OPD-001 actually is.
    */
-  billingFamily: "",
-  billingDetail: "",
+  billingFamily: '',
+  billingDetail: '',
   /*
    * When this price applies, and whether automatic billing may use it.
    * Empty dates mean "always"; automatic billing is on by default so
    * saving a tariff behaves exactly as it did before these fields.
    */
-  effectiveFrom: "",
-  effectiveTo: "",
+  effectiveFrom: '',
+  effectiveTo: '',
   autoBill: true,
 };
 
 const fieldClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100";
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100';
 
-const labelClass = "mb-1 block text-sm font-medium text-slate-700";
+const labelClass = 'mb-1 block text-sm font-medium text-slate-700';
 
-export const FacilityServiceTariffsPanel: React.FC<
-  FacilityServiceTariffsPanelProps
-> = ({ facilityId, facilityName, enabledModules }) => {
+export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelProps> = ({
+  facilityId,
+  facilityName,
+  enabledModules,
+}) => {
   const [tariffs, setTariffs] = useState<ServiceTariff[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   /*
@@ -147,11 +153,10 @@ export const FacilityServiceTariffsPanel: React.FC<
    * order or the admission happened. Keeping them on this screen is the
    * point — a skipped charge that nobody can see is money lost quietly.
    */
-  const [attempts, setAttempts] =
-    useState<BillingChargeAttemptList | null>(null);
-  const [attemptsUnavailable, setAttemptsUnavailable] = useState("");
-  const [attemptBusy, setAttemptBusy] = useState<number | "all" | null>(null);
-  const [attemptNotice, setAttemptNotice] = useState("");
+  const [attempts, setAttempts] = useState<BillingChargeAttemptList | null>(null);
+  const [attemptsUnavailable, setAttemptsUnavailable] = useState('');
+  const [attemptBusy, setAttemptBusy] = useState<number | 'all' | null>(null);
+  const [attemptNotice, setAttemptNotice] = useState('');
   const [attemptExplanation, setAttemptExplanation] = useState<{
     id: number;
     text: string;
@@ -164,12 +169,11 @@ export const FacilityServiceTariffsPanel: React.FC<
    * with the facility's own rows instead of a code it never typed.
    */
   const [links, setLinks] = useState<ServiceTariffLink[]>([]);
-  const [linksUnavailable, setLinksUnavailable] = useState("");
-  const [diagnostics, setDiagnostics] =
-    useState<LabServiceDiagnostics | null>(null);
-  const [diagnosticsUnavailable, setDiagnosticsUnavailable] = useState("");
+  const [linksUnavailable, setLinksUnavailable] = useState('');
+  const [diagnostics, setDiagnostics] = useState<LabServiceDiagnostics | null>(null);
+  const [diagnosticsUnavailable, setDiagnosticsUnavailable] = useState('');
   const [linkBusy, setLinkBusy] = useState(false);
-  const [linkNotice, setLinkNotice] = useState("");
+  const [linkNotice, setLinkNotice] = useState('');
   const [linkDraft, setLinkDraft] = useState<{
     testId: number | null;
     wardId: number | null;
@@ -179,15 +183,13 @@ export const FacilityServiceTariffsPanel: React.FC<
   }>({
     testId: null,
     wardId: null,
-    serviceType: "LAB_TEST",
-    tariffId: "",
+    serviceType: 'LAB_TEST',
+    tariffId: '',
     autoBill: true,
   });
 
-  const departments = DEPARTMENTS.filter(({ id }) =>
-    enabledModules.includes(id),
-  );
-  const financeEnabled = enabledModules.includes("finance");
+  const departments = DEPARTMENTS.filter(({ id }) => enabledModules.includes(id));
+  const financeEnabled = enabledModules.includes('finance');
 
   /*
    * Which families this facility can actually bill.
@@ -219,10 +221,8 @@ export const FacilityServiceTariffsPanel: React.FC<
     const specific = tariffs.filter(
       (tariff) =>
         tariff.isActive &&
-        ((tariff.billingKey ?? "").split(":")[0] === family.key ||
-          family.prefixes.some((prefix) =>
-            tariff.code.toUpperCase().startsWith(prefix),
-          )),
+        ((tariff.billingKey ?? '').split(':')[0] === family.key ||
+          family.prefixes.some((prefix) => tariff.code.toUpperCase().startsWith(prefix))),
     );
 
     return {
@@ -234,9 +234,7 @@ export const FacilityServiceTariffsPanel: React.FC<
     };
   });
 
-  const unpriced = coverage.filter(
-    (entry) => !entry.match && entry.specific.length === 0,
-  );
+  const unpriced = coverage.filter((entry) => !entry.match && entry.specific.length === 0);
 
   /*
    * The same question, one level down: which tests in this facility's own
@@ -245,9 +243,7 @@ export const FacilityServiceTariffsPanel: React.FC<
    * candidate list rather than comparing one code.
    */
   const activeTariffCodes = new Set(
-    tariffs
-      .filter((tariff) => tariff.isActive)
-      .map((tariff) => tariff.code.trim().toUpperCase()),
+    tariffs.filter((tariff) => tariff.isActive).map((tariff) => tariff.code.trim().toUpperCase()),
   );
 
   const unpricedLabTests = labTests
@@ -258,28 +254,24 @@ export const FacilityServiceTariffsPanel: React.FC<
         name: test.name,
       });
 
-      return !candidates.some((candidate) =>
-        activeTariffCodes.has(candidate.toUpperCase()),
-      );
+      return !candidates.some((candidate) => activeTariffCodes.has(candidate.toUpperCase()));
     });
 
   const loadLinks = useCallback(async () => {
     try {
       const rows = await api.getServiceTariffLinks(facilityId);
       setLinks(Array.isArray(rows) ? rows : []);
-      setLinksUnavailable("");
+      setLinksUnavailable('');
     } catch (err) {
       setLinks([]);
       setLinksUnavailable(
-        err instanceof Error
-          ? err.message
-          : "Service links are not visible with your permissions.",
+        err instanceof Error ? err.message : 'Service links are not visible with your permissions.',
       );
     }
   }, [facilityId]);
 
   const loadDiagnostics = useCallback(async () => {
-    if (!enabledModules.includes("laboratory")) {
+    if (!enabledModules.includes('laboratory')) {
       setDiagnostics(null);
       return;
     }
@@ -287,13 +279,13 @@ export const FacilityServiceTariffsPanel: React.FC<
     try {
       const result = await api.getLabServiceDiagnostics(facilityId);
       setDiagnostics(result);
-      setDiagnosticsUnavailable("");
+      setDiagnosticsUnavailable('');
     } catch (err) {
       setDiagnostics(null);
       setDiagnosticsUnavailable(
         err instanceof Error
           ? err.message
-          : "Laboratory diagnostics are not available with your permissions.",
+          : 'Laboratory diagnostics are not available with your permissions.',
       );
     }
   }, [facilityId, enabledModules]);
@@ -307,16 +299,16 @@ export const FacilityServiceTariffsPanel: React.FC<
     const tariffId = Number(linkDraft.tariffId);
 
     if (!Number.isSafeInteger(tariffId) || tariffId <= 0) {
-      setLinkNotice("Choose the tariff that should price this service.");
+      setLinkNotice('Choose the tariff that should price this service.');
       return;
     }
 
-    if (linkDraft.serviceType === "LAB_TEST" && linkDraft.testId === null) {
-      setLinkNotice("Choose the laboratory test to link.");
+    if (linkDraft.serviceType === 'LAB_TEST' && linkDraft.testId === null) {
+      setLinkNotice('Choose the laboratory test to link.');
       return;
     }
 
-    if (linkDraft.serviceType === "BED_DAY" && linkDraft.wardId === null) {
+    if (linkDraft.serviceType === 'BED_DAY' && linkDraft.wardId === null) {
       setLinkNotice(
         "Choose the ward to link. A ward link prices that ward's nights; a category-wide rate is found by the tariff's own description.",
       );
@@ -324,33 +316,28 @@ export const FacilityServiceTariffsPanel: React.FC<
     }
 
     setLinkBusy(true);
-    setLinkNotice("");
+    setLinkNotice('');
 
     try {
       await api.createServiceTariffLink({
         facilityId,
         serviceType: linkDraft.serviceType,
-        serviceId:
-          linkDraft.serviceType === "BED_DAY"
-            ? linkDraft.wardId
-            : linkDraft.testId,
+        serviceId: linkDraft.serviceType === 'BED_DAY' ? linkDraft.wardId : linkDraft.testId,
         tariffId,
         autoBill: linkDraft.autoBill,
       });
 
-      setLinkNotice("Linked. The next charge for this service uses that tariff.");
+      setLinkNotice('Linked. The next charge for this service uses that tariff.');
       setLinkDraft((current) => ({
         ...current,
         testId: null,
         wardId: null,
-        tariffId: "",
+        tariffId: '',
       }));
       await loadLinks();
       await loadDiagnostics();
     } catch (err) {
-      setLinkNotice(
-        err instanceof Error ? err.message : "The link could not be saved.",
-      );
+      setLinkNotice(err instanceof Error ? err.message : 'The link could not be saved.');
     } finally {
       setLinkBusy(false);
     }
@@ -358,17 +345,15 @@ export const FacilityServiceTariffsPanel: React.FC<
 
   const removeLink = async (link: ServiceTariffLink) => {
     setLinkBusy(true);
-    setLinkNotice("");
+    setLinkNotice('');
 
     try {
       await api.deactivateServiceTariffLink(link.id, facilityId);
-      setLinkNotice("Link retired. The history is kept; the charge falls back to codes.");
+      setLinkNotice('Link retired. The history is kept; the charge falls back to codes.');
       await loadLinks();
       await loadDiagnostics();
     } catch (err) {
-      setLinkNotice(
-        err instanceof Error ? err.message : "The link could not be retired.",
-      );
+      setLinkNotice(err instanceof Error ? err.message : 'The link could not be retired.');
     } finally {
       setLinkBusy(false);
     }
@@ -376,17 +361,13 @@ export const FacilityServiceTariffsPanel: React.FC<
 
   const loadTariffs = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setError('');
 
     try {
       const result = await api.getServiceTariffs(facilityId);
       setTariffs(Array.isArray(result) ? result : []);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load this facility's tariffs.",
-      );
+      setError(err instanceof Error ? err.message : "Unable to load this facility's tariffs.");
     } finally {
       setLoading(false);
     }
@@ -400,7 +381,7 @@ export const FacilityServiceTariffsPanel: React.FC<
     try {
       const result = await api.getChargeAttempts(facilityId);
       setAttempts(result);
-      setAttemptsUnavailable("");
+      setAttemptsUnavailable('');
     } catch (err) {
       /*
        * Reading the queue needs `billing.read`. A facility administrator
@@ -412,7 +393,7 @@ export const FacilityServiceTariffsPanel: React.FC<
       setAttemptsUnavailable(
         err instanceof Error
           ? err.message
-          : "Unbilled charges are not visible with your permissions.",
+          : 'Unbilled charges are not visible with your permissions.',
       );
     }
   }, [facilityId]);
@@ -423,37 +404,34 @@ export const FacilityServiceTariffsPanel: React.FC<
 
   const retryAttempt = async (attempt: BillingChargeAttempt) => {
     setAttemptBusy(attempt.id);
-    setAttemptNotice("");
+    setAttemptNotice('');
     setAttemptExplanation(null);
 
     try {
       const outcome = await api.retryChargeAttempt(attempt.id, facilityId);
 
       setAttemptNotice(
-        outcome.status === "BILLED"
-          ? `Billed ${outcome.result.tariffCode ?? "tariff"} at ${
+        outcome.status === 'BILLED'
+          ? `Billed ${outcome.result.tariffCode ?? 'tariff'} at ${
               outcome.result.unitPrice ?? 0
-            }${outcome.result.unit ? ` / ${outcome.result.unit}` : ""} on invoice ${
-              outcome.result.invoiceNumber ?? "—"
+            }${outcome.result.unit ? ` / ${outcome.result.unit}` : ''} on invoice ${
+              outcome.result.invoiceNumber ?? '—'
             }.`
-          : outcome.result.message ??
-            "Still waiting for a tariff. Nothing was billed.",
+          : (outcome.result.message ?? 'Still waiting for a tariff. Nothing was billed.'),
       );
 
       await loadAttempts();
       await loadTariffs();
     } catch (err) {
-      setAttemptNotice(
-        err instanceof Error ? err.message : "The retry did not complete.",
-      );
+      setAttemptNotice(err instanceof Error ? err.message : 'The retry did not complete.');
     } finally {
       setAttemptBusy(null);
     }
   };
 
   const retryAllAttempts = async () => {
-    setAttemptBusy("all");
-    setAttemptNotice("");
+    setAttemptBusy('all');
+    setAttemptNotice('');
 
     try {
       const summary = await api.retryChargeAttempts(facilityId);
@@ -465,9 +443,7 @@ export const FacilityServiceTariffsPanel: React.FC<
       await loadAttempts();
       await loadTariffs();
     } catch (err) {
-      setAttemptNotice(
-        err instanceof Error ? err.message : "The retry did not complete.",
-      );
+      setAttemptNotice(err instanceof Error ? err.message : 'The retry did not complete.');
     } finally {
       setAttemptBusy(null);
     }
@@ -475,20 +451,14 @@ export const FacilityServiceTariffsPanel: React.FC<
 
   const voidAttempt = async (attempt: BillingChargeAttempt) => {
     setAttemptBusy(attempt.id);
-    setAttemptNotice("");
+    setAttemptNotice('');
 
     try {
-      await api.voidChargeAttempt(
-        attempt.id,
-        facilityId,
-        "Written off from the tariff screen.",
-      );
-      setAttemptNotice("Written off. The record is kept.");
+      await api.voidChargeAttempt(attempt.id, facilityId, 'Written off from the tariff screen.');
+      setAttemptNotice('Written off. The record is kept.');
       await loadAttempts();
     } catch (err) {
-      setAttemptNotice(
-        err instanceof Error ? err.message : "The write-off did not complete.",
-      );
+      setAttemptNotice(err instanceof Error ? err.message : 'The write-off did not complete.');
     } finally {
       setAttemptBusy(null);
     }
@@ -501,15 +471,13 @@ export const FacilityServiceTariffsPanel: React.FC<
    */
   const explainAttempt = async (attempt: BillingChargeAttempt) => {
     setAttemptBusy(attempt.id);
-    setAttemptNotice("");
+    setAttemptNotice('');
 
     try {
       const explanation = await api.explainTariffMatch({
-        family: attempt.family ?? "CONSULTATION",
+        family: attempt.family ?? 'CONSULTATION',
         ...(attempt.serviceName ? { name: attempt.serviceName } : {}),
-        ...(attempt.encounterType
-          ? { encounterType: attempt.encounterType }
-          : {}),
+        ...(attempt.encounterType ? { encounterType: attempt.encounterType } : {}),
         facilityId,
       });
 
@@ -521,28 +489,25 @@ export const FacilityServiceTariffsPanel: React.FC<
       } else if (explanation.outcome.ambiguity) {
         setAttemptExplanation({
           id: attempt.id,
-          text: `Two tariffs describe this service: ${explanation.outcome.ambiguity.codes.join(" and ")}. Link the right one under "Used for automatic billing".`,
+          text: `Two tariffs describe this service: ${explanation.outcome.ambiguity.codes.join(' and ')}. Link the right one under "Used for automatic billing".`,
         });
       } else {
         const nearMisses = explanation.rows
-          .filter((row) => row.verdict !== "NO_MATCH")
+          .filter((row) => row.verdict !== 'NO_MATCH')
           .slice(0, 4)
-          .map((row) => `${row.code} (${row.verdict.toLowerCase().replace(/_/g, " ")})`);
+          .map((row) => `${row.code} (${row.verdict.toLowerCase().replace(/_/g, ' ')})`);
 
         setAttemptExplanation({
           id: attempt.id,
           text: nearMisses.length
-            ? `No tariff prices this yet. Closest rows: ${nearMisses.join(", ")}.`
-            : `No tariff in this facility describes this service. Codes tried: ${explanation.codes.join(", ")}.`,
+            ? `No tariff prices this yet. Closest rows: ${nearMisses.join(', ')}.`
+            : `No tariff in this facility describes this service. Codes tried: ${explanation.codes.join(', ')}.`,
         });
       }
     } catch (err) {
       setAttemptExplanation({
         id: attempt.id,
-        text:
-          err instanceof Error
-            ? err.message
-            : "The explanation could not be fetched.",
+        text: err instanceof Error ? err.message : 'The explanation could not be fetched.',
       });
     } finally {
       setAttemptBusy(null);
@@ -559,7 +524,7 @@ export const FacilityServiceTariffsPanel: React.FC<
   useEffect(() => {
     let cancelled = false;
 
-    if (!enabledModules.includes("laboratory")) {
+    if (!enabledModules.includes('laboratory')) {
       setLabTests([]);
       return;
     }
@@ -600,14 +565,14 @@ export const FacilityServiceTariffsPanel: React.FC<
     setEditingId(null);
     setForm({
       ...EMPTY_FORM,
-      department: departments[0]?.id || "opd",
+      department: departments[0]?.id || 'opd',
     });
     setFormOpen(false);
   };
 
   const startEdit = (tariff: ServiceTariff) => {
     setEditingId(tariff.id);
-    const [family = "", ...rest] = (tariff.billingKey ?? "").split(":");
+    const [family = '', ...rest] = (tariff.billingKey ?? '').split(':');
 
     setForm({
       code: tariff.code,
@@ -616,42 +581,38 @@ export const FacilityServiceTariffsPanel: React.FC<
       unit: tariff.unit,
       fee: String(tariff.fee),
       shaStatus: tariff.shaStatus,
-      shaNotes: tariff.shaNotes || "",
+      shaNotes: tariff.shaNotes || '',
       billingFamily: family,
-      billingDetail: rest.join(":"),
-      effectiveFrom: (tariff.effectiveFrom ?? "").slice(0, 10),
-      effectiveTo: (tariff.effectiveTo ?? "").slice(0, 10),
+      billingDetail: rest.join(':'),
+      effectiveFrom: (tariff.effectiveFrom ?? '').slice(0, 10),
+      effectiveTo: (tariff.effectiveTo ?? '').slice(0, 10),
       autoBill: tariff.autoBill !== false,
     });
     setFormOpen(true);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
   };
 
   const saveTariff = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
 
     if (!financeEnabled) {
-      setError("Enable the Finance module and save facility settings first.");
+      setError('Enable the Finance module and save facility settings first.');
       return;
     }
 
     if (!departments.some(({ id }) => id === form.department)) {
-      setError("Choose a department enabled for this facility.");
+      setError('Choose a department enabled for this facility.');
       return;
     }
 
     const feeText = form.fee.trim();
     const fee = Number(feeText);
 
-    if (
-      !Number.isFinite(fee) ||
-      fee < 0 ||
-      !/^\d{1,8}(\.\d{1,2})?$/.test(feeText)
-    ) {
-      setError("Enter a valid non-negative fee with up to two decimal places.");
+    if (!Number.isFinite(fee) || fee < 0 || !/^\d{1,8}(\.\d{1,2})?$/.test(feeText)) {
+      setError('Enter a valid non-negative fee with up to two decimal places.');
       return;
     }
 
@@ -675,18 +636,16 @@ export const FacilityServiceTariffsPanel: React.FC<
 
       if (editingId !== null) {
         await api.updateServiceTariff(editingId, input);
-        setNotice("Service tariff updated. New invoices will use the updated fee.");
+        setNotice('Service tariff updated. New invoices will use the updated fee.');
       } else {
         await api.createServiceTariff(input);
-        setNotice("Service tariff created.");
+        setNotice('Service tariff created.');
       }
 
       resetForm();
       await loadTariffs();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not save this service tariff.",
-      );
+      setError(err instanceof Error ? err.message : 'Could not save this service tariff.');
     } finally {
       setSaving(false);
     }
@@ -700,19 +659,15 @@ export const FacilityServiceTariffsPanel: React.FC<
     );
     if (!confirmed) return;
 
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
 
     try {
       await api.deactivateServiceTariff(tariff.id, facilityId);
       setNotice(`Tariff ${tariff.code} deactivated.`);
       await loadTariffs();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not deactivate this tariff.",
-      );
+      setError(err instanceof Error ? err.message : 'Could not deactivate this tariff.');
     }
   };
 
@@ -722,24 +677,23 @@ export const FacilityServiceTariffsPanel: React.FC<
         <div>
           <h2 className="font-bold text-slate-900">Services &amp; Tariffs</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Manage the service catalogue and prices for {facilityName}.
-            Price changes apply to newly created invoices; existing invoice
-            line snapshots must remain unchanged.
+            Manage the service catalogue and prices for {facilityName}. Price changes apply to newly
+            created invoices; existing invoice line snapshots must remain unchanged.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => {
-            setError("");
-            setNotice("");
+            setError('');
+            setNotice('');
             if (formOpen) {
               resetForm();
             } else {
               setEditingId(null);
               setForm({
                 ...EMPTY_FORM,
-                department: departments[0]?.id || "opd",
+                department: departments[0]?.id || 'opd',
               });
               setFormOpen(true);
             }
@@ -747,21 +701,21 @@ export const FacilityServiceTariffsPanel: React.FC<
           disabled={!financeEnabled || departments.length === 0}
           className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {formOpen ? "Close form" : "Add service tariff"}
+          {formOpen ? 'Close form' : 'Add service tariff'}
         </button>
       </div>
 
       {!financeEnabled && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          The Finance module is not enabled for this facility. Enable it under
-          Facility Module Settings and save before managing tariffs.
+          The Finance module is not enabled for this facility. Enable it under Facility Module
+          Settings and save before managing tariffs.
         </p>
       )}
 
       {financeEnabled && departments.length === 0 && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          No supported tariff departments are enabled. Enable the relevant
-          facility modules and save the settings first.
+          No supported tariff departments are enabled. Enable the relevant facility modules and save
+          the settings first.
         </p>
       )}
 
@@ -795,13 +749,13 @@ export const FacilityServiceTariffsPanel: React.FC<
           Codes the automatic billing looks for
         </summary>
         <p className="mt-2 text-xs text-slate-500">
-          The first active tariff whose code matches wins. A service with no
-          matching code is recorded on the clinical record and <strong>not</strong> billed.
+          The first active tariff whose code matches wins. A service with no matching code is
+          recorded on the clinical record and <strong>not</strong> billed.
         </p>
 
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <p className="text-xs font-semibold text-slate-800">
-            This facility right now:{" "}
+            This facility right now:{' '}
             {unpriced.length === 0 ? (
               <span className="text-emerald-700">every family below is priced</span>
             ) : (
@@ -813,36 +767,33 @@ export const FacilityServiceTariffsPanel: React.FC<
 
           <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
             {coverage.map((entry) => (
-              <li
-                key={entry.label}
-                className="flex items-baseline justify-between gap-2 text-xs"
-              >
+              <li key={entry.label} className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="text-slate-600">{entry.label}</span>
                 {entry.match ? (
                   <span className="text-right">
                     <span className="font-mono text-emerald-700">
                       {entry.match.code} · {entry.match.fee}
-                      {entry.match.unit ? ` / ${entry.match.unit}` : ""}
+                      {entry.match.unit ? ` / ${entry.match.unit}` : ''}
                     </span>
                     <span className="ml-1 text-2xs text-slate-400">
-                      {entry.rule === "LINK"
-                        ? "linked"
-                        : entry.rule === "CODE"
-                          ? "by code"
-                          : "by description"}
+                      {entry.rule === 'LINK'
+                        ? 'linked'
+                        : entry.rule === 'CODE'
+                          ? 'by code'
+                          : 'by description'}
                     </span>
                   </span>
                 ) : entry.ambiguity ? (
                   <span
                     className="text-amber-700"
-                    title={`${entry.ambiguity.codes.join(" and ")} both describe this service`}
+                    title={`${entry.ambiguity.codes.join(' and ')} both describe this service`}
                   >
                     two tariffs claim it
                   </span>
                 ) : entry.specific.length > 0 ? (
                   <span className="text-slate-600">
                     {entry.specific.length} specific price
-                    {entry.specific.length === 1 ? "" : "s"} only
+                    {entry.specific.length === 1 ? '' : 's'} only
                   </span>
                 ) : (
                   <span className="text-amber-700">not priced</span>
@@ -853,12 +804,12 @@ export const FacilityServiceTariffsPanel: React.FC<
 
           {unpriced.length > 0 && (
             <p className="mt-2 text-2xs leading-relaxed text-slate-500">
-              An unpriced service is recorded, and appears on the invoice only
-              when a price is found. Either add a fallback code such as{" "}
-              <span className="font-mono">OPD-CONSULT</span>, or edit a tariff you
-              already have and set <strong>Used for automatic billing</strong> —
-              that links <span className="font-mono">OPD-001</span> to the
-              consultation without renaming anything.
+              An unpriced service is recorded, and appears on the invoice only when a price is
+              found. Either add a fallback code such as{' '}
+              <span className="font-mono">OPD-CONSULT</span>, or edit a tariff you already have and
+              set <strong>Used for automatic billing</strong> — that links{' '}
+              <span className="font-mono">OPD-001</span> to the consultation without renaming
+              anything.
             </p>
           )}
         </div>
@@ -866,7 +817,7 @@ export const FacilityServiceTariffsPanel: React.FC<
         {labTests.length > 0 && (
           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold text-slate-800">
-              Laboratory tests in this catalogue:{" "}
+              Laboratory tests in this catalogue:{' '}
               {unpricedLabTests.length === 0 ? (
                 <span className="text-emerald-700">all priced</span>
               ) : (
@@ -879,9 +830,9 @@ export const FacilityServiceTariffsPanel: React.FC<
             {unpricedLabTests.length > 0 && (
               <>
                 <p className="mt-1 text-2xs leading-relaxed text-slate-500">
-                  Selecting the test prices it from the tariff screen, not from
-                  the price held in the laboratory catalogue. Choosing one below
-                  fills the code the engine will look for; you still set the fee.
+                  Selecting the test prices it from the tariff screen, not from the price held in
+                  the laboratory catalogue. Choosing one below fills the code the engine will look
+                  for; you still set the fee.
                 </p>
 
                 <ul className="mt-2 space-y-1">
@@ -891,21 +842,19 @@ export const FacilityServiceTariffsPanel: React.FC<
                       className="flex flex-wrap items-baseline justify-between gap-2 text-xs"
                     >
                       <span className="text-slate-600">
-                        {test.name}{" "}
-                        <span className="font-mono text-2xs text-slate-400">
-                          {test.code}
-                        </span>
+                        {test.name}{' '}
+                        <span className="font-mono text-2xs text-slate-400">{test.code}</span>
                       </span>
 
                       <button
                         type="button"
                         onClick={() => {
-                          setError("");
-                          setNotice("");
+                          setError('');
+                          setNotice('');
                           setEditingId(null);
                           setForm({
                             ...EMPTY_FORM,
-                            department: "laboratory",
+                            department: 'laboratory',
                             code: test.code.toUpperCase(),
                             description: test.name,
                           });
@@ -931,40 +880,56 @@ export const FacilityServiceTariffsPanel: React.FC<
         <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
           <div>
             <dt className="font-semibold text-slate-700">Consultation</dt>
-            <dd className="font-mono text-xs text-slate-600">OPD-CONSULT · CONSULTATION · CONSULT · CONSULT-&lt;VISIT TYPE&gt;</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              OPD-CONSULT · CONSULTATION · CONSULT · CONSULT-&lt;VISIT TYPE&gt;
+            </dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-700">Laboratory</dt>
-            <dd className="font-mono text-xs text-slate-600">LAB-&lt;TEST NAME&gt; · LAB-GENERAL · LABORATORY</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              LAB-&lt;TEST NAME&gt; · LAB-GENERAL · LABORATORY
+            </dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-700">Radiology</dt>
-            <dd className="font-mono text-xs text-slate-600">RAD-&lt;STUDY NAME&gt; · RAD-GENERAL · RADIOLOGY · IMAGING</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              RAD-&lt;STUDY NAME&gt; · RAD-GENERAL · RADIOLOGY · IMAGING
+            </dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-700">Procedure</dt>
-            <dd className="font-mono text-xs text-slate-600">PROC-&lt;NAME&gt; · PROCEDURE · PROC-GENERAL</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              PROC-&lt;NAME&gt; · PROCEDURE · PROC-GENERAL
+            </dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-700">Pharmacy</dt>
-            <dd className="font-mono text-xs text-slate-600">DRUG-&lt;DRUG NAME&gt; · &lt;DRUG NAME&gt; · PHARMACY · MEDICATION</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              DRUG-&lt;DRUG NAME&gt; · &lt;DRUG NAME&gt; · PHARMACY · MEDICATION
+            </dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-700">Admission</dt>
-            <dd className="font-mono text-xs text-slate-600">ADMIT-&lt;WARD CODE&gt; · ADMISSION · INPATIENT-ADMISSION</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              ADMIT-&lt;WARD CODE&gt; · ADMISSION · INPATIENT-ADMISSION
+            </dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-700">Bed-day (per night)</dt>
-            <dd className="font-mono text-xs text-slate-600">BED-&lt;WARD CODE&gt; · BED-DAY · INPATIENT-BED-DAY · WARD-DAY · BED</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              BED-&lt;WARD CODE&gt; · BED-DAY · INPATIENT-BED-DAY · WARD-DAY · BED
+            </dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-700">Maternity delivery</dt>
-            <dd className="font-mono text-xs text-slate-600">DELIVERY · DELIVERY-&lt;MODE&gt; · MATERNITY-DELIVERY</dd>
+            <dd className="font-mono text-xs text-slate-600">
+              DELIVERY · DELIVERY-&lt;MODE&gt; · MATERNITY-DELIVERY
+            </dd>
           </div>
         </dl>
         <p className="mt-3 text-xs text-slate-500">
-          &lt;NAME&gt; is the record&apos;s own text with spaces and punctuation turned
-          into dashes and upper-cased — a wound dressing priced as
+          &lt;NAME&gt; is the record&apos;s own text with spaces and punctuation turned into dashes
+          and upper-cased — a wound dressing priced as
           <span className="font-mono"> PROC-WOUND-DRESSING</span> bills itself.
         </p>
       </details>
@@ -981,14 +946,13 @@ export const FacilityServiceTariffsPanel: React.FC<
           Link a service to one of your tariffs
         </h3>
         <p className="mt-1 text-xs text-slate-500">
-          Automatic billing finds a price by matching a code. When your codes are
-          numbered — <span className="font-mono">LAB-001</span>,{" "}
-          <span className="font-mono">OPD-001</span> — nothing can match, and the
-          service is recorded without a charge. Link the catalogue row here and
-          the price is certain, whatever the code is called.
+          Automatic billing finds a price by matching a code. When your codes are numbered —{' '}
+          <span className="font-mono">LAB-001</span>, <span className="font-mono">OPD-001</span> —
+          nothing can match, and the service is recorded without a charge. Link the catalogue row
+          here and the price is certain, whatever the code is called.
         </p>
 
-        {linksUnavailable !== "" ? (
+        {linksUnavailable !== '' ? (
           <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
             {linksUnavailable}
           </p>
@@ -1023,7 +987,7 @@ export const FacilityServiceTariffsPanel: React.FC<
                 </select>
               </div>
 
-              {linkDraft.serviceType === "LAB_TEST" && (
+              {linkDraft.serviceType === 'LAB_TEST' && (
                 <div>
                   <label className={labelClass} htmlFor={`link-test-${facilityId}`}>
                     Laboratory test
@@ -1031,11 +995,11 @@ export const FacilityServiceTariffsPanel: React.FC<
                   <select
                     id={`link-test-${facilityId}`}
                     className={fieldClass}
-                    value={linkDraft.testId === null ? "" : String(linkDraft.testId)}
+                    value={linkDraft.testId === null ? '' : String(linkDraft.testId)}
                     onChange={(event) =>
                       setLinkDraft((current) => ({
                         ...current,
-                        testId: event.target.value === "" ? null : Number(event.target.value),
+                        testId: event.target.value === '' ? null : Number(event.target.value),
                       }))
                     }
                   >
@@ -1051,7 +1015,7 @@ export const FacilityServiceTariffsPanel: React.FC<
                 </div>
               )}
 
-              {linkDraft.serviceType === "BED_DAY" && (
+              {linkDraft.serviceType === 'BED_DAY' && (
                 <div>
                   <label className={labelClass} htmlFor={`link-ward-${facilityId}`}>
                     Ward
@@ -1059,16 +1023,11 @@ export const FacilityServiceTariffsPanel: React.FC<
                   <select
                     id={`link-ward-${facilityId}`}
                     className={fieldClass}
-                    value={
-                      linkDraft.wardId === null ? "" : String(linkDraft.wardId)
-                    }
+                    value={linkDraft.wardId === null ? '' : String(linkDraft.wardId)}
                     onChange={(event) =>
                       setLinkDraft((current) => ({
                         ...current,
-                        wardId:
-                          event.target.value === ""
-                            ? null
-                            : Number(event.target.value),
+                        wardId: event.target.value === '' ? null : Number(event.target.value),
                       }))
                     }
                   >
@@ -1077,13 +1036,13 @@ export const FacilityServiceTariffsPanel: React.FC<
                       .filter((ward) => ward.isActive !== false)
                       .map((ward) => (
                         <option key={ward.id} value={ward.id}>
-                          {ward.code} — {ward.name} ({ward.wardType ?? "General"})
+                          {ward.code} — {ward.name} ({ward.wardType ?? 'General'})
                         </option>
                       ))}
                   </select>
                   <p className="mt-1 text-2xs text-slate-500">
-                    The link covers this ward&apos;s nights only. A general rate
-                    never prices an ICU or maternity bed.
+                    The link covers this ward&apos;s nights only. A general rate never prices an ICU
+                    or maternity bed.
                   </p>
                 </div>
               )}
@@ -1131,21 +1090,19 @@ export const FacilityServiceTariffsPanel: React.FC<
                   disabled={linkBusy}
                   className="ml-auto rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {linkBusy ? "Saving…" : "Link"}
+                  {linkBusy ? 'Saving…' : 'Link'}
                 </button>
               </div>
             </div>
 
-            {linkNotice !== "" && (
-              <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">
-                {linkNotice}
-              </p>
+            {linkNotice !== '' && (
+              <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">{linkNotice}</p>
             )}
 
             {links.length === 0 ? (
               <p className="mt-3 text-xs text-slate-500">
-                No services are linked yet. Unlinked services still bill by code and
-                by description; a link makes it certain.
+                No services are linked yet. Unlinked services still bill by code and by description;
+                a link makes it certain.
               </p>
             ) : (
               <ul className="mt-3 divide-y divide-slate-100">
@@ -1155,10 +1112,8 @@ export const FacilityServiceTariffsPanel: React.FC<
                     className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-xs"
                   >
                     <span className="text-slate-700">
-                      <span className="font-mono">
-                        {link.serviceCode ?? link.serviceType}
-                      </span>{" "}
-                      {link.serviceName ?? "(all services of this type)"}
+                      <span className="font-mono">{link.serviceCode ?? link.serviceType}</span>{' '}
+                      {link.serviceName ?? '(all services of this type)'}
                       <span className="text-slate-400"> → </span>
                       <span className="font-mono text-emerald-700">
                         {link.tariffCode} · {link.tariffFee} / {link.tariffUnit}
@@ -1203,7 +1158,7 @@ export const FacilityServiceTariffsPanel: React.FC<
         would bill today. Runs the resolver the charger runs, so a green
         row here is a price on the next order.
       */}
-      {enabledModules.includes("laboratory") && (
+      {enabledModules.includes('laboratory') && (
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1211,16 +1166,16 @@ export const FacilityServiceTariffsPanel: React.FC<
                 What each laboratory test would bill
               </h3>
               <p className="mt-1 text-xs text-slate-500">
-                The same resolution the server performs when a clinician orders the
-                test. A test with no price is shown with the reason.
+                The same resolution the server performs when a clinician orders the test. A test
+                with no price is shown with the reason.
               </p>
             </div>
             {diagnostics && (
               <span
                 className={
                   diagnostics.unresolvable > 0
-                    ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
-                    : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800"
+                    ? 'rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800'
+                    : 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800'
                 }
               >
                 {diagnostics.resolved} of {diagnostics.total} priced
@@ -1228,7 +1183,7 @@ export const FacilityServiceTariffsPanel: React.FC<
             )}
           </div>
 
-          {diagnosticsUnavailable !== "" && (
+          {diagnosticsUnavailable !== '' && (
             <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
               {diagnosticsUnavailable}
             </p>
@@ -1236,8 +1191,8 @@ export const FacilityServiceTariffsPanel: React.FC<
 
           {diagnostics && diagnostics.tests.length === 0 && (
             <p className="mt-3 text-xs text-slate-500">
-              This facility&apos;s laboratory catalogue is empty. Add tests under the
-              Laboratory module first.
+              This facility&apos;s laboratory catalogue is empty. Add tests under the Laboratory
+              module first.
             </p>
           )}
 
@@ -1256,15 +1211,13 @@ export const FacilityServiceTariffsPanel: React.FC<
                   {diagnostics.tests.map((test) => (
                     <tr key={test.testId}>
                       <td className="py-1.5 pr-3">
-                        <span className="font-mono text-slate-700">{test.code}</span>{" "}
+                        <span className="font-mono text-slate-700">{test.code}</span>{' '}
                         <span className="text-slate-600">{test.name}</span>
                         {!test.isActive && (
                           <span className="ml-1 text-2xs text-slate-400">(inactive)</span>
                         )}
                       </td>
-                      <td className="py-1.5 pr-3 text-slate-400">
-                        {test.cataloguePrice ?? "—"}
-                      </td>
+                      <td className="py-1.5 pr-3 text-slate-400">{test.cataloguePrice ?? '—'}</td>
                       <td className="py-1.5 pr-3">
                         {test.resolved ? (
                           <span className="font-mono text-emerald-700">
@@ -1277,22 +1230,22 @@ export const FacilityServiceTariffsPanel: React.FC<
                       <td className="py-1.5 text-slate-500">
                         {test.resolved ? (
                           <span>
-                            {test.resolved.rule === "LINK"
-                              ? "linked to this test"
-                              : test.resolved.rule === "FAMILY_LINK"
-                                ? "linked to all tests"
-                                : test.resolved.rule === "ALIAS"
-                                  ? "approved alias"
-                                  : test.resolved.rule === "CODE"
+                            {test.resolved.rule === 'LINK'
+                              ? 'linked to this test'
+                              : test.resolved.rule === 'FAMILY_LINK'
+                                ? 'linked to all tests'
+                                : test.resolved.rule === 'ALIAS'
+                                  ? 'approved alias'
+                                  : test.resolved.rule === 'CODE'
                                     ? `by code ${test.resolved.code}`
-                                    : "by description"}
+                                    : 'by description'}
                           </span>
                         ) : (
                           <span title={test.failure?.message}>
-                            {test.failure?.label ?? "no tariff"}
+                            {test.failure?.label ?? 'no tariff'}
                             {test.failure?.candidates && test.failure.candidates.length > 0
-                              ? ` — ${test.failure.candidates.join(" / ")}`
-                              : ""}
+                              ? ` — ${test.failure.candidates.join(' / ')}`
+                              : ''}
                           </span>
                         )}
                       </td>
@@ -1321,21 +1274,19 @@ export const FacilityServiceTariffsPanel: React.FC<
               Charges that could not be priced
             </h3>
             <p className="mt-1 text-xs text-slate-500">
-              Recorded on the clinical record, but no invoice line exists, so
-              nothing has been claimed for them. Fix the price list, then retry.
+              Recorded on the clinical record, but no invoice line exists, so nothing has been
+              claimed for them. Fix the price list, then retry.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span
               className={
                 (attempts?.pending ?? 0) > 0
-                  ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
-                  : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800"
+                  ? 'rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800'
+                  : 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800'
               }
             >
-              {attempts === null
-                ? "unavailable"
-                : `${attempts.pending} waiting`}
+              {attempts === null ? 'unavailable' : `${attempts.pending} waiting`}
             </span>
             <button
               type="button"
@@ -1343,27 +1294,24 @@ export const FacilityServiceTariffsPanel: React.FC<
               disabled={attemptBusy !== null || (attempts?.pending ?? 0) === 0}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {attemptBusy === "all" ? "Retrying…" : "Retry all"}
+              {attemptBusy === 'all' ? 'Retrying…' : 'Retry all'}
             </button>
           </div>
         </div>
 
-        {attemptsUnavailable !== "" && (
+        {attemptsUnavailable !== '' && (
           <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
             {attemptsUnavailable}
           </p>
         )}
 
-        {attemptNotice !== "" && (
-          <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">
-            {attemptNotice}
-          </p>
+        {attemptNotice !== '' && (
+          <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">{attemptNotice}</p>
         )}
 
         {attempts !== null && attempts.attempts.length === 0 && (
           <p className="mt-3 text-xs text-slate-500">
-            Nothing is waiting. Every charge this facility attempted has an
-            invoice line.
+            Nothing is waiting. Every charge this facility attempted has an invoice line.
           </p>
         )}
 
@@ -1380,11 +1328,11 @@ export const FacilityServiceTariffsPanel: React.FC<
                       </span>
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {attempt.itemType} · patient #{attempt.patientId} · tried{" "}
-                      {attempt.attempts} time{attempt.attempts === 1 ? "" : "s"}
+                      {attempt.itemType} · patient #{attempt.patientId} · tried {attempt.attempts}{' '}
+                      time{attempt.attempts === 1 ? '' : 's'}
                       {attempt.lastAttemptAt
-                        ? ` · last ${new Date(attempt.lastAttemptAt).toLocaleString("en-KE")}`
-                        : ""}
+                        ? ` · last ${new Date(attempt.lastAttemptAt).toLocaleString('en-KE')}`
+                        : ''}
                     </p>
                   </div>
 
@@ -1400,15 +1348,15 @@ export const FacilityServiceTariffsPanel: React.FC<
                     <button
                       type="button"
                       onClick={() => void retryAttempt(attempt)}
-                      disabled={attemptBusy !== null || attempt.status !== "PENDING"}
+                      disabled={attemptBusy !== null || attempt.status !== 'PENDING'}
                       className="rounded-lg bg-blue-600 px-2 py-1 text-2xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {attemptBusy === attempt.id ? "Working…" : "Retry"}
+                      {attemptBusy === attempt.id ? 'Working…' : 'Retry'}
                     </button>
                     <button
                       type="button"
                       onClick={() => void voidAttempt(attempt)}
-                      disabled={attemptBusy !== null || attempt.status !== "PENDING"}
+                      disabled={attemptBusy !== null || attempt.status !== 'PENDING'}
                       className="rounded-lg border border-slate-300 px-2 py-1 text-2xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                     >
                       Write off
@@ -1416,13 +1364,11 @@ export const FacilityServiceTariffsPanel: React.FC<
                   </div>
                 </div>
 
-                {attempt.detail && (
-                  <p className="mt-1 text-xs text-slate-500">{attempt.detail}</p>
-                )}
+                {attempt.detail && <p className="mt-1 text-xs text-slate-500">{attempt.detail}</p>}
 
                 {attempt.codesTried.length > 0 && (
                   <p className="mt-1 font-mono text-2xs text-slate-400">
-                    codes tried: {attempt.codesTried.join(", ")}
+                    codes tried: {attempt.codesTried.join(', ')}
                   </p>
                 )}
 
@@ -1450,9 +1396,7 @@ export const FacilityServiceTariffsPanel: React.FC<
               id={`tariff-code-${facilityId}`}
               className={fieldClass}
               value={form.code}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, code: event.target.value }))
-              }
+              onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
               maxLength={50}
               required
             />
@@ -1466,9 +1410,7 @@ export const FacilityServiceTariffsPanel: React.FC<
               id={`tariff-unit-${facilityId}`}
               className={fieldClass}
               value={form.unit}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, unit: event.target.value }))
-              }
+              onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
               maxLength={50}
               placeholder="Service, test, visit, item..."
               required
@@ -1493,8 +1435,7 @@ export const FacilityServiceTariffsPanel: React.FC<
                 setForm((current) => ({
                   ...current,
                   billingFamily: event.target.value,
-                  billingDetail:
-                    event.target.value === "" ? "" : current.billingDetail,
+                  billingDetail: event.target.value === '' ? '' : current.billingDetail,
                 }))
               }
             >
@@ -1506,7 +1447,7 @@ export const FacilityServiceTariffsPanel: React.FC<
               ))}
             </select>
 
-            {form.billingFamily !== "" && (
+            {form.billingFamily !== '' && (
               <div className="mt-2">
                 <label
                   className="mb-1 block text-xs font-medium text-slate-600"
@@ -1528,22 +1469,19 @@ export const FacilityServiceTariffsPanel: React.FC<
                   placeholder="e.g. Full blood count, or LAB-CBC — leave empty for any"
                 />
                 <p className="mt-1 text-2xs leading-relaxed text-slate-500">
-                  Leave this empty when one price covers the whole family. Fill it
-                  in when this tariff is for one test, study or procedure. It is
-                  matched against the catalogue code or the name typed when the
-                  service is ordered:{" "}
+                  Leave this empty when one price covers the whole family. Fill it in when this
+                  tariff is for one test, study or procedure. It is matched against the catalogue
+                  code or the name typed when the service is ordered:{' '}
                   <span className="font-mono">
-                    {buildBillingKey(form.billingFamily, form.billingDetail) ??
-                      form.billingFamily}
+                    {buildBillingKey(form.billingFamily, form.billingDetail) ?? form.billingFamily}
                   </span>
                 </p>
               </div>
             )}
 
             <p className="mt-2 text-2xs leading-relaxed text-blue-900">
-              One active tariff per family. A tariff linked here is charged
-              automatically the moment the service is recorded, so the amount on
-              the invoice is the amount you typed above.
+              One active tariff per family. A tariff linked here is charged automatically the moment
+              the service is recorded, so the amount on the invoice is the amount you typed above.
             </p>
           </div>
 
@@ -1608,9 +1546,9 @@ export const FacilityServiceTariffsPanel: React.FC<
             </div>
 
             <p className="md:col-span-3 text-2xs leading-relaxed text-slate-500">
-              Leave the dates empty for a price that never expires. Turn off
-              automatic billing when a tariff should only be chosen by hand on an
-              invoice — it stays available, it is simply not picked automatically.
+              Leave the dates empty for a price that never expires. Turn off automatic billing when
+              a tariff should only be chosen by hand on an invoice — it stays available, it is
+              simply not picked automatically.
             </p>
           </div>
 
@@ -1670,9 +1608,7 @@ export const FacilityServiceTariffsPanel: React.FC<
               step="0.01"
               inputMode="decimal"
               value={form.fee}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, fee: event.target.value }))
-              }
+              onChange={(event) => setForm((current) => ({ ...current, fee: event.target.value }))}
               required
             />
           </div>
@@ -1726,7 +1662,7 @@ export const FacilityServiceTariffsPanel: React.FC<
               disabled={saving || !financeEnabled || departments.length === 0}
               className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
             >
-              {saving ? "Saving..." : editingId === null ? "Create tariff" : "Save changes"}
+              {saving ? 'Saving...' : editingId === null ? 'Create tariff' : 'Save changes'}
             </button>
             <button
               type="button"
@@ -1762,7 +1698,10 @@ export const FacilityServiceTariffsPanel: React.FC<
             </thead>
             <tbody className="divide-y divide-slate-100">
               {tariffs.map((tariff) => (
-                <tr key={tariff.id} className={!tariff.isActive ? "bg-slate-50 text-slate-500" : ""}>
+                <tr
+                  key={tariff.id}
+                  className={!tariff.isActive ? 'bg-slate-50 text-slate-500' : ''}
+                >
                   <td className="px-3 py-3">
                     <div className="font-semibold text-slate-900">{tariff.code}</div>
                     <div>{tariff.description}</div>
@@ -1775,7 +1714,7 @@ export const FacilityServiceTariffsPanel: React.FC<
                     <div className="text-xs text-slate-500">{tariff.unit}</div>
                   </td>
                   <td className="whitespace-nowrap px-3 py-3 text-right font-semibold">
-                    {Number(tariff.fee).toLocaleString("en-KE", {
+                    {Number(tariff.fee).toLocaleString('en-KE', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -1790,9 +1729,7 @@ export const FacilityServiceTariffsPanel: React.FC<
                       <span className="text-2xs text-slate-400">Not linked</span>
                     )}
                   </td>
-                  <td className="px-3 py-3">
-                    {tariff.isActive ? "Active" : "Inactive"}
-                  </td>
+                  <td className="px-3 py-3">{tariff.isActive ? 'Active' : 'Inactive'}</td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-3">
                       <button

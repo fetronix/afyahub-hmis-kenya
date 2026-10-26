@@ -23,7 +23,16 @@ import {
 } from 'lucide-react';
 
 export const BillingCashierModule: React.FC = () => {
-  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentTenant,
+    currentFacility,
+    currentUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<BillingInvoice | null>(null);
@@ -32,7 +41,9 @@ export const BillingCashierModule: React.FC = () => {
 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'M-Pesa' | 'Airtel Money' | 'Cash' | 'Card'>('M-Pesa');
+  const [paymentMethod, setPaymentMethod] = useState<'M-Pesa' | 'Airtel Money' | 'Cash' | 'Card'>(
+    'M-Pesa',
+  );
   const [paymentAmount, setPaymentAmount] = useState('0');
   /* The code printed on the customer's confirmation SMS. Never generated here. */
   const [transactionCode, setTransactionCode] = useState('');
@@ -136,7 +147,7 @@ export const BillingCashierModule: React.FC = () => {
   })();
 
   const getPatient = (patientId: number) => {
-    return patients.find(p => p.id === patientId);
+    return patients.find((p) => p.id === patientId);
   };
 
   const totalOutstanding = invoices.reduce((acc, i) => acc + Number(i.balanceAmount || 0), 0);
@@ -147,15 +158,20 @@ export const BillingCashierModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Patient Billing, Cashier POS & Receipts</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Patient Billing, Cashier POS & Receipts
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            M-Pesa STK push integration, Cash reconciliation, tariff charging, and official medical receipting.
+            M-Pesa STK push integration, Cash reconciliation, tariff charging, and official medical
+            receipting.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <div className="text-2xs text-slate-400 uppercase font-semibold">Today's Collections</div>
+            <div className="text-2xs text-slate-400 uppercase font-semibold">
+              Today's Collections
+            </div>
             <div className="font-mono font-bold text-base text-teal-800">
               KES {totalCollections.toLocaleString()}
             </div>
@@ -166,13 +182,17 @@ export const BillingCashierModule: React.FC = () => {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs">
-          <span className="text-2xs uppercase text-slate-400 font-semibold tracking-wider">Total Invoices</span>
+          <span className="text-2xs uppercase text-slate-400 font-semibold tracking-wider">
+            Total Invoices
+          </span>
           <div className="text-2xl font-bold font-mono text-slate-900 mt-1">{invoices.length}</div>
           <div className="text-2xs text-slate-500 mt-1">Active billing accounts</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs">
-          <span className="text-2xs uppercase text-rose-700 font-semibold tracking-wider">Outstanding Patient Balances</span>
+          <span className="text-2xs uppercase text-rose-700 font-semibold tracking-wider">
+            Outstanding Patient Balances
+          </span>
           <div className="text-2xl font-bold font-mono text-rose-700 mt-1">
             KES {totalOutstanding.toLocaleString()}
           </div>
@@ -180,7 +200,9 @@ export const BillingCashierModule: React.FC = () => {
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs">
-          <span className="text-2xs uppercase text-teal-800 font-semibold tracking-wider">Active Cashier Workstation</span>
+          <span className="text-2xs uppercase text-teal-800 font-semibold tracking-wider">
+            Active Cashier Workstation
+          </span>
           <div className="text-sm font-bold text-slate-900 mt-1">{currentUser.name}</div>
           <div className="text-2xs text-slate-500 mt-1">{currentUser.role} · Shift Open</div>
         </div>
@@ -214,23 +236,39 @@ export const BillingCashierModule: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-slate-900 text-xs">{inv.invoiceNumber}</span>
-                    <span className={`px-2 py-0.5 rounded text-3xs font-medium ${
-                      inv.status === 'Paid'
-                        ? 'bg-emerald-50 text-emerald-800'
-                        : 'bg-amber-50 text-amber-800'
-                    }`}>
+                    <span className="font-mono font-bold text-slate-900 text-xs">
+                      {inv.invoiceNumber}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-3xs font-medium ${
+                        inv.status === 'Paid'
+                          ? 'bg-emerald-50 text-emerald-800'
+                          : 'bg-amber-50 text-amber-800'
+                      }`}
+                    >
                       {inv.status}
                     </span>
                   </div>
 
                   <div className="text-2xs text-slate-600 mt-1">
-                    Patient: <strong>{patient ? `${patient.firstName} ${patient.lastName}` : `Patient #${inv.patientId}`}</strong> ({patient?.mrn})
+                    Patient:{' '}
+                    <strong>
+                      {patient
+                        ? `${patient.firstName} ${patient.lastName}`
+                        : `Patient #${inv.patientId}`}
+                    </strong>{' '}
+                    ({patient?.mrn})
                   </div>
 
                   <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 text-xs font-mono">
-                    <span className="text-slate-500">Total: KES {Number(inv.totalAmount).toLocaleString()}</span>
-                    <span className={hasBalance ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}>
+                    <span className="text-slate-500">
+                      Total: KES {Number(inv.totalAmount).toLocaleString()}
+                    </span>
+                    <span
+                      className={
+                        hasBalance ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'
+                      }
+                    >
                       Bal: KES {Number(inv.balanceAmount).toLocaleString()}
                     </span>
                   </div>
@@ -262,15 +300,22 @@ export const BillingCashierModule: React.FC = () => {
               <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-slate-900">{selectedInvoice.invoiceNumber}</h2>
-                    <span className={`px-2 py-0.5 rounded text-2xs font-semibold ${
-                      selectedInvoice.status === 'Paid' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
-                    }`}>
+                    <h2 className="text-base font-bold text-slate-900">
+                      {selectedInvoice.invoiceNumber}
+                    </h2>
+                    <span
+                      className={`px-2 py-0.5 rounded text-2xs font-semibold ${
+                        selectedInvoice.status === 'Paid'
+                          ? 'bg-emerald-50 text-emerald-800'
+                          : 'bg-rose-50 text-rose-800'
+                      }`}
+                    >
                       {selectedInvoice.status}
                     </span>
                   </div>
                   <div className="text-2xs text-slate-500 mt-0.5">
-                    Facility: {currentFacility?.name} · MFL: <strong className="font-mono text-teal-800">{currentFacility?.mflCode}</strong>
+                    Facility: {currentFacility?.name} · MFL:{' '}
+                    <strong className="font-mono text-teal-800">{currentFacility?.mflCode}</strong>
                   </div>
                 </div>
 
@@ -292,19 +337,31 @@ export const BillingCashierModule: React.FC = () => {
                 return (
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 grid grid-cols-2 sm:grid-cols-4 gap-3 text-2xs">
                     <div>
-                      <span className="text-slate-400 block uppercase font-medium">Billed Patient</span>
-                      <strong className="text-slate-800 text-xs">{pat?.firstName} {pat?.lastName}</strong>
+                      <span className="text-slate-400 block uppercase font-medium">
+                        Billed Patient
+                      </span>
+                      <strong className="text-slate-800 text-xs">
+                        {pat?.firstName} {pat?.lastName}
+                      </strong>
                     </div>
                     <div>
-                      <span className="text-slate-400 block uppercase font-medium">Medical Record #</span>
+                      <span className="text-slate-400 block uppercase font-medium">
+                        Medical Record #
+                      </span>
                       <strong className="font-mono text-slate-800 text-xs">{pat?.mrn}</strong>
                     </div>
                     <div>
-                      <span className="text-slate-400 block uppercase font-medium">Payer Scheme</span>
-                      <strong className="text-slate-800 text-xs">{selectedInvoice.payerType}</strong>
+                      <span className="text-slate-400 block uppercase font-medium">
+                        Payer Scheme
+                      </span>
+                      <strong className="text-slate-800 text-xs">
+                        {selectedInvoice.payerType}
+                      </strong>
                     </div>
                     <div>
-                      <span className="text-slate-400 block uppercase font-medium">Invoice Date</span>
+                      <span className="text-slate-400 block uppercase font-medium">
+                        Invoice Date
+                      </span>
                       <strong className="font-mono text-slate-800 text-xs">
                         {new Date(selectedInvoice.createdAt).toLocaleDateString()}
                       </strong>
@@ -332,7 +389,9 @@ export const BillingCashierModule: React.FC = () => {
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {invoiceItems.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/70">
-                          <td className="px-4 py-2.5 font-sans font-medium text-slate-900">{item.description}</td>
+                          <td className="px-4 py-2.5 font-sans font-medium text-slate-900">
+                            {item.description}
+                          </td>
                           <td className="px-4 py-2.5 font-sans text-slate-600">{item.itemType}</td>
                           <td className="px-4 py-2.5 text-right">{item.quantity}</td>
                           <td className="px-4 py-2.5 text-right text-slate-600">
@@ -361,7 +420,9 @@ export const BillingCashierModule: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-slate-200">
                     <span>Balance Due:</span>
-                    <span className="text-rose-700">KES {Number(selectedInvoice.balanceAmount || 0).toLocaleString()}</span>
+                    <span className="text-rose-700">
+                      KES {Number(selectedInvoice.balanceAmount || 0).toLocaleString()}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -380,7 +441,9 @@ export const BillingCashierModule: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Hospital Cashier Payment Processing</h3>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Hospital Cashier Payment Processing
+                </h3>
                 <p className="text-2xs text-slate-500">Invoice: {selectedInvoice.invoiceNumber}</p>
               </div>
               <span className="font-mono font-bold text-sm text-teal-800">
@@ -445,7 +508,9 @@ export const BillingCashierModule: React.FC = () => {
                         setTransactionCode(e.target.value.toUpperCase());
                         setConfirmOverpay(null);
                       }}
-                      placeholder={paymentMethod === 'M-Pesa' ? 'e.g. QGH4XYZ123' : 'e.g. MP1234567890'}
+                      placeholder={
+                        paymentMethod === 'M-Pesa' ? 'e.g. QGH4XYZ123' : 'e.g. MP1234567890'
+                      }
                       className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold tracking-widest uppercase"
                       maxLength={16}
                       autoComplete="off"
@@ -501,16 +566,16 @@ export const BillingCashierModule: React.FC = () => {
                     </span>
                   </div>
                   <div className="text-2xs text-slate-600 font-mono">
-                    Bill {(settlementPreview.invoiceTotalCents / 100).toLocaleString()} · already paid{' '}
-                    {(settlementPreview.paidBeforeCents / 100).toLocaleString()} · this payment{' '}
+                    Bill {(settlementPreview.invoiceTotalCents / 100).toLocaleString()} · already
+                    paid {(settlementPreview.paidBeforeCents / 100).toLocaleString()} · this payment{' '}
                     {(settlementPreview.amountCents / 100).toLocaleString()}
                   </div>
                   {settlementPreview.outcome === 'OVERPAID' && (
                     <div className="text-2xs text-amber-900 flex items-start gap-1">
                       <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
                       <span>
-                        The excess is held as patient credit, not a negative balance. Confirm
-                        below to record it.
+                        The excess is held as patient credit, not a negative balance. Confirm below
+                        to record it.
                       </span>
                     </div>
                   )}
@@ -521,9 +586,9 @@ export const BillingCashierModule: React.FC = () => {
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-2xs text-amber-900 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>
-                    This payment is <strong>KES {(confirmOverpay / 100).toLocaleString()}</strong> more
-                    than the outstanding balance. Press <strong>Record overpayment</strong> to post it
-                    as patient credit, or correct the amount.
+                    This payment is <strong>KES {(confirmOverpay / 100).toLocaleString()}</strong>{' '}
+                    more than the outstanding balance. Press <strong>Record overpayment</strong> to
+                    post it as patient credit, or correct the amount.
                   </span>
                 </div>
               )}
@@ -537,7 +602,8 @@ export const BillingCashierModule: React.FC = () => {
 
               {paymentMethod === 'Card' && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-2xs text-slate-600">
-                  Record the slip reference against the card terminal batch for end-of-day reconciliation.
+                  Record the slip reference against the card terminal batch for end-of-day
+                  reconciliation.
                 </div>
               )}
 

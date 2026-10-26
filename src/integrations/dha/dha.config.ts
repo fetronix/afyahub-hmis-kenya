@@ -29,8 +29,7 @@
 export type DhaMode = 'mock' | 'sandbox' | 'production';
 
 /** Published by DHA for the UAT / sandbox environment. */
-export const DHA_SANDBOX_BASE_URL =
-  'https://ilm-dev.dha.go.ke/uat-middleware/api/v1';
+export const DHA_SANDBOX_BASE_URL = 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1';
 
 export interface DhaConfig {
   mode: DhaMode;
@@ -54,9 +53,7 @@ export interface DhaConfig {
 function read(name: string): string | null {
   const value = process.env[name];
 
-  return typeof value === 'string' && value.trim().length > 0
-    ? value.trim()
-    : null;
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
 function positiveInt(name: string, fallback: number): number {
@@ -72,15 +69,11 @@ function positiveInt(name: string, fallback: number): number {
  * This never throws: an HMIS must boot without DHA credentials, and the
  * readiness screen is how an administrator discovers what is missing.
  */
-export function loadDhaConfig(
-  overrides: Partial<DhaConfig> = {},
-): DhaConfig {
+export function loadDhaConfig(overrides: Partial<DhaConfig> = {}): DhaConfig {
   const rawMode = (read('DHA_MODE') ?? 'mock').toLowerCase();
 
   const mode: DhaMode =
-    rawMode === 'sandbox' || rawMode === 'production' || rawMode === 'mock'
-      ? rawMode
-      : 'mock';
+    rawMode === 'sandbox' || rawMode === 'production' || rawMode === 'mock' ? rawMode : 'mock';
 
   const productionOptIn = read('DHA_ALLOW_PRODUCTION') === 'true';
 
