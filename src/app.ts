@@ -37,7 +37,11 @@ import { parseOptionalPositiveId, requireAuthContext } from './routes/shared/req
 import inpatientRoutes from './routes/inpatient.routes.ts';
 import maternalHealthRoutes from './routes/maternal-health.routes.ts';
 import { chargeSafely } from './routes/shared/charges.ts';
-import { handleInpatientError, handleScopeError } from './routes/shared/errors.ts';
+import {
+  handleInpatientError,
+  handleScopeError,
+  respondInternalError,
+} from './routes/shared/errors.ts';
 import { ScopeAccessError, resolveFacilityScope } from './auth/scope.service.ts';
 
 import * as billing from './billing/billing.service.ts';
@@ -641,9 +645,7 @@ export async function createApp() {
         return;
       }
 
-      res.status(500).json({
-        error: err.message || 'Failed to fetch tenants',
-      });
+      respondInternalError(res, err, 'GET /api/tenants', 'Failed to fetch tenants');
     }
   });
 
@@ -681,9 +683,7 @@ export async function createApp() {
         return;
       }
 
-      res.status(500).json({
-        error: err.message || 'Failed to fetch tenant',
-      });
+      respondInternalError(res, err, 'GET /api/tenants/:id', 'Failed to fetch tenant');
     }
   });
 
@@ -715,9 +715,7 @@ export async function createApp() {
         return;
       }
 
-      res.status(500).json({
-        error: err.message || 'Failed to fetch facilities',
-      });
+      respondInternalError(res, err, 'GET /api/facilities', 'Failed to fetch facilities');
     }
   });
 
@@ -755,9 +753,7 @@ export async function createApp() {
         return;
       }
 
-      res.status(500).json({
-        error: err.message || 'Failed to fetch facility',
-      });
+      respondInternalError(res, err, 'GET /api/facilities/:id', 'Failed to fetch facility');
     }
   });
 
@@ -788,9 +784,7 @@ export async function createApp() {
       } catch (err: any) {
         if (handleScopeError(err, res)) return;
 
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'GET /api/departments');
       }
     },
   );
@@ -1230,9 +1224,7 @@ export async function createApp() {
 
       res.json(list);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
+      respondInternalError(res, err, 'GET /api/queues');
     }
   });
 
@@ -1249,9 +1241,7 @@ export async function createApp() {
 
         res.status(201).json(item);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'POST /api/queues');
       }
     },
   );
@@ -1305,9 +1295,7 @@ export async function createApp() {
 
       res.json(list);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
+      respondInternalError(res, err, 'GET /api/appointments');
     }
   });
 
@@ -1317,9 +1305,7 @@ export async function createApp() {
 
       res.status(201).json(appt);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
+      respondInternalError(res, err, 'POST /api/appointments');
     }
   });
 
@@ -1606,9 +1592,7 @@ export async function createApp() {
 
       res.json(list);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
+      respondInternalError(res, err, 'GET /api/medications');
     }
   });
 
@@ -1684,9 +1668,7 @@ export async function createApp() {
       } catch (err: any) {
         if (handleScopeError(err, res)) return;
 
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'POST /api/medications');
       }
     },
   );
@@ -1702,9 +1684,7 @@ export async function createApp() {
 
         res.json(med);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'PUT /api/medications/:id/status');
       }
     },
   );
@@ -1734,9 +1714,7 @@ export async function createApp() {
 
         res.json(list);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'GET /api/theatre-cases');
       }
     },
   );
@@ -1771,9 +1749,7 @@ export async function createApp() {
 
         res.status(201).json(tc);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'POST /api/theatre-cases');
       }
     },
   );
@@ -1826,9 +1802,7 @@ export async function createApp() {
 
         res.json(tc);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'PUT /api/theatre-cases/:id');
       }
     },
   );
@@ -1845,9 +1819,7 @@ export async function createApp() {
 
       res.json(list);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
+      respondInternalError(res, err, 'GET /api/lab-tests');
     }
   });
 
@@ -1864,9 +1836,7 @@ export async function createApp() {
 
         res.json(list);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'GET /api/lab-orders');
       }
     },
   );
@@ -1979,9 +1949,7 @@ export async function createApp() {
 
         res.status(201).json({ ...order, billing: charge });
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'POST /api/lab-orders');
       }
     },
   );
@@ -2002,9 +1970,7 @@ export async function createApp() {
 
         res.json(order);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'PUT /api/lab-orders/:id/status');
       }
     },
   );
@@ -2027,9 +1993,7 @@ export async function createApp() {
 
         res.json(list);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'GET /api/lab-results');
       }
     },
   );
@@ -2079,9 +2043,7 @@ export async function createApp() {
 
         res.status(201).json(result);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'POST /api/lab-results');
       }
     },
   );
@@ -2136,9 +2098,7 @@ export async function createApp() {
 
         res.json(list);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'GET /api/radiology-orders');
       }
     },
   );
@@ -2190,9 +2150,7 @@ export async function createApp() {
 
         res.status(201).json({ ...order, billing: charge });
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'POST /api/radiology-orders');
       }
     },
   );
@@ -2244,9 +2202,7 @@ export async function createApp() {
 
         res.json(order);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'PUT /api/radiology-orders/:id/report');
       }
     },
   );
@@ -2385,9 +2341,7 @@ export async function createApp() {
 
       res.json(list);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
+      respondInternalError(res, err, 'GET /api/inventory');
     }
   });
 
@@ -2397,9 +2351,7 @@ export async function createApp() {
 
       res.status(201).json(item);
     } catch (err: any) {
-      res.status(500).json({
-        error: err.message,
-      });
+      respondInternalError(res, err, 'POST /api/inventory');
     }
   });
 
@@ -2570,9 +2522,7 @@ export async function createApp() {
 
         res.json(list);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'GET /api/suppliers');
       }
     },
   );
@@ -2590,9 +2540,7 @@ export async function createApp() {
 
         res.json(list);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'GET /api/purchase-orders');
       }
     },
   );
@@ -2622,9 +2570,7 @@ export async function createApp() {
 
         res.status(201).json(po);
       } catch (err: any) {
-        res.status(500).json({
-          error: err.message,
-        });
+        respondInternalError(res, err, 'POST /api/purchase-orders');
       }
     },
   );

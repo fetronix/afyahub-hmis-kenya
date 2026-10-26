@@ -119,3 +119,42 @@ export function handleInpatientError(error: unknown, res: Response): boolean {
 
   return false;
 }
+
+/**
+ * Report an unexpected failure without handing its text to the client.
+ *
+ * `error.message` is not a safe thing to return from a 500. The errors that
+ * reach here are the ones nobody anticipated — most often a driver error,
+ * and a PostgreSQL driver error is not a sentence about the user's request:
+ *
+ *     duplicate key value violates unique constraint "patients_mrn_key"
+ *     DETAIL:  Key (mrn, tenant_id)=(MRN-000431, 7) already exists.
+ *
+ * That leaks the schema, the column names, and - in the DETAIL line - a
+ * patient identifier and a tenant id. On a multi-tenant clinical system an
+ * authenticated user of one facility can then learn that a record exists
+ * for a patient at another. The same is true of a failed insert that echoes
+ * a value back.
+ *
+ * So the message stays on the server: it is logged, with the stack, by
+ * whoever knew what operation failed and can therefore name it. The client
+ * gets a fixed string that says the operation failed and nothing else.
+ *
+ * This does not affect the domain errors handled elsewhere in this file.
+ * Those are deliberate, written for a person, and carry no internal detail.
+ */
+export function respondInternalError(
+  res: Response,
+  error: unknown,
+  operation: string,
+  message = 'The request could not be completed.',
+): void {
+  /* The operation is named in the log rather than the response: whoever is
+     on call needs to know which query failed, and the client does not.
+     console.error rather than the structured logger because this module is
+     imported by routes that do not load it, and an error path that throws
+     while reporting an error is worse than an unstructured line. */
+  console.error(`[api] ${operation} failed:`, error);
+
+  res.status(500).json({ error: message });
+}
