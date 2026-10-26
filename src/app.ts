@@ -33,6 +33,7 @@ import {
   requireSuperAdmin,
 } from './auth/authorization.middleware.ts';
 import type { AuthRequest } from './auth/auth.middleware.ts';
+import { parseOptionalPositiveId, requireAuthContext } from './routes/shared/request.ts';
 import { ScopeAccessError, resolveFacilityScope } from './auth/scope.service.ts';
 
 import * as billing from './billing/billing.service.ts';
@@ -2499,41 +2500,6 @@ export async function createApp() {
   //
   // Occupancy is created only by admitting a patient and released
   // only by discharging one, so bed status cannot forge a bed.
-
-  /**
-   * Return the request's authorization context, or respond 401.
-   */
-  const requireAuthContext = (req: AuthRequest, res: Response) => {
-    if (!req.authContext) {
-      res.status(401).json({
-        success: false,
-        error: 'AUTHORIZATION_CONTEXT_MISSING',
-        message: 'Authentication is required.',
-      });
-
-      return null;
-    }
-
-    return req.authContext;
-  };
-
-  /**
-   * Parse an optional positive integer query parameter.
-   * Invalid values become HTTP 400 instead of a scope error.
-   */
-  const parseOptionalPositiveId = (value: unknown, field: string): number | undefined => {
-    if (value === undefined || value === null || value === '') {
-      return undefined;
-    }
-
-    const raw = Array.isArray(value) ? value[0] : value;
-
-    if (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw)) {
-      throw new queries.InpatientDomainError('INVALID_INPUT', `A valid ${field} is required.`, 400);
-    }
-
-    return Number(raw);
-  };
 
   app.get(
     '/api/wards',
