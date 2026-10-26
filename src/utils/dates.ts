@@ -15,9 +15,7 @@
  * Returns null rather than an Invalid Date so callers can skip a bad
  * row instead of crashing a ward list.
  */
-export function parseLooseDate(
-  value: string | null | undefined,
-): Date | null {
+export function parseLooseDate(value: string | null | undefined): Date | null {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return null;
   }
@@ -40,11 +38,7 @@ export function parseLooseDate(
 export function formatDateKey(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
 
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-  ].join('-');
+  return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-');
 }
 
 /**

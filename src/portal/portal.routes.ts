@@ -18,11 +18,7 @@ import { Router, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 
 import { requirePortalAuth, type PortalRequest } from './portal.middleware.ts';
-import {
-  activateInvitation,
-  flagVerificationRequired,
-  PortalError,
-} from './portal.service.ts';
+import { activateInvitation, flagVerificationRequired, PortalError } from './portal.service.ts';
 import {
   changePortalPassword,
   getPortalAccountSummary,
@@ -78,13 +74,9 @@ function limiter(message: string) {
   });
 }
 
-const activationLimiter = limiter(
-  'Too many activation attempts. Try again in a few minutes.',
-);
+const activationLimiter = limiter('Too many activation attempts. Try again in a few minutes.');
 
-const loginLimiter = limiter(
-  'Too many sign-in attempts. Try again in a few minutes.',
-);
+const loginLimiter = limiter('Too many sign-in attempts. Try again in a few minutes.');
 
 /* ============================================================
    Error handling
@@ -168,7 +160,8 @@ router.post('/auth/activate', activationLimiter, async (req, res) => {
     return res.status(201).json({
       success: true,
       requiresStaffVerification: false,
-      message: 'Your account is ready. Sign in with your phone number or email and the password you chose.',
+      message:
+        'Your account is ready. Sign in with your phone number or email and the password you chose.',
       loginIdentifier: result.loginIdentifier,
     });
   } catch (error) {
@@ -294,9 +287,7 @@ router.get('/appointments', async (req: PortalRequest, res) => {
 
 router.get('/discharge-summaries', async (req: PortalRequest, res) => {
   try {
-    res.json(
-      await listPortalDischargeSummaries(req.portalSession!, requestFacts(req)),
-    );
+    res.json(await listPortalDischargeSummaries(req.portalSession!, requestFacts(req)));
   } catch (error) {
     if (sendPortalError(res, error)) return;
     res.status(500).json({ success: false, error: 'SUMMARIES_READ_FAILED' });

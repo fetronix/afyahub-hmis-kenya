@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api, ApiError } from '../../api/client.ts';
 import type { ServiceCharge } from '../../api/client.ts';
-import { Patient, Encounter, Observation, Diagnosis, Procedure, Medication, LabTest, QueueItem } from '../../types/index.ts';
+import {
+  Patient,
+  Encounter,
+  Observation,
+  Diagnosis,
+  Procedure,
+  Medication,
+  LabTest,
+  QueueItem,
+} from '../../types/index.ts';
 import {
   Stethoscope,
   Activity,
@@ -16,7 +25,7 @@ import {
   BedDouble,
   Receipt,
   Plus,
-  Clock
+  Clock,
 } from 'lucide-react';
 
 const commonIcd10List = [
@@ -33,7 +42,16 @@ const commonIcd10List = [
 ];
 
 export const OutpatientModule: React.FC = () => {
-  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentTenant,
+    currentFacility,
+    currentUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [activeEncounter, setActiveEncounter] = useState<Encounter | null>(null);
@@ -135,7 +153,7 @@ export const OutpatientModule: React.FC = () => {
     setDiagnosisList([]);
     setPrescriptions([]);
     setSelectedLabTestIds([]);
-      setLabInvestigations('');
+    setLabInvestigations('');
     setLabSearch('');
     setLabIndication('');
     setLabSpecimenType('Blood');
@@ -144,10 +162,8 @@ export const OutpatientModule: React.FC = () => {
 
     try {
       const encs = await api.getEncounters(p.id, currentFacility?.id);
-      const openEncounter = encs.find(
-        encounter => ['active', 'in progress'].includes(
-          (encounter.status || '').trim().toLowerCase()
-        )
+      const openEncounter = encs.find((encounter) =>
+        ['active', 'in progress'].includes((encounter.status || '').trim().toLowerCase()),
       );
 
       if (!openEncounter) {
@@ -223,11 +239,9 @@ export const OutpatientModule: React.FC = () => {
       );
 
       if (waitingToken) {
-        await api
-          .updateQueueStatus(waitingToken.id, 'In-Progress')
-          .catch((error: unknown) => {
-            console.error('Could not move the triage token:', error);
-          });
+        await api.updateQueueStatus(waitingToken.id, 'In-Progress').catch((error: unknown) => {
+          console.error('Could not move the triage token:', error);
+        });
       }
       setNotes({
         triageCategory: '',
@@ -255,7 +269,7 @@ export const OutpatientModule: React.FC = () => {
         showToast(
           `Visit started. Consultation billed KES ${consultBilling.totalAmount}${
             consultBilling.unit ? ` (${consultBilling.unit})` : ''
-          } on ${consultBilling.invoiceNumber}.`
+          } on ${consultBilling.invoiceNumber}.`,
         );
       } else {
         /*
@@ -266,7 +280,7 @@ export const OutpatientModule: React.FC = () => {
         showToast(
           `Visit started, but the consultation was not billed: ${
             consultBilling?.message ?? 'the server returned no billing result'
-          } It is listed under Configuration → Services & Tariffs → “Charges that could not be priced”, and can be billed once a price is set.`
+          } It is listed under Configuration → Services & Tariffs → “Charges that could not be priced”, and can be billed once a price is set.`,
         );
       }
     } catch (err: any) {
@@ -365,14 +379,16 @@ export const OutpatientModule: React.FC = () => {
       }
       if (vitals.pulseRate.trim() !== '') observation.pulseRate = Number(vitals.pulseRate);
       if (vitals.temperatureC.trim() !== '') observation.temperatureC = vitals.temperatureC;
-      if (vitals.respiratoryRate.trim() !== '') observation.respiratoryRate = Number(vitals.respiratoryRate);
+      if (vitals.respiratoryRate.trim() !== '')
+        observation.respiratoryRate = Number(vitals.respiratoryRate);
       if (vitals.spo2Percent.trim() !== '') observation.spo2Percent = Number(vitals.spo2Percent);
       if (vitals.weightKg.trim() !== '') observation.weightKg = vitals.weightKg;
       if (vitals.heightCm.trim() !== '') observation.heightCm = vitals.heightCm;
       if (bmi !== '—' && vitals.weightKg.trim() !== '' && vitals.heightCm.trim() !== '') {
         observation.bmi = bmi;
       }
-      if (vitals.bloodGlucoseMmol.trim() !== '') observation.bloodGlucoseMmol = vitals.bloodGlucoseMmol;
+      if (vitals.bloodGlucoseMmol.trim() !== '')
+        observation.bloodGlucoseMmol = vitals.bloodGlucoseMmol;
 
       await api.recordObservation(observation);
       showToast('Recorded vital signs saved successfully.');
@@ -395,7 +411,7 @@ export const OutpatientModule: React.FC = () => {
 
     if (
       !window.confirm(
-        'Complete this visit? The clinical record stays, and any unpaid balance stays on the patient\'s invoice at the cashier.',
+        "Complete this visit? The clinical record stays, and any unpaid balance stays on the patient's invoice at the cashier.",
       )
     ) {
       return;
@@ -405,17 +421,13 @@ export const OutpatientModule: React.FC = () => {
       await api.updateEncounter(activeEncounter.id, { status: 'Completed' });
 
       const openToken = triageQueue.find(
-        (token) =>
-          token.patientId === activeEncounter.patientId &&
-          token.status === 'In-Progress',
+        (token) => token.patientId === activeEncounter.patientId && token.status === 'In-Progress',
       );
 
       if (openToken) {
-        await api
-          .updateQueueStatus(openToken.id, 'Completed')
-          .catch((error: unknown) => {
-            console.error('Could not close the triage token:', error);
-          });
+        await api.updateQueueStatus(openToken.id, 'Completed').catch((error: unknown) => {
+          console.error('Could not close the triage token:', error);
+        });
       }
 
       showToast('Visit completed. The patient can be seen again as a new visit.');
@@ -477,14 +489,13 @@ export const OutpatientModule: React.FC = () => {
         diagnosisType,
         status: customDiagnosisMode ? 'Provisional' : 'Confirmed',
         notes: customDiagnosisMode
-          ? [
-              'Uncoded diagnosis; requires coding review.',
-              customDiagnosisNotes.trim(),
-            ].filter(Boolean).join(' ')
+          ? ['Uncoded diagnosis; requires coding review.', customDiagnosisNotes.trim()]
+              .filter(Boolean)
+              .join(' ')
           : undefined,
         diagnosedBy: currentUser.name,
       });
-      setDiagnosisList(prev => [...prev, diag]);
+      setDiagnosisList((prev) => [...prev, diag]);
       showToast(
         customDiagnosisMode
           ? 'Uncoded provisional diagnosis recorded for later coding review.'
@@ -523,11 +534,7 @@ export const OutpatientModule: React.FC = () => {
       return;
     }
 
-    if (
-      !newMed.unitPrice.trim() ||
-      !Number.isFinite(unitPrice) ||
-      unitPrice < 0
-    ) {
+    if (!newMed.unitPrice.trim() || !Number.isFinite(unitPrice) || unitPrice < 0) {
       showToast('Enter a valid unit price of zero or more.');
       return;
     }
@@ -556,7 +563,7 @@ export const OutpatientModule: React.FC = () => {
         ...(allergyAcknowledged ? { allergyAcknowledged: true } : {}),
       });
 
-      setPrescriptions(prev => [...prev, med]);
+      setPrescriptions((prev) => [...prev, med]);
 
       // Also route patient to Pharmacy Queue. The token is allocated
       // by the server so two prescriptions cannot share one.
@@ -572,7 +579,7 @@ export const OutpatientModule: React.FC = () => {
       });
 
       showToast(
-        `Prescription saved and patient routed to Pharmacy — token ${pharmacyEntry.tokenNumber}.`
+        `Prescription saved and patient routed to Pharmacy — token ${pharmacyEntry.tokenNumber}.`,
       );
     };
 
@@ -584,10 +591,11 @@ export const OutpatientModule: React.FC = () => {
           ? (err.detail!.warnings as Array<Record<string, unknown>>)
           : [];
 
-        const lines = warnings.map((warning) =>
-          `• ${String(warning.allergen)} (${String(warning.severity)
-            .replace(/_/g, ' ')
-            .toLowerCase()}${warning.reaction ? ` — ${String(warning.reaction)}` : ''})`
+        const lines = warnings.map(
+          (warning) =>
+            `• ${String(warning.allergen)} (${String(warning.severity)
+              .replace(/_/g, ' ')
+              .toLowerCase()}${warning.reaction ? ` — ${String(warning.reaction)}` : ''})`,
         );
 
         const confirmed = window.confirm(
@@ -599,7 +607,7 @@ export const OutpatientModule: React.FC = () => {
             String(err.detail?.disclaimer ?? ''),
             '',
             'Prescribe anyway? The override is recorded against your name.',
-          ].join('\n')
+          ].join('\n'),
         );
 
         if (!confirmed) {
@@ -630,8 +638,8 @@ export const OutpatientModule: React.FC = () => {
     const seen = new Set<string>();
     const investigations = labInvestigations
       .split(/\r?\n/)
-      .map(name => name.trim())
-      .filter(name => {
+      .map((name) => name.trim())
+      .filter((name) => {
         if (!name) return false;
         const key = name.toLocaleLowerCase();
         if (seen.has(key)) return false;
@@ -643,7 +651,7 @@ export const OutpatientModule: React.FC = () => {
       showToast('Enter at least one laboratory investigation.');
       return;
     }
-    if (investigations.length > 100 || investigations.some(name => name.length > 200)) {
+    if (investigations.length > 100 || investigations.some((name) => name.length > 200)) {
       showToast('Enter no more than 100 investigations, with each name up to 200 characters.');
       return;
     }
@@ -673,13 +681,13 @@ export const OutpatientModule: React.FC = () => {
 
       if (unbilled.length === 0 && billedTotal > 0) {
         showToast(
-          `Created ${result.orders.length} lab order(s) and billed KES ${billedTotal.toFixed(2)} — routed to the Laboratory queue.`
+          `Created ${result.orders.length} lab order(s) and billed KES ${billedTotal.toFixed(2)} — routed to the Laboratory queue.`,
         );
       } else {
         showToast(
           `Created ${result.orders.length} lab order(s) and routed them to the Laboratory queue. Not billed: ${
             unbilled[0]?.billing?.message ?? 'no laboratory tariff matched'
-          }`
+          }`,
         );
       }
       setSelectedLabTestIds([]);
@@ -706,7 +714,8 @@ export const OutpatientModule: React.FC = () => {
               <span>Outpatient Triage & Clinical Consultation Desk</span>
             </h1>
             <p className="text-2xs text-slate-500">
-              Examining Clinician: <strong className="text-slate-800">{currentUser.name}</strong> ({currentUser.role})
+              Examining Clinician: <strong className="text-slate-800">{currentUser.name}</strong> (
+              {currentUser.role})
             </p>
           </div>
 
@@ -748,8 +757,12 @@ export const OutpatientModule: React.FC = () => {
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              <span>{p.firstName} {p.lastName}</span>
-              <span className={`text-2xs font-mono px-1 rounded ${activePatient?.id === p.id ? 'bg-teal-800 text-teal-100' : 'bg-slate-200 text-slate-600'}`}>
+              <span>
+                {p.firstName} {p.lastName}
+              </span>
+              <span
+                className={`text-2xs font-mono px-1 rounded ${activePatient?.id === p.id ? 'bg-teal-800 text-teal-100' : 'bg-slate-200 text-slate-600'}`}
+              >
                 {p.mrn}
               </span>
             </button>
@@ -761,7 +774,8 @@ export const OutpatientModule: React.FC = () => {
           is the same as selecting from the carousel, but it tells the
           clinician they have someone waiting.
         */}
-        {triageQueue.filter((token) => token.status !== 'Completed' && token.status !== 'Cancelled').length > 0 && (
+        {triageQueue.filter((token) => token.status !== 'Completed' && token.status !== 'Cancelled')
+          .length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
             <span className="text-2xs font-semibold text-slate-400 uppercase tracking-wider">
               Waiting in Triage:
@@ -803,7 +817,10 @@ export const OutpatientModule: React.FC = () => {
                 <span>Patient Safety & Allergies Alert</span>
               </div>
               <div className="text-amber-950 font-medium">
-                Allergies: <span className="font-bold text-rose-700">{activePatient.allergies || 'None known'}</span>
+                Allergies:{' '}
+                <span className="font-bold text-rose-700">
+                  {activePatient.allergies || 'None known'}
+                </span>
               </div>
               <div className="text-amber-900">
                 Known Chronic: <strong>{activePatient.chronicConditions || 'None'}</strong>
@@ -820,15 +837,15 @@ export const OutpatientModule: React.FC = () => {
                   <Activity className="w-4 h-4 text-teal-700" />
                   <span>Triage Vital Signs</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-2xs ${bpColor}`}>
-                  {bpCategory}
-                </span>
+                <span className={`px-2 py-0.5 rounded text-2xs ${bpColor}`}>{bpCategory}</span>
               </div>
 
               {/* BP Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-600 font-medium mb-1">Systolic BP (mmHg)</label>
+                  <label className="block text-slate-600 font-medium mb-1">
+                    Systolic BP (mmHg)
+                  </label>
                   <input
                     type="number"
                     value={vitals.systolicBp}
@@ -837,7 +854,9 @@ export const OutpatientModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-600 font-medium mb-1">Diastolic BP (mmHg)</label>
+                  <label className="block text-slate-600 font-medium mb-1">
+                    Diastolic BP (mmHg)
+                  </label>
                   <input
                     type="number"
                     value={vitals.diastolicBp}
@@ -921,7 +940,9 @@ export const OutpatientModule: React.FC = () => {
 
               {/* Blood Glucose */}
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Random Blood Sugar (mmol/L)</label>
+                <label className="block text-slate-600 font-medium mb-1">
+                  Random Blood Sugar (mmol/L)
+                </label>
                 <input
                   type="text"
                   value={vitals.bloodGlucoseMmol}
@@ -953,10 +974,14 @@ export const OutpatientModule: React.FC = () => {
                   onChange={(e) => setNotes({ ...notes, triageCategory: e.target.value })}
                   className="px-2.5 py-1 border border-slate-200 rounded text-2xs font-medium"
                 >
-                  <option value="Category 1 - Resuscitation">Category 1 - Resuscitation (Immediate)</option>
+                  <option value="Category 1 - Resuscitation">
+                    Category 1 - Resuscitation (Immediate)
+                  </option>
                   <option value="Category 2 - Emergent">Category 2 - Emergent (Within 10m)</option>
                   <option value="Category 3 - Urgent">Category 3 - Urgent (Within 30m)</option>
-                  <option value="Category 4 - Less Urgent">Category 4 - Less Urgent (Within 60m)</option>
+                  <option value="Category 4 - Less Urgent">
+                    Category 4 - Less Urgent (Within 60m)
+                  </option>
                   <option value="Category 5 - Non-Urgent">Category 5 - Non-Urgent</option>
                 </select>
               </div>
@@ -973,7 +998,9 @@ export const OutpatientModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">History of Present Illness (HPI)</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  History of Present Illness (HPI)
+                </label>
                 <textarea
                   rows={2}
                   value={notes.historyOfPresentIllness}
@@ -984,7 +1011,9 @@ export const OutpatientModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Physical Examination (CVS, Resp, Abdomen, CNS)</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Physical Examination (CVS, Resp, Abdomen, CNS)
+                </label>
                 <textarea
                   rows={2}
                   value={notes.physicalExamination}
@@ -995,7 +1024,9 @@ export const OutpatientModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Clinical Assessment & Management Plan</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Clinical Assessment & Management Plan
+                </label>
                 <textarea
                   rows={2}
                   value={notes.clinicalNotes}
@@ -1035,14 +1066,14 @@ export const OutpatientModule: React.FC = () => {
                       setCustomDiagnosisMode(false);
                       setCustomDiagnosisDescription('');
                       setCustomDiagnosisNotes('');
-                      const match = commonIcd10List.find(x => x.code === e.target.value);
+                      const match = commonIcd10List.find((x) => x.code === e.target.value);
                       setSelectedIcd(match || null);
                     }
                   }}
                   className="w-full sm:flex-1 px-3 py-2 border border-slate-200 rounded-md"
                 >
                   <option value="">Select a diagnosis...</option>
-                  {commonIcd10List.map(item => (
+                  {commonIcd10List.map((item) => (
                     <option key={item.code} value={item.code}>
                       {item.code} — {item.desc}
                     </option>
@@ -1071,12 +1102,10 @@ export const OutpatientModule: React.FC = () => {
 
               {customDiagnosisMode && (
                 <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <div className="font-semibold text-amber-900">
-                    Uncoded diagnosis
-                  </div>
+                  <div className="font-semibold text-amber-900">Uncoded diagnosis</div>
                   <p className="text-amber-800">
-                    Enter the clinician's diagnosis description. Do not invent an ICD-10 code.
-                    This entry will be marked provisional and require coding review.
+                    Enter the clinician's diagnosis description. Do not invent an ICD-10 code. This
+                    entry will be marked provisional and require coding review.
                   </p>
                   <div>
                     <label className="mb-1 block font-medium text-slate-700">
@@ -1113,12 +1142,17 @@ export const OutpatientModule: React.FC = () => {
               {/* List of active diagnoses */}
               {diagnosisList.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                  {diagnosisList.map(d => (
-                    <div key={d.id} className="p-2 rounded bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  {diagnosisList.map((d) => (
+                    <div
+                      key={d.id}
+                      className="p-2 rounded bg-slate-50 border border-slate-200 flex items-center justify-between"
+                    >
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-teal-800">{d.icd10Code}</span>
                         <span className="text-slate-800">{d.icd10Description}</span>
-                        <span className="text-2xs text-slate-400 font-sans">({d.diagnosisType})</span>
+                        <span className="text-2xs text-slate-400 font-sans">
+                          ({d.diagnosisType})
+                        </span>
                       </div>
                       <span className="text-2xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-medium">
                         {d.status}
@@ -1139,12 +1173,21 @@ export const OutpatientModule: React.FC = () => {
                 </div>
 
                 <div className="rounded-md bg-slate-50 border border-slate-200 p-3 space-y-1">
-                  <div><span className="font-semibold">Patient ID:</span> {activePatient?.id ?? 'Select patient'}</div>
-                  <div><span className="font-semibold">Encounter ID:</span> {activeEncounter?.id ?? 'No active encounter'}</div>
-                  <div><span className="font-semibold">Facility:</span> {currentFacility?.name ?? 'Current facility'}</div>
+                  <div>
+                    <span className="font-semibold">Patient ID:</span>{' '}
+                    {activePatient?.id ?? 'Select patient'}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Encounter ID:</span>{' '}
+                    {activeEncounter?.id ?? 'No active encounter'}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Facility:</span>{' '}
+                    {currentFacility?.name ?? 'Current facility'}
+                  </div>
                 </div>
 
-                                <div className="space-y-3">
+                <div className="space-y-3">
                   <label className="block font-semibold text-slate-700">
                     Investigations required * (one per line)
                   </label>
@@ -1153,16 +1196,20 @@ export const OutpatientModule: React.FC = () => {
                     onChange={(e) => setLabInvestigations(e.target.value)}
                     maxLength={20099}
                     rows={5}
-                    placeholder={"Complete blood count (CBC)\nMalaria rapid diagnostic test\nUrinalysis"}
+                    placeholder={
+                      'Complete blood count (CBC)\nMalaria rapid diagnostic test\nUrinalysis'
+                    }
                     aria-label="Laboratory investigations, one per line"
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   />
                   <p className="text-slate-500">
-                    Type the investigation names directly. Blank lines and duplicate names are ignored.
-                    Maximum 100 investigations; each name may contain up to 200 characters.
+                    Type the investigation names directly. Blank lines and duplicate names are
+                    ignored. Maximum 100 investigations; each name may contain up to 200 characters.
                   </p>
                 </div>
-<label className="block font-semibold text-slate-700">Clinical indication / reason *</label>
+                <label className="block font-semibold text-slate-700">
+                  Clinical indication / reason *
+                </label>
                 <textarea
                   value={labIndication}
                   onChange={(e) => setLabIndication(e.target.value)}
@@ -1192,7 +1239,9 @@ export const OutpatientModule: React.FC = () => {
                   <option value="STAT">STAT</option>
                 </select>
 
-                <label className="block font-semibold text-slate-700">Additional clinical notes (optional)</label>
+                <label className="block font-semibold text-slate-700">
+                  Additional clinical notes (optional)
+                </label>
                 <textarea
                   value={labClinicalNotes}
                   onChange={(e) => setLabClinicalNotes(e.target.value)}
@@ -1203,11 +1252,17 @@ export const OutpatientModule: React.FC = () => {
                 />
 
                 <div className="text-slate-600">
-                  {labInvestigations.split(/\r?\n/).filter(name => name.trim()).length} line(s) entered
+                  {labInvestigations.split(/\r?\n/).filter((name) => name.trim()).length} line(s)
+                  entered
                 </div>
                 <button
                   onClick={handleOrderLab}
-                  disabled={submittingLabOrder || !activePatient || !activeEncounter || !labInvestigations.split(/\r?\n/).some(name => name.trim())}
+                  disabled={
+                    submittingLabOrder ||
+                    !activePatient ||
+                    !activeEncounter ||
+                    !labInvestigations.split(/\r?\n/).some((name) => name.trim())
+                  }
                   className="w-full py-2 bg-teal-700 text-white rounded-md font-medium hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {submittingLabOrder ? 'Submitting orders...' : 'Submit Orders to Laboratory'}

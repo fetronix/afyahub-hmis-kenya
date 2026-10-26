@@ -72,9 +72,7 @@ function sendError(res: import('express').Response, error: unknown): boolean {
 
   if (error instanceof ScopeAccessError) {
     const status =
-      error.code === 'FACILITY_REQUIRED' || error.code === 'INVALID_SCOPE_ID'
-        ? 400
-        : 403;
+      error.code === 'FACILITY_REQUIRED' || error.code === 'INVALID_SCOPE_ID' ? 400 : 403;
 
     res.status(status).json({
       success: false,
@@ -144,8 +142,7 @@ router.post(
             body.purpose === 'RECOVERY' || body.purpose === 'REVERIFICATION'
               ? body.purpose
               : 'ACTIVATION',
-          contactOverride:
-            typeof body.contact === 'string' ? body.contact : null,
+          contactOverride: typeof body.contact === 'string' ? body.contact : null,
         },
         facts(req),
       );
@@ -176,17 +173,12 @@ router.post(
     }
 
     try {
-      const result = await reissueManualLink(
-        req.authContext,
-        req.params.invitationId,
-        facts(req),
-      );
+      const result = await reissueManualLink(req.authContext, req.params.invitationId, facts(req));
 
       res.json({
         success: true,
         ...result,
-        message:
-          'New link created. Any copy already printed has stopped working.',
+        message: 'New link created. Any copy already printed has stopped working.',
       });
     } catch (error) {
       if (sendError(res, error)) return;
@@ -411,49 +403,41 @@ router.post(
   },
 );
 
-router.get(
-  '/audit',
-  requirePermission('portal.audit.read'),
-  async (req: AuthRequest, res) => {
-    if (!req.authContext) {
-      return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
-    }
+router.get('/audit', requirePermission('portal.audit.read'), async (req: AuthRequest, res) => {
+  if (!req.authContext) {
+    return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+  }
 
-    try {
-      res.json({
-        success: true,
-        ...(await listPortalAuditTrail(req.authContext, {
-          limit: req.query.limit,
-          offset: req.query.offset,
-        })),
-      });
-    } catch (error) {
-      if (sendError(res, error)) return;
+  try {
+    res.json({
+      success: true,
+      ...(await listPortalAuditTrail(req.authContext, {
+        limit: req.query.limit,
+        offset: req.query.offset,
+      })),
+    });
+  } catch (error) {
+    if (sendError(res, error)) return;
 
-      console.error('Portal audit read failed:', error);
-      res.status(500).json({ success: false, error: 'AUDIT_READ_FAILED' });
-    }
-  },
-);
+    console.error('Portal audit read failed:', error);
+    res.status(500).json({ success: false, error: 'AUDIT_READ_FAILED' });
+  }
+});
 
-router.get(
-  '/risks',
-  requirePermission('portal.accounts.manage'),
-  async (req: AuthRequest, res) => {
-    if (!req.authContext) {
-      return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
-    }
+router.get('/risks', requirePermission('portal.accounts.manage'), async (req: AuthRequest, res) => {
+  if (!req.authContext) {
+    return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+  }
 
-    try {
-      res.json(await findPortalAccountRisks(req.authContext));
-    } catch (error) {
-      if (sendError(res, error)) return;
+  try {
+    res.json(await findPortalAccountRisks(req.authContext));
+  } catch (error) {
+    if (sendError(res, error)) return;
 
-      console.error('Portal risk scan failed:', error);
-      res.status(500).json({ success: false, error: 'RISK_SCAN_FAILED' });
-    }
-  },
-);
+    console.error('Portal risk scan failed:', error);
+    res.status(500).json({ success: false, error: 'RISK_SCAN_FAILED' });
+  }
+});
 
 /* ============================================================
    Settings
@@ -511,32 +495,28 @@ router.put(
  * an authentication event. The response says so, so nobody mistakes a
  * successful scan for "the patient is verified".
  */
-router.post(
-  '/card/lookup',
-  requirePermission('patients.read'),
-  async (req: AuthRequest, res) => {
-    if (!req.authContext) {
-      return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
-    }
+router.post('/card/lookup', requirePermission('patients.read'), async (req: AuthRequest, res) => {
+  if (!req.authContext) {
+    return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+  }
 
-    try {
-      const body = (req.body ?? {}) as Record<string, unknown>;
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
 
-      res.json({
-        success: true,
-        ...(await resolveDigitalCard(req.authContext, body.code, {
-          ipAddress: req.ip ?? null,
-          userAgent: req.get('user-agent') ?? null,
-        })),
-      });
-    } catch (error) {
-      if (sendError(res, error)) return;
+    res.json({
+      success: true,
+      ...(await resolveDigitalCard(req.authContext, body.code, {
+        ipAddress: req.ip ?? null,
+        userAgent: req.get('user-agent') ?? null,
+      })),
+    });
+  } catch (error) {
+    if (sendError(res, error)) return;
 
-      console.error('Card lookup failed:', error);
-      res.status(500).json({ success: false, error: 'CARD_LOOKUP_FAILED' });
-    }
-  },
-);
+    console.error('Card lookup failed:', error);
+    res.status(500).json({ success: false, error: 'CARD_LOOKUP_FAILED' });
+  }
+});
 
 /** A staff member viewing a patient's card SVG is an auditable read. */
 router.get(

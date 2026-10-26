@@ -97,10 +97,9 @@ describe('billingServiceKeys', () => {
   });
 
   it('de-duplicates and drops entries that had no detail to add', () => {
-    expect(billingServiceKeys('PROCEDURE', [null, '', 'WOUND-DRESSING', 'WOUND-DRESSING'])).toEqual([
-      'PROCEDURE:WOUND-DRESSING',
-      'PROCEDURE',
-    ]);
+    expect(billingServiceKeys('PROCEDURE', [null, '', 'WOUND-DRESSING', 'WOUND-DRESSING'])).toEqual(
+      ['PROCEDURE:WOUND-DRESSING', 'PROCEDURE'],
+    );
   });
 
   it('still produces the family when no detail is given', () => {

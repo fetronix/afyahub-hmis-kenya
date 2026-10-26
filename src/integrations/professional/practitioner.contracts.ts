@@ -50,8 +50,7 @@ export const PRACTITIONER_IDENTIFICATION_TYPES = [
   'Refugee ID',
 ] as const;
 
-export type PractitionerIdentificationType =
-  (typeof PRACTITIONER_IDENTIFICATION_TYPES)[number];
+export type PractitionerIdentificationType = (typeof PRACTITIONER_IDENTIFICATION_TYPES)[number];
 
 export const HWR_ENDPOINTS = {
   practitioner: '/professionals',
@@ -123,12 +122,7 @@ export const REGULATORS: RegulatorDefinition[] = [
  * regulator enum. There is therefore no authorised automated check for
  * them, and they are excluded rather than pointed at an invented endpoint.
  */
-export const CLINICAL_STAFF_ROLES: string[] = [
-  'DOCTOR',
-  'CLINICAL_OFFICER',
-  'NURSE',
-  'PHARMACIST',
-];
+export const CLINICAL_STAFF_ROLES: string[] = ['DOCTOR', 'CLINICAL_OFFICER', 'NURSE', 'PHARMACIST'];
 
 export function regulatorByCode(code: string | null | undefined) {
   if (!code) return null;

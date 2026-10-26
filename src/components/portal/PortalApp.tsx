@@ -278,7 +278,9 @@ function PortalActivation({ onDone }: { onDone: () => void }) {
     return (
       <div className="mx-auto w-full max-w-md space-y-4">
         <Panel
-          title={result.requiresStaffVerification ? 'One more step at the desk' : 'Your account is ready'}
+          title={
+            result.requiresStaffVerification ? 'One more step at the desk' : 'Your account is ready'
+          }
           icon={<ShieldCheck className="h-5 w-5" />}
         >
           <div className="space-y-4">
@@ -288,8 +290,8 @@ function PortalActivation({ onDone }: { onDone: () => void }) {
 
             {result.requiresStaffVerification ? (
               <p className="text-xs leading-relaxed text-ink-soft">
-                Do not share your password with anyone, including staff. A member of staff will check
-                your identity documents; they do not need your password to do that.
+                Do not share your password with anyone, including staff. A member of staff will
+                check your identity documents; they do not need your password to do that.
               </p>
             ) : (
               <button type="button" className="btn-primary w-full" onClick={onDone}>
@@ -348,7 +350,11 @@ function PortalActivation({ onDone }: { onDone: () => void }) {
           </Field>
 
           <button type="submit" className="btn-primary w-full" disabled={busy}>
-            {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            {busy ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <ShieldCheck className="h-4 w-4" />
+            )}
             {busy ? 'Activating…' : 'Activate account'}
           </button>
 
@@ -434,8 +440,8 @@ function PortalLogin({ onSignedIn }: { onSignedIn: () => void }) {
       <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-xs leading-relaxed text-brand-900">
         <p className="font-semibold">Do not have an account?</p>
         <p className="mt-1">
-          Ask at the reception desk of the facility where you are registered. Staff will confirm your
-          identity in person before they issue an invitation — they cannot do it by phone.
+          Ask at the reception desk of the facility where you are registered. Staff will confirm
+          your identity in person before they issue an invitation — they cannot do it by phone.
         </p>
       </div>
     </div>
@@ -446,7 +452,13 @@ function PortalLogin({ onSignedIn }: { onSignedIn: () => void }) {
    Home
    ============================================================ */
 
-function PortalHome({ overview, onOpen }: { overview: PortalOverview; onOpen: (tab: TabId) => void }) {
+function PortalHome({
+  overview,
+  onOpen,
+}: {
+  overview: PortalOverview;
+  onOpen: (tab: TabId) => void;
+}) {
   const nextAppointment = overview.upcomingAppointments[0];
 
   return (
@@ -490,8 +502,8 @@ function PortalHome({ overview, onOpen }: { overview: PortalOverview; onOpen: (t
           </div>
         ) : (
           <Empty>
-            No upcoming appointment is booked at this facility. Appointments appear here once the desk
-            books one.
+            No upcoming appointment is booked at this facility. Appointments appear here once the
+            desk books one.
           </Empty>
         )}
       </Panel>
@@ -600,7 +612,9 @@ function VisitCard({ visit }: { visit: PortalVisit }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-2xs text-slate-500">No diagnosis has been released for this visit.</p>
+        <p className="mt-2 text-2xs text-slate-500">
+          No diagnosis has been released for this visit.
+        </p>
       )}
 
       {visit.followUpDate ? (
@@ -636,8 +650,8 @@ function LabOrder({ order }: { order: PortalLabOrder }) {
         </ul>
       ) : (
         <p className="mt-2 text-2xs text-slate-500">
-          No verified result yet. A result appears only after a laboratory professional signs it
-          off — this is not an indication that the test was not done.
+          No verified result yet. A result appears only after a laboratory professional signs it off
+          — this is not an indication that the test was not done.
         </p>
       )}
     </article>
@@ -950,7 +964,8 @@ function PortalSharing() {
               <p className="font-semibold">Share this code with the recipient:</p>
               <p className="mt-1 break-all font-mono text-sm tracking-wide">{created.code}</p>
               <p className="mt-1">
-                It works once, for that person only, and stops working at {formatDate(created.expiresAt, true)}.
+                It works once, for that person only, and stops working at{' '}
+                {formatDate(created.expiresAt, true)}.
               </p>
             </Notice>
           ) : null}
@@ -1057,11 +1072,7 @@ function PortalSharing() {
                 </div>
 
                 {grant.state === 'OPEN' ? (
-                  <button
-                    type="button"
-                    className="btn-quiet mt-2"
-                    onClick={() => revoke(grant.id)}
-                  >
+                  <button type="button" className="btn-quiet mt-2" onClick={() => revoke(grant.id)}>
                     Stop sharing
                   </button>
                 ) : null}
@@ -1078,13 +1089,7 @@ function PortalSharing() {
    Account
    ============================================================ */
 
-function PortalAccount({
-  me,
-  onSignedOut,
-}: {
-  me: PortalMe;
-  onSignedOut: () => void;
-}) {
+function PortalAccount({ me, onSignedOut }: { me: PortalMe; onSignedOut: () => void }) {
   const [card, setCard] = useState<{ svg: string; issuedAt: string | null } | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
   const [cardBusy, setCardBusy] = useState(false);
@@ -1281,8 +1286,17 @@ function PortalAccount({
         subtitle="A text copy, generated now for you. There is no permanent link to share."
         icon={<Download className="h-5 w-5" />}
       >
-        <button type="button" className="btn-primary w-full" onClick={download} disabled={downloadBusy}>
-          {downloadBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        <button
+          type="button"
+          className="btn-primary w-full"
+          onClick={download}
+          disabled={downloadBusy}
+        >
+          {downloadBusy ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
           {downloadBusy ? 'Preparing…' : 'Download'}
         </button>
       </Panel>
@@ -1330,7 +1344,10 @@ function PortalAccount({
         ) : (
           <ul className="divide-y divide-slate-100">
             {history.slice(0, 12).map((event, index) => (
-              <li key={`${event.createdAt}-${index}`} className="flex items-center justify-between py-2">
+              <li
+                key={`${event.createdAt}-${index}`}
+                className="flex items-center justify-between py-2"
+              >
                 <div>
                   <p className="text-xs font-semibold text-ink">{event.action}</p>
                   <p className="text-2xs text-slate-500">{event.recordType ?? 'Record'}</p>
@@ -1350,7 +1367,9 @@ function PortalAccount({
               type="password"
               autoComplete="current-password"
               value={password.currentPassword}
-              onChange={(event) => setPassword({ ...password, currentPassword: event.target.value })}
+              onChange={(event) =>
+                setPassword({ ...password, currentPassword: event.target.value })
+              }
               required
             />
           </Field>
@@ -1372,12 +1391,16 @@ function PortalAccount({
               type="password"
               autoComplete="new-password"
               value={password.confirmPassword}
-              onChange={(event) => setPassword({ ...password, confirmPassword: event.target.value })}
+              onChange={(event) =>
+                setPassword({ ...password, confirmPassword: event.target.value })
+              }
               required
             />
           </Field>
 
-          {notice ? <Notice tone={notice.tone === 'ok' ? 'ok' : 'danger'}>{notice.text}</Notice> : null}
+          {notice ? (
+            <Notice tone={notice.tone === 'ok' ? 'ok' : 'danger'}>{notice.text}</Notice>
+          ) : null}
 
           <button type="submit" className="btn-primary w-full">
             Change password
@@ -1503,7 +1526,7 @@ function PortalDashboard({ onSignedOut }: { onSignedOut: () => void }) {
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-white/15 px-2.5 py-1 text-2xs font-semibold">
-            {me.account?.status === 'ACTIVE' ? 'Account active' : me.account?.status ?? '—'}
+            {me.account?.status === 'ACTIVE' ? 'Account active' : (me.account?.status ?? '—')}
           </span>
 
           <button
@@ -1639,8 +1662,8 @@ function PortalFrame({ children }: { children: React.ReactNode }) {
 
       <footer className="mx-auto w-full max-w-3xl px-4 pb-8 pt-2">
         <p className="text-center text-2xs leading-relaxed text-slate-500">
-          This portal shows the record held by your facility. It is not a national health information
-          exchange, and it does not replace a clinical consultation.
+          This portal shows the record held by your facility. It is not a national health
+          information exchange, and it does not replace a clinical consultation.
         </p>
       </footer>
     </div>

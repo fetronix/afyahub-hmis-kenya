@@ -187,10 +187,7 @@ export async function revokeSharingGrant(
  * redemption: a code read aloud on a ward round should not become a
  * permanent key.
  */
-export async function redeemSharingGrant(
-  context: AuthorizationContext,
-  rawCode: unknown,
-) {
+export async function redeemSharingGrant(context: AuthorizationContext, rawCode: unknown) {
   const code = typeof rawCode === 'string' ? rawCode.trim() : '';
 
   if (code === '' || code.length > 200) {
@@ -206,10 +203,7 @@ export async function redeemSharingGrant(
     .from(schema.patientRecordSharingGrants)
     .where(
       and(
-        eq(
-          schema.patientRecordSharingGrants.codeHash,
-          hashInvitationToken(code),
-        ),
+        eq(schema.patientRecordSharingGrants.codeHash, hashInvitationToken(code)),
         eq(schema.patientRecordSharingGrants.tenantId, context.tenantId),
       ),
     )
@@ -258,9 +252,7 @@ export async function redeemSharingGrant(
     purpose: 'CARE_COORDINATION',
   });
 
-  const categories = Array.isArray(grant.categories)
-    ? (grant.categories as string[])
-    : [];
+  const categories = Array.isArray(grant.categories) ? (grant.categories as string[]) : [];
 
   return {
     patientId: grant.patientId,

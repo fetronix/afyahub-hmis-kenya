@@ -288,7 +288,8 @@ export const PortalInviteDialog: React.FC<Props> = ({
                     Latest invitation
                   </p>
                   <p className="mt-1 text-xs font-semibold text-ink">
-                    {invitation.status} · delivery {invitation.deliveryStatus.replace(/_/g, ' ').toLowerCase()}
+                    {invitation.status} · delivery{' '}
+                    {invitation.deliveryStatus.replace(/_/g, ' ').toLowerCase()}
                   </p>
                   <p className="mt-0.5 text-2xs text-brand-900">
                     {invitation.deliveryChannel} · expires {formatDateTime(invitation.expiresAt)}
@@ -366,10 +367,9 @@ export const PortalInviteDialog: React.FC<Props> = ({
                     <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-2xs text-amber-900">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                       <span>
-                        This address has no domain. Set <code>APP_BASE_URL</code> (for
-                        example <code>https://hmis.yourdomain</code>) and restart the
-                        server, or hand the link over on a device already inside the
-                        application.
+                        This address has no domain. Set <code>APP_BASE_URL</code> (for example{' '}
+                        <code>https://hmis.yourdomain</code>) and restart the server, or hand the
+                        link over on a device already inside the application.
                       </span>
                     </p>
                   ) : null}
@@ -416,10 +416,17 @@ export const PortalInviteDialog: React.FC<Props> = ({
                       >
                         <option value="MANUAL">Hand over at the desk</option>
                         <option value="SMS" disabled={!smsAvailable || !status.policy.allowSms}>
-                          SMS {smsAvailable && status.policy.allowSms ? '' : '(no provider configured)'}
+                          SMS{' '}
+                          {smsAvailable && status.policy.allowSms ? '' : '(no provider configured)'}
                         </option>
-                        <option value="EMAIL" disabled={!emailAvailable || !status.policy.allowEmail}>
-                          Email {emailAvailable && status.policy.allowEmail ? '' : '(no provider configured)'}
+                        <option
+                          value="EMAIL"
+                          disabled={!emailAvailable || !status.policy.allowEmail}
+                        >
+                          Email{' '}
+                          {emailAvailable && status.policy.allowEmail
+                            ? ''
+                            : '(no provider configured)'}
                         </option>
                       </select>
                     </label>
@@ -436,8 +443,9 @@ export const PortalInviteDialog: React.FC<Props> = ({
                   </div>
 
                   <p className="mt-2 text-2xs leading-relaxed text-slate-500">
-                    Invitation lifetime: {status.policy.invitationExpiryHours} hours. Resends allowed:{' '}
-                    {status.policy.maxResends}. These are set by the facility administrator.
+                    Invitation lifetime: {status.policy.invitationExpiryHours} hours. Resends
+                    allowed: {status.policy.maxResends}. These are set by the facility
+                    administrator.
                   </p>
 
                   <button
@@ -446,7 +454,11 @@ export const PortalInviteDialog: React.FC<Props> = ({
                     disabled={busy}
                     onClick={() => void send()}
                   >
-                    {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {busy ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
                     {busy ? 'Issuing…' : 'Issue invitation'}
                   </button>
                 </div>
@@ -454,8 +466,8 @@ export const PortalInviteDialog: React.FC<Props> = ({
                 <p className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-2xs leading-relaxed text-slate-600">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
                   This patient already has a portal account. A new account is never created from a
-                  matching phone number — if they cannot sign in, use the recovery invitation from the
-                  account screen.
+                  matching phone number — if they cannot sign in, use the recovery invitation from
+                  the account screen.
                 </p>
               )}
             </>
@@ -463,10 +475,17 @@ export const PortalInviteDialog: React.FC<Props> = ({
         </div>
 
         <footer className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3">
-          <p className="text-2xs text-slate-500">This panel never shows clinical results or notes.</p>
+          <p className="text-2xs text-slate-500">
+            This panel never shows clinical results or notes.
+          </p>
 
           <div className="flex gap-2">
-            <button type="button" className="btn-quiet" onClick={() => void load()} disabled={loading}>
+            <button
+              type="button"
+              className="btn-quiet"
+              onClick={() => void load()}
+              disabled={loading}
+            >
               <RefreshCw className="h-4 w-4" />
               Refresh
             </button>

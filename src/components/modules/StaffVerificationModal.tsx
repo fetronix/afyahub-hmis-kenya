@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { getSessionToken } from "../../api/client.ts";
+import React, { useEffect, useMemo, useState } from 'react';
+import { getSessionToken } from '../../api/client.ts';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -9,7 +9,7 @@ import {
   Loader2,
   ShieldAlert,
   XCircle,
-} from "lucide-react";
+} from 'lucide-react';
 
 /**
  * Professional registration check, shown before an invitation is issued.
@@ -51,7 +51,7 @@ type Verification = {
     licenceExpiry: string | null;
   };
   warnings: string[];
-  mapping: "provisional" | "confirmed";
+  mapping: 'provisional' | 'confirmed';
   mode: string;
   simulated: boolean;
   serviceError: { code: string; message: string } | null;
@@ -59,40 +59,48 @@ type Verification = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  REGISTRATION_VERIFIED: "Registration verified",
-  LICENCE_CONFIRMED: "Current licence confirmed",
-  LICENCE_EXPIRED: "Licence expired",
-  REGISTRATION_INACTIVE: "Registration inactive or withdrawn",
-  IDENTITY_MISMATCH: "Identity mismatch",
-  RECORD_NOT_FOUND: "Record not found",
-  SERVICE_UNAVAILABLE: "Verification service unavailable",
-  MANUAL_REVIEW_REQUIRED: "Manual review required",
-  MANUALLY_VERIFIED: "Manually verified against the regulator record",
-  NOT_VERIFIED: "Not verified",
-  PENDING: "Verification pending",
+  REGISTRATION_VERIFIED: 'Registration verified',
+  LICENCE_CONFIRMED: 'Current licence confirmed',
+  LICENCE_EXPIRED: 'Licence expired',
+  REGISTRATION_INACTIVE: 'Registration inactive or withdrawn',
+  IDENTITY_MISMATCH: 'Identity mismatch',
+  RECORD_NOT_FOUND: 'Record not found',
+  SERVICE_UNAVAILABLE: 'Verification service unavailable',
+  MANUAL_REVIEW_REQUIRED: 'Manual review required',
+  MANUALLY_VERIFIED: 'Manually verified against the regulator record',
+  NOT_VERIFIED: 'Not verified',
+  PENDING: 'Verification pending',
 };
 
 function statusTone(status: string): string {
-  if (status === "LICENCE_CONFIRMED" || status === "REGISTRATION_VERIFIED" || status === "MANUALLY_VERIFIED") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (
+    status === 'LICENCE_CONFIRMED' ||
+    status === 'REGISTRATION_VERIFIED' ||
+    status === 'MANUALLY_VERIFIED'
+  ) {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-800';
   }
 
-  if (status === "LICENCE_EXPIRED" || status === "REGISTRATION_INACTIVE" || status === "IDENTITY_MISMATCH") {
-    return "border-red-200 bg-red-50 text-red-800";
+  if (
+    status === 'LICENCE_EXPIRED' ||
+    status === 'REGISTRATION_INACTIVE' ||
+    status === 'IDENTITY_MISMATCH'
+  ) {
+    return 'border-red-200 bg-red-50 text-red-800';
   }
 
-  if (status === "SERVICE_UNAVAILABLE") {
-    return "border-slate-300 bg-slate-50 text-slate-700";
+  if (status === 'SERVICE_UNAVAILABLE') {
+    return 'border-slate-300 bg-slate-50 text-slate-700';
   }
 
-  return "border-amber-200 bg-amber-50 text-amber-800";
+  return 'border-amber-200 bg-amber-50 text-amber-800';
 }
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = getSessionToken();
 
   return {
-    Accept: "application/json",
+    Accept: 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...extra,
   };
@@ -121,13 +129,13 @@ export const StaffVerificationModal: React.FC<{
   onVerified: (credentialId: number, summary: string) => void;
 }> = ({ roleName, fullName, subjectUserId = null, onClose, onVerified }) => {
   const [regulators, setRegulators] = useState<Regulator[]>([]);
-  const [regulator, setRegulator] = useState("");
-  const [registrationNumber, setRegistrationNumber] = useState("");
+  const [regulator, setRegulator] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<Verification | null>(null);
-  const [error, setError] = useState("");
-  const [manualSource, setManualSource] = useState("");
-  const [manualNotes, setManualNotes] = useState("");
+  const [error, setError] = useState('');
+  const [manualSource, setManualSource] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
   const [savingManual, setSavingManual] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
 
@@ -139,8 +147,8 @@ export const StaffVerificationModal: React.FC<{
   useEffect(() => {
     async function load() {
       try {
-        const response = await fetch("/api/staff-invitations/regulators", {
-          credentials: "same-origin",
+        const response = await fetch('/api/staff-invitations/regulators', {
+          credentials: 'same-origin',
           headers: authHeaders(),
         });
         const payload = await readJson<{ regulators: Regulator[] }>(response);
@@ -148,9 +156,9 @@ export const StaffVerificationModal: React.FC<{
         const match = (payload.regulators ?? []).find((item) =>
           item.staffRoles.includes(roleName.toUpperCase()),
         );
-        setRegulator(match?.code ?? payload.regulators?.[0]?.code ?? "");
+        setRegulator(match?.code ?? payload.regulators?.[0]?.code ?? '');
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load the regulator list.");
+        setError(err instanceof Error ? err.message : 'Could not load the regulator list.');
       }
     }
 
@@ -159,14 +167,14 @@ export const StaffVerificationModal: React.FC<{
 
   const runCheck = async () => {
     setChecking(true);
-    setError("");
+    setError('');
     setResult(null);
 
     try {
-      const response = await fetch("/api/staff-invitations/verify-practitioner", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: authHeaders({ "Content-Type": "application/json" }),
+      const response = await fetch('/api/staff-invitations/verify-practitioner', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           regulator,
           registrationNumber: registrationNumber.trim(),
@@ -181,15 +189,15 @@ export const StaffVerificationModal: React.FC<{
       if (payload.verification.invitable && payload.verification.credentialId) {
         setManualOpen(false);
       } else if (
-        payload.verification.status === "MANUAL_REVIEW_REQUIRED" ||
-        payload.verification.status === "RECORD_NOT_FOUND" ||
-        payload.verification.status === "IDENTITY_MISMATCH" ||
-        payload.verification.status === "SERVICE_UNAVAILABLE"
+        payload.verification.status === 'MANUAL_REVIEW_REQUIRED' ||
+        payload.verification.status === 'RECORD_NOT_FOUND' ||
+        payload.verification.status === 'IDENTITY_MISMATCH' ||
+        payload.verification.status === 'SERVICE_UNAVAILABLE'
       ) {
         setManualOpen(true);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The verification request failed.");
+      setError(err instanceof Error ? err.message : 'The verification request failed.');
     } finally {
       setChecking(false);
     }
@@ -197,13 +205,13 @@ export const StaffVerificationModal: React.FC<{
 
   const saveManual = async () => {
     setSavingManual(true);
-    setError("");
+    setError('');
 
     try {
-      const response = await fetch("/api/staff-invitations/manual-verification", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: authHeaders({ "Content-Type": "application/json" }),
+      const response = await fetch('/api/staff-invitations/manual-verification', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           credentialId: result?.credentialId ?? null,
           regulator,
@@ -220,7 +228,7 @@ export const StaffVerificationModal: React.FC<{
       }>(response);
 
       if (!payload.verification.credentialId) {
-        throw new Error("The manual check was recorded without a credential reference.");
+        throw new Error('The manual check was recorded without a credential reference.');
       }
 
       onVerified(
@@ -228,13 +236,13 @@ export const StaffVerificationModal: React.FC<{
         `Manually verified (${regulator}) on ${new Date().toLocaleDateString()}`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record the manual check.");
+      setError(err instanceof Error ? err.message : 'Could not record the manual check.');
     } finally {
       setSavingManual(false);
     }
   };
 
-  const tone = result ? statusTone(result.status) : "";
+  const tone = result ? statusTone(result.status) : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4">
@@ -260,14 +268,20 @@ export const StaffVerificationModal: React.FC<{
         </header>
 
         {error && (
-          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"
+          >
             {error}
           </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label htmlFor="verify-regulator" className="mb-1 block text-xs font-medium text-slate-700">
+            <label
+              htmlFor="verify-regulator"
+              className="mb-1 block text-xs font-medium text-slate-700"
+            >
               Regulator *
             </label>
             <select
@@ -288,7 +302,10 @@ export const StaffVerificationModal: React.FC<{
           </div>
 
           <div>
-            <label htmlFor="verify-number" className="mb-1 block text-xs font-medium text-slate-700">
+            <label
+              htmlFor="verify-number"
+              className="mb-1 block text-xs font-medium text-slate-700"
+            >
               Registration number *
             </label>
             <input
@@ -299,7 +316,8 @@ export const StaffVerificationModal: React.FC<{
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
             <p className="mt-1 text-[11px] text-slate-500">
-              The number on the practitioner&apos;s registration certificate, not the licence number.
+              The number on the practitioner&apos;s registration certificate, not the licence
+              number.
             </p>
           </div>
         </div>
@@ -311,8 +329,12 @@ export const StaffVerificationModal: React.FC<{
             disabled={checking || !regulator || registrationNumber.trim().length < 3}
             className="inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800 disabled:opacity-50"
           >
-            {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSearch className="h-4 w-4" />}
-            {checking ? "Checking registry…" : "Check registration"}
+            {checking ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileSearch className="h-4 w-4" />
+            )}
+            {checking ? 'Checking registry…' : 'Check registration'}
           </button>
 
           <button
@@ -328,7 +350,9 @@ export const StaffVerificationModal: React.FC<{
         {result && (
           <section className={`space-y-3 rounded-lg border p-3 ${tone}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-bold">{STATUS_LABEL[result.status] ?? result.status}</span>
+              <span className="text-xs font-bold">
+                {STATUS_LABEL[result.status] ?? result.status}
+              </span>
               {result.simulated && (
                 <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">
                   SIMULATED — test fixture, not a regulator
@@ -339,27 +363,33 @@ export const StaffVerificationModal: React.FC<{
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] sm:grid-cols-3">
               <div>
                 <dt className="text-slate-500">Registered name</dt>
-                <dd className="font-semibold text-slate-900">{result.record.fullName ?? "Not returned"}</dd>
+                <dd className="font-semibold text-slate-900">
+                  {result.record.fullName ?? 'Not returned'}
+                </dd>
               </div>
               <div>
                 <dt className="text-slate-500">Registration</dt>
-                <dd className="font-mono text-slate-900">{result.record.registrationNumber ?? "Not returned"}</dd>
+                <dd className="font-mono text-slate-900">
+                  {result.record.registrationNumber ?? 'Not returned'}
+                </dd>
               </div>
               <div>
                 <dt className="text-slate-500">Registration status</dt>
-                <dd className="text-slate-900">{result.record.registrationStatus ?? "Not returned"}</dd>
+                <dd className="text-slate-900">
+                  {result.record.registrationStatus ?? 'Not returned'}
+                </dd>
               </div>
               <div>
                 <dt className="text-slate-500">Licence</dt>
-                <dd className="text-slate-900">{result.record.licenceStatus ?? "Not returned"}</dd>
+                <dd className="text-slate-900">{result.record.licenceStatus ?? 'Not returned'}</dd>
               </div>
               <div>
                 <dt className="text-slate-500">Licence expiry</dt>
-                <dd className="text-slate-900">{result.record.licenceExpiry ?? "Not returned"}</dd>
+                <dd className="text-slate-900">{result.record.licenceExpiry ?? 'Not returned'}</dd>
               </div>
               <div>
                 <dt className="text-slate-500">Profession</dt>
-                <dd className="text-slate-900">{result.record.profession ?? "Not returned"}</dd>
+                <dd className="text-slate-900">{result.record.profession ?? 'Not returned'}</dd>
               </div>
             </dl>
 
@@ -417,7 +447,10 @@ export const StaffVerificationModal: React.FC<{
             </div>
 
             <div>
-              <label htmlFor="manual-source" className="mb-1 block text-[11px] font-medium text-slate-700">
+              <label
+                htmlFor="manual-source"
+                className="mb-1 block text-[11px] font-medium text-slate-700"
+              >
                 Where the check was made *
               </label>
               <input
@@ -430,7 +463,10 @@ export const StaffVerificationModal: React.FC<{
             </div>
 
             <div>
-              <label htmlFor="manual-notes" className="mb-1 block text-[11px] font-medium text-slate-700">
+              <label
+                htmlFor="manual-notes"
+                className="mb-1 block text-[11px] font-medium text-slate-700"
+              >
                 Notes (optional)
               </label>
               <input
@@ -445,11 +481,19 @@ export const StaffVerificationModal: React.FC<{
             <button
               type="button"
               onClick={() => void saveManual()}
-              disabled={savingManual || manualSource.trim().length < 5 || registrationNumber.trim().length < 3}
+              disabled={
+                savingManual ||
+                manualSource.trim().length < 5 ||
+                registrationNumber.trim().length < 3
+              }
               className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-xs font-bold text-white hover:bg-slate-900 disabled:opacity-50"
             >
-              {savingManual ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-              {savingManual ? "Recording…" : "Record manual verification"}
+              {savingManual ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
+              {savingManual ? 'Recording…' : 'Record manual verification'}
             </button>
           </section>
         )}

@@ -6,7 +6,7 @@ import { Sidebar } from './components/Sidebar.tsx';
 import { LoginScreen } from './components/LoginScreen.tsx';
 import { StaffInvitationAcceptance } from './components/StaffInvitationAcceptance.tsx';
 import FacilityAdminInvitationAcceptance from './components/FacilityAdminInvitationAcceptance.tsx';
-import { PlatformAdministrationModule } from "./components/modules/PlatformAdministrationModule";
+import { PlatformAdministrationModule } from './components/modules/PlatformAdministrationModule';
 import { PatientJourneyModal } from './components/PatientJourneyModal.tsx';
 import { NotificationDialog } from './components/NotificationDialog.tsx';
 import { PatientPortalApp } from './components/portal/PortalApp.tsx';
@@ -56,7 +56,8 @@ const AppContent: React.FC = () => {
    */
   if (window.location.pathname === '/accept-staff-invitation') return <StaffInvitationAcceptance />;
 
-  if (window.location.pathname === "/accept-facility-admin-invitation") return <FacilityAdminInvitationAcceptance />;
+  if (window.location.pathname === '/accept-facility-admin-invitation')
+    return <FacilityAdminInvitationAcceptance />;
   if (authLoading) {
     return (
       <div className="min-h-screen w-screen bg-canvas flex items-center justify-center">
@@ -68,9 +69,7 @@ const AppContent: React.FC = () => {
           <div className="text-center">
             <h1 className="font-display text-xl text-ink">JaliCare HMIS</h1>
 
-            <p className="text-sm text-slate-500 mt-1">
-              Verifying your secure session...
-            </p>
+            <p className="text-sm text-slate-500 mt-1">Verifying your secure session...</p>
           </div>
         </div>
       </div>
@@ -96,11 +95,20 @@ const AppContent: React.FC = () => {
    */
   const renderModule = () => {
     switch (activeModule) {
-      case 'platform_administration': return (authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes("SUPER_ADMIN")) ? <PlatformAdministrationModule /> : <DashboardModule />;
+      case 'platform_administration':
+        return authenticatedUser?.isSuperAdmin ||
+          authenticatedUser?.roles?.includes('SUPER_ADMIN') ? (
+          <PlatformAdministrationModule />
+        ) : (
+          <DashboardModule />
+        );
       case 'dashboard':
-        return (authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes("SUPER_ADMIN"))
-          ? <SuperAdminDashboardModule onNavigate={(module) => setActiveModule(module as any)} />
-          : <DashboardModule />;
+        return authenticatedUser?.isSuperAdmin ||
+          authenticatedUser?.roles?.includes('SUPER_ADMIN') ? (
+          <SuperAdminDashboardModule onNavigate={(module) => setActiveModule(module as any)} />
+        ) : (
+          <DashboardModule />
+        );
 
       case 'registration':
         return <PatientRegistrationModule />;
@@ -158,9 +166,12 @@ const AppContent: React.FC = () => {
          * same requests independently — see `requireSuperAdmin` on
          * /api/compliance/dha and /api/integrations/dha/readiness.
          */
-        return authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN')
-          ? <InteroperabilityModule />
-          : <DashboardModule />;
+        return authenticatedUser?.isSuperAdmin ||
+          authenticatedUser?.roles?.includes('SUPER_ADMIN') ? (
+          <InteroperabilityModule />
+        ) : (
+          <DashboardModule />
+        );
 
       case 'configuration':
         return <ConfigurationModule />;
@@ -183,21 +194,17 @@ const AppContent: React.FC = () => {
    */
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas font-sans text-ink antialiased">
-
       {/* Top Header */}
       <Header />
 
       {/* Main Container */}
       <div className="flex flex-1 overflow-hidden">
-
         {/* Navigation Sidebar */}
         <Sidebar />
 
         {/* Viewport Content */}
         <main className="flex-1 overflow-y-auto bg-canvas px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1400px] space-y-5">
-            {renderModule()}
-          </div>
+          <div className="mx-auto w-full max-w-[1400px] space-y-5">{renderModule()}</div>
         </main>
       </div>
 
@@ -250,6 +257,3 @@ export default function App() {
     </HmisProvider>
   );
 }
-
-
-

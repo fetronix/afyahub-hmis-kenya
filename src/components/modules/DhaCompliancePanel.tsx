@@ -28,12 +28,7 @@ import { api } from '../../api/client.ts';
  */
 
 type Status =
-  | 'VERIFIED'
-  | 'IMPLEMENTED_UNTESTED'
-  | 'PARTIAL'
-  | 'MISSING'
-  | 'BLOCKED'
-  | 'NOT_APPLICABLE';
+  'VERIFIED' | 'IMPLEMENTED_UNTESTED' | 'PARTIAL' | 'MISSING' | 'BLOCKED' | 'NOT_APPLICABLE';
 
 interface Requirement {
   id: string;
@@ -126,11 +121,7 @@ export const DhaCompliancePanel: React.FC = () => {
       const result = await api.getDhaCompliance();
       setReport(result as Report);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'The self-assessment could not be read.',
-      );
+      setError(err instanceof Error ? err.message : 'The self-assessment could not be read.');
     } finally {
       setLoading(false);
     }
@@ -201,8 +192,8 @@ export const DhaCompliancePanel: React.FC = () => {
             <span className="text-sm text-muted"> / {report.totalRequirements}</span>
           </p>
           <p className="mt-1 text-2xs text-muted">
-            Missing {report.counts.MISSING ?? 0} · blocked{' '}
-            {report.counts.BLOCKED ?? 0} · partial {report.counts.PARTIAL ?? 0}
+            Missing {report.counts.MISSING ?? 0} · blocked {report.counts.BLOCKED ?? 0} · partial{' '}
+            {report.counts.PARTIAL ?? 0}
           </p>
         </div>
 
@@ -221,9 +212,7 @@ export const DhaCompliancePanel: React.FC = () => {
               </>
             )}
           </p>
-          <p className="mt-1 text-2xs text-muted">
-            Not certified. Only DHA can certify.
-          </p>
+          <p className="mt-1 text-2xs text-muted">Not certified. Only DHA can certify.</p>
         </div>
       </div>
 
@@ -239,8 +228,8 @@ export const DhaCompliancePanel: React.FC = () => {
           <ul className="mt-2 space-y-1.5">
             {report.criticalGaps.map((gap) => (
               <li key={gap.id} className="text-2xs text-rose-900">
-                <span className="font-mono font-semibold">{gap.id}</span>{' '}
-                {gap.title} — {gap.status.toLowerCase()}
+                <span className="font-mono font-semibold">{gap.id}</span> {gap.title} —{' '}
+                {gap.status.toLowerCase()}
                 {gap.dependency ? (
                   <span className="block text-rose-700">{gap.dependency}</span>
                 ) : null}
@@ -253,18 +242,14 @@ export const DhaCompliancePanel: React.FC = () => {
       {/* Category working */}
       <div className="divide-y divide-hair">
         {report.categories.map((category) => {
-          const items = report.requirements.filter(
-            (item) => item.category === category.category,
-          );
+          const items = report.requirements.filter((item) => item.category === category.category);
           const open = openCategory === category.category;
 
           return (
             <div key={category.category}>
               <button
                 type="button"
-                onClick={() =>
-                  setOpenCategory(open ? null : category.category)
-                }
+                onClick={() => setOpenCategory(open ? null : category.category)}
                 aria-expanded={open}
                 className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition-colors hover:bg-brand-50/40"
               >
@@ -274,9 +259,7 @@ export const DhaCompliancePanel: React.FC = () => {
                   ) : (
                     <ChevronRight className="h-3.5 w-3.5 text-muted" />
                   )}
-                  <span className="text-xs font-semibold text-ink">
-                    {category.label}
-                  </span>
+                  <span className="text-xs font-semibold text-ink">{category.label}</span>
                   <span className="chip font-mono">
                     weight {Math.round(category.weight * 100)}%
                   </span>
@@ -286,9 +269,7 @@ export const DhaCompliancePanel: React.FC = () => {
                   <span className="text-muted">
                     {category.verified}/{category.assessed} verified
                   </span>
-                  <span className="font-mono text-sm font-bold text-ink">
-                    {category.score}%
-                  </span>
+                  <span className="font-mono text-sm font-bold text-ink">{category.score}%</span>
                 </span>
               </button>
 
@@ -310,9 +291,7 @@ export const DhaCompliancePanel: React.FC = () => {
                           <td className="font-mono text-2xs text-muted">{item.id}</td>
                           <td>
                             <span className="font-semibold text-ink">{item.title}</span>
-                            <span className="mt-0.5 block text-2xs text-muted">
-                              {item.module}
-                            </span>
+                            <span className="mt-0.5 block text-2xs text-muted">{item.module}</span>
                             {item.note && (
                               <span className="mt-0.5 block text-2xs text-amber-800">
                                 {item.note}
@@ -329,9 +308,7 @@ export const DhaCompliancePanel: React.FC = () => {
                           <td className={`text-2xs ${SEVERITY_STYLE[item.severity] ?? ''}`}>
                             {item.severity}
                           </td>
-                          <td className="max-w-md text-2xs text-muted">
-                            {item.evidence}
-                          </td>
+                          <td className="max-w-md text-2xs text-muted">{item.evidence}</td>
                         </tr>
                       ))}
                     </tbody>

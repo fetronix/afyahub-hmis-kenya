@@ -46,8 +46,7 @@ export class ImmunisationDomainError extends Error {
 
 function pgErrorCode(error: unknown): string | undefined {
   return (
-    (error as { code?: string })?.code ??
-    (error as { cause?: { code?: string } })?.cause?.code
+    (error as { code?: string })?.code ?? (error as { cause?: { code?: string } })?.cause?.code
   );
 }
 
@@ -57,18 +56,11 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function patientInScope(
-  context: AuthorizationContext,
-  patientId: unknown,
-) {
+async function patientInScope(context: AuthorizationContext, patientId: unknown) {
   const parsed = Number(patientId);
 
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new ImmunisationDomainError(
-      'PATIENT_REQUIRED',
-      'A valid patientId is required.',
-      400,
-    );
+    throw new ImmunisationDomainError('PATIENT_REQUIRED', 'A valid patientId is required.', 400);
   }
 
   const [patient] = await db
@@ -87,11 +79,7 @@ async function patientInScope(
     .limit(1);
 
   if (!patient || patient.tenantId !== context.tenantId) {
-    throw new ImmunisationDomainError(
-      'NOT_FOUND',
-      'The patient was not found.',
-      404,
-    );
+    throw new ImmunisationDomainError('NOT_FOUND', 'The patient was not found.', 404);
   }
 
   return patient;
@@ -212,10 +200,7 @@ export async function recordImmunisation(
   }
 }
 
-export async function listImmunisationRecords(
-  context: AuthorizationContext,
-  patientId: number,
-) {
+export async function listImmunisationRecords(context: AuthorizationContext, patientId: number) {
   const patient = await patientInScope(context, patientId);
 
   return db
@@ -229,10 +214,7 @@ export async function listImmunisationRecords(
  * The child's card: what was given, and what the schedule says is
  * outstanding as of today.
  */
-export async function immunisationCard(
-  context: AuthorizationContext,
-  patientId: number,
-) {
+export async function immunisationCard(context: AuthorizationContext, patientId: number) {
   const patient = await patientInScope(context, patientId);
 
   const records = await db
@@ -241,9 +223,7 @@ export async function immunisationCard(
     .where(eq(schema.immunisationRecords.patientId, patient.id))
     .orderBy(desc(schema.immunisationRecords.administeredOn));
 
-  const dateOfBirth = patient.dateOfBirth
-    ? String(patient.dateOfBirth).slice(0, 10)
-    : null;
+  const dateOfBirth = patient.dateOfBirth ? String(patient.dateOfBirth).slice(0, 10) : null;
 
   if (!dateOfBirth) {
     return {
@@ -252,8 +232,7 @@ export async function immunisationCard(
       records,
       statuses: [],
       outstanding: [],
-      note:
-        'This child has no date of birth recorded, so due dates cannot be calculated. Record the date of birth first.',
+      note: 'This child has no date of birth recorded, so due dates cannot be calculated. Record the date of birth first.',
     };
   }
 
@@ -283,13 +262,8 @@ export async function immunisationCard(
  * here, capped at 300, rather than every patient in the tenant. A clinic
  * list that takes ten seconds to load is a list nobody opens.
  */
-export async function immunisationDueList(
-  context: AuthorizationContext,
-  facilityId?: number,
-) {
-  const scopedFacilityId = facilityId
-    ? Number(facilityId)
-    : context.facilityId;
+export async function immunisationDueList(context: AuthorizationContext, facilityId?: number) {
+  const scopedFacilityId = facilityId ? Number(facilityId) : context.facilityId;
 
   if (!scopedFacilityId) {
     throw new ImmunisationDomainError(
@@ -299,17 +273,10 @@ export async function immunisationDueList(
     );
   }
 
-  const facility = await getFacilityByIdScoped(
-    context,
-    scopedFacilityId,
-  ).catch(() => null);
+  const facility = await getFacilityByIdScoped(context, scopedFacilityId).catch(() => null);
 
   if (!facility) {
-    throw new ImmunisationDomainError(
-      'NOT_FOUND',
-      'The facility was not found.',
-      404,
-    );
+    throw new ImmunisationDomainError('NOT_FOUND', 'The facility was not found.', 404);
   }
 
   const cutoff = new Date();
@@ -352,10 +319,7 @@ export async function immunisationDueList(
       ),
     );
 
-  const byPatient = new Map<
-    number,
-    Array<{ antigenCode: string; administeredOn: string }>
-  >();
+  const byPatient = new Map<number, Array<{ antigenCode: string; administeredOn: string }>>();
 
   for (const record of records) {
     const list = byPatient.get(record.patientId) ?? [];
@@ -370,11 +334,7 @@ export async function immunisationDueList(
     .map((child) => {
       const dateOfBirth = String(child.dateOfBirth).slice(0, 10);
 
-      const statuses = immunisationStatus(
-        dateOfBirth,
-        today(),
-        byPatient.get(child.id) ?? [],
-      );
+      const statuses = immunisationStatus(dateOfBirth, today(), byPatient.get(child.id) ?? []);
 
       const outstanding = outstandingDoses(statuses);
 
@@ -394,11 +354,7 @@ export async function immunisationDueList(
       };
     })
     .filter((child) => child.outstandingCount > 0)
-    .sort(
-      (a, b) =>
-        b.overdueCount - a.overdueCount ||
-        a.dateOfBirth.localeCompare(b.dateOfBirth),
-    );
+    .sort((a, b) => b.overdueCount - a.overdueCount || a.dateOfBirth.localeCompare(b.dateOfBirth));
 
   return { asOf: today(), children: rows, note: SCHEDULE_AGREES_NOTE };
 }

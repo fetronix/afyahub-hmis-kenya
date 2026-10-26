@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import {
-  InsuranceClaim,
-  Patient,
-  BillingInvoice,
-  ClaimableLine,
-} from '../../types/index.ts';
+import { InsuranceClaim, Patient, BillingInvoice, ClaimableLine } from '../../types/index.ts';
 import {
   FileCheck2,
   CheckCircle2,
@@ -288,8 +283,8 @@ export const InsuranceClaimsModule: React.FC = () => {
             Payer Claims — SHA and Private Insurers
           </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Draft a claim from invoice lines, record the payer&apos;s decision, and post the approved
-            amount back to the invoice.
+            Draft a claim from invoice lines, record the payer&apos;s decision, and post the
+            approved amount back to the invoice.
           </p>
         </div>
 
@@ -311,10 +306,10 @@ export const InsuranceClaimsModule: React.FC = () => {
         <div className="space-y-1">
           <div className="font-semibold">No live SHA connection</div>
           <p className="text-blue-800">
-            This system does not transmit claims to SHA or any payer, and does not verify membership.
-            Draft the claim here, submit it through the payer&apos;s own portal or portal upload, then
-            record the decision below. Settling a claim posts the approved money against the invoice
-            so the patient&apos;s balance is correct.
+            This system does not transmit claims to SHA or any payer, and does not verify
+            membership. Draft the claim here, submit it through the payer&apos;s own portal or
+            portal upload, then record the decision below. Settling a claim posts the approved money
+            against the invoice so the patient&apos;s balance is correct.
           </p>
         </div>
       </div>
@@ -345,7 +340,9 @@ export const InsuranceClaimsModule: React.FC = () => {
           <span className="text-2xs uppercase text-amber-700 font-semibold tracking-wider">
             Awaiting adjudication
           </span>
-          <div className="text-2xl font-bold font-mono text-amber-700 mt-1">{awaitingAdjudication}</div>
+          <div className="text-2xl font-bold font-mono text-amber-700 mt-1">
+            {awaitingAdjudication}
+          </div>
           <div className="text-2xs text-slate-500 mt-1">Submitted, no decision recorded yet</div>
         </div>
       </div>
@@ -505,8 +502,11 @@ export const InsuranceClaimsModule: React.FC = () => {
 
                       return (
                         <option key={inv.id} value={inv.id}>
-                          {inv.invoiceNumber} — {patient ? `${patient.firstName} ${patient.lastName}` : `Patient #${inv.patientId}`} · KES{' '}
-                          {Number(inv.balanceAmount).toLocaleString()} due
+                          {inv.invoiceNumber} —{' '}
+                          {patient
+                            ? `${patient.firstName} ${patient.lastName}`
+                            : `Patient #${inv.patientId}`}{' '}
+                          · KES {Number(inv.balanceAmount).toLocaleString()} due
                         </option>
                       );
                     })}
@@ -573,9 +573,9 @@ export const InsuranceClaimsModule: React.FC = () => {
                   </div>
                   {balanceCents < selectedCents && (
                     <p className="text-2xs text-amber-800">
-                      The selected charges total KES {(selectedCents / 100).toLocaleString()}, but only
-                      KES {(balanceCents / 100).toLocaleString()} is still outstanding. The claim is
-                      capped at what the patient owes.
+                      The selected charges total KES {(selectedCents / 100).toLocaleString()}, but
+                      only KES {(balanceCents / 100).toLocaleString()} is still outstanding. The
+                      claim is capped at what the patient owes.
                     </p>
                   )}
                 </div>
@@ -598,7 +598,9 @@ export const InsuranceClaimsModule: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Policy / member number</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Policy / member number
+                  </label>
                   <input
                     type="text"
                     value={claimForm.policyNumber}
@@ -612,7 +614,9 @@ export const InsuranceClaimsModule: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Pre-authorisation code</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Pre-authorisation code
+                  </label>
                   <input
                     type="text"
                     value={claimForm.preAuthCode}

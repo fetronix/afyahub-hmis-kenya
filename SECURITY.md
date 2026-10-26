@@ -81,7 +81,7 @@ is documented, with the purge procedure and the outstanding owner actions, in
 [`docs/security/DATA-EXPOSURE.md`](docs/security/DATA-EXPOSURE.md).
 
 Anyone cloning this repository should be aware of it. It is not a reason to
-report a *new* vulnerability — it is a known issue awaiting an action only
+report a _new_ vulnerability — it is a known issue awaiting an action only
 the owner can authorise.
 
 ---

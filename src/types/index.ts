@@ -550,7 +550,7 @@ export interface BillingChargeAttempt {
   reason: string;
   detail: string | null;
   codesTried: string[];
-  status: "PENDING" | "BILLED" | "DUPLICATE" | "VOID";
+  status: 'PENDING' | 'BILLED' | 'DUPLICATE' | 'VOID';
   attempts: number;
   lastAttemptAt: string;
   resolvedItemId: number | null;
@@ -569,7 +569,7 @@ export interface BillingChargeAttemptList {
 
 export interface BillingChargeAttemptOutcome {
   attemptId: number;
-  status: "BILLED" | "DUPLICATE" | "PENDING";
+  status: 'BILLED' | 'DUPLICATE' | 'PENDING';
   result: {
     charged: boolean;
     reason?: string;
@@ -578,7 +578,7 @@ export interface BillingChargeAttemptOutcome {
     tariffCode?: string;
     unitPrice?: number;
     unit?: string | null;
-    matchRule?: "LINK" | "CODE" | "CATALOGUE";
+    matchRule?: 'LINK' | 'CODE' | 'CATALOGUE';
     matchExplanation?: string;
     codesTried?: string[];
   };
@@ -600,13 +600,13 @@ export interface TariffMatchRow {
   billingKey: string | null;
   isActive: boolean;
   verdict:
-    | "MATCHED_LINK"
-    | "MATCHED_CODE"
-    | "MATCHED_DESCRIPTION"
-    | "INACTIVE"
-    | "WRONG_DEPARTMENT"
-    | "DESCRIPTION_ALSO_MATCHES"
-    | "NO_MATCH";
+    | 'MATCHED_LINK'
+    | 'MATCHED_CODE'
+    | 'MATCHED_DESCRIPTION'
+    | 'INACTIVE'
+    | 'WRONG_DEPARTMENT'
+    | 'DESCRIPTION_ALSO_MATCHES'
+    | 'NO_MATCH';
   note: string;
 }
 
@@ -622,10 +622,10 @@ export interface TariffMatchExplanation {
     description: string;
     fee: string;
     unit: string;
-    rule: "LINK" | "CODE" | "CATALOGUE";
+    rule: 'LINK' | 'CODE' | 'CATALOGUE';
   } | null;
   outcome: {
-    rule: "LINK" | "CODE" | "CATALOGUE" | null;
+    rule: 'LINK' | 'CODE' | 'CATALOGUE' | null;
     ambiguity?: { phrase: string; codes: string[] };
   };
 }
@@ -671,7 +671,7 @@ export interface LabServiceDiagnostic {
     description: string;
     fee: string;
     unit: string;
-    rule: "LINK" | "FAMILY_LINK" | "ALIAS" | "CODE" | "CATALOGUE";
+    rule: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE';
   } | null;
   failure: {
     code: string;

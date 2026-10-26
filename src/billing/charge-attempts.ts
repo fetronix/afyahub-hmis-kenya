@@ -22,11 +22,7 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import * as schema from '../db/schema.ts';
-import {
-  chargeForService,
-  type ChargeRequest,
-  type ChargeResult,
-} from './billing.service.ts';
+import { chargeForService, type ChargeRequest, type ChargeResult } from './billing.service.ts';
 
 /** Anything that can run a query: the pool, a transaction, a test double. */
 type Executor = any;
@@ -94,8 +90,7 @@ export async function recordChargeAttempt(
     tenantId: request.tenantId,
     facilityId: request.facilityId,
     patientId: request.patientId,
-    encounterId:
-      typeof request.encounterId === 'number' ? request.encounterId : null,
+    encounterId: typeof request.encounterId === 'number' ? request.encounterId : null,
     sourceType: request.sourceType,
     sourceId: request.sourceId,
     itemType: request.itemType,
@@ -108,9 +103,7 @@ export async function recordChargeAttempt(
     aliases: [...(request.aliases ?? [])],
     quantity,
     fallbackUnitPrice:
-      request.fallbackUnitPrice === undefined
-        ? null
-        : String(request.fallbackUnitPrice),
+      request.fallbackUnitPrice === undefined ? null : String(request.fallbackUnitPrice),
     reason: result.reason,
     detail: result.message ?? null,
     codesTried: [...(result.codesTried ?? request.codes ?? [])],
@@ -127,9 +120,7 @@ export async function recordChargeAttempt(
    * kind of bed, or not at all.
    */
   const suffix =
-    supportsBedNightIdentity && request.idempotencySuffix
-      ? request.idempotencySuffix
-      : null;
+    supportsBedNightIdentity && request.idempotencySuffix ? request.idempotencySuffix : null;
 
   const nightIdentity = supportsBedNightIdentity
     ? {
@@ -227,10 +218,7 @@ export async function recordChargeAttempt(
      * without the bed-night columns, so the queue keeps working while
      * the administrator applies the migration.
      */
-    if (
-      (error as { code?: unknown })?.code === '42703' &&
-      supportsBedNightIdentity
-    ) {
+    if ((error as { code?: unknown })?.code === '42703' && supportsBedNightIdentity) {
       supportsBedNightIdentity = false;
 
       console.warn(
@@ -419,10 +407,7 @@ export async function countPendingChargeAttempts(
  * the clinical event, so the retry produces the same idempotency key as
  * the original attempt.
  */
-export function toChargeRequest(
-  row: ChargeAttemptRow,
-  tenantId: number,
-): ChargeRequest {
+export function toChargeRequest(row: ChargeAttemptRow, tenantId: number): ChargeRequest {
   return {
     tenantId,
     facilityId: row.facilityId,
@@ -442,9 +427,7 @@ export function toChargeRequest(
     itemType: row.itemType,
     description: row.description ?? undefined,
     quantity: row.quantity,
-    ...(row.fallbackUnitPrice === null
-      ? {}
-      : { fallbackUnitPrice: row.fallbackUnitPrice }),
+    ...(row.fallbackUnitPrice === null ? {} : { fallbackUnitPrice: row.fallbackUnitPrice }),
   };
 }
 
@@ -631,8 +614,7 @@ export async function retryChargeAttempt(
             resolvedItemId: result.itemId ?? null,
             resolvedInvoiceId: result.invoiceId ?? null,
             resolvedTariffCode: result.tariffCode ?? null,
-            resolvedUnitPrice:
-              result.unitPrice === undefined ? null : String(result.unitPrice),
+            resolvedUnitPrice: result.unitPrice === undefined ? null : String(result.unitPrice),
             resolvedAt: new Date(),
           }
         : {}),

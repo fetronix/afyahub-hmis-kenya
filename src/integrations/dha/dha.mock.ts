@@ -40,10 +40,7 @@ export function isMockableOperation(operation: string): boolean {
   return MOCKABLE.has(operation);
 }
 
-function firstValue(
-  source: Record<string, unknown> | undefined,
-  key: string,
-): string | null {
+function firstValue(source: Record<string, unknown> | undefined, key: string): string | null {
   const value = source?.[key];
 
   return typeof value === 'string' && value.trim() ? value.trim() : null;

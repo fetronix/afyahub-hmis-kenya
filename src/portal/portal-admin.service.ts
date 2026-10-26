@@ -64,10 +64,7 @@ export async function getPortalOverviewStats(context: AuthorizationContext) {
     eq(schema.patients.registrationFacilityId, facilityId),
   );
 
-  const [eligible] = await db
-    .select({ value: count() })
-    .from(schema.patients)
-    .where(eligibleWhere);
+  const [eligible] = await db.select({ value: count() }).from(schema.patients).where(eligibleWhere);
 
   const [accountsTotal] = await db
     .select({ value: count() })
@@ -203,10 +200,7 @@ export async function getPortalOverviewStats(context: AuthorizationContext) {
           and(
             eq(schema.auditLogs.tenantId, tenantId),
             eq(schema.auditLogs.facilityId, facilityId),
-            inArray(schema.auditLogs.resource, [
-              'PatientPortalAccount',
-              'PatientPortalInvitation',
-            ]),
+            inArray(schema.auditLogs.resource, ['PatientPortalAccount', 'PatientPortalInvitation']),
           ),
         )
         .orderBy(desc(schema.auditLogs.timestamp))
@@ -237,7 +231,7 @@ export async function getPortalOverviewStats(context: AuthorizationContext) {
      * The numbers above come from this database. Nothing is compared
      * against a benchmark, because there is no benchmark to compare to.
      */
-    note: 'Every figure on this page is counted from this facility\'s records.',
+    note: "Every figure on this page is counted from this facility's records.",
   };
 }
 
@@ -306,10 +300,7 @@ export async function searchPortalAccounts(
       registrationFacilityId: schema.patients.registrationFacilityId,
     })
     .from(schema.patientPortalAccounts)
-    .innerJoin(
-      schema.patients,
-      eq(schema.patientPortalAccounts.patientId, schema.patients.id),
-    )
+    .innerJoin(schema.patients, eq(schema.patientPortalAccounts.patientId, schema.patients.id))
     .where(and(...conditions))
     .orderBy(desc(schema.patientPortalAccounts.createdAt))
     .limit(limit);
@@ -329,10 +320,7 @@ export async function searchPortalAccounts(
    Account lifecycle
    ============================================================ */
 
-async function loadAccountForAdmin(
-  context: AuthorizationContext,
-  rawAccountId: unknown,
-) {
+async function loadAccountForAdmin(context: AuthorizationContext, rawAccountId: unknown) {
   const { tenantId, facilityId } = await adminScope(context);
   const accountId = Number(rawAccountId);
 
@@ -348,10 +336,7 @@ async function loadAccountForAdmin(
       lastName: schema.patients.lastName,
     })
     .from(schema.patientPortalAccounts)
-    .innerJoin(
-      schema.patients,
-      eq(schema.patientPortalAccounts.patientId, schema.patients.id),
-    )
+    .innerJoin(schema.patients, eq(schema.patientPortalAccounts.patientId, schema.patients.id))
     .where(
       and(
         eq(schema.patientPortalAccounts.id, accountId),
@@ -368,10 +353,7 @@ async function loadAccountForAdmin(
   return row;
 }
 
-export async function getPortalAccountDetail(
-  context: AuthorizationContext,
-  rawAccountId: unknown,
-) {
+export async function getPortalAccountDetail(context: AuthorizationContext, rawAccountId: unknown) {
   const { account, mrn, firstName, lastName } = await loadAccountForAdmin(context, rawAccountId);
 
   const invitations = await db
@@ -459,9 +441,7 @@ export async function suspendPortalAccount(
   const { account } = await loadAccountForAdmin(context, rawAccountId);
 
   const note =
-    typeof reason === 'string' && reason.trim() !== ''
-      ? reason.trim().slice(0, 500)
-      : '';
+    typeof reason === 'string' && reason.trim() !== '' ? reason.trim().slice(0, 500) : '';
 
   if (note === '') {
     throw new PortalError(
@@ -520,9 +500,7 @@ export async function reactivatePortalAccount(
   const { account } = await loadAccountForAdmin(context, rawAccountId);
 
   const note =
-    typeof reason === 'string' && reason.trim() !== ''
-      ? reason.trim().slice(0, 500)
-      : '';
+    typeof reason === 'string' && reason.trim() !== '' ? reason.trim().slice(0, 500) : '';
 
   if (note === '') {
     throw new PortalError(
@@ -541,11 +519,7 @@ export async function reactivatePortalAccount(
   }
 
   if (account.status !== 'SUSPENDED' && account.status !== 'PENDING_VERIFICATION') {
-    throw new PortalError(
-      'This account is already active.',
-      409,
-      'ACCOUNT_ALREADY_ACTIVE',
-    );
+    throw new PortalError('This account is already active.', 409, 'ACCOUNT_ALREADY_ACTIVE');
   }
 
   await db
@@ -591,9 +565,7 @@ export async function revokePortalAccount(
   const { account } = await loadAccountForAdmin(context, rawAccountId);
 
   const note =
-    typeof reason === 'string' && reason.trim() !== ''
-      ? reason.trim().slice(0, 500)
-      : '';
+    typeof reason === 'string' && reason.trim() !== '' ? reason.trim().slice(0, 500) : '';
 
   if (note === '') {
     throw new PortalError('Record why access is being withdrawn.', 400, 'REASON_REQUIRED');
@@ -748,11 +720,9 @@ export async function listPortalAuditTrail(
   const rawLimit = Number(options.limit);
   const rawOffset = Number(options.offset);
 
-  const limit =
-    Number.isSafeInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+  const limit = Number.isSafeInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
 
-  const offset =
-    Number.isSafeInteger(rawOffset) && rawOffset > 0 ? Math.min(rawOffset, 100000) : 0;
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset > 0 ? Math.min(rawOffset, 100000) : 0;
 
   const rows = await db
     .select({
@@ -876,7 +846,10 @@ export async function findPortalAccountRisks(context: AuthorizationContext) {
 
   return {
     sharedIdentifiers: duplicates.map((row) => ({
-      masked: maskContact(row.loginIdentifier, row.loginIdentifier.includes('@') ? 'EMAIL' : 'PHONE'),
+      masked: maskContact(
+        row.loginIdentifier,
+        row.loginIdentifier.includes('@') ? 'EMAIL' : 'PHONE',
+      ),
       accounts: Number(row.accountCount),
     })),
     pendingVerification: orphaned,

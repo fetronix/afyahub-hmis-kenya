@@ -17,10 +17,8 @@
 const ADMINISTRATOR_ROLE_PATTERN =
   /(SUPER[_ -]?ADMIN|PLATFORM[_ -]?ADMIN|FACILITY[_ -]?ADMIN|TENANT[_ -]?ADMIN)/i;
 
-export function isAdministratorRoleName(
-  name: string | null | undefined,
-): boolean {
-  return typeof name === "string" && ADMINISTRATOR_ROLE_PATTERN.test(name);
+export function isAdministratorRoleName(name: string | null | undefined): boolean {
+  return typeof name === 'string' && ADMINISTRATOR_ROLE_PATTERN.test(name);
 }
 
 /**
@@ -29,35 +27,36 @@ export function isAdministratorRoleName(
  * for facility administrators.
  */
 export const RESTRICTED_PERMISSION_PREFIXES = [
-  "platform.",
-  "tenants.",
-  "subscriptions.",
-  "security.",
-  "rbac.",
-  "permissions.",
-  "users.roles.",
+  'platform.',
+  'tenants.',
+  'subscriptions.',
+  'security.',
+  'rbac.',
+  'permissions.',
+  'users.roles.',
 ] as const;
 
 export const RESTRICTED_PERMISSION_MODULES = [
-  "platform",
-  "tenants",
-  "subscriptions",
-  "security",
-  "rbac",
+  'platform',
+  'tenants',
+  'subscriptions',
+  'security',
+  'rbac',
 ] as const;
 
 export const RESTRICTED_PERMISSION_CODES = [
-  "roles.manage",
-  "roles.create",
-  "roles.update",
-  "roles.delete",
+  'roles.manage',
+  'roles.create',
+  'roles.update',
+  'roles.delete',
 ] as const;
 
-export function isRestrictedRolePermission(
-  permission: { code: string; module?: string | null },
-): boolean {
+export function isRestrictedRolePermission(permission: {
+  code: string;
+  module?: string | null;
+}): boolean {
   const code = permission.code.trim().toLowerCase();
-  const module = (permission.module ?? "").trim().toLowerCase();
+  const module = (permission.module ?? '').trim().toLowerCase();
 
   return (
     (RESTRICTED_PERMISSION_MODULES as readonly string[]).includes(module) ||
@@ -92,28 +91,28 @@ export const MAX_ROLES_PER_STAFF_MEMBER = 20;
  */
 
 export const DELEGABLE_PERMISSION_MODULES = [
-  "patients",
-  "appointments",
-  "clinical",
-  "inpatient",
-  "maternity",
-  "laboratory",
-  "pharmacy",
-  "inventory",
-  "procurement",
-  "billing",
-  "insurance",
-  "reports",
-  "public_health",
-  "interop",
-  "practitioners",
+  'patients',
+  'appointments',
+  'clinical',
+  'inpatient',
+  'maternity',
+  'laboratory',
+  'pharmacy',
+  'inventory',
+  'procurement',
+  'billing',
+  'insurance',
+  'reports',
+  'public_health',
+  'interop',
+  'practitioners',
   /*
    * Issuing a portal invitation is front-desk work, so a facility may
    * give it to a custom role. Everything else in the portal module —
    * accounts, audit, settings and revoking invitations — stays with the
    * administrator through the protected prefixes below.
    */
-  "portal",
+  'portal',
 ] as const;
 
 /**
@@ -123,22 +122,22 @@ export const DELEGABLE_PERMISSION_MODULES = [
  * one answers "may a facility hand this task to a staff role at all?".
  */
 export const PROTECTED_PERMISSION_PREFIXES = [
-  "users.",
-  "roles.",
-  "audit.",
-  "facilities.",
-  "system.",
-  "auth.",
-  "platform.",
-  "tenants.",
-  "subscriptions.",
-  "security.",
-  "rbac.",
-  "permissions.",
-  "portal.accounts.",
-  "portal.audit.",
-  "portal.invites.",
-  "portal.settings.",
+  'users.',
+  'roles.',
+  'audit.',
+  'facilities.',
+  'system.',
+  'auth.',
+  'platform.',
+  'tenants.',
+  'subscriptions.',
+  'security.',
+  'rbac.',
+  'permissions.',
+  'portal.accounts.',
+  'portal.audit.',
+  'portal.invites.',
+  'portal.settings.',
 ] as const;
 
 export function isDelegablePermission(permission: {
@@ -146,15 +145,13 @@ export function isDelegablePermission(permission: {
   module?: string | null;
 }): boolean {
   const code = permission.code.trim().toLowerCase();
-  const module = (permission.module ?? "").trim().toLowerCase();
+  const module = (permission.module ?? '').trim().toLowerCase();
 
   if (!code) return false;
 
   if (isRestrictedRolePermission({ code, module })) return false;
 
-  if (
-    PROTECTED_PERMISSION_PREFIXES.some((prefix) => code.startsWith(prefix))
-  ) {
+  if (PROTECTED_PERMISSION_PREFIXES.some((prefix) => code.startsWith(prefix))) {
     return false;
   }
 

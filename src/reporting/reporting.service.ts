@@ -19,13 +19,7 @@ import * as schema from '../db/schema.ts';
 import { getAdmissionsScoped, getWardsScoped } from '../db/queries.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 
-import {
-  daysBetween,
-  mean,
-  median,
-  parseLooseDate,
-  roundDays,
-} from '../utils/dates.ts';
+import { daysBetween, mean, median, parseLooseDate, roundDays } from '../utils/dates.ts';
 
 import {
   bucketStays,
@@ -140,9 +134,7 @@ export async function getOperationsReportScoped(
 
   const facilityId = wards[0]?.facilityId ?? admissions[0]?.facilityId ?? 0;
 
-  const activeAdmissions = admissions.filter(
-    (admission) => admission.status === 'Admitted',
-  );
+  const activeAdmissions = admissions.filter((admission) => admission.status === 'Admitted');
 
   /* Bed counts per ward. getBedsScoped already filters by tenant scope. */
   const bedsByWard = new Map<number, typeof beds>();
@@ -194,9 +186,7 @@ export async function getOperationsReportScoped(
    * patients actually stay" figure. Discharges are spread across text
    * dates, so the window is applied after parsing.
    */
-  const windowStart = new Date(
-    now.getTime() - DISCHARGED_WINDOW_DAYS * 86_400_000,
-  );
+  const windowStart = new Date(now.getTime() - DISCHARGED_WINDOW_DAYS * 86_400_000);
 
   const dischargedDays: number[] = [];
 
@@ -228,15 +218,9 @@ export async function getOperationsReportScoped(
     .map((ward) => {
       const wardBeds = bedsByWard.get(ward.id) ?? [];
 
-      const occupiedBeds = wardBeds.filter(
-        (bed) => bed.status === 'Occupied',
-      ).length;
-      const availableBeds = wardBeds.filter(
-        (bed) => bed.status === 'Available',
-      ).length;
-      const cleaningBeds = wardBeds.filter(
-        (bed) => bed.status === 'Cleaning',
-      ).length;
+      const occupiedBeds = wardBeds.filter((bed) => bed.status === 'Occupied').length;
+      const availableBeds = wardBeds.filter((bed) => bed.status === 'Available').length;
+      const cleaningBeds = wardBeds.filter((bed) => bed.status === 'Cleaning').length;
 
       const stays = activeByWard.get(ward.id) ?? [];
       const average = mean(stays);
@@ -249,8 +233,7 @@ export async function getOperationsReportScoped(
         occupiedBeds,
         availableBeds,
         cleaningBeds,
-        outOfServiceBeds:
-          wardBeds.length - occupiedBeds - availableBeds - cleaningBeds,
+        outOfServiceBeds: wardBeds.length - occupiedBeds - availableBeds - cleaningBeds,
         occupancyRate: occupancyPercent(occupiedBeds, wardBeds.length),
         activeAdmissions: stays.length,
         averageStayDays: average === null ? null : roundDays(average),
@@ -263,9 +246,7 @@ export async function getOperationsReportScoped(
   const cleaningBeds = beds.filter((bed) => bed.status === 'Cleaning').length;
 
   /* Patient names for the longest-stay list only — one query, no N+1. */
-  const longest = [...activeStays]
-    .sort((a, b) => b.days - a.days)
-    .slice(0, LONGEST_STAY_LIMIT);
+  const longest = [...activeStays].sort((a, b) => b.days - a.days).slice(0, LONGEST_STAY_LIMIT);
 
   const patientIds = [...new Set(longest.map((stay) => stay.admission.patientId))];
 
@@ -296,8 +277,7 @@ export async function getOperationsReportScoped(
     admissionId: stay.admission.id,
     patientId: stay.admission.patientId,
     patientName:
-      patientById.get(stay.admission.patientId) ??
-      `Patient #${stay.admission.patientId}`,
+      patientById.get(stay.admission.patientId) ?? `Patient #${stay.admission.patientId}`,
     wardName: wardNameById.get(stay.admission.wardId) ?? 'Ward',
     bedNumber: bedNumberById.get(stay.admission.bedId) ?? null,
     admissionDate: stay.admission.admissionDate,
@@ -313,8 +293,7 @@ export async function getOperationsReportScoped(
       occupiedBeds,
       availableBeds,
       cleaningBeds,
-      outOfServiceBeds:
-        beds.length - occupiedBeds - availableBeds - cleaningBeds,
+      outOfServiceBeds: beds.length - occupiedBeds - availableBeds - cleaningBeds,
       occupancyRate: occupancyPercent(occupiedBeds, beds.length),
     },
     wards: wardRows,
@@ -327,13 +306,9 @@ export async function getOperationsReportScoped(
       unparseableCount,
       dischargedInWindow: dischargedDays.length,
       averageDischargedStayDays:
-        dischargedDays.length === 0
-          ? null
-          : roundDays(mean(dischargedDays) as number),
+        dischargedDays.length === 0 ? null : roundDays(mean(dischargedDays) as number),
       medianDischargedStayDays:
-        dischargedDays.length === 0
-          ? null
-          : roundDays(median(dischargedDays) as number),
+        dischargedDays.length === 0 ? null : roundDays(median(dischargedDays) as number),
       dischargedWindowDays: DISCHARGED_WINDOW_DAYS,
       buckets,
     },
@@ -355,9 +330,7 @@ export async function getOccupancyTrendScoped(
   requestedFacilityId?: number | null,
   days = 14,
 ): Promise<Array<{ date: string; occupiedBeds: number }>> {
-  const safeDays = Number.isFinite(days)
-    ? Math.min(Math.max(Math.trunc(days), 1), 90)
-    : 14;
+  const safeDays = Number.isFinite(days) ? Math.min(Math.max(Math.trunc(days), 1), 90) : 14;
 
   const wards = await getWardsScoped(context, requestedFacilityId);
 

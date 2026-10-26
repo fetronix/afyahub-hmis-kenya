@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { api, getSessionToken } from "../../api/client.ts";
-import type { Tenant, Facility } from "../../types/index.ts";
-import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from "lucide-react";
-import { SubscriptionBillingPanel } from "./SubscriptionBillingPanel.tsx";
-import { FacilityRbacEditor } from "./FacilityRbacEditor.tsx";
+import React, { useCallback, useEffect, useState } from 'react';
+import { api, getSessionToken } from '../../api/client.ts';
+import type { Tenant, Facility } from '../../types/index.ts';
+import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from 'lucide-react';
+import { SubscriptionBillingPanel } from './SubscriptionBillingPanel.tsx';
+import { FacilityRbacEditor } from './FacilityRbacEditor.tsx';
+import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
 
-
-type Tab = "tenants" | "facilities" | "administrators" | "billing";
-type InvitationStatus = "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
+type Tab = 'tenants' | 'facilities' | 'administrators' | 'billing';
+type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 
 type FacilityAdminInvitation = {
   id: number;
@@ -28,9 +28,9 @@ type FacilityAdminInvitation = {
 async function getRequest<T>(url: string): Promise<T> {
   const token = getSessionToken();
   const response = await fetch(url, {
-    method: "GET",
+    method: 'GET',
     headers: {
-      Accept: "application/json",
+      Accept: 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
@@ -44,14 +44,14 @@ async function getRequest<T>(url: string): Promise<T> {
 async function request<T>(
   url: string,
   body: unknown,
-  method: "POST" | "PATCH" = "POST",
+  method: 'POST' | 'PATCH' = 'POST',
 ): Promise<T> {
   const token = getSessionToken();
   const response = await fetch(url, {
     method,
     headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
@@ -64,80 +64,97 @@ async function request<T>(
 }
 
 const fieldClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
-const labelClass = "mb-1 block text-xs font-semibold text-slate-700";
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100';
+const labelClass = 'mb-1 block text-xs font-semibold text-slate-700';
 
 const FACILITY_MODULES = [
-  { id: "registration", label: "Patient Registration" },
-  { id: "reception", label: "Reception & Appointments" },
-  { id: "opd", label: "Outpatient Department (OPD)" },
-  { id: "inpatient", label: "Inpatient & Admissions" },
-  { id: "maternity", label: "Maternity & MCH" },
-  { id: "theatre", label: "Theatre" },
-  { id: "specialty", label: "Specialty Clinics" },
-  { id: "laboratory", label: "Laboratory" },
-  { id: "radiology", label: "Radiology" },
-  { id: "pharmacy", label: "Pharmacy" },
-  { id: "inventory", label: "Inventory" },
-  { id: "procurement", label: "Procurement" },
-  { id: "finance", label: "Finance & Billing" },
-  { id: "insurance", label: "Insurance / SHA Claims" },
-  { id: "public_health", label: "Public Health" },
-  { id: "analytics", label: "Analytics & Reports" },
-  { id: "interoperability", label: "Interoperability" },
-  { id: "configuration", label: "Facility Configuration" },
-  { id: "audit", label: "Audit Logs" },
+  { id: 'registration', label: 'Patient Registration' },
+  { id: 'reception', label: 'Reception & Appointments' },
+  { id: 'opd', label: 'Outpatient Department (OPD)' },
+  { id: 'inpatient', label: 'Inpatient & Admissions' },
+  { id: 'maternity', label: 'Maternity & MCH' },
+  { id: 'theatre', label: 'Theatre' },
+  { id: 'specialty', label: 'Specialty Clinics' },
+  { id: 'laboratory', label: 'Laboratory' },
+  { id: 'radiology', label: 'Radiology' },
+  { id: 'pharmacy', label: 'Pharmacy' },
+  { id: 'inventory', label: 'Inventory' },
+  { id: 'procurement', label: 'Procurement' },
+  { id: 'finance', label: 'Finance & Billing' },
+  { id: 'insurance', label: 'Insurance / SHA Claims' },
+  { id: 'public_health', label: 'Public Health' },
+  { id: 'analytics', label: 'Analytics & Reports' },
+  { id: 'interoperability', label: 'Interoperability' },
+  { id: 'configuration', label: 'Facility Configuration' },
+  { id: 'audit', label: 'Audit Logs' },
 ] as const;
 
-const DEFAULT_FACILITY_MODULES = FACILITY_MODULES.map(
-  (module) => module.id,
-);
+const DEFAULT_FACILITY_MODULES = FACILITY_MODULES.map((module) => module.id);
 export const PlatformAdministrationModule: React.FC = () => {
-  const [tab, setTab] = useState<Tab>("tenants");
+  const [tab, setTab] = useState<Tab>('tenants');
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
-  const [tenantId, setTenantId] = useState("");
-  const [facilityId, setFacilityId] = useState("");
-  const [tenantSearch, setTenantSearch] = useState("");
-  const [facilitySearch, setFacilitySearch] = useState("");
+  const [tenantId, setTenantId] = useState('');
+  const [facilityId, setFacilityId] = useState('');
+  const [tenantSearch, setTenantSearch] = useState('');
+  const [facilitySearch, setFacilitySearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [invitationLink, setInvitationLink] = useState("");
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [invitationLink, setInvitationLink] = useState('');
   const [invitations, setInvitations] = useState<FacilityAdminInvitation[]>([]);
   const [loadingInvitations, setLoadingInvitations] = useState(false);
   const [invitationActionId, setInvitationActionId] = useState<number | null>(null);
 
   const [tenantForm, setTenantForm] = useState({
-    name: "", slug: "", contactEmail: "", contactPhone: "",
+    name: '',
+    slug: '',
+    contactEmail: '',
+    contactPhone: '',
   });
   const [facilityForm, setFacilityForm] = useState({
-    code: "", name: "", level: "Level 4", county: "",
-    subCounty: "", mflCode: "", email: "", phone: "", address: "",
+    code: '',
+    name: '',
+    level: 'Level 4',
+    county: '',
+    subCounty: '',
+    mflCode: '',
+    email: '',
+    phone: '',
+    address: '',
   });
 
   const [editFacilityForm, setEditFacilityForm] = useState({
-    code: "", name: "", level: "Level 4", county: "",
-    subCounty: "", mflCode: "", email: "", phone: "", address: "",
+    code: '',
+    name: '',
+    level: 'Level 4',
+    county: '',
+    subCounty: '',
+    mflCode: '',
+    email: '',
+    phone: '',
+    address: '',
   });
-  const [enabledModuleSelection, setEnabledModuleSelection] =
-    useState<string[]>([...DEFAULT_FACILITY_MODULES]);
+  const [enabledModuleSelection, setEnabledModuleSelection] = useState<string[]>([
+    ...DEFAULT_FACILITY_MODULES,
+  ]);
 
   const [adminForm, setAdminForm] = useState({
-    fullName: "", email: "", phone: "",
+    fullName: '',
+    email: '',
+    phone: '',
   });
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setError('');
     try {
       const tenantRows = await api.getTenants();
       setTenants(tenantRows);
-      const selectedTenantId =
-        tenantRows.some((t) => String(t.id) === tenantId)
-          ? tenantId
-          : String(tenantRows[0]?.id ?? "");
+      const selectedTenantId = tenantRows.some((t) => String(t.id) === tenantId)
+        ? tenantId
+        : String(tenantRows[0]?.id ?? '');
       setTenantId(selectedTenantId);
 
       if (selectedTenantId) {
@@ -146,14 +163,14 @@ export const PlatformAdministrationModule: React.FC = () => {
         setFacilityId((current) =>
           facilityRows.some((f) => String(f.id) === current)
             ? current
-            : String(facilityRows[0]?.id ?? "")
+            : String(facilityRows[0]?.id ?? ''),
         );
       } else {
         setFacilities([]);
-        setFacilityId("");
+        setFacilityId('');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load platform records.");
+      setError(err instanceof Error ? err.message : 'Unable to load platform records.');
     } finally {
       setLoading(false);
     }
@@ -166,31 +183,31 @@ export const PlatformAdministrationModule: React.FC = () => {
     setLoadingInvitations(true);
     try {
       const result = await getRequest<{ data: FacilityAdminInvitation[] }>(
-        "/api/platform/facility-admin-invitations",
+        '/api/platform/facility-admin-invitations',
       );
       setInvitations(result.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load invitations.");
+      setError(err instanceof Error ? err.message : 'Unable to load invitations.');
     } finally {
       setLoadingInvitations(false);
     }
   }, []);
 
   useEffect(() => {
-    if (tab === "administrators") void loadInvitations();
+    if (tab === 'administrators') void loadInvitations();
   }, [tab, loadInvitations]);
 
   const revokeInvitation = async (id: number) => {
-    if (!window.confirm("Revoke this invitation? Its link will no longer work.")) return;
+    if (!window.confirm('Revoke this invitation? Its link will no longer work.')) return;
     setInvitationActionId(id);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
     try {
       await request(`/api/platform/facility-admin-invitations/${id}/revoke`, {});
-      setNotice("Invitation revoked.");
+      setNotice('Invitation revoked.');
       await loadInvitations();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to revoke invitation.");
+      setError(err instanceof Error ? err.message : 'Unable to revoke invitation.');
     } finally {
       setInvitationActionId(null);
     }
@@ -198,20 +215,20 @@ export const PlatformAdministrationModule: React.FC = () => {
 
   const reissueInvitation = async (id: number) => {
     setInvitationActionId(id);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
     try {
       const result = await request<{
         data?: { invitationLink?: string; email?: string; expiresAt?: string };
       }>(`/api/platform/facility-admin-invitations/${id}/reissue`, {});
       if (!result.data?.invitationLink) {
-        throw new Error("The API did not return the new invitation link.");
+        throw new Error('The API did not return the new invitation link.');
       }
       setInvitationLink(result.data.invitationLink);
-      setNotice("Invitation reissued. Copy and send the new link; the previous link is invalid.");
+      setNotice('Invitation reissued. Copy and send the new link; the previous link is invalid.');
       await loadInvitations();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reissue invitation.");
+      setError(err instanceof Error ? err.message : 'Unable to reissue invitation.');
     } finally {
       setInvitationActionId(null);
     }
@@ -219,30 +236,27 @@ export const PlatformAdministrationModule: React.FC = () => {
 
   const reloadFacilities = async (id: string) => {
     setTenantId(id);
-    setFacilityId("");
-    setError("");
+    setFacilityId('');
+    setError('');
     try {
       const rows = id ? await api.getFacilities(Number(id)) : [];
       setFacilities(rows);
-      setFacilityId(String(rows[0]?.id ?? ""));
+      setFacilityId(String(rows[0]?.id ?? ''));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load facilities.");
+      setError(err instanceof Error ? err.message : 'Unable to load facilities.');
     }
   };
 
-  const submit = async (
-    event: React.FormEvent,
-    action: () => Promise<void>,
-  ) => {
+  const submit = async (event: React.FormEvent, action: () => Promise<void>) => {
     event.preventDefault();
     setSaving(true);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
     try {
       await action();
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The operation failed.");
+      setError(err instanceof Error ? err.message : 'The operation failed.');
     } finally {
       setSaving(false);
     }
@@ -251,76 +265,94 @@ export const PlatformAdministrationModule: React.FC = () => {
   const createTenant = (event: React.FormEvent) =>
     submit(event, async () => {
       const name = tenantForm.name.trim();
-      const slug = tenantForm.slug.trim() ||
-        name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      await request("/api/platform/tenants", {
-        name, slug,
+      const slug =
+        tenantForm.slug.trim() ||
+        name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+      await request('/api/platform/tenants', {
+        name,
+        slug,
         contactEmail: tenantForm.contactEmail.trim() || undefined,
         contactPhone: tenantForm.contactPhone.trim() || undefined,
-        currency: "KES",
-        timezone: "Africa/Nairobi",
+        currency: 'KES',
+        timezone: 'Africa/Nairobi',
       });
-      setTenantForm({ name: "", slug: "", contactEmail: "", contactPhone: "" });
-      setNotice("Tenant created successfully.");
+      setTenantForm({ name: '', slug: '', contactEmail: '', contactPhone: '' });
+      setNotice('Tenant created successfully.');
     });
 
   const createFacility = (event: React.FormEvent) =>
     submit(event, async () => {
-      if (!tenantId) throw new Error("Select a tenant first.");
-      await request("/api/platform/facilities", {
+      if (!tenantId) throw new Error('Select a tenant first.');
+      await request('/api/platform/facilities', {
         tenantId: Number(tenantId),
         ...facilityForm,
         code: facilityForm.code.trim(),
         name: facilityForm.name.trim(),
       });
       setFacilityForm({
-        code: "", name: "", level: "Level 4", county: "",
-        subCounty: "", mflCode: "", email: "", phone: "", address: "",
+        code: '',
+        name: '',
+        level: 'Level 4',
+        county: '',
+        subCounty: '',
+        mflCode: '',
+        email: '',
+        phone: '',
+        address: '',
       });
-      setNotice("Facility created. Its initial onboarding record has also been created.");
+      setNotice('Facility created. Its initial onboarding record has also been created.');
     });
 
   const inviteAdministrator = (event: React.FormEvent) =>
     submit(event, async () => {
-      if (!facilityId) throw new Error("Select a facility first.");
+      if (!facilityId) throw new Error('Select a facility first.');
       const result = await request<{
         data?: { invitationLink?: string; email?: string; expiresAt?: string };
-      }>("/api/platform/facility-admin-invitations", {
+      }>('/api/platform/facility-admin-invitations', {
         facilityId: Number(facilityId),
         fullName: adminForm.fullName.trim(),
         email: adminForm.email.trim(),
         phone: adminForm.phone.trim() || undefined,
       });
       const link = result.data?.invitationLink;
-      if (!link) throw new Error("Invitation created but no link was returned. Check the API response.");
+      if (!link)
+        throw new Error('Invitation created but no link was returned. Check the API response.');
       setInvitationLink(link);
-      setAdminForm({ fullName: "", email: "", phone: "" });
-      setNotice("Invitation created. Copy the secure link and send it to the administrator.");
+      setAdminForm({ fullName: '', email: '', phone: '' });
+      setNotice('Invitation created. Copy the secure link and send it to the administrator.');
     });
 
-  const selectedFacility = facilities.find(
-    (facility) => String(facility.id) === facilityId,
-  );
+  const selectedFacility = facilities.find((facility) => String(facility.id) === facilityId);
 
   useEffect(() => {
     if (!selectedFacility) {
       setEditFacilityForm({
-        code: "", name: "", level: "Level 4", county: "",
-        subCounty: "", mflCode: "", email: "", phone: "", address: "",
+        code: '',
+        name: '',
+        level: 'Level 4',
+        county: '',
+        subCounty: '',
+        mflCode: '',
+        email: '',
+        phone: '',
+        address: '',
       });
       return;
     }
 
     setEditFacilityForm({
-      code: selectedFacility.code ?? "",
-      name: selectedFacility.name ?? "",
-      level: selectedFacility.level ?? "Level 4",
-      county: selectedFacility.county ?? "",
-      subCounty: selectedFacility.subCounty ?? "",
-      mflCode: selectedFacility.mflCode ?? "",
-      email: selectedFacility.email ?? "",
-      phone: selectedFacility.phone ?? "",
-      address: selectedFacility.address ?? "",
+      code: selectedFacility.code ?? '',
+      name: selectedFacility.name ?? '',
+      level: selectedFacility.level ?? 'Level 4',
+      county: selectedFacility.county ?? '',
+      subCounty: selectedFacility.subCounty ?? '',
+      mflCode: selectedFacility.mflCode ?? '',
+      email: selectedFacility.email ?? '',
+      phone: selectedFacility.phone ?? '',
+      address: selectedFacility.address ?? '',
     });
   }, [selectedFacility]);
 
@@ -333,9 +365,7 @@ export const PlatformAdministrationModule: React.FC = () => {
     const savedModules = selectedFacility.enabledModules;
     setEnabledModuleSelection(
       Array.isArray(savedModules)
-        ? savedModules.filter((module): module is string =>
-            typeof module === "string"
-          )
+        ? savedModules.filter((module): module is string => typeof module === 'string')
         : [...DEFAULT_FACILITY_MODULES],
     );
   }, [selectedFacility]);
@@ -344,13 +374,13 @@ export const PlatformAdministrationModule: React.FC = () => {
     event.preventDefault();
 
     if (!selectedFacility) {
-      setError("Select a facility before saving its profile.");
+      setError('Select a facility before saving its profile.');
       return;
     }
 
     setSaving(true);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
 
     try {
       const result = await request<{ data: Facility }>(
@@ -366,128 +396,201 @@ export const PlatformAdministrationModule: React.FC = () => {
           phone: editFacilityForm.phone.trim() || null,
           address: editFacilityForm.address.trim() || null,
         },
-        "PATCH",
+        'PATCH',
       );
 
       if (!result.data) {
-        throw new Error("The server did not return the updated facility.");
+        throw new Error('The server did not return the updated facility.');
       }
 
       setFacilities((current) =>
-        current.map((facility) =>
-          facility.id === result.data.id ? result.data : facility,
-        ),
+        current.map((facility) => (facility.id === result.data.id ? result.data : facility)),
       );
 
-      setNotice("Facility profile saved successfully.");
+      setNotice('Facility profile saved successfully.');
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save the facility profile.",
-      );
+      setError(err instanceof Error ? err.message : 'Unable to save the facility profile.');
     } finally {
       setSaving(false);
     }
   };
   const saveFacilityModuleSettings = async () => {
     if (!selectedFacility) {
-      setError("Select a facility before saving module settings.");
+      setError('Select a facility before saving module settings.');
       return;
     }
 
     setSaving(true);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
 
     try {
       const result = await request<{ data: Facility }>(
         `/api/platform/facilities/${selectedFacility.id}`,
         { enabledModules: enabledModuleSelection },
-        "PATCH",
+        'PATCH',
       );
 
       if (!result.data) {
-        throw new Error("The server did not return the updated facility.");
+        throw new Error('The server did not return the updated facility.');
       }
 
       setFacilities((current) =>
-        current.map((facility) =>
-          facility.id === result.data.id ? result.data : facility,
-        ),
+        current.map((facility) => (facility.id === result.data.id ? result.data : facility)),
       );
 
-      setNotice(
-        `Module settings saved for ${result.data.name}.`,
-      );
+      setNotice(`Module settings saved for ${result.data.name}.`);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save facility module settings.",
-      );
+      setError(err instanceof Error ? err.message : 'Unable to save facility module settings.');
     } finally {
       setSaving(false);
     }
   };
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "tenants", label: "Tenants", icon: Building2 },
-    { id: "facilities", label: "Facilities", icon: Hospital },
-    { id: "administrators", label: "Facility administrators", icon: UserPlus },
-    { id: "billing", label: "Subscription billing", icon: CreditCard },
+    { id: 'tenants', label: 'Tenants', icon: Building2 },
+    { id: 'facilities', label: 'Facilities', icon: Hospital },
+    { id: 'administrators', label: 'Facility administrators', icon: UserPlus },
+    { id: 'billing', label: 'Subscription billing', icon: CreditCard },
   ];
 
   return (
     <section className="space-y-5">
       <header className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Platform controls</p>
-          <h1 className="mt-1 text-xl font-bold text-slate-900">Tenant & Facility Administration</h1>
-          <p className="mt-1 text-sm text-slate-500">Register organizations, onboard facilities, and invite facility administrators.</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-blue-700">
+            Platform controls
+          </p>
+          <h1 className="mt-1 text-xl font-bold text-slate-900">
+            Tenant & Facility Administration
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Register organizations, onboard facilities, and invite facility administrators.
+          </p>
         </div>
-        <button type="button" onClick={() => void loadData()} disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+        <button
+          type="button"
+          onClick={() => void loadData()}
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
       </header>
 
-      {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
+      {error && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
+        >
+          {notice}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tabs.map(({ id, label, icon: Icon }) => (
-          <button key={id} type="button" onClick={() => { setTab(id); setError(""); setNotice(""); }}
-            className={`flex items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold ${tab === id ? "border-blue-700 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>
+          <button
+            key={id}
+            type="button"
+            onClick={() => {
+              setTab(id);
+              setError('');
+              setNotice('');
+            }}
+            className={`flex items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold ${tab === id ? 'border-blue-700 bg-blue-50 text-blue-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+          >
             <Icon className="h-5 w-5" /> {label}
           </button>
         ))}
       </div>
 
-      {tab === "tenants" && (
+      {tab === 'tenants' && (
         <div className="grid gap-5 xl:grid-cols-2">
-          <form onSubmit={createTenant} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+          <form
+            onSubmit={createTenant}
+            className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"
+          >
             <h2 className="font-bold text-slate-900">Create tenant</h2>
-            <div><label className={labelClass}>Organization name *</label><input className={fieldClass} required maxLength={200} value={tenantForm.name} onChange={(e) => setTenantForm({ ...tenantForm, name: e.target.value })} /></div>
-            <div><label className={labelClass}>Tenant slug (optional)</label><input className={fieldClass} value={tenantForm.slug} onChange={(e) => setTenantForm({ ...tenantForm, slug: e.target.value })} placeholder="generated-from-name" /></div>
-            <div><label className={labelClass}>Contact email</label><input className={fieldClass} type="email" value={tenantForm.contactEmail} onChange={(e) => setTenantForm({ ...tenantForm, contactEmail: e.target.value })} /></div>
-            <div><label className={labelClass}>Contact phone</label><input className={fieldClass} value={tenantForm.contactPhone} onChange={(e) => setTenantForm({ ...tenantForm, contactPhone: e.target.value })} /></div>
-            <button disabled={saving} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "SavingÃ¢â‚¬Â¦" : "Create tenant"}</button>
+            <div>
+              <label className={labelClass}>Organization name *</label>
+              <input
+                className={fieldClass}
+                required
+                maxLength={200}
+                value={tenantForm.name}
+                onChange={(e) => setTenantForm({ ...tenantForm, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Tenant slug (optional)</label>
+              <input
+                className={fieldClass}
+                value={tenantForm.slug}
+                onChange={(e) => setTenantForm({ ...tenantForm, slug: e.target.value })}
+                placeholder="generated-from-name"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Contact email</label>
+              <input
+                className={fieldClass}
+                type="email"
+                value={tenantForm.contactEmail}
+                onChange={(e) => setTenantForm({ ...tenantForm, contactEmail: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Contact phone</label>
+              <input
+                className={fieldClass}
+                value={tenantForm.contactPhone}
+                onChange={(e) => setTenantForm({ ...tenantForm, contactPhone: e.target.value })}
+              />
+            </div>
+            <button
+              disabled={saving}
+              className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+            >
+              {saving ? 'SavingÃ¢â‚¬Â¦' : 'Create tenant'}
+            </button>
           </form>
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="mb-3 font-bold text-slate-900">Existing tenants ({tenants.length})</h2>
-            {loading ? <p className="text-sm text-slate-500">LoadingÃ¢â‚¬Â¦</p> : tenants.length === 0 ? <p className="text-sm text-slate-500">No tenants found.</p> :
-              <ul className="divide-y divide-slate-100">{tenants.map((t) => <li key={t.id} className="py-3"><p className="font-semibold text-slate-800">{t.name}</p><p className="text-xs text-slate-500">{t.slug} · ID {t.id}</p></li>)}</ul>}
+            {loading ? (
+              <p className="text-sm text-slate-500">LoadingÃ¢â‚¬Â¦</p>
+            ) : tenants.length === 0 ? (
+              <p className="text-sm text-slate-500">No tenants found.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {tenants.map((t) => (
+                  <li key={t.id} className="py-3">
+                    <p className="font-semibold text-slate-800">{t.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {t.slug} · ID {t.id}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       )}
 
-      {tab === "facilities" && (
+      {tab === 'facilities' && (
         <div className="space-y-5">
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-bold text-slate-900">Find a tenant</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Search by organization name or slug, then choose the tenant whose facilities you want to manage.
+              Search by organization name or slug, then choose the tenant whose facilities you want
+              to manage.
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
@@ -529,59 +632,131 @@ export const PlatformAdministrationModule: React.FC = () => {
           </section>
 
           <div className="grid gap-5 xl:grid-cols-2">
-            <form onSubmit={createFacility} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+            <form
+              onSubmit={createFacility}
+              className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"
+            >
               <h2 className="font-bold text-slate-900">Create facility</h2>
               <p className="text-sm text-slate-500">
-                Register a new facility under the selected tenant. This form does not edit existing facilities.
+                Register a new facility under the selected tenant. This form does not edit existing
+                facilities.
               </p>
               <div>
                 <label className={labelClass}>Facility name *</label>
-                <input className={fieldClass} required maxLength={200} value={facilityForm.name} onChange={(e) => setFacilityForm({ ...facilityForm, name: e.target.value })} />
+                <input
+                  className={fieldClass}
+                  required
+                  maxLength={200}
+                  value={facilityForm.name}
+                  onChange={(e) => setFacilityForm({ ...facilityForm, name: e.target.value })}
+                />
               </div>
               <div>
                 <label className={labelClass}>Facility code *</label>
-                <input className={fieldClass} required maxLength={80} value={facilityForm.code} onChange={(e) => setFacilityForm({ ...facilityForm, code: e.target.value })} />
+                <input
+                  className={fieldClass}
+                  required
+                  maxLength={80}
+                  value={facilityForm.code}
+                  onChange={(e) => setFacilityForm({ ...facilityForm, code: e.target.value })}
+                />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className={labelClass}>Facility level</label>
-                  <select className={fieldClass} value={facilityForm.level} onChange={(e) => setFacilityForm({ ...facilityForm, level: e.target.value })}>
-                    {["Level 2", "Level 3", "Level 4", "Level 5", "Level 6"].map((level) => (
-                      <option key={level} value={level}>{level}</option>
+                  <select
+                    className={fieldClass}
+                    value={facilityForm.level}
+                    onChange={(e) => setFacilityForm({ ...facilityForm, level: e.target.value })}
+                  >
+                    {['Level 2', 'Level 3', 'Level 4', 'Level 5', 'Level 6'].map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <label className={labelClass}>Kenya Master Facility Code (MFL)</label>
-                  <input className={fieldClass} value={facilityForm.mflCode} onChange={(e) => setFacilityForm({ ...facilityForm, mflCode: e.target.value })} />
+                  <input
+                    className={fieldClass}
+                    value={facilityForm.mflCode}
+                    onChange={(e) => setFacilityForm({ ...facilityForm, mflCode: e.target.value })}
+                  />
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className={labelClass}>County</label>
-                  <input className={fieldClass} value={facilityForm.county} onChange={(e) => setFacilityForm({ ...facilityForm, county: e.target.value })} />
+                  <select
+                    className={fieldClass}
+                    value={facilityForm.county}
+                    onChange={(e) =>
+                      setFacilityForm({ ...facilityForm, county: e.target.value, subCounty: '' })
+                    }
+                  >
+                    <option value="">Select county</option>
+                    {KENYA_COUNTIES.map((county) => (
+                      <option key={county.code} value={county.name}>
+                        {county.code}. {county.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className={labelClass}>Sub-county</label>
-                  <input className={fieldClass} value={facilityForm.subCounty} onChange={(e) => setFacilityForm({ ...facilityForm, subCounty: e.target.value })} />
+                  <select
+                    className={fieldClass}
+                    value={facilityForm.subCounty}
+                    onChange={(e) =>
+                      setFacilityForm({ ...facilityForm, subCounty: e.target.value })
+                    }
+                    disabled={!facilityForm.county}
+                  >
+                    <option value="">
+                      {facilityForm.county ? 'Select sub-county' : 'Select a county first'}
+                    </option>
+                    {subCountiesOf(facilityForm.county).map((subCounty) => (
+                      <option key={subCounty} value={subCounty}>
+                        {subCounty}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className={labelClass}>Official email</label>
-                  <input className={fieldClass} type="email" value={facilityForm.email} onChange={(e) => setFacilityForm({ ...facilityForm, email: e.target.value })} />
+                  <input
+                    className={fieldClass}
+                    type="email"
+                    value={facilityForm.email}
+                    onChange={(e) => setFacilityForm({ ...facilityForm, email: e.target.value })}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Contact phone</label>
-                  <input className={fieldClass} value={facilityForm.phone} onChange={(e) => setFacilityForm({ ...facilityForm, phone: e.target.value })} />
+                  <input
+                    className={fieldClass}
+                    value={facilityForm.phone}
+                    onChange={(e) => setFacilityForm({ ...facilityForm, phone: e.target.value })}
+                  />
                 </div>
               </div>
               <div>
                 <label className={labelClass}>Address</label>
-                <input className={fieldClass} value={facilityForm.address} onChange={(e) => setFacilityForm({ ...facilityForm, address: e.target.value })} />
+                <input
+                  className={fieldClass}
+                  value={facilityForm.address}
+                  onChange={(e) => setFacilityForm({ ...facilityForm, address: e.target.value })}
+                />
               </div>
-              <button type="submit" disabled={saving || !tenantId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
-                {saving ? "Saving..." : "Create facility"}
+              <button
+                type="submit"
+                disabled={saving || !tenantId}
+                className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Create facility'}
               </button>
             </form>
 
@@ -599,14 +774,16 @@ export const PlatformAdministrationModule: React.FC = () => {
                 />
               </div>
               {!tenantId ? (
-                <p className="p-5 text-sm text-slate-500">Select a tenant to view its facilities.</p>
+                <p className="p-5 text-sm text-slate-500">
+                  Select a tenant to view its facilities.
+                </p>
               ) : facilities.length === 0 ? (
                 <p className="p-5 text-sm text-slate-500">No facilities found for this tenant.</p>
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {facilities
                     .filter((facility) =>
-                      `${facility.name} ${facility.code} ${facility.county} ${facility.mflCode ?? ""}`
+                      `${facility.name} ${facility.code} ${facility.county} ${facility.mflCode ?? ''}`
                         .toLowerCase()
                         .includes(facilitySearch.trim().toLowerCase()),
                     )
@@ -616,22 +793,27 @@ export const PlatformAdministrationModule: React.FC = () => {
                           type="button"
                           onClick={() => {
                             setFacilityId(String(facility.id));
-                            setError("");
-                            setNotice("");
+                            setError('');
+                            setNotice('');
                           }}
                           aria-pressed={facilityId === String(facility.id)}
                           className={`w-full p-4 text-left hover:bg-slate-50 ${
                             facilityId === String(facility.id)
-                              ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
-                              : ""
+                              ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
+                              : ''
                           }`}
                         >
-                          <span className="block font-semibold text-slate-800">{facility.name}</span>
+                          <span className="block font-semibold text-slate-800">
+                            {facility.name}
+                          </span>
                           <span className="mt-1 block text-xs text-slate-500">
-                            {facility.code} · {facility.level} · {facility.county || "County not set"}
+                            {facility.code} · {facility.level} ·{' '}
+                            {facility.county || 'County not set'}
                           </span>
                           <span className="mt-1 block text-xs font-medium text-blue-700">
-                            {facilityId === String(facility.id) ? "Selected for editing" : "Select facility"}
+                            {facilityId === String(facility.id)
+                              ? 'Selected for editing'
+                              : 'Select facility'}
                           </span>
                         </button>
                       </li>
@@ -641,11 +823,15 @@ export const PlatformAdministrationModule: React.FC = () => {
             </section>
           </div>
 
-          <form onSubmit={saveFacilityProfile} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+          <form
+            onSubmit={saveFacilityProfile}
+            className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"
+          >
             <div>
               <h2 className="font-bold text-slate-900">Edit facility profile</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Select an existing facility above. Changes are saved to the existing facility record.
+                Select an existing facility above. Changes are saved to the existing facility
+                record.
               </p>
             </div>
 
@@ -658,58 +844,144 @@ export const PlatformAdministrationModule: React.FC = () => {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Facility name *</label>
-                    <input className={fieldClass} required maxLength={200} value={editFacilityForm.name} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, name: e.target.value })} />
+                    <input
+                      className={fieldClass}
+                      required
+                      maxLength={200}
+                      value={editFacilityForm.name}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, name: e.target.value })
+                      }
+                    />
                   </div>
                   <div>
                     <label className={labelClass}>Facility code *</label>
-                    <input className={fieldClass} required maxLength={80} value={editFacilityForm.code} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, code: e.target.value })} />
+                    <input
+                      className={fieldClass}
+                      required
+                      maxLength={80}
+                      value={editFacilityForm.code}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, code: e.target.value })
+                      }
+                    />
                   </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div>
                     <label className={labelClass}>Facility level</label>
-                    <select className={fieldClass} value={editFacilityForm.level} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, level: e.target.value })}>
+                    <select
+                      className={fieldClass}
+                      value={editFacilityForm.level}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, level: e.target.value })
+                      }
+                    >
                       {[
-                        ["Level 2", "Level 2 Clinic"],
-                        ["Level 3", "Level 3 Medical Center"],
-                        ["Level 4", "Level 4 Sub-County Hospital"],
-                        ["Level 5", "Level 5 County Referral Hospital"],
-                        ["Level 6", "Level 6 National Referral Hospital"],
+                        ['Level 2', 'Level 2 Clinic'],
+                        ['Level 3', 'Level 3 Medical Center'],
+                        ['Level 4', 'Level 4 Sub-County Hospital'],
+                        ['Level 5', 'Level 5 County Referral Hospital'],
+                        ['Level 6', 'Level 6 National Referral Hospital'],
                       ].map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <div>
                     <label className={labelClass}>County</label>
-                    <input className={fieldClass} value={editFacilityForm.county} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, county: e.target.value })} />
+                    <select
+                      className={fieldClass}
+                      value={editFacilityForm.county}
+                      onChange={(e) =>
+                        setEditFacilityForm({
+                          ...editFacilityForm,
+                          county: e.target.value,
+                          subCounty: '',
+                        })
+                      }
+                    >
+                      <option value="">Select county</option>
+                      {KENYA_COUNTIES.map((county) => (
+                        <option key={county.code} value={county.name}>
+                          {county.code}. {county.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className={labelClass}>Sub-county</label>
-                    <input className={fieldClass} value={editFacilityForm.subCounty} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, subCounty: e.target.value })} />
+                    {/* The PATCH refuses a blank sub-county, so the browser
+                        says so before a round trip rather than after one. */}
+                    <select
+                      className={fieldClass}
+                      value={editFacilityForm.subCounty}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, subCounty: e.target.value })
+                      }
+                      disabled={!editFacilityForm.county}
+                      required
+                    >
+                      <option value="">
+                        {editFacilityForm.county ? 'Select sub-county' : 'Select a county first'}
+                      </option>
+                      {subCountiesOf(editFacilityForm.county).map((subCounty) => (
+                        <option key={subCounty} value={subCounty}>
+                          {subCounty}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Kenya Master Facility Code (MFL)</label>
-                    <input className={fieldClass} value={editFacilityForm.mflCode} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, mflCode: e.target.value })} />
+                    <input
+                      className={fieldClass}
+                      value={editFacilityForm.mflCode}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, mflCode: e.target.value })
+                      }
+                    />
                   </div>
                   <div>
                     <label className={labelClass}>Official email</label>
-                    <input className={fieldClass} type="email" maxLength={254} value={editFacilityForm.email} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, email: e.target.value })} />
+                    <input
+                      className={fieldClass}
+                      type="email"
+                      maxLength={254}
+                      value={editFacilityForm.email}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, email: e.target.value })
+                      }
+                    />
                   </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Contact phone</label>
-                    <input className={fieldClass} value={editFacilityForm.phone} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, phone: e.target.value })} />
+                    <input
+                      className={fieldClass}
+                      value={editFacilityForm.phone}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, phone: e.target.value })
+                      }
+                    />
                   </div>
                   <div>
                     <label className={labelClass}>Address</label>
-                    <input className={fieldClass} value={editFacilityForm.address} onChange={(e) => setEditFacilityForm({ ...editFacilityForm, address: e.target.value })} />
+                    <input
+                      className={fieldClass}
+                      value={editFacilityForm.address}
+                      onChange={(e) =>
+                        setEditFacilityForm({ ...editFacilityForm, address: e.target.value })
+                      }
+                    />
                   </div>
                 </div>
 
@@ -717,8 +989,12 @@ export const PlatformAdministrationModule: React.FC = () => {
                   Facility ID: {selectedFacility.id} · Tenant ID: {selectedFacility.tenantId}
                 </p>
 
-                <button type="submit" disabled={saving || !selectedFacility} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
-                  {saving ? "Saving..." : "Save facility profile"}
+                <button
+                  type="submit"
+                  disabled={saving || !selectedFacility}
+                  className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save facility profile'}
                 </button>
               </>
             )}
@@ -726,12 +1002,10 @@ export const PlatformAdministrationModule: React.FC = () => {
 
           <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
             <div>
-              <h2 className="font-bold text-slate-900">
-                Facility Module Settings
-              </h2>
+              <h2 className="font-bold text-slate-900">Facility Module Settings</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Choose which modules this facility should use. These settings
-                are saved separately from the facility profile.
+                Choose which modules this facility should use. These settings are saved separately
+                from the facility profile.
               </p>
             </div>
 
@@ -763,9 +1037,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                           );
                         }}
                       />
-                      <span className="text-sm font-medium text-slate-700">
-                        {module.label}
-                      </span>
+                      <span className="text-sm font-medium text-slate-700">{module.label}</span>
                     </label>
                   ))}
                 </div>
@@ -782,7 +1054,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                     disabled={saving}
                     className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
                   >
-                    {saving ? "Saving..." : "Save module settings"}
+                    {saving ? 'Saving...' : 'Save module settings'}
                   </button>
                   <button
                     type="button"
@@ -805,107 +1077,227 @@ export const PlatformAdministrationModule: React.FC = () => {
           )}
         </div>
       )}
-      {tab === "billing" && <SubscriptionBillingPanel />}
-        {tab === "administrators" && (
+      {tab === 'billing' && <SubscriptionBillingPanel />}
+      {tab === 'administrators' && (
         <>
-        <div className="grid gap-5 xl:grid-cols-2">
-          <form onSubmit={inviteAdministrator} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="font-bold text-slate-900">Invite facility administrator</h2>
-            <p className="text-sm text-slate-500">The recipient sets their own username and password. This invitation grants the facility administrator role only.</p>
-            <div><label className={labelClass}>Tenant *</label><select className={fieldClass} required value={tenantId} onChange={(e) => void reloadFacilities(e.target.value)}><option value="">Select tenant</option>{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-            <div><label className={labelClass}>Facility *</label><select className={fieldClass} required value={facilityId} onChange={(e) => setFacilityId(e.target.value)}><option value="">Select facility</option>{facilities.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div>
-            <div><label className={labelClass}>Administrator full name *</label><input className={fieldClass} required maxLength={200} value={adminForm.fullName} onChange={(e) => setAdminForm({ ...adminForm, fullName: e.target.value })} /></div>
-            <div><label className={labelClass}>Email *</label><input className={fieldClass} type="email" required maxLength={254} value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} /></div>
-            <div><label className={labelClass}>Phone</label><input className={fieldClass} value={adminForm.phone} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })} /></div>
-            <button disabled={saving || !facilityId} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? "CreatingÃ¢â‚¬Â¦" : "Create invitation"}</button>
-          </form>
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="font-bold text-slate-900">Invitation link</h2>
-            {invitationLink ? <><p className="mt-2 text-sm text-slate-600">Send this link to the administrator. It expires after 48 hours and can only be used once.</p><input aria-label="Invitation link" readOnly value={invitationLink} onFocus={(e) => e.currentTarget.select()} className={`${fieldClass} mt-3`} /><button type="button" onClick={() => void navigator.clipboard.writeText(invitationLink).then(() => setNotice("Invitation link copied.")).catch(() => setError("Clipboard unavailable; select and copy the link manually."))} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold"><Copy className="h-4 w-4" /> Copy link</button></> : <p className="mt-2 text-sm text-slate-500">A newly created invitation link will appear here.</p>}
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
-            <div>
-              <h2 className="font-bold text-slate-900">Facility administrator invitations</h2>
-              <p className="mt-1 text-xs text-slate-500">The list shows invitation metadata only, never token hashes.</p>
-            </div>
-            <button type="button" onClick={() => void loadInvitations()} disabled={loadingInvitations}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
-              {loadingInvitations ? "Refreshing..." : "Refresh invitations"}
-            </button>
-          </div>
-
-          {loadingInvitations && invitations.length === 0 ? (
-            <p className="p-4 text-sm text-slate-500">Loading invitations...</p>
-          ) : invitations.length === 0 ? (
-            <p className="p-4 text-sm text-slate-500">No facility administrator invitations found.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Recipient</th>
-                    <th className="px-4 py-3">Facility / tenant</th>
-                    <th className="px-4 py-3">Created / expires</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {invitations.map((invitation) => (
-                    <tr key={invitation.id}>
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-slate-800">{invitation.fullName}</p>
-                        <p className="text-xs text-slate-500">{invitation.email}</p>
-                        <p className="text-xs text-slate-400">ID {invitation.id}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{invitation.facilityName}</p>
-                        <p className="text-xs text-slate-500">{invitation.tenantName}</p>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        <p>Created: {new Date(invitation.createdAt).toLocaleString()}</p>
-                        <p className="mt-1">Expires: {new Date(invitation.expiresAt).toLocaleString()}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${
-                          invitation.status === "ACCEPTED" ? "bg-emerald-100 text-emerald-800" :
-                          invitation.status === "PENDING" ? "bg-blue-100 text-blue-800" :
-                          invitation.status === "EXPIRED" ? "bg-amber-100 text-amber-800" :
-                          "bg-slate-100 text-slate-700"
-                        }`}>{invitation.status}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {invitation.status === "ACCEPTED" || invitation.status === "REVOKED" ? (
-                          <span className="text-xs text-slate-400">No actions available</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            <button type="button" disabled={invitationActionId === invitation.id}
-                              onClick={() => void reissueInvitation(invitation.id)}
-                              className="rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50 disabled:opacity-50">
-                              {invitationActionId === invitation.id ? "Working..." : "Reissue"}
-                            </button>
-                            <button type="button" disabled={invitationActionId === invitation.id}
-                              onClick={() => void revokeInvitation(invitation.id)}
-                              className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">
-                              Revoke
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+          <div className="grid gap-5 xl:grid-cols-2">
+            <form
+              onSubmit={inviteAdministrator}
+              className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"
+            >
+              <h2 className="font-bold text-slate-900">Invite facility administrator</h2>
+              <p className="text-sm text-slate-500">
+                The recipient sets their own username and password. This invitation grants the
+                facility administrator role only.
+              </p>
+              <div>
+                <label className={labelClass}>Tenant *</label>
+                <select
+                  className={fieldClass}
+                  required
+                  value={tenantId}
+                  onChange={(e) => void reloadFacilities(e.target.value)}
+                >
+                  <option value="">Select tenant</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Facility *</label>
+                <select
+                  className={fieldClass}
+                  required
+                  value={facilityId}
+                  onChange={(e) => setFacilityId(e.target.value)}
+                >
+                  <option value="">Select facility</option>
+                  {facilities.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Administrator full name *</label>
+                <input
+                  className={fieldClass}
+                  required
+                  maxLength={200}
+                  value={adminForm.fullName}
+                  onChange={(e) => setAdminForm({ ...adminForm, fullName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Email *</label>
+                <input
+                  className={fieldClass}
+                  type="email"
+                  required
+                  maxLength={254}
+                  value={adminForm.email}
+                  onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Phone</label>
+                <input
+                  className={fieldClass}
+                  value={adminForm.phone}
+                  onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })}
+                />
+              </div>
+              <button
+                disabled={saving || !facilityId}
+                className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+              >
+                {saving ? 'CreatingÃ¢â‚¬Â¦' : 'Create invitation'}
+              </button>
+            </form>
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <h2 className="font-bold text-slate-900">Invitation link</h2>
+              {invitationLink ? (
+                <>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Send this link to the administrator. It expires after 48 hours and can only be
+                    used once.
+                  </p>
+                  <input
+                    aria-label="Invitation link"
+                    readOnly
+                    value={invitationLink}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className={`${fieldClass} mt-3`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigator.clipboard
+                        .writeText(invitationLink)
+                        .then(() => setNotice('Invitation link copied.'))
+                        .catch(() =>
+                          setError('Clipboard unavailable; select and copy the link manually.'),
+                        )
+                    }
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold"
+                  >
+                    <Copy className="h-4 w-4" /> Copy link
+                  </button>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">
+                  A newly created invitation link will appear here.
+                </p>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
+              <div>
+                <h2 className="font-bold text-slate-900">Facility administrator invitations</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  The list shows invitation metadata only, never token hashes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadInvitations()}
+                disabled={loadingInvitations}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              >
+                {loadingInvitations ? 'Refreshing...' : 'Refresh invitations'}
+              </button>
+            </div>
+
+            {loadingInvitations && invitations.length === 0 ? (
+              <p className="p-4 text-sm text-slate-500">Loading invitations...</p>
+            ) : invitations.length === 0 ? (
+              <p className="p-4 text-sm text-slate-500">
+                No facility administrator invitations found.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Recipient</th>
+                      <th className="px-4 py-3">Facility / tenant</th>
+                      <th className="px-4 py-3">Created / expires</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {invitations.map((invitation) => (
+                      <tr key={invitation.id}>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-slate-800">{invitation.fullName}</p>
+                          <p className="text-xs text-slate-500">{invitation.email}</p>
+                          <p className="text-xs text-slate-400">ID {invitation.id}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-slate-800">{invitation.facilityName}</p>
+                          <p className="text-xs text-slate-500">{invitation.tenantName}</p>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600">
+                          <p>Created: {new Date(invitation.createdAt).toLocaleString()}</p>
+                          <p className="mt-1">
+                            Expires: {new Date(invitation.expiresAt).toLocaleString()}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${
+                              invitation.status === 'ACCEPTED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : invitation.status === 'PENDING'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : invitation.status === 'EXPIRED'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {invitation.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {invitation.status === 'ACCEPTED' || invitation.status === 'REVOKED' ? (
+                            <span className="text-xs text-slate-400">No actions available</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={invitationActionId === invitation.id}
+                                onClick={() => void reissueInvitation(invitation.id)}
+                                className="rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50 disabled:opacity-50"
+                              >
+                                {invitationActionId === invitation.id ? 'Working...' : 'Reissue'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={invitationActionId === invitation.id}
+                                onClick={() => void revokeInvitation(invitation.id)}
+                                className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                Revoke
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       )}
     </section>
   );
 };
-
-

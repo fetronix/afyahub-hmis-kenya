@@ -87,7 +87,10 @@ export function safeProviderMessage(body: unknown): {
     const value = record[key];
 
     if (typeof value === 'string' && value.trim()) {
-      return { message: value.trim().slice(0, 200), code: key === 'error' ? value.slice(0, 64) : null };
+      return {
+        message: value.trim().slice(0, 200),
+        code: key === 'error' ? value.slice(0, 64) : null,
+      };
     }
   }
 

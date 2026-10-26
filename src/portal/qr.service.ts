@@ -33,11 +33,7 @@ import { decryptField, encryptField } from '../security/field-crypto.ts';
 
 import type { PortalSession } from './portal-auth.service.ts';
 import { PortalError } from './portal.service.ts';
-import {
-  generateQrCode,
-  hashQrCode,
-  isPlausibleQrCode,
-} from './portal-policy.ts';
+import { generateQrCode, hashQrCode, isPlausibleQrCode } from './portal-policy.ts';
 
 /* ============================================================
    Issue
@@ -228,10 +224,7 @@ export async function resolveDigitalCard(
       gender: schema.patients.gender,
     })
     .from(schema.patientPortalAccounts)
-    .innerJoin(
-      schema.patients,
-      eq(schema.patientPortalAccounts.patientId, schema.patients.id),
-    )
+    .innerJoin(schema.patients, eq(schema.patientPortalAccounts.patientId, schema.patients.id))
     .where(
       sql`${schema.patientPortalAccounts.qrTokenHash} = ${hashQrCode(String(rawCode))}
         and ${schema.patientPortalAccounts.tenantId} = ${context.tenantId}

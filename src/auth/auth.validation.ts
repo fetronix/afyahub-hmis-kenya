@@ -1,4 +1,4 @@
-import type { LoginInput } from "./auth.types";
+import type { LoginInput } from './auth.types';
 
 /*
 |--------------------------------------------------------------------------
@@ -21,13 +21,10 @@ const MAX_IP_ADDRESS_LENGTH = 64;
 export class AuthValidationError extends Error {
   public readonly code: string;
 
-  constructor(
-    message: string,
-    code = "VALIDATION_ERROR"
-  ) {
+  constructor(message: string, code = 'VALIDATION_ERROR') {
     super(message);
 
-    this.name = "AuthValidationError";
+    this.name = 'AuthValidationError';
     this.code = code;
   }
 }
@@ -38,13 +35,8 @@ export class AuthValidationError extends Error {
 |--------------------------------------------------------------------------
 */
 
-function isNonEmptyString(
-  value: unknown
-): value is string {
-  return (
-    typeof value === "string" &&
-    value.trim().length > 0
-  );
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 /*
@@ -60,27 +52,15 @@ function isNonEmptyString(
 |
 */
 
-export function validateIdentifier(
-  identifier: unknown
-): string {
+export function validateIdentifier(identifier: unknown): string {
   if (!isNonEmptyString(identifier)) {
-    throw new AuthValidationError(
-      "Username or email is required.",
-      "INVALID_IDENTIFIER"
-    );
+    throw new AuthValidationError('Username or email is required.', 'INVALID_IDENTIFIER');
   }
 
-  const normalized =
-    identifier.trim().toLowerCase();
+  const normalized = identifier.trim().toLowerCase();
 
-  if (
-    normalized.length === 0 ||
-    normalized.length > MAX_IDENTIFIER_LENGTH
-  ) {
-    throw new AuthValidationError(
-      "Username or email is invalid.",
-      "INVALID_IDENTIFIER"
-    );
+  if (normalized.length === 0 || normalized.length > MAX_IDENTIFIER_LENGTH) {
+    throw new AuthValidationError('Username or email is invalid.', 'INVALID_IDENTIFIER');
   }
 
   /*
@@ -93,16 +73,16 @@ export function validateIdentifier(
   |
   */
 
-    /*
-     * Deliberate: this rejects ASCII control characters, which is
-     * the rule’s stated concern. Suppressed narrowly, per site, not
-     * globally — every other file still enforces no-control-regex.
-     */
-    // eslint-disable-next-line no-control-regex
+  /*
+   * Deliberate: this rejects ASCII control characters, which is
+   * the rule’s stated concern. Suppressed narrowly, per site, not
+   * globally — every other file still enforces no-control-regex.
+   */
+  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001F\u007F]/.test(normalized)) {
     throw new AuthValidationError(
-      "Username or email contains invalid characters.",
-      "INVALID_IDENTIFIER"
+      'Username or email contains invalid characters.',
+      'INVALID_IDENTIFIER',
     );
   }
 
@@ -115,16 +95,9 @@ export function validateIdentifier(
 |--------------------------------------------------------------------------
 */
 
-export function validatePassword(
-  password: unknown
-): string {
-  if (
-    typeof password !== "string"
-  ) {
-    throw new AuthValidationError(
-      "Password is required.",
-      "INVALID_PASSWORD"
-    );
+export function validatePassword(password: unknown): string {
+  if (typeof password !== 'string') {
+    throw new AuthValidationError('Password is required.', 'INVALID_PASSWORD');
   }
 
   /*
@@ -136,21 +109,17 @@ export function validatePassword(
   |
   */
 
-  if (
-    password.length < MIN_PASSWORD_LENGTH
-  ) {
+  if (password.length < MIN_PASSWORD_LENGTH) {
     throw new AuthValidationError(
       `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`,
-      "INVALID_PASSWORD"
+      'INVALID_PASSWORD',
     );
   }
 
-  if (
-    password.length > MAX_PASSWORD_LENGTH
-  ) {
+  if (password.length > MAX_PASSWORD_LENGTH) {
     throw new AuthValidationError(
       `Password must not exceed ${MAX_PASSWORD_LENGTH} characters.`,
-      "INVALID_PASSWORD"
+      'INVALID_PASSWORD',
     );
   }
 
@@ -160,11 +129,8 @@ export function validatePassword(
   |--------------------------------------------------------------------------
   */
 
-  if (password.includes("\u0000")) {
-    throw new AuthValidationError(
-      "Password contains invalid characters.",
-      "INVALID_PASSWORD"
-    );
+  if (password.includes('\u0000')) {
+    throw new AuthValidationError('Password contains invalid characters.', 'INVALID_PASSWORD');
   }
 
   return password;
@@ -182,42 +148,23 @@ export function validatePassword(
 |
 */
 
-export function validateIpAddress(
-  ipAddress: unknown
-): string | null {
-  if (
-    ipAddress === undefined ||
-    ipAddress === null ||
-    ipAddress === ""
-  ) {
+export function validateIpAddress(ipAddress: unknown): string | null {
+  if (ipAddress === undefined || ipAddress === null || ipAddress === '') {
     return null;
   }
 
-  if (
-    typeof ipAddress !== "string"
-  ) {
-    throw new AuthValidationError(
-      "Invalid IP address.",
-      "INVALID_IP_ADDRESS"
-    );
+  if (typeof ipAddress !== 'string') {
+    throw new AuthValidationError('Invalid IP address.', 'INVALID_IP_ADDRESS');
   }
 
-  const normalized =
-    ipAddress.trim();
+  const normalized = ipAddress.trim();
 
-  if (
-    normalized.length === 0
-  ) {
+  if (normalized.length === 0) {
     return null;
   }
 
-  if (
-    normalized.length > MAX_IP_ADDRESS_LENGTH
-  ) {
-    throw new AuthValidationError(
-      "Invalid IP address.",
-      "INVALID_IP_ADDRESS"
-    );
+  if (normalized.length > MAX_IP_ADDRESS_LENGTH) {
+    throw new AuthValidationError('Invalid IP address.', 'INVALID_IP_ADDRESS');
   }
 
   if (
@@ -229,10 +176,7 @@ export function validateIpAddress(
     // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
-    throw new AuthValidationError(
-      "Invalid IP address.",
-      "INVALID_IP_ADDRESS"
-    );
+    throw new AuthValidationError('Invalid IP address.', 'INVALID_IP_ADDRESS');
   }
 
   return normalized;
@@ -244,42 +188,23 @@ export function validateIpAddress(
 |--------------------------------------------------------------------------
 */
 
-export function validateUserAgent(
-  userAgent: unknown
-): string | null {
-  if (
-    userAgent === undefined ||
-    userAgent === null ||
-    userAgent === ""
-  ) {
+export function validateUserAgent(userAgent: unknown): string | null {
+  if (userAgent === undefined || userAgent === null || userAgent === '') {
     return null;
   }
 
-  if (
-    typeof userAgent !== "string"
-  ) {
-    throw new AuthValidationError(
-      "Invalid user agent.",
-      "INVALID_USER_AGENT"
-    );
+  if (typeof userAgent !== 'string') {
+    throw new AuthValidationError('Invalid user agent.', 'INVALID_USER_AGENT');
   }
 
-  const normalized =
-    userAgent.trim();
+  const normalized = userAgent.trim();
 
-  if (
-    normalized.length === 0
-  ) {
+  if (normalized.length === 0) {
     return null;
   }
 
-  if (
-    normalized.length > MAX_USER_AGENT_LENGTH
-  ) {
-    throw new AuthValidationError(
-      "User agent is too long.",
-      "INVALID_USER_AGENT"
-    );
+  if (normalized.length > MAX_USER_AGENT_LENGTH) {
+    throw new AuthValidationError('User agent is too long.', 'INVALID_USER_AGENT');
   }
 
   if (
@@ -291,10 +216,7 @@ export function validateUserAgent(
     // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
-    throw new AuthValidationError(
-      "User agent contains invalid characters.",
-      "INVALID_USER_AGENT"
-    );
+    throw new AuthValidationError('User agent contains invalid characters.', 'INVALID_USER_AGENT');
   }
 
   return normalized;
@@ -306,42 +228,20 @@ export function validateUserAgent(
 |--------------------------------------------------------------------------
 */
 
-export function validateLoginInput(
-  input: unknown
-): LoginInput {
-  if (
-    input === null ||
-    typeof input !== "object" ||
-    Array.isArray(input)
-  ) {
-    throw new AuthValidationError(
-      "Invalid login request.",
-      "INVALID_REQUEST"
-    );
+export function validateLoginInput(input: unknown): LoginInput {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new AuthValidationError('Invalid login request.', 'INVALID_REQUEST');
   }
 
-  const request =
-    input as Record<string, unknown>;
+  const request = input as Record<string, unknown>;
 
-  const identifier =
-    validateIdentifier(
-      request.identifier
-    );
+  const identifier = validateIdentifier(request.identifier);
 
-  const password =
-    validatePassword(
-      request.password
-    );
+  const password = validatePassword(request.password);
 
-  const ipAddress =
-    validateIpAddress(
-      request.ipAddress
-    );
+  const ipAddress = validateIpAddress(request.ipAddress);
 
-  const userAgent =
-    validateUserAgent(
-      request.userAgent
-    );
+  const userAgent = validateUserAgent(request.userAgent);
 
   return {
     identifier,
@@ -357,28 +257,15 @@ export function validateLoginInput(
 |--------------------------------------------------------------------------
 */
 
-export function validateSessionToken(
-  sessionToken: unknown
-): string {
-  if (
-    typeof sessionToken !== "string"
-  ) {
-    throw new AuthValidationError(
-      "Session token is required.",
-      "INVALID_SESSION_TOKEN"
-    );
+export function validateSessionToken(sessionToken: unknown): string {
+  if (typeof sessionToken !== 'string') {
+    throw new AuthValidationError('Session token is required.', 'INVALID_SESSION_TOKEN');
   }
 
-  const token =
-    sessionToken.trim();
+  const token = sessionToken.trim();
 
-  if (
-    token.length === 0
-  ) {
-    throw new AuthValidationError(
-      "Session token is required.",
-      "INVALID_SESSION_TOKEN"
-    );
+  if (token.length === 0) {
+    throw new AuthValidationError('Session token is required.', 'INVALID_SESSION_TOKEN');
   }
 
   /*
@@ -391,13 +278,8 @@ export function validateSessionToken(
   |--------------------------------------------------------------------------
   */
 
-  if (
-    !/^[A-Za-z0-9_-]{64}$/.test(token)
-  ) {
-    throw new AuthValidationError(
-      "Invalid session token.",
-      "INVALID_SESSION_TOKEN"
-    );
+  if (!/^[A-Za-z0-9_-]{64}$/.test(token)) {
+    throw new AuthValidationError('Invalid session token.', 'INVALID_SESSION_TOKEN');
   }
 
   return token;
@@ -409,26 +291,15 @@ export function validateSessionToken(
 |--------------------------------------------------------------------------
 */
 
-export function validateEmail(
-  email: unknown
-): string {
+export function validateEmail(email: unknown): string {
   if (!isNonEmptyString(email)) {
-    throw new AuthValidationError(
-      "Email address is required.",
-      "INVALID_EMAIL"
-    );
+    throw new AuthValidationError('Email address is required.', 'INVALID_EMAIL');
   }
 
-  const normalized =
-    email.trim().toLowerCase();
+  const normalized = email.trim().toLowerCase();
 
-  if (
-    normalized.length > 254
-  ) {
-    throw new AuthValidationError(
-      "Email address is too long.",
-      "INVALID_EMAIL"
-    );
+  if (normalized.length > 254) {
+    throw new AuthValidationError('Email address is too long.', 'INVALID_EMAIL');
   }
 
   /*
@@ -441,16 +312,10 @@ export function validateEmail(
   |
   */
 
-  const emailPattern =
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  if (
-    !emailPattern.test(normalized)
-  ) {
-    throw new AuthValidationError(
-      "Invalid email address.",
-      "INVALID_EMAIL"
-    );
+  if (!emailPattern.test(normalized)) {
+    throw new AuthValidationError('Invalid email address.', 'INVALID_EMAIL');
   }
 
   if (
@@ -462,10 +327,7 @@ export function validateEmail(
     // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
-    throw new AuthValidationError(
-      "Email address contains invalid characters.",
-      "INVALID_EMAIL"
-    );
+    throw new AuthValidationError('Email address contains invalid characters.', 'INVALID_EMAIL');
   }
 
   return normalized;
@@ -477,29 +339,15 @@ export function validateEmail(
 |--------------------------------------------------------------------------
 */
 
-export function validatePasswordResetToken(
-  token: unknown
-): string {
-  if (
-    typeof token !== "string"
-  ) {
-    throw new AuthValidationError(
-      "Password reset token is required.",
-      "INVALID_RESET_TOKEN"
-    );
+export function validatePasswordResetToken(token: unknown): string {
+  if (typeof token !== 'string') {
+    throw new AuthValidationError('Password reset token is required.', 'INVALID_RESET_TOKEN');
   }
 
-  const normalized =
-    token.trim();
+  const normalized = token.trim();
 
-  if (
-    normalized.length < 32 ||
-    normalized.length > 512
-  ) {
-    throw new AuthValidationError(
-      "Invalid password reset token.",
-      "INVALID_RESET_TOKEN"
-    );
+  if (normalized.length < 32 || normalized.length > 512) {
+    throw new AuthValidationError('Invalid password reset token.', 'INVALID_RESET_TOKEN');
   }
 
   if (
@@ -511,10 +359,7 @@ export function validatePasswordResetToken(
     // eslint-disable-next-line no-control-regex
     /[\u0000-\u001F\u007F]/.test(normalized)
   ) {
-    throw new AuthValidationError(
-      "Invalid password reset token.",
-      "INVALID_RESET_TOKEN"
-    );
+    throw new AuthValidationError('Invalid password reset token.', 'INVALID_RESET_TOKEN');
   }
 
   return normalized;
@@ -526,8 +371,6 @@ export function validatePasswordResetToken(
 |--------------------------------------------------------------------------
 */
 
-export function validateNewPassword(
-  password: unknown
-): string {
+export function validateNewPassword(password: unknown): string {
   return validatePassword(password);
 }

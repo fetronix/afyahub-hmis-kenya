@@ -67,7 +67,13 @@ function hashSessionToken(token: string): string {
 export async function portalLogin(
   input: { identifier: unknown; password: unknown },
   request?: { ipAddress?: string | null; userAgent?: string | null },
-): Promise<{ sessionToken: string; expiresAt: Date; account: PortalAccountRow; firstName: string; lastName: string }> {
+): Promise<{
+  sessionToken: string;
+  expiresAt: Date;
+  account: PortalAccountRow;
+  firstName: string;
+  lastName: string;
+}> {
   const identifier = typeof input.identifier === 'string' ? input.identifier.trim() : '';
   const password = typeof input.password === 'string' ? input.password : '';
 
@@ -114,9 +120,7 @@ export async function portalLogin(
   if (!valid) {
     const attempts = account.failedLoginAttempts + 1;
     const lockedUntil =
-      attempts >= MAX_FAILED_LOGINS
-        ? new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000)
-        : null;
+      attempts >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000) : null;
 
     await db
       .update(schema.patientPortalAccounts)
@@ -275,10 +279,7 @@ export async function resolvePortalSession(rawToken: string): Promise<PortalSess
   };
 }
 
-export async function revokePortalSession(
-  rawToken: string,
-  reason: string,
-): Promise<void> {
+export async function revokePortalSession(rawToken: string, reason: string): Promise<void> {
   if (!rawToken) return;
 
   await db
@@ -293,10 +294,7 @@ export async function revokePortalSession(
  * Called on suspension and on password change. Without this, a stolen
  * session would outlive the password reset that was meant to contain it.
  */
-export async function revokeAllPortalSessions(
-  accountId: number,
-  reason: string,
-): Promise<number> {
+export async function revokeAllPortalSessions(accountId: number, reason: string): Promise<number> {
   const revoked = await db
     .update(schema.patientPortalSessions)
     .set({ revokedAt: new Date(), revokeReason: reason })
@@ -361,7 +359,11 @@ export async function changePortalPassword(
   }
 
   if (newPassword === currentPassword) {
-    throw new PortalError('Choose a password you have not used here before.', 400, 'PASSWORD_REUSED');
+    throw new PortalError(
+      'Choose a password you have not used here before.',
+      400,
+      'PASSWORD_REUSED',
+    );
   }
 
   const passwordHash = await hashPassword(String(newPassword));

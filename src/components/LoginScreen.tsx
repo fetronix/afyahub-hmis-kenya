@@ -94,7 +94,7 @@ export const LoginScreen: React.FC = () => {
 
       if (result.requiresMfa) {
         setInfoMessage(
-          'Additional security verification is required. MFA verification will be available in the next authentication step.'
+          'Additional security verification is required. MFA verification will be available in the next authentication step.',
         );
 
         return;
@@ -107,17 +107,12 @@ export const LoginScreen: React.FC = () => {
       */
 
       if (result.requiresPasswordChange) {
-        setInfoMessage(
-          'Your account requires a password change before you can continue.'
-        );
+        setInfoMessage('Your account requires a password change before you can continue.');
 
         return;
       }
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Unable to sign in. Please try again.';
+      const message = err instanceof Error ? err.message : 'Unable to sign in. Please try again.';
 
       setError(message);
     } finally {
@@ -202,9 +197,7 @@ export const LoginScreen: React.FC = () => {
             </div>
 
             <div className="relative z-10">
-              <div className="inline-flex rounded-xl bg-white p-3 shadow-sm">
-                {brandMark}
-              </div>
+              <div className="inline-flex rounded-xl bg-white p-3 shadow-sm">{brandMark}</div>
 
               <p className="mt-9 text-2xs font-semibold uppercase tracking-[0.2em] text-brand-300">
                 Kenya Health Information System
@@ -215,9 +208,8 @@ export const LoginScreen: React.FC = () => {
               </h1>
 
               <p className="mt-4 max-w-sm text-sm leading-relaxed text-navy-100/80">
-                Registration, triage, consultation, laboratory, pharmacy,
-                billing and follow-up — held together by the same encounter,
-                in one secure system for your facility.
+                Registration, triage, consultation, laboratory, pharmacy, billing and follow-up —
+                held together by the same encounter, in one secure system for your facility.
               </p>
 
               <div className="mt-8 h-1 w-14 rounded-full bg-ember-500" />
@@ -254,9 +246,7 @@ export const LoginScreen: React.FC = () => {
           <section className="flex flex-col justify-center px-6 py-9 sm:px-10 lg:px-12 xl:px-14">
             <div className="mx-auto w-full max-w-[406px]">
               {/* Small screens lose the brand panel, not the brand. */}
-              <div className="mb-7 flex items-center justify-between lg:hidden">
-                {brandMark}
-              </div>
+              <div className="mb-7 flex items-center justify-between lg:hidden">{brandMark}</div>
 
               <div className="flex items-center gap-2">
                 <span className="inline-flex h-1.5 w-1.5 rounded-full bg-ember-500" />
@@ -344,11 +334,7 @@ export const LoginScreen: React.FC = () => {
                       className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-brand-700 disabled:opacity-50"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
@@ -394,9 +380,8 @@ export const LoginScreen: React.FC = () => {
                 {helpOpen && (
                   <div className="mt-2 space-y-2 rounded-lg border border-hair bg-white px-3.5 py-3 text-xs leading-relaxed text-muted">
                     <p>
-                      Check that Caps Lock is off and that you are using the
-                      username from your invitation, not your email, unless
-                      your email is the username.
+                      Check that Caps Lock is off and that you are using the username from your
+                      invitation, not your email, unless your email is the username.
                     </p>
                     <p className="flex items-start gap-2">
                       <ServerCog className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -404,8 +389,7 @@ export const LoginScreen: React.FC = () => {
                         <span className="font-semibold text-ink-soft">
                           Password reset is not self-service in this build.
                         </span>{' '}
-                        Ask your system administrator to reset the password on
-                        your account.
+                        Ask your system administrator to reset the password on your account.
                       </span>
                     </p>
                   </div>
@@ -415,11 +399,9 @@ export const LoginScreen: React.FC = () => {
               <div className="mt-6 flex items-start gap-2.5 rounded-lg border border-hair bg-slate-50/60 px-3.5 py-3">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
                 <p className="text-xs leading-relaxed text-muted">
-                  <span className="font-semibold text-ink-soft">
-                    Authorized personnel only.
-                  </span>{' '}
-                  Access is recorded for security and audit purposes. Do not
-                  share your password or leave a session unattended.
+                  <span className="font-semibold text-ink-soft">Authorized personnel only.</span>{' '}
+                  Access is recorded for security and audit purposes. Do not share your password or
+                  leave a session unattended.
                 </p>
               </div>
 

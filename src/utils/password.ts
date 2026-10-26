@@ -1,4 +1,4 @@
-import argon2 from "argon2";
+import argon2 from 'argon2';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id as 2,
@@ -9,9 +9,7 @@ const ARGON2_OPTIONS = {
 
 export async function hashPassword(password: string): Promise<string> {
   if (!password || password.length < 12) {
-    throw new Error(
-      "Password must be at least 12 characters long."
-    );
+    throw new Error('Password must be at least 12 characters long.');
   }
 
   const hash = await argon2.hash(password, ARGON2_OPTIONS);
@@ -19,10 +17,7 @@ export async function hashPassword(password: string): Promise<string> {
   return hash.toString();
 }
 
-export async function verifyPassword(
-  password: string,
-  hash: string
-): Promise<boolean> {
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   if (!password || !hash) {
     return false;
   }

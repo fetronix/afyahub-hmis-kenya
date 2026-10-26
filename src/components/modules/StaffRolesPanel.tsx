@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { getSessionToken } from "../../api/client.ts";
-import { StaffVerificationModal } from "./StaffVerificationModal.tsx";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { getSessionToken } from '../../api/client.ts';
+import { StaffVerificationModal } from './StaffVerificationModal.tsx';
 import {
   BadgeCheck,
   Ban,
@@ -14,7 +14,7 @@ import {
   UserCog,
   Users,
   X,
-} from "lucide-react";
+} from 'lucide-react';
 
 /**
  * Staff directory and role assignment for one facility.
@@ -94,7 +94,7 @@ type RoleTaskCatalogue = {
     permissionCount: number;
   };
   /** Where a save from this screen will write. */
-  writeScope?: "FACILITY_OVERRIDE" | "TENANT_DEFAULT";
+  writeScope?: 'FACILITY_OVERRIDE' | 'TENANT_DEFAULT';
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -116,14 +116,14 @@ function buildAuthHeaders(extra: Record<string, string> = {}): Record<string, st
   const token = getSessionToken();
 
   return {
-    Accept: "application/json",
+    Accept: 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...extra,
   };
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return "Never";
+  if (!value) return 'Never';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
@@ -132,14 +132,14 @@ export const StaffRolesPanel: React.FC = () => {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [roles, setRoles] = useState<AssignableRole[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [search, setSearch] = useState("");
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [search, setSearch] = useState('');
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
-  const [modalError, setModalError] = useState("");
+  const [modalError, setModalError] = useState('');
 
   const [verifyingRole, setVerifyingRole] = useState<AssignableRole | null>(null);
 
@@ -148,9 +148,9 @@ export const StaffRolesPanel: React.FC = () => {
    * consequential: it ends any open session on the next request.
    */
   const [statusTarget, setStatusTarget] = useState<StaffMember | null>(null);
-  const [statusReason, setStatusReason] = useState("");
+  const [statusReason, setStatusReason] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
-  const [statusError, setStatusError] = useState("");
+  const [statusError, setStatusError] = useState('');
 
   /*
    * Task-level permissions on a role, loaded when the editor opens so
@@ -163,15 +163,15 @@ export const StaffRolesPanel: React.FC = () => {
   const [taskOriginal, setTaskOriginal] = useState<number[]>([]);
   const [taskLoading, setTaskLoading] = useState(false);
   const [taskSaving, setTaskSaving] = useState(false);
-  const [taskError, setTaskError] = useState("");
+  const [taskError, setTaskError] = useState('');
 
   const loadData = useCallback(async (): Promise<StaffMember[] | null> => {
     setLoading(true);
-    setError("");
+    setError('');
 
     try {
-      const response = await fetch("/api/staff-roles/", {
-        credentials: "same-origin",
+      const response = await fetch('/api/staff-roles/', {
+        credentials: 'same-origin',
         headers: buildAuthHeaders(),
       });
 
@@ -186,7 +186,7 @@ export const StaffRolesPanel: React.FC = () => {
 
       return payload.staff ?? [];
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load the staff directory.");
+      setError(err instanceof Error ? err.message : 'Could not load the staff directory.');
       return null;
     } finally {
       setLoading(false);
@@ -208,8 +208,8 @@ export const StaffRolesPanel: React.FC = () => {
     if (!query) return staff;
 
     return staff.filter((member) =>
-      [member.fullName, member.email, member.username, member.designation ?? ""]
-        .join(" ")
+      [member.fullName, member.email, member.username, member.designation ?? '']
+        .join(' ')
         .toLowerCase()
         .includes(query),
     );
@@ -217,25 +217,21 @@ export const StaffRolesPanel: React.FC = () => {
 
   const openEditor = (member: StaffMember) => {
     setEditingId(member.id);
-    setSelectedRoleIds(
-      member.roles.filter((role) => role.assignable).map((role) => role.id),
-    );
-    setModalError("");
-    setError("");
-    setNotice("");
+    setSelectedRoleIds(member.roles.filter((role) => role.assignable).map((role) => role.id));
+    setModalError('');
+    setError('');
+    setNotice('');
   };
 
   const closeEditor = () => {
     setEditingId(null);
     setSelectedRoleIds([]);
-    setModalError("");
+    setModalError('');
   };
 
   const toggleRole = (roleId: number) => {
     setSelectedRoleIds((current) =>
-      current.includes(roleId)
-        ? current.filter((id) => id !== roleId)
-        : [...current, roleId],
+      current.includes(roleId) ? current.filter((id) => id !== roleId) : [...current, roleId],
     );
   };
 
@@ -243,22 +239,20 @@ export const StaffRolesPanel: React.FC = () => {
     if (!role.requiresVerification) return true;
     if (!role.regulator) return false;
 
-    return member.verifiedRegulators.some(
-      (credential) => credential.regulator === role.regulator,
-    );
+    return member.verifiedRegulators.some((credential) => credential.regulator === role.regulator);
   };
 
   const saveRoles = async () => {
     if (!editing) return;
 
     setSaving(true);
-    setModalError("");
+    setModalError('');
 
     try {
       const response = await fetch(`/api/staff-roles/${editing.id}/roles`, {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ roleIds: selectedRoleIds }),
       });
 
@@ -273,12 +267,12 @@ export const StaffRolesPanel: React.FC = () => {
         payload.changed
           ? `Roles updated for ${editing.fullName}.${
               payload.added && payload.added.length > 0
-                ? ` Added: ${payload.added.join(", ")}.`
-                : ""
+                ? ` Added: ${payload.added.join(', ')}.`
+                : ''
             }${
               payload.removed && payload.removed.length > 0
-                ? ` Removed: ${payload.removed.join(", ")}.`
-                : ""
+                ? ` Removed: ${payload.removed.join(', ')}.`
+                : ''
             }`
           : `No change was needed for ${editing.fullName}.`,
       );
@@ -288,14 +282,14 @@ export const StaffRolesPanel: React.FC = () => {
     } catch (err) {
       const apiError = err as Error & { code?: string };
 
-      setModalError(apiError.message || "Could not save the roles.");
+      setModalError(apiError.message || 'Could not save the roles.');
 
       /*
        * The server refused because a clinical role has no verified
        * registration. Offer the check here instead of making the
        * administrator find the missing step.
        */
-      if (apiError.code === "VERIFICATION_REQUIRED") {
+      if (apiError.code === 'VERIFICATION_REQUIRED') {
         const missing = roles.find(
           (role) =>
             selectedRoleIds.includes(role.id) &&
@@ -312,7 +306,6 @@ export const StaffRolesPanel: React.FC = () => {
     }
   };
 
-
   /* ------------------------------------------------------------
      Task-level permissions
      ------------------------------------------------------------ */
@@ -320,17 +313,14 @@ export const StaffRolesPanel: React.FC = () => {
   const openTasks = async (role: AssignableRole) => {
     setTaskRole(role);
     setTaskCatalogue(null);
-    setTaskError("");
+    setTaskError('');
     setTaskLoading(true);
 
     try {
-      const response = await fetch(
-        `/api/staff-roles/roles/${role.id}/permissions`,
-        {
-          credentials: "same-origin",
-          headers: buildAuthHeaders(),
-        },
-      );
+      const response = await fetch(`/api/staff-roles/roles/${role.id}/permissions`, {
+        credentials: 'same-origin',
+        headers: buildAuthHeaders(),
+      });
 
       const payload = await readJson<RoleTaskCatalogue>(response);
 
@@ -346,14 +336,12 @@ export const StaffRolesPanel: React.FC = () => {
 
       const selectedIds = payload.granted
         .map((code) => idByCode.get(code))
-        .filter((id): id is number => typeof id === "number");
+        .filter((id): id is number => typeof id === 'number');
 
       setTaskSelected(selectedIds);
       setTaskOriginal(selectedIds);
     } catch (err) {
-      setTaskError(
-        err instanceof Error ? err.message : "Could not load this role's tasks.",
-      );
+      setTaskError(err instanceof Error ? err.message : "Could not load this role's tasks.");
     } finally {
       setTaskLoading(false);
     }
@@ -364,7 +352,7 @@ export const StaffRolesPanel: React.FC = () => {
     setTaskCatalogue(null);
     setTaskSelected([]);
     setTaskOriginal([]);
-    setTaskError("");
+    setTaskError('');
     setTaskSaving(false);
   };
 
@@ -380,18 +368,15 @@ export const StaffRolesPanel: React.FC = () => {
     if (!taskRole) return;
 
     setTaskSaving(true);
-    setTaskError("");
+    setTaskError('');
 
     try {
-      const response = await fetch(
-        `/api/staff-roles/roles/${taskRole.id}/permissions`,
-        {
-          method: "PUT",
-          credentials: "same-origin",
-          headers: buildAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ permissionIds: taskSelected }),
-        },
-      );
+      const response = await fetch(`/api/staff-roles/roles/${taskRole.id}/permissions`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ permissionIds: taskSelected }),
+      });
 
       const payload = await readJson<{
         roleName?: string;
@@ -399,25 +384,25 @@ export const StaffRolesPanel: React.FC = () => {
         added?: string[];
         removed?: string[];
         facilityOverrideUpdated?: boolean;
-        writeScope?: "FACILITY_OVERRIDE" | "TENANT_DEFAULT";
+        writeScope?: 'FACILITY_OVERRIDE' | 'TENANT_DEFAULT';
       }>(response);
 
       const name = payload.roleName ?? taskRole.name;
       const scope =
-        payload.writeScope === "FACILITY_OVERRIDE"
+        payload.writeScope === 'FACILITY_OVERRIDE'
           ? " Saved to the tenant default and to this facility's own permission set, so the change applies here now."
-          : " Saved to the tenant default, which this facility inherits; facilities with their own override are unaffected.";
+          : ' Saved to the tenant default, which this facility inherits; facilities with their own override are unaffected.';
 
       setNotice(
         payload.changed
           ? `Tasks updated for ${name}.${
               payload.added && payload.added.length > 0
-                ? ` Added: ${payload.added.join(", ")}.`
-                : ""
+                ? ` Added: ${payload.added.join(', ')}.`
+                : ''
             }${
               payload.removed && payload.removed.length > 0
-                ? ` Removed: ${payload.removed.join(", ")}.`
-                : ""
+                ? ` Removed: ${payload.removed.join(', ')}.`
+                : ''
             }${scope} Staff holding this role may need to sign in again to see the change.`
           : `No task change was needed for ${name}.`,
       );
@@ -425,9 +410,7 @@ export const StaffRolesPanel: React.FC = () => {
       closeTasks();
       await loadData();
     } catch (err) {
-      setTaskError(
-        err instanceof Error ? err.message : "Could not save the role tasks.",
-      );
+      setTaskError(err instanceof Error ? err.message : 'Could not save the role tasks.');
     } finally {
       setTaskSaving(false);
     }
@@ -439,14 +422,14 @@ export const StaffRolesPanel: React.FC = () => {
 
   const openStatus = (member: StaffMember) => {
     setStatusTarget(member);
-    setStatusReason("");
-    setStatusError("");
+    setStatusReason('');
+    setStatusError('');
   };
 
   const closeStatus = () => {
     setStatusTarget(null);
-    setStatusReason("");
-    setStatusError("");
+    setStatusReason('');
+    setStatusError('');
     setStatusSaving(false);
   };
 
@@ -457,21 +440,18 @@ export const StaffRolesPanel: React.FC = () => {
     const member = statusTarget;
 
     setStatusSaving(true);
-    setStatusError("");
+    setStatusError('');
 
     try {
-      const response = await fetch(
-        `/api/staff-roles/${member.id}/status`,
-        {
-          method: "PUT",
-          credentials: "same-origin",
-          headers: buildAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({
-            active: nextActive,
-            ...(nextActive ? {} : { reason: statusReason.trim() || undefined }),
-          }),
-        },
-      );
+      const response = await fetch(`/api/staff-roles/${member.id}/status`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          active: nextActive,
+          ...(nextActive ? {} : { reason: statusReason.trim() || undefined }),
+        }),
+      });
 
       const payload = await readJson<{ changed?: boolean }>(response);
 
@@ -486,9 +466,7 @@ export const StaffRolesPanel: React.FC = () => {
       closeStatus();
       await loadData();
     } catch (err) {
-      setStatusError(
-        err instanceof Error ? err.message : "Could not change the account status.",
-      );
+      setStatusError(err instanceof Error ? err.message : 'Could not change the account status.');
     } finally {
       setStatusSaving(false);
     }
@@ -520,27 +498,33 @@ export const StaffRolesPanel: React.FC = () => {
             disabled={loading}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>
       </header>
 
       {error && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800"
+        >
           {error}
         </div>
       )}
       {notice && (
-        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800"
+        >
           {notice}
         </div>
       )}
 
       {roles.length === 0 && !loading && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          No assignable roles were returned for this facility. Roles must be active on the
-          tenant and carry at least one non-administrative permission.
+          No assignable roles were returned for this facility. Roles must be active on the tenant
+          and carry at least one non-administrative permission.
         </div>
       )}
 
@@ -574,12 +558,12 @@ export const StaffRolesPanel: React.FC = () => {
           <div className="p-8 text-center">
             <Users className="mx-auto h-8 w-8 text-slate-300" />
             <p className="mt-2 text-sm font-semibold text-slate-700">
-              {staff.length === 0 ? "No staff accounts yet" : "No staff match that search"}
+              {staff.length === 0 ? 'No staff accounts yet' : 'No staff match that search'}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               {staff.length === 0
-                ? "Invite a staff member below; their account appears here once they accept."
-                : "Clear the search box to see every account."}
+                ? 'Invite a staff member below; their account appears here once they accept.'
+                : 'Clear the search box to see every account.'}
             </p>
           </div>
         ) : (
@@ -598,21 +582,19 @@ export const StaffRolesPanel: React.FC = () => {
                     <span
                       className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
                         member.isActive
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-rose-50 text-rose-700"
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-rose-50 text-rose-700'
                       }`}
                     >
-                      {member.isActive ? "Active" : "Deactivated"}
+                      {member.isActive ? 'Active' : 'Deactivated'}
                     </span>
                   </div>
                   <p className="break-all text-xs text-slate-600">{member.email}</p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    Username: {member.username}
-                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">Username: {member.username}</p>
                 </div>
 
                 <div className="min-w-0 text-xs text-slate-600">
-                  <p>{member.designation || "No job title recorded"}</p>
+                  <p>{member.designation || 'No job title recorded'}</p>
                   <p className="mt-0.5 text-[11px] text-slate-400">
                     Last login: {formatDate(member.lastLoginAt)}
                   </p>
@@ -631,17 +613,17 @@ export const StaffRolesPanel: React.FC = () => {
                           key={role.id}
                           title={
                             role.assignable
-                              ? "Managed from this screen"
-                              : "Held role that this screen does not change"
+                              ? 'Managed from this screen'
+                              : 'Held role that this screen does not change'
                           }
                           className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
                             role.assignable
-                              ? "border-teal-200 bg-teal-50 text-teal-800"
-                              : "border-slate-200 bg-slate-50 text-slate-600"
+                              ? 'border-teal-200 bg-teal-50 text-teal-800'
+                              : 'border-slate-200 bg-slate-50 text-slate-600'
                           }`}
                         >
                           {role.name}
-                          {!role.roleActive && " (inactive role)"}
+                          {!role.roleActive && ' (inactive role)'}
                         </span>
                       ))}
                     </div>
@@ -649,10 +631,10 @@ export const StaffRolesPanel: React.FC = () => {
                   {member.verifiedRegulators.length > 0 && (
                     <p className="mt-1 flex items-center gap-1 text-[11px] text-emerald-700">
                       <BadgeCheck className="h-3 w-3" />
-                      Registration on file:{" "}
+                      Registration on file:{' '}
                       {member.verifiedRegulators
                         .map((credential) => credential.regulator)
-                        .join(", ")}
+                        .join(', ')}
                     </p>
                   )}
                 </div>
@@ -673,19 +655,19 @@ export const StaffRolesPanel: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => openStatus(member)}
-                      disabled={!member.canAssign || member.accountStatus === "PENDING"}
+                      disabled={!member.canAssign || member.accountStatus === 'PENDING'}
                       title={
                         member.protectionReason ??
-                        (member.accountStatus === "PENDING"
-                          ? "This invitation has not been accepted yet. Revoke the invitation instead."
+                        (member.accountStatus === 'PENDING'
+                          ? 'This invitation has not been accepted yet. Revoke the invitation instead.'
                           : member.isActive
-                          ? "Stop this account from signing in"
-                          : "Allow this account to sign in again")
+                            ? 'Stop this account from signing in'
+                            : 'Allow this account to sign in again')
                       }
                       className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:hover:bg-transparent ${
                         member.isActive
-                          ? "border-rose-200 text-rose-700 hover:bg-rose-50"
-                          : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                          ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
+                          : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
                       }`}
                     >
                       {member.isActive ? (
@@ -725,10 +707,9 @@ export const StaffRolesPanel: React.FC = () => {
               Role tasks
             </h3>
             <p className="mt-1 max-w-2xl text-xs text-slate-500">
-              Choose what each role is allowed to do. A doctor can be given
-              billing or tariff access without being made an administrator.
-              Administrator, security, platform and audit permissions are never
-              offered here.
+              Choose what each role is allowed to do. A doctor can be given billing or tariff access
+              without being made an administrator. Administrator, security, platform and audit
+              permissions are never offered here.
             </p>
           </div>
           <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -749,9 +730,7 @@ export const StaffRolesPanel: React.FC = () => {
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-900">
-                      {role.name}
-                    </span>
+                    <span className="text-sm font-semibold text-slate-900">{role.name}</span>
                     <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-700">
                       {role.permissionCount ?? role.permissions?.length ?? 0} tasks
                     </span>
@@ -762,9 +741,7 @@ export const StaffRolesPanel: React.FC = () => {
                     )}
                   </div>
                   {role.description && (
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {role.description}
-                    </p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{role.description}</p>
                   )}
                 </div>
 
@@ -782,9 +759,8 @@ export const StaffRolesPanel: React.FC = () => {
         )}
 
         <p className="border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[11px] text-slate-500">
-          A role belongs to the tenant, not one facility: a change here applies
-          to every facility on this tenant. Every change is written to the audit
-          log.
+          A role belongs to the tenant, not one facility: a change here applies to every facility on
+          this tenant. Every change is written to the audit log.
         </p>
       </div>
 
@@ -815,7 +791,10 @@ export const StaffRolesPanel: React.FC = () => {
             </header>
 
             {modalError && (
-              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"
+              >
                 {modalError}
               </div>
             )}
@@ -840,7 +819,7 @@ export const StaffRolesPanel: React.FC = () => {
                         className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600"
                       >
                         {role.name}
-                        {!role.roleActive && " (inactive)"}
+                        {!role.roleActive && ' (inactive)'}
                       </span>
                     ))}
                 </div>
@@ -862,7 +841,7 @@ export const StaffRolesPanel: React.FC = () => {
                   <div
                     key={role.id}
                     className={`rounded-lg border p-3 ${
-                      checked ? "border-teal-300 bg-teal-50/40" : "border-slate-200 bg-white"
+                      checked ? 'border-teal-300 bg-teal-50/40' : 'border-slate-200 bg-white'
                     }`}
                   >
                     <label className="flex cursor-pointer items-start gap-2">
@@ -895,7 +874,7 @@ export const StaffRolesPanel: React.FC = () => {
                         {role.permissionCount !== undefined && (
                           <span className="mt-0.5 block text-[10px] text-slate-400">
                             {role.permissionCount} permission
-                            {role.permissionCount === 1 ? "" : "s"}
+                            {role.permissionCount === 1 ? '' : 's'}
                           </span>
                         )}
                       </span>
@@ -912,7 +891,8 @@ export const StaffRolesPanel: React.FC = () => {
                           <>
                             <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
                               <ShieldAlert className="h-3.5 w-3.5" />
-                              No verified registration for {role.regulator ?? "the regulator"} on file
+                              No verified registration for {role.regulator ?? 'the regulator'} on
+                              file
                             </span>
                             <button
                               type="button"
@@ -942,8 +922,8 @@ export const StaffRolesPanel: React.FC = () => {
             <footer className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[11px] text-slate-500">
                 {selectedRoleIds.length === 0
-                  ? "Choose at least one role. Leaving an active account with no role would give it nothing to open, so it is not allowed."
-                  : "Saving replaces the roles above. The change is recorded in the audit log."}
+                  ? 'Choose at least one role. Leaving an active account with no role would give it nothing to open, so it is not allowed.'
+                  : 'Saving replaces the roles above. The change is recorded in the audit log.'}
               </p>
               <div className="flex gap-2">
                 <button
@@ -956,15 +936,11 @@ export const StaffRolesPanel: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void saveRoles()}
-                  disabled={
-                    saving ||
-                    !editing.canAssign ||
-                    selectedRoleIds.length === 0
-                  }
+                  disabled={saving || !editing.canAssign || selectedRoleIds.length === 0}
                   className="inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {saving ? "Saving..." : "Save roles"}
+                  {saving ? 'Saving...' : 'Save roles'}
                 </button>
               </div>
             </footer>
@@ -1014,8 +990,7 @@ export const StaffRolesPanel: React.FC = () => {
                   Tasks for {taskRole.name}
                 </h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  {taskRole.description ||
-                    "Choose the tasks this role is allowed to perform."}
+                  {taskRole.description || 'Choose the tasks this role is allowed to perform.'}
                 </p>
               </div>
               <button
@@ -1031,17 +1006,19 @@ export const StaffRolesPanel: React.FC = () => {
             {taskCatalogue?.facilityOverride?.applies && (
               <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-[11px] leading-relaxed text-brand-800">
                 <span className="font-semibold">
-                  This facility has its own permission set for{" "}
-                  {taskCatalogue.role.name}.
-                </span>{" "}
-                The tasks below are that set, not the tenant default. Saving
-                replaces this facility&apos;s set and the tenant default in one
-                step, so there is no second place left holding the old list.
+                  This facility has its own permission set for {taskCatalogue.role.name}.
+                </span>{' '}
+                The tasks below are that set, not the tenant default. Saving replaces this
+                facility&apos;s set and the tenant default in one step, so there is no second place
+                left holding the old list.
               </div>
             )}
 
             {taskError && (
-              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"
+              >
                 {taskError}
               </div>
             )}
@@ -1049,9 +1026,8 @@ export const StaffRolesPanel: React.FC = () => {
             {taskCatalogue && taskCatalogue.unmapped.length > 0 && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
                 This role also holds {taskCatalogue.unmapped.length} task
-                {taskCatalogue.unmapped.length === 1 ? "" : "s"} that this
-                screen never grants ({taskCatalogue.unmapped.join(", ")}). They
-                are left untouched by a save.
+                {taskCatalogue.unmapped.length === 1 ? '' : 's'} that this screen never grants (
+                {taskCatalogue.unmapped.join(', ')}). They are left untouched by a save.
               </div>
             )}
 
@@ -1065,7 +1041,7 @@ export const StaffRolesPanel: React.FC = () => {
                 {taskCatalogue.groups.map((group) => (
                   <section key={group.module}>
                     <h4 className="sticky top-0 z-10 mb-1.5 bg-white py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      {group.module.replace(/_/g, " ")}
+                      {group.module.replace(/_/g, ' ')}
                     </h4>
 
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -1077,8 +1053,8 @@ export const StaffRolesPanel: React.FC = () => {
                             key={permission.id}
                             className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 transition-colors ${
                               checked
-                                ? "border-brand-300 bg-brand-50/50"
-                                : "border-slate-200 bg-white hover:border-slate-300"
+                                ? 'border-brand-300 bg-brand-50/50'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
                             }`}
                           >
                             <input
@@ -1110,8 +1086,8 @@ export const StaffRolesPanel: React.FC = () => {
 
                 {taskCatalogue.groups.length === 0 && (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    No delegable tasks are configured on this installation. Ask a
-                    platform administrator to run the permission seed.
+                    No delegable tasks are configured on this installation. Ask a platform
+                    administrator to run the permission seed.
                   </p>
                 )}
               </div>
@@ -1121,12 +1097,11 @@ export const StaffRolesPanel: React.FC = () => {
               <p className="text-[11px] text-slate-500">
                 <span className="font-semibold text-slate-700">
                   {taskSelected.length} selected.
-                </span>{" "}
-                {taskCatalogue?.writeScope === "FACILITY_OVERRIDE"
-                  ? "Applies at this facility through its own permission set, and to the tenant default."
-                  : "Applies to every facility on this tenant that does not have its own override."}{" "}
-                Staff holding this role may need to sign in again to see a new
-                module.
+                </span>{' '}
+                {taskCatalogue?.writeScope === 'FACILITY_OVERRIDE'
+                  ? 'Applies at this facility through its own permission set, and to the tenant default.'
+                  : 'Applies to every facility on this tenant that does not have its own override.'}{' '}
+                Staff holding this role may need to sign in again to see a new module.
               </p>
               <div className="flex gap-2">
                 <button
@@ -1144,19 +1119,18 @@ export const StaffRolesPanel: React.FC = () => {
                     taskLoading ||
                     taskSelected.length === 0 ||
                     !taskCatalogue ||
-                    taskSelected.slice().sort().join(",") ===
-                      taskOriginal.slice().sort().join(",")
+                    taskSelected.slice().sort().join(',') === taskOriginal.slice().sort().join(',')
                   }
                   className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-xs font-bold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {taskSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   {taskSaving
-                    ? "Saving..."
+                    ? 'Saving...'
                     : taskCatalogue &&
-                        taskSelected.slice().sort().join(",") ===
-                          taskOriginal.slice().sort().join(",")
-                      ? "No changes to save"
-                      : "Save tasks"}
+                        taskSelected.slice().sort().join(',') ===
+                          taskOriginal.slice().sort().join(',')
+                      ? 'No changes to save'
+                      : 'Save tasks'}
                 </button>
               </div>
             </footer>
@@ -1194,9 +1168,7 @@ export const StaffRolesPanel: React.FC = () => {
                     </>
                   )}
                 </h3>
-                <p className="mt-1 break-all text-xs text-slate-500">
-                  {statusTarget.email}
-                </p>
+                <p className="mt-1 break-all text-xs text-slate-500">{statusTarget.email}</p>
               </div>
               <button
                 type="button"
@@ -1209,7 +1181,10 @@ export const StaffRolesPanel: React.FC = () => {
             </header>
 
             {statusError && (
-              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"
+              >
                 {statusError}
               </div>
             )}
@@ -1217,9 +1192,9 @@ export const StaffRolesPanel: React.FC = () => {
             {statusTarget.isActive ? (
               <>
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-                  The account will stop signing in immediately, and any session
-                  already open stops at its next request. The person keeps their
-                  roles, history and verification records; nothing is deleted.
+                  The account will stop signing in immediately, and any session already open stops
+                  at its next request. The person keeps their roles, history and verification
+                  records; nothing is deleted.
                 </p>
 
                 <div>
@@ -1240,8 +1215,8 @@ export const StaffRolesPanel: React.FC = () => {
               </>
             ) : (
               <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-900">
-                Signing in will be allowed again. Any lock from repeated failed
-                passwords is cleared, and the person keeps the roles they held.
+                Signing in will be allowed again. Any lock from repeated failed passwords is
+                cleared, and the person keeps the roles they held.
               </p>
             )}
 
@@ -1259,16 +1234,16 @@ export const StaffRolesPanel: React.FC = () => {
                 disabled={statusSaving}
                 className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 ${
                   statusTarget.isActive
-                    ? "bg-rose-600 hover:bg-rose-700"
-                    : "bg-emerald-600 hover:bg-emerald-700"
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
                 }`}
               >
                 {statusSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {statusSaving
-                  ? "Saving..."
+                  ? 'Saving...'
                   : statusTarget.isActive
-                  ? "Deactivate account"
-                  : "Activate account"}
+                    ? 'Deactivate account'
+                    : 'Activate account'}
               </button>
             </footer>
           </div>

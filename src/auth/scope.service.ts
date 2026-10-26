@@ -10,12 +10,8 @@
  * AuthorizationContext.
  */
 
-import type { AuthorizationContext } from "./authorization.types";
-import {
-  canAccessTenant,
-  canAccessFacility,
-  isSuperAdmin,
-} from "./authorization.service";
+import type { AuthorizationContext } from './authorization.types';
+import { canAccessTenant, canAccessFacility, isSuperAdmin } from './authorization.service';
 
 /**
  * Error thrown when a user attempts to access a resource
@@ -25,12 +21,12 @@ export class ScopeAccessError extends Error {
   public readonly code: string;
 
   constructor(
-    message = "You are not authorized to access this resource.",
-    code = "SCOPE_ACCESS_DENIED",
+    message = 'You are not authorized to access this resource.',
+    code = 'SCOPE_ACCESS_DENIED',
   ) {
     super(message);
 
-    this.name = "ScopeAccessError";
+    this.name = 'ScopeAccessError';
     this.code = code;
   }
 }
@@ -38,18 +34,9 @@ export class ScopeAccessError extends Error {
 /**
  * Validate that an ID is a positive integer.
  */
-function validateId(
-  value: number,
-  fieldName: string,
-): void {
-  if (
-    !Number.isInteger(value) ||
-    value <= 0
-  ) {
-    throw new ScopeAccessError(
-      `Invalid ${fieldName}.`,
-      "INVALID_SCOPE_ID",
-    );
+function validateId(value: number, fieldName: string): void {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ScopeAccessError(`Invalid ${fieldName}.`, 'INVALID_SCOPE_ID');
   }
 }
 
@@ -65,21 +52,13 @@ function validateId(
  * FACILITY_ADMIN / facility user:
  *   Can access only their own tenant.
  */
-export function requireTenantScope(
-  context: AuthorizationContext,
-  tenantId: number,
-): void {
-  validateId(tenantId, "tenant ID");
+export function requireTenantScope(context: AuthorizationContext, tenantId: number): void {
+  validateId(tenantId, 'tenant ID');
 
-  if (
-    !canAccessTenant(
-      context,
-      tenantId,
-    )
-  ) {
+  if (!canAccessTenant(context, tenantId)) {
     throw new ScopeAccessError(
-      "You are not authorized to access this tenant.",
-      "TENANT_ACCESS_DENIED",
+      'You are not authorized to access this tenant.',
+      'TENANT_ACCESS_DENIED',
     );
   }
 }
@@ -104,26 +83,14 @@ export function requireFacilityScope(
   facilityTenantId: number,
   facilityId: number,
 ): void {
-  validateId(
-    facilityTenantId,
-    "facility tenant ID",
-  );
+  validateId(facilityTenantId, 'facility tenant ID');
 
-  validateId(
-    facilityId,
-    "facility ID",
-  );
+  validateId(facilityId, 'facility ID');
 
-  if (
-    !canAccessFacility(
-      context,
-      facilityTenantId,
-      facilityId,
-    )
-  ) {
+  if (!canAccessFacility(context, facilityTenantId, facilityId)) {
     throw new ScopeAccessError(
-      "You are not authorized to access this facility.",
-      "FACILITY_ACCESS_DENIED",
+      'You are not authorized to access this facility.',
+      'FACILITY_ACCESS_DENIED',
     );
   }
 }
@@ -135,14 +102,8 @@ export function requireFacilityScope(
  * Useful when creating or updating resources where the
  * tenantId comes from the request body.
  */
-export function assertTenantOwnership(
-  context: AuthorizationContext,
-  tenantId: number,
-): void {
-  requireTenantScope(
-    context,
-    tenantId,
-  );
+export function assertTenantOwnership(context: AuthorizationContext, tenantId: number): void {
+  requireTenantScope(context, tenantId);
 }
 
 /**
@@ -157,11 +118,7 @@ export function assertFacilityOwnership(
   facilityTenantId: number,
   facilityId: number,
 ): void {
-  requireFacilityScope(
-    context,
-    facilityTenantId,
-    facilityId,
-  );
+  requireFacilityScope(context, facilityTenantId, facilityId);
 }
 
 /**
@@ -178,42 +135,24 @@ export function resolveTenantScope(
   requestedTenantId?: number | null,
 ): number {
   if (isSuperAdmin(context)) {
-    if (
-      requestedTenantId === null ||
-      requestedTenantId === undefined
-    ) {
+    if (requestedTenantId === null || requestedTenantId === undefined) {
       throw new ScopeAccessError(
-        "A target tenant is required for this operation.",
-        "TENANT_REQUIRED",
+        'A target tenant is required for this operation.',
+        'TENANT_REQUIRED',
       );
     }
 
-    validateId(
-      requestedTenantId,
-      "tenant ID",
-    );
+    validateId(requestedTenantId, 'tenant ID');
 
     return requestedTenantId;
   }
 
-  if (
-    context.tenantId === null ||
-    context.tenantId === undefined
-  ) {
-    throw new ScopeAccessError(
-      "Your account is not assigned to a tenant.",
-      "TENANT_NOT_ASSIGNED",
-    );
+  if (context.tenantId === null || context.tenantId === undefined) {
+    throw new ScopeAccessError('Your account is not assigned to a tenant.', 'TENANT_NOT_ASSIGNED');
   }
 
-  if (
-    requestedTenantId !== undefined &&
-    requestedTenantId !== null
-  ) {
-    requireTenantScope(
-      context,
-      requestedTenantId,
-    );
+  if (requestedTenantId !== undefined && requestedTenantId !== null) {
+    requireTenantScope(context, requestedTenantId);
   }
 
   return context.tenantId;
@@ -238,44 +177,26 @@ export function resolveFacilityScope(
   requestedFacilityId?: number | null,
 ): number {
   if (isSuperAdmin(context)) {
-    if (
-      requestedFacilityId === null ||
-      requestedFacilityId === undefined
-    ) {
+    if (requestedFacilityId === null || requestedFacilityId === undefined) {
       throw new ScopeAccessError(
-        "A target facility is required for this operation.",
-        "FACILITY_REQUIRED",
+        'A target facility is required for this operation.',
+        'FACILITY_REQUIRED',
       );
     }
 
-    validateId(
-      requestedFacilityId,
-      "facility ID",
-    );
+    validateId(requestedFacilityId, 'facility ID');
 
     return requestedFacilityId;
   }
 
-  if (
-    context.facilityId !== null &&
-    context.facilityId !== undefined
-  ) {
-    if (
-      requestedFacilityId !== undefined &&
-      requestedFacilityId !== null
-    ) {
-      validateId(
-        requestedFacilityId,
-        "facility ID",
-      );
+  if (context.facilityId !== null && context.facilityId !== undefined) {
+    if (requestedFacilityId !== undefined && requestedFacilityId !== null) {
+      validateId(requestedFacilityId, 'facility ID');
 
-      if (
-        requestedFacilityId !==
-        context.facilityId
-      ) {
+      if (requestedFacilityId !== context.facilityId) {
         throw new ScopeAccessError(
-          "You are not authorized to access this facility.",
-          "FACILITY_ACCESS_DENIED",
+          'You are not authorized to access this facility.',
+          'FACILITY_ACCESS_DENIED',
         );
       }
     }
@@ -283,20 +204,14 @@ export function resolveFacilityScope(
     return context.facilityId;
   }
 
-  if (
-    requestedFacilityId === null ||
-    requestedFacilityId === undefined
-  ) {
+  if (requestedFacilityId === null || requestedFacilityId === undefined) {
     throw new ScopeAccessError(
-      "A target facility is required for this operation.",
-      "FACILITY_REQUIRED",
+      'A target facility is required for this operation.',
+      'FACILITY_REQUIRED',
     );
   }
 
-  validateId(
-    requestedFacilityId,
-    "facility ID",
-  );
+  validateId(requestedFacilityId, 'facility ID');
 
   return requestedFacilityId;
 }
@@ -305,35 +220,21 @@ export function resolveFacilityScope(
  * Check whether the authenticated user is operating
  * at tenant level rather than facility level.
  */
-export function isTenantLevelUser(
-  context: AuthorizationContext,
-): boolean {
-  return (
-    !isSuperAdmin(context) &&
-    context.tenantId !== null &&
-    context.facilityId === null
-  );
+export function isTenantLevelUser(context: AuthorizationContext): boolean {
+  return !isSuperAdmin(context) && context.tenantId !== null && context.facilityId === null;
 }
 
 /**
  * Check whether the authenticated user is
  * restricted to a specific facility.
  */
-export function isFacilityLevelUser(
-  context: AuthorizationContext,
-): boolean {
-  return (
-    !isSuperAdmin(context) &&
-    context.tenantId !== null &&
-    context.facilityId !== null
-  );
+export function isFacilityLevelUser(context: AuthorizationContext): boolean {
+  return !isSuperAdmin(context) && context.tenantId !== null && context.facilityId !== null;
 }
 
 /**
  * Check whether the user has global platform access.
  */
-export function isGlobalUser(
-  context: AuthorizationContext,
-): boolean {
+export function isGlobalUser(context: AuthorizationContext): boolean {
   return isSuperAdmin(context);
 }

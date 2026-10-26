@@ -1,5 +1,4 @@
-﻿
-import { Router } from "express";
+﻿import { Router } from 'express';
 
 import {
   loginController,
@@ -9,65 +8,40 @@ import {
   acceptFacilityAdminInvitationController,
   validateStaffInvitationController,
   acceptStaffInvitationController,
-} from "./auth.controller";
+} from './auth.controller';
 
-import { requireAuth } from "./auth.middleware";
+import { requireAuth } from './auth.middleware';
 
 const router = Router();
 
 /*
  * Public authentication endpoints
  */
-router.post(
-  "/login",
-  loginController,
-);
+router.post('/login', loginController);
 
 /*
  * Public facility administrator invitation endpoints.
  * These must be accessible before the invited user logs in.
  */
-router.get(
-  "/facility-admin-invitations/validate",
-  validateFacilityAdminInvitationController,
-);
+router.get('/facility-admin-invitations/validate', validateFacilityAdminInvitationController);
 
-router.post(
-  "/facility-admin-invitations/accept",
-  acceptFacilityAdminInvitationController,
-);
+router.post('/facility-admin-invitations/accept', acceptFacilityAdminInvitationController);
 
 /*
  * Public staff invitation endpoints.
  * Keep these public so invited staff can validate and accept their link.
  */
-router.get(
-  "/staff-invitations/validate",
-  validateStaffInvitationController,
-);
+router.get('/staff-invitations/validate', validateStaffInvitationController);
 
-router.post(
-  "/staff-invitations/accept",
-  acceptStaffInvitationController,
-);
+router.post('/staff-invitations/accept', acceptStaffInvitationController);
 /*
  * Session validation requires a valid session.
  */
-router.get(
-  "/session",
-  requireAuth,
-  sessionController,
-);
+router.get('/session', requireAuth, sessionController);
 
 /*
  * Logout requires the current authentication session.
  */
-router.post(
-  "/logout",
-  requireAuth,
-  logoutController,
-);
+router.post('/logout', requireAuth, logoutController);
 
 export default router;
-
-

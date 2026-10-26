@@ -50,12 +50,7 @@ import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts
    ============================================================ */
 
 export const ALLERGEN_TYPES = ['DRUG', 'FOOD', 'ENVIRONMENTAL', 'OTHER'] as const;
-export const ALLERGY_SEVERITIES = [
-  'MILD',
-  'MODERATE',
-  'SEVERE',
-  'LIFE_THREATENING',
-] as const;
+export const ALLERGY_SEVERITIES = ['MILD', 'MODERATE', 'SEVERE', 'LIFE_THREATENING'] as const;
 export const ALLERGY_STATUSES = ['ACTIVE', 'RESOLVED', 'ENTERED_IN_ERROR'] as const;
 
 export type AllergenType = (typeof ALLERGEN_TYPES)[number];
@@ -83,9 +78,7 @@ interface AllergyScope {
   userId: number;
 }
 
-async function resolveScope(
-  context: AuthorizationContext,
-): Promise<AllergyScope> {
+async function resolveScope(context: AuthorizationContext): Promise<AllergyScope> {
   const facilityId = resolveFacilityScope(context, undefined);
 
   const [facility] = await db
@@ -122,12 +115,7 @@ async function resolvePatient(context: AuthorizationContext, rawPatientId: unkno
       mrn: schema.patients.mrn,
     })
     .from(schema.patients)
-    .where(
-      and(
-        eq(schema.patients.id, patientId),
-        eq(schema.patients.tenantId, scope.tenantId),
-      ),
-    )
+    .where(and(eq(schema.patients.id, patientId), eq(schema.patients.tenantId, scope.tenantId)))
     .limit(1);
 
   if (!patient) {
@@ -158,10 +146,7 @@ export function normaliseName(value: string): string {
  * characters. Anything vaguer produces false alarms that train people
  * to ignore the warning.
  */
-export function matchesMedication(
-  allergen: string,
-  medication: string,
-): boolean {
+export function matchesMedication(allergen: string, medication: string): boolean {
   const a = normaliseName(allergen);
   const m = normaliseName(medication);
 
@@ -191,10 +176,7 @@ export interface AllergyWarning {
   matchedOn: string;
 }
 
-export async function listAllergies(
-  context: AuthorizationContext,
-  rawPatientId: unknown,
-) {
+export async function listAllergies(context: AuthorizationContext, rawPatientId: unknown) {
   const { patient } = await resolvePatient(context, rawPatientId);
 
   const rows = await db
@@ -302,8 +284,7 @@ export function validateAllergyInput(input: unknown): AllergyInput {
     );
   }
 
-  const severity =
-    typeof body.severity === 'string' ? body.severity.toUpperCase() : 'MODERATE';
+  const severity = typeof body.severity === 'string' ? body.severity.toUpperCase() : 'MODERATE';
 
   if (!ALLERGY_SEVERITIES.includes(severity as AllergySeverity)) {
     throw new AllergyError(
@@ -390,8 +371,7 @@ export async function setAllergyStatus(
     throw new AllergyError('A valid allergy id is required.', 400, 'INVALID_ALLERGY_ID');
   }
 
-  const status =
-    typeof rawStatus === 'string' ? rawStatus.toUpperCase() : '';
+  const status = typeof rawStatus === 'string' ? rawStatus.toUpperCase() : '';
 
   if (!ALLERGY_STATUSES.includes(status as AllergyStatus)) {
     throw new AllergyError(

@@ -24,12 +24,7 @@ import { requireAuth, type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { ScopeAccessError } from '../auth/scope.service.ts';
 
-import {
-  ConsentError,
-  grantConsent,
-  listConsents,
-  revokeConsent,
-} from './consent.service.ts';
+import { ConsentError, grantConsent, listConsents, revokeConsent } from './consent.service.ts';
 
 import {
   AllergyError,
@@ -87,26 +82,22 @@ function requireContext(req: AuthRequest, res: import('express').Response) {
    Consent
    ============================================================ */
 
-router.get(
-  '/:id/consents',
-  requirePermission('patients.read'),
-  async (req: AuthRequest, res) => {
-    const context = requireContext(req, res);
-    if (!context) return;
+router.get('/:id/consents', requirePermission('patients.read'), async (req: AuthRequest, res) => {
+  const context = requireContext(req, res);
+  if (!context) return;
 
-    try {
-      res.json({ success: true, ...(await listConsents(context, req.params.id)) });
-    } catch (error) {
-      if (sendError(res, error)) return;
+  try {
+    res.json({ success: true, ...(await listConsents(context, req.params.id)) });
+  } catch (error) {
+    if (sendError(res, error)) return;
 
-      res.status(500).json({
-        success: false,
-        error: 'CONSENT_READ_FAILED',
-        message: 'The consent record could not be read.',
-      });
-    }
-  },
-);
+    res.status(500).json({
+      success: false,
+      error: 'CONSENT_READ_FAILED',
+      message: 'The consent record could not be read.',
+    });
+  }
+});
 
 router.post(
   '/:id/consents',
@@ -163,26 +154,22 @@ router.post(
    Allergies
    ============================================================ */
 
-router.get(
-  '/:id/allergies',
-  requirePermission('clinical.read'),
-  async (req: AuthRequest, res) => {
-    const context = requireContext(req, res);
-    if (!context) return;
+router.get('/:id/allergies', requirePermission('clinical.read'), async (req: AuthRequest, res) => {
+  const context = requireContext(req, res);
+  if (!context) return;
 
-    try {
-      res.json({ success: true, ...(await listAllergies(context, req.params.id)) });
-    } catch (error) {
-      if (sendError(res, error)) return;
+  try {
+    res.json({ success: true, ...(await listAllergies(context, req.params.id)) });
+  } catch (error) {
+    if (sendError(res, error)) return;
 
-      res.status(500).json({
-        success: false,
-        error: 'ALLERGY_READ_FAILED',
-        message: 'The allergy registry could not be read.',
-      });
-    }
-  },
-);
+    res.status(500).json({
+      success: false,
+      error: 'ALLERGY_READ_FAILED',
+      message: 'The allergy registry could not be read.',
+    });
+  }
+});
 
 router.post(
   '/:id/allergies',
@@ -272,11 +259,7 @@ router.post(
     }
 
     try {
-      const result = await checkMedicationAllergies(
-        context,
-        req.params.id,
-        raw as string[],
-      );
+      const result = await checkMedicationAllergies(context, req.params.id, raw as string[]);
 
       res.json({ success: true, ...result });
     } catch (error) {

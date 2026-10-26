@@ -21,23 +21,13 @@
    VOCABULARIES
    ============================================================ */
 
-export const PREGNANCY_STATUSES = [
-  'Active',
-  'Delivered',
-  'Closed',
-  'Transferred',
-] as const;
+export const PREGNANCY_STATUSES = ['Active', 'Delivered', 'Closed', 'Transferred'] as const;
 
 export type PregnancyStatus = (typeof PREGNANCY_STATUSES)[number];
 
 export const EDD_BASES = ['LMP', 'Ultrasound', 'Other'] as const;
 
-export const LABOUR_STATUSES = [
-  'In Labour',
-  'Delivered',
-  'Referred',
-  'Closed',
-] as const;
+export const LABOUR_STATUSES = ['In Labour', 'Delivered', 'Referred', 'Closed'] as const;
 
 export const DELIVERY_MODES = [
   'Spontaneous Vertex',
@@ -79,11 +69,7 @@ export const PERINEUM_STATES = [
   'Episiotomy',
 ] as const;
 
-export const INVOLUTION = [
-  'Normal',
-  'Subinvolution',
-  'Not examined',
-] as const;
+export const INVOLUTION = ['Normal', 'Subinvolution', 'Not examined'] as const;
 
 export const LOCHIA = ['Rubra', 'Serosa', 'Alba', 'Abnormal', 'Not examined'] as const;
 
@@ -98,18 +84,9 @@ export const POSTPARTUM_PERINEUM = [
 
 export const BREASTS = ['Normal', 'Engorged', 'Cracked nipples', 'Mastitis'] as const;
 
-export const BREASTFEEDING = [
-  'Exclusive',
-  'Mixed',
-  'Formula',
-  'Not breastfeeding',
-] as const;
+export const BREASTFEEDING = ['Exclusive', 'Mixed', 'Formula', 'Not breastfeeding'] as const;
 
-export const MOOD_SCREENING = [
-  'Not screened',
-  'No concern',
-  'Concern — referred',
-] as const;
+export const MOOD_SCREENING = ['Not screened', 'No concern', 'Concern — referred'] as const;
 
 export const PRESENTATIONS = [
   'Cephalic',
@@ -193,10 +170,7 @@ export type Gestation = {
  * year before or after the EDD — rather than a negative number dressed
  * up as a week count.
  */
-export function gestationAt(
-  edd: string,
-  on: string,
-): Gestation | null {
+export function gestationAt(edd: string, on: string): Gestation | null {
   if (!isIsoDate(edd) || !isIsoDate(on)) return null;
 
   const totalDays = GESTATION_DAYS - daysBetween(on, edd);
@@ -279,7 +253,6 @@ export function oneOf<T extends readonly string[]>(
 
   return { value: value as T[number] };
 }
-
 
 /* ============================================================
    PARTOGRAPH PLOT
@@ -443,14 +416,11 @@ export type PartographGuidance = {
  * reading to the right of the alert line means labour is slower than the
  * reference curve — a fact about the plot, not a diagnosis.
  */
-export function partographGuidance(
-  readings: PartographReading[],
-): PartographGuidance {
+export function partographGuidance(readings: PartographReading[]): PartographGuidance {
   const plotted = readings
     .filter(
       (reading): reading is { recordedAt: string; cervicalDilatationCm: number } =>
-        Number.isFinite(reading.cervicalDilatationCm) &&
-        reading.cervicalDilatationCm !== null,
+        Number.isFinite(reading.cervicalDilatationCm) && reading.cervicalDilatationCm !== null,
     )
     .slice()
     .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
@@ -468,9 +438,7 @@ export function partographGuidance(
     };
   }
 
-  const entryToFourCm = plotted.find(
-    (reading) => reading.cervicalDilatationCm >= 4,
-  );
+  const entryToFourCm = plotted.find((reading) => reading.cervicalDilatationCm >= 4);
 
   if (!entryToFourCm) {
     return {
@@ -485,8 +453,7 @@ export function partographGuidance(
   const latest = plotted.at(-1)!;
 
   const hoursSinceFourCm =
-    (new Date(latest.recordedAt).getTime() -
-      new Date(entryToFourCm.recordedAt).getTime()) /
+    (new Date(latest.recordedAt).getTime() - new Date(entryToFourCm.recordedAt).getTime()) /
     3_600_000;
 
   if (!Number.isFinite(hoursSinceFourCm) || hoursSinceFourCm < 0) {
@@ -501,9 +468,7 @@ export function partographGuidance(
 
   const expectedCm = 4 + hoursSinceFourCm;
   const hoursBeyondAlert =
-    expectedCm - latest.cervicalDilatationCm > 0
-      ? expectedCm - latest.cervicalDilatationCm
-      : 0;
+    expectedCm - latest.cervicalDilatationCm > 0 ? expectedCm - latest.cervicalDilatationCm : 0;
 
   let zone: PartographZone = 'On or left of the alert line';
 

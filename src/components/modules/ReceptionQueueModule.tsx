@@ -13,11 +13,19 @@ import {
   ArrowRight,
   Filter,
   Plus,
-  QrCode
+  QrCode,
 } from 'lucide-react';
 
 export const ReceptionQueueModule: React.FC = () => {
-  const { currentTenant, currentFacility, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentTenant,
+    currentFacility,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -55,7 +63,7 @@ export const ReceptionQueueModule: React.FC = () => {
         setAppointments(aList);
         setPatients(pList);
         if (pList.length > 0 && !apptForm.patientId) {
-          setApptForm(prev => ({ ...prev, patientId: pList[0].id.toString() }));
+          setApptForm((prev) => ({ ...prev, patientId: pList[0].id.toString() }));
         }
       } catch (err) {
         console.error('Failed to load reception queues:', err);
@@ -106,7 +114,7 @@ export const ReceptionQueueModule: React.FC = () => {
   };
 
   const getPatientName = (patientId: number) => {
-    const p = patients.find(x => x.id === patientId);
+    const p = patients.find((x) => x.id === patientId);
     return p ? `${p.firstName} ${p.lastName}` : `Patient #${patientId}`;
   };
 
@@ -117,9 +125,12 @@ export const ReceptionQueueModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Reception, Queues & Appointment Navigation</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Reception, Queues & Appointment Navigation
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Real-time patient flow tracking, calling station tokens, and outpatient clinic booking desk.
+            Real-time patient flow tracking, calling station tokens, and outpatient clinic booking
+            desk.
           </p>
         </div>
 
@@ -196,11 +207,13 @@ export const ReceptionQueueModule: React.FC = () => {
                   </tr>
                 ) : (
                   queues.map((q) => {
-                    const patient = patients.find(p => p.id === q.patientId);
+                    const patient = patients.find((p) => p.id === q.patientId);
 
                     return (
                       <tr key={q.id} className="hover:bg-slate-50/70">
-                        <td className="px-4 py-3 font-bold text-slate-900 text-sm">{q.tokenNumber}</td>
+                        <td className="px-4 py-3 font-bold text-slate-900 text-sm">
+                          {q.tokenNumber}
+                        </td>
                         <td className="px-4 py-3 font-sans">
                           {patient ? (
                             <button
@@ -221,25 +234,29 @@ export const ReceptionQueueModule: React.FC = () => {
                           {q.queueType} Desk
                         </td>
                         <td className="px-4 py-3 font-sans">
-                          <span className={`px-2 py-0.5 rounded text-2xs font-semibold ${
-                            q.priority === 'Emergency'
-                              ? 'bg-rose-50 text-rose-700'
-                              : q.priority === 'Priority'
-                              ? 'bg-orange-50 text-orange-800 border border-orange-200'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded text-2xs font-semibold ${
+                              q.priority === 'Emergency'
+                                ? 'bg-rose-50 text-rose-700'
+                                : q.priority === 'Priority'
+                                  ? 'bg-orange-50 text-orange-800 border border-orange-200'
+                                  : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
                             {q.priority}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-slate-600">{q.waitingTimeMinutes} mins</td>
                         <td className="px-4 py-3 font-sans">
-                          <span className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                            q.status === 'In-Progress'
-                              ? 'bg-blue-50 text-blue-900 border border-blue-200'
-                              : q.status === 'Called'
-                              ? 'bg-orange-50 text-orange-900 border border-orange-200 font-semibold'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                              q.status === 'In-Progress'
+                                ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                                : q.status === 'Called'
+                                  ? 'bg-orange-50 text-orange-900 border border-orange-200 font-semibold'
+                                  : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
                             {q.status}
                           </span>
                         </td>
@@ -321,40 +338,46 @@ export const ReceptionQueueModule: React.FC = () => {
               </div>
             ) : (
               appointments.map((appt) => (
-                <div key={appt.id} className="p-3 border border-slate-200 rounded-lg bg-slate-50/50 space-y-1.5 text-xs">
+                <div
+                  key={appt.id}
+                  className="p-3 border border-slate-200 rounded-lg bg-slate-50/50 space-y-1.5 text-xs"
+                >
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-900">{getPatientName(appt.patientId)}</span>
+                    <span className="font-semibold text-slate-900">
+                      {getPatientName(appt.patientId)}
+                    </span>
                     <span className="font-mono text-2xs text-blue-900 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
                       {appt.scheduledTime}
                     </span>
                   </div>
                   <div className="text-2xs text-slate-600">
-                    Type: <strong className="text-slate-800">{appt.appointmentType}</strong> ({appt.durationMinutes} mins)
+                    Type: <strong className="text-slate-800">{appt.appointmentType}</strong> (
+                    {appt.durationMinutes} mins)
                   </div>
                   {appt.reason && (
-                    <div className="text-2xs text-slate-500 italic">
-                      "{appt.reason}"
-                    </div>
+                    <div className="text-2xs text-slate-500 italic">"{appt.reason}"</div>
                   )}
                   <div className="pt-2 flex items-center justify-between border-t border-slate-200/60">
                     <span className="text-2xs text-slate-400">Status: {appt.status}</span>
                     <button
                       onClick={() => {
-                        const pat = patients.find(p => p.id === appt.patientId);
+                        const pat = patients.find((p) => p.id === appt.patientId);
                         if (pat) {
-                          api.createQueueItem({
-                            tenantId: pat.tenantId,
-                            facilityId: pat.facilityId,
-                            patientId: pat.id,
-                            queueType: 'Doctor',
-                            tokenNumber: `APPT-${Math.floor(100 + Math.random() * 900)}`,
-                            priority: 'Priority',
-                            status: 'Waiting',
-                            waitingTimeMinutes: 0,
-                          }).then(() => {
-                            showToast(`Patient checked in and queued for doctor!`);
-                            triggerRefresh();
-                          });
+                          api
+                            .createQueueItem({
+                              tenantId: pat.tenantId,
+                              facilityId: pat.facilityId,
+                              patientId: pat.id,
+                              queueType: 'Doctor',
+                              tokenNumber: `APPT-${Math.floor(100 + Math.random() * 900)}`,
+                              priority: 'Priority',
+                              status: 'Waiting',
+                              waitingTimeMinutes: 0,
+                            })
+                            .then(() => {
+                              showToast(`Patient checked in and queued for doctor!`);
+                              triggerRefresh();
+                            });
                         }
                       }}
                       className="px-2 py-0.5 text-2xs font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
@@ -384,8 +407,12 @@ export const ReceptionQueueModule: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Schedule Patient Clinic Appointment</h3>
-              <p className="text-2xs text-slate-500">Book clinic slots for follow-up or specialty consultations.</p>
+              <h3 className="text-sm font-bold text-slate-900">
+                Schedule Patient Clinic Appointment
+              </h3>
+              <p className="text-2xs text-slate-500">
+                Book clinic slots for follow-up or specialty consultations.
+              </p>
             </div>
 
             <form onSubmit={handleCreateAppointment} className="space-y-4">
@@ -397,7 +424,7 @@ export const ReceptionQueueModule: React.FC = () => {
                   onChange={(e) => setApptForm({ ...apptForm, patientId: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
                 >
-                  {patients.map(p => (
+                  {patients.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.firstName} {p.lastName} ({p.mrn} · {p.phone})
                     </option>
@@ -422,7 +449,9 @@ export const ReceptionQueueModule: React.FC = () => {
                   <input
                     type="number"
                     value={apptForm.durationMinutes}
-                    onChange={(e) => setApptForm({ ...apptForm, durationMinutes: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setApptForm({ ...apptForm, durationMinutes: Number(e.target.value) })
+                    }
                     className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
                   />
                 </div>
@@ -436,7 +465,9 @@ export const ReceptionQueueModule: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
                   <option value="Specialist Consultation">Specialist Consultation</option>
-                  <option value="Routine Chronic Follow-up">Routine Chronic Follow-up (Hypertension/Diabetes)</option>
+                  <option value="Routine Chronic Follow-up">
+                    Routine Chronic Follow-up (Hypertension/Diabetes)
+                  </option>
                   <option value="Antenatal Care (ANC)">Antenatal Care (ANC Clinic)</option>
                   <option value="Post-Op Review">Post-Op Review</option>
                   <option value="Dental Checkup">Dental Checkup</option>
@@ -445,7 +476,9 @@ export const ReceptionQueueModule: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Clinical Indication / Reason</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Clinical Indication / Reason
+                </label>
                 <input
                   type="text"
                   value={apptForm.reason}

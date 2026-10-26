@@ -62,12 +62,7 @@ export {
   VAGUE_WORDS,
 } from './tariff-words.ts';
 
-import {
-  NEUTRAL_WORDS,
-  isVaguePhrase,
-  serviceWords,
-  words,
-} from './tariff-words.ts';
+import { NEUTRAL_WORDS, isVaguePhrase, serviceWords, words } from './tariff-words.ts';
 
 /** A stable comparison key for a code or a key: ` opd-001 ` → `OPD-001`. */
 export function codeKey(value: string | null | undefined): string {
@@ -84,15 +79,10 @@ export function codeKey(value: string | null | undefined): string {
  * for a general visit would charge 300 where the facility's own list
  * says 150.
  */
-function extraWordsAreNeutral(
-  description: string,
-  phraseWords: readonly string[],
-): boolean {
+function extraWordsAreNeutral(description: string, phraseWords: readonly string[]): boolean {
   const wanted = new Set(phraseWords);
 
-  return serviceWords(description).every(
-    (word) => wanted.has(word) || NEUTRAL_WORDS.has(word),
-  );
+  return serviceWords(description).every((word) => wanted.has(word) || NEUTRAL_WORDS.has(word));
 }
 
 /* ============================================================
@@ -154,9 +144,7 @@ const FAMILY_DEPARTMENTS: Record<BillingFamily, readonly string[]> = {
   PHARMACY: ['pharmacy'],
 };
 
-export function departmentsForFamily(
-  family: BillingFamily,
-): readonly string[] {
+export function departmentsForFamily(family: BillingFamily): readonly string[] {
   return FAMILY_DEPARTMENTS[family] ?? [];
 }
 
@@ -166,7 +154,10 @@ export function departmentsForFamily(
 
 /** Remove bracketed detail: `Full Blood Count (CBC/FBC 5-Part Diff)`. */
 function withoutParentheses(value: string): string {
-  return value.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  return value
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -177,9 +168,7 @@ function withoutParentheses(value: string): string {
  * `Full blood count`; both describe one test, and the shorter form is
  * what a person types into a price list.
  */
-export function serviceNamePhrases(
-  name: string | null | undefined,
-): string[] {
+export function serviceNamePhrases(name: string | null | undefined): string[] {
   if (typeof name !== 'string') return [];
 
   const trimmed = name.trim();
@@ -212,9 +201,7 @@ export function serviceNamePhrases(
  * are 300 and 150 in the facility's own list. The general phrase is kept
  * for the default outpatient visit.
  */
-export function consultationPhrases(
-  encounterType: string | null | undefined,
-): string[] {
+export function consultationPhrases(encounterType: string | null | undefined): string[] {
   const type = codeKey(encounterType).replace(/[^A-Z0-9]+/g, '_');
 
   switch (type) {
@@ -348,18 +335,12 @@ export interface Explanation<T extends TariffLike = TariffLike> {
  * facility gets a verdict, so the answer is a statement about their own
  * price list rather than a list of codes they have never seen.
  */
-export function explainMatch<T extends TariffLike>(
-  input: MatchInput<T>,
-): Explanation<T> {
+export function explainMatch<T extends TariffLike>(input: MatchInput<T>): Explanation<T> {
   const outcome = matchTariff(input);
 
-  const departments =
-    input.departments ??
-    (input.family ? departmentsForFamily(input.family) : []);
+  const departments = input.departments ?? (input.family ? departmentsForFamily(input.family) : []);
 
-  const allowed = new Set(
-    (departments ?? []).map((entry) => normaliseDepartment(entry)),
-  );
+  const allowed = new Set((departments ?? []).map((entry) => normaliseDepartment(entry)));
 
   const phraseWordSets = (input.phrases ?? [])
     .map((phrase) => serviceWords(phrase))
@@ -430,8 +411,7 @@ export function explainMatch<T extends TariffLike>(
       return {
         tariff,
         verdict: 'DESCRIPTION_ALSO_MATCHES' as const,
-        note:
-          'Its description also names this service. JaliCare will not choose between two such rows — link the right one.',
+        note: 'Its description also names this service. JaliCare will not choose between two such rows — link the right one.',
       };
     }
 
@@ -453,9 +433,7 @@ export function explainMatch<T extends TariffLike>(
  * the caller can tell the user which codes to choose between, instead of
  * charging the wrong amount.
  */
-export function matchTariff<T extends TariffLike>(
-  input: MatchInput<T>,
-): MatchOutcome<T> {
+export function matchTariff<T extends TariffLike>(input: MatchInput<T>): MatchOutcome<T> {
   const codes = (input.codes ?? [])
     .map((code) => (typeof code === 'string' ? code.trim() : ''))
     .filter((code) => code.length > 0);
@@ -483,9 +461,7 @@ export function matchTariff<T extends TariffLike>(
 
   for (const key of keys) {
     const upper = codeKey(key);
-    const match = linkedPool.find(
-      (row) => codeKey(row.billingKey ?? '') === upper,
-    );
+    const match = linkedPool.find((row) => codeKey(row.billingKey ?? '') === upper);
 
     if (match) {
       outcome.tariff = match;
@@ -786,10 +762,7 @@ export function codesForFamily(input: {
       });
 
     case 'ADMISSION':
-      return tariffCodeCandidates('ADMIT', input.wardCode, [
-        'ADMISSION',
-        'INPATIENT-ADMISSION',
-      ]);
+      return tariffCodeCandidates('ADMIT', input.wardCode, ['ADMISSION', 'INPATIENT-ADMISSION']);
 
     case 'BED_DAY': {
       const cleaned =
@@ -815,10 +788,7 @@ export function codesForFamily(input: {
     }
 
     case 'DELIVERY':
-      return tariffCodeCandidates('DELIVERY', name, [
-        'DELIVERY',
-        'MATERNITY-DELIVERY',
-      ]);
+      return tariffCodeCandidates('DELIVERY', name, ['DELIVERY', 'MATERNITY-DELIVERY']);
 
     case 'PHARMACY':
       return tariffCodeCandidates('DRUG', name, ['PHARMACY', 'MEDICATION']);

@@ -2,11 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import {
-  OperationsReport,
-  RevenueReport,
-  OccupancyTrendResponse,
-} from '../../types/index.ts';
+import { OperationsReport, RevenueReport, OccupancyTrendResponse } from '../../types/index.ts';
 
 import {
   Activity,
@@ -46,11 +42,7 @@ const PERIODS: ReadonlyArray<{ id: PeriodId; label: string; days: number | null 
 function localDateKey(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
 
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-  ].join('-');
+  return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-');
 }
 
 function periodRange(period: PeriodId): { from?: string; to?: string } {
@@ -65,11 +57,7 @@ function periodRange(period: PeriodId): { from?: string; to?: string } {
     return { from: to, to };
   }
 
-  const from = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate() - (spec.days - 1),
-  );
+  const from = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (spec.days - 1));
 
   return { from: localDateKey(from), to };
 }
@@ -96,9 +84,7 @@ function formatDays(value: number | null | undefined): string {
 }
 
 function serviceLabel(itemType: string): string {
-  return itemType
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return itemType.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function occupancyTone(rate: number): string {
@@ -128,11 +114,7 @@ const KpiCard: React.FC<{
 
     <div
       className={`mt-2 text-xl font-bold font-mono tabular-nums ${
-        tone === 'warn'
-          ? 'text-rose-700'
-          : tone === 'good'
-            ? 'text-emerald-700'
-            : 'text-slate-900'
+        tone === 'warn' ? 'text-rose-700' : tone === 'good' ? 'text-emerald-700' : 'text-slate-900'
       }`}
     >
       {value}
@@ -152,9 +134,7 @@ const SectionCard: React.FC<{
     <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gradient-to-r from-slate-50 to-white">
       <div className="flex items-center gap-2">
         {icon}
-        <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-          {title}
-        </h2>
+        <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">{title}</h2>
       </div>
       {action}
     </div>
@@ -230,9 +210,7 @@ export const ReportsModule: React.FC = () => {
     if (firstFailure && firstFailure.status === 'rejected') {
       const reason = firstFailure.reason;
 
-      setError(
-        reason instanceof Error ? reason.message : 'Unable to load one or more reports.',
-      );
+      setError(reason instanceof Error ? reason.message : 'Unable to load one or more reports.');
     }
 
     setLoading(false);
@@ -244,40 +222,23 @@ export const ReportsModule: React.FC = () => {
 
   const byService = revenue?.byService ?? [];
 
-  const topRevenue = byService.reduce(
-    (max, row) => Math.max(max, Number(row.revenue) || 0),
-    0,
-  );
+  const topRevenue = byService.reduce((max, row) => Math.max(max, Number(row.revenue) || 0), 0);
 
-  const serviceTotal = byService.reduce(
-    (sum, row) => sum + (Number(row.revenue) || 0),
-    0,
-  );
+  const serviceTotal = byService.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
 
   const byChannel = revenue?.byChannel ?? [];
 
-  const channelTotal = byChannel.reduce(
-    (sum, row) => sum + (Number(row.amount) || 0),
-    0,
-  );
+  const channelTotal = byChannel.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
-  const channelMax = byChannel.reduce(
-    (max, row) => Math.max(max, Number(row.amount) || 0),
-    0,
-  );
+  const channelMax = byChannel.reduce((max, row) => Math.max(max, Number(row.amount) || 0), 0);
 
-  const trendMax = Math.max(
-    1,
-    ...(trend?.points.map((point) => point.occupiedBeds) ?? [1]),
-  );
+  const trendMax = Math.max(1, ...(trend?.points.map((point) => point.occupiedBeds) ?? [1]));
 
   if (!currentFacility) {
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
         <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto mb-2" />
-        <p className="text-sm text-slate-700">
-          Select a facility to view its reports.
-        </p>
+        <p className="text-sm text-slate-700">Select a facility to view its reports.</p>
       </div>
     );
   }
@@ -367,7 +328,7 @@ export const ReportsModule: React.FC = () => {
                 label="Outstanding"
                 value={formatKes(revenue?.totals.outstanding)}
                 hint="Balance still owed by patients and payers"
-                tone={(Number(revenue?.totals.outstanding ?? 0) > 0) ? 'warn' : 'default'}
+                tone={Number(revenue?.totals.outstanding ?? 0) > 0 ? 'warn' : 'default'}
                 icon={<ArrowUpRight className="w-4 h-4 text-rose-600" />}
               />
 
@@ -390,9 +351,8 @@ export const ReportsModule: React.FC = () => {
             >
               {byService.length === 0 ? (
                 <EmptyRow>
-                  No invoiced services in this period. Charges appear here as
-                  soon as consultations, lab tests, medicines or bed-days are
-                  billed.
+                  No invoiced services in this period. Charges appear here as soon as consultations,
+                  lab tests, medicines or bed-days are billed.
                 </EmptyRow>
               ) : (
                 <div className="space-y-3">
@@ -454,17 +414,13 @@ export const ReportsModule: React.FC = () => {
               }
             >
               {byChannel.length === 0 ? (
-                <EmptyRow>
-                  No payments recorded in this period.
-                </EmptyRow>
+                <EmptyRow>No payments recorded in this period.</EmptyRow>
               ) : (
                 <div className="space-y-3">
                   {byChannel.map((row) => {
                     const amount = Number(row.amount) || 0;
-                    const share =
-                      channelTotal > 0 ? (amount / channelTotal) * 100 : 0;
-                    const width =
-                      channelMax > 0 ? (amount / channelMax) * 100 : 0;
+                    const share = channelTotal > 0 ? (amount / channelTotal) * 100 : 0;
+                    const width = channelMax > 0 ? (amount / channelMax) * 100 : 0;
 
                     return (
                       <div key={row.channel}>
@@ -526,10 +482,9 @@ export const ReportsModule: React.FC = () => {
                       ) : (
                         <span className="text-amber-800">
                           Does not reconcile to Collected (
-                          {formatKes(revenue.channelReconciliation.collected)});
-                          difference{' '}
-                          {formatKes(revenue.channelReconciliation.difference)}.
-                          Check payments posted outside the invoice window.
+                          {formatKes(revenue.channelReconciliation.collected)}); difference{' '}
+                          {formatKes(revenue.channelReconciliation.difference)}. Check payments
+                          posted outside the invoice window.
                         </span>
                       )
                     ) : (
@@ -538,14 +493,12 @@ export const ReportsModule: React.FC = () => {
                       </span>
                     )}
 
-                    {(revenue?.channelReconciliation?.unmappedMethods.length ?? 0) >
-                      0 && (
+                    {(revenue?.channelReconciliation?.unmappedMethods.length ?? 0) > 0 && (
                       <span className="mt-1 block text-slate-500">
                         Unrecognised method
                         {revenue!.channelReconciliation!.unmappedMethods.length === 1
                           ? ''
-                          : 's'}
-                        :{' '}
+                          : 's'}:{' '}
                         <span className="font-mono">
                           {revenue!.channelReconciliation!.unmappedMethods.join(', ')}
                         </span>
@@ -659,8 +612,7 @@ export const ReportsModule: React.FC = () => {
                             <div className="font-medium text-slate-900">{ward.wardName}</div>
                             <div className="text-2xs text-slate-400">
                               {ward.wardType ?? 'General'}
-                              {ward.cleaningBeds > 0 &&
-                                ` · ${ward.cleaningBeds} cleaning`}
+                              {ward.cleaningBeds > 0 && ` · ${ward.cleaningBeds} cleaning`}
                               {ward.outOfServiceBeds > 0 &&
                                 ` · ${ward.outOfServiceBeds} out of service`}
                             </div>
@@ -795,8 +747,8 @@ export const ReportsModule: React.FC = () => {
               >
                 {(operations?.lengthOfStay.dischargedInWindow ?? 0) === 0 ? (
                   <EmptyRow>
-                    No discharges recorded in this window, so there is no
-                    completed-stay average to compare against.
+                    No discharges recorded in this window, so there is no completed-stay average to
+                    compare against.
                   </EmptyRow>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
@@ -841,9 +793,7 @@ export const ReportsModule: React.FC = () => {
                     <tbody className="divide-y divide-slate-100">
                       {operations.longestStays.map((stay) => (
                         <tr key={stay.admissionId} className="hover:bg-slate-50/70">
-                          <td className="py-2.5 font-medium text-slate-900">
-                            {stay.patientName}
-                          </td>
+                          <td className="py-2.5 font-medium text-slate-900">{stay.patientName}</td>
                           <td className="py-2.5 text-slate-600">
                             {stay.wardName}
                             {stay.bedNumber && (
@@ -858,9 +808,7 @@ export const ReportsModule: React.FC = () => {
                           <td className="py-2.5 text-right">
                             <span
                               className={`font-mono tabular-nums ${
-                                stay.days >= 7
-                                  ? 'text-amber-700 font-semibold'
-                                  : 'text-slate-700'
+                                stay.days >= 7 ? 'text-amber-700 font-semibold' : 'text-slate-700'
                               }`}
                             >
                               {stay.days}
@@ -876,10 +824,9 @@ export const ReportsModule: React.FC = () => {
           </div>
 
           <p className="text-2xs text-slate-400 px-1">
-            Revenue is counted from invoice lines with voided invoices excluded.
-            Bed occupancy is the current state of the bed board, not a historical
-            snapshot. Length of stay is measured in whole days from the recorded
-            admission date.
+            Revenue is counted from invoice lines with voided invoices excluded. Bed occupancy is
+            the current state of the bed board, not a historical snapshot. Length of stay is
+            measured in whole days from the recorded admission date.
             {operations?.generatedAt && (
               <> Generated {new Date(operations.generatedAt).toLocaleString()}.</>
             )}

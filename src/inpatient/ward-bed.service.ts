@@ -51,24 +51,15 @@ const MAX_BEDS_PER_REQUEST = 60;
 
 function pgErrorCode(error: unknown): string | undefined {
   return (
-    (error as { code?: string })?.code ??
-    (error as { cause?: { code?: string } })?.cause?.code
+    (error as { code?: string })?.code ?? (error as { cause?: { code?: string } })?.cause?.code
   );
 }
 
-function requiredText(
-  value: unknown,
-  field: string,
-  maxLength: number,
-): string {
+function requiredText(value: unknown, field: string, maxLength: number): string {
   const text = typeof value === 'string' ? value.trim() : '';
 
   if (text.length < 2) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      `${field} is required.`,
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', `${field} is required.`, 400);
   }
 
   if (text.length > maxLength) {
@@ -82,16 +73,10 @@ function requiredText(
   return text;
 }
 
-function oneOf(
-  value: unknown,
-  field: string,
-  allowed: readonly string[],
-): string {
+function oneOf(value: unknown, field: string, allowed: readonly string[]): string {
   const text = typeof value === 'string' ? value.trim() : '';
 
-  const match = allowed.find(
-    (option) => option.toLowerCase() === text.toLowerCase(),
-  );
+  const match = allowed.find((option) => option.toLowerCase() === text.toLowerCase());
 
   if (!match) {
     throw new InpatientDomainError(
@@ -141,49 +126,30 @@ async function facilityForContext(
 ) {
   const facilityId = resolveFacilityScope(context, requestedFacilityId);
 
-  const facility = await getFacilityByIdScoped(context, facilityId).catch(
-    () => null,
-  );
+  const facility = await getFacilityByIdScoped(context, facilityId).catch(() => null);
 
   if (!facility) {
-    throw new InpatientDomainError(
-      'FACILITY_NOT_FOUND',
-      'Facility not found.',
-      404,
-    );
+    throw new InpatientDomainError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
   }
 
   return facility;
 }
 
-async function requireWardInScope(
-  context: AuthorizationContext,
-  wardId: unknown,
-) {
+async function requireWardInScope(context: AuthorizationContext, wardId: unknown) {
   const id = Number(wardId);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A valid ward ID is required.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid ward ID is required.', 400);
   }
 
-  const [ward] = await db
-    .select()
-    .from(schema.wards)
-    .where(eq(schema.wards.id, id))
-    .limit(1);
+  const [ward] = await db.select().from(schema.wards).where(eq(schema.wards.id, id)).limit(1);
 
   if (!ward) {
     throw new InpatientDomainError('WARD_NOT_FOUND', 'Ward not found.', 404);
   }
 
   /* Another facility's ward answers as absent, not as forbidden. */
-  const facility = await getFacilityByIdScoped(context, ward.facilityId).catch(
-    () => null,
-  );
+  const facility = await getFacilityByIdScoped(context, ward.facilityId).catch(() => null);
 
   if (!facility) {
     throw new InpatientDomainError('WARD_NOT_FOUND', 'Ward not found.', 404);
@@ -192,25 +158,14 @@ async function requireWardInScope(
   return { ward, facility };
 }
 
-async function requireBedInScope(
-  context: AuthorizationContext,
-  bedId: unknown,
-) {
+async function requireBedInScope(context: AuthorizationContext, bedId: unknown) {
   const id = Number(bedId);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A valid bed ID is required.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid bed ID is required.', 400);
   }
 
-  const [bed] = await db
-    .select()
-    .from(schema.beds)
-    .where(eq(schema.beds.id, id))
-    .limit(1);
+  const [bed] = await db.select().from(schema.beds).where(eq(schema.beds.id, id)).limit(1);
 
   if (!bed) {
     throw new InpatientDomainError('BED_NOT_FOUND', 'Bed not found.', 404);
@@ -236,10 +191,7 @@ async function syncWardCapacity(wardId: number): Promise<number> {
 
   const total = Number(value ?? 0);
 
-  await db
-    .update(schema.wards)
-    .set({ totalBeds: total })
-    .where(eq(schema.wards.id, wardId));
+  await db.update(schema.wards).set({ totalBeds: total }).where(eq(schema.wards.id, wardId));
 
   return total;
 }
@@ -257,10 +209,7 @@ export type CreateWardInput = {
   dailyRate?: string | number | null;
 };
 
-export async function createWard(
-  context: AuthorizationContext,
-  input: CreateWardInput,
-) {
+export async function createWard(context: AuthorizationContext, input: CreateWardInput) {
   const facility = await facilityForContext(context, input.facilityId);
 
   const name = requiredText(input.name, 'Ward name', 120);
@@ -278,11 +227,7 @@ export async function createWard(
 
   const wardType = requiredText(input.wardType, 'Ward type', 60);
 
-  const genderAllocation = oneOf(
-    input.genderAllocation,
-    'Gender allocation',
-    GENDER_ALLOCATIONS,
-  );
+  const genderAllocation = oneOf(input.genderAllocation, 'Gender allocation', GENDER_ALLOCATIONS);
 
   const dailyRate = optionalMoney(input.dailyRate, 'Daily rate');
 
@@ -345,11 +290,7 @@ export async function updateWard(
   }
 
   if (input.genderAllocation !== undefined) {
-    patch.genderAllocation = oneOf(
-      input.genderAllocation,
-      'Gender allocation',
-      GENDER_ALLOCATIONS,
-    );
+    patch.genderAllocation = oneOf(input.genderAllocation, 'Gender allocation', GENDER_ALLOCATIONS);
   }
 
   /*
@@ -362,11 +303,7 @@ export async function updateWard(
 
   if (input.isActive !== undefined) {
     if (typeof input.isActive !== 'boolean') {
-      throw new InpatientDomainError(
-        'INVALID_INPUT',
-        'isActive must be true or false.',
-        400,
-      );
+      throw new InpatientDomainError('INVALID_INPUT', 'isActive must be true or false.', 400);
     }
 
     /* A retired ward cannot be retired twice into an occupied one. */
@@ -375,10 +312,7 @@ export async function updateWard(
         .select({ value: count() })
         .from(schema.beds)
         .where(
-          and(
-            eq(schema.beds.wardId, ward.id),
-            sql`${schema.beds.currentPatientId} IS NOT NULL`,
-          ),
+          and(eq(schema.beds.wardId, ward.id), sql`${schema.beds.currentPatientId} IS NOT NULL`),
         );
 
       if (Number(value ?? 0) > 0) {
@@ -417,10 +351,7 @@ export async function updateWard(
  * records, and deleting the place an admission happened in would leave
  * the history pointing at nothing. Retire it instead.
  */
-export async function deleteWard(
-  context: AuthorizationContext,
-  wardId: unknown,
-) {
+export async function deleteWard(context: AuthorizationContext, wardId: unknown) {
   const { ward } = await requireWardInScope(context, wardId);
 
   const [{ value: admissions }] = await db
@@ -439,12 +370,7 @@ export async function deleteWard(
   const [{ value: occupied }] = await db
     .select({ value: count() })
     .from(schema.beds)
-    .where(
-      and(
-        eq(schema.beds.wardId, ward.id),
-        sql`${schema.beds.currentPatientId} IS NOT NULL`,
-      ),
-    );
+    .where(and(eq(schema.beds.wardId, ward.id), sql`${schema.beds.currentPatientId} IS NOT NULL`));
 
   if (Number(occupied ?? 0) > 0) {
     throw new InpatientDomainError(
@@ -485,11 +411,7 @@ function normaliseBedNumber(value: unknown): string {
   const text = typeof value === 'string' ? value.trim() : '';
 
   if (text.length === 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'A bed number cannot be blank.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'A bed number cannot be blank.', 400);
   }
 
   if (text.length > 20) {
@@ -573,11 +495,7 @@ function bedNumbersFor(input: CreateBedsInput): string[] {
     );
   }
 
-  if (
-    !Number.isSafeInteger(count) ||
-    count < 1 ||
-    count > MAX_BEDS_PER_REQUEST
-  ) {
+  if (!Number.isSafeInteger(count) || count < 1 || count > MAX_BEDS_PER_REQUEST) {
     throw new InpatientDomainError(
       'INVALID_INPUT',
       `The number of beds must be between 1 and ${MAX_BEDS_PER_REQUEST}.`,
@@ -586,11 +504,7 @@ function bedNumbersFor(input: CreateBedsInput): string[] {
   }
 
   if (startNumber + count - 1 > 999) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'That range runs past bed 999.',
-      400,
-    );
+    throw new InpatientDomainError('INVALID_INPUT', 'That range runs past bed 999.', 400);
   }
 
   return Array.from({ length: count }, (_, index) => {
@@ -600,10 +514,7 @@ function bedNumbersFor(input: CreateBedsInput): string[] {
   });
 }
 
-export async function createBeds(
-  context: AuthorizationContext,
-  input: CreateBedsInput,
-) {
+export async function createBeds(context: AuthorizationContext, input: CreateBedsInput) {
   const { ward } = await requireWardInScope(context, input.wardId);
 
   if (ward.isActive === false) {
@@ -626,12 +537,7 @@ export async function createBeds(
   const existing = await db
     .select({ bedNumber: schema.beds.bedNumber })
     .from(schema.beds)
-    .where(
-      and(
-        eq(schema.beds.wardId, ward.id),
-        inArray(schema.beds.bedNumber, numbers),
-      ),
-    );
+    .where(and(eq(schema.beds.wardId, ward.id), inArray(schema.beds.bedNumber, numbers)));
 
   if (existing.length > 0) {
     throw new InpatientDomainError(
@@ -698,12 +604,7 @@ export async function updateBed(
       const [clash] = await db
         .select({ id: schema.beds.id })
         .from(schema.beds)
-        .where(
-          and(
-            eq(schema.beds.wardId, bed.wardId),
-            eq(schema.beds.bedNumber, bedNumber),
-          ),
-        )
+        .where(and(eq(schema.beds.wardId, bed.wardId), eq(schema.beds.bedNumber, bedNumber)))
         .limit(1);
 
       if (clash) {
@@ -778,16 +679,10 @@ export async function updateBed(
  * refused more bluntly: deleting the bed under a patient would erase the
  * place they are lying.
  */
-export async function deleteBed(
-  context: AuthorizationContext,
-  bedId: unknown,
-) {
+export async function deleteBed(context: AuthorizationContext, bedId: unknown) {
   const { bed } = await requireBedInScope(context, bedId);
 
-  if (
-    bed.currentPatientId !== null &&
-    bed.currentPatientId !== undefined
-  ) {
+  if (bed.currentPatientId !== null && bed.currentPatientId !== undefined) {
     throw new InpatientDomainError(
       'BED_OCCUPIED',
       'This bed has a patient in it. Discharge or transfer the patient first.',

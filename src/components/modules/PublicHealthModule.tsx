@@ -2,14 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PublicHealthReport } from '../../types/index.ts';
-import {
-  Activity,
-  AlertTriangle,
-  Download,
-  FileWarning,
-  Plus,
-  ShieldAlert,
-} from 'lucide-react';
+import { Activity, AlertTriangle, Download, FileWarning, Plus, ShieldAlert } from 'lucide-react';
 
 /*
  * Public health surveillance
@@ -37,17 +30,13 @@ import {
 
 /** ISO-8601 epidemiological week, e.g. 2026-W43. */
 export function currentEpiWeek(date: Date = new Date()): string {
-  const target = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
+  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 
   const day = target.getUTCDay() || 7;
   target.setUTCDate(target.getUTCDate() + 4 - day);
 
   const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(
-    ((target.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
-  );
+  const week = Math.ceil(((target.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
 
   return `${target.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
@@ -106,9 +95,7 @@ export const PublicHealthModule: React.FC = () => {
       } else {
         const reason = reportsResult.reason;
         setReportsError(
-          reason instanceof Error
-            ? reason.message
-            : 'The sentinel ledger could not be read.',
+          reason instanceof Error ? reason.message : 'The sentinel ledger could not be read.',
         );
       }
 
@@ -118,9 +105,7 @@ export const PublicHealthModule: React.FC = () => {
         const reason = mohResult.reason;
         setMohSummary(null);
         setMohError(
-          reason instanceof Error
-            ? reason.message
-            : 'The MOH 705 aggregate is not available.',
+          reason instanceof Error ? reason.message : 'The MOH 705 aggregate is not available.',
         );
       }
 
@@ -156,8 +141,7 @@ export const PublicHealthModule: React.FC = () => {
       await api.recordPublicHealthReport({
         facilityId: currentFacility.id,
         diseaseCode: alertForm.diseaseCode,
-        diseaseName:
-          NOTIFIABLE_CONDITIONS[alertForm.diseaseCode] ?? 'Notifiable condition',
+        diseaseName: NOTIFIABLE_CONDITIONS[alertForm.diseaseCode] ?? 'Notifiable condition',
         casesCount: Number(alertForm.casesCount),
         mortalityCount: Number(alertForm.mortalityCount),
         ageGroup: alertForm.ageGroup,
@@ -172,8 +156,7 @@ export const PublicHealthModule: React.FC = () => {
       setIsAlertModalOpen(false);
       triggerRefresh();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'The case could not be recorded.';
+      const message = err instanceof Error ? err.message : 'The case could not be recorded.';
 
       showToast(message, { tone: 'error' });
     }
@@ -205,8 +188,8 @@ export const PublicHealthModule: React.FC = () => {
             Surveillance &amp; MOH 705
           </h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted">
-            Notifiable disease reports recorded at this facility, and the MOH 705
-            outpatient return. Nothing on this screen is transmitted automatically.
+            Notifiable disease reports recorded at this facility, and the MOH 705 outpatient return.
+            Nothing on this screen is transmitted automatically.
           </p>
         </div>
 
@@ -226,11 +209,7 @@ export const PublicHealthModule: React.FC = () => {
             Export MOH 705 JSON
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsAlertModalOpen(true)}
-            className="btn-accent"
-          >
+          <button type="button" onClick={() => setIsAlertModalOpen(true)} className="btn-accent">
             <Plus className="h-3.5 w-3.5" />
             Record notifiable case
           </button>
@@ -243,17 +222,14 @@ export const PublicHealthModule: React.FC = () => {
         <div>
           <p className="font-bold">Local record only — not a national submission</p>
           <p className="mt-0.5 max-w-3xl text-2xs leading-relaxed text-amber-800">
-            Reports are stored in this facility&apos;s database. This build has no
-            connection to KHIS, DHIS2 or the DHA surveillance network, and no queue
-            that would send them later. Immediate notification of a reportable
-            disease remains a manual duty of the facility.
+            Reports are stored in this facility&apos;s database. This build has no connection to
+            KHIS, DHIS2 or the DHA surveillance network, and no queue that would send them later.
+            Immediate notification of a reportable disease remains a manual duty of the facility.
           </p>
         </div>
       </div>
 
-      {loading && (
-        <p className="text-sm text-slate-500">Loading the surveillance ledger…</p>
-      )}
+      {loading && <p className="text-sm text-slate-500">Loading the surveillance ledger…</p>}
 
       {!currentFacility?.id && !loading && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -275,13 +251,11 @@ export const PublicHealthModule: React.FC = () => {
           <div className="flex items-start gap-3 px-5 py-4">
             <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <div className="text-xs">
-              <p className="font-semibold text-ink">
-                This report is not produced by this build
-              </p>
+              <p className="font-semibold text-ink">This report is not produced by this build</p>
               <p className="mt-1 max-w-3xl leading-relaxed text-muted">{mohError}</p>
               <p className="mt-1 text-2xs text-muted">
-                The server returns this message deliberately rather than an empty
-                table. No figures are shown because no figures exist.
+                The server returns this message deliberately rather than an empty table. No figures
+                are shown because no figures exist.
               </p>
             </div>
           </div>
@@ -389,9 +363,7 @@ export const PublicHealthModule: React.FC = () => {
                 <select
                   id="notifiable-condition"
                   value={alertForm.diseaseCode}
-                  onChange={(e) =>
-                    setAlertForm({ ...alertForm, diseaseCode: e.target.value })
-                  }
+                  onChange={(e) => setAlertForm({ ...alertForm, diseaseCode: e.target.value })}
                   className="field-input"
                 >
                   {Object.entries(NOTIFIABLE_CONDITIONS).map(([code, name]) => (
@@ -449,9 +421,7 @@ export const PublicHealthModule: React.FC = () => {
                   <select
                     id="age-group"
                     value={alertForm.ageGroup}
-                    onChange={(e) =>
-                      setAlertForm({ ...alertForm, ageGroup: e.target.value })
-                    }
+                    onChange={(e) => setAlertForm({ ...alertForm, ageGroup: e.target.value })}
                     className="field-input"
                   >
                     <option value="Under 5 Years">Under 5 years</option>
@@ -469,9 +439,7 @@ export const PublicHealthModule: React.FC = () => {
                     required
                     pattern="\d{4}-W(0[1-9]|[1-4]\d|5[0-3])"
                     value={alertForm.epiWeek}
-                    onChange={(e) =>
-                      setAlertForm({ ...alertForm, epiWeek: e.target.value })
-                    }
+                    onChange={(e) => setAlertForm({ ...alertForm, epiWeek: e.target.value })}
                     className="field-input font-mono"
                   />
                 </div>

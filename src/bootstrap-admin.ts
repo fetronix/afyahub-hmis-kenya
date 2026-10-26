@@ -16,44 +16,27 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 
-import {
-  and,
-  eq,
-  isNull,
-  or,
-} from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 
 import { db } from './db';
 
-import {
-  users,
-  roles,
-  userRoles,
-} from './db/schema';
+import { users, roles, userRoles } from './db/schema';
 
 import { hashPassword } from './utils/password';
-
 
 /* ============================================================
    ENVIRONMENT CONFIGURATION
    ============================================================ */
 
-const ADMIN_USERNAME =
-  process.env.ADMIN_USERNAME?.trim().toLowerCase();
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim().toLowerCase();
 
-const ADMIN_EMAIL =
-  process.env.ADMIN_EMAIL?.trim().toLowerCase();
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 
-const ADMIN_PASSWORD =
-  process.env.ADMIN_PASSWORD;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-const ADMIN_FULL_NAME =
-  process.env.ADMIN_FULL_NAME?.trim() ||
-  'JaliCare Platform Administrator';
+const ADMIN_FULL_NAME = process.env.ADMIN_FULL_NAME?.trim() || 'JaliCare Platform Administrator';
 
-const ADMIN_PHONE =
-  process.env.ADMIN_PHONE?.trim() || null;
-
+const ADMIN_PHONE = process.env.ADMIN_PHONE?.trim() || null;
 
 /* ============================================================
    VALIDATION
@@ -75,40 +58,25 @@ function validateEnvironment(): void {
   }
 
   if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(', ')}`,
-    );
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
   if (ADMIN_USERNAME!.length < 3) {
-    throw new Error(
-      'ADMIN_USERNAME must contain at least 3 characters.',
-    );
+    throw new Error('ADMIN_USERNAME must contain at least 3 characters.');
   }
 
-  if (
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-      ADMIN_EMAIL!,
-    )
-  ) {
-    throw new Error(
-      'ADMIN_EMAIL does not appear to be valid.',
-    );
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ADMIN_EMAIL!)) {
+    throw new Error('ADMIN_EMAIL does not appear to be valid.');
   }
 
   if (ADMIN_PASSWORD!.length < 12) {
-    throw new Error(
-      'ADMIN_PASSWORD must contain at least 12 characters.',
-    );
+    throw new Error('ADMIN_PASSWORD must contain at least 12 characters.');
   }
 
   if (ADMIN_FULL_NAME.length < 2) {
-    throw new Error(
-      'ADMIN_FULL_NAME must contain at least 2 characters.',
-    );
+    throw new Error('ADMIN_FULL_NAME must contain at least 2 characters.');
   }
 }
-
 
 /* ============================================================
    UID GENERATOR
@@ -117,7 +85,6 @@ function validateEnvironment(): void {
 function generateUserUid(): string {
   return `usr_${randomUUID()}`;
 }
-
 
 /* ============================================================
    MAIN BOOTSTRAP
@@ -134,7 +101,6 @@ async function bootstrapAdmin(): Promise<void> {
   console.log('Environment validation passed.');
   console.log('Checking platform administrator...');
 
-
   /* ==========================================================
      1. FIND EXISTING USER
      ========================================================== */
@@ -142,12 +108,7 @@ async function bootstrapAdmin(): Promise<void> {
   const existingUsers = await db
     .select()
     .from(users)
-    .where(
-      or(
-        eq(users.username, ADMIN_USERNAME!),
-        eq(users.email, ADMIN_EMAIL!),
-      ),
-    );
+    .where(or(eq(users.username, ADMIN_USERNAME!), eq(users.email, ADMIN_EMAIL!)));
 
   if (existingUsers.length > 1) {
     throw new Error(
@@ -155,20 +116,14 @@ async function bootstrapAdmin(): Promise<void> {
     );
   }
 
-  const existingUser =
-    existingUsers.length === 1
-      ? existingUsers[0]
-      : null;
-
+  const existingUser = existingUsers.length === 1 ? existingUsers[0] : null;
 
   /* ==========================================================
      2. VALIDATE EXISTING USER
      ========================================================== */
 
   if (existingUser) {
-    console.log(
-      `Existing user found: ${existingUser.username}`,
-    );
+    console.log(`Existing user found: ${existingUser.username}`);
 
     if (
       existingUser.username !== ADMIN_USERNAME ||
@@ -191,26 +146,18 @@ async function bootstrapAdmin(): Promise<void> {
       );
     }
 
-    console.log(
-      'Existing user is a platform-level account.',
-    );
+    console.log('Existing user is a platform-level account.');
 
-    console.log(
-      'Existing password will NOT be overwritten.',
-    );
+    console.log('Existing password will NOT be overwritten.');
   } else {
-    console.log(
-      'Platform administrator does not exist.',
-    );
+    console.log('Platform administrator does not exist.');
   }
-
 
   /* ==========================================================
      3. DATABASE TRANSACTION
      ========================================================== */
 
   await db.transaction(async (tx) => {
-
     /* ========================================================
        3A. FIND GLOBAL SUPER_ADMIN ROLE
        ======================================================== */
@@ -218,27 +165,17 @@ async function bootstrapAdmin(): Promise<void> {
     let [superAdminRole] = await tx
       .select()
       .from(roles)
-      .where(
-        and(
-          eq(roles.name, 'SUPER_ADMIN'),
-          isNull(roles.tenantId),
-        ),
-      )
+      .where(and(eq(roles.name, 'SUPER_ADMIN'), isNull(roles.tenantId)))
       .limit(1);
-
 
     /* ========================================================
        3B. CREATE GLOBAL SUPER_ADMIN ROLE
        ======================================================== */
 
     if (!superAdminRole) {
-      console.log(
-        'Global SUPER_ADMIN role does not exist.',
-      );
+      console.log('Global SUPER_ADMIN role does not exist.');
 
-      console.log(
-        'Creating platform SUPER_ADMIN role...',
-      );
+      console.log('Creating platform SUPER_ADMIN role...');
 
       const insertedRoles = await tx
         .insert(roles)
@@ -247,8 +184,7 @@ async function bootstrapAdmin(): Promise<void> {
 
           name: 'SUPER_ADMIN',
 
-          description:
-            'Platform administrator with system-wide administrative privileges.',
+          description: 'Platform administrator with system-wide administrative privileges.',
 
           isSystem: true,
 
@@ -257,23 +193,14 @@ async function bootstrapAdmin(): Promise<void> {
         .returning();
 
       if (!insertedRoles[0]) {
-        throw new Error(
-          'Failed to create SUPER_ADMIN role.',
-        );
+        throw new Error('Failed to create SUPER_ADMIN role.');
       }
 
       superAdminRole = insertedRoles[0];
 
-      console.log(
-        `SUPER_ADMIN role created. ID: ${superAdminRole.id}`,
-      );
-
+      console.log(`SUPER_ADMIN role created. ID: ${superAdminRole.id}`);
     } else {
-
-      console.log(
-        `Global SUPER_ADMIN role already exists. ID: ${superAdminRole.id}`,
-      );
-
+      console.log(`Global SUPER_ADMIN role already exists. ID: ${superAdminRole.id}`);
 
       /* ======================================================
          3C. NORMALIZE SYSTEM ROLE
@@ -284,9 +211,7 @@ async function bootstrapAdmin(): Promise<void> {
         !superAdminRole.isSystem ||
         !superAdminRole.isActive
       ) {
-        console.log(
-          'Normalizing SUPER_ADMIN as an active system role...',
-        );
+        console.log('Normalizing SUPER_ADMIN as an active system role...');
 
         const updatedRoles = await tx
           .update(roles)
@@ -296,28 +221,18 @@ async function bootstrapAdmin(): Promise<void> {
             isActive: true,
             updatedAt: new Date(),
           })
-          .where(
-            eq(
-              roles.id,
-              superAdminRole.id,
-            ),
-          )
+          .where(eq(roles.id, superAdminRole.id))
           .returning();
 
         if (!updatedRoles[0]) {
-          throw new Error(
-            'Failed to normalize SUPER_ADMIN role.',
-          );
+          throw new Error('Failed to normalize SUPER_ADMIN role.');
         }
 
         superAdminRole = updatedRoles[0];
 
-        console.log(
-          'SUPER_ADMIN role normalized successfully.',
-        );
+        console.log('SUPER_ADMIN role normalized successfully.');
       }
     }
-
 
     /* ========================================================
        3D. CREATE PLATFORM ADMIN USER
@@ -326,10 +241,7 @@ async function bootstrapAdmin(): Promise<void> {
     let adminUser = existingUser;
 
     if (!adminUser) {
-
-      console.log(
-        'Generating Argon2id password hash...',
-      );
+      console.log('Generating Argon2id password hash...');
 
       /*
        * Password hashing is centralized in password.ts.
@@ -338,18 +250,11 @@ async function bootstrapAdmin(): Promise<void> {
        * registration use the same Argon2id configuration.
        */
 
-      const passwordHash =
-        await hashPassword(
-          ADMIN_PASSWORD!,
-        );
+      const passwordHash = await hashPassword(ADMIN_PASSWORD!);
 
-      console.log(
-        'Argon2id password hash generated.',
-      );
+      console.log('Argon2id password hash generated.');
 
-      console.log(
-        'Creating platform administrator account...',
-      );
+      console.log('Creating platform administrator account...');
 
       const insertedUsers = await tx
         .insert(users)
@@ -368,8 +273,7 @@ async function bootstrapAdmin(): Promise<void> {
 
           phone: ADMIN_PHONE,
 
-          designation:
-            'Platform Administrator',
+          designation: 'Platform Administrator',
 
           passwordHash,
 
@@ -404,24 +308,15 @@ async function bootstrapAdmin(): Promise<void> {
         .returning();
 
       if (!insertedUsers[0]) {
-        throw new Error(
-          'Failed to create platform administrator.',
-        );
+        throw new Error('Failed to create platform administrator.');
       }
 
       adminUser = insertedUsers[0];
 
-      console.log(
-        `Platform administrator created. User ID: ${adminUser.id}`,
-      );
-
+      console.log(`Platform administrator created. User ID: ${adminUser.id}`);
     } else {
-
-      console.log(
-        `Using existing platform administrator. User ID: ${adminUser.id}`,
-      );
+      console.log(`Using existing platform administrator. User ID: ${adminUser.id}`);
     }
-
 
     /* ========================================================
        3E. FIND EXISTING SUPER_ADMIN ASSIGNMENT
@@ -432,69 +327,46 @@ async function bootstrapAdmin(): Promise<void> {
       .from(userRoles)
       .where(
         and(
-          eq(
-            userRoles.userId,
-            adminUser.id,
-          ),
+          eq(userRoles.userId, adminUser.id),
 
-          eq(
-            userRoles.roleId,
-            superAdminRole.id,
-          ),
+          eq(userRoles.roleId, superAdminRole.id),
         ),
       )
       .limit(1);
-
 
     /* ========================================================
        3F. CREATE OR REACTIVATE ASSIGNMENT
        ======================================================== */
 
     if (existingAssignment.length === 0) {
+      console.log('SUPER_ADMIN role is not assigned.');
 
-      console.log(
-        'SUPER_ADMIN role is not assigned.',
-      );
+      await tx.insert(userRoles).values({
+        userId: adminUser.id,
 
-      await tx
-        .insert(userRoles)
-        .values({
-          userId: adminUser.id,
+        roleId: superAdminRole.id,
 
-          roleId: superAdminRole.id,
+        /*
+         * Bootstrap is performed by the system itself.
+         *
+         * assignedBy is a nullable FK to users.id,
+         * therefore NULL is correct here.
+         */
+        assignedBy: null,
 
-          /*
-           * Bootstrap is performed by the system itself.
-           *
-           * assignedBy is a nullable FK to users.id,
-           * therefore NULL is correct here.
-           */
-          assignedBy: null,
+        assignedAt: new Date(),
 
-          assignedAt: new Date(),
+        revokedAt: null,
 
-          revokedAt: null,
+        isActive: true,
+      });
 
-          isActive: true,
-        });
-
-      console.log(
-        'SUPER_ADMIN role assigned successfully.',
-      );
-
+      console.log('SUPER_ADMIN role assigned successfully.');
     } else {
+      const assignment = existingAssignment[0];
 
-      const assignment =
-        existingAssignment[0];
-
-      if (
-        !assignment.isActive ||
-        assignment.revokedAt !== null
-      ) {
-
-        console.log(
-          'Existing SUPER_ADMIN assignment is inactive/revoked.',
-        );
+      if (!assignment.isActive || assignment.revokedAt !== null) {
+        console.log('Existing SUPER_ADMIN assignment is inactive/revoked.');
 
         await tx
           .update(userRoles)
@@ -505,26 +377,14 @@ async function bootstrapAdmin(): Promise<void> {
 
             assignedAt: new Date(),
           })
-          .where(
-            eq(
-              userRoles.id,
-              assignment.id,
-            ),
-          );
+          .where(eq(userRoles.id, assignment.id));
 
-        console.log(
-          'SUPER_ADMIN assignment reactivated.',
-        );
-
+        console.log('SUPER_ADMIN assignment reactivated.');
       } else {
-
-        console.log(
-          'SUPER_ADMIN role is already assigned.',
-        );
+        console.log('SUPER_ADMIN role is already assigned.');
       }
     }
   });
-
 
   /* ==========================================================
      4. FINAL RESULT
@@ -532,63 +392,36 @@ async function bootstrapAdmin(): Promise<void> {
 
   console.log('');
 
-  console.log(
-    '==============================================',
-  );
+  console.log('==============================================');
 
-  console.log(
-    'BOOTSTRAP COMPLETE',
-  );
+  console.log('BOOTSTRAP COMPLETE');
 
-  console.log(
-    '==============================================',
-  );
+  console.log('==============================================');
 
-  console.log(
-    `Username: ${existingUser?.username ?? ADMIN_USERNAME}`,
-  );
+  console.log(`Username: ${existingUser?.username ?? ADMIN_USERNAME}`);
 
-  console.log(
-    `Email:    ${existingUser?.email ?? ADMIN_EMAIL}`,
-  );
+  console.log(`Email:    ${existingUser?.email ?? ADMIN_EMAIL}`);
 
-  console.log(
-    `User ID:  ${existingUser?.id ?? 'created successfully'}`,
-  );
+  console.log(`User ID:  ${existingUser?.id ?? 'created successfully'}`);
 
-  console.log(
-    'Tenant:   PLATFORM',
-  );
+  console.log('Tenant:   PLATFORM');
 
-  console.log(
-    'Facility: PLATFORM',
-  );
+  console.log('Facility: PLATFORM');
 
-  console.log(
-    'Role:     SUPER_ADMIN',
-  );
+  console.log('Role:     SUPER_ADMIN');
 
-  console.log(
-    'Status:   ACTIVE',
-  );
+  console.log('Status:   ACTIVE');
 
   console.log('');
 
-  console.log(
-    'The administrator password was NOT printed.',
-  );
+  console.log('The administrator password was NOT printed.');
 
-  console.log(
-    'The administrator password was NOT stored in plaintext.',
-  );
+  console.log('The administrator password was NOT stored in plaintext.');
 
-  console.log(
-    '==============================================',
-  );
+  console.log('==============================================');
 
   console.log('');
 }
-
 
 /* ============================================================
    EXECUTE
@@ -599,26 +432,17 @@ bootstrapAdmin()
     process.exit(0);
   })
   .catch((error) => {
-
     console.error('');
 
-    console.error(
-      '==============================================',
-    );
+    console.error('==============================================');
 
-    console.error(
-      'BOOTSTRAP FAILED',
-    );
+    console.error('BOOTSTRAP FAILED');
 
-    console.error(
-      '==============================================',
-    );
+    console.error('==============================================');
 
     console.error(error);
 
-    console.error(
-      '==============================================',
-    );
+    console.error('==============================================');
 
     console.error('');
 

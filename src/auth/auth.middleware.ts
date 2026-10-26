@@ -1,12 +1,11 @@
+import type { Request, Response, NextFunction } from 'express';
 
-import type { Request, Response, NextFunction } from "express";
+import type { AuthorizationContext } from './authorization.types';
+import type { AuthenticatedUser } from './auth.types';
 
-import type { AuthorizationContext } from "./authorization.types";
-import type { AuthenticatedUser } from "./auth.types";
-
-import { validateSession } from "./auth.service";
-import { validateSessionToken } from "./auth.validation";
-import { loadAuthorizationContext } from "./authorization.service";
+import { validateSession } from './auth.service';
+import { validateSessionToken } from './auth.validation';
+import { loadAuthorizationContext } from './authorization.service';
 
 export interface AuthRequest extends Request {
   user?: AuthenticatedUser;
@@ -23,7 +22,7 @@ export interface AuthRequest extends Request {
 function getSessionToken(req: Request): string | null {
   const authorization = req.headers.authorization;
 
-  if (!authorization?.startsWith("Bearer ")) {
+  if (!authorization?.startsWith('Bearer ')) {
     return null;
   }
 
@@ -35,7 +34,7 @@ function getSessionToken(req: Request): string | null {
 export async function requireAuth(
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   try {
     // 1. Extract the Bearer token.
@@ -44,8 +43,8 @@ export async function requireAuth(
     if (!rawToken) {
       res.status(401).json({
         success: false,
-        error: "UNAUTHORIZED",
-        message: "Authentication is required.",
+        error: 'UNAUTHORIZED',
+        message: 'Authentication is required.',
       });
       return;
     }
@@ -58,8 +57,8 @@ export async function requireAuth(
     } catch {
       res.status(401).json({
         success: false,
-        error: "INVALID_SESSION",
-        message: "Invalid authentication session.",
+        error: 'INVALID_SESSION',
+        message: 'Invalid authentication session.',
       });
       return;
     }
@@ -70,8 +69,8 @@ export async function requireAuth(
     if (!result) {
       res.status(401).json({
         success: false,
-        error: "INVALID_SESSION",
-        message: "Your session is invalid, expired, or has been revoked.",
+        error: 'INVALID_SESSION',
+        message: 'Your session is invalid, expired, or has been revoked.',
       });
       return;
     }
@@ -79,29 +78,29 @@ export async function requireAuth(
     const { session, user } = result;
 
     // 4. Verify the account status.
-    if (!user.isActive || user.accountStatus === "DISABLED") {
+    if (!user.isActive || user.accountStatus === 'DISABLED') {
       res.status(403).json({
         success: false,
-        error: "ACCOUNT_DISABLED",
-        message: "Your account has been disabled.",
+        error: 'ACCOUNT_DISABLED',
+        message: 'Your account has been disabled.',
       });
       return;
     }
 
-    if (user.accountStatus === "SUSPENDED") {
+    if (user.accountStatus === 'SUSPENDED') {
       res.status(403).json({
         success: false,
-        error: "ACCOUNT_SUSPENDED",
-        message: "Your account has been suspended.",
+        error: 'ACCOUNT_SUSPENDED',
+        message: 'Your account has been suspended.',
       });
       return;
     }
 
-    if (user.accountStatus === "LOCKED") {
+    if (user.accountStatus === 'LOCKED') {
       res.status(403).json({
         success: false,
-        error: "ACCOUNT_LOCKED",
-        message: "Your account is temporarily locked.",
+        error: 'ACCOUNT_LOCKED',
+        message: 'Your account is temporarily locked.',
       });
       return;
     }
@@ -112,8 +111,8 @@ export async function requireAuth(
     if (!authContext) {
       res.status(403).json({
         success: false,
-        error: "AUTHORIZATION_CONTEXT_UNAVAILABLE",
-        message: "Your account is not authorized to access this resource.",
+        error: 'AUTHORIZATION_CONTEXT_UNAVAILABLE',
+        message: 'Your account is not authorized to access this resource.',
       });
       return;
     }
@@ -145,12 +144,12 @@ export async function requireAuth(
 
     next();
   } catch (error) {
-    console.error("Authentication middleware error:", error);
+    console.error('Authentication middleware error:', error);
 
     res.status(500).json({
       success: false,
-      error: "AUTHENTICATION_ERROR",
-      message: "An authentication error occurred.",
+      error: 'AUTHENTICATION_ERROR',
+      message: 'An authentication error occurred.',
     });
   }
 }

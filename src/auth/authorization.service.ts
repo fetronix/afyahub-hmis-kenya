@@ -11,13 +11,9 @@
  * - Checking tenant/facility scope
  */
 
-import {
-  and,
-  eq,
-  isNull,
-} from "drizzle-orm";
+import { and, eq, isNull } from 'drizzle-orm';
 
-import { db } from "../db";
+import { db } from '../db';
 
 import {
   users,
@@ -27,14 +23,9 @@ import {
   rolePermissions,
   facilityRolePermissionOverrides,
   facilityRolePermissionOverridePermissions,
+} from '../db/schema';
 
-
-} from "../db/schema";
-
-import type {
-  AuthorizationContext,
-} from "./authorization.types";
-
+import type { AuthorizationContext } from './authorization.types';
 
 /* ============================================================
    LOAD AUTHORIZATION CONTEXT
@@ -43,7 +34,6 @@ import type {
 export async function loadAuthorizationContext(
   userId: number,
 ): Promise<AuthorizationContext | null> {
-
   /* ----------------------------------------------------------
      1. Load the user
      ---------------------------------------------------------- */
@@ -57,12 +47,7 @@ export async function loadAuthorizationContext(
       accountStatus: users.accountStatus,
     })
     .from(users)
-    .where(
-      eq(
-        users.id,
-        userId,
-      ),
-    )
+    .where(eq(users.id, userId))
     .limit(1);
 
   if (!user) {
@@ -73,13 +58,9 @@ export async function loadAuthorizationContext(
     return null;
   }
 
-  if (
-    user.accountStatus === "DISABLED" ||
-    user.accountStatus === "SUSPENDED"
-  ) {
+  if (user.accountStatus === 'DISABLED' || user.accountStatus === 'SUSPENDED') {
     return null;
   }
-
 
   /* ----------------------------------------------------------
      2. Load active roles + permissions
@@ -114,9 +95,7 @@ export async function loadAuthorizationContext(
         eq(userRoles.isActive, true),
         isNull(userRoles.revokedAt),
         eq(roles.isActive, true),
-        user.tenantId === null
-          ? isNull(roles.tenantId)
-          : eq(roles.tenantId, user.tenantId),
+        user.tenantId === null ? isNull(roles.tenantId) : eq(roles.tenantId, user.tenantId),
       ),
     );
 
@@ -162,17 +141,9 @@ export async function loadAuthorizationContext(
         .from(facilityRolePermissionOverridePermissions)
         .innerJoin(
           permissions,
-          eq(
-            facilityRolePermissionOverridePermissions.permissionId,
-            permissions.id,
-          ),
+          eq(facilityRolePermissionOverridePermissions.permissionId, permissions.id),
         )
-        .where(
-          eq(
-            facilityRolePermissionOverridePermissions.overrideId,
-            overrideId,
-          ),
-        );
+        .where(eq(facilityRolePermissionOverridePermissions.overrideId, overrideId));
 
       for (const permission of overridePermissions) {
         permissionSet.add(permission.permissionCode);
@@ -183,10 +154,7 @@ export async function loadAuthorizationContext(
           permissionCode: permissions.code,
         })
         .from(rolePermissions)
-        .innerJoin(
-          permissions,
-          eq(rolePermissions.permissionId, permissions.id),
-        )
+        .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
         .where(eq(rolePermissions.roleId, role.roleId));
 
       for (const permission of defaultPermissions) {
@@ -198,12 +166,7 @@ export async function loadAuthorizationContext(
   const rolesList = Array.from(roleSet);
   const permissionsList = Array.from(permissionSet);
   const isSuperAdmin =
-    user.tenantId === null &&
-    user.facilityId === null &&
-    rolesList.includes(
-      "SUPER_ADMIN",
-    );
-
+    user.tenantId === null && user.facilityId === null && rolesList.includes('SUPER_ADMIN');
 
   /* ----------------------------------------------------------
      5. Return authorization context
@@ -212,44 +175,29 @@ export async function loadAuthorizationContext(
   return {
     userId: user.id,
 
-    tenantId:
-      user.tenantId,
+    tenantId: user.tenantId,
 
-    facilityId:
-      user.facilityId,
+    facilityId: user.facilityId,
 
-    roles:
-      rolesList,
+    roles: rolesList,
 
-    permissions:
-      permissionsList,
+    permissions: permissionsList,
 
     isSuperAdmin,
   };
 }
 
-
 /* ============================================================
    PERMISSION CHECK
    ============================================================ */
 
-export function hasPermission(
-  context: AuthorizationContext,
-  permission: string,
-): boolean {
-
-  if (
-    !permission ||
-    !permission.trim()
-  ) {
+export function hasPermission(context: AuthorizationContext, permission: string): boolean {
+  if (!permission || !permission.trim()) {
     return false;
   }
 
-  return context.permissions.includes(
-    permission,
-  );
+  return context.permissions.includes(permission);
 }
-
 
 /* ============================================================
    MULTIPLE PERMISSION CHECK
@@ -259,16 +207,8 @@ export function hasAllPermissions(
   context: AuthorizationContext,
   requiredPermissions: string[],
 ): boolean {
-
-  return requiredPermissions.every(
-    (permission) =>
-      hasPermission(
-        context,
-        permission,
-      ),
-  );
+  return requiredPermissions.every((permission) => hasPermission(context, permission));
 }
-
 
 /* ============================================================
    ANY PERMISSION CHECK
@@ -278,59 +218,31 @@ export function hasAnyPermission(
   context: AuthorizationContext,
   requiredPermissions: string[],
 ): boolean {
-
-  return requiredPermissions.some(
-    (permission) =>
-      hasPermission(
-        context,
-        permission,
-      ),
-  );
+  return requiredPermissions.some((permission) => hasPermission(context, permission));
 }
-
 
 /* ============================================================
    ROLE CHECK
    ============================================================ */
 
-export function hasRole(
-  context: AuthorizationContext,
-  roleName: string,
-): boolean {
-
-  return context.roles.includes(
-    roleName,
-  );
+export function hasRole(context: AuthorizationContext, roleName: string): boolean {
+  return context.roles.includes(roleName);
 }
-
 
 /* ============================================================
    SUPER ADMIN CHECK
    ============================================================ */
 
-export function isSuperAdmin(
-  context: AuthorizationContext,
-): boolean {
-
+export function isSuperAdmin(context: AuthorizationContext): boolean {
   return context.isSuperAdmin;
 }
-
 
 /* ============================================================
    TENANT ACCESS
    ============================================================ */
 
-export function canAccessTenant(
-  context: AuthorizationContext,
-  tenantId: number,
-): boolean {
-
-  if (
-    !Number.isInteger(
-      tenantId,
-    ) ||
-    tenantId <= 0
-  ) {
+export function canAccessTenant(context: AuthorizationContext, tenantId: number): boolean {
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
     return false;
   }
 
@@ -338,9 +250,7 @@ export function canAccessTenant(
    * Super Admin has platform-wide tenant access.
    */
 
-  if (
-    context.isSuperAdmin
-  ) {
+  if (context.isSuperAdmin) {
     return true;
   }
 
@@ -349,12 +259,8 @@ export function canAccessTenant(
    * their own tenant.
    */
 
-  return (
-    context.tenantId ===
-    tenantId
-  );
+  return context.tenantId === tenantId;
 }
-
 
 /* ============================================================
    FACILITY ACCESS
@@ -365,49 +271,30 @@ export function canAccessFacility(
   facilityTenantId: number,
   facilityId: number,
 ): boolean {
-
-  if (
-    !Number.isInteger(
-      facilityTenantId,
-    ) ||
-    facilityTenantId <= 0
-  ) {
+  if (!Number.isInteger(facilityTenantId) || facilityTenantId <= 0) {
     return false;
   }
 
-  if (
-    !Number.isInteger(
-      facilityId,
-    ) ||
-    facilityId <= 0
-  ) {
+  if (!Number.isInteger(facilityId) || facilityId <= 0) {
     return false;
   }
-
 
   /*
    * Super Admin can access facilities
    * across the platform.
    */
 
-  if (
-    context.isSuperAdmin
-  ) {
+  if (context.isSuperAdmin) {
     return true;
   }
-
 
   /*
    * Tenant boundary must match.
    */
 
-  if (
-    context.tenantId !==
-    facilityTenantId
-  ) {
+  if (context.tenantId !== facilityTenantId) {
     return false;
   }
-
 
   /*
    * Tenant-level users have facilityId = NULL.
@@ -417,21 +304,14 @@ export function canAccessFacility(
    * their permissions.
    */
 
-  if (
-    context.facilityId ===
-    null
-  ) {
+  if (context.facilityId === null) {
     return true;
   }
-
 
   /*
    * Facility-scoped users may only
    * access their assigned facility.
    */
 
-  return (
-    context.facilityId ===
-    facilityId
-  );
+  return context.facilityId === facilityId;
 }

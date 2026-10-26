@@ -176,10 +176,7 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
         purpose: consentForm.purpose,
         method: consentForm.method,
         scope: Object.fromEntries(
-          CONSENT_SCOPES.map((scope) => [
-            scope.value,
-            consentForm.scopes.includes(scope.value),
-          ]),
+          CONSENT_SCOPES.map((scope) => [scope.value, consentForm.scopes.includes(scope.value)]),
         ),
         expiresAt: consentForm.expiresAt || null,
       });
@@ -188,9 +185,7 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
       setActionMessage('Consent recorded.');
       await load();
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'The consent could not be recorded.',
-      );
+      setActionError(error instanceof Error ? error.message : 'The consent could not be recorded.');
     } finally {
       setBusy(false);
     }
@@ -213,9 +208,7 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
       setActionMessage('Consent revoked. It no longer authorises sharing.');
       await load();
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'The consent could not be revoked.',
-      );
+      setActionError(error instanceof Error ? error.message : 'The consent could not be revoked.');
     } finally {
       setBusy(false);
     }
@@ -251,9 +244,7 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
       setActionMessage('Allergy recorded. Prescriptions will warn against it.');
       await load();
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'The allergy could not be recorded.',
-      );
+      setActionError(error instanceof Error ? error.message : 'The allergy could not be recorded.');
     } finally {
       setBusy(false);
     }
@@ -269,9 +260,7 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
       setActionMessage(`Allergy marked ${status.toLowerCase().replace(/_/g, ' ')}.`);
       await load();
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'The allergy could not be updated.',
-      );
+      setActionError(error instanceof Error ? error.message : 'The allergy could not be updated.');
     } finally {
       setBusy(false);
     }
@@ -295,8 +284,8 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
         </div>
         <p className="mt-1 text-rose-800">{loadError}</p>
         <p className="mt-2 text-2xs text-rose-700">
-          This is not the same as "nothing recorded". Do not treat the patient on the
-          assumption that no consent or allergy exists.
+          This is not the same as "nothing recorded". Do not treat the patient on the assumption
+          that no consent or allergy exists.
         </p>
         <button
           onClick={() => void load()}
@@ -356,16 +345,15 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
               <span>
                 Active treatment consent on file, granted{' '}
                 <strong>{formatDate(activeTreatmentConsent.grantedAt)}</strong> by{' '}
-                <strong>{activeTreatmentConsent.method.replace(/_/g, ' ').toLowerCase()}</strong>
-                .
+                <strong>{activeTreatmentConsent.method.replace(/_/g, ' ').toLowerCase()}</strong>.
               </span>
             </div>
           ) : (
             <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               <AlertTriangle className="mt-0.5 w-4 h-4 shrink-0" />
               <span>
-                No active treatment consent is recorded at this facility. Record it
-                before care proceeds unless the situation is an emergency.
+                No active treatment consent is recorded at this facility. Record it before care
+                proceeds unless the situation is an emergency.
               </span>
             </div>
           )}
@@ -419,9 +407,7 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
               </label>
 
               <div className="sm:col-span-2">
-                <p className="text-2xs font-medium text-slate-700">
-                  What the consent covers
-                </p>
+                <p className="text-2xs font-medium text-slate-700">What the consent covers</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {CONSENT_SCOPES.map((scope) => {
                     const checked = consentForm.scopes.includes(scope.value);
@@ -638,9 +624,7 @@ export const PatientConsentAllergyPanel: React.FC<Props> = ({ patientId }) => {
           )}
 
           {allergies.length === 0 ? (
-            <p className="text-xs text-slate-500">
-              No allergy has been recorded for this patient.
-            </p>
+            <p className="text-xs text-slate-500">No allergy has been recorded for this patient.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {allergies.map((allergy) => (

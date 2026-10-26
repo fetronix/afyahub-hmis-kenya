@@ -10,11 +10,20 @@ import {
   Package,
   Layers,
   Search,
-  ShoppingCart
+  ShoppingCart,
 } from 'lucide-react';
 
 export const PharmacyModule: React.FC = () => {
-  const { currentTenant, currentFacility, currentUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentTenant,
+    currentFacility,
+    currentUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
   const [prescriptions, setPrescriptions] = useState<Medication[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -26,7 +35,9 @@ export const PharmacyModule: React.FC = () => {
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
   const [batches, setBatches] = useState<InventoryBatchRow[]>([]);
   const [dispenseQty, setDispenseQty] = useState(1);
-  const [dispenseNotes, setDispenseNotes] = useState('Labelled: Take with plenty of water after food.');
+  const [dispenseNotes, setDispenseNotes] = useState(
+    'Labelled: Take with plenty of water after food.',
+  );
 
   useEffect(() => {
     async function loadPharmacy() {
@@ -59,9 +70,10 @@ export const PharmacyModule: React.FC = () => {
     setDispenseQty(med.quantity || 1);
 
     // Try to match inventory item by drug name
-    const match = inventory.find(i =>
-      i.name.toLowerCase().includes(med.drugName.toLowerCase()) ||
-      (i.genericName && i.genericName.toLowerCase().includes(med.drugName.toLowerCase()))
+    const match = inventory.find(
+      (i) =>
+        i.name.toLowerCase().includes(med.drugName.toLowerCase()) ||
+        (i.genericName && i.genericName.toLowerCase().includes(med.drugName.toLowerCase())),
     );
 
     if (match) {
@@ -93,12 +105,11 @@ export const PharmacyModule: React.FC = () => {
         unitPrice: dispenseTarget.unitPrice,
       });
 
-      const billingNote =
-        result?.billing?.charged
-          ? `Billed KES ${result.billing.totalAmount} on ${result.billing.invoiceNumber}.`
-          : result?.billing?.message
-            ? `Not billed: ${result.billing.message}`
-            : 'Not billed.';
+      const billingNote = result?.billing?.charged
+        ? `Billed KES ${result.billing.totalAmount} on ${result.billing.invoiceNumber}.`
+        : result?.billing?.message
+          ? `Not billed: ${result.billing.message}`
+          : 'Not billed.';
 
       const allocationNote =
         result?.allocations && result.allocations.length > 0
@@ -117,13 +128,13 @@ export const PharmacyModule: React.FC = () => {
     }
   };
 
-  const filteredMeds = prescriptions.filter(m => {
+  const filteredMeds = prescriptions.filter((m) => {
     if (filter === 'All') return true;
     return filter === 'Pending' ? m.status === 'Prescribed' : m.status === 'Dispensed';
   });
 
   const getPatient = (patientId: number) => {
-    return patients.find(p => p.id === patientId);
+    return patients.find((p) => p.id === patientId);
   };
 
   return (
@@ -131,9 +142,12 @@ export const PharmacyModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Outpatient Pharmacy & Drug Dispensing POS</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Outpatient Pharmacy & Drug Dispensing POS
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Prescription verification, batch & expiry control, real-time stock deduction, and patient dosage instructions.
+            Prescription verification, batch & expiry control, real-time stock deduction, and
+            patient dosage instructions.
           </p>
         </div>
 
@@ -162,7 +176,9 @@ export const PharmacyModule: React.FC = () => {
             <Pill className="w-4 h-4 text-teal-700" />
             <span>Dispensing Worklist ({filteredMeds.length})</span>
           </h2>
-          <span className="text-2xs text-slate-400 font-mono">Kenya Pharmacy & Poisons Board Rules</span>
+          <span className="text-2xs text-slate-400 font-mono">
+            Kenya Pharmacy & Poisons Board Rules
+          </span>
         </div>
 
         <div className="overflow-x-auto">
@@ -206,7 +222,9 @@ export const PharmacyModule: React.FC = () => {
                         ) : (
                           <span>Patient #{m.patientId}</span>
                         )}
-                        <span className="text-2xs text-slate-400 font-mono">{patient?.mrn} · {patient?.payerType}</span>
+                        <span className="text-2xs text-slate-400 font-mono">
+                          {patient?.mrn} · {patient?.payerType}
+                        </span>
                       </td>
                       <td className="px-4 py-3 font-sans font-semibold text-slate-900">
                         {m.drugName} {m.dosage}
@@ -221,9 +239,13 @@ export const PharmacyModule: React.FC = () => {
                         {m.prescribedBy || 'Physician'}
                       </td>
                       <td className="px-4 py-3 font-sans">
-                        <span className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                          isDispensed ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-                        }`}>
+                        <span
+                          className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                            isDispensed
+                              ? 'bg-emerald-50 text-emerald-800'
+                              : 'bg-amber-50 text-amber-800'
+                          }`}
+                        >
                           {m.status}
                         </span>
                       </td>
@@ -256,26 +278,34 @@ export const PharmacyModule: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Pharmacy Dispensing & Inventory Deduction</h3>
+              <h3 className="text-sm font-bold text-slate-900">
+                Pharmacy Dispensing & Inventory Deduction
+              </h3>
               <p className="text-2xs text-slate-500">
-                Prescription: <strong className="text-slate-800">{dispenseTarget.drugName} {dispenseTarget.dosage}</strong>
+                Prescription:{' '}
+                <strong className="text-slate-800">
+                  {dispenseTarget.drugName} {dispenseTarget.dosage}
+                </strong>
               </p>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Select Inventory Stock Batch</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Select Inventory Stock Batch
+                </label>
                 <select
                   value={selectedInventoryItem?.id || ''}
                   onChange={(e) => {
-                    const found = inventory.find(i => i.id.toString() === e.target.value);
+                    const found = inventory.find((i) => i.id.toString() === e.target.value);
                     if (found) setSelectedInventoryItem(found);
                   }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
-                  {inventory.map(item => (
+                  {inventory.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name} ({item.currentStock} in stock · KES {Number(item.sellingPrice).toLocaleString()}/unit)
+                      {item.name} ({item.currentStock} in stock · KES{' '}
+                      {Number(item.sellingPrice).toLocaleString()}/unit)
                     </option>
                   ))}
                 </select>
@@ -308,8 +338,9 @@ export const PharmacyModule: React.FC = () => {
                 if (lots.length === 0) {
                   return (
                     <div className="text-2xs bg-slate-50 border border-slate-200 rounded-md p-2.5 text-slate-600">
-                      <strong className="text-slate-800">No tracked batches.</strong> Dispensing deducts
-                      from the plain stock count. Receive a batch in Inventory to enable FEFO and expiry control.
+                      <strong className="text-slate-800">No tracked batches.</strong> Dispensing
+                      deducts from the plain stock count. Receive a batch in Inventory to enable
+                      FEFO and expiry control.
                     </div>
                   );
                 }
@@ -338,7 +369,9 @@ export const PharmacyModule: React.FC = () => {
               })()}
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Patient Instructions on Dispense Label</label>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Patient Instructions on Dispense Label
+                </label>
                 <input
                   type="text"
                   value={dispenseNotes}
@@ -348,7 +381,9 @@ export const PharmacyModule: React.FC = () => {
               </div>
 
               <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-2xs text-teal-900 space-y-1">
-                <div>✓ Deducts <strong>{dispenseQty}</strong> units from Pharmacy Store stock.</div>
+                <div>
+                  ✓ Deducts <strong>{dispenseQty}</strong> units from Pharmacy Store stock.
+                </div>
                 <div>✓ Creates pending patient invoice item for cashier collection.</div>
               </div>
             </div>

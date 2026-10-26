@@ -1,9 +1,8 @@
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-
-import { db } from "../db";
-import { hashPassword } from "../utils/password";
+import { db } from '../db';
+import { hashPassword } from '../utils/password';
 import {
   facilities,
   roles,
@@ -12,24 +11,24 @@ import {
   users,
   userRoles,
   staffProfessionalCredentials,
-} from "../db/schema";
+} from '../db/schema';
 
-import { assertInvitationCredential } from "../integrations/professional/professional-verification.service.ts";
+import { assertInvitationCredential } from '../integrations/professional/professional-verification.service.ts';
 import {
   assertStaffRoleAssignable,
   StaffRoleError,
   type AssignableRole,
   type StaffRoleExecutor,
-} from "./staff-roles.service";
+} from './staff-roles.service';
 
 export class StaffInvitationError extends Error {
   constructor(
     message: string,
     public readonly statusCode = 400,
-    public readonly code = "STAFF_INVITATION_ERROR",
+    public readonly code = 'STAFF_INVITATION_ERROR',
   ) {
     super(message);
-    this.name = "StaffInvitationError";
+    this.name = 'StaffInvitationError';
   }
 }
 
@@ -56,12 +55,12 @@ function normalizeEmail(email: string): string {
 }
 
 function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+  return createHash('sha256').update(token).digest('hex');
 }
 
 function assertPositiveId(value: number, field: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new StaffInvitationError(`Invalid ${field}.`, 400, "INVALID_INPUT");
+    throw new StaffInvitationError(`Invalid ${field}.`, 400, 'INVALID_INPUT');
   }
 }
 
@@ -72,26 +71,18 @@ function assertTokenUsable(invitation: {
 }): void {
   if (invitation.acceptedAt) {
     throw new StaffInvitationError(
-      "This invitation has already been accepted.",
+      'This invitation has already been accepted.',
       409,
-      "INVITATION_ALREADY_ACCEPTED",
+      'INVITATION_ALREADY_ACCEPTED',
     );
   }
 
   if (invitation.revokedAt) {
-    throw new StaffInvitationError(
-      "This invitation has been revoked.",
-      410,
-      "INVITATION_REVOKED",
-    );
+    throw new StaffInvitationError('This invitation has been revoked.', 410, 'INVITATION_REVOKED');
   }
 
   if (invitation.expiresAt.getTime() <= Date.now()) {
-    throw new StaffInvitationError(
-      "This invitation has expired.",
-      410,
-      "INVITATION_EXPIRED",
-    );
+    throw new StaffInvitationError('This invitation has expired.', 410, 'INVITATION_EXPIRED');
   }
 }
 
@@ -109,11 +100,7 @@ async function assertInvitationRole(
     return await assertStaffRoleAssignable(executor, tenantId, roleId);
   } catch (error) {
     if (error instanceof StaffRoleError) {
-      throw new StaffInvitationError(
-        error.message,
-        error.statusCode,
-        error.code,
-      );
+      throw new StaffInvitationError(error.message, error.statusCode, error.code);
     }
 
     throw error;
@@ -126,37 +113,31 @@ async function assertInvitationRole(
  * The caller must obtain tenantId and facilityId from the
  * authenticated administrator's authorization context.
  */
-export async function createStaffInvitation(
-  input: CreateStaffInvitationInput,
-) {
-  assertPositiveId(input.tenantId, "tenant");
-  assertPositiveId(input.facilityId, "facility");
-  assertPositiveId(input.roleId, "role");
+export async function createStaffInvitation(input: CreateStaffInvitationInput) {
+  assertPositiveId(input.tenantId, 'tenant');
+  assertPositiveId(input.facilityId, 'facility');
+  assertPositiveId(input.roleId, 'role');
 
   const email = normalizeEmail(input.email);
   const fullName = input.fullName.trim();
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new StaffInvitationError(
-      "Enter a valid email address.",
-      400,
-      "INVALID_EMAIL",
-    );
+    throw new StaffInvitationError('Enter a valid email address.', 400, 'INVALID_EMAIL');
   }
 
   if (!fullName || fullName.length > 200) {
     throw new StaffInvitationError(
-      "Full name is required and must not exceed 200 characters.",
+      'Full name is required and must not exceed 200 characters.',
       400,
-      "INVALID_NAME",
+      'INVALID_NAME',
     );
   }
 
   if (!input.invitedBy.trim()) {
     throw new StaffInvitationError(
-      "The inviting administrator could not be identified.",
+      'The inviting administrator could not be identified.',
       401,
-      "INVITER_REQUIRED",
+      'INVITER_REQUIRED',
     );
   }
 
@@ -170,15 +151,11 @@ export async function createStaffInvitation(
     .where(eq(facilities.id, input.facilityId))
     .limit(1);
 
-  if (
-    !facility ||
-    !facility.isActive ||
-    facility.tenantId !== input.tenantId
-  ) {
+  if (!facility || !facility.isActive || facility.tenantId !== input.tenantId) {
     throw new StaffInvitationError(
-      "The selected facility is unavailable in this tenant.",
+      'The selected facility is unavailable in this tenant.',
       403,
-      "FACILITY_SCOPE_DENIED",
+      'FACILITY_SCOPE_DENIED',
     );
   }
 
@@ -198,7 +175,7 @@ export async function createStaffInvitation(
     credentialId: input.credentialId ?? null,
   });
 
-  const rawToken = randomBytes(32).toString("base64url");
+  const rawToken = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
   const [created] = await db
@@ -227,9 +204,9 @@ export async function createStaffInvitation(
 
   if (!created) {
     throw new StaffInvitationError(
-      "The invitation could not be created.",
+      'The invitation could not be created.',
       500,
-      "INVITATION_CREATE_FAILED",
+      'INVITATION_CREATE_FAILED',
     );
   }
 
@@ -253,9 +230,9 @@ export async function createStaffInvitation(
 export async function validateStaffInvitation(token: string) {
   if (!token || token.length < 20 || token.length > 200) {
     throw new StaffInvitationError(
-      "The invitation link is invalid.",
+      'The invitation link is invalid.',
       400,
-      "INVALID_INVITATION_TOKEN",
+      'INVALID_INVITATION_TOKEN',
     );
   }
 
@@ -274,17 +251,11 @@ export async function validateStaffInvitation(token: string) {
     })
     .from(userInvitations)
     .innerJoin(roles, eq(userInvitations.roleId, roles.id))
-    .where(
-      eq(userInvitations.invitationTokenHash, hashToken(token)),
-    )
+    .where(eq(userInvitations.invitationTokenHash, hashToken(token)))
     .limit(1);
 
   if (!invitation) {
-    throw new StaffInvitationError(
-      "The invitation link is invalid.",
-      404,
-      "INVITATION_NOT_FOUND",
-    );
+    throw new StaffInvitationError('The invitation link is invalid.', 404, 'INVITATION_NOT_FOUND');
   }
 
   assertTokenUsable(invitation);
@@ -302,12 +273,9 @@ export async function validateStaffInvitation(token: string) {
 /**
  * Lists invitations only for the specified authorized tenant/facility.
  */
-export async function listStaffInvitations(
-  tenantId: number,
-  facilityId: number,
-) {
-  assertPositiveId(tenantId, "tenant");
-  assertPositiveId(facilityId, "facility");
+export async function listStaffInvitations(tenantId: number, facilityId: number) {
+  assertPositiveId(tenantId, 'tenant');
+  assertPositiveId(facilityId, 'facility');
 
   const rows = await db
     .select({
@@ -325,23 +293,18 @@ export async function listStaffInvitations(
     })
     .from(userInvitations)
     .innerJoin(roles, eq(userInvitations.roleId, roles.id))
-    .where(
-      and(
-        eq(userInvitations.tenantId, tenantId),
-        eq(userInvitations.facilityId, facilityId),
-      ),
-    )
+    .where(and(eq(userInvitations.tenantId, tenantId), eq(userInvitations.facilityId, facilityId)))
     .orderBy(desc(userInvitations.createdAt));
 
   return rows.map((row) => ({
     ...row,
     status: row.acceptedAt
-      ? "accepted"
+      ? 'accepted'
       : row.revokedAt
-        ? "revoked"
+        ? 'revoked'
         : row.expiresAt.getTime() <= Date.now()
-          ? "expired"
-          : "pending",
+          ? 'expired'
+          : 'pending',
   }));
 }
 
@@ -354,9 +317,9 @@ export async function reissueStaffInvitation(
   tenantId: number,
   facilityId: number,
 ) {
-  assertPositiveId(invitationId, "invitation");
-  assertPositiveId(tenantId, "tenant");
-  assertPositiveId(facilityId, "facility");
+  assertPositiveId(invitationId, 'invitation');
+  assertPositiveId(tenantId, 'tenant');
+  assertPositiveId(facilityId, 'facility');
 
   const [existing] = await db
     .select({
@@ -376,29 +339,29 @@ export async function reissueStaffInvitation(
 
   if (!existing) {
     throw new StaffInvitationError(
-      "Invitation not found in this facility.",
+      'Invitation not found in this facility.',
       404,
-      "INVITATION_NOT_FOUND",
+      'INVITATION_NOT_FOUND',
     );
   }
 
   if (existing.acceptedAt) {
     throw new StaffInvitationError(
-      "An accepted invitation cannot be reissued.",
+      'An accepted invitation cannot be reissued.',
       409,
-      "INVITATION_ALREADY_ACCEPTED",
+      'INVITATION_ALREADY_ACCEPTED',
     );
   }
 
   if (existing.revokedAt) {
     throw new StaffInvitationError(
-      "A revoked invitation cannot be reissued.",
+      'A revoked invitation cannot be reissued.',
       409,
-      "INVITATION_REVOKED",
+      'INVITATION_REVOKED',
     );
   }
 
-  const rawToken = randomBytes(32).toString("base64url");
+  const rawToken = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
   // Conditional update protects against acceptance/revocation racing
@@ -430,9 +393,9 @@ export async function reissueStaffInvitation(
 
   if (!invitation) {
     throw new StaffInvitationError(
-      "The invitation changed while being reissued. Refresh and try again.",
+      'The invitation changed while being reissued. Refresh and try again.',
       409,
-      "INVITATION_CHANGED",
+      'INVITATION_CHANGED',
     );
   }
 
@@ -449,9 +412,9 @@ export async function revokeStaffInvitation(
   tenantId: number,
   facilityId: number,
 ) {
-  assertPositiveId(invitationId, "invitation");
-  assertPositiveId(tenantId, "tenant");
-  assertPositiveId(facilityId, "facility");
+  assertPositiveId(invitationId, 'invitation');
+  assertPositiveId(tenantId, 'tenant');
+  assertPositiveId(facilityId, 'facility');
 
   const [invitation] = await db
     .select({
@@ -472,17 +435,17 @@ export async function revokeStaffInvitation(
 
   if (!invitation) {
     throw new StaffInvitationError(
-      "Invitation not found in this facility.",
+      'Invitation not found in this facility.',
       404,
-      "INVITATION_NOT_FOUND",
+      'INVITATION_NOT_FOUND',
     );
   }
 
   if (invitation.acceptedAt) {
     throw new StaffInvitationError(
-      "An accepted invitation cannot be revoked.",
+      'An accepted invitation cannot be revoked.',
       409,
-      "INVITATION_ALREADY_ACCEPTED",
+      'INVITATION_ALREADY_ACCEPTED',
     );
   }
 
@@ -513,34 +476,31 @@ export async function acceptStaffInvitation(input: {
   username: string;
   password: string;
 }) {
-  const token = typeof input.token === "string" ? input.token.trim() : "";
-  const username =
-    typeof input.username === "string"
-      ? input.username.trim().toLowerCase()
-      : "";
-  const password = typeof input.password === "string" ? input.password : "";
+  const token = typeof input.token === 'string' ? input.token.trim() : '';
+  const username = typeof input.username === 'string' ? input.username.trim().toLowerCase() : '';
+  const password = typeof input.password === 'string' ? input.password : '';
 
   if (!token || token.length < 20 || token.length > 200) {
     throw new StaffInvitationError(
-      "The invitation link is invalid.",
+      'The invitation link is invalid.',
       400,
-      "INVALID_INVITATION_TOKEN",
+      'INVALID_INVITATION_TOKEN',
     );
   }
 
   if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username)) {
     throw new StaffInvitationError(
-      "Username must be 3–40 characters and use letters, numbers, dots, underscores or hyphens.",
+      'Username must be 3–40 characters and use letters, numbers, dots, underscores or hyphens.',
       400,
-      "INVALID_USERNAME",
+      'INVALID_USERNAME',
     );
   }
 
   if (password.length < 12 || password.length > 256) {
     throw new StaffInvitationError(
-      "Password must be at least 12 characters long.",
+      'Password must be at least 12 characters long.',
       400,
-      "INVALID_PASSWORD",
+      'INVALID_PASSWORD',
     );
   }
 
@@ -558,11 +518,7 @@ export async function acceptStaffInvitation(input: {
     .limit(1);
 
   if (!initialInvitation) {
-    throw new StaffInvitationError(
-      "The invitation link is invalid.",
-      404,
-      "INVITATION_NOT_FOUND",
-    );
+    throw new StaffInvitationError('The invitation link is invalid.', 404, 'INVITATION_NOT_FOUND');
   }
 
   assertTokenUsable(initialInvitation);
@@ -577,13 +533,13 @@ export async function acceptStaffInvitation(input: {
         .from(userInvitations)
         .where(eq(userInvitations.invitationTokenHash, tokenHash))
         .limit(1)
-        .for("update");
+        .for('update');
 
       if (!invitation) {
         throw new StaffInvitationError(
-          "The invitation link is invalid.",
+          'The invitation link is invalid.',
           404,
-          "INVITATION_NOT_FOUND",
+          'INVITATION_NOT_FOUND',
         );
       }
 
@@ -599,15 +555,11 @@ export async function acceptStaffInvitation(input: {
         .where(eq(facilities.id, invitation.facilityId))
         .limit(1);
 
-      if (
-        !facility ||
-        !facility.isActive ||
-        facility.tenantId !== invitation.tenantId
-      ) {
+      if (!facility || !facility.isActive || facility.tenantId !== invitation.tenantId) {
         throw new StaffInvitationError(
-          "The facility associated with this invitation is unavailable.",
+          'The facility associated with this invitation is unavailable.',
           409,
-          "FACILITY_UNAVAILABLE",
+          'FACILITY_UNAVAILABLE',
         );
       }
 
@@ -622,9 +574,9 @@ export async function acceptStaffInvitation(input: {
 
       if (!tenant || !tenant.isActive) {
         throw new StaffInvitationError(
-          "The organization associated with this invitation is unavailable.",
+          'The organization associated with this invitation is unavailable.',
           409,
-          "TENANT_UNAVAILABLE",
+          'TENANT_UNAVAILABLE',
         );
       }
 
@@ -635,25 +587,18 @@ export async function acceptStaffInvitation(input: {
           username: users.username,
         })
         .from(users)
-        .where(
-          or(
-            eq(users.email, invitation.email.toLowerCase()),
-            eq(users.username, username),
-          ),
-        )
+        .where(or(eq(users.email, invitation.email.toLowerCase()), eq(users.username, username)))
         .limit(1);
 
       if (existingUser) {
-        const emailConflict =
-          existingUser.email.toLowerCase() ===
-          invitation.email.toLowerCase();
+        const emailConflict = existingUser.email.toLowerCase() === invitation.email.toLowerCase();
 
         throw new StaffInvitationError(
           emailConflict
-            ? "An account already exists for this invitation email."
-            : "This username is already taken.",
+            ? 'An account already exists for this invitation email.'
+            : 'This username is already taken.',
           409,
-          "ACCOUNT_CONFLICT",
+          'ACCOUNT_CONFLICT',
         );
       }
 
@@ -676,9 +621,9 @@ export async function acceptStaffInvitation(input: {
 
       if (!role) {
         throw new StaffInvitationError(
-          "The invited role is no longer available. Contact your facility administrator.",
+          'The invited role is no longer available. Contact your facility administrator.',
           409,
-          "ROLE_UNAVAILABLE",
+          'ROLE_UNAVAILABLE',
         );
       }
 
@@ -693,9 +638,9 @@ export async function acceptStaffInvitation(input: {
       } catch (error) {
         if (error instanceof StaffInvitationError) {
           throw new StaffInvitationError(
-            "The invited role is no longer available. Contact your facility administrator.",
+            'The invited role is no longer available. Contact your facility administrator.',
             409,
-            "ROLE_UNAVAILABLE",
+            'ROLE_UNAVAILABLE',
           );
         }
 
@@ -717,7 +662,7 @@ export async function acceptStaffInvitation(input: {
           passwordHash,
           passwordChangedAt: now,
           mustChangePassword: false,
-          accountStatus: "ACTIVE",
+          accountStatus: 'ACTIVE',
           failedLoginAttempts: 0,
           mfaEnabled: false,
           mfaRequired: false,
@@ -735,7 +680,7 @@ export async function acceptStaffInvitation(input: {
         });
 
       if (!newUser) {
-        throw new Error("Staff account creation failed.");
+        throw new Error('Staff account creation failed.');
       }
 
       await tx.insert(userRoles).values({
@@ -779,9 +724,9 @@ export async function acceptStaffInvitation(input: {
 
       if (acceptedRows.length !== 1) {
         throw new StaffInvitationError(
-          "This invitation is no longer valid. Request a new invitation.",
+          'This invitation is no longer valid. Request a new invitation.',
           409,
-          "INVITATION_NO_LONGER_VALID",
+          'INVITATION_NO_LONGER_VALID',
         );
       }
 
@@ -796,11 +741,11 @@ export async function acceptStaffInvitation(input: {
     }
 
     // Do not leak database details or credential-related data.
-    console.error("Staff invitation acceptance failed:", error);
+    console.error('Staff invitation acceptance failed:', error);
     throw new StaffInvitationError(
-      "The staff account could not be created. Check that the email and username are unique, then try again.",
+      'The staff account could not be created. Check that the email and username are unique, then try again.',
       409,
-      "STAFF_ACCOUNT_CREATION_FAILED",
+      'STAFF_ACCOUNT_CREATION_FAILED',
     );
   }
 }

@@ -265,10 +265,7 @@ export type LabTestIdentity = CodedRecordIdentity;
  *   6. the generic laboratory codes           LAB-GENERAL, LABORATORY
  */
 export function labTariffCodeCandidates(test: LabTestIdentity): string[] {
-  return codedTariffCodeCandidates('LAB', test, [
-    'LAB-GENERAL',
-    'LABORATORY',
-  ]);
+  return codedTariffCodeCandidates('LAB', test, ['LAB-GENERAL', 'LABORATORY']);
 }
 
 /**
@@ -277,13 +274,8 @@ export function labTariffCodeCandidates(test: LabTestIdentity): string[] {
  * `PROC-WOUND-DRESSING` (from the name) and the procedure's own code are
  * both tried, so a facility that priced `PROC-004` is not ignored.
  */
-export function procedureTariffCodeCandidates(
-  procedure: CodedRecordIdentity,
-): string[] {
-  return codedTariffCodeCandidates('PROC', procedure, [
-    'PROCEDURE',
-    'PROC-GENERAL',
-  ]);
+export function procedureTariffCodeCandidates(procedure: CodedRecordIdentity): string[] {
+  return codedTariffCodeCandidates('PROC', procedure, ['PROCEDURE', 'PROC-GENERAL']);
 }
 
 /**
@@ -291,9 +283,5 @@ export function procedureTariffCodeCandidates(
  * Kept here so the configuration screen can explain both.
  */
 export function radiologyTariffCodeCandidates(procedureName: string): string[] {
-  return tariffCodeCandidates('RAD', procedureName, [
-    'RADIOLOGY',
-    'RAD-GENERAL',
-    'IMAGING',
-  ]);
+  return tariffCodeCandidates('RAD', procedureName, ['RADIOLOGY', 'RAD-GENERAL', 'IMAGING']);
 }

@@ -1,5 +1,5 @@
-﻿import React, { useEffect, useState } from "react";
-import { CheckCircle2, HeartPulse, Loader2 } from "lucide-react";
+﻿import React, { useEffect, useState } from 'react';
+import { CheckCircle2, HeartPulse, Loader2 } from 'lucide-react';
 
 interface Invitation {
   fullName: string;
@@ -17,24 +17,22 @@ interface ApiResponse {
 }
 
 export default function FacilityAdminInvitationAcceptance() {
-  const [token] = useState(
-    () => new URLSearchParams(window.location.search).get("token") ?? ""
-  );
+  const [token] = useState(() => new URLSearchParams(window.location.search).get('token') ?? '');
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
 
     async function validate() {
       if (!token) {
-        setError("The invitation link has no token. Please request a new invitation.");
+        setError('The invitation link has no token. Please request a new invitation.');
         setChecking(false);
         return;
       }
@@ -42,19 +40,19 @@ export default function FacilityAdminInvitationAcceptance() {
       try {
         const response = await fetch(
           `/api/auth/facility-admin-invitations/validate?token=${encodeURIComponent(token)}`,
-          { headers: { Accept: "application/json" } }
+          { headers: { Accept: 'application/json' } },
         );
         const data = (await response.json().catch(() => ({}))) as ApiResponse;
 
         if (!response.ok || !data.success || !data.invitation) {
           throw new Error(
-            data.message || data.error || "This invitation is invalid, expired, or already used."
+            data.message || data.error || 'This invitation is invalid, expired, or already used.',
           );
         }
         if (active) setInvitation(data.invitation);
       } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : "Unable to validate the invitation.");
+          setError(err instanceof Error ? err.message : 'Unable to validate the invitation.');
         }
       } finally {
         if (active) setChecking(false);
@@ -62,34 +60,36 @@ export default function FacilityAdminInvitationAcceptance() {
     }
 
     void validate();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
+    setError('');
 
     const normalizedUsername = username.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9._-]{2,49}$/.test(normalizedUsername)) {
-      setError("Use 3–50 characters: lowercase letters, numbers, dots, underscores, or hyphens.");
+      setError('Use 3–50 characters: lowercase letters, numbers, dots, underscores, or hyphens.');
       return;
     }
     if (password.length < 12 || password.length > 256) {
-      setError("Your password must be at least 12 characters long.");
+      setError('Your password must be at least 12 characters long.');
       return;
     }
     if (password !== confirmPassword) {
-      setError("The passwords do not match.");
+      setError('The passwords do not match.');
       return;
     }
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/auth/facility-admin-invitations/accept", {
-        method: "POST",
+      const response = await fetch('/api/auth/facility-admin-invitations/accept', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
         body: JSON.stringify({
           token,
@@ -101,15 +101,17 @@ export default function FacilityAdminInvitationAcceptance() {
 
       if (!response.ok || !data.success) {
         throw new Error(
-          data.message || data.error || "Account creation failed. Check the invitation or contact your platform administrator."
+          data.message ||
+            data.error ||
+            'Account creation failed. Check the invitation or contact your platform administrator.',
         );
       }
 
       setSuccess(true);
-      setPassword("");
-      setConfirmPassword("");
+      setPassword('');
+      setConfirmPassword('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Account creation failed.");
+      setError(err instanceof Error ? err.message : 'Account creation failed.');
     } finally {
       setSubmitting(false);
     }
@@ -129,12 +131,12 @@ export default function FacilityAdminInvitationAcceptance() {
             </div>
           </div>
           <h2 className="mt-6 font-display text-2xl">
-            {success ? "Account created" : "Accept your invitation"}
+            {success ? 'Account created' : 'Accept your invitation'}
           </h2>
           <p className="mt-2 text-sm text-navy-100">
             {success
-              ? "Your facility administrator account has been created."
-              : "Choose your own username and password to get started."}
+              ? 'Your facility administrator account has been created.'
+              : 'Choose your own username and password to get started.'}
           </p>
         </header>
 
@@ -152,7 +154,7 @@ export default function FacilityAdminInvitationAcceptance() {
               </p>
               <button
                 type="button"
-                onClick={() => window.location.assign("/")}
+                onClick={() => window.location.assign('/')}
                 className="btn-primary mt-6 w-full"
               >
                 Go to sign in
@@ -177,54 +179,96 @@ export default function FacilityAdminInvitationAcceptance() {
               </div>
 
               {error && (
-                <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div
+                  role="alert"
+                  className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                >
                   {error}
                 </div>
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label htmlFor="facility-admin-username" className="mb-2 block text-sm font-semibold">
+                  <label
+                    htmlFor="facility-admin-username"
+                    className="mb-2 block text-sm font-semibold"
+                  >
                     Choose a username
                   </label>
-                  <input id="facility-admin-username" autoComplete="username"
-                    value={username} onChange={(e) => setUsername(e.target.value)}
-                    minLength={3} maxLength={50} required disabled={submitting}
+                  <input
+                    id="facility-admin-username"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    minLength={3}
+                    maxLength={50}
+                    required
+                    disabled={submitting}
                     className="field-input h-12"
-                    placeholder="e.g. jane.mwangi" />
+                    placeholder="e.g. jane.mwangi"
+                  />
                 </div>
                 <div>
-                  <label htmlFor="facility-admin-password" className="mb-2 block text-sm font-semibold">
+                  <label
+                    htmlFor="facility-admin-password"
+                    className="mb-2 block text-sm font-semibold"
+                  >
                     Create password
                   </label>
-                  <input id="facility-admin-password" type="password" autoComplete="new-password"
-                    value={password} onChange={(e) => setPassword(e.target.value)}
-                    minLength={12} maxLength={256} required disabled={submitting}
+                  <input
+                    id="facility-admin-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    minLength={12}
+                    maxLength={256}
+                    required
+                    disabled={submitting}
                     className="field-input h-12"
-                    placeholder="At least 12 characters" />
+                    placeholder="At least 12 characters"
+                  />
                 </div>
                 <div>
-                  <label htmlFor="facility-admin-confirm-password" className="mb-2 block text-sm font-semibold">
+                  <label
+                    htmlFor="facility-admin-confirm-password"
+                    className="mb-2 block text-sm font-semibold"
+                  >
                     Confirm password
                   </label>
-                  <input id="facility-admin-confirm-password" type="password" autoComplete="new-password"
-                    value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                    minLength={12} maxLength={256} required disabled={submitting}
-                    className="field-input h-12" />
+                  <input
+                    id="facility-admin-confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    minLength={12}
+                    maxLength={256}
+                    required
+                    disabled={submitting}
+                    className="field-input h-12"
+                  />
                 </div>
-                <button type="submit" disabled={submitting}
-                  className="btn-primary h-12 w-full">
+                <button type="submit" disabled={submitting} className="btn-primary h-12 w-full">
                   {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {submitting ? "Creating account…" : "Create administrator account"}
+                  {submitting ? 'Creating account…' : 'Create administrator account'}
                 </button>
               </form>
             </>
           ) : (
-            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-              {error || "This invitation cannot be used."}
-              <p className="mt-2">Contact your platform administrator to request a new invitation.</p>
-              <button type="button" onClick={() => window.location.assign("/")}
-                className="btn-primary mt-4">
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+            >
+              {error || 'This invitation cannot be used.'}
+              <p className="mt-2">
+                Contact your platform administrator to request a new invitation.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.assign('/')}
+                className="btn-primary mt-4"
+              >
                 Return to sign in
               </button>
             </div>

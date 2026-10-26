@@ -15,19 +15,10 @@
  * money.
  */
 
-export type PaymentMethodName =
-  | 'Cash'
-  | 'M-Pesa'
-  | 'Airtel Money'
-  | 'Card'
-  | 'SHA'
-  | 'Cheque';
+export type PaymentMethodName = 'Cash' | 'M-Pesa' | 'Airtel Money' | 'Card' | 'SHA' | 'Cheque';
 
 /** What the payment did to the invoice it was posted against. */
-export type SettlementOutcome =
-  | 'FULLY_PAID'
-  | 'BALANCE_REMAINING'
-  | 'OVERPAID';
+export type SettlementOutcome = 'FULLY_PAID' | 'BALANCE_REMAINING' | 'OVERPAID';
 
 export interface Settlement {
   invoiceTotalCents: number;
@@ -85,12 +76,7 @@ export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
   OTHER: 'Other',
 };
 
-const SHA_METHODS = new Set([
-  'sha',
-  'shaclaim',
-  'shaclaims',
-  'socialhealthauthority',
-]);
+const SHA_METHODS = new Set(['sha', 'shaclaim', 'shaclaims', 'socialhealthauthority']);
 
 const MOBILE_METHODS = new Set([
   'mpesa',
@@ -142,9 +128,7 @@ export function paymentChannel(method: string | null | undefined): PaymentChanne
 }
 
 /** Parsed money as signed integer cents, or null when unreadable. */
-export function parseMoneyToCents(
-  value: string | number | null | undefined,
-): number | null {
+export function parseMoneyToCents(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined) return null;
 
   const text = typeof value === 'number' ? String(value) : value.trim();
@@ -238,8 +222,7 @@ export function validateTransactionCode(
       return {
         valid: false,
         code,
-        reason:
-          'An M-Pesa code is 10 characters: two letters followed by eight letters or digits.',
+        reason: 'An M-Pesa code is 10 characters: two letters followed by eight letters or digits.',
       };
     }
 

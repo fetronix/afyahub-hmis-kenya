@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -7,7 +7,7 @@ import {
   HeartPulse,
   Loader2,
   ShieldCheck,
-} from "lucide-react";
+} from 'lucide-react';
 
 interface Invitation {
   fullName: string;
@@ -27,16 +27,16 @@ type ApiResponse = {
 };
 
 export const StaffInvitationAcceptance: React.FC = () => {
-  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+  const token = new URLSearchParams(window.location.search).get('token') ?? '';
 
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -44,7 +44,9 @@ export const StaffInvitationAcceptance: React.FC = () => {
 
     const validate = async () => {
       if (!token) {
-        setError("This invitation link is missing its token. Ask your facility administrator for a new invitation.");
+        setError(
+          'This invitation link is missing its token. Ask your facility administrator for a new invitation.',
+        );
         setChecking(false);
         return;
       }
@@ -52,13 +54,17 @@ export const StaffInvitationAcceptance: React.FC = () => {
       try {
         const response = await fetch(
           `/api/auth/staff-invitations/validate?token=${encodeURIComponent(token)}`,
-          { headers: { Accept: "application/json" } },
+          { headers: { Accept: 'application/json' } },
         );
 
         const data = (await response.json().catch(() => ({}))) as ApiResponse;
 
         if (!response.ok || !data.success || !data.invitation) {
-          throw new Error(data.message || data.error || "This invitation is invalid, expired, revoked, or already used.");
+          throw new Error(
+            data.message ||
+              data.error ||
+              'This invitation is invalid, expired, revoked, or already used.',
+          );
         }
 
         if (active) {
@@ -66,15 +72,15 @@ export const StaffInvitationAcceptance: React.FC = () => {
           const namePart = data.invitation.fullName
             .trim()
             .toLowerCase()
-            .replace(/[^a-z0-9]+/g, ".")
-            .replace(/^\.+|\.+$/g, "")
+            .replace(/[^a-z0-9]+/g, '.')
+            .replace(/^\.+|\.+$/g, '')
             .slice(0, 30);
 
-          setUsername(namePart.length >= 3 ? namePart : "");
+          setUsername(namePart.length >= 3 ? namePart : '');
         }
       } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : "Unable to validate this invitation.");
+          setError(err instanceof Error ? err.message : 'Unable to validate this invitation.');
         }
       } finally {
         if (active) setChecking(false);
@@ -90,33 +96,35 @@ export const StaffInvitationAcceptance: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError("");
+    setError('');
 
     const normalizedUsername = username.trim().toLowerCase();
 
     if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(normalizedUsername)) {
-      setError("Use 3–40 characters for the username: lowercase letters, numbers, dots, underscores, or hyphens.");
+      setError(
+        'Use 3–40 characters for the username: lowercase letters, numbers, dots, underscores, or hyphens.',
+      );
       return;
     }
 
     if (password.length < 12 || password.length > 256) {
-      setError("Your password must be at least 12 characters long.");
+      setError('Your password must be at least 12 characters long.');
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("The passwords do not match.");
+      setError('The passwords do not match.');
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const response = await fetch("/api/auth/staff-invitations/accept", {
-        method: "POST",
+      const response = await fetch('/api/auth/staff-invitations/accept', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
         body: JSON.stringify({
           token,
@@ -128,14 +136,18 @@ export const StaffInvitationAcceptance: React.FC = () => {
       const data = (await response.json().catch(() => ({}))) as ApiResponse;
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || data.error || "Your account could not be created. Check the invitation or contact your administrator.");
+        throw new Error(
+          data.message ||
+            data.error ||
+            'Your account could not be created. Check the invitation or contact your administrator.',
+        );
       }
 
       setSuccess(true);
-      setPassword("");
-      setConfirmPassword("");
+      setPassword('');
+      setConfirmPassword('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Account creation failed. Please try again.");
+      setError(err instanceof Error ? err.message : 'Account creation failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -155,12 +167,12 @@ export const StaffInvitationAcceptance: React.FC = () => {
             </div>
           </div>
           <h2 className="mt-7 font-display text-2xl">
-            {success ? "Account created" : "Accept your invitation"}
+            {success ? 'Account created' : 'Accept your invitation'}
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-navy-100">
             {success
-              ? "Your staff account has been created successfully."
-              : "Set up your username and password to access your healthcare workspace."}
+              ? 'Your staff account has been created successfully.'
+              : 'Set up your username and password to access your healthcare workspace.'}
           </p>
         </div>
 
@@ -179,7 +191,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
               </p>
               <button
                 type="button"
-                onClick={() => window.location.assign("/")}
+                onClick={() => window.location.assign('/')}
                 className="btn-primary mt-6 h-12 w-full"
               >
                 Go to sign in
@@ -200,7 +212,10 @@ export const StaffInvitationAcceptance: React.FC = () => {
               </div>
 
               {error && (
-                <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-800">
+                <div
+                  role="alert"
+                  className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-800"
+                >
                   {error}
                 </div>
               )}
@@ -231,7 +246,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
                   <div className="relative">
                     <input
                       id="staff-password"
-                      type={showPassword ? "text" : "password"}
+                      type={showPassword ? 'text' : 'password'}
                       autoComplete="new-password"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
@@ -246,7 +261,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
                       type="button"
                       onClick={() => setShowPassword((current) => !current)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:text-blue-700"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
@@ -272,18 +287,14 @@ export const StaffInvitationAcceptance: React.FC = () => {
                   />
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="btn-primary h-12 w-full"
-                >
+                <button type="submit" disabled={submitting} className="btn-primary h-12 w-full">
                   {submitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Creating account…
                     </>
                   ) : (
-                    "Create staff account"
+                    'Create staff account'
                   )}
                 </button>
               </form>
@@ -291,18 +302,22 @@ export const StaffInvitationAcceptance: React.FC = () => {
               <div className="mt-6 flex items-start gap-3 border-t border-hair pt-5">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
                 <p className="text-xs leading-relaxed text-slate-500">
-                  Your invitation is intended for you alone. Choose a strong password and keep your sign-in details private.
+                  Your invitation is intended for you alone. Choose a strong password and keep your
+                  sign-in details private.
                 </p>
               </div>
             </>
           ) : (
             <div>
-              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-relaxed text-rose-800">
-                {error || "This invitation could not be verified."}
+              <div
+                role="alert"
+                className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-relaxed text-rose-800"
+              >
+                {error || 'This invitation could not be verified.'}
               </div>
               <button
                 type="button"
-                onClick={() => window.location.assign("/")}
+                onClick={() => window.location.assign('/')}
                 className="btn-quiet mt-5 w-full py-3 text-sm"
               >
                 <ArrowLeft className="h-4 w-4" />

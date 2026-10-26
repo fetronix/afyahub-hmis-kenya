@@ -72,9 +72,7 @@ export interface EligibilityVerdict {
  *
  * Pure, so it can be tested without a network or a database.
  */
-export function interpretEligibility(
-  response: DhaEligibilityResponse,
-): EligibilityVerdict {
+export function interpretEligibility(response: DhaEligibilityResponse): EligibilityVerdict {
   const schemes = (response.schemes ?? [])
     .map((scheme) => scheme?.schemeName)
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);

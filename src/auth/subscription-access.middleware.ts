@@ -1,9 +1,9 @@
-import type { NextFunction, Response } from "express";
-import { and, eq } from "drizzle-orm";
+import type { NextFunction, Response } from 'express';
+import { and, eq } from 'drizzle-orm';
 
-import { db } from "../db";
-import { facilitySubscriptionAccess } from "../db/schema";
-import type { AuthRequest } from "./auth.middleware";
+import { db } from '../db';
+import { facilitySubscriptionAccess } from '../db/schema';
+import type { AuthRequest } from './auth.middleware';
 
 export interface SubscriptionFacilityScope {
   tenantId: number;
@@ -31,9 +31,7 @@ export type SubscriptionFacilityResolver = (
  * This middleware is not mounted globally. Attach it only to
  * routes covered by an approved subscription access policy.
  */
-export function requireActiveFacilitySubscription(
-  resolveScope?: SubscriptionFacilityResolver,
-) {
+export function requireActiveFacilitySubscription(resolveScope?: SubscriptionFacilityResolver) {
   return async function facilitySubscriptionGuard(
     req: AuthRequest,
     res: Response,
@@ -44,8 +42,8 @@ export function requireActiveFacilitySubscription(
     if (!context) {
       res.status(401).json({
         success: false,
-        error: "AUTHORIZATION_CONTEXT_MISSING",
-        message: "Authorization context is required.",
+        error: 'AUTHORIZATION_CONTEXT_MISSING',
+        message: 'Authorization context is required.',
       });
       return;
     }
@@ -60,10 +58,7 @@ export function requireActiveFacilitySubscription(
 
       if (resolveScope) {
         scope = await resolveScope(req);
-      } else if (
-        context.facilityId !== null &&
-        context.tenantId !== null
-      ) {
+      } else if (context.facilityId !== null && context.tenantId !== null) {
         scope = {
           facilityId: context.facilityId,
           tenantId: context.tenantId,
@@ -79,21 +74,17 @@ export function requireActiveFacilitySubscription(
       ) {
         res.status(400).json({
           success: false,
-          error: "SUBSCRIPTION_FACILITY_SCOPE_REQUIRED",
-          message:
-            "A verified facility scope is required for this operation.",
+          error: 'SUBSCRIPTION_FACILITY_SCOPE_REQUIRED',
+          message: 'A verified facility scope is required for this operation.',
         });
         return;
       }
 
-      if (
-        context.tenantId !== null &&
-        context.tenantId !== scope.tenantId
-      ) {
+      if (context.tenantId !== null && context.tenantId !== scope.tenantId) {
         res.status(403).json({
           success: false,
-          error: "FACILITY_ACCESS_DENIED",
-          message: "The facility is outside your tenant scope.",
+          error: 'FACILITY_ACCESS_DENIED',
+          message: 'The facility is outside your tenant scope.',
         });
         return;
       }
@@ -106,14 +97,8 @@ export function requireActiveFacilitySubscription(
         .from(facilitySubscriptionAccess)
         .where(
           and(
-            eq(
-              facilitySubscriptionAccess.facilityId,
-              scope.facilityId,
-            ),
-            eq(
-              facilitySubscriptionAccess.tenantId,
-              scope.tenantId,
-            ),
+            eq(facilitySubscriptionAccess.facilityId, scope.facilityId),
+            eq(facilitySubscriptionAccess.tenantId, scope.tenantId),
           ),
         )
         .limit(1);
@@ -125,38 +110,33 @@ export function requireActiveFacilitySubscription(
         return;
       }
 
-      if (access.accessStatus === "SUSPENDED") {
+      if (access.accessStatus === 'SUSPENDED') {
         res.status(403).json({
           success: false,
-          error: "FACILITY_SUBSCRIPTION_SUSPENDED",
+          error: 'FACILITY_SUBSCRIPTION_SUSPENDED',
           message:
             "This facility's subscription access is suspended. Contact the platform administrator.",
         });
         return;
       }
 
-      if (access.accessStatus !== "ACTIVE") {
+      if (access.accessStatus !== 'ACTIVE') {
         res.status(503).json({
           success: false,
-          error: "SUBSCRIPTION_STATUS_INVALID",
-          message:
-            "Facility subscription access could not be safely verified.",
+          error: 'SUBSCRIPTION_STATUS_INVALID',
+          message: 'Facility subscription access could not be safely verified.',
         });
         return;
       }
 
       next();
     } catch (error) {
-      console.error(
-        "[facility-subscription-guard] Access check failed:",
-        error,
-      );
+      console.error('[facility-subscription-guard] Access check failed:', error);
 
       res.status(503).json({
         success: false,
-        error: "SUBSCRIPTION_ACCESS_UNAVAILABLE",
-        message:
-          "Facility access could not be verified. Please retry shortly.",
+        error: 'SUBSCRIPTION_ACCESS_UNAVAILABLE',
+        message: 'Facility access could not be verified. Please retry shortly.',
       });
     }
   };

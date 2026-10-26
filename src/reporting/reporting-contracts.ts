@@ -118,11 +118,7 @@ export function occupancyPercent(occupied: number, total: number): number {
  * one bed-day, matching the billing rule in billing.service.ts, so the
  * trend and the bed-day revenue agree.
  */
-export function occupiesBedOn(
-  admission: Date,
-  discharge: Date | null,
-  day: Date,
-): boolean {
+export function occupiesBedOn(admission: Date, discharge: Date | null, day: Date): boolean {
   const dayStart = new Date(day.getTime());
   dayStart.setHours(0, 0, 0, 0);
 

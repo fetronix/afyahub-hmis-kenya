@@ -3,6 +3,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
 import { Patient } from '../../types/index.ts';
+import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
 import {
   UserPlus,
   Search,
@@ -15,7 +16,7 @@ import {
   ArrowRight,
   Eye,
   CheckCircle2,
-  QrCode
+  QrCode,
 } from 'lucide-react';
 
 function calculatePatientAge(dateOfBirth: string): number | null {
@@ -40,10 +41,7 @@ function calculatePatientAge(dateOfBirth: string): number | null {
   const today = new Date();
   let age = today.getFullYear() - year;
 
-  if (
-    today.getMonth() < month - 1 ||
-    (today.getMonth() === month - 1 && today.getDate() < day)
-  ) {
+  if (today.getMonth() < month - 1 || (today.getMonth() === month - 1 && today.getDate() < day)) {
     age--;
   }
 
@@ -52,7 +50,16 @@ function calculatePatientAge(dateOfBirth: string): number | null {
 }
 
 export const PatientRegistrationModule: React.FC = () => {
-  const { currentTenant, currentFacility, authenticatedUser, setSelectedPatient, setIsJourneyModalOpen, showToast, refreshKey, triggerRefresh } = useHmis();
+  const {
+    currentTenant,
+    currentFacility,
+    authenticatedUser,
+    setSelectedPatient,
+    setIsJourneyModalOpen,
+    showToast,
+    refreshKey,
+    triggerRefresh,
+  } = useHmis();
 
   /*
    * Portal invitation.
@@ -66,8 +73,7 @@ export const PatientRegistrationModule: React.FC = () => {
   const [portalPatient, setPortalPatient] = useState<{ id: number; name: string } | null>(null);
 
   const canInviteToPortal = Boolean(
-    authenticatedUser?.permissions?.includes('portal.invite') ||
-      authenticatedUser?.isSuperAdmin,
+    authenticatedUser?.permissions?.includes('portal.invite') || authenticatedUser?.isSuperAdmin,
   );
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
@@ -124,21 +130,32 @@ export const PatientRegistrationModule: React.FC = () => {
     loadPatients();
   }, [currentTenant, currentFacility, search, refreshKey]);
 
+  // A sub-county only means something inside its county, so changing the
+  // county clears the one already chosen. Without this, "Nyeri" could keep a
+  // "Kasarani" sub-county left over from the previous selection.
+  const handleCountyChange = (county: string) => {
+    setFormData((prev) => ({ ...prev, county, subCounty: '' }));
+  };
+
   // Duplicate Check logic
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
 
     if (field === 'nationalId' && value.trim().length > 4) {
-      const match = patients.find(p => p.nationalId === value.trim());
+      const match = patients.find((p) => p.nationalId === value.trim());
       if (match) {
-        setDuplicateWarning(`Potential Duplicate! Patient "${match.firstName} ${match.lastName}" (MRN: ${match.mrn}) already registered with National ID ${value}`);
+        setDuplicateWarning(
+          `Potential Duplicate! Patient "${match.firstName} ${match.lastName}" (MRN: ${match.mrn}) already registered with National ID ${value}`,
+        );
       } else {
         setDuplicateWarning(null);
       }
     } else if (field === 'phone' && value.trim().length > 8) {
-      const match = patients.find(p => p.phone === value.trim());
+      const match = patients.find((p) => p.phone === value.trim());
       if (match) {
-        setDuplicateWarning(`Potential Duplicate! Patient "${match.firstName} ${match.lastName}" (MRN: ${match.mrn}) shares phone number ${value}`);
+        setDuplicateWarning(
+          `Potential Duplicate! Patient "${match.firstName} ${match.lastName}" (MRN: ${match.mrn}) shares phone number ${value}`,
+        );
       } else {
         setDuplicateWarning(null);
       }
@@ -197,7 +214,7 @@ export const PatientRegistrationModule: React.FC = () => {
       });
 
       showToast(
-        `Patient ${newPatient.firstName} ${newPatient.lastName} registered (MRN: ${newPatient.mrn}) and routed to Triage — token ${triageEntry.tokenNumber}.`
+        `Patient ${newPatient.firstName} ${newPatient.lastName} registered (MRN: ${newPatient.mrn}) and routed to Triage — token ${triageEntry.tokenNumber}.`,
       );
       setIsRegistering(false);
       triggerRefresh();
@@ -224,7 +241,9 @@ export const PatientRegistrationModule: React.FC = () => {
         status: 'Waiting',
         waitingTimeMinutes: 0,
       });
-      showToast(`Patient ${patient.firstName} ${patient.lastName} added to ${queueType} queue (Token: ${entry.tokenNumber})`);
+      showToast(
+        `Patient ${patient.firstName} ${patient.lastName} added to ${queueType} queue (Token: ${entry.tokenNumber})`,
+      );
       triggerRefresh();
     } catch (err: any) {
       showToast(`Queue failed: ${err.message}`);
@@ -236,9 +255,12 @@ export const PatientRegistrationModule: React.FC = () => {
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">Patient Identification & Registration</h1>
+          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
+            Patient Identification & Registration
+          </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Search central medical records, check duplicates, verify SHA eligibility, and register returning/new patients.
+            Search central medical records, check duplicates, verify SHA eligibility, and register
+            returning/new patients.
           </p>
         </div>
 
@@ -261,7 +283,8 @@ export const PatientRegistrationModule: React.FC = () => {
               Kenyan Health Facility Patient Registration Form
             </h2>
             <p className="text-2xs text-slate-500">
-              Captures national identifier, Social Health Authority (SHA) coverage, biometric link, and clinical alerts.
+              Captures national identifier, Social Health Authority (SHA) coverage, biometric link,
+              and clinical alerts.
             </p>
           </div>
 
@@ -336,7 +359,9 @@ export const PatientRegistrationModule: React.FC = () => {
                     onChange={(e) => handleInputChange('gender', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   >
-                    <option value="" disabled>Select gender</option>
+                    <option value="" disabled>
+                      Select gender
+                    </option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
@@ -370,7 +395,9 @@ export const PatientRegistrationModule: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Kenya National ID / Passport</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Kenya National ID / Passport
+                  </label>
                   <input
                     type="text"
                     value={formData.nationalId}
@@ -380,7 +407,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Social Health Authority (SHA) #</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Social Health Authority (SHA) #
+                  </label>
                   <input
                     type="text"
                     value={formData.shaNumber}
@@ -390,7 +419,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Phone Number (optional)</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Phone Number (optional)
+                  </label>
                   <input
                     type="text"
                     value={formData.phone}
@@ -401,36 +432,44 @@ export const PatientRegistrationModule: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">County of Residence</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    County of Residence
+                  </label>
                   <select
                     value={formData.county}
-                    onChange={(e) => handleInputChange('county', e.target.value)}
+                    onChange={(e) => handleCountyChange(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   >
-                    <option value="Nairobi">Nairobi</option>
-                    <option value="Mombasa">Mombasa</option>
-                    <option value="Kisumu">Kisumu</option>
-                    <option value="Nakuru">Nakuru</option>
-                    <option value="Kiambu">Kiambu</option>
-                    <option value="Machakos">Machakos</option>
-                    <option value="Kilifi">Kilifi</option>
-                    <option value="Uasin Gishu">Uasin Gishu</option>
-                    <option value="Nyeri">Nyeri</option>
-                    <option value="Meru">Meru</option>
+                    <option value="">Select county</option>
+                    {KENYA_COUNTIES.map((county) => (
+                      <option key={county.code} value={county.name}>
+                        {county.code}. {county.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-slate-700 font-medium mb-1">Sub-County</label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.subCounty}
                     onChange={(e) => handleInputChange('subCounty', e.target.value)}
-                    placeholder="e.g. Westlands / Langata"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
-                  />
+                    disabled={!formData.county}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  >
+                    <option value="">
+                      {formData.county ? 'Select sub-county' : 'Select a county first'}
+                    </option>
+                    {subCountiesOf(formData.county).map((subCounty) => (
+                      <option key={subCounty} value={subCounty}>
+                        {subCounty}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Residential Address</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Residential Address
+                  </label>
                   <input
                     type="text"
                     value={formData.residentialAddress}
@@ -448,12 +487,15 @@ export const PatientRegistrationModule: React.FC = () => {
                   Parent / Guardian Details
                 </div>
                 <p className="text-slate-500 mb-3">
-                  Patient is under 18. Record the responsible adult separately from the patient's own details.
+                  Patient is under 18. Record the responsible adult separately from the patient's
+                  own details.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Guardian Full Name</label>
+                    <label className="block text-slate-700 font-medium mb-1">
+                      Guardian Full Name
+                    </label>
                     <input
                       type="text"
                       value={formData.guardianName}
@@ -464,7 +506,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Relationship to Patient</label>
+                    <label className="block text-slate-700 font-medium mb-1">
+                      Relationship to Patient
+                    </label>
                     <select
                       value={formData.guardianRelationship}
                       onChange={(e) => handleInputChange('guardianRelationship', e.target.value)}
@@ -480,7 +524,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Guardian Phone (optional)</label>
+                    <label className="block text-slate-700 font-medium mb-1">
+                      Guardian Phone (optional)
+                    </label>
                     <input
                       type="text"
                       value={formData.guardianPhone}
@@ -491,7 +537,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Guardian SHA / Member Number (optional)</label>
+                    <label className="block text-slate-700 font-medium mb-1">
+                      Guardian SHA / Member Number (optional)
+                    </label>
                     <input
                       type="text"
                       value={formData.guardianShaNumber}
@@ -514,7 +562,9 @@ export const PatientRegistrationModule: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Emergency Contact Name</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Emergency Contact Name
+                  </label>
                   <input
                     type="text"
                     value={formData.emergencyContactName}
@@ -528,13 +578,17 @@ export const PatientRegistrationModule: React.FC = () => {
                   <input
                     type="text"
                     value={formData.emergencyContactRelationship}
-                    onChange={(e) => handleInputChange('emergencyContactRelationship', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange('emergencyContactRelationship', e.target.value)
+                    }
                     placeholder="Spouse / Parent / Sibling"
                     className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Emergency Contact Phone</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Emergency Contact Phone
+                  </label>
                   <input
                     type="text"
                     value={formData.emergencyContactPhone}
@@ -558,7 +612,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Insurance / Payer Name</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Insurance / Payer Name
+                  </label>
                   <input
                     type="text"
                     value={formData.insuranceProvider}
@@ -568,7 +624,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Policy / Member Number</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Policy / Member Number
+                  </label>
                   <input
                     type="text"
                     value={formData.policyNumber}
@@ -587,7 +645,9 @@ export const PatientRegistrationModule: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Known Drug & Food Allergies</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Known Drug & Food Allergies
+                  </label>
                   <input
                     type="text"
                     value={formData.allergies}
@@ -597,7 +657,9 @@ export const PatientRegistrationModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Pre-Existing Chronic Conditions</label>
+                  <label className="block text-slate-700 font-medium mb-1">
+                    Pre-Existing Chronic Conditions
+                  </label>
                   <input
                     type="text"
                     value={formData.chronicConditions}
@@ -671,7 +733,8 @@ export const PatientRegistrationModule: React.FC = () => {
                 ) : patients.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-10 text-slate-400 font-sans">
-                      No patients found matching "{search}". Click "New Patient Registration" to add.
+                      No patients found matching "{search}". Click "New Patient Registration" to
+                      add.
                     </td>
                   </tr>
                 ) : (
@@ -690,7 +753,8 @@ export const PatientRegistrationModule: React.FC = () => {
                             }}
                             className="block font-semibold text-slate-900 hover:text-blue-700 text-left"
                           >
-                            {p.firstName} {p.middleName ? `${p.middleName} ` : ''}{p.lastName}
+                            {p.firstName} {p.middleName ? `${p.middleName} ` : ''}
+                            {p.lastName}
                           </button>
                           {p.allergies && p.allergies !== 'None known' && (
                             <span className="mt-1 block max-w-[18rem] rounded-md border border-rose-100 bg-rose-50 px-2 py-1 text-2xs font-medium leading-snug text-rose-700">
@@ -700,23 +764,29 @@ export const PatientRegistrationModule: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-slate-700">
                           <div>ID: {p.nationalId || 'N/A'}</div>
-                          <div className="text-orange-700 font-semibold text-2xs">{p.shaNumber || 'No SHA'}</div>
+                          <div className="text-orange-700 font-semibold text-2xs">
+                            {p.shaNumber || 'No SHA'}
+                          </div>
                         </td>
                         <td className="px-4 py-3 font-sans text-slate-700">
                           {age} yrs · {p.gender}
                         </td>
                         <td className="px-4 py-3 text-slate-700 font-sans">
                           <div className="font-mono">{p.phone}</div>
-                          <div className="text-2xs text-slate-400">{p.county}</div>
+                          <div className="text-2xs text-slate-400">
+                            {[p.subCounty, p.county].filter(Boolean).join(', ')}
+                          </div>
                         </td>
                         <td className="px-4 py-3 font-sans">
-                          <span className={`px-2 py-0.5 rounded text-2xs font-semibold ${
-                            p.payerType === 'SHA'
-                              ? 'bg-orange-50 text-orange-900 border border-orange-200'
-                              : p.payerType === 'Insurance'
-                              ? 'bg-blue-50 text-blue-900 border border-blue-200'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded text-2xs font-semibold ${
+                              p.payerType === 'SHA'
+                                ? 'bg-orange-50 text-orange-900 border border-orange-200'
+                                : p.payerType === 'Insurance'
+                                  ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                                  : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
                             {p.payerType}
                           </span>
                         </td>

@@ -109,9 +109,7 @@ async function resolveScope(
   requestedFacilityId?: number | string | null,
 ) {
   const parsed =
-    requestedFacilityId === undefined ||
-    requestedFacilityId === null ||
-    requestedFacilityId === ''
+    requestedFacilityId === undefined || requestedFacilityId === null || requestedFacilityId === ''
       ? null
       : Number(requestedFacilityId);
 
@@ -290,9 +288,7 @@ export async function verifyPractitionerScoped(
     if (error instanceof DhaError) {
       const notFound = error.status === 404;
 
-      serviceError = notFound
-        ? null
-        : { code: error.code, message: error.message };
+      serviceError = notFound ? null : { code: error.code, message: error.message };
 
       normalisation = {
         record: normalisation.record,
@@ -326,10 +322,7 @@ export async function verifyPractitionerScoped(
       and(
         eq(schema.staffProfessionalCredentials.facilityId, facility.id),
         eq(schema.staffProfessionalCredentials.regulator, regulator.code),
-        eq(
-          schema.staffProfessionalCredentials.registrationNumber,
-          identificationNumber,
-        ),
+        eq(schema.staffProfessionalCredentials.registrationNumber, identificationNumber),
       ),
     )
     .limit(1);
@@ -357,8 +350,7 @@ export async function verifyPractitionerScoped(
     registrationStatus: normalisation.record.registrationStatus,
     licenceStatus: normalisation.record.licenceStatus,
     licenceExpiry,
-    lastVerifiedAt:
-      normalisation.status === 'SERVICE_UNAVAILABLE' ? null : new Date(),
+    lastVerifiedAt: normalisation.status === 'SERVICE_UNAVAILABLE' ? null : new Date(),
     verificationSource: 'DHA_HWR',
     externalReference: normalisation.record.externalId,
     responseReference: null,
@@ -399,9 +391,7 @@ export async function verifyPractitionerScoped(
     httpStatus: serviceError ? null : 200,
     errorCode: serviceError?.code ?? null,
     performedBy: context.userId ?? null,
-    notes: simulated
-      ? 'Simulated result from mock mode. Not a regulator verification.'
-      : null,
+    notes: simulated ? 'Simulated result from mock mode. Not a regulator verification.' : null,
   });
 
   return {
@@ -510,10 +500,7 @@ export async function recordManualVerificationScoped(
           and(
             eq(schema.staffProfessionalCredentials.facilityId, facility.id),
             eq(schema.staffProfessionalCredentials.regulator, regulator.code),
-            eq(
-              schema.staffProfessionalCredentials.registrationNumber,
-              registrationNumber,
-            ),
+            eq(schema.staffProfessionalCredentials.registrationNumber, registrationNumber),
           ),
         )
         .limit(1);
@@ -684,14 +671,12 @@ export async function getVerificationDashboardScoped(
  * Called by the invitation service, so there is exactly one place that
  * decides who needs a credential and what counts as good enough.
  */
-export async function assertInvitationCredential(
-  input: {
-    tenantId: number;
-    facilityId: number;
-    roleName: string;
-    credentialId?: number | null;
-  },
-) {
+export async function assertInvitationCredential(input: {
+  tenantId: number;
+  facilityId: number;
+  roleName: string;
+  credentialId?: number | null;
+}) {
   if (!requiresProfessionalVerification(input.roleName)) {
     return { required: false as const, credentialId: null };
   }
@@ -859,9 +844,7 @@ async function loadUsableCredentials(input: {
   for (const row of rows) {
     const ownerUserId =
       row.userId ??
-      (row.invitationId !== null
-        ? invitationOwner.get(row.invitationId) ?? null
-        : null);
+      (row.invitationId !== null ? (invitationOwner.get(row.invitationId) ?? null) : null);
 
     if (ownerUserId !== null && input.userIds.includes(ownerUserId)) {
       usable.push({
@@ -936,9 +919,7 @@ export async function findVerifiedCredentialForUser(input: {
     userIds: [input.userId],
   });
 
-  const credential = rows.find(
-    (row) => row.regulator === expectedRegulator.code,
-  );
+  const credential = rows.find((row) => row.regulator === expectedRegulator.code);
 
   if (!credential) {
     return null;

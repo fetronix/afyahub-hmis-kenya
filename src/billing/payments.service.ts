@@ -116,12 +116,9 @@ export async function recordSettledPayment(
   const invoiceId = toPositiveInteger(input?.invoiceId);
 
   if (invoiceId === null) {
-    throw new PaymentDomainError(
-      'INVALID_INPUT',
-      'A valid invoice is required.',
-      400,
-      { field: 'invoiceId' },
-    );
+    throw new PaymentDomainError('INVALID_INPUT', 'A valid invoice is required.', 400, {
+      field: 'invoiceId',
+    });
   }
 
   const amountCents = parseMoneyToCents(input?.amount);
@@ -135,18 +132,12 @@ export async function recordSettledPayment(
     );
   }
 
-  const paymentMethod =
-    typeof input?.paymentMethod === 'string'
-      ? input.paymentMethod.trim()
-      : '';
+  const paymentMethod = typeof input?.paymentMethod === 'string' ? input.paymentMethod.trim() : '';
 
   if (!paymentMethod || paymentMethod.length > 40) {
-    throw new PaymentDomainError(
-      'INVALID_INPUT',
-      'A payment method is required.',
-      400,
-      { field: 'paymentMethod' },
-    );
+    throw new PaymentDomainError('INVALID_INPUT', 'A payment method is required.', 400, {
+      field: 'paymentMethod',
+    });
   }
 
   const mobile = isMobileMoney(paymentMethod);
@@ -161,9 +152,14 @@ export async function recordSettledPayment(
     const check = validateTransactionCode(paymentMethod, rawCode);
 
     if (!check.valid) {
-      throw new PaymentDomainError('INVALID_INPUT', check.reason ?? 'Invalid transaction code.', 400, {
-        field: 'transactionCode',
-      });
+      throw new PaymentDomainError(
+        'INVALID_INPUT',
+        check.reason ?? 'Invalid transaction code.',
+        400,
+        {
+          field: 'transactionCode',
+        },
+      );
     }
 
     transactionCode = check.code;
@@ -191,10 +187,7 @@ export async function recordSettledPayment(
     throw new PaymentDomainError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
   }
 
-  if (
-    !Array.isArray(facility.enabledModules) ||
-    !facility.enabledModules.includes('finance')
-  ) {
+  if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance')) {
     throw new PaymentDomainError(
       'FACILITY_MODULE_DISABLED',
       'The finance module is disabled for this facility.',
@@ -334,10 +327,7 @@ export async function recordSettledPayment(
      * code; the check above only exists to give a clean message when it
      * wins the race.
      */
-    if (
-      error instanceof Error &&
-      /billing_payments_transaction_code_unique/i.test(error.message)
-    ) {
+    if (error instanceof Error && /billing_payments_transaction_code_unique/i.test(error.message)) {
       throw new PaymentDomainError(
         'DUPLICATE_TRANSACTION_CODE',
         `Transaction code ${transactionCode} has already been receipted.`,
@@ -350,18 +340,14 @@ export async function recordSettledPayment(
   }
 }
 
-type Executor =
-  | typeof db
-  | Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * Receipt numbers come from a sequence so two tills cannot mint the same
  * number. The sequence is created by migration 0010.
  */
 async function nextReceiptNumber(executor: Executor): Promise<string> {
-  const result = await executor.execute(
-    sql`SELECT nextval('billing_receipt_seq')::text AS value`,
-  );
+  const result = await executor.execute(sql`SELECT nextval('billing_receipt_seq')::text AS value`);
 
   /* node-postgres returns a QueryResult; the sequence value is in .rows. */
   const rows = (result as unknown as { rows?: Array<{ value?: string }> }).rows;
@@ -409,14 +395,10 @@ export async function getPaymentLedgerScoped(
 
   const invoiceId = filters?.invoiceId ? toPositiveInteger(filters.invoiceId) : null;
   const limitRaw = Number(filters?.limit ?? 200);
-  const limit = Number.isSafeInteger(limitRaw)
-    ? Math.min(Math.max(limitRaw, 1), 500)
-    : 200;
+  const limit = Number.isSafeInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
 
   const method =
-    typeof filters?.method === 'string' && filters.method.trim()
-      ? filters.method.trim()
-      : null;
+    typeof filters?.method === 'string' && filters.method.trim() ? filters.method.trim() : null;
 
   const conditions = [
     eq(schema.billingInvoices.facilityId, facilityId),

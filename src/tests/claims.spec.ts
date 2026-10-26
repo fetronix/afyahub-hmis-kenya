@@ -1,0 +1,293 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { schemaSource } from './support/schema-source.ts';
+
+import { describe, expect, it } from 'vitest';
+
+function readRepoFile(relativePath: string): string {
+  return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
+}
+
+describe('Insurance claims workflow', () => {
+  it('1. MIGRATION AND SCHEMA', async () => {
+    const sql = readRepoFile('drizzle/0011_insurance_claims_workflow.sql');
+
+    expect(
+      sql.includes('CREATE TABLE IF NOT EXISTS "insurance_claim_items"'),
+      'the migration creates the claim lines table',
+    ).toBe(true);
+    expect(
+      sql.includes('ADD COLUMN IF NOT EXISTS "settled_payment_id"'),
+      'claims record the payment that settled them',
+    ).toBe(true);
+    expect(
+      sql.includes('ADD COLUMN IF NOT EXISTS "settled_at"'),
+      'claims record when they were settled',
+    ).toBe(true);
+    expect(
+      sql.includes('insurance_claims_settled_payment_id_billing_payments_id_fk'),
+      'the settled payment is a foreign key, not a loose integer',
+    ).toBe(true);
+    expect(
+      sql.includes('insurance_claim_items_claim_id_insurance_claims_id_fk'),
+      'claim lines cascade with the claim',
+    ).toBe(true);
+    expect(
+      sql.includes('CREATE SEQUENCE IF NOT EXISTS "insurance_claim_number_seq"'),
+      'claim numbers come from a sequence',
+    ).toBe(true);
+
+    /*
+     * A partial unique index would fail on a database that already holds
+     * two open claims on one invoice, so uniqueness is enforced under an
+     * invoice row lock instead. Confirm the guard did not creep back in.
+     */
+    expect(
+      !/UNIQUE\s+INDEX[^;]*insurance_claims/i.test(sql),
+      'no unique index that could block migrating existing data',
+    ).toBe(true);
+
+    expect(sql.charCodeAt(0) !== 0xfeff, 'the migration has no BOM').toBe(true);
+
+    const schema = schemaSource();
+    expect(
+      schema.includes('export const insuranceClaimItems'),
+      'schema mirrors the claim lines table',
+    ).toBe(true);
+    expect(
+      schema.includes("settledPaymentId: integer('settled_payment_id')"),
+      'schema has settledPaymentId',
+    ).toBe(true);
+
+    /* Every .sql in the journal must load cleanly. */
+    const journal = JSON.parse(readRepoFile('drizzle/meta/_journal.json')) as {
+      entries: Array<{ tag: string }>;
+    };
+
+    expect(
+      journal.entries.some((entry) => entry.tag === '0011_insurance_claims_workflow'),
+      '0011 is registered in the journal',
+    ).toBe(true);
+
+    for (const entry of journal.entries) {
+      const file = readRepoFile(`drizzle/${entry.tag}.sql`);
+
+      expect(file.charCodeAt(0) !== 0xfeff, `${entry.tag} must not start with a BOM`).toBe(true);
+    }
+
+    /* No orphan .sql files that the journal does not know about. */
+    const sqlFiles = readdirSync(resolve(process.cwd(), 'drizzle')).filter((name) =>
+      /^\d{4}_.*\.sql$/.test(name),
+    );
+
+    for (const file of sqlFiles) {
+      const tag = file.replace(/\.sql$/, '');
+
+      expect(
+        journal.entries.some((entry) => entry.tag === tag),
+        `${file} must be registered in the journal`,
+      ).toBe(true);
+    }
+  });
+
+  it('2. STATE MACHINE', async () => {
+    const service = readRepoFile('src/insurance/claims.service.ts');
+
+    expect(
+      service.includes("const OPEN_STATUSES = ['Draft', 'Submitted', 'Approved']"),
+      'only one claim may be open per invoice',
+    ).toBe(true);
+    expect(
+      service.includes(".for('update')"),
+      'the invoice is locked while a claim is drafted',
+    ).toBe(true);
+    expect(service.includes('INVALID_TRANSITION'), 'illegal status jumps are refused').toBe(true);
+    expect(
+      service.includes('APPROVED_EXCEEDS_CLAIM'),
+      'a payer cannot approve more than was claimed',
+    ).toBe(true);
+    expect(
+      service.includes('CLAIM_EXCEEDS_BALANCE') || service.includes('cappedAtBalance'),
+      'a claim cannot exceed the outstanding balance',
+    ).toBe(true);
+
+    /*
+     * Settling must write a payment row. If the only thing that happened
+     * was a status update, the invoice balance would lie.
+     */
+    const settleIndex = service.indexOf('export async function settleClaimScoped');
+    expect(settleIndex > -1, 'settleClaimScoped exists').toBe(true);
+
+    const settleBody = service.slice(settleIndex);
+
+    expect(
+      settleBody.includes('insert(schema.billingPayments)'),
+      'settling inserts a payment',
+    ).toBe(true);
+    expect(
+      settleBody.includes('update(schema.billingInvoices)'),
+      'settling updates the invoice balance',
+    ).toBe(true);
+    expect(
+      settleBody.includes("status: 'Settled'"),
+      'only the settle path marks a claim Settled',
+    ).toBe(true);
+
+    /* Nothing else may set Settled. */
+    const settledWrites = service.match(/status:\s*'Settled'/g) ?? [];
+    expect(settledWrites.length, 'exactly one place writes Settled').toBe(1);
+
+    /*
+     * Approved money beyond the balance is not posted; it is reported.
+     * Inventing credit for a payer would be creating money.
+     */
+    expect(
+      settleBody.includes('Math.min(approvedCents, balanceCents)'),
+      'settlement is capped at the outstanding balance',
+    ).toBe(true);
+    expect(settleBody.includes('unappliedCents'), 'the unapplied remainder is reported').toBe(true);
+  });
+
+  it('3. ROUTES', async () => {
+    const app = readRepoFile('src/app.ts');
+    const wiring = readRepoFile('src/routes/index.ts');
+
+    /*
+     * The mount lines live in src/routes/index.ts now. That router is
+     * mounted at '/api' by app.ts, so the prefix is relative here - the
+     * assertion still pins the same gate to the same public path.
+     */
+
+    /*
+     * Match on "app.<method>( '<route>'" so the module gate on line 180
+     * (app.use('/api/claims', ...)) is not mistaken for the route itself.
+     */
+    const routes: Array<[string, string, string]> = [
+      ['post', '/api/claims', 'insurance.claims.create'],
+      ['post', '/api/claims/:id/submit', 'insurance.claims.create'],
+      ['post', '/api/claims/:id/adjudicate', 'insurance.claims.manage'],
+      ['post', '/api/claims/:id/settle', 'insurance.claims.manage'],
+    ];
+
+    for (const [method, route, permission] of routes) {
+      const index = app.indexOf(`app.${method}(\n    '${route}'`);
+      expect(index > -1, `${method.toUpperCase()} ${route} is registered`).toBe(true);
+
+      const window = app.slice(index, index + 300);
+      expect(
+        window.includes(`requirePermission('${permission}')`),
+        `${method.toUpperCase()} ${route} requires ${permission}`,
+      ).toBe(true);
+    }
+
+    expect(
+      wiring.includes("api.use('/claims', requireFacilityModule('insurance'))"),
+      'claims are gated by the insurance facility module',
+    ).toBe(true);
+
+    /*
+     * Reads keep the module gate but no new permission requirement: no
+     * role in the catalogue currently holds an insurance permission, so
+     * adding one here would take the claims screen away from clerks who
+     * can see it today. Tighten this once roles are granted the code.
+     */
+    for (const route of [
+      '/api/claims',
+      '/api/claims/:id/items',
+      '/api/invoices/:id/claimable-lines',
+    ]) {
+      const index = app.indexOf(`app.get(\n    '${route}'`);
+      expect(index > -1, `GET ${route} is registered`).toBe(true);
+
+      const window = app.slice(index, index + 200);
+      expect(
+        !window.includes("requirePermission('insurance.read')"),
+        `GET ${route} must not add an ungranted permission`,
+      ).toBe(true);
+    }
+
+    /* The legacy status endpoint must still settle through the service. */
+    const legacyIndex = app.indexOf("'/api/claims/:id/status'");
+    const legacyBody = app.slice(legacyIndex, legacyIndex + 2500);
+    expect(
+      legacyBody.includes('settleClaimScoped'),
+      'the legacy status route settles through the state machine',
+    ).toBe(true);
+    expect(
+      !legacyBody.includes('queries.updateClaimStatus'),
+      'the legacy route no longer writes status directly',
+    ).toBe(true);
+  });
+
+  it('4. HONESTY', async () => {
+    const ui = readRepoFile('src/components/modules/InsuranceClaimsModule.tsx');
+
+    /* Fabricated identifiers that previously prefilled the form. */
+    const inventions = [
+      'SHA-KEN-2026-9921',
+      'AUTH-SHA-782109',
+      'Jubilee Health Insurance',
+      'APA Insurance Kenya',
+      'AHS-SHA',
+    ];
+
+    for (const invention of inventions) {
+      expect(!ui.includes(invention), `the screen must not prefill "${invention}"`).toBe(true);
+    }
+
+    expect(!ui.includes('Math.random()'), 'claim numbers are not invented in the browser').toBe(
+      true,
+    );
+    expect(!/4450\.00/.test(ui), 'no hardcoded claim amount').toBe(true);
+
+    /* Unsupported compliance claims that used to be printed on the screen. */
+    const overclaims = [
+      'API Integration Ready',
+      'DHA Electronic Remittance Ready',
+      'Payer abstraction engine',
+      'submitted to the SHA portal',
+    ];
+
+    for (const phrase of overclaims) {
+      expect(!ui.includes(phrase), `the screen must not claim "${phrase}"`).toBe(true);
+    }
+
+    /* And the truthful statement must be present. */
+    expect(
+      ui.includes('No live SHA connection'),
+      'the screen states there is no SHA connection',
+    ).toBe(true);
+    expect(
+      ui.includes('does not transmit claims'),
+      'the screen says claims are not transmitted',
+    ).toBe(true);
+
+    /* The module must not call any external URL. */
+    expect(!/https?:\/\//.test(ui), 'the claims screen makes no external requests').toBe(true);
+  });
+
+  it('5. CLIENT CONTRACT', async () => {
+    const client = readRepoFile('src/api/client.ts');
+
+    for (const method of [
+      'getClaimableLines',
+      'draftClaim',
+      'submitClaim',
+      'adjudicateClaim',
+      'settleClaim',
+      'getClaimItems',
+    ]) {
+      expect(client.includes(`${method}:`), `client exposes ${method}`).toBe(true);
+    }
+
+    const types = readRepoFile('src/types/index.ts');
+    expect(types.includes('export interface ClaimableLinesResponse'), 'claimable lines typed').toBe(
+      true,
+    );
+    expect(types.includes('export interface DraftClaimResult'), 'draft result typed').toBe(true);
+    expect(
+      types.includes('export interface ClaimSettlementResult'),
+      'settlement result typed',
+    ).toBe(true);
+  });
+});

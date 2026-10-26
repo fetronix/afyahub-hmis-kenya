@@ -1,17 +1,7 @@
 import React, { useEffect } from 'react';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  X,
-  XCircle,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 
-import {
-  useHmis,
-  type AppNotification,
-  type NotificationTone,
-} from '../context/HmisContext.tsx';
+import { useHmis, type AppNotification, type NotificationTone } from '../context/HmisContext.tsx';
 
 /*
  * The tone is the honest part of a notification: a refused save should
@@ -77,9 +67,7 @@ const NotificationRow: React.FC<{
         <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted">
           {tone.label}
         </p>
-        <p className="mt-1 text-sm leading-relaxed text-ink">
-          {notification.message}
-        </p>
+        <p className="mt-1 text-sm leading-relaxed text-ink">{notification.message}</p>
       </div>
 
       <button
@@ -107,11 +95,7 @@ const NotificationRow: React.FC<{
  * `prefers-reduced-motion`.
  */
 export const NotificationDialog: React.FC = () => {
-  const {
-    notifications,
-    dismissNotification,
-    dismissAllNotifications,
-  } = useHmis();
+  const { notifications, dismissNotification, dismissAllNotifications } = useHmis();
 
   useEffect(() => {
     if (notifications.length === 0) return;
@@ -175,9 +159,7 @@ export const NotificationDialog: React.FC = () => {
         </ul>
 
         <div className="flex items-center justify-between gap-3 border-t border-hair px-5 py-2.5">
-          <p className="text-2xs text-muted">
-            This closes on its own. Escape also dismisses it.
-          </p>
+          <p className="text-2xs text-muted">This closes on its own. Escape also dismisses it.</p>
 
           <button type="button" onClick={dismissAllNotifications} className="btn-quiet">
             Dismiss

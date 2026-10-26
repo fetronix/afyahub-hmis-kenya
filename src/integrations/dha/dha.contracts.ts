@@ -172,10 +172,7 @@ export interface DhaOtpVisitRequest {
   service_type: 'CAPITATION' | 'OUTPATIENT' | 'INPATIENT' | 'EMERGENCY';
   otp: string;
   practitioner_identification_type?:
-    | 'registration_number'
-    | 'National ID'
-    | 'Alien ID'
-    | 'Refugee ID';
+    'registration_number' | 'National ID' | 'Alien ID' | 'Refugee ID';
   practitioner_identification_number?: string;
   practitioner_regulation_body?: 'KMPDC' | 'COC' | 'NCK' | 'PPB';
 }
