@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import { appSource } from './support/schema-source.ts';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -190,7 +191,7 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
   });
 
   it('8. WIRING', async () => {
-    const app = readRepoFile('src/app.ts');
+    const app = appSource();
     const wiring = readRepoFile('src/routes/index.ts');
 
     /*

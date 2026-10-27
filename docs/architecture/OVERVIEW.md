@@ -88,10 +88,10 @@ Browser → TLS → reverse proxy → Node :3000
 | Layer | Where | Responsibility |
 |---|---|---|
 | Entry | `server.ts` | Reads `PORT`/`HOST`, starts HTTP, handles `SIGTERM` |
-| App | `src/app.ts` | Middleware, routes, SPA fallback, error handler |
-| Routes | `src/routes/` | Extracted domain routers (currently `system.routes.ts`) |
+| App | `src/app.ts` | Middleware, gates, SPA fallback, error handler. No routes. |
+| Routes | `src/routes/` | One router per domain; `index.ts` mounts them in order |
 | Services | `src/*/​*.service.ts` | Business rules: billing, maternity, laboratory, auth |
-| Data | `src/db/` | `schema.ts` (tables), `queries.ts` (shared queries), `index.ts` (pool) |
+| Data | `src/db/` | `schema.ts` and `queries.ts` are barrels over `schema/` and `queries/`; `index.ts` is the pool |
 | Client | `src/App.tsx`, `src/components/` | React SPA |
 | Cross-cutting | `src/middleware/`, `src/logging/` | Security, scoping, structured logging |
 
@@ -238,11 +238,20 @@ submit a real claim, and so a demo does not depend on a gateway being up.
 Stated plainly, because a buyer should learn this here and not after
 handover:
 
-- `src/app.ts` is 8,449 lines and holds every route. The split has started
-  (`src/routes/system.routes.ts`); the clinical routes depend on nearly every
-  table, so they wait until `schema.ts` is split by domain.
-- `src/db/schema.ts` (6,862 lines) and `src/db/queries.ts` (4,303) are
-  similarly unsplit.
-- Measured test coverage is low, because the legacy suites assert on source
-  text rather than executing code. See
-  [`docs/quality/BASELINE.md`](../quality/BASELINE.md).
+- **The three monoliths are split, as of this revision.** `src/app.ts` went
+  from 3,416 lines to 468 and registers no routes at all; the forty-one
+  handlers moved verbatim into eleven routers under `src/routes/domains/`,
+  mounted by `src/routes/index.ts` after the facility-module gates, which is
+  where they sat when they were inline. `src/db/schema.ts` went from 4,373
+  lines to a 1,010-line barrel over ten modules in `src/db/schema/`, and
+  Drizzle's generated SQL is byte-identical before and after. `src/db/queries.ts`
+  went from 3,933 lines to a 42-line barrel over eleven modules in
+  `src/db/queries/`.
+- **Measured test coverage is still low** - about 20% of statements - because
+  the legacy suites assert on source text rather than executing code. The
+  splits tightened that text where they could (a slice that walked to the next
+  `export function` is now brace-matched), but the underlying shape has not
+  changed. See [`docs/quality/BASELINE.md`](../quality/BASELINE.md).
+- **Concentrated logging.** The data layer still uses `console.error` in
+  places where a Pino module logger already exists. This is a consistency
+  defect, not a missing capability.

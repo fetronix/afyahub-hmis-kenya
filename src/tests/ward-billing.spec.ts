@@ -19,6 +19,7 @@ import { toChargeRequest, type ChargeAttemptRow } from '../billing/charge-attemp
 import * as schema from '../db/schema.ts';
 
 import { describe, expect, it } from 'vitest';
+import { queriesSource } from './support/schema-source.ts';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
 
@@ -805,7 +806,7 @@ describe('Inpatient ward billing — the discharge that billed the bed at nothin
      * unchanged.
      */
     const app = source('src/routes/inpatient.routes.ts');
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
     const resolver = source('src/billing/tariff-resolver.ts');
 
     const dischargeRoute = app.slice(

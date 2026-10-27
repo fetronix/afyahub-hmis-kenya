@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, appSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -149,7 +149,7 @@ describe('Insurance claims workflow', () => {
   });
 
   it('3. ROUTES', async () => {
-    const app = readRepoFile('src/app.ts');
+    const app = appSource();
     const wiring = readRepoFile('src/routes/index.ts');
 
     /*
@@ -169,8 +169,18 @@ describe('Insurance claims workflow', () => {
       ['post', '/api/claims/:id/settle', 'insurance.claims.manage'],
     ];
 
+    /*
+     * Match on the method and the path, not on the indentation between
+     * them. The handlers now sit at module scope in
+     * `src/routes/domains/claims.routes.ts` rather than nested inside
+     * `createApp`, so Prettier indents the arguments two spaces instead of
+     * four - a formatting change, not a wiring change.
+     */
+    const registration = (method: string, route: string) =>
+      app.search(new RegExp(`router\\.${method}\\(\\s*'${route}'`));
+
     for (const [method, route, permission] of routes) {
-      const index = app.indexOf(`app.${method}(\n    '${route}'`);
+      const index = registration(method, route);
       expect(index > -1, `${method.toUpperCase()} ${route} is registered`).toBe(true);
 
       const window = app.slice(index, index + 300);
@@ -196,7 +206,7 @@ describe('Insurance claims workflow', () => {
       '/api/claims/:id/items',
       '/api/invoices/:id/claimable-lines',
     ]) {
-      const index = app.indexOf(`app.get(\n    '${route}'`);
+      const index = registration('get', route);
       expect(index > -1, `GET ${route} is registered`).toBe(true);
 
       const window = app.slice(index, index + 200);

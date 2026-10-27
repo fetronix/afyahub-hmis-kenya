@@ -6,7 +6,7 @@ import {
   radiologyChargeRequest,
   tariffCodeCandidates,
 } from '../billing/service-charges.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, queriesSource, appSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -160,7 +160,7 @@ describe('The outpatient journey — contract tests', () => {
   });
 
   it('4. THE BILL SURVIVES EVERY STAGE', async () => {
-    const app = source('src/app.ts');
+    const app = appSource();
 
     /*
      * Discharge moved to src/routes/inpatient.routes.ts with the inpatient
@@ -174,7 +174,7 @@ describe('The outpatient journey — contract tests', () => {
     const serviceTariffs = source('src/routes/service-tariffs.routes.ts');
 
     const stages: Array<[string, string, string, string, string]> = [
-      ["'/api/encounters'", 'CONSULTATION', app, 'app.post', '/api/encounters'],
+      ["'/api/encounters'", 'CONSULTATION', app, 'router.post', '/api/encounters'],
       ["'/api/procedures'", 'PROCEDURE', diagnoses, 'router.post', '/api/procedures'],
       ["'/api/radiology-orders'", 'RADIOLOGY', radiology, 'router.post', '/api/radiology-orders'],
       ["'/api/pharmacy/dispense'", 'PHARMACY', pharmacy, 'router.post', '/api/pharmacy/dispense'],
@@ -269,7 +269,7 @@ describe('The outpatient journey — contract tests', () => {
       'and that rule asks for the catalogue code',
     ).toBe(true);
 
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
     expect(
       queries.includes('orders.push({') && queries.includes('testCode: test.code'),
       'the batch carries each test code to the charging step',
@@ -313,7 +313,11 @@ describe('The outpatient journey — contract tests', () => {
      * as it was, instead of loosening it to "somewhere in the sources".
      */
     for (const [label, key, file] of [
-      ['the consultation', "billingServiceKeys('CONSULTATION'", 'src/app.ts'],
+      [
+        'the consultation',
+        "billingServiceKeys('CONSULTATION'",
+        'src/routes/domains/encounters.routes.ts',
+      ],
       ['the admission', "billingServiceKeys('ADMISSION'", 'src/routes/inpatient.routes.ts'],
       ['the delivery', "billingServiceKeys('DELIVERY'", 'src/routes/maternal-health.routes.ts'],
       ['the prescription', "billingServiceKeys('PHARMACY'", 'src/routes/pharmacy.routes.ts'],
@@ -328,7 +332,7 @@ describe('The outpatient journey — contract tests', () => {
      * is where the ward's link key has to be offered.
      */
     expect(
-      source('src/db/queries.ts').includes("billingServiceKeys('BED_DAY'"),
+      queriesSource().includes("billingServiceKeys('BED_DAY'"),
       'the bed-day offers a billing link',
     ).toBe(true);
 
@@ -380,7 +384,7 @@ describe('The outpatient journey — contract tests', () => {
   });
 
   it('5. A VISIT CAN END', async () => {
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
 
     expect(
       queries.includes("safeData.status === 'Completed'"),
@@ -410,7 +414,7 @@ describe('The outpatient journey — contract tests', () => {
   });
 
   it('6. IDENTIFIERS ARE ALLOCATED ON THE SERVER', async () => {
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
 
     expect(
       queries.includes('export async function nextPatientMrn'),
@@ -438,7 +442,7 @@ describe('The outpatient journey — contract tests', () => {
     ).toBe(true);
 
     /* The API route turns the named refusal into 409, not 500. */
-    const app = source('src/app.ts');
+    const app = appSource();
     expect(
       app.includes('err instanceof queries.PatientMrnConflictError'),
       'a duplicate MRN answers 409',
@@ -456,11 +460,11 @@ describe('The outpatient journey — contract tests', () => {
      * update must be absent from both files: checking only the one that holds
      * the routes today would go quiet the moment they move again.
      */
-    const app = source('src/app.ts');
+    const app = appSource();
     const queues = source('src/routes/queues.routes.ts');
     const pharmacy = source('src/routes/pharmacy.routes.ts');
     const serviceTariffs = source('src/routes/service-tariffs.routes.ts');
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
     const opd = source('src/components/modules/OutpatientModule.tsx');
 
     expect(

@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import { appSource } from './support/schema-source.ts';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -190,7 +191,7 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
   });
 
   it('6. WIRING', async () => {
-    const app = readRepoFile('src/app.ts');
+    const app = appSource();
     const pharmacy = readRepoFile('src/routes/pharmacy.routes.ts');
     const wiring = readRepoFile('src/routes/index.ts');
 
