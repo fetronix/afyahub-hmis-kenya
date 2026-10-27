@@ -319,3 +319,169 @@
     animation: none;
   }
 }
+
+/* ============================================================
+   JaliCare HMIS Login Portal — Reference Surface & Typography
+   ============================================================ */
+
+@font-face {
+  font-family: 'JaliCare Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-latin-wght-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JaliCare Script';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/caveat-latin-600-normal.woff2') format('woff2');
+}
+
+.jalicare-login-page {
+  font-family:
+    'JaliCare Inter',
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  background:
+    radial-gradient(62% 52% at 50% 98%, rgba(190, 219, 245, 0.62) 0%, rgba(235, 245, 253, 0) 74%),
+    radial-gradient(50% 46% at 18% 12%, rgba(255, 255, 255, 0.85) 0%, rgba(241, 248, 255, 0) 70%),
+    linear-gradient(180deg, #eff6fd 0%, #f1f8fe 48%, #eaf3fc 100%);
+}
+
+.jalicare-script {
+  font-family: 'JaliCare Script', 'Caveat', 'Segoe Script', 'Bradley Hand', cursive;
+}
+
+.jalicare-shell-shadow {
+  filter: drop-shadow(0 24px 36px rgba(13, 66, 134, 0.14))
+    drop-shadow(0 6px 16px rgba(13, 66, 134, 0.07));
+}
+
+.jalicare-left-panel {
+  background: linear-gradient(180deg, #fbfdff 0%, #f6fbff 76%, #edf6fe 86%, #034b9b 91%);
+  border: 1px solid rgba(196, 222, 246, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.jalicare-right-card {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.985) 0%,
+    rgba(249, 252, 255, 0.97) 52%,
+    rgba(241, 248, 254, 0.965) 100%
+  );
+  border: 1px solid rgba(212, 229, 246, 0.95);
+  box-shadow:
+    -14px 0 30px -16px rgba(10, 56, 118, 0.16),
+    0 18px 40px -18px rgba(10, 56, 118, 0.14),
+    inset 0 1px 0 #ffffff;
+  backdrop-filter: blur(18px);
+}
+
+.jalicare-security-card {
+  background: linear-gradient(180deg, rgba(52, 136, 214, 0.54) 0%, rgba(16, 90, 170, 0.45) 100%);
+  border: 1.25px solid rgba(136, 198, 252, 0.48);
+  box-shadow:
+    0 12px 26px -6px rgba(1, 24, 64, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+.jalicare-input {
+  background: linear-gradient(180deg, #f9fcff 0%, #f6fafe 100%);
+  border: 1.25px solid #dce8f5;
+  box-shadow:
+    0 2px 6px rgba(14, 62, 125, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.jalicare-input:hover:not(:disabled) {
+  border-color: #c5dcf3;
+}
+
+.jalicare-input:focus {
+  background: #ffffff;
+  border-color: #078cf0;
+  box-shadow:
+    0 0 0 3.5px rgba(7, 140, 240, 0.13),
+    0 2px 8px rgba(7, 85, 164, 0.06);
+  outline: none;
+}
+
+.jalicare-signin-btn {
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.24) 0%,
+      rgba(255, 255, 255, 0.02) 48%,
+      rgba(0, 24, 68, 0.08) 100%
+    ),
+    linear-gradient(
+      90deg,
+      #0474e0 0%,
+      #1689ec 18%,
+      #4281bd 44%,
+      #7c839c 62%,
+      #cc8352 80%,
+      #f48320 93%,
+      #ff8f1c 100%
+    );
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    -14px 12px 24px -8px rgba(7, 134, 240, 0.36),
+    14px 12px 24px -8px rgba(255, 128, 18, 0.26),
+    0 6px 14px -4px rgba(10, 68, 142, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  text-shadow: 0 1px 1px rgba(4, 32, 74, 0.18);
+  transition:
+    filter 160ms ease,
+    transform 120ms ease,
+    box-shadow 160ms ease;
+}
+
+.jalicare-signin-btn:hover:not(:disabled) {
+  filter: brightness(1.035);
+  box-shadow:
+    -14px 14px 28px -7px rgba(7, 134, 240, 0.42),
+    14px 14px 28px -7px rgba(255, 128, 18, 0.32),
+    0 8px 18px -4px rgba(10, 68, 142, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.jalicare-signin-btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.jalicare-alt-btn {
+  background: linear-gradient(180deg, #ffffff 0%, #f1f8fe 100%);
+  border: 1.25px solid #dbe9f7;
+  box-shadow:
+    0 6px 16px -4px rgba(14, 66, 134, 0.08),
+    inset 0 1px 0 #ffffff;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.jalicare-alt-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffffff 0%, #eaf4fe 100%);
+  border-color: #bdd8f3;
+  box-shadow:
+    0 8px 18px -4px rgba(14, 66, 134, 0.12),
+    inset 0 1px 0 #ffffff;
+}
