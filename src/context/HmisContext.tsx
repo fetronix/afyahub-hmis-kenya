@@ -1,4 +1,4 @@
-﻿import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 import { api, type AuthenticatedUser } from '../api/client.ts';
 
@@ -692,8 +692,6 @@ export const HmisProvider: React.FC<{
   */
 
   const login = async (identifier: string, password: string) => {
-    setAuthLoading(true);
-
     try {
       const result = await api.login(identifier, password);
 
@@ -794,8 +792,6 @@ export const HmisProvider: React.FC<{
         success: false,
         message,
       };
-    } finally {
-      setAuthLoading(false);
     }
   };
 
