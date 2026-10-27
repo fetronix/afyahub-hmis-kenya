@@ -105,8 +105,15 @@ export async function getTenantByIdScoped(context: AuthorizationContext, tenantI
  */
 export async function getTenantsScoped(context: AuthorizationContext) {
   try {
-    if (context.tenantId === null) {
+    if (context.isSuperAdmin) {
       return await db.select().from(schema.tenants).where(eq(schema.tenants.isActive, true));
+    }
+
+    if (context.tenantId === null) {
+      throw new ScopeAccessError(
+        'Your account is not assigned to a tenant.',
+        'TENANT_NOT_ASSIGNED',
+      );
     }
 
     return await db
@@ -114,6 +121,10 @@ export async function getTenantsScoped(context: AuthorizationContext) {
       .from(schema.tenants)
       .where(and(eq(schema.tenants.id, context.tenantId), eq(schema.tenants.isActive, true)));
   } catch (error) {
+    if (error instanceof Error && error.name === 'ScopeAccessError') {
+      throw error;
+    }
+
     log.error({ err: error }, 'scoped_tenants.fetch_failed');
 
     throw new Error('Failed to fetch tenants', { cause: error });
@@ -146,7 +157,7 @@ export async function getFacilitiesScoped(
      * They can request a specific tenant's facilities.
      * If no tenant is supplied, they can see all facilities.
      */
-    if (context.tenantId === null) {
+    if (context.isSuperAdmin) {
       if (requestedTenantId !== undefined) {
         requireTenantScope(context, requestedTenantId);
 
@@ -157,6 +168,13 @@ export async function getFacilitiesScoped(
       }
 
       return await db.select().from(schema.facilities);
+    }
+
+    if (context.tenantId === null) {
+      throw new ScopeAccessError(
+        'Your account is not assigned to a tenant.',
+        'TENANT_NOT_ASSIGNED',
+      );
     }
 
     /*

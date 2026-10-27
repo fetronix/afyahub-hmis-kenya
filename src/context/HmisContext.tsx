@@ -1,8 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-import { api, type AuthenticatedUser } from '../api/client.ts';
+import { api, ApiError, onUnauthorizedSession, type AuthenticatedUser } from '../api/client.ts';
 
 import type { Tenant, Facility, Patient } from '../types/index.ts';
+
+export interface ContextInitializationError {
+  kind: 'unauthorized' | 'forbidden' | 'error';
+  message: string;
+  status?: number;
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -133,6 +139,12 @@ interface HmisContextType {
   currentFacility: Facility | null;
 
   setCurrentFacility: (facility: Facility) => void;
+
+  contextLoading: boolean;
+
+  contextError: ContextInitializationError | null;
+
+  retryContextInitialization: () => Promise<void>;
 
   /*
   |--------------------------------------------------------------------------
@@ -338,6 +350,13 @@ export const HmisProvider: React.FC<{
 
   const [currentFacility, setCurrentFacilityState] = useState<Facility | null>(null);
 
+  const [contextLoading, setContextLoading] = useState(false);
+
+  const [contextError, setContextError] = useState<ContextInitializationError | null>(null);
+
+  const contextLoadingRef = useRef(false);
+  const isAuthenticatedRef = useRef(false);
+
   /*
   |--------------------------------------------------------------------------
   | UI State
@@ -460,9 +479,46 @@ export const HmisProvider: React.FC<{
   |--------------------------------------------------------------------------
   */
 
-  const triggerRefresh = () => {
+  const triggerRefresh = useCallback(() => {
     setRefreshKey((current) => current + 1);
-  };
+  }, []);
+
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  const clearAuthorizedScopeState = useCallback(() => {
+    setTenants([]);
+    setCurrentTenantState(null);
+    setFacilities([]);
+    setCurrentFacilityState(null);
+  }, []);
+
+  /*
+   * Handle mid-session 401 responses through the existing authentication
+   * flow so an expired or revoked server session returns cleanly to the
+   * sign-in screen without leaving stale tenant/facility state mounted.
+   */
+  useEffect(() => {
+    return onUnauthorizedSession(() => {
+      if (!isAuthenticatedRef.current) {
+        return;
+      }
+
+      isAuthenticatedRef.current = false;
+      setAuthenticatedUser(null);
+      setIsAuthenticated(false);
+      clearAuthorizedScopeState();
+      setContextError(null);
+      setContextLoading(false);
+      contextLoadingRef.current = false;
+      setSelectedPatient(null);
+      setIsJourneyModalOpen(false);
+      setIsMobileMenuOpen(false);
+      setActiveModule('dashboard');
+      showToast('Your session has expired. Please sign in again.', { tone: 'warning' });
+    });
+  }, [clearAuthorizedScopeState, showToast]);
 
   /*
   |--------------------------------------------------------------------------
@@ -479,134 +535,250 @@ export const HmisProvider: React.FC<{
   |
   */
 
-  const loadTenantAndFacilityContext = async (user: AuthenticatedUser) => {
-    setLoading(true);
+  const loadTenantAndFacilityContext = useCallback(
+    async (user: AuthenticatedUser): Promise<'ok' | 'unauthorized' | 'forbidden' | 'error'> => {
+      contextLoadingRef.current = true;
+      setContextLoading(true);
+      setLoading(true);
+      setContextError(null);
 
-    try {
-      /*
-        |--------------------------------------------------------------------------
-        | Platform Administrator
-        |--------------------------------------------------------------------------
-        |
-        | tenantId === null means global platform scope.
-        |
-        */
-
-      if (user.tenantId === null) {
-        const tenantList = await api.getTenants();
-
-        setTenants(tenantList);
-
-        if (tenantList.length === 0) {
-          setCurrentTenantState(null);
-
-          setFacilities([]);
-
-          setCurrentFacilityState(null);
-
-          return;
-        }
-
-        const selectedTenant = tenantList[0];
-
-        setCurrentTenantState(selectedTenant);
-
-        const facilityList = await api.getFacilities(selectedTenant.id);
-
-        setFacilities(facilityList);
+      try {
+        const isPlatformAdmin =
+          Boolean(user.isSuperAdmin || user.roles?.includes('SUPER_ADMIN')) &&
+          user.tenantId === null;
 
         /*
           |--------------------------------------------------------------------------
-          | Respect an assigned facility if one exists.
+          | Unassigned non-platform account
+          |--------------------------------------------------------------------------
+          */
+        if (user.tenantId === null && !isPlatformAdmin) {
+          clearAuthorizedScopeState();
+          setContextError({
+            kind: 'forbidden',
+            status: 403,
+            message: 'Your account is not assigned to an organization.',
+          });
+
+          return 'forbidden';
+        }
+
+        /*
+          |--------------------------------------------------------------------------
+          | Platform Administrator
+          |--------------------------------------------------------------------------
+          |
+          | isSuperAdmin with tenantId === null means global platform scope.
+          |
+          */
+
+        if (isPlatformAdmin) {
+          const tenantList = await api.getTenants();
+
+          if (!Array.isArray(tenantList)) {
+            throw new ApiError(
+              'Unexpected organization list received from server.',
+              502,
+              'INVALID_TENANT_LIST',
+            );
+          }
+
+          setTenants(tenantList);
+
+          if (tenantList.length === 0) {
+            setCurrentTenantState(null);
+            setFacilities([]);
+            setCurrentFacilityState(null);
+
+            return 'ok';
+          }
+
+          const selectedTenant = tenantList[0]!;
+
+          setCurrentTenantState(selectedTenant);
+
+          const rawFacilities = await api.getFacilities(selectedTenant.id);
+
+          if (!Array.isArray(rawFacilities)) {
+            throw new ApiError(
+              'Unexpected facility list received from server.',
+              502,
+              'INVALID_FACILITY_LIST',
+            );
+          }
+
+          const facilityList = rawFacilities.filter(
+            (facility) => facility.tenantId === selectedTenant.id,
+          );
+
+          setFacilities(facilityList);
+
+          if (user.facilityId !== null) {
+            const assignedFacility =
+              facilityList.find((facility) => facility.id === user.facilityId) ?? null;
+
+            setCurrentFacilityState(assignedFacility);
+          } else {
+            setCurrentFacilityState(facilityList[0] ?? null);
+          }
+
+          return 'ok';
+        }
+
+        /*
+          |--------------------------------------------------------------------------
+          | Tenant-bound user
+          |--------------------------------------------------------------------------
+          */
+
+        const tenantList = await api.getTenants();
+
+        if (!Array.isArray(tenantList)) {
+          throw new ApiError(
+            'Unexpected organization list received from server.',
+            502,
+            'INVALID_TENANT_LIST',
+          );
+        }
+
+        const authorizedTenant = tenantList.find((tenant) => tenant.id === user.tenantId) ?? null;
+
+        if (!authorizedTenant) {
+          clearAuthorizedScopeState();
+          setContextError({
+            kind: 'forbidden',
+            status: 403,
+            message: 'Your assigned organization is inactive or unavailable.',
+          });
+
+          return 'forbidden';
+        }
+
+        setTenants([authorizedTenant]);
+        setCurrentTenantState(authorizedTenant);
+
+        /*
+          |--------------------------------------------------------------------------
+          | Load facilities for authorized tenant
+          |--------------------------------------------------------------------------
+          */
+
+        const rawFacilities = await api.getFacilities(authorizedTenant.id);
+
+        if (!Array.isArray(rawFacilities)) {
+          throw new ApiError(
+            'Unexpected facility list received from server.',
+            502,
+            'INVALID_FACILITY_LIST',
+          );
+        }
+
+        const facilityList = rawFacilities.filter(
+          (facility) => facility.tenantId === authorizedTenant.id,
+        );
+
+        /*
+          |--------------------------------------------------------------------------
+          | Facility-bound user
           |--------------------------------------------------------------------------
           */
 
         if (user.facilityId !== null) {
-          const assignedFacility =
+          const authorizedFacility =
             facilityList.find((facility) => facility.id === user.facilityId) ?? null;
 
-          setCurrentFacilityState(assignedFacility);
-        } else {
-          setCurrentFacilityState(facilityList[0] ?? null);
+          if (!authorizedFacility) {
+            setFacilities([]);
+            setCurrentFacilityState(null);
+            setContextError({
+              kind: 'forbidden',
+              status: 403,
+              message: 'Your assigned facility is unavailable or outside your authorized scope.',
+            });
+
+            return 'forbidden';
+          }
+
+          setFacilities([authorizedFacility]);
+          setCurrentFacilityState(authorizedFacility);
+
+          return 'ok';
         }
 
-        return;
+        /*
+          |--------------------------------------------------------------------------
+          | Tenant-level user without facility restriction
+          |--------------------------------------------------------------------------
+          */
+
+        setFacilities(facilityList);
+        setCurrentFacilityState(facilityList[0] ?? null);
+
+        return 'ok';
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          api.clearLocalSession();
+          isAuthenticatedRef.current = false;
+          setAuthenticatedUser(null);
+          setIsAuthenticated(false);
+          clearAuthorizedScopeState();
+          setSelectedPatient(null);
+          setIsJourneyModalOpen(false);
+          setContextError({
+            kind: 'unauthorized',
+            status: 401,
+            message: error.message || 'Your session has expired. Please sign in again.',
+          });
+
+          return 'unauthorized';
+        }
+
+        if (error instanceof ApiError && error.status === 403) {
+          clearAuthorizedScopeState();
+          setContextError({
+            kind: 'forbidden',
+            status: 403,
+            message:
+              error.message ||
+              'You do not have permission to access organization or facility context.',
+          });
+
+          return 'forbidden';
+        }
+
+        console.error('Failed to initialize authorized tenant/facility context:', error);
+
+        clearAuthorizedScopeState();
+        setContextError({
+          kind: 'error',
+          status: error instanceof ApiError ? error.status : undefined,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Unable to load authorized organization and facility context.',
+        });
+
+        return 'error';
+      } finally {
+        contextLoadingRef.current = false;
+        setContextLoading(false);
+        setLoading(false);
       }
+    },
+    [clearAuthorizedScopeState],
+  );
 
-      /*
-        |--------------------------------------------------------------------------
-        | Tenant-bound user
-        |--------------------------------------------------------------------------
-        */
-
-      const tenantList = await api.getTenants();
-
-      const authorizedTenant = tenantList.find((tenant) => tenant.id === user.tenantId) ?? null;
-
-      if (!authorizedTenant) {
-        setTenants([]);
-
-        setCurrentTenantState(null);
-
-        setFacilities([]);
-
-        setCurrentFacilityState(null);
-
-        return;
-      }
-
-      setTenants([authorizedTenant]);
-
-      setCurrentTenantState(authorizedTenant);
-
-      /*
-        |--------------------------------------------------------------------------
-        | Load facilities for authorized tenant
-        |--------------------------------------------------------------------------
-        */
-
-      const facilityList = await api.getFacilities(authorizedTenant.id);
-
-      /*
-        |--------------------------------------------------------------------------
-        | Facility-bound user
-        |--------------------------------------------------------------------------
-        */
-
-      if (user.facilityId !== null) {
-        const authorizedFacility =
-          facilityList.find((facility) => facility.id === user.facilityId) ?? null;
-
-        setFacilities(authorizedFacility ? [authorizedFacility] : []);
-
-        setCurrentFacilityState(authorizedFacility);
-
-        return;
-      }
-
-      /*
-        |--------------------------------------------------------------------------
-        | Tenant-level user without facility restriction
-        |--------------------------------------------------------------------------
-        */
-
-      setFacilities(facilityList);
-
-      setCurrentFacilityState(facilityList[0] ?? null);
-    } catch (error) {
-      console.error('Failed to initialize authorized tenant/facility context:', error);
-
-      setTenants([]);
-
-      setCurrentTenantState(null);
-
-      setFacilities([]);
-
-      setCurrentFacilityState(null);
-    } finally {
-      setLoading(false);
+  const retryContextInitialization = useCallback(async () => {
+    if (!authenticatedUser || contextLoadingRef.current) {
+      return;
     }
-  };
+
+    const outcome = await loadTenantAndFacilityContext(authenticatedUser);
+
+    if (outcome === 'ok') {
+      triggerRefresh();
+    }
+  }, [authenticatedUser, loadTenantAndFacilityContext, triggerRefresh]);
 
   /*
   |--------------------------------------------------------------------------
@@ -634,14 +806,22 @@ export const HmisProvider: React.FC<{
         }
 
         if (session.success && session.user) {
+          const outcome = await loadTenantAndFacilityContext(session.user);
+
+          if (!mounted) {
+            return;
+          }
+
+          if (outcome === 'unauthorized') {
+            setAuthenticatedUser(null);
+            setIsAuthenticated(false);
+            return;
+          }
+
           setAuthenticatedUser(session.user);
-
           setIsAuthenticated(true);
-
-          await loadTenantAndFacilityContext(session.user);
         } else {
           setAuthenticatedUser(null);
-
           setIsAuthenticated(false);
         }
       } catch (error) {
@@ -660,16 +840,9 @@ export const HmisProvider: React.FC<{
 
         if (mounted) {
           setAuthenticatedUser(null);
-
           setIsAuthenticated(false);
-
-          setTenants([]);
-
-          setCurrentTenantState(null);
-
-          setFacilities([]);
-
-          setCurrentFacilityState(null);
+          clearAuthorizedScopeState();
+          setContextError(null);
         }
       } finally {
         if (mounted) {
@@ -683,7 +856,7 @@ export const HmisProvider: React.FC<{
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [clearAuthorizedScopeState, loadTenantAndFacilityContext]);
 
   /*
   |--------------------------------------------------------------------------
@@ -751,9 +924,26 @@ export const HmisProvider: React.FC<{
 
       const authenticatedSessionUser = sessionResult.user;
 
-      setAuthenticatedUser(authenticatedSessionUser);
+      /*
+      |--------------------------------------------------------------------------
+      | Load authorized tenant/facility context BEFORE mounting dashboard
+      |--------------------------------------------------------------------------
+      */
 
-      setIsAuthenticated(true);
+      const outcome = await loadTenantAndFacilityContext(authenticatedSessionUser);
+
+      if (outcome === 'unauthorized') {
+        api.clearLocalSession();
+        setAuthenticatedUser(null);
+        setIsAuthenticated(false);
+
+        return {
+          success: false,
+          message: 'Your session expired before initialization completed. Please sign in again.',
+        };
+      }
+
+      setAuthenticatedUser(authenticatedSessionUser);
 
       /*
       |--------------------------------------------------------------------------
@@ -772,13 +962,7 @@ export const HmisProvider: React.FC<{
 
       setIsJourneyModalOpen(false);
 
-      /*
-      |--------------------------------------------------------------------------
-      | Load authorized tenant/facility context
-      |--------------------------------------------------------------------------
-      */
-
-      await loadTenantAndFacilityContext(authenticatedSessionUser);
+      setIsAuthenticated(true);
 
       return {
         success: true,
@@ -825,13 +1009,10 @@ export const HmisProvider: React.FC<{
         |--------------------------------------------------------------------------
         */
 
-      setTenants([]);
-
-      setCurrentTenantState(null);
-
-      setFacilities([]);
-
-      setCurrentFacilityState(null);
+      clearAuthorizedScopeState();
+      setContextError(null);
+      setContextLoading(false);
+      contextLoadingRef.current = false;
 
       /*
         |--------------------------------------------------------------------------
@@ -870,17 +1051,30 @@ export const HmisProvider: React.FC<{
       return;
     }
 
+    const isPlatformAdmin =
+      Boolean(authenticatedUser.isSuperAdmin || authenticatedUser.roles?.includes('SUPER_ADMIN')) &&
+      authenticatedUser.tenantId === null;
+
+    if (authenticatedUser.tenantId === null && !isPlatformAdmin) {
+      showToast('Your account is not assigned to an organization.', { tone: 'error' });
+
+      return;
+    }
+
     /*
       |--------------------------------------------------------------------------
       | Platform administrator
       |--------------------------------------------------------------------------
       */
 
-    if (authenticatedUser.tenantId === null) {
+    if (isPlatformAdmin) {
       setLoading(true);
 
       try {
-        const facilityList = await api.getFacilities(tenant.id);
+        const rawFacilities = await api.getFacilities(tenant.id);
+        const facilityList = Array.isArray(rawFacilities)
+          ? rawFacilities.filter((facility) => facility.tenantId === tenant.id)
+          : [];
 
         setCurrentTenantState(tenant);
 
@@ -899,7 +1093,7 @@ export const HmisProvider: React.FC<{
       } catch (error) {
         console.error('Failed to change tenant facilities:', error);
 
-        showToast('Unable to load facilities for this organization.');
+        showToast('Unable to load facilities for this organization.', { tone: 'error' });
       } finally {
         setLoading(false);
       }
@@ -922,7 +1116,10 @@ export const HmisProvider: React.FC<{
     setLoading(true);
 
     try {
-      const facilityList = await api.getFacilities(tenant.id);
+      const rawFacilities = await api.getFacilities(tenant.id);
+      const facilityList = Array.isArray(rawFacilities)
+        ? rawFacilities.filter((facility) => facility.tenantId === tenant.id)
+        : [];
 
       setCurrentTenantState(tenant);
 
@@ -1088,6 +1285,12 @@ export const HmisProvider: React.FC<{
         currentFacility,
 
         setCurrentFacility: handleFacilityChange,
+
+        contextLoading,
+
+        contextError,
+
+        retryContextInitialization,
 
         /*
         |--------------------------------------------------------------------------
