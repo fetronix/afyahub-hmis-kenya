@@ -77,3 +77,74 @@ export function schemaSource(): string {
 export function schemaModule(name: string): string {
   return readFileSync(resolve(ROOT, `src/db/schema/${name}.ts`), 'utf8');
 }
+
+/**
+ * The query barrel plus every `src/db/queries/*.ts` module, concatenated.
+ *
+ * Same reason as `schemaSource()`: a query function can now live in the
+ * barrel or in any module beside it, and a suite that reads only the barrel
+ * fails the moment the function it asserts on moves.
+ *
+ * What this still is: a text assertion. It proves a call site exists, not
+ * that it does the right thing. The behavioural specs are the ones that
+ * run the query.
+ */
+export function queriesSource(): string {
+  let text = readFileSync(resolve(ROOT, 'src/db/queries.ts'), 'utf8');
+
+  const modulesDir = resolve(ROOT, 'src/db/queries');
+
+  let modules: string[] = [];
+
+  try {
+    modules = readdirSync(modulesDir)
+      .filter((file) => file.endsWith('.ts'))
+      .sort();
+  } catch {
+    return text;
+  }
+
+  for (const file of modules) {
+    text += `\n${readFileSync(resolve(modulesDir, file), 'utf8')}`;
+  }
+
+  return text;
+}
+
+/**
+ * One function's source, from its declaration to its closing brace.
+ *
+ * `queriesSource()` concatenates modules, so slicing to the *next*
+ * `export async function` can run past the end of a file and pick up a
+ * neighbouring function's body. That turns a negative assertion into a
+ * silent pass. Brace matching keeps the slice inside the function.
+ */
+export function functionBody(source: string, name: string): string {
+  const patterns = [`export async function ${name}(`, `export function ${name}(`];
+
+  let start = -1;
+
+  for (const pattern of patterns) {
+    start = source.indexOf(pattern);
+    if (start !== -1) break;
+  }
+
+  if (start === -1) return '';
+
+  let depth = 0;
+  let opened = false;
+
+  for (let i = start; i < source.length; i += 1) {
+    const char = source[i];
+
+    if (char === '{') {
+      depth += 1;
+      opened = true;
+    } else if (char === '}') {
+      depth -= 1;
+      if (opened && depth === 0) return source.slice(start, i + 1);
+    }
+  }
+
+  return source.slice(start);
+}

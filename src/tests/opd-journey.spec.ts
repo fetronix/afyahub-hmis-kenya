@@ -6,7 +6,7 @@ import {
   radiologyChargeRequest,
   tariffCodeCandidates,
 } from '../billing/service-charges.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, queriesSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -269,7 +269,7 @@ describe('The outpatient journey — contract tests', () => {
       'and that rule asks for the catalogue code',
     ).toBe(true);
 
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
     expect(
       queries.includes('orders.push({') && queries.includes('testCode: test.code'),
       'the batch carries each test code to the charging step',
@@ -328,7 +328,7 @@ describe('The outpatient journey — contract tests', () => {
      * is where the ward's link key has to be offered.
      */
     expect(
-      source('src/db/queries.ts').includes("billingServiceKeys('BED_DAY'"),
+      queriesSource().includes("billingServiceKeys('BED_DAY'"),
       'the bed-day offers a billing link',
     ).toBe(true);
 
@@ -380,7 +380,7 @@ describe('The outpatient journey — contract tests', () => {
   });
 
   it('5. A VISIT CAN END', async () => {
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
 
     expect(
       queries.includes("safeData.status === 'Completed'"),
@@ -410,7 +410,7 @@ describe('The outpatient journey — contract tests', () => {
   });
 
   it('6. IDENTIFIERS ARE ALLOCATED ON THE SERVER', async () => {
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
 
     expect(
       queries.includes('export async function nextPatientMrn'),
@@ -460,7 +460,7 @@ describe('The outpatient journey — contract tests', () => {
     const queues = source('src/routes/queues.routes.ts');
     const pharmacy = source('src/routes/pharmacy.routes.ts');
     const serviceTariffs = source('src/routes/service-tariffs.routes.ts');
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
     const opd = source('src/components/modules/OutpatientModule.tsx');
 
     expect(
