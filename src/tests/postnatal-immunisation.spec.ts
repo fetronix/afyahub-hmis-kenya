@@ -9,7 +9,7 @@ import {
   outstandingDoses,
 } from '../immunisation/immunisation-contracts.ts';
 import { buildPartographPlot, partographGuidance } from '../maternity/maternity-contracts.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaModule, schemaSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -319,9 +319,13 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
       'the baby weight sits on the mother’s contact',
     ).toBe(true);
 
-    const immunisationBlock = schema.slice(
-      schema.indexOf('export const immunisationRecords'),
-      schema.indexOf('45. RELATIONS'),
+    /*
+     * Slice inside the maternity module: both ends have to come from the
+     * same file. `45. RELATIONS` is a marker in the barrel, which is
+     * concatenated first, so it resolved before the table it follows.
+     */
+    const immunisationBlock = schemaModule('maternity').slice(
+      schemaModule('maternity').indexOf('export const immunisationRecords'),
     );
 
     expect(

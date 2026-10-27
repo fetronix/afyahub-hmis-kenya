@@ -7,7 +7,7 @@ import {
   isDelegablePermission,
   isRestrictedRolePermission,
 } from '../auth/staff-role-policy.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, appSource } from './support/schema-source.ts';
 import { containsCode, countCode } from './support/source-text.ts';
 
 import { describe, expect, it } from 'vitest';
@@ -34,7 +34,7 @@ const verificationService = source(
   'src/integrations/professional/professional-verification.service.ts',
 );
 
-const app = source('src/app.ts');
+const app = appSource();
 
 const wiring = source('src/routes/index.ts');
 
@@ -151,7 +151,7 @@ describe('Staff roles — contract tests', () => {
       'The staff roles router is mounted',
     ).toBe(true);
     expect(
-      containsCode(app, 'import staffRolesRoutes from "./auth/staff-roles.routes";'),
+      containsCode(wiring, "import staffRolesRoutes from '../auth/staff-roles.routes.ts'"),
       'The router is imported by the app',
     ).toBe(true);
 

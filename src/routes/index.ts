@@ -53,6 +53,18 @@ import inpatientRoutes from './inpatient.routes.ts';
 import maternalHealthRoutes from './maternal-health.routes.ts';
 import platformRoutes from './platform.routes.ts';
 
+import auditRoutes from './domains/audit.routes.ts';
+import billingAnalyticsRoutes from './domains/billing-analytics.routes.ts';
+import billingChargesRoutes from './domains/billing-charges.routes.ts';
+import claimsRoutes from './domains/claims.routes.ts';
+import encountersRoutes from './domains/encounters.routes.ts';
+import interopRoutes from './domains/interop.routes.ts';
+import invoicesRoutes from './domains/invoices.routes.ts';
+import patientsRoutes from './domains/patients.routes.ts';
+import publicHealthRoutes from './domains/public-health.routes.ts';
+import serviceTariffLinksRoutes from './domains/service-tariff-links.routes.ts';
+import tenancyRoutes from './domains/tenancy.routes.ts';
+
 export function createApiRoutes(): Router {
   const api = Router();
 
@@ -150,5 +162,27 @@ export function createApiRoutes(): Router {
   api.use(vitalsRoutes);
   api.use(appointmentsRoutes);
   api.use(queuesRoutes);
+
+  /*
+   * The domains that used to be registered inline in `createApp`.
+   *
+   * They mount last, and that is deliberate: they come after the module
+   * gates above, which is the order they had when `app.use('/api', ...)`
+   * handed them to the api router and the gates fell through to them.
+   *
+   * They also register absolute `/api/...` paths like the routers above, so
+   * they mount at the router root rather than at a prefix.
+   */
+  api.use(tenancyRoutes);
+  api.use(patientsRoutes);
+  api.use(encountersRoutes);
+  api.use(billingChargesRoutes);
+  api.use(serviceTariffLinksRoutes);
+  api.use(billingAnalyticsRoutes);
+  api.use(claimsRoutes);
+  api.use(invoicesRoutes);
+  api.use(publicHealthRoutes);
+  api.use(auditRoutes);
+  api.use(interopRoutes);
   return api;
 }
