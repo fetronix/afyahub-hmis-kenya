@@ -60,3 +60,20 @@ export function schemaSource(): string {
 
   return text;
 }
+
+/**
+ * One domain module, as a searchable string.
+ *
+ * `schemaSource()` concatenates the barrel and every module, which is right
+ * for "does this declaration exist anywhere". It is wrong for "assert
+ * something about the block of tables that starts at `export const X`": a
+ * slice needs both ends to come from the same file, and the barrel is
+ * concatenated first, so a boundary marker in the barrel resolves *before*
+ * the table it is meant to follow.
+ *
+ * This reads one module on its own. The name is the file stem — `maternity`,
+ * `billing`, `platform` — matching `src/db/schema/<name>.ts`.
+ */
+export function schemaModule(name: string): string {
+  return readFileSync(resolve(ROOT, `src/db/schema/${name}.ts`), 'utf8');
+}
