@@ -15,6 +15,7 @@ import {
 } from '../billing/tariff-matching.ts';
 
 import { describe, expect, it } from 'vitest';
+import { appSource } from './support/schema-source.ts';
 
 const opdTariffs = [
   {
@@ -513,7 +514,7 @@ describe("Tariff matching — the facility's own price list", () => {
      * ...and it is recorded. Requirement: a failed attempt is kept and is
      * retryable, which needs the table, the route and the button to exist.
      */
-    const app = readFileSync(resolve(process.cwd(), 'src/app.ts'), 'utf8');
+    const app = appSource();
     const migration = readFileSync(
       resolve(process.cwd(), 'drizzle/0020_billing_charge_attempts.sql'),
       'utf8',

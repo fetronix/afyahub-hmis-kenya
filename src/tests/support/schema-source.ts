@@ -148,3 +148,42 @@ export function functionBody(source: string, name: string): string {
 
   return source.slice(start);
 }
+
+/**
+ * The server shell plus every route module, concatenated.
+ *
+ * `src/app.ts` used to register every route inline. The routes now live in
+ * `src/routes/domains/` and are mounted by `src/routes/index.ts`, so "is this
+ * route registered?" is a question about the pair, not about one file.
+ *
+ * This is still a text assertion. It proves a route is declared; the specs
+ * that actually issue a request are the ones that prove it works.
+ */
+export function appSource(options: { stripComments?: boolean } = {}): string {
+  const files = ['src/app.ts', 'src/routes/index.ts'];
+
+  const domainsDir = resolve(ROOT, 'src/routes/domains');
+
+  try {
+    for (const file of readdirSync(domainsDir)
+      .filter((f) => f.endsWith('.ts'))
+      .sort()) {
+      files.push(`src/routes/domains/${file}`);
+    }
+  } catch {
+    /* No domains directory: app.ts is self-contained. */
+  }
+
+  const text = files.map((file) => readFileSync(resolve(ROOT, file), 'utf8')).join('\n');
+
+  /*
+   * Some suites assert that a phrase is *absent*. A phrase in a comment is
+   * not a call site, so those suites strip comments first - the same thing
+   * they did with their own `code()` helper before the routes moved.
+   */
+  if (options.stripComments) {
+    return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  }
+
+  return text;
+}
