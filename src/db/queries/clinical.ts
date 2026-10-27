@@ -15,6 +15,10 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
 import { loadEncounterInScope, loadPatientInScope } from './shared.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.clinical');
+
 // Observations / Vitals
 export async function getObservations(encounterId?: number, patientId?: number) {
   try {
@@ -31,7 +35,7 @@ export async function getObservations(encounterId?: number, patientId?: number) 
     }
     return await query.orderBy(desc(schema.observations.recordedAt)).limit(20);
   } catch (error) {
-    console.error('Error fetching vitals:', error);
+    log.error({ err: error }, 'vitals.fetch_failed');
     throw new Error('Failed to fetch vital observations', { cause: error });
   }
 }
@@ -41,7 +45,7 @@ export async function recordObservation(data: typeof schema.observations.$inferI
     const res = await db.insert(schema.observations).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error recording observation:', error);
+    log.error({ err: error }, 'observation.record_failed');
     throw new Error('Failed to save vital observation', { cause: error });
   }
 }
@@ -59,7 +63,7 @@ export async function getDiagnoses(encounterId?: number, patientId?: number) {
     }
     return await query.orderBy(desc(schema.diagnoses.diagnosedAt));
   } catch (error) {
-    console.error('Error fetching diagnoses:', error);
+    log.error({ err: error }, 'diagnoses.fetch_failed');
     throw new Error('Failed to fetch diagnoses', { cause: error });
   }
 }
@@ -69,7 +73,7 @@ export async function recordDiagnosis(data: typeof schema.diagnoses.$inferInsert
     const res = await db.insert(schema.diagnoses).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error recording diagnosis:', error);
+    log.error({ err: error }, 'diagnosis.record_failed');
     throw new Error('Failed to record ICD-10 diagnosis', { cause: error });
   }
 }
@@ -185,7 +189,7 @@ export async function getProcedures(encounterId?: number, patientId?: number) {
     }
     return await query.orderBy(desc(schema.clinicalProcedures.performedAt));
   } catch (error) {
-    console.error('Error fetching procedures:', error);
+    log.error({ err: error }, 'procedures.fetch_failed');
     throw new Error('Failed to fetch clinical procedures', { cause: error });
   }
 }
@@ -195,7 +199,7 @@ export async function recordProcedure(data: typeof schema.clinicalProcedures.$in
     const res = await db.insert(schema.clinicalProcedures).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error recording procedure:', error);
+    log.error({ err: error }, 'procedure.record_failed');
     throw new Error('Failed to record procedure', { cause: error });
   }
 }
@@ -213,7 +217,7 @@ export async function getMedications(encounterId?: number, patientId?: number) {
     }
     return await query.orderBy(desc(schema.medications.prescribedAt));
   } catch (error) {
-    console.error('Error fetching medications:', error);
+    log.error({ err: error }, 'medications.fetch_failed');
     throw new Error('Failed to fetch prescriptions', { cause: error });
   }
 }
@@ -223,7 +227,7 @@ export async function createMedication(data: typeof schema.medications.$inferIns
     const res = await db.insert(schema.medications).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error prescribing medication:', error);
+    log.error({ err: error }, 'medication.prescribe_failed');
     throw new Error('Failed to prescribe medication', { cause: error });
   }
 }
@@ -237,7 +241,7 @@ export async function updateMedicationStatus(id: number, status: string) {
       .returning();
     return res[0];
   } catch (error) {
-    console.error('Error updating medication status:', error);
+    log.error({ err: error }, 'medication_status.update_failed');
     throw new Error('Failed to update medication status', { cause: error });
   }
 }

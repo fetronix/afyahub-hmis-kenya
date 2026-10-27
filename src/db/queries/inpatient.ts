@@ -45,6 +45,10 @@ import { getFacilityByIdScoped } from './tenancy.ts';
 
 import { requirePatientInTenant } from './encounters.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.inpatient');
+
 /* ------------------------------------------------------------
    WARDS
    ------------------------------------------------------------ */
@@ -539,7 +543,7 @@ export async function getTheatreCases(facilityId?: number) {
     }
     return await db.select().from(schema.theatreCases).orderBy(desc(schema.theatreCases.createdAt));
   } catch (error) {
-    console.error('Error fetching theatre cases:', error);
+    log.error({ err: error }, 'theatre_cases.fetch_failed');
     throw new Error('Failed to fetch theatre cases', { cause: error });
   }
 }
@@ -566,7 +570,7 @@ export async function createTheatreCase(data: typeof schema.theatreCases.$inferI
     const res = await db.insert(schema.theatreCases).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error creating theatre case:', error);
+    log.error({ err: error }, 'theatre_case.create_failed');
     throw new Error('Failed to schedule theatre case', { cause: error });
   }
 }
@@ -583,7 +587,7 @@ export async function updateTheatreCase(
       .returning();
     return res[0];
   } catch (error) {
-    console.error('Error updating theatre case:', error);
+    log.error({ err: error }, 'theatre_case.update_failed');
     throw new Error('Failed to update theatre case', { cause: error });
   }
 }

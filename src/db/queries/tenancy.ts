@@ -17,12 +17,16 @@ import {
 } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.tenancy');
+
 // Tenants
 export async function getTenants() {
   try {
     return await db.select().from(schema.tenants).where(eq(schema.tenants.isActive, true));
   } catch (error) {
-    console.error('Error fetching tenants:', error);
+    log.error({ err: error }, 'tenants.fetch_failed');
     throw new Error('Failed to fetch tenants from database', { cause: error });
   }
 }
@@ -32,7 +36,7 @@ export async function getTenantById(id: number) {
     const res = await db.select().from(schema.tenants).where(eq(schema.tenants.id, id));
     return res[0] || null;
   } catch (error) {
-    console.error('Error fetching tenant:', error);
+    log.error({ err: error }, 'tenant.fetch_failed');
     throw new Error('Failed to fetch tenant', { cause: error });
   }
 }
@@ -48,7 +52,7 @@ export async function getFacilities(tenantId?: number) {
     }
     return await db.select().from(schema.facilities);
   } catch (error) {
-    console.error('Error fetching facilities:', error);
+    log.error({ err: error }, 'facilities.fetch_failed');
     throw new Error('Failed to fetch facilities', { cause: error });
   }
 }
@@ -81,7 +85,7 @@ export async function getTenantByIdScoped(context: AuthorizationContext, tenantI
       throw error;
     }
 
-    console.error('Error fetching scoped tenant:', error);
+    log.error({ err: error }, 'scoped_tenant.fetch_failed');
 
     throw new Error('Failed to fetch tenant', { cause: error });
   }
@@ -110,7 +114,7 @@ export async function getTenantsScoped(context: AuthorizationContext) {
       .from(schema.tenants)
       .where(and(eq(schema.tenants.id, context.tenantId), eq(schema.tenants.isActive, true)));
   } catch (error) {
-    console.error('Error fetching scoped tenants:', error);
+    log.error({ err: error }, 'scoped_tenants.fetch_failed');
 
     throw new Error('Failed to fetch tenants', { cause: error });
   }
@@ -202,7 +206,7 @@ export async function getFacilitiesScoped(
       throw error;
     }
 
-    console.error('Error fetching scoped facilities:', error);
+    log.error({ err: error }, 'scoped_facilities.fetch_failed');
 
     throw new Error('Failed to fetch facilities', { cause: error });
   }
@@ -247,7 +251,7 @@ export async function getFacilityByIdScoped(context: AuthorizationContext, facil
       throw error;
     }
 
-    console.error('Error fetching scoped facility:', error);
+    log.error({ err: error }, 'scoped_facility.fetch_failed');
 
     throw new Error('Failed to fetch facility', { cause: error });
   }
@@ -264,7 +268,7 @@ export async function getDepartments(facilityId?: number) {
     }
     return await db.select().from(schema.departments);
   } catch (error) {
-    console.error('Error fetching departments:', error);
+    log.error({ err: error }, 'departments.fetch_failed');
     throw new Error('Failed to fetch departments', { cause: error });
   }
 }

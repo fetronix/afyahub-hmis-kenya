@@ -19,6 +19,10 @@ import { getFacilityByIdScoped } from './tenancy.ts';
 
 import { getTheatreCaseScoped } from './inpatient.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.laboratory');
+
 // Laboratory
 export async function getLabTests(facilityId?: number) {
   try {
@@ -30,7 +34,7 @@ export async function getLabTests(facilityId?: number) {
     }
     return await db.select().from(schema.labTests).where(eq(schema.labTests.isActive, true));
   } catch (error) {
-    console.error('Error fetching lab tests:', error);
+    log.error({ err: error }, 'lab_tests.fetch_failed');
     throw new Error('Failed to fetch lab tests catalogue', { cause: error });
   }
 }
@@ -133,7 +137,7 @@ export async function createLabOrder(
 
     return { ...order, testCode };
   } catch (error) {
-    console.error('Error creating lab order:', error);
+    log.error({ err: error }, 'lab_order.create_failed');
     throw new Error('Failed to order lab test', { cause: error });
   }
 }
@@ -410,7 +414,7 @@ export async function getRadiologyOrders(facilityId?: number, patientId?: number
     }
     return await query.orderBy(desc(schema.radiologyOrders.createdAt));
   } catch (error) {
-    console.error('Error fetching radiology orders:', error);
+    log.error({ err: error }, 'radiology_orders.fetch_failed');
     throw new Error('Failed to fetch imaging requests', { cause: error });
   }
 }
@@ -436,7 +440,7 @@ export async function createRadiologyOrder(data: typeof schema.radiologyOrders.$
     const res = await db.insert(schema.radiologyOrders).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error creating radiology order:', error);
+    log.error({ err: error }, 'radiology_order.create_failed');
     throw new Error('Failed to create radiology order', { cause: error });
   }
 }
@@ -461,7 +465,7 @@ export async function updateRadiologyReport(
       .returning();
     return res[0];
   } catch (error) {
-    console.error('Error saving radiology report:', error);
+    log.error({ err: error }, 'radiology_report.save_failed');
     throw new Error('Failed to save radiology findings', { cause: error });
   }
 }
@@ -669,7 +673,7 @@ export async function createLabOrderBatch(
       return { orders, queue, unresolved, ambiguous };
     });
   } catch (error) {
-    console.error('Laboratory batch transaction failed:', error);
+    log.error({ err: error }, 'lab.batch_transaction_failed');
     throw error;
   }
 }

@@ -26,6 +26,10 @@ import {
 
 import { getFacilityByIdScoped } from './tenancy.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.patients');
+
 // Patients
 export async function getPatients(tenantId?: number, facilityId?: number, search?: string) {
   try {
@@ -80,7 +84,7 @@ export async function getPatients(tenantId?: number, facilityId?: number, search
 
     return openPatientRows(rows);
   } catch (error) {
-    console.error('Error fetching patients:', error);
+    log.error({ err: error }, 'patients.fetch_failed');
 
     throw new Error('Failed to fetch patients', { cause: error });
   }
@@ -91,7 +95,7 @@ export async function getPatientById(id: number) {
     const res = await db.select().from(schema.patients).where(eq(schema.patients.id, id));
     return res[0] ? openPatientIdentifiers(res[0]) : null;
   } catch (error) {
-    console.error('Error fetching patient by id:', error);
+    log.error({ err: error }, 'patient.fetch_failed');
     throw new Error('Failed to fetch patient', { cause: error });
   }
 }
@@ -102,7 +106,7 @@ export async function createPatient(data: typeof schema.patients.$inferInsert) {
 
     return res[0] ? openPatientIdentifiers(res[0]) : res[0];
   } catch (error) {
-    console.error('Error creating patient:', error);
+    log.error({ err: error }, 'patient.create_failed');
     throw new Error('Failed to create patient record', { cause: error });
   }
 }
@@ -233,7 +237,7 @@ export async function updatePatient(
 
     return res[0] ? openPatientIdentifiers(res[0]) : res[0];
   } catch (error) {
-    console.error('Error updating patient:', error);
+    log.error({ err: error }, 'patient.update_failed');
     throw new Error('Failed to update patient record', { cause: error });
   }
 }

@@ -12,6 +12,10 @@ import * as schema from '../schema.ts';
 
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.public_health');
+
 // Public Health
 
 export async function getPublicHealthReports(facilityId: number) {
@@ -26,7 +30,7 @@ export async function getPublicHealthReports(facilityId: number) {
       .where(eq(schema.publicHealthReports.facilityId, facilityId))
       .orderBy(desc(schema.publicHealthReports.reportedAt));
   } catch (error) {
-    console.error('Error fetching public health reports:', error);
+    log.error({ err: error }, 'public_health_reports.fetch_failed');
     throw new Error('Failed to fetch surveillance reports', { cause: error });
   }
 }
@@ -39,7 +43,7 @@ export async function recordPublicHealthReport(
 
     return res[0];
   } catch (error) {
-    console.error('Error recording disease surveillance report:', error);
+    log.error({ err: error }, 'disease_surveillance_report.record_failed');
     throw new Error('Failed to record surveillance report', { cause: error });
   }
 }
@@ -65,7 +69,7 @@ export async function logAuditEvent(
       details,
     });
   } catch (error) {
-    console.error('Error writing audit log:', error);
+    log.error({ err: error }, 'audit_log.write_failed');
   }
 }
 
@@ -108,7 +112,7 @@ export async function getAuditLogs(context: AuthorizationContext, requestedFacil
       .orderBy(desc(schema.auditLogs.timestamp))
       .limit(50);
   } catch (error) {
-    console.error('Error fetching scoped audit logs:', error);
+    log.error({ err: error }, 'scoped_audit_logs.fetch_failed');
     throw error;
   }
 }

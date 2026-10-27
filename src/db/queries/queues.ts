@@ -17,6 +17,10 @@ import { resolveQueueOrLabScope } from './shared.ts';
 
 import { getFacilityByIdScoped } from './tenancy.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.queues');
+
 // Queues
 export async function getQueues(facilityId?: number, queueType?: string) {
   try {
@@ -33,7 +37,7 @@ export async function getQueues(facilityId?: number, queueType?: string) {
     }
     return await query.orderBy(desc(schema.queues.createdAt)).limit(100);
   } catch (error) {
-    console.error('Error fetching queues:', error);
+    log.error({ err: error }, 'queues.fetch_failed');
     throw new Error('Failed to fetch patient queues', { cause: error });
   }
 }
@@ -125,7 +129,7 @@ export async function createQueueEntry(
 
     return res[0];
   } catch (error) {
-    console.error('Error creating queue entry:', error);
+    log.error({ err: error }, 'queue_entry.create_failed');
     throw new Error('Failed to create queue entry', { cause: error });
   }
 }
@@ -221,7 +225,7 @@ export async function getAppointments(facilityId?: number, practitionerId?: numb
     }
     return await query.orderBy(desc(schema.appointments.createdAt)).limit(50);
   } catch (error) {
-    console.error('Error fetching appointments:', error);
+    log.error({ err: error }, 'appointments.fetch_failed');
     throw new Error('Failed to fetch appointments', { cause: error });
   }
 }
@@ -231,7 +235,7 @@ export async function createAppointment(data: typeof schema.appointments.$inferI
     const res = await db.insert(schema.appointments).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error creating appointment:', error);
+    log.error({ err: error }, 'appointment.create_failed');
     throw new Error('Failed to create appointment', { cause: error });
   }
 }

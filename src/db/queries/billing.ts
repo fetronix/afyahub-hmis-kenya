@@ -17,6 +17,10 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
 import { toCentsPositive } from './shared.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.billing');
+
 // Finance & Billing
 export async function getInvoices(facilityId?: number, patientId?: number) {
   try {
@@ -30,7 +34,7 @@ export async function getInvoices(facilityId?: number, patientId?: number) {
     }
     return await query.orderBy(desc(schema.billingInvoices.createdAt));
   } catch (error) {
-    console.error('Error fetching invoices:', error);
+    log.error({ err: error }, 'invoices.fetch_failed');
     throw new Error('Failed to fetch billing invoices', { cause: error });
   }
 }
@@ -59,7 +63,7 @@ export async function createInvoice(
       return invoice;
     });
   } catch (error) {
-    console.error('Error creating invoice:', error);
+    log.error({ err: error }, 'invoice.create_failed');
     throw new Error('Failed to create patient invoice', { cause: error });
   }
 }
@@ -70,7 +74,7 @@ export async function getInvoiceItems(invoiceId: number) {
       .from(schema.billingItems)
       .where(eq(schema.billingItems.invoiceId, invoiceId));
   } catch (error) {
-    console.error('Error fetching invoice items:', error);
+    log.error({ err: error }, 'invoice_items.fetch_failed');
     throw new Error('Failed to fetch invoice line items', { cause: error });
   }
 }
@@ -128,7 +132,7 @@ export async function recordPayment(paymentData: typeof schema.billingPayments.$
       return payment;
     });
   } catch (error) {
-    console.error('Error recording payment:', error);
+    log.error({ err: error }, 'payment.record_failed');
     throw new Error('Failed to record patient payment', { cause: error });
   }
 }
@@ -147,7 +151,7 @@ export async function getClaims(facilityId?: number) {
       .from(schema.insuranceClaims)
       .orderBy(desc(schema.insuranceClaims.claimNumber));
   } catch (error) {
-    console.error('Error fetching insurance claims:', error);
+    log.error({ err: error }, 'insurance_claims.fetch_failed');
     throw new Error('Failed to fetch claims', { cause: error });
   }
 }
@@ -157,7 +161,7 @@ export async function createClaim(data: typeof schema.insuranceClaims.$inferInse
     const res = await db.insert(schema.insuranceClaims).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error creating insurance claim:', error);
+    log.error({ err: error }, 'insurance_claim.create_failed');
     throw new Error('Failed to submit insurance claim', { cause: error });
   }
 }
@@ -179,7 +183,7 @@ export async function updateClaimStatus(
       .returning();
     return res[0];
   } catch (error) {
-    console.error('Error updating claim status:', error);
+    log.error({ err: error }, 'claim_status.update_failed');
     throw new Error('Failed to update claim adjudication status', { cause: error });
   }
 }

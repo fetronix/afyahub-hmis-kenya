@@ -21,6 +21,10 @@ import { pickEncounterWritableFields, validateEncounterReferences } from './shar
 
 import { getFacilityByIdScoped } from './tenancy.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.encounters');
+
 // Encounters
 export async function getEncounters(patientId?: number, facilityId?: number) {
   try {
@@ -37,7 +41,7 @@ export async function getEncounters(patientId?: number, facilityId?: number) {
     }
     return await query.orderBy(desc(schema.encounters.startedAt)).limit(50);
   } catch (error) {
-    console.error('Error fetching encounters:', error);
+    log.error({ err: error }, 'encounters.fetch_failed');
     throw new Error('Failed to fetch clinical encounters', { cause: error });
   }
 }
@@ -47,7 +51,7 @@ export async function createEncounter(data: typeof schema.encounters.$inferInser
     const res = await db.insert(schema.encounters).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error creating encounter:', error);
+    log.error({ err: error }, 'encounter.create_failed');
     throw new Error('Failed to create encounter', { cause: error });
   }
 }
@@ -64,7 +68,7 @@ export async function updateEncounter(
       .returning();
     return res[0];
   } catch (error) {
-    console.error('Error updating encounter:', error);
+    log.error({ err: error }, 'encounter.update_failed');
     throw new Error('Failed to update encounter', { cause: error });
   }
 }

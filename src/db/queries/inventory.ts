@@ -10,6 +10,10 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.inventory');
+
 // Pharmacy & Inventory
 export async function getInventoryItems(facilityId?: number) {
   try {
@@ -22,7 +26,7 @@ export async function getInventoryItems(facilityId?: number) {
     }
     return await db.select().from(schema.inventoryItems).orderBy(schema.inventoryItems.name);
   } catch (error) {
-    console.error('Error fetching inventory items:', error);
+    log.error({ err: error }, 'inventory_items.fetch_failed');
     throw new Error('Failed to fetch pharmacy inventory', { cause: error });
   }
 }
@@ -32,7 +36,7 @@ export async function createInventoryItem(data: typeof schema.inventoryItems.$in
     const res = await db.insert(schema.inventoryItems).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error creating inventory item:', error);
+    log.error({ err: error }, 'inventory_item.create_failed');
     throw new Error('Failed to create inventory item', { cause: error });
   }
 }
@@ -58,7 +62,7 @@ export async function dispenseMedication(data: typeof schema.pharmacyDispensatio
     }
     return res[0];
   } catch (error) {
-    console.error('Error dispensing medication:', error);
+    log.error({ err: error }, 'medication.dispense_failed');
     throw new Error('Failed to complete pharmacy dispensing', { cause: error });
   }
 }
@@ -74,7 +78,7 @@ export async function getSuppliers(tenantId?: number) {
     }
     return await db.select().from(schema.suppliers);
   } catch (error) {
-    console.error('Error fetching suppliers:', error);
+    log.error({ err: error }, 'suppliers.fetch_failed');
     throw new Error('Failed to fetch suppliers', { cause: error });
   }
 }
@@ -93,7 +97,7 @@ export async function getPurchaseOrders(facilityId?: number) {
       .from(schema.purchaseOrders)
       .orderBy(desc(schema.purchaseOrders.createdAt));
   } catch (error) {
-    console.error('Error fetching purchase orders:', error);
+    log.error({ err: error }, 'purchase_orders.fetch_failed');
     throw new Error('Failed to fetch purchase orders', { cause: error });
   }
 }
@@ -103,7 +107,7 @@ export async function createPurchaseOrder(data: typeof schema.purchaseOrders.$in
     const res = await db.insert(schema.purchaseOrders).values(data).returning();
     return res[0];
   } catch (error) {
-    console.error('Error creating PO:', error);
+    log.error({ err: error }, 'purchase_order.create_failed');
     throw new Error('Failed to create purchase order', { cause: error });
   }
 }
