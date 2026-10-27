@@ -275,19 +275,58 @@ jobs:
       - name: Smoke-test the production bundle
         # Starts the real artifact on a spare port and checks it answers.
         # This is the closest CI gets to the cPanel deployment.
+        #
+        # EVERY ASSERTION HERE HAS TO BE ABLE TO FAIL.
+        #
+        # The previous version could not, in the case that matters. It
+        # printed the SPA's status code with
+        # `curl -sf -o /dev/null -w '%{http_code}'` and then ended the step
+        # with `kill "$SERVER_PID"` - and a shell step reports the exit
+        # status of its *last* command. So a deployment that served a 500 on
+        # `/` reported green: the `500` appeared in the log and nothing read
+        # it. Measured, not assumed: same script, a stub answering 500 on
+        # `/`, old version exit 0, new version exit 1.
+        #
+        # (A server that never started did fail before - but by accident,
+        # because `kill` on a dead PID returns non-zero. The readiness loop
+        # itself still had no failure branch.)
+        #
+        # Now: `set -euo pipefail` so any failing command aborts the step, a
+        # readiness flag that is checked rather than assumed, and an explicit
+        # assertion that the SPA answers 200 rather than printing whatever it
+        # answered. The `trap` keeps the cleanup on the failure path too.
         run: |
+          set -euo pipefail
+
           NODE_ENV=production PORT=4321 node build/server.js &
           SERVER_PID=$!
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:4321/api/health > /dev/null; then break; fi
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4321/api/health > /dev/null; then
+              ready=1
+              break
+            fi
             sleep 1
           done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::the production bundle did not answer /api/health within 30s"
+            exit 1
+          fi
+
           echo "--- /api/health ---"
-          curl -sf http://127.0.0.1:4321/api/health
+          curl -sS http://127.0.0.1:4321/api/health
           echo
+
           echo "--- / (SPA) ---"
-          curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4321/
-          kill "$SERVER_PID"
+          spa_status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:4321/)
+          echo "$spa_status"
+          if [ "$spa_status" != "200" ]; then
+            echo "::error::the SPA answered $spa_status, expected 200"
+            exit 1
+          fi
 
       - name: Upload deployable artifacts
         uses: actions/upload-artifact@v4
