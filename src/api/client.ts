@@ -198,6 +198,90 @@ export class ApiError extends Error {
   }
 }
 
+type UnauthorizedSessionListener = () => void;
+
+const unauthorizedListeners = new Set<UnauthorizedSessionListener>();
+
+/**
+ * Subscribe to mid-session 401 responses from authenticated API calls so the
+ * auth provider can clear UI state through the existing authentication flow.
+ */
+export function onUnauthorizedSession(listener: UnauthorizedSessionListener): () => void {
+  unauthorizedListeners.add(listener);
+
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+function notifyUnauthorizedSession(): void {
+  for (const listener of unauthorizedListeners) {
+    try {
+      listener();
+    } catch {
+      /* Listener errors must never mask the API error being thrown. */
+    }
+  }
+}
+
+function safeRequestPath(url: string): string {
+  const withoutQuery = url.split('?')[0]?.split('#')[0] ?? '/api';
+
+  try {
+    if (/^https?:\/\//i.test(withoutQuery)) {
+      return new URL(withoutQuery).pathname || '/api';
+    }
+  } catch {
+    return '/api';
+  }
+
+  return withoutQuery || '/api';
+}
+
+function isHtmlPayload(contentType: string, body: string): boolean {
+  return (
+    contentType.includes('text/html') ||
+    contentType.includes('application/xhtml+xml') ||
+    /^\s*<(?:!doctype\s+html|html\b)/i.test(body)
+  );
+}
+
+function isJsonContentType(contentType: string): boolean {
+  return contentType.includes('application/json') || contentType.includes('+json');
+}
+
+/**
+ * Preserve meaningful backend messages while refusing to surface stack traces,
+ * server file paths, database connection strings, or bearer tokens.
+ */
+function sanitizeServerErrorMessage(raw: unknown, fallback: string): string {
+  if (typeof raw !== 'string') {
+    return fallback;
+  }
+
+  const trimmed = raw.trim();
+
+  if (!trimmed || trimmed.length > 400) {
+    return fallback;
+  }
+
+  const hasUnsafeDetail =
+    /\n\s*at\s+\S+/.test(trimmed) ||
+    /\bat\s+[^\s()]+\s*\([^)]*:\d+:\d+\)/.test(trimmed) ||
+    /(?:\/home\/|\/app\/|\/Users\/|node_modules\/|src\/|[A-Za-z]:\\)[^\s'"]*\.(?:ts|tsx|js|mjs|cjs)/i.test(
+      trimmed,
+    ) ||
+    /\bpostgres(?:ql)?:\/\//i.test(trimmed) ||
+    /\bpassword\s*=/i.test(trimmed) ||
+    /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/i.test(trimmed);
+
+  if (hasUnsafeDetail) {
+    return fallback;
+  }
+
+  return trimmed;
+}
+
 /**
  * Generic authenticated API request helper.
  *
@@ -207,8 +291,9 @@ export class ApiError extends Error {
  *
  * when a session token exists.
  */
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const sessionToken = getSessionToken();
+  const requestPath = safeRequestPath(url);
 
   const headers = new Headers(options?.headers);
 
@@ -222,6 +307,10 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json');
+  }
+
   /**
    * Automatically attach the PostgreSQL
    * session token.
@@ -230,42 +319,173 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     headers.set('Authorization', `Bearer ${sessionToken}`);
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let res: Response;
 
-  if (!res.ok) {
-    const errorData: ApiErrorResponse = await res.json().catch(() => ({
-      error: res.statusText || 'Request failed',
-    }));
-
-    /**
-     * If the backend says the session is
-     * invalid/expired/revoked, clear the
-     * locally stored token.
-     */
-    if (res.status === 401 && !url.endsWith('/auth/login')) {
-      clearSessionToken();
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error;
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
     }
 
     throw new ApiError(
-      errorData.message || errorData.error || `HTTP error ${res.status}`,
+      'Unable to reach the JaliCare HMIS server. Check your connection or try again shortly.',
+      503,
+      'SERVICE_UNAVAILABLE',
+    );
+  }
+
+  const contentType = (res.headers?.get?.('content-type') ?? '').toLowerCase();
+
+  if (!res.ok) {
+    /**
+     * If the backend says the session is
+     * invalid/expired/revoked, clear the
+     * locally stored token and notify listeners.
+     */
+    if (res.status === 401 && !requestPath.endsWith('/auth/login')) {
+      clearSessionToken();
+      notifyUnauthorizedSession();
+    }
+
+    const rawErrorBody = typeof res.text === 'function' ? await res.text().catch(() => '') : '';
+
+    if (
+      rawErrorBody.trim() !== '' &&
+      (isJsonContentType(contentType) ||
+        (!contentType && !isHtmlPayload(contentType, rawErrorBody)))
+    ) {
+      try {
+        const parsed = JSON.parse(rawErrorBody) as ApiErrorResponse;
+
+        if (parsed && typeof parsed === 'object') {
+          const fallback =
+            res.status >= 500 ? 'An unexpected server error occurred.' : `HTTP error ${res.status}`;
+          const message = sanitizeServerErrorMessage(parsed.message ?? parsed.error, fallback);
+          const code = typeof parsed.error === 'string' ? parsed.error : undefined;
+          const detail =
+            parsed.detail && typeof parsed.detail === 'object' ? parsed.detail : undefined;
+
+          throw new ApiError(message, res.status, code, detail);
+        }
+      } catch (parseErr) {
+        if (parseErr instanceof ApiError) {
+          throw parseErr;
+        }
+      }
+    }
+
+    if (isHtmlPayload(contentType, rawErrorBody)) {
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        throw new ApiError(
+          'The JaliCare HMIS service is temporarily unavailable. Please try again shortly.',
+          res.status,
+          'SERVICE_UNAVAILABLE',
+        );
+      }
+
+      if (res.status === 401) {
+        throw new ApiError(
+          'Authentication is required. Please sign in again.',
+          401,
+          'UNAUTHORIZED',
+        );
+      }
+
+      if (res.status === 403) {
+        throw new ApiError('You do not have permission to access this resource.', 403, 'FORBIDDEN');
+      }
+
+      if (res.status === 404) {
+        throw new ApiError(
+          `API endpoint not found (${requestPath}). Received an HTML page instead of JSON.`,
+          404,
+          'UNEXPECTED_HTML_RESPONSE',
+        );
+      }
+
+      throw new ApiError(
+        `Expected JSON from ${requestPath}, but received an HTML error page (HTTP ${res.status}).`,
+        res.status,
+        'UNEXPECTED_HTML_RESPONSE',
+      );
+    }
+
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new ApiError(
+        'The JaliCare HMIS service is temporarily unavailable. Please try again shortly.',
+        res.status,
+        'SERVICE_UNAVAILABLE',
+      );
+    }
+
+    const fallbackStatus = sanitizeServerErrorMessage(res.statusText, `HTTP error ${res.status}`);
+
+    throw new ApiError(
+      fallbackStatus === `HTTP error ${res.status}`
+        ? fallbackStatus
+        : `HTTP ${res.status}: ${fallbackStatus}`,
       res.status,
-      errorData.error,
-      errorData.detail,
+      'HTTP_ERROR',
     );
   }
 
   /**
-   * Some endpoints may eventually return
-   * 204 No Content.
+   * 204 No Content / 205 Reset Content legitimately carry no body.
    */
-  if (res.status === 204) {
+  if (res.status === 204 || res.status === 205) {
     return undefined as T;
   }
 
-  return res.json();
+  const rawBody = typeof res.text === 'function' ? await res.text() : '';
+
+  if (rawBody.trim() === '') {
+    const method = (options?.method ?? 'GET').toUpperCase();
+
+    if (!isJsonContentType(contentType) && method !== 'GET' && method !== 'HEAD') {
+      return undefined as T;
+    }
+
+    throw new ApiError(
+      `Expected JSON from ${requestPath}, but received an empty response.`,
+      res.status,
+      'EMPTY_RESPONSE',
+    );
+  }
+
+  if (isHtmlPayload(contentType, rawBody)) {
+    throw new ApiError(
+      `Expected JSON from ${requestPath}, but received an HTML document (HTTP ${res.status}). Check API routing or proxy configuration.`,
+      res.status,
+      'UNEXPECTED_HTML_RESPONSE',
+    );
+  }
+
+  if (contentType && !isJsonContentType(contentType)) {
+    const mediaType = contentType.split(';')[0]?.trim() || contentType;
+
+    throw new ApiError(
+      `Expected JSON from ${requestPath}, but received content-type "${mediaType}".`,
+      res.status,
+      'UNEXPECTED_CONTENT_TYPE',
+    );
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new ApiError(
+      `Invalid JSON response received from ${requestPath}.`,
+      res.status,
+      'INVALID_JSON_RESPONSE',
+    );
+  }
 }
 
 /**
@@ -775,6 +995,36 @@ export const api = {
     return response.data;
   },
 
+  getSubscriptionPeriods: async (): Promise<Record<string, any>[]> => {
+    const response = await fetchJson<{
+      success?: boolean;
+      data?: Record<string, any>[];
+      message?: string;
+      error?: string;
+    }>(`${API_BASE}/platform/subscription-periods`);
+
+    if (response.success === false) {
+      throw new ApiError(
+        sanitizeServerErrorMessage(
+          response.message ?? response.error,
+          'Subscription data unavailable.',
+        ),
+        400,
+        response.error,
+      );
+    }
+
+    if (!Array.isArray(response.data)) {
+      throw new ApiError(
+        'Subscription endpoint returned an unexpected payload.',
+        502,
+        'INVALID_SUBSCRIPTION_PAYLOAD',
+      );
+    }
+
+    return response.data;
+  },
+
   // ============================================================
   // AUTHENTICATION
   // ============================================================
@@ -793,25 +1043,76 @@ export const api = {
      * Login itself should be independent of
      * the previous session.
      */
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        identifier,
-        password,
-      }),
-    });
+    const loginPath = `${API_BASE}/auth/login`;
+    let response: Response;
 
-    const result: LoginResponse = await response.json().catch(() => ({
-      success: false,
-      error: 'INVALID_SERVER_RESPONSE',
-      message: 'The server returned an invalid response.',
-    }));
+    try {
+      response = await fetch(loginPath, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          identifier,
+          password,
+        }),
+      });
+    } catch {
+      throw new ApiError(
+        'Unable to reach the JaliCare HMIS server. Check your connection or try again shortly.',
+        503,
+        'SERVICE_UNAVAILABLE',
+      );
+    }
+
+    const contentType = (response.headers?.get?.('content-type') ?? '').toLowerCase();
+    const rawBody =
+      typeof response.text === 'function' ? await response.text().catch(() => '') : '';
+
+    if (isHtmlPayload(contentType, rawBody)) {
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        throw new ApiError(
+          'The JaliCare HMIS service is temporarily unavailable. Please try again shortly.',
+          response.status,
+          'SERVICE_UNAVAILABLE',
+        );
+      }
+
+      throw new ApiError(
+        `Expected JSON from ${loginPath}, but received an HTML document (HTTP ${response.status}). Check API routing or proxy configuration.`,
+        response.status,
+        'UNEXPECTED_HTML_RESPONSE',
+      );
+    }
+
+    let result: LoginResponse;
+
+    try {
+      result = rawBody.trim()
+        ? (JSON.parse(rawBody) as LoginResponse)
+        : {
+            success: false,
+            error: 'INVALID_SERVER_RESPONSE',
+            message: 'The server returned an empty response.',
+          };
+    } catch {
+      result = {
+        success: false,
+        error: 'INVALID_SERVER_RESPONSE',
+        message: 'The server returned an invalid response.',
+      };
+    }
 
     if (!response.ok) {
-      throw new Error(result.message || result.error || `HTTP error ${response.status}`);
+      const safeMessage = sanitizeServerErrorMessage(
+        result.message ?? result.error,
+        response.status >= 500
+          ? 'The authentication service encountered an error. Please try again.'
+          : `HTTP error ${response.status}`,
+      );
+
+      throw new ApiError(safeMessage, response.status, result.error);
     }
 
     /**

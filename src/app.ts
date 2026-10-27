@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { createApiRoutes } from './routes/index.ts';
+import { createApiRoutes, createDomainRoutes } from './routes/index.ts';
 import portalRoutes from './portal/portal.routes.ts';
 import portalAdminRoutes from './portal/portal-admin.routes.ts';
 import { and, count, eq, sql, sum } from 'drizzle-orm';
@@ -262,8 +262,29 @@ export async function createApp() {
   /*
    * Everything below `/api` authentication: module gates, administrator
    * routers and the clinical domains. See ./routes/index.ts.
+   *
+   * `createApiRoutes()` holds the `/api`-relative prefixes, module gates,
+   * and relative-path routers (`maternal-health`, `inpatient`).
+   * `createDomainRoutes()` holds the domain routers whose handlers declare
+   * full `/api/...` paths; mounting them inside `app.use('/api', ...)`
+   * doubled the prefix to `/api/api/...` and let real `/api/...` requests
+   * fall through to the SPA shell.
    */
   app.use('/api', createApiRoutes());
+  app.use(createDomainRoutes());
+
+  /*
+   * Unmatched `/api` requests must answer with JSON in both development
+   * (before `vite.middlewares` SPA fallback) and production, across every
+   * HTTP method — never `index.html` and never Express's default HTML 404.
+   */
+  app.use('/api', (req, res) => {
+    res.status(404).json({
+      success: false,
+      error: 'NOT_FOUND',
+      message: `No API route matches ${req.method} ${req.originalUrl.split('?')[0]}.`,
+    });
+  });
 
   /*
    * There is no route registered in this file any more, and that is on

@@ -143,46 +143,52 @@ export function createApiRoutes(): Router {
   api.use('/audit-logs', requireFacilityModule('audit'));
 
   /*
-   * Clinical domains that already had their own routers before this file
-   * existed. They register absolute paths under their own prefixes, so they
-   * mount at the router root rather than at a prefix.
+   * Clinical domains whose routers register `/api`-relative paths (`/wards`,
+   * `/maternity/summary`, `/immunisation/schedule`). Because `createApiRoutes`
+   * itself is mounted at `/api`, Express prepends `/api` to reach them.
    */
   api.use(maternalHealthRoutes);
   api.use(inpatientRoutes);
-  api.use(dhaRoutes);
-  api.use(billingRoutes);
-  api.use(serviceTariffsRoutes);
-  api.use(procurementRoutes);
-  api.use(pharmacyRoutes);
-  api.use(radiologyRoutes);
-  api.use(laboratoryRoutes);
-  api.use(theatreRoutes);
-  api.use(medicationsRoutes);
-  api.use(diagnosesRoutes);
-  api.use(vitalsRoutes);
-  api.use(appointmentsRoutes);
-  api.use(queuesRoutes);
 
-  /*
-   * The domains that used to be registered inline in `createApp`.
-   *
-   * They mount last, and that is deliberate: they come after the module
-   * gates above, which is the order they had when `app.use('/api', ...)`
-   * handed them to the api router and the gates fell through to them.
-   *
-   * They also register absolute `/api/...` paths like the routers above, so
-   * they mount at the router root rather than at a prefix.
-   */
-  api.use(tenancyRoutes);
-  api.use(patientsRoutes);
-  api.use(encountersRoutes);
-  api.use(billingChargesRoutes);
-  api.use(serviceTariffLinksRoutes);
-  api.use(billingAnalyticsRoutes);
-  api.use(claimsRoutes);
-  api.use(invoicesRoutes);
-  api.use(publicHealthRoutes);
-  api.use(auditRoutes);
-  api.use(interopRoutes);
   return api;
+}
+
+/**
+ * Domain routers whose handlers register explicit `/api/...` paths.
+ *
+ * Mounted on `app` immediately after `app.use('/api', createApiRoutes())`,
+ * so every `/api` request still passes `requireAuth`, `requireAuthorization`,
+ * and every `requireFacilityModule` gate in `createApiRoutes()` before
+ * reaching these handlers — without doubling `/api` into `/api/api/...`.
+ */
+export function createDomainRoutes(): Router {
+  const domains = Router();
+
+  domains.use(dhaRoutes);
+  domains.use(billingRoutes);
+  domains.use(serviceTariffsRoutes);
+  domains.use(procurementRoutes);
+  domains.use(pharmacyRoutes);
+  domains.use(radiologyRoutes);
+  domains.use(laboratoryRoutes);
+  domains.use(theatreRoutes);
+  domains.use(medicationsRoutes);
+  domains.use(diagnosesRoutes);
+  domains.use(vitalsRoutes);
+  domains.use(appointmentsRoutes);
+  domains.use(queuesRoutes);
+
+  domains.use(tenancyRoutes);
+  domains.use(patientsRoutes);
+  domains.use(encountersRoutes);
+  domains.use(billingChargesRoutes);
+  domains.use(serviceTariffLinksRoutes);
+  domains.use(billingAnalyticsRoutes);
+  domains.use(claimsRoutes);
+  domains.use(invoicesRoutes);
+  domains.use(publicHealthRoutes);
+  domains.use(auditRoutes);
+  domains.use(interopRoutes);
+
+  return domains;
 }

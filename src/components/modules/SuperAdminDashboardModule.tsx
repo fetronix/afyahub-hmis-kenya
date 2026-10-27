@@ -1,5 +1,5 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
-import { api, getSessionToken } from '../../api/client.ts';
+import React, { useCallback, useEffect, useState } from 'react';
+import { api } from '../../api/client.ts';
 
 type Row = Record<string, any>;
 
@@ -10,27 +10,15 @@ type Health = {
   timestamp?: string;
 };
 
-async function loadSubscriptions(): Promise<Row[]> {
-  const token = getSessionToken();
-  const response = await fetch('/api/platform/subscription-periods', {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || result.success === false) {
-    throw new Error(result.message || 'Subscription data unavailable');
-  }
-  return Array.isArray(result.data) ? result.data : [];
-}
-
 export function SuperAdminDashboardModule({
   onNavigate,
 }: {
   onNavigate: (module: string) => void;
 }) {
-  const [tenants, setTenants] = useState<Row[]>([]);
-  const [facilities, setFacilities] = useState<Row[]>([]);
-  const [auditLogs, setAuditLogs] = useState<Row[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Row[]>([]);
+  const [tenants, setTenants] = useState<Row[] | null>(null);
+  const [facilities, setFacilities] = useState<Row[] | null>(null);
+  const [auditLogs, setAuditLogs] = useState<Row[] | null>(null);
+  const [subscriptions, setSubscriptions] = useState<Row[] | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,22 +32,51 @@ export function SuperAdminDashboardModule({
       api.getFacilities(),
       api.getAuditLogs(),
       api.getHealth(),
-      loadSubscriptions(),
+      api.getSubscriptionPeriods(),
     ]);
 
-    const setters = [
-      (value: any) => setTenants(Array.isArray(value) ? value : []),
-      (value: any) => setFacilities(Array.isArray(value) ? value : []),
-      (value: any) => setAuditLogs(Array.isArray(value) ? value : []),
-      (value: any) => setHealth(value),
-      (value: any) => setSubscriptions(Array.isArray(value) ? value : []),
+    const applyFulfilled = [
+      (value: unknown) => {
+        if (!Array.isArray(value)) throw new Error('Invalid tenants response.');
+        setTenants(value);
+      },
+      (value: unknown) => {
+        if (!Array.isArray(value)) throw new Error('Invalid facilities response.');
+        setFacilities(value);
+      },
+      (value: unknown) => {
+        if (!Array.isArray(value)) throw new Error('Invalid audit activity response.');
+        setAuditLogs(value);
+      },
+      (value: unknown) => setHealth((value as Health) ?? null),
+      (value: unknown) => {
+        if (!Array.isArray(value)) throw new Error('Invalid subscriptions response.');
+        setSubscriptions(value);
+      },
     ];
+
+    const applyRejected = [
+      () => setTenants(null),
+      () => setFacilities(null),
+      () => setAuditLogs(null),
+      () => setHealth(null),
+      () => setSubscriptions(null),
+    ];
+
     const names = ['Tenants', 'Facilities', 'Audit activity', 'System health', 'Subscriptions'];
 
     tasks.forEach((task, index) => {
       if (task.status === 'fulfilled') {
-        setters[index](task.value);
+        try {
+          applyFulfilled[index]!(task.value);
+        } catch (err) {
+          applyRejected[index]!();
+          failures.push(
+            `${names[index]}: ${err instanceof Error ? err.message : 'Could not load data'}`,
+          );
+        }
       } else {
+        applyRejected[index]!();
         failures.push(
           `${names[index]}: ${task.reason instanceof Error ? task.reason.message : 'Could not load data'}`,
         );
@@ -78,31 +95,37 @@ export function SuperAdminDashboardModule({
   const buttonClass =
     'mt-4 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50';
 
+  const metricValue = (rows: Row[] | null): string | number =>
+    rows === null ? '\u2014' : rows.length;
+
   const cards = [
     {
       title: 'Tenants',
-      value: tenants.length,
+      value: metricValue(tenants),
       description: 'Organizations registered on the platform',
       action: 'Manage tenants and facilities',
       module: 'platform_administration',
     },
     {
       title: 'Facilities',
-      value: facilities.length,
+      value: metricValue(facilities),
       description: 'Facilities visible to your platform account',
       action: 'Open facility management',
       module: 'platform_administration',
     },
     {
       title: 'Subscriptions',
-      value: subscriptions.length,
-      description: `${subscriptions.filter((item) => String(item.status).toLowerCase() === 'active').length} marked active`,
+      value: metricValue(subscriptions),
+      description:
+        subscriptions === null
+          ? 'Subscription status unavailable'
+          : `${subscriptions.filter((item) => String(item.status).toLowerCase() === 'active').length} marked active`,
       action: 'Review subscriptions',
       module: 'platform_administration',
     },
     {
       title: 'Audit activity',
-      value: auditLogs.length,
+      value: metricValue(auditLogs),
       description: 'Audit records returned by the authorized API',
       action: 'Open audit logs',
       module: 'audit',
@@ -173,7 +196,11 @@ export function SuperAdminDashboardModule({
             </button>
           </div>
 
-          {auditLogs.length === 0 ? (
+          {auditLogs === null ? (
+            <p className="py-6 text-sm text-slate-500">
+              {loading ? 'Loading activity…' : 'Audit activity could not be loaded.'}
+            </p>
+          ) : auditLogs.length === 0 ? (
             <p className="py-6 text-sm text-slate-500">
               {loading ? 'Loading activity…' : 'No audit records returned.'}
             </p>
