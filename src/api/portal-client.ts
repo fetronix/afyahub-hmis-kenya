@@ -183,8 +183,12 @@ export interface PortalVisit {
   endedAt: string | null;
   facilityName: string | null;
   diagnoses: Array<{
-    icd10Code: string;
-    icd10Description: string;
+    icd10Code: string | null;
+    icd10Description: string | null;
+    codingSystem: string;
+    icd11Code: string | null;
+    icd11Title: string | null;
+    icd11Release: string | null;
     diagnosisType: string | null;
     status: string | null;
     diagnosedBy: string | null;

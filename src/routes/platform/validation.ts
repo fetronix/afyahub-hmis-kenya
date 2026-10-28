@@ -184,6 +184,7 @@ export type FacilityUpdateInput = {
   phone?: string | null;
   email?: string | null;
   enabledModules?: string[];
+  hiddenModules?: string[];
   isActive?: boolean;
 };
 
@@ -255,6 +256,25 @@ export function parseFacilityUpdate(
     }
 
     updates.enabledModules = [...new Set(modules.map((item) => item.trim()))];
+  }
+
+  if ('hiddenModules' in body) {
+    const hidden = body.hiddenModules;
+
+    if (
+      !Array.isArray(hidden) ||
+      !hidden.every(
+        (item) => typeof item === 'string' && item.trim().length > 0 && item.length <= 80,
+      )
+    ) {
+      return fail('hiddenModules must be an array of non-empty strings.');
+    }
+
+    updates.hiddenModules = [...new Set(hidden.map((item) => item.trim()))];
+  }
+
+  if ('clinicalProtocols' in body) {
+    return fail('Clinical protocols require a separately authorized clinical workflow.');
   }
 
   if ('isActive' in body) {

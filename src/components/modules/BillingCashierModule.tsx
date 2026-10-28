@@ -162,8 +162,8 @@ export const BillingCashierModule: React.FC = () => {
             Patient Billing, Cashier POS & Receipts
           </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            M-Pesa STK push integration, Cash reconciliation, tariff charging, and official medical
-            receipting.
+            Invoice charging, recorded collections and receipts. Provider requests are reviewed
+            separately in Payment Transactions.
           </p>
         </div>
 
@@ -303,6 +303,7 @@ export const BillingCashierModule: React.FC = () => {
                     <h2 className="text-base font-bold text-slate-900">
                       {selectedInvoice.invoiceNumber}
                     </h2>
+                    <span className="text-xs text-slate-500">Invoice ID #{selectedInvoice.id}</span>
                     <span
                       className={`px-2 py-0.5 rounded text-2xs font-semibold ${
                         selectedInvoice.status === 'Paid'

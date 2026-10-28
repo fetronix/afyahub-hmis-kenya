@@ -1,4 +1,4 @@
-﻿import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 import { api, type AuthenticatedUser } from '../api/client.ts';
 
@@ -70,6 +70,7 @@ export type ModuleId =
   | 'inpatient'
   | 'maternity'
   | 'theatre'
+  | 'dialysis'
   | 'specialty'
   | 'laboratory'
   | 'radiology'
@@ -77,7 +78,10 @@ export type ModuleId =
   | 'inventory'
   | 'procurement'
   | 'finance'
+  | 'payment_transactions'
+  | 'accounting'
   | 'claims'
+  | 'private_insurance'
   | 'public_health'
   | 'analytics'
   | 'interoperability'

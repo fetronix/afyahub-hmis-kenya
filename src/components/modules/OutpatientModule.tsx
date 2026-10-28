@@ -90,6 +90,18 @@ export const OutpatientModule: React.FC = () => {
   const [customDiagnosisMode, setCustomDiagnosisMode] = useState(false);
   const [customDiagnosisDescription, setCustomDiagnosisDescription] = useState('');
   const [customDiagnosisNotes, setCustomDiagnosisNotes] = useState('');
+  const [whoMode, setWhoMode] = useState(false);
+  const [whoQuery, setWhoQuery] = useState('');
+  const [whoResults, setWhoResults] = useState<
+    Array<{ code: string; title: string; releaseId: string }>
+  >([]);
+  const [selectedWho, setSelectedWho] = useState<{
+    code: string;
+    title: string;
+    releaseId: string;
+  } | null>(null);
+  const [whoNotice, setWhoNotice] = useState('');
+  const [whoSearching, setWhoSearching] = useState(false);
 
   // Prescription Form
   const [newMed, setNewMed] = useState({
@@ -455,16 +467,44 @@ export const OutpatientModule: React.FC = () => {
     }
   };
 
+  const handleWhoSearch = async () => {
+    if (whoQuery.trim().length < 2) {
+      setWhoNotice('Enter at least two characters to search WHO ICD-11.');
+      return;
+    }
+    setWhoSearching(true);
+    setSelectedWho(null);
+    try {
+      const response = await api.searchIcd11(whoQuery.trim());
+      setWhoResults(response.items);
+      setWhoNotice(
+        response.warning ||
+          `WHO ICD-11 MMS ${response.releaseId}. Results are not a complete offline catalogue.`,
+      );
+    } catch (error: unknown) {
+      setWhoResults([]);
+      setWhoNotice(error instanceof Error ? error.message : 'WHO search is unavailable.');
+    } finally {
+      setWhoSearching(false);
+    }
+  };
+
   const handleAddDiagnosis = async () => {
     if (!activeEncounter || !activePatient) {
       showToast('Select a patient and start an outpatient visit first.');
       return;
     }
 
-    const description = customDiagnosisMode
-      ? customDiagnosisDescription.trim()
-      : selectedIcd?.desc || '';
-    const code = customDiagnosisMode ? 'UNCODED' : selectedIcd?.code || '';
+    const description = whoMode
+      ? selectedWho?.title || ''
+      : customDiagnosisMode
+        ? customDiagnosisDescription.trim()
+        : selectedIcd?.desc || '';
+    const code = whoMode
+      ? selectedWho?.code || ''
+      : customDiagnosisMode
+        ? 'UNCODED'
+        : selectedIcd?.code || '';
 
     if (!description) {
       showToast(
@@ -484,8 +524,11 @@ export const OutpatientModule: React.FC = () => {
       const diag = await api.recordDiagnosis({
         encounterId: activeEncounter.id,
         patientId: activePatient.id,
-        icd10Code: code,
-        icd10Description: description,
+        codingSystem: whoMode ? 'ICD-11' : 'ICD-10',
+        icd10Code: whoMode ? null : code,
+        icd10Description: whoMode ? null : description,
+        icd11Code: whoMode ? code : null,
+        icd11Release: whoMode ? selectedWho?.releaseId : null,
         diagnosisType,
         status: customDiagnosisMode ? 'Provisional' : 'Confirmed',
         notes: customDiagnosisMode
@@ -502,6 +545,7 @@ export const OutpatientModule: React.FC = () => {
           : `Diagnosis ${code} added.`,
       );
       setSelectedIcd(null);
+      setSelectedWho(null);
       setCustomDiagnosisDescription('');
       setCustomDiagnosisNotes('');
     } catch (err: any) {
@@ -1046,23 +1090,35 @@ export const OutpatientModule: React.FC = () => {
               </div>
             </div>
 
-            {/* ICD-10 Coding & Diagnoses */}
+            {/* Existing diagnoses plus WHO ICD-11 search; historical ICD-10 remains unchanged. */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <div className="font-bold text-slate-900 uppercase">
-                  ICD-10 Diagnostic Coding ({diagnosisList.length})
+                  Diagnostic Coding ({diagnosisList.length})
                 </div>
-                <span className="text-2xs text-slate-400 font-mono">Kenya MOH & SHA Standard</span>
+                <span className="text-2xs text-slate-400 font-mono">ICD-10 / WHO ICD-11</span>
               </div>
 
               <div className="flex flex-col sm:flex-row items-center gap-2">
                 <select
-                  value={customDiagnosisMode ? '__custom__' : selectedIcd?.code || ''}
+                  value={
+                    whoMode
+                      ? '__who__'
+                      : customDiagnosisMode
+                        ? '__custom__'
+                        : selectedIcd?.code || ''
+                  }
                   onChange={(e) => {
-                    if (e.target.value === '__custom__') {
+                    if (e.target.value === '__who__') {
+                      setWhoMode(true);
+                      setCustomDiagnosisMode(false);
+                      setSelectedIcd(null);
+                    } else if (e.target.value === '__custom__') {
+                      setWhoMode(false);
                       setCustomDiagnosisMode(true);
                       setSelectedIcd(null);
                     } else {
+                      setWhoMode(false);
                       setCustomDiagnosisMode(false);
                       setCustomDiagnosisDescription('');
                       setCustomDiagnosisNotes('');
@@ -1078,6 +1134,7 @@ export const OutpatientModule: React.FC = () => {
                       {item.code} — {item.desc}
                     </option>
                   ))}
+                  <option value="__who__">Search WHO ICD-11</option>
                   <option value="__custom__">Diagnosis not listed — enter manually</option>
                 </select>
 
@@ -1100,6 +1157,55 @@ export const OutpatientModule: React.FC = () => {
                 </button>
               </div>
 
+              {whoMode && (
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <label className="block font-semibold text-slate-700" htmlFor="who-icd11-search">
+                    WHO ICD-11 code, description or keyword
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="who-icd11-search"
+                      value={whoQuery}
+                      maxLength={100}
+                      onChange={(event) => setWhoQuery(event.target.value)}
+                      className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-3 py-2"
+                      placeholder="Search terminology (do not enter patient details)"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleWhoSearch}
+                      disabled={whoSearching}
+                      className="rounded bg-slate-900 px-3 py-2 font-semibold text-white disabled:opacity-50"
+                    >
+                      {whoSearching ? 'Searching…' : 'Search'}
+                    </button>
+                  </div>
+                  {whoNotice && (
+                    <p className="text-slate-600" role="status">
+                      {whoNotice}
+                    </p>
+                  )}
+                  {whoResults.length > 0 && (
+                    <select
+                      className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+                      aria-label="Select a WHO ICD-11 result"
+                      value={selectedWho?.code ?? ''}
+                      onChange={(event) =>
+                        setSelectedWho(
+                          whoResults.find((item) => item.code === event.target.value) ?? null,
+                        )
+                      }
+                    >
+                      <option value="">Select a WHO result…</option>
+                      {whoResults.map((item) => (
+                        <option key={`${item.releaseId}-${item.code}`} value={item.code}>
+                          {item.code} — {item.title} ({item.releaseId})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
               {customDiagnosisMode && (
                 <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <div className="font-semibold text-amber-900">Uncoded diagnosis</div>
@@ -1148,8 +1254,16 @@ export const OutpatientModule: React.FC = () => {
                       className="p-2 rounded bg-slate-50 border border-slate-200 flex items-center justify-between"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-teal-800">{d.icd10Code}</span>
-                        <span className="text-slate-800">{d.icd10Description}</span>
+                        <span className="font-mono font-bold text-teal-800">
+                          {d.codingSystem === 'ICD-11' ? d.icd11Code : d.icd10Code}
+                        </span>
+                        <span className="text-slate-800">
+                          {d.codingSystem === 'ICD-11' ? d.icd11Title : d.icd10Description}
+                        </span>
+                        <span className="text-2xs text-slate-500">
+                          {d.codingSystem ?? 'ICD-10'}
+                          {d.icd11Release ? ` · ${d.icd11Release}` : ''}
+                        </span>
                         <span className="text-2xs text-slate-400 font-sans">
                           ({d.diagnosisType})
                         </span>

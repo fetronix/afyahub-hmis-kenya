@@ -24,6 +24,10 @@ import {
   openPatientRows,
   sealPatientIdentifiers,
 } from '../security/patient-identifiers.ts';
+import {
+  normalizeNewDiagnosisCoding,
+  presentPersistedDiagnosis,
+} from '../clinical/icd11/icd11.service.ts';
 
 export { bedDayTariffCodes } from '../billing/billing.service.ts';
 
@@ -1312,6 +1316,24 @@ export async function getDiagnosesScoped(
     const patient = await loadPatientInScope(context, input.patientId);
 
     conditions.push(eq(schema.diagnoses.patientId, patient.id));
+    // A patient seen at two facilities does not make all of their other
+    // facility's encounter diagnoses visible to a facility-scoped caller.
+    if (context.facilityId !== null) {
+      conditions.push(
+        inArray(
+          schema.diagnoses.encounterId,
+          db
+            .select({ id: schema.encounters.id })
+            .from(schema.encounters)
+            .where(
+              and(
+                eq(schema.encounters.facilityId, context.facilityId),
+                eq(schema.encounters.tenantId, patient.tenantId),
+              ),
+            ),
+        ),
+      );
+    }
   } else {
     /*
      * Refusing an unfiltered read is the point. Returning "everything"
@@ -1320,11 +1342,16 @@ export async function getDiagnosesScoped(
     throw new ScopeAccessError('Supply an encounterId or patientId.', 'SCOPE_FILTER_REQUIRED');
   }
 
-  return db
+  const rows = await db
     .select()
     .from(schema.diagnoses)
     .where(and(...conditions))
     .orderBy(desc(schema.diagnoses.diagnosedAt));
+
+  return rows.map((row) => ({
+    ...row,
+    resolvedCoding: presentPersistedDiagnosis(row),
+  }));
 }
 
 export async function recordDiagnosisScoped(
@@ -1340,12 +1367,60 @@ export async function recordDiagnosisScoped(
     );
   }
 
-  const [created] = await db
-    .insert(schema.diagnoses)
-    .values({ ...data, encounterId: encounter.id, patientId: encounter.patientId })
-    .returning();
+  const normalizedCoding = await normalizeNewDiagnosisCoding({
+    codingSystem: data.codingSystem,
+    icd11Code: data.icd11Code,
+    icd11Release: data.icd11Release,
+    icd10Code: data.icd10Code,
+    icd10Description: data.icd10Description,
+  });
 
-  return created;
+  return db.transaction(async (tx) => {
+    const [actor] = await tx
+      .select({ fullName: schema.users.fullName })
+      .from(schema.users)
+      .where(eq(schema.users.id, context.userId))
+      .limit(1);
+    const [created] = await tx
+      .insert(schema.diagnoses)
+      .values({
+        encounterId: encounter.id,
+        patientId: encounter.patientId,
+        diagnosisType:
+          typeof data.diagnosisType === 'string' ? data.diagnosisType.slice(0, 80) : 'Primary',
+        status: typeof data.status === 'string' ? data.status.slice(0, 80) : 'Confirmed',
+        notes: typeof data.notes === 'string' ? data.notes.slice(0, 2000) : null,
+        diagnosedBy: actor?.fullName ?? `User ${context.userId}`,
+        codingSystem: normalizedCoding.codingSystem,
+        diagnosisCode: normalizedCoding.diagnosisCode,
+        diagnosisDisplay: normalizedCoding.diagnosisDisplay,
+        icd10Code: normalizedCoding.icd10Code,
+        icd10Description: normalizedCoding.icd10Description,
+        icd11Code: normalizedCoding.icd11Code,
+        icd11Title: normalizedCoding.icd11Title,
+        icd11Release: normalizedCoding.icd11Release,
+        icd11FoundationUri: normalizedCoding.icd11FoundationUri,
+        icd11LinearizationUri: normalizedCoding.icd11LinearizationUri,
+        codingMetadata: normalizedCoding.codingMetadata,
+      })
+      .returning();
+
+    await tx.insert(schema.auditLogs).values({
+      tenantId: encounter.tenantId,
+      facilityId: encounter.facilityId,
+      userId: String(context.userId),
+      action: 'CREATE',
+      resource: 'diagnosis',
+      resourceId: String(created.id),
+      // Deliberately exclude clinical text and patient identifiers.
+      details: JSON.stringify({
+        codingSystem: created.codingSystem,
+        release: created.icd11Release,
+      }),
+    });
+
+    return { ...created, resolvedCoding: presentPersistedDiagnosis(created) };
+  });
 }
 
 export async function getProceduresScoped(

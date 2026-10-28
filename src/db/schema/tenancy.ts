@@ -123,6 +123,13 @@ export const facilities = pgTable(
       'audit',
     ]),
 
+    hiddenModules: jsonb('hidden_modules').$type<string[]>().default([]).notNull(),
+
+    clinicalProtocols: jsonb('clinical_protocols')
+      .$type<Record<string, unknown>>()
+      .default({})
+      .notNull(),
+
     isActive: boolean('is_active').default(true),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),

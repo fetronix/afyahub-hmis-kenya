@@ -11,8 +11,9 @@
  * - UPDATES the name / module / description of an existing permission
  *   row. Those three columns are platform-owned: they are the label the
  *   screens print, not a facility decision.
- * - INSERTS a role_permissions row for SUPER_ADMIN (all seeded codes)
- *   and for each tenant FACILITY_ADMIN (the invitation set) when that
+ * - INSERTS a role_permissions row for SUPER_ADMIN (except facility tariffs
+ *   and facility-owned payment operations) and for each tenant
+ *   FACILITY_ADMIN (the invitation set) when that
  *   grant is absent.
  *
  * WHAT IT NEVER DOES
@@ -753,6 +754,171 @@ const PERMISSIONS = [
     description: 'Manage insurance and SHA claims.',
   },
 
+  {
+    code: 'insurance.sha.read',
+    name: 'View SHA eClaims & Readiness',
+    module: 'insurance',
+    description: 'View SHA eClaims connection readiness, eligibility history, and benefit status.',
+  },
+
+  {
+    code: 'insurance.sha.eligibility.check',
+    name: 'Check SHA Patient Eligibility',
+    module: 'insurance',
+    description: 'Initiate or retry SHA patient eligibility verification.',
+  },
+
+  {
+    code: 'insurance.sha.benefits.validate',
+    name: 'Validate SHA Service Benefits',
+    module: 'insurance',
+    description: 'Validate service coverage and benefits against SHA rules.',
+  },
+
+  {
+    code: 'insurance.sha.preauthorization.create',
+    name: 'Create & Submit SHA Preauthorization',
+    module: 'insurance',
+    description: 'Create and submit SHA preauthorization requests.',
+  },
+
+  {
+    code: 'insurance.sha.claims.read',
+    name: 'View SHA eClaims',
+    module: 'insurance',
+    description: 'View SHA eClaims packages, status history, and rejection details.',
+  },
+
+  {
+    code: 'insurance.sha.claims.prepare',
+    name: 'Prepare SHA eClaims',
+    module: 'insurance',
+    description: 'Assemble and validate SHA eClaims packages from clinical and billing records.',
+  },
+
+  {
+    code: 'insurance.sha.claims.submit',
+    name: 'Submit SHA eClaims',
+    module: 'insurance',
+    description: 'Submit validated SHA eClaims packages to the payer gateway.',
+  },
+
+  {
+    code: 'insurance.sha.claims.resubmit',
+    name: 'Resubmit Rejected SHA eClaims',
+    module: 'insurance',
+    description: 'Correct and resubmit rejected SHA eClaims packages with audit trail.',
+  },
+
+  {
+    code: 'insurance.sha.remittance.read',
+    name: 'View SHA Remittances',
+    module: 'insurance',
+    description: 'View SHA remittance advices and payment statuses.',
+  },
+
+  {
+    code: 'insurance.sha.reconciliation.manage',
+    name: 'Reconcile SHA Remittances',
+    module: 'insurance',
+    description: 'Record SHA remittance advices and reconcile claims against invoices.',
+  },
+
+  {
+    code: 'insurance.sha.configuration.manage',
+    name: 'Manage SHA Payer Configuration & Rules',
+    module: 'insurance',
+    description:
+      'Manage SHA payer configuration, service code mappings, and benefit rule approvals.',
+  },
+
+  {
+    code: 'insurance.payers.read',
+    name: 'View Private Insurer Configurations',
+    module: 'insurance',
+    description:
+      'View configured private insurers (Britam, PACIS, gateways), capability matrices, and connection status.',
+  },
+
+  {
+    code: 'insurance.payers.manage',
+    name: 'Manage Private Insurer Configurations',
+    module: 'insurance',
+    description:
+      'Configure private insurers, integration modes, secret environment references, and claim/preauth requirements.',
+  },
+
+  {
+    code: 'insurance.members.read',
+    name: 'View Insurance Memberships & Policies',
+    module: 'insurance',
+    description:
+      'View patient insurance memberships, principal/dependent links, and policy validity records.',
+  },
+
+  {
+    code: 'insurance.members.manage',
+    name: 'Manage Insurance Memberships & Policies',
+    module: 'insurance',
+    description: 'Register patient insurance policies and record auditable membership corrections.',
+  },
+
+  {
+    code: 'insurance.eligibility.check',
+    name: 'Check Private Insurance Eligibility',
+    module: 'insurance',
+    description:
+      'Initiate adapter-backed or explicitly labelled manual eligibility checks for private insurers.',
+  },
+
+  {
+    code: 'insurance.benefits.validate',
+    name: 'Validate Private Insurance Benefits & Copayments',
+    module: 'insurance',
+    description:
+      'Validate mapped benefits, limits, deductibles, and copayments across private insurers.',
+  },
+
+  {
+    code: 'insurance.mappings.manage',
+    name: 'Manage Insurer Service Mappings & Benefit Rules',
+    module: 'insurance',
+    description:
+      'Configure effective-dated service-code mappings, benefit limits, exclusions, and copayment rules per insurer.',
+  },
+
+  {
+    code: 'insurance.preauthorization.manage',
+    name: 'Manage Private Insurance Preauthorizations',
+    module: 'insurance',
+    description:
+      'Create, attach clinical documents, submit, and update private insurer preauthorization requests.',
+  },
+
+  {
+    code: 'insurance.private.claims.prepare',
+    name: 'Prepare & Validate Private Insurance Claims',
+    module: 'insurance',
+    description:
+      'Assemble, review, correct, and validate private insurance claims from JaliCare invoices and clinical records.',
+  },
+
+  {
+    code: 'insurance.private.claims.submit',
+    name: 'Submit & Resubmit Private Insurance Claims',
+    module: 'insurance',
+    description:
+      'Submit and resubmit validated private insurance claims and record external adjudication responses.',
+  },
+
+  {
+    code: 'insurance.private.remittance.reconcile',
+    name: 'Import & Reconcile Private Insurance Remittances',
+    module: 'insurance',
+    description:
+      'Import private insurer remittance advices and reconcile allocations against claims and invoices.',
+  },
+
   /* ==========================================================
      PROCUREMENT
      ========================================================== */
@@ -837,6 +1003,269 @@ const PERMISSIONS = [
     name: 'Manage System Settings',
     module: 'system',
     description: 'Manage system configuration.',
+  },
+
+  /* ==========================================================
+     ACCOUNTING, GENERAL LEDGER & BANK RECONCILIATION
+     ========================================================== */
+
+  {
+    code: 'accounting.read',
+    name: 'View Accounting & Financial Statements',
+    module: 'accounting',
+    description:
+      'View chart of accounts, general ledger, financial statements, cashbook, AP/AR, and profitability reports.',
+  },
+  {
+    code: 'accounting.coa.manage',
+    name: 'Manage Chart of Accounts & Periods',
+    module: 'accounting',
+    description: 'Create and update chart of accounts and financial periods.',
+  },
+  {
+    code: 'accounting.journals.post',
+    name: 'Post General Ledger Journals & Reversals',
+    module: 'accounting',
+    description:
+      'Post balanced double-entry journals and controlled reversals or adjustment entries.',
+  },
+  {
+    code: 'accounting.periods.close',
+    name: 'Close Financial Periods',
+    module: 'accounting',
+    description: 'Close or lock accounting financial periods against new postings.',
+  },
+  {
+    code: 'accounting.expenses.request',
+    name: 'Submit Expense Requests',
+    module: 'accounting',
+    description: 'Create expense requests and attach supporting documentation.',
+  },
+  {
+    code: 'accounting.expenses.approve',
+    name: 'Approve & Post Expense Requests',
+    module: 'accounting',
+    description: 'Approve or reject expense requests and post approved expenses to the ledger.',
+  },
+  {
+    code: 'accounting.assets.manage',
+    name: 'Manage Fixed Asset Register & Depreciation',
+    module: 'accounting',
+    description:
+      'Register fixed assets, record additions/disposals, and post periodic depreciation.',
+  },
+  {
+    code: 'accounting.payables.manage',
+    name: 'Manage Accounts Payable & Supplier Payments',
+    module: 'accounting',
+    description: 'Record supplier invoices, match purchase orders, and record supplier payments.',
+  },
+  {
+    code: 'accounting.bank.manage',
+    name: 'Manage Bank Accounts & Reconciliation',
+    module: 'accounting',
+    description:
+      'Configure facility bank accounts, import bank statements, match transactions, and complete bank reconciliations.',
+  },
+  {
+    code: 'accounting.reports.export',
+    name: 'Export Accounting Reports',
+    module: 'accounting',
+    description:
+      'Export trial balance, profit & loss, balance sheet, fixed asset, and reconciliation schedules.',
+  },
+
+  /* Payment & banking hub: no finance or transfer permission is granted by default. */
+  {
+    code: 'payment_hub.global.read',
+    name: 'View Global Payment Providers',
+    module: 'payment_hub',
+    description: 'View non-sensitive provider registry and aggregate status.',
+  },
+  {
+    code: 'payment_hub.global.manage',
+    name: 'Manage Global Payment Providers',
+    module: 'payment_hub',
+    description: 'Manage provider metadata, environments and shared-secret references.',
+  },
+  {
+    code: 'payment_hub.assign',
+    name: 'Assign Payment Providers',
+    module: 'payment_hub',
+    description: 'Grant or revoke provider availability for selected facilities.',
+  },
+  {
+    code: 'payment_hub.production.approve',
+    name: 'Approve Production Integration Requests',
+    module: 'payment_hub',
+    description:
+      'Record a platform production approval or rejection; adapter security gates remain mandatory.',
+  },
+  {
+    code: 'payment_hub.catalogue.read',
+    name: 'View Facility Payment Catalogue',
+    module: 'payment_hub',
+    description: 'View facility-specific provider availability and setup status.',
+  },
+  {
+    code: 'payment_hub.facility.manage',
+    name: 'Manage Facility Payment Integrations',
+    module: 'payment_hub',
+    description:
+      'Configure available integrations, masked account aliases and sandbox health checks.',
+  },
+  {
+    code: 'payment_hub.credentials.manage',
+    name: 'Manage Facility Provider Credentials',
+    module: 'payment_hub',
+    description: 'Store encrypted facility-specific credentials without viewing them.',
+  },
+  {
+    code: 'payment_hub.accounts.read',
+    name: 'View Masked Payment Accounts',
+    module: 'payment_hub',
+    description: 'View masked facility payment-account mappings.',
+  },
+  {
+    code: 'payment_hub.collection.initiate',
+    name: 'Initiate Payment Collection',
+    module: 'payment_hub',
+    description: 'Request an approved payment collection without treating acceptance as payment.',
+  },
+  {
+    code: 'payment_hub.payments.verify',
+    name: 'Check Provider Payment Status',
+    module: 'payment_hub',
+    description: 'Query permitted payment requests without posting receipts.',
+  },
+  {
+    code: 'payment_hub.transactions.read',
+    name: 'View Payment Transactions',
+    module: 'payment_hub',
+    description: 'View facility-scoped payment requests and unverified notifications.',
+  },
+  {
+    code: 'payment_hub.reconciliation.manage',
+    name: 'Reconcile Payment Transactions',
+    module: 'payment_hub',
+    description: 'Manually review and match verified transactions to existing receipts.',
+  },
+  {
+    code: 'payment_hub.production.request',
+    name: 'Request Production Payment Access',
+    module: 'payment_hub',
+    description: 'Request a platform production-activation review.',
+  },
+  {
+    code: 'payment_hub.transfers.initiate',
+    name: 'Initiate Provider Transfers',
+    module: 'payment_hub',
+    description: 'Reserved for explicitly approved, implemented transfers; currently unavailable.',
+  },
+
+  /* ==========================================================
+     DEDICATED DIALYSIS MODULE
+     ========================================================== */
+
+  {
+    code: 'dialysis.read',
+    name: 'View Dialysis Unit',
+    module: 'dialysis',
+    description:
+      'View dialysis machines, schedules, patient assessments, treatment plans, sessions, and operational reports.',
+  },
+  {
+    code: 'dialysis.assessments.manage',
+    name: 'Record Dialysis Patient Assessments',
+    module: 'dialysis',
+    description: 'Create and update renal assessments and clinical fitness checks.',
+  },
+  {
+    code: 'dialysis.plans.authorize',
+    name: 'Authorize Dialysis Treatment Plans',
+    module: 'dialysis',
+    description:
+      'Prescribe, authorize, amend, or discontinue facility-validated dialysis treatment plans.',
+  },
+  {
+    code: 'dialysis.schedule.manage',
+    name: 'Manage Dialysis Schedules & Machine Allocation',
+    module: 'dialysis',
+    description:
+      'Schedule, check in, reschedule, or cancel dialysis slots and allocate dialysis bays/machines.',
+  },
+  {
+    code: 'dialysis.sessions.record',
+    name: 'Record Dialysis Sessions & Consumables',
+    module: 'dialysis',
+    description:
+      'Initiate dialysis sessions, record intradialytic observations and stock-linked consumables, and complete or terminate sessions.',
+  },
+  {
+    code: 'dialysis.machines.manage',
+    name: 'Manage Dialysis Machines & Maintenance',
+    module: 'dialysis',
+    description:
+      'Register dialysis machines, isolation bays, disinfection timestamps, and preventive maintenance.',
+  },
+  {
+    code: 'dialysis.adverse_events.manage',
+    name: 'Record Dialysis Adverse Events & Follow-Up',
+    module: 'dialysis',
+    description:
+      'Document intradialytic or post-dialysis adverse events, interventions, and follow-up outcomes.',
+  },
+  {
+    code: 'dialysis.protocols.manage',
+    name: 'Configure Facility Dialysis Protocols',
+    module: 'dialysis',
+    description:
+      'Configure facility-approved dialysis protocol validation rules and required fields.',
+  },
+
+  /* ==========================================================
+     ICD-11 DIAGNOSIS CATALOGUE & MAPPING
+     ========================================================== */
+
+  {
+    code: 'clinical.icd11.read',
+    name: 'Search ICD-11 Catalogue & Mappings',
+    module: 'clinical',
+    description:
+      'Search WHO ICD-11 diagnosis codes, release metadata, and verified ICD-10-to-ICD-11 mappings.',
+  },
+  {
+    code: 'clinical.icd11.manage',
+    name: 'Manage ICD-11 Sync & Mapping Reviews',
+    module: 'clinical',
+    description:
+      'Synchronize WHO ICD-11 catalogue entries and review ambiguous ICD-10-to-ICD-11 mappings.',
+  },
+
+  /* ==========================================================
+     WEBSITE BOOKING INTEGRATION
+     ========================================================== */
+
+  {
+    code: 'booking.read',
+    name: 'View Website Bookings',
+    module: 'website_booking',
+    description:
+      'View website bookings, booking references, slot availability, and notification delivery logs.',
+  },
+  {
+    code: 'booking.manage',
+    name: 'Manage Website Bookings & Reminders',
+    module: 'website_booking',
+    description:
+      'Reschedule or cancel website bookings, link patient records, and send appointment reminders.',
+  },
+  {
+    code: 'booking.clients.manage',
+    name: 'Manage Website Booking API Clients',
+    module: 'website_booking',
+    description:
+      'Create, rotate, and revoke WordPress/external website booking API keys and capacity rules.',
   },
 ] as const;
 
@@ -938,11 +1367,38 @@ async function seedPermissions(): Promise<void> {
   console.log('');
   console.log('Synchronizing SUPER_ADMIN permissions...');
 
-  const allPermissions = await db.select().from(permissions);
+  const allPermissions: Array<{ id: number | null; code: string }> = await db
+    .select({ id: permissions.id, code: permissions.code })
+    .from(permissions);
+  // A dry run does not insert missing catalogue rows. Include them as virtual
+  // entries so the plan also shows grants which would follow those inserts.
+  if (dryRun) {
+    const existingCodes = new Set(allPermissions.map((permission) => permission.code));
+    for (const permission of PERMISSIONS) {
+      if (!existingCodes.has(permission.code))
+        allPermissions.push({ id: null, code: permission.code });
+    }
+  }
 
+  // Platform administration does not grant facility payment credentials,
+  // financial operations or transfers. Facility tariffs are also separate.
+  const platformHubPermissions = new Set([
+    'payment_hub.global.read',
+    'payment_hub.global.manage',
+    'payment_hub.assign',
+    'payment_hub.production.approve',
+  ]);
   for (const permission of allPermissions) {
-    // Facility tariffs are managed only by tenant-level Facility Admins.
-    if (permission.code === 'tariffs.read' || permission.code === 'tariffs.manage') {
+    if (
+      permission.code === 'tariffs.read' ||
+      permission.code === 'tariffs.manage' ||
+      (permission.code.startsWith('payment_hub.') && !platformHubPermissions.has(permission.code))
+    ) {
+      continue;
+    }
+
+    if (permission.id === null) {
+      plan('grant', `SUPER_ADMIN -> ${permission.code}`);
       continue;
     }
 
@@ -994,9 +1450,37 @@ async function seedPermissions(): Promise<void> {
      * database seeded before this permission existed still works.
      */
     'facilities.modules.manage',
+    'payment_hub.catalogue.read',
+    'payment_hub.facility.manage',
+    'payment_hub.credentials.manage',
+    'payment_hub.accounts.read',
+    'payment_hub.production.request',
+    'insurance.read',
+    'insurance.sha.read',
+    'insurance.sha.eligibility.check',
+    'insurance.sha.benefits.validate',
+    'insurance.sha.preauthorization.create',
+    'insurance.sha.claims.read',
+    'insurance.sha.claims.prepare',
+    'insurance.sha.claims.submit',
+    'insurance.sha.claims.resubmit',
+    'insurance.sha.remittance.read',
+    'insurance.sha.reconciliation.manage',
+    'insurance.sha.configuration.manage',
+    'insurance.payers.read',
+    'insurance.payers.manage',
+    'insurance.members.read',
+    'insurance.members.manage',
+    'insurance.eligibility.check',
+    'insurance.benefits.validate',
+    'insurance.mappings.manage',
+    'insurance.preauthorization.manage',
+    'insurance.private.claims.prepare',
+    'insurance.private.claims.submit',
+    'insurance.private.remittance.reconcile',
   ] as const;
 
-  const staffInvitationPermissions = [];
+  const staffInvitationPermissions: Array<{ id: number | null; code: string }> = [];
 
   for (const code of staffInvitationPermissionCodes) {
     const [permission] = await db
@@ -1006,6 +1490,10 @@ async function seedPermissions(): Promise<void> {
       .limit(1);
 
     if (!permission) {
+      if (dryRun && PERMISSIONS.some((candidate) => candidate.code === code)) {
+        staffInvitationPermissions.push({ id: null, code });
+        continue;
+      }
       throw new Error(`Required permission was not seeded: ${code}`);
     }
 
@@ -1021,6 +1509,10 @@ async function seedPermissions(): Promise<void> {
 
   for (const facilityAdminRole of facilityAdminRoles) {
     for (const permission of staffInvitationPermissions) {
+      if (permission.id === null) {
+        plan('grant', `FACILITY_ADMIN(${facilityAdminRole.id}) -> ${permission.code}`);
+        continue;
+      }
       const [existingAssignment] = await db
         .select()
         .from(rolePermissions)

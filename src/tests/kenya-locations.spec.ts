@@ -438,12 +438,13 @@ describe('Existing records are brought into line by a generated migration', () =
     );
 
     if (entry) {
+      const previousEntry = journal.entries.find((candidate) => candidate.idx === entry.idx - 1);
       expect(MIGRATION_PATH.endsWith(`${entry.tag}.sql`), 'the journal tag names this file').toBe(
         true,
       );
       expect(entry.idx, 'the journal index follows 0022').toBe(23);
       expect(
-        entry.when > (journal.entries.at(-2)?.when ?? 0),
+        entry.when > (previousEntry?.when ?? 0),
         'the timestamp is newer than the previous migration, or drizzle would skip it',
       ).toBe(true);
     }

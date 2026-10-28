@@ -606,8 +606,12 @@ function VisitCard({ visit }: { visit: PortalVisit }) {
         <ul className="mt-2 space-y-1">
           {visit.diagnoses.map((diagnosis, index) => (
             <li key={`${visit.id}-${index}`} className="text-xs text-ink-soft">
-              <span className="font-mono text-2xs text-slate-500">{diagnosis.icd10Code}</span>{' '}
-              {diagnosis.icd10Description}
+              <span className="font-mono text-2xs text-slate-500">
+                {diagnosis.codingSystem === 'ICD-11' ? diagnosis.icd11Code : diagnosis.icd10Code}
+              </span>{' '}
+              {diagnosis.codingSystem === 'ICD-11'
+                ? diagnosis.icd11Title
+                : diagnosis.icd10Description}
             </li>
           ))}
         </ul>

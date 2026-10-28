@@ -6,6 +6,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { STAFF_ROLE_CATALOGUE } from '../auth/staff-role-catalogue.ts';
+import { buildInvitationUrl, resolveInvitationBaseUrl } from '../auth/invitation-url.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import * as queries from '../db/queries.ts';
 import {
@@ -23,6 +24,11 @@ import {
 import subscriptionsRoutes from './platform/subscriptions.routes.ts';
 import { bodyOf, parseFacilityUpdate, parseTenantInput } from './platform/validation.ts';
 import { resolveLocation } from '../constants/kenya-locations.ts';
+import {
+  resolveFacilityModules,
+  resolveHiddenFacilityModules,
+  unknownFacilityModules,
+} from '../config/facility-modules.ts';
 
 const router = Router();
 
@@ -40,6 +46,28 @@ const FACILITY_ADMIN_PERMISSION_CODES = [
   'facilities.update',
   'inpatient.read',
   'insurance.read',
+  'insurance.sha.read',
+  'insurance.sha.eligibility.check',
+  'insurance.sha.benefits.validate',
+  'insurance.sha.preauthorization.create',
+  'insurance.sha.claims.read',
+  'insurance.sha.claims.prepare',
+  'insurance.sha.claims.submit',
+  'insurance.sha.claims.resubmit',
+  'insurance.sha.remittance.read',
+  'insurance.sha.reconciliation.manage',
+  'insurance.sha.configuration.manage',
+  'insurance.payers.read',
+  'insurance.payers.manage',
+  'insurance.members.read',
+  'insurance.members.manage',
+  'insurance.eligibility.check',
+  'insurance.benefits.validate',
+  'insurance.mappings.manage',
+  'insurance.preauthorization.manage',
+  'insurance.private.claims.prepare',
+  'insurance.private.claims.submit',
+  'insurance.private.remittance.reconcile',
   'inventory.read',
   'laboratory.read',
   'patients.create',
@@ -653,35 +681,53 @@ router.patch('/facilities/:id', async (req: Request, res: Response) => {
   const updates: Partial<typeof schema.facilities.$inferInsert> = {
     ...parsed.value,
   };
+  const unknown = unknownFacilityModules([
+    ...(parsed.value.enabledModules ?? []),
+    ...(parsed.value.hiddenModules ?? []),
+  ]);
+  if (unknown.length) {
+    res.status(400).json({
+      error: 'UNKNOWN_MODULE',
+      message: 'The module list contains unknown module IDs.',
+      modules: unknown,
+    });
+    return;
+  }
+  if (parsed.value.enabledModules)
+    updates.enabledModules = resolveFacilityModules(parsed.value.enabledModules);
+  if (parsed.value.hiddenModules)
+    updates.hiddenModules = resolveHiddenFacilityModules(parsed.value.hiddenModules);
 
   updates.updatedAt = new Date();
 
   try {
-    const [facility] = await db
-      .update(schema.facilities)
-      .set(updates)
-      .where(eq(schema.facilities.id, facilityId))
-      .returning();
+    const facility = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(schema.facilities)
+        .set(updates)
+        .where(eq(schema.facilities.id, facilityId))
+        .returning();
+      if (!updated) return null;
+      await tx.insert(schema.auditLogs).values({
+        tenantId: updated.tenantId,
+        facilityId: updated.id,
+        userId: auditActor(context),
+        action: 'UPDATE',
+        resource: 'FACILITY',
+        resourceId: String(updated.id),
+        details: JSON.stringify({
+          fields: Object.keys(updates).filter((key) => key !== 'updatedAt'),
+          enabledModules: parsed.value.enabledModules ? updated.enabledModules : undefined,
+          hiddenModules: parsed.value.hiddenModules ? updated.hiddenModules : undefined,
+        }),
+      });
+      return updated;
+    });
 
     if (!facility) {
-      res.status(404).json({
-        error: 'NOT_FOUND',
-        message: 'Facility not found.',
-      });
+      res.status(404).json({ error: 'NOT_FOUND', message: 'Facility not found.' });
       return;
     }
-
-    await queries.logAuditEvent(
-      facility.tenantId,
-      facility.id,
-      auditActor(context),
-      'UPDATE',
-      'FACILITY',
-      String(facility.id),
-      `Updated facility configuration. Fields: ${Object.keys(updates)
-        .filter((key) => key !== 'updatedAt')
-        .join(', ')}.`,
-    );
 
     res.json({ data: facility });
   } catch (error) {
@@ -819,31 +865,17 @@ router.post('/facility-admin-invitations', async (req: Request, res: Response) =
     return;
   }
 
-  const baseUrl = process.env.APP_BASE_URL?.trim();
+  const resolvedBase = resolveInvitationBaseUrl(req);
 
-  if (!baseUrl) {
+  if (!resolvedBase.ok) {
     res.status(500).json({
       error: 'CONFIGURATION_ERROR',
-      message: 'APP_BASE_URL must be configured before issuing invitations.',
+      message: resolvedBase.message,
     });
     return;
   }
 
-  let invitationUrl: URL;
-
-  try {
-    invitationUrl = new URL(baseUrl);
-
-    if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
-      throw new Error('HTTPS is required.');
-    }
-  } catch {
-    res.status(500).json({
-      error: 'CONFIGURATION_ERROR',
-      message: 'APP_BASE_URL is invalid.',
-    });
-    return;
-  }
+  const invitationUrl = resolvedBase.baseUrl;
 
   try {
     const [facility] = await db
@@ -976,8 +1008,11 @@ router.post('/facility-admin-invitations', async (req: Request, res: Response) =
       `Issued a facility administrator invitation for ${email}.`,
     );
 
-    const link = new URL('/accept-facility-admin-invitation', invitationUrl);
-    link.searchParams.set('token', rawToken);
+    const invitationLink = buildInvitationUrl(
+      invitationUrl,
+      '/accept-facility-admin-invitation',
+      rawToken,
+    );
 
     res.status(201).json({
       success: true,
@@ -988,7 +1023,7 @@ router.post('/facility-admin-invitations', async (req: Request, res: Response) =
         facilityName: facility.name,
         email: invitation.email,
         expiresAt: invitation.expiresAt,
-        invitationLink: link.toString(),
+        invitationLink,
       },
     });
   } catch (error) {
@@ -1119,22 +1154,17 @@ router.post('/facility-admin-invitations/:id/reissue', async (req: Request, res:
     return;
   }
 
-  const baseUrl = process.env.APP_BASE_URL?.trim();
-  let invitationUrl: URL;
+  const resolvedBase = resolveInvitationBaseUrl(req);
 
-  try {
-    if (!baseUrl) throw new Error('Missing APP_BASE_URL.');
-    invitationUrl = new URL(baseUrl);
-    if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
-      throw new Error('HTTPS is required.');
-    }
-  } catch {
+  if (!resolvedBase.ok) {
     res.status(500).json({
       error: 'CONFIGURATION_ERROR',
-      message: 'APP_BASE_URL must be a valid HTTPS URL (localhost is allowed for development).',
+      message: resolvedBase.message,
     });
     return;
   }
+
+  const invitationUrl = resolvedBase.baseUrl;
 
   try {
     const [existing] = await db
@@ -1198,8 +1228,11 @@ router.post('/facility-admin-invitations/:id/reissue', async (req: Request, res:
       `Reissued a facility administrator invitation for ${updated.email}.`,
     );
 
-    const link = new URL('/accept-facility-admin-invitation', invitationUrl);
-    link.searchParams.set('token', rawToken);
+    const invitationLink = buildInvitationUrl(
+      invitationUrl,
+      '/accept-facility-admin-invitation',
+      rawToken,
+    );
 
     res.json({
       success: true,
@@ -1208,7 +1241,7 @@ router.post('/facility-admin-invitations/:id/reissue', async (req: Request, res:
         invitationId: updated.id,
         email: updated.email,
         expiresAt: updated.expiresAt,
-        invitationLink: link.toString(),
+        invitationLink,
       },
     });
   } catch (error) {

@@ -10,6 +10,7 @@ import { requirePermission } from '../auth/authorization.middleware.ts';
 import * as billing from '../billing/billing.service.ts';
 import { billingServiceKeys } from '../billing/tariff-codes.ts';
 import { codesForFamily } from '../billing/tariff-matching.ts';
+import { Icd11Error } from '../clinical/icd11/icd11.service.ts';
 import * as queries from '../db/queries.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { handleInpatientError } from './shared/errors.ts';
@@ -75,7 +76,12 @@ router.post(
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 
-      console.error('Diagnosis creation error:', err);
+      if (err instanceof Icd11Error) {
+        res.status(err.status).json({ success: false, error: err.code, message: err.message });
+        return;
+      }
+
+      // Do not log the request, diagnostic text or patient-identifying values.
       res.status(500).json({
         success: false,
         error: 'DIAGNOSIS_CREATE_FAILED',

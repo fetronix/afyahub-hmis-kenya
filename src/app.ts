@@ -7,10 +7,14 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 import { createApiRoutes } from './routes/index.ts';
+import diagnosesRoutes from './routes/diagnoses.routes.ts';
+import publicBookingRoutes from './booking/website-booking.routes.ts';
+import paymentHubWebhookRoutes from './payment-hub/webhook.routes.ts';
 import facilityModuleRoutes from './config/facility-modules.routes.ts';
 import complianceRoutes from './compliance/compliance.routes.ts';
 import portalRoutes from './portal/portal.routes.ts';
 import portalAdminRoutes from './portal/portal-admin.routes.ts';
+import { createShaWebhooksRouter } from './routes/sha-eclaims.routes.ts';
 import clinicalRecordsRoutes from './clinical/clinical-records.routes.ts';
 import { checkMedicationAllergies } from './clinical/allergy.service.ts';
 import { logPatientAccess } from './clinical/access-log.service.ts';
@@ -312,6 +316,11 @@ export async function createApp() {
    */
   app.use('/api/portal/admin', portalAdminRoutes);
   app.use('/api/portal', portalRoutes);
+  app.use('/api/webhooks/sha', createShaWebhooksRouter());
+  app.use('/api/payment-hub/webhooks', paymentHubWebhookRoutes);
+  // Machine-to-machine API; authenticates its own facility-specific client
+  // key and booking management token before touching any booking.
+  app.use('/api/booking/v1', publicBookingRoutes);
 
   app.use('/api', requireAuth);
   app.use('/api', requireAuthorization);
@@ -321,6 +330,11 @@ export async function createApp() {
    * routers and the clinical domains. See ./routes/index.ts.
    */
   app.use('/api', createApiRoutes());
+
+  // These existing handlers register absolute /api/diagnoses and
+  // /api/procedures paths. Mount them at the app root, after /api auth and
+  // the facility gates above, rather than accidentally at /api/api/....
+  app.use(diagnosesRoutes);
 
   // =========================================================
   // TENANTS & FACILITIES

@@ -207,7 +207,7 @@ export class ApiError extends Error {
  *
  * when a session token exists.
  */
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const sessionToken = getSessionToken();
 
   const headers = new Headers(options?.headers);
@@ -906,6 +906,8 @@ export const api = {
       success: boolean;
       facilityId: number;
       enabledModules: string[];
+      hiddenModules?: string[];
+      clinicalProtocols?: Record<string, unknown>;
       alwaysEnabled: string[];
       canManage: boolean;
       catalogue: Array<{
@@ -917,18 +919,31 @@ export const api = {
       }>;
     }>(`${API_BASE}/facilities/${facilityId}/modules`),
 
-  updateFacilityModules: (facilityId: number, enabledModules: string[]) =>
+  updateFacilityModules: (
+    facilityId: number,
+    enabledModules: string[],
+    options?: {
+      hiddenModules?: string[];
+    },
+  ) =>
     fetchJson<{
       success: boolean;
       facilityId: number;
       enabledModules: string[];
+      hiddenModules?: string[];
+      clinicalProtocols?: Record<string, unknown>;
       added: string[];
       removed: string[];
+      hiddenAdded?: string[];
+      hiddenRemoved?: string[];
       alwaysEnabled: string[];
       changed: boolean;
     }>(`${API_BASE}/facilities/${facilityId}/modules`, {
       method: 'PATCH',
-      body: JSON.stringify({ enabledModules }),
+      body: JSON.stringify({
+        enabledModules,
+        ...(options?.hiddenModules !== undefined ? { hiddenModules: options.hiddenModules } : {}),
+      }),
     }),
 
   getDepartments: (facilityId?: number) =>
@@ -1156,6 +1171,16 @@ export const api = {
   // ============================================================
   // DIAGNOSES
   // ============================================================
+
+  searchIcd11: (query: string) =>
+    fetchJson<{
+      success: boolean;
+      items: Array<{ code: string; title: string; releaseId: string }>;
+      source: 'WHO_LIVE_API' | 'CACHE';
+      releaseId: string;
+      completeCatalogue: false;
+      warning: string | null;
+    }>(`${API_BASE}/icd11/search?${new URLSearchParams({ q: query }).toString()}`),
 
   getDiagnoses: (encounterId?: number, patientId?: number) => {
     const params = new URLSearchParams();

@@ -3,10 +3,12 @@ import { api, getSessionToken } from '../../api/client.ts';
 import type { Tenant, Facility } from '../../types/index.ts';
 import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from 'lucide-react';
 import { SubscriptionBillingPanel } from './SubscriptionBillingPanel.tsx';
+import { PlatformPaymentProviders } from './payment-hub/PlatformPaymentProviders.tsx';
 import { FacilityRbacEditor } from './FacilityRbacEditor.tsx';
 import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
+import { FACILITY_MODULES } from '../../config/facility-modules.ts';
 
-type Tab = 'tenants' | 'facilities' | 'administrators' | 'billing';
+type Tab = 'tenants' | 'facilities' | 'administrators' | 'billing' | 'payment_providers';
 type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 
 type FacilityAdminInvitation = {
@@ -67,29 +69,10 @@ const fieldClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100';
 const labelClass = 'mb-1 block text-xs font-semibold text-slate-700';
 
-const FACILITY_MODULES = [
-  { id: 'registration', label: 'Patient Registration' },
-  { id: 'reception', label: 'Reception & Appointments' },
-  { id: 'opd', label: 'Outpatient Department (OPD)' },
-  { id: 'inpatient', label: 'Inpatient & Admissions' },
-  { id: 'maternity', label: 'Maternity & MCH' },
-  { id: 'theatre', label: 'Theatre' },
-  { id: 'specialty', label: 'Specialty Clinics' },
-  { id: 'laboratory', label: 'Laboratory' },
-  { id: 'radiology', label: 'Radiology' },
-  { id: 'pharmacy', label: 'Pharmacy' },
-  { id: 'inventory', label: 'Inventory' },
-  { id: 'procurement', label: 'Procurement' },
-  { id: 'finance', label: 'Finance & Billing' },
-  { id: 'insurance', label: 'Insurance / SHA Claims' },
-  { id: 'public_health', label: 'Public Health' },
-  { id: 'analytics', label: 'Analytics & Reports' },
-  { id: 'interoperability', label: 'Interoperability' },
-  { id: 'configuration', label: 'Facility Configuration' },
-  { id: 'audit', label: 'Audit Logs' },
-] as const;
-
-const DEFAULT_FACILITY_MODULES = FACILITY_MODULES.map((module) => module.id);
+// New client-specific modules are opt-in, never silently enabled at another facility.
+const DEFAULT_FACILITY_MODULES = FACILITY_MODULES.filter(
+  (module) => !['accounting', 'dialysis', 'website_booking', 'patient_portal'].includes(module.id),
+).map((module) => module.id);
 export const PlatformAdministrationModule: React.FC = () => {
   const [tab, setTab] = useState<Tab>('tenants');
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -452,6 +435,7 @@ export const PlatformAdministrationModule: React.FC = () => {
     { id: 'facilities', label: 'Facilities', icon: Hospital },
     { id: 'administrators', label: 'Facility administrators', icon: UserPlus },
     { id: 'billing', label: 'Subscription billing', icon: CreditCard },
+    { id: 'payment_providers', label: 'Payment & Banking Providers', icon: CreditCard },
   ];
 
   return (
@@ -511,6 +495,8 @@ export const PlatformAdministrationModule: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {tab === 'payment_providers' && <PlatformPaymentProviders />}
 
       {tab === 'tenants' && (
         <div className="grid gap-5 xl:grid-cols-2">
@@ -1058,7 +1044,9 @@ export const PlatformAdministrationModule: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEnabledModuleSelection([...DEFAULT_FACILITY_MODULES])}
+                    onClick={() =>
+                      setEnabledModuleSelection(FACILITY_MODULES.map((module) => module.id))
+                    }
                     disabled={saving}
                     className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
