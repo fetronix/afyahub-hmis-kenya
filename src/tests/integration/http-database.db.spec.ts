@@ -297,8 +297,13 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
     expect(audits.some((a) => a.resource === 'TENANT' && a.action === 'CREATE')).toBe(true);
     expect(audits.some((a) => a.resource === 'FACILITY' && a.action === 'CREATE')).toBe(true);
 
-    await expect(
-      db.delete(schema.auditLogs).where(eq(schema.auditLogs.tenantId, tenantId)),
-    ).rejects.toThrow(/append-only/i);
+    let deleteBlockedReason = '';
+    try {
+      await db.delete(schema.auditLogs).where(eq(schema.auditLogs.tenantId, tenantId));
+    } catch (err) {
+      const dbErr = err as Error & { cause?: Error };
+      deleteBlockedReason = `${dbErr.message} ${dbErr.cause?.message ?? ''}`;
+    }
+    expect(deleteBlockedReason).toMatch(/append-only/i);
   });
 });
