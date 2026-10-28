@@ -42,6 +42,8 @@ export default defineConfig({
     include: [
       'src/tests/vitest/**/*.spec.ts',
       'src/tests/vitest/**/*.spec.tsx',
+      'src/tests/integration/**/*.spec.ts',
+      'src/tests/integration/**/*.db.spec.ts',
       'src/tests/*.spec.ts',
       'src/tests/*.db.spec.ts',
     ],
@@ -95,23 +97,88 @@ export default defineConfig({
          * exercise is now counted, where before an un-instrumented
          * subprocess ran it.
          *
-         * Measured 2026-10-26 with `npm test` across all 56 spec files:
-         * 19.35 statements, 19.22 lines, 19.58 functions, 16.88 branches.
-         *
-         * These numbers move up as tests are added and are never lowered to
-         * make a build pass. The figure is still low on purpose: most of the
-         * 3,700 migrated assertions read source text and execute almost
-         * nothing. That is the gap the next phase closes, and a threshold
-         * raised to a flattering number would only hide it.
-         *
-         * PER-MODULE rows carry the real meaning today. These are the
-         * pricing rules, held high because a regression here bills a
-         * patient the wrong amount.
+         * Measured 2026-10-28 with `npm test` across 66 spec files:
+         * 41.45% statements, 41.96% lines, 42.93% functions, 36.73% branches
+         * (up from 19.35 / 19.22 / 19.58 / 16.88 after adding Zod route-level
+         * validation, HTTP integration suites, and domain service specs).
          */
-        lines: 19.0,
-        statements: 19.1,
-        functions: 19.3,
-        branches: 16.6,
+        lines: 41.0,
+        statements: 40.5,
+        functions: 41.5,
+        branches: 35.5,
+
+        'src/validation/validate.ts': {
+          lines: 90,
+          statements: 90,
+          functions: 100,
+          branches: 75,
+        },
+        'src/routes/platform/tenants.routes.ts': {
+          lines: 90,
+          statements: 90,
+          functions: 100,
+          branches: 50,
+        },
+        'src/routes/platform/facilities.routes.ts': {
+          lines: 74,
+          statements: 74,
+          functions: 100,
+          branches: 50,
+        },
+        'src/routes/platform/validation.ts': {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 80,
+        },
+        'src/maternity/services/anc.service.ts': {
+          lines: 88,
+          statements: 85,
+          functions: 100,
+          branches: 80,
+        },
+        'src/maternity/services/delivery.service.ts': {
+          lines: 80,
+          statements: 78,
+          functions: 90,
+          branches: 55,
+        },
+        'src/auth/staff-roles/permissions.service.ts': {
+          lines: 75,
+          statements: 75,
+          functions: 78,
+          branches: 55,
+        },
+        'src/auth/staff-roles/status.service.ts': {
+          lines: 72,
+          statements: 72,
+          functions: 100,
+          branches: 58,
+        },
+        'src/insurance/claims.service.ts': {
+          lines: 74,
+          statements: 74,
+          functions: 82,
+          branches: 52,
+        },
+        'src/inventory/inventory.service.ts': {
+          lines: 80,
+          statements: 78,
+          functions: 85,
+          branches: 54,
+        },
+        'src/reporting/reporting.service.ts': {
+          lines: 90,
+          statements: 88,
+          functions: 88,
+          branches: 56,
+        },
+        'src/security/patient-identifiers.ts': {
+          lines: 95,
+          statements: 90,
+          functions: 100,
+          branches: 60,
+        },
 
         'src/billing/tariff-codes.ts': {
           lines: 90,

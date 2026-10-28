@@ -19,7 +19,7 @@ import {
 } from '../../scripts/generate-location-migration.ts';
 
 import { describe, expect, it } from 'vitest';
-import { appSource } from './support/schema-source.ts';
+import { appSource, platformRoutesSource } from './support/schema-source.ts';
 
 function source(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -397,7 +397,7 @@ describe('The API refuses a pair the forms could not produce', () => {
   });
 
   it('facilities', async () => {
-    const platform = source('src/routes/platform.routes.ts');
+    const platform = platformRoutesSource();
 
     expect(
       platform.includes('resolveLocation(textValue(body.county), textValue(body.subCounty))'),

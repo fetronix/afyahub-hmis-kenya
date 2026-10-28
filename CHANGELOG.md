@@ -9,6 +9,44 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Zod v4 route-level input validation (`src/validation/`)** across platform
+  administration, authentication, staff roles/invitations, patients, invoices,
+  insurance claims, tenancy, and audit-log endpoints, preserving the structured
+  `400 VALIDATION_ERROR` response envelope and running strictly after
+  authentication/RBAC middleware.
+- **Behavioral Express HTTP & domain integration suites (`src/tests/integration/`)**
+  covering authentication/session lifecycles, platform tenant/facility/RBAC/
+  subscription workflows, cross-tenant and cross-facility boundary enforcement,
+  billing/claims/FEFO inventory services, maternity/MCH and inpatient clinical
+  workflows, and PostgreSQL end-to-end HTTP provisioning (`http-database.db.spec.ts`).
+
+### Changed
+
+- **Modularized five large clinical, API, platform, and service files** into
+  cohesive `<500 LOC` domain modules with backward-compatible re-export facades:
+  - `src/components/modules/MaternityModule.tsx` (2,746 -> 405 LOC) + 8 clinical
+    sub-modules under `src/components/modules/maternity/`.
+  - `src/api/client.ts` (2,607 -> 97 LOC) + 8 domain API clients under
+    `src/api/clients/`.
+  - `src/routes/platform.routes.ts` (2,014 -> 29 LOC) + sub-routers under
+    `src/routes/platform/` (`tenants`, `facilities`, `invitations`, `rbac`,
+    `subscriptions`, `shared`, `validation`).
+  - `src/maternity/maternity.service.ts` (1,552 -> 62 LOC) + 5 clinical services
+    under `src/maternity/services/`.
+  - `src/auth/staff-roles.service.ts` (1,517 -> 45 LOC) + 4 RBAC/status modules
+    under `src/auth/staff-roles/`.
+- **Coverage ratchet raised in `vitest.config.ts`** from `19.0 / 19.1 / 19.3 / 16.6`
+  to `41.0% lines / 40.5% statements / 41.5% functions / 35.5% branches` plus 12
+  new per-module gates across validation, platform, maternity, staff-roles,
+  claims, inventory, reporting, and patient-identifier encryption.
+- Replaced brittle `readFileSync` source-substring assertions in `claims.spec.ts`,
+  `pharmacy-batches.spec.ts`, `reporting.spec.ts`, and `staff-roles.spec.ts`
+  with behavioral runtime tests, updated `verify:deploy` to invoke
+  `deployment.spec.ts`, and removed unused direct dependencies (`pino-http`,
+  `autoprefixer`, `eslint-config-prettier`).
+
 ### Fixed
 
 - **A 500 returned the exception's own text.** Twenty-nine handlers answered

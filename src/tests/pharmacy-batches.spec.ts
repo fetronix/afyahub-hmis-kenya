@@ -11,8 +11,9 @@ import {
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { appSource } from './support/schema-source.ts';
+import { api } from '../api/client.ts';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -253,10 +254,52 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
       'the service reads inventory_batches',
     ).toBe(true);
 
-    const client = readRepoFile('src/api/client.ts');
-    expect(client.includes('getInventoryBatches'), 'client exposes batch listing').toBe(true);
-    expect(client.includes('getExpirySummary'), 'client exposes the expiry summary').toBe(true);
-    expect(client.includes('receiveBatch'), 'client can receive a batch').toBe(true);
+    const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+      });
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    try {
+      await api.getInventoryBatches(5, { itemId: 12, status: 'Expiring', horizonDays: 60 });
+      await api.getExpirySummary(5, 90);
+      await api.receiveBatch(12, {
+        batchNumber: 'AMOX-2026',
+        expiryDate: '2027-06-30',
+        quantity: 200,
+        facilityId: 5,
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(calls[0]).toEqual({
+      url: '/api/inventory/batches?facilityId=5&itemId=12&status=Expiring&horizonDays=60',
+      method: 'GET',
+      body: undefined,
+    });
+    expect(calls[1]).toEqual({
+      url: '/api/inventory/expiry-summary?facilityId=5&days=90',
+      method: 'GET',
+      body: undefined,
+    });
+    expect(calls[2]).toEqual({
+      url: '/api/inventory/12/batches',
+      method: 'POST',
+      body: {
+        batchNumber: 'AMOX-2026',
+        expiryDate: '2027-06-30',
+        quantity: 200,
+        facilityId: 5,
+      },
+    });
 
     const inventoryUi = readRepoFile('src/components/modules/InventoryModule.tsx');
     expect(inventoryUi.includes('Batches & Expiry'), 'inventory screen has a batches tab').toBe(

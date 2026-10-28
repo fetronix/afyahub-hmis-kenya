@@ -29,6 +29,13 @@ import {
   requireSuperAdmin,
 } from '../../auth/authorization.middleware.ts';
 import { resolveLocation } from '../../constants/kenya-locations.ts';
+import {
+  createPatientBodySchema,
+  patientIdParamSchema,
+  scopedCollectionQuerySchema,
+  updatePatientBodySchema,
+} from '../../validation/schemas/index.ts';
+import { validateBody, validateParams, validateQuery } from '../../validation/validate.ts';
 
 const router = Router();
 
@@ -39,6 +46,7 @@ const router = Router();
 router.get(
   '/api/patients',
   requirePermission('patients.read'),
+  validateQuery(scopedCollectionQuerySchema, { code: 'INVALID_SCOPE_ID' }),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -87,6 +95,7 @@ router.get(
 router.get(
   '/api/patients/:id',
   requirePermission('patients.read'),
+  validateParams(patientIdParamSchema, { code: 'INVALID_PATIENT_ID' }),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -151,6 +160,7 @@ router.get(
 router.post(
   '/api/patients',
   requirePermission('patients.create'),
+  validateBody(createPatientBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -213,6 +223,8 @@ router.post(
 router.put(
   '/api/patients/:id',
   requirePermission('patients.update'),
+  validateParams(patientIdParamSchema, { code: 'INVALID_PATIENT_ID' }),
+  validateBody(updatePatientBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {

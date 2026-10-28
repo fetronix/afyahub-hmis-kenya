@@ -175,8 +175,10 @@ jobs:
       - name: Apply migrations to an empty database
         run: npm run db:migrate -- --yes
 
-      - name: Migration status must be clean
-        run: npm run db:status
+      - name: Database preflight and migration status must be clean
+        run: |
+          npm run db:preflight
+          npm run db:status
 
       - name: Database and migration specs
         # No `--project node` filter: the config has a single environment
@@ -214,6 +216,11 @@ jobs:
         # listed by name because `src/tests/*.db.spec.ts` sits outside
         # src/tests/vitest, which is all the step above runs.
         run: npx vitest run src/tests/county-migration.db.spec.ts --reporter=verbose
+
+      - name: End-to-end HTTP + PostgreSQL integration specs
+        run: |
+          set -o pipefail
+          npx vitest run src/tests/integration/http-database.db.spec.ts --reporter=verbose 2>&1 | tee -a db-specs.log
 
       - name: Report the failing assertions
         if: failure()

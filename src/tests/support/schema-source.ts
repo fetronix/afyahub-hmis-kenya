@@ -187,3 +187,49 @@ export function appSource(options: { stripComments?: boolean } = {}): string {
 
   return text;
 }
+
+function concatBarrelAndDir(
+  entryPath: string,
+  dirPath: string,
+  extensions: string[] = ['.ts'],
+): string {
+  let text = readFileSync(resolve(ROOT, entryPath), 'utf8');
+
+  try {
+    const files = readdirSync(resolve(ROOT, dirPath))
+      .filter((file) => extensions.some((ext) => file.endsWith(ext)))
+      .sort();
+
+    for (const file of files) {
+      text += `\n${readFileSync(resolve(ROOT, dirPath, file), 'utf8')}`;
+    }
+  } catch {
+    return text;
+  }
+
+  return text;
+}
+
+export function maternityModuleSource(): string {
+  return concatBarrelAndDir(
+    'src/components/modules/MaternityModule.tsx',
+    'src/components/modules/maternity',
+    ['.ts', '.tsx'],
+  );
+}
+
+export function apiClientSource(): string {
+  return concatBarrelAndDir('src/api/client.ts', 'src/api/clients');
+}
+
+export function platformRoutesSource(): string {
+  return concatBarrelAndDir('src/routes/platform.routes.ts', 'src/routes/platform');
+}
+
+export function maternityServiceSource(): string {
+  return concatBarrelAndDir('src/maternity/maternity.service.ts', 'src/maternity/services');
+}
+
+export function staffRolesServiceSource(): string {
+  return concatBarrelAndDir('src/auth/staff-roles.service.ts', 'src/auth/staff-roles');
+}

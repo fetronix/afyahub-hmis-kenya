@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { STAFF_ROLE_CATALOGUE } from '../auth/staff-role-catalogue.ts';
+import { platformRoutesSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -76,14 +75,12 @@ describe('The catalogue is what the provisioning screen offers, so a role with',
      * tenant-creation transaction. It has to stay additive: a screen that
      * can delete a role can also delete the role someone is holding.
      */
-    const routes = readFileSync(resolve(process.cwd(), 'src/routes/platform.routes.ts'), 'utf8');
+    const routes = platformRoutesSource();
+    const provisionMatch = /router\.post\(\s*'\/rbac\/catalogue\/apply'/.exec(routes);
 
-    expect(
-      routes.includes("router.post('/rbac/catalogue/apply'"),
-      'The catalogue provisioning route is registered',
-    ).toBe(true);
+    expect(Boolean(provisionMatch), 'The catalogue provisioning route is registered').toBe(true);
 
-    const provisionStart = routes.indexOf("router.post('/rbac/catalogue/apply'");
+    const provisionStart = provisionMatch?.index ?? -1;
     const provisionEnd = routes.indexOf('PUT /api/platform/rbac/roles/:id/permissions');
     const provisionBody = routes.slice(provisionStart, provisionEnd);
 

@@ -40,12 +40,19 @@ import {
 } from '../../auth/authorization.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../../auth/scope.service.ts';
 import * as schema from '../../db/schema.ts';
+import {
+  createInvoiceBodySchema,
+  paymentLedgerQuerySchema,
+  recordPaymentBodySchema,
+} from '../../validation/schemas/index.ts';
+import { validateBody, validateQuery } from '../../validation/validate.ts';
 
 const router = Router();
 
 router.post(
   '/api/invoices',
   requirePermission('billing.create'),
+  validateBody(createInvoiceBodySchema, { code: 'INVALID_INVOICE' }),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -338,6 +345,7 @@ router.post(
 router.post(
   '/api/billing/payments',
   requirePermission('billing.payments.record'),
+  validateBody(recordPaymentBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext || !req.user) {
@@ -377,6 +385,7 @@ router.post(
 router.get(
   '/api/billing/payments',
   requirePermission('billing.payments.record'),
+  validateQuery(paymentLedgerQuerySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
