@@ -9,6 +9,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
+import { findFacilityPatient } from '../hub/patient-scope.ts';
 import * as schema from '../../db/schema.ts';
 import { formatCents, parseMoneyToCents } from '../../billing/settlement.ts';
 
@@ -24,6 +25,23 @@ export class InsuranceDomainError extends Error {
     this.httpStatus = httpStatus;
     this.details = details;
   }
+}
+
+/** Adapter results must agree on processing outcome; HTTP success alone is never approval. */
+export function isConsistentShaDispatch(result: {
+  accepted: boolean;
+  outcome: string;
+  httpStatus: number | null;
+  errors: string[];
+}): boolean {
+  if (result.httpStatus === null || result.httpStatus < 200 || result.httpStatus >= 300)
+    return false;
+  if (result.outcome === 'REJECTED') return result.accepted === false;
+  return (
+    result.accepted === true &&
+    result.errors.length === 0 &&
+    ['ACKNOWLEDGED', 'APPROVED', 'PARTIALLY_APPROVED'].includes(result.outcome)
+  );
 }
 
 export interface InsuranceActorScope {
@@ -219,20 +237,14 @@ export async function loadScopedFacility(
 /**
  * Enforce tenant boundary on an existing JaliCare patient (no duplicate registration).
  */
-export async function loadTenantPatient(tenantId: number, patientId: number) {
-  const [patient] = await db
-    .select()
-    .from(schema.patients)
-    .where(and(eq(schema.patients.id, patientId), eq(schema.patients.tenantId, tenantId)))
-    .limit(1);
-
-  if (!patient) {
+export async function loadTenantPatient(tenantId: number, patientId: number, facilityId: number) {
+  const patient = await findFacilityPatient(tenantId, facilityId, patientId);
+  if (!patient)
     throw new InsuranceDomainError(
       'PATIENT_NOT_FOUND',
-      'Patient does not exist in this tenant.',
+      'Patient is not associated with this facility.',
       404,
     );
-  }
   return patient;
 }
 

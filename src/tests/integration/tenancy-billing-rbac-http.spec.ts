@@ -91,6 +91,16 @@ vi.mock('../../billing/payments.service.ts', async (importOriginal) => {
   return { ...actual, ...paymentsMocks };
 });
 
+// This legacy route/permission suite uses a mocked database. Real payer policy
+// and isolation are exercised by the DB-backed payer-hub HTTP suite.
+vi.mock('../../insurance/hub/guards.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../insurance/hub/guards.ts')>();
+  return {
+    ...actual,
+    legacyClaimsGuard: (_req: unknown, _res: unknown, next: () => void) => next(),
+  };
+});
+
 vi.mock('../../insurance/claims.service.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../insurance/claims.service.ts')>();
   return { ...actual, ...claimsMocks };
@@ -425,7 +435,7 @@ describe('HTTP Integration: Tenancy Boundaries, Patients, Billing, Claims & Staf
     claimsMocks.draftClaimScoped.mockResolvedValueOnce({ id: 301, status: 'Draft' });
     const drafted = await httpJson(baseUrl, 'POST', '/api/claims', {
       token: TOKENS.billingClerkA,
-      body: { invoiceId: 900, payerName: 'SHA' },
+      body: { invoiceId: 900, payerName: 'SHA', payerCode: 'SHA' },
     });
     expect(drafted.status).toBe(201);
 

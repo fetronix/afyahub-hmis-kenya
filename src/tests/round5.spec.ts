@@ -75,12 +75,15 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
       'The mobile channel is labelled as the online rail',
     ).toBe(JSON.stringify('Online mobile money'));
 
-    /* The claims engine posts SHA through the payment table, not beside it. */
+    /* Claim settlement links an existing payer receipt; it must not create one. */
     const claims = source('src/insurance/claims.service.ts');
     expect(
-      claims.includes("paymentMethod: 'SHA'"),
-      'A settled claim writes a payment row with method SHA',
+      claims.includes('matchRecordedPayerPayment'),
+      'Settlement requires an existing receipt',
     ).toBe(true);
+    expect(claims.includes('recordPayment('), 'Claim approval does not create a payment').toBe(
+      false,
+    );
 
     const billing = source('src/billing/billing.service.ts');
     const channelStart = billing.indexOf('getRevenueByPaymentChannel');

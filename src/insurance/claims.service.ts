@@ -4,8 +4,8 @@
  *
  * A claim is a request to a payer for a specific set of charges. This
  * module drafts that request from an invoice, tracks it through
- * submission and adjudication, and — when the payer approves — posts the
- * approved amount against the invoice as a real payment.
+ * submission and adjudication, and links a separately recorded receipt when
+ * reconciling a claim. It never creates a receipt from an approval.
  *
  * WHAT THIS DOES NOT DO
  * ---------------------
@@ -25,9 +25,8 @@
  *    a claim must still say what it asked for.
  * 4. "Settled" means money moved: a billing_payments row exists and the
  *    invoice balance is reduced. A status change alone settles nothing.
- * 5. Approved money is applied to the outstanding balance. If a payer
- *    approves more than is still owed, only the owed amount is posted
- *    and the remainder is reported rather than invented as credit.
+ * 5. Approval and advice do not prove funds; an existing matching receipt
+ *    must be recorded in billing before a claim can be settled.
  */
 
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -39,7 +38,8 @@ import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import { getFacilityByIdScoped } from '../db/queries.ts';
 
-import { classifySettlement, formatCents, parseMoneyToCents } from '../billing/settlement.ts';
+import { formatCents, parseMoneyToCents } from '../billing/settlement.ts';
+import { matchRecordedPayerPayment, RecordedPaymentError } from './hub/recorded-payment.ts';
 
 export type ClaimErrorCode =
   | 'INVALID_INPUT'
@@ -84,6 +84,7 @@ export interface DraftClaimInput {
   /** Billing item ids. Omit to claim the whole outstanding balance. */
   lineItemIds?: Array<number | string> | null;
   payerName?: string | null;
+  payerCode?: string | null;
   policyNumber?: string | null;
   preAuthCode?: string | null;
   notes?: string | null;
@@ -389,6 +390,7 @@ export async function draftClaimScoped(
         invoiceId: invoice.id,
         claimNumber,
         payerName,
+        payerCode: cleanText(input?.payerCode, 24),
         policyNumber: cleanText(input?.policyNumber, 80) ?? invoice.memberNumber ?? null,
         preAuthCode: cleanText(input?.preAuthCode, 80),
         claimAmount: formatCents(claimCents),
@@ -458,6 +460,7 @@ export async function submitClaimScoped(
   context: AuthorizationContext,
   claimIdInput: number | string,
   requestedFacilityId?: number | string | null,
+  manualReference?: string | null,
 ) {
   const claimId = toPositiveInteger(claimIdInput);
 
@@ -479,7 +482,12 @@ export async function submitClaimScoped(
 
     const [updated] = await tx
       .update(schema.insuranceClaims)
-      .set({ status: 'Submitted', submittedAt: new Date(), updatedAt: new Date() })
+      .set({
+        status: 'Submitted',
+        manualSubmissionReference: cleanText(manualReference, 120),
+        submittedAt: new Date(),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.insuranceClaims.id, claim.id))
       .returning();
 
@@ -558,16 +566,16 @@ export async function adjudicateClaimScoped(
 }
 
 /**
- * Post the approved amount against the invoice and close the claim.
- *
- * This is the only place a claim becomes "Settled", and it only does so
- * because a payment row now exists.
+ * Link a separately recorded billing receipt to an approved claim.
+ * Approval alone never changes the invoice or creates a payment.
  */
 export async function settleClaimScoped(
   context: AuthorizationContext,
   claimIdInput: number | string,
-  cashierName: string,
+  _cashierName: string,
   requestedFacilityId?: number | string | null,
+  billingPaymentId?: number | string | null,
+  remittanceReference?: string | null,
 ) {
   const claimId = toPositiveInteger(claimIdInput);
 
@@ -597,80 +605,45 @@ export async function settleClaimScoped(
       );
     }
 
-    const [invoice] = await tx
-      .select()
-      .from(schema.billingInvoices)
-      .where(eq(schema.billingInvoices.id, claim.invoiceId))
-      .for('update');
-
-    if (!invoice) {
-      throw new ClaimDomainError('INVOICE_NOT_FOUND', 'Invoice not found.', 404);
-    }
-
-    if (invoice.status === 'Void' || invoice.voidedAt) {
+    const reference = remittanceReference?.trim();
+    if (!reference || reference.length < 3 || reference.length > 120)
       throw new ClaimDomainError(
-        'INVOICE_VOIDED',
-        'The invoice for this claim has been voided.',
-        409,
-        { invoiceNumber: invoice.invoiceNumber },
+        'INVALID_INPUT',
+        'Enter the actual remittance reference to match the existing receipt.',
+        400,
       );
+    let payerCode = claim.payerCode;
+    if (!payerCode) {
+      const matches = await tx
+        .select({ code: schema.insurancePayerDefinitions.code })
+        .from(schema.insurancePayerDefinitions)
+        .where(
+          sql`upper(${schema.insurancePayerDefinitions.code}) = upper(${claim.payerName ?? ''}) OR upper(${schema.insurancePayerDefinitions.displayName}) = upper(${claim.payerName ?? ''})`,
+        )
+        .limit(2);
+      if (matches.length !== 1)
+        throw new ClaimDomainError(
+          'INVALID_INPUT',
+          'Historical claim has no unambiguous registered payer.',
+          409,
+        );
+      payerCode = matches[0].code;
     }
-
-    const totalCents = parseMoneyToCents(invoice.totalAmount) ?? 0;
-    const paidCents = parseMoneyToCents(invoice.paidAmount) ?? 0;
-    const balanceCents = parseMoneyToCents(invoice.balanceAmount) ?? 0;
-
-    if (balanceCents <= 0) {
-      throw new ClaimDomainError(
-        'NOTHING_TO_CLAIM',
-        'This invoice has already been paid. Settling the claim would create a credit.',
-        409,
-        { invoiceNumber: invoice.invoiceNumber },
-      );
+    let payment;
+    try {
+      payment = await matchRecordedPayerPayment(tx, {
+        paymentId: billingPaymentId,
+        invoiceId: claim.invoiceId,
+        payerCode,
+        remittanceReference: reference,
+        bankReference: null,
+        amountCents: approvedCents,
+      });
+    } catch (error) {
+      if (error instanceof RecordedPaymentError)
+        throw new ClaimDomainError('INVALID_INPUT', error.message, 409);
+      throw error;
     }
-
-    /*
-     * A payer can approve more than is still owed if the patient paid in
-     * the meantime. Post only what is owed and report the rest; turning
-     * the difference into patient credit would be inventing money.
-     */
-    const appliedCents = Math.min(approvedCents, balanceCents);
-    const unappliedCents = approvedCents - appliedCents;
-
-    const settlement = classifySettlement({
-      invoiceTotalCents: totalCents,
-      paidBeforeCents: paidCents,
-      amountCents: appliedCents,
-    });
-
-    const [payment] = await tx
-      .insert(schema.billingPayments)
-      .values({
-        invoiceId: invoice.id,
-        receiptNumber: `SHA-${claim.claimNumber}`.slice(0, 100),
-        paymentMethod: 'SHA',
-        amount: formatCents(appliedCents),
-        referenceCode: claim.claimNumber,
-        transactionCode: claim.claimNumber,
-        settlementStatus: settlement.outcome,
-        cashierName: `${cashierName} (claim settlement)`.slice(0, 150),
-      })
-      .returning();
-
-    if (!payment) {
-      throw new Error('Payment insert returned no record');
-    }
-
-    await tx
-      .update(schema.billingInvoices)
-      .set({
-        paidAmount: formatCents(settlement.paidAfterCents),
-        balanceAmount: formatCents(settlement.balanceAfterCents),
-        creditBalance: formatCents(settlement.creditCents),
-        status: settlement.invoiceStatus,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.billingInvoices.id, invoice.id));
 
     const [updated] = await tx
       .update(schema.insuranceClaims)
@@ -686,9 +659,8 @@ export async function settleClaimScoped(
     return {
       claim: updated,
       payment,
-      settlement,
-      appliedCents,
-      unappliedCents,
+      appliedCents: approvedCents,
+      unappliedCents: 0,
       facilityId: facility.id,
     };
   });

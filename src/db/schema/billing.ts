@@ -432,6 +432,10 @@ export const insuranceClaims = pgTable('insurance_claims', {
 
   payerName: text('payer_name').default('Social Health Authority (SHA)'),
 
+  payerCode: text('payer_code'),
+
+  manualSubmissionReference: text('manual_submission_reference'),
+
   policyNumber: text('policy_number'),
 
   preAuthCode: text('pre_auth_code'),

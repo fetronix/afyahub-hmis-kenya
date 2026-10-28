@@ -61,8 +61,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
 
   // Remittance create form
   const [payerRemittanceRef, setPayerRemittanceRef] = useState('');
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [paymentChannel, setPaymentChannel] = useState('EFT');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [paymentChannel, setPaymentChannel] = useState('');
   const [totalRemittedAmount, setTotalRemittedAmount] = useState('');
   const [remNotes, setRemNotes] = useState('');
 
@@ -71,10 +71,12 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
   const [selectedEclaimId, setSelectedEclaimId] = useState<number | ''>('');
   const [allocAmount, setAllocAmount] = useState('');
   const [varianceReason, setVarianceReason] = useState('');
+  const [billingPaymentId, setBillingPaymentId] = useState('');
 
   // Admin: Facility payer config
   const [facilityRegCode, setFacilityRegCode] = useState('');
-  const [accreditationLevel, setAccreditationLevel] = useState('Level 4');
+  const [accreditationLevel, setAccreditationLevel] = useState('');
+  const [contractedSchemesText, setContractedSchemesText] = useState('');
 
   // Admin: Service mapping form
   const [mapTariffId, setMapTariffId] = useState<number | ''>('');
@@ -83,25 +85,25 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
   const [serviceArea, setServiceArea] = useState('OPD');
   const [payerServiceCode, setPayerServiceCode] = useState('');
   const [payerServiceName, setPayerServiceName] = useState('');
-  const [fund, setFund] = useState('SHIF');
+  const [fund, setFund] = useState('');
+  const [accessPoint, setAccessPoint] = useState('');
+  const [paymentMechanism, setPaymentMechanism] = useState('');
   const [reimbursementTariff, setReimbursementTariff] = useState('');
   const [isPhcZeroTariff, setIsPhcZeroTariff] = useState(false);
   const [mapRequiresPreauth, setMapRequiresPreauth] = useState(false);
 
   // Admin: Benefit rule form
   const [ruleCode, setRuleCode] = useState('');
-  const [rulePackage, setRulePackage] = useState('SHIF');
+  const [rulePackage, setRulePackage] = useState('');
   const [ruleCategory, setRuleCategory] = useState('OPD');
   const [rulePayerCode, setRulePayerCode] = useState('');
-  const [ruleMinLevel, setRuleMinLevel] = useState('Level 2');
+  const [ruleMinLevel, setRuleMinLevel] = useState('');
   const [ruleRequiresPreauth, setRuleRequiresPreauth] = useState(false);
   const [ruleRequiresReferral, setRuleRequiresReferral] = useState(false);
-  const [ruleCopayType, setRuleCopayType] = useState('NONE');
-  const [ruleCopayValue, setRuleCopayValue] = useState('0.00');
+  const [ruleCopayType, setRuleCopayType] = useState('');
+  const [ruleCopayValue, setRuleCopayValue] = useState('');
   const [ruleSourceRef, setRuleSourceRef] = useState('');
-  const [ruleEffectiveFrom, setRuleEffectiveFrom] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  );
+  const [ruleEffectiveFrom, setRuleEffectiveFrom] = useState('');
 
   const loadSectionData = useCallback(async () => {
     setLoading(true);
@@ -113,7 +115,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
         ]);
         setConnData(res);
         setFacilityRegCode(res.facilityConfig.facilityRegistryCode ?? '');
-        setAccreditationLevel(res.facilityConfig.facilityLevel ?? 'Level 4');
+        setAccreditationLevel(res.facilityConfig.facilityLevel ?? '');
+        setContractedSchemesText(res.facilityConfig.contractedSchemes.join(', '));
         if (repRes?.report?.metrics) {
           setOpReportMetrics({
             eligibilityChecksTotal: repRes.report.metrics.eligibilityChecksTotal,
@@ -147,7 +150,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
         ]);
         setConnData(connRes);
         setFacilityRegCode(connRes.facilityConfig.facilityRegistryCode ?? '');
-        setAccreditationLevel(connRes.facilityConfig.facilityLevel ?? 'Level 4');
+        setAccreditationLevel(connRes.facilityConfig.facilityLevel ?? '');
+        setContractedSchemesText(connRes.facilityConfig.contractedSchemes.join(', '));
         setMappings(mapRes.mappings);
         setFacilityTariffs(mapRes.facilityTariffs);
         setRules(ruleRes.rules);
@@ -230,11 +234,12 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
             eclaimId: Number(selectedEclaimId),
             remittedAmount: allocAmount,
             varianceReason: varianceReason.trim() || undefined,
-            postToInvoice: true,
+            postToInvoice: false,
+            ...(billingPaymentId ? { billingPaymentId: Number(billingPaymentId) } : {}),
           },
         ],
       });
-      showToast('Reconciled claim and posted additive SHA payment receipt to invoice.', 'success');
+      showToast('Remittance advice allocated. No payment or invoice was changed.', 'success');
       setAllocAmount('');
       setVarianceReason('');
       await loadSectionData();
@@ -249,7 +254,10 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
       await shaEclaimsApi.updateConfiguration(facilityId, {
         facilityRegistryCode: facilityRegCode,
         accreditationLevel,
-        contractedSchemes: ['SHIF', 'PHC', 'ECCIF'],
+        contractedSchemes: contractedSchemesText
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean),
       });
       showToast('Updated facility SHA payer configuration.', 'success');
       await loadSectionData();
@@ -269,6 +277,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
         payerServiceCode,
         payerServiceName,
         fund,
+        accessPoint,
+        paymentMechanism,
         reimbursementTariff: reimbursementTariff.trim() || null,
         isPhcZeroTariff,
         requiresPreauth: mapRequiresPreauth,
@@ -293,7 +303,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
         benefitPackage: rulePackage,
         serviceCategory: ruleCategory,
         payerServiceCode: rulePayerCode.trim() || null,
-        minFacilityLevel: ruleMinLevel,
+        minFacilityLevel: ruleMinLevel || null,
         requiresPreauth: ruleRequiresPreauth,
         requiresReferral: ruleRequiresReferral,
         copayType: ruleCopayType,
@@ -499,7 +509,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                 </div>
                 <button
                   type="button"
-                  disabled={syncingRemittances}
+                  disabled
+                  title="External SHA transport is unavailable"
                   onClick={() => void handleSyncHieRemittances()}
                   className="btn-quiet text-xs"
                 >
@@ -536,7 +547,9 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                     value={paymentChannel}
                     onChange={(e) => setPaymentChannel(e.target.value)}
                     className="field-input"
+                    required
                   >
+                    <option value="">— Select actual channel —</option>
                     <option value="EFT">EFT Bank Transfer</option>
                     <option value="RTGS">RTGS</option>
                     <option value="CHEQUE">Cheque</option>
@@ -577,8 +590,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   Allocate Remittance to SHA eClaim
                 </h3>
                 <p className="text-xs text-slate-600">
-                  Posts an additive <strong>SHA</strong> payment receipt against the linked JaliCare
-                  invoice without altering original invoice charges.
+                  Allocates advice only. Optionally match an existing billing receipt; this does not
+                  create a payment or change an invoice.
                 </p>
               </div>
               <div>
@@ -588,11 +601,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   onChange={(e) => {
                     const nextId = e.target.value ? Number(e.target.value) : '';
                     setSelectedRemId(nextId);
-                    if (nextId !== '') {
-                      void handleLoadRemittanceClaims(Number(nextId));
-                    } else {
-                      setPaidClaimsBreakdown([]);
-                    }
+                    setPaidClaimsBreakdown([]);
                   }}
                   className="field-input"
                   required
@@ -660,8 +669,30 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   />
                 </div>
               </div>
+              <label className="field-label">
+                Existing billing receipt ID (required)
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  value={billingPaymentId}
+                  onChange={(e) => setBillingPaymentId(e.target.value)}
+                  className="field-input"
+                />
+              </label>
               <button type="submit" className="btn-accent w-full justify-center">
-                Reconcile & Post SHA Invoice Receipt
+                Allocate Advice
+              </button>
+              <button
+                type="button"
+                disabled
+                title="External SHA transport is unavailable"
+                onClick={() =>
+                  selectedRemId && void handleLoadRemittanceClaims(Number(selectedRemId))
+                }
+                className="btn-quiet text-xs"
+              >
+                Remote claim breakdown unavailable
               </button>
               {paidClaimsBreakdown.length > 0 && (
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
@@ -828,6 +859,17 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
               <option value="Level 6">Level 6 — National Referral Hospital</option>
             </select>
           </div>
+          <div className="sm:col-span-2">
+            <label className="field-label">
+              Contracted schemes (comma-separated; enter only those confirmed)
+            </label>
+            <input
+              value={contractedSchemesText}
+              onChange={(e) => setContractedSchemesText(e.target.value)}
+              className="field-input"
+              disabled={!canManageConfig}
+            />
+          </div>
           {canManageConfig && (
             <button type="submit" className="btn-primary justify-center">
               Save Facility SHA Config
@@ -924,12 +966,40 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   value={fund}
                   onChange={(e) => setFund(e.target.value)}
                   className="field-input"
+                  required
                 >
+                  <option value="">— Select the actual fund —</option>
                   <option value="SHIF">SHIF</option>
                   <option value="PHC">PHC</option>
                   <option value="ECCIF">ECCIF</option>
                 </select>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="field-label">
+                Contracted access point
+                <select
+                  required
+                  value={accessPoint}
+                  onChange={(e) => setAccessPoint(e.target.value)}
+                  className="field-input"
+                >
+                  <option value="">— Select —</option>
+                  <option value="OP">Outpatient</option>
+                  <option value="IP">Inpatient</option>
+                  <option value="BOTH">Both</option>
+                </select>
+              </label>
+              <label className="field-label">
+                Contracted payment mechanism
+                <input
+                  required
+                  value={paymentMechanism}
+                  onChange={(e) => setPaymentMechanism(e.target.value)}
+                  className="field-input"
+                  placeholder="Enter as documented"
+                />
+              </label>
             </div>
             <div>
               <label className="field-label">Official SHA Intervention Name</label>
@@ -1059,7 +1129,9 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   value={rulePackage}
                   onChange={(e) => setRulePackage(e.target.value)}
                   className="field-input"
+                  required
                 >
+                  <option value="">— Select the actual fund —</option>
                   <option value="SHIF">SHIF</option>
                   <option value="PHC">PHC</option>
                   <option value="ECCIF">ECCIF</option>
@@ -1096,6 +1168,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   onChange={(e) => setRuleMinLevel(e.target.value)}
                   className="field-input"
                 >
+                  <option value="">— Not specified —</option>
                   <option value="Level 2">Level 2</option>
                   <option value="Level 3">Level 3</option>
                   <option value="Level 4">Level 4</option>
@@ -1108,7 +1181,9 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   value={ruleCopayType}
                   onChange={(e) => setRuleCopayType(e.target.value)}
                   className="field-input"
+                  required
                 >
+                  <option value="">— Select actual copay rule —</option>
                   <option value="NONE">NONE</option>
                   <option value="FIXED">FIXED</option>
                   <option value="PERCENTAGE">PERCENTAGE</option>
@@ -1122,6 +1197,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   value={ruleCopayValue}
                   onChange={(e) => setRuleCopayValue(e.target.value)}
                   className="field-input"
+                  required
                 />
               </div>
             </div>

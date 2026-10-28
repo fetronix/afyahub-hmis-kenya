@@ -123,31 +123,20 @@ describe('Insurance claims workflow', () => {
     const settleBody = service.slice(settleIndex);
 
     expect(
-      settleBody.includes('insert(schema.billingPayments)'),
-      'settling inserts a payment',
+      settleBody.includes('matchRecordedPayerPayment'),
+      'settlement matches an existing receipt',
     ).toBe(true);
+    expect(
+      settleBody.includes('insert(schema.billingPayments)'),
+      'settlement never creates receipts',
+    ).toBe(false);
     expect(
       settleBody.includes('update(schema.billingInvoices)'),
-      'settling updates the invoice balance',
-    ).toBe(true);
-    expect(
-      settleBody.includes("status: 'Settled'"),
-      'only the settle path marks a claim Settled',
-    ).toBe(true);
-
-    /* Nothing else may set Settled. */
+      'settlement never rewrites invoices',
+    ).toBe(false);
+    expect(settleBody.includes("status: 'Settled'"), 'matching marks the claim settled').toBe(true);
     const settledWrites = service.match(/status:\s*'Settled'/g) ?? [];
-    expect(settledWrites.length, 'exactly one place writes Settled').toBe(1);
-
-    /*
-     * Approved money beyond the balance is not posted; it is reported.
-     * Inventing credit for a payer would be creating money.
-     */
-    expect(
-      settleBody.includes('Math.min(approvedCents, balanceCents)'),
-      'settlement is capped at the outstanding balance',
-    ).toBe(true);
-    expect(settleBody.includes('unappliedCents'), 'the unapplied remainder is reported').toBe(true);
+    expect(settledWrites.length).toBe(1);
   });
 
   it('3. ROUTES', async () => {

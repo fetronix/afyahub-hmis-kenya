@@ -78,7 +78,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
   const [submitting, setSubmitting] = useState(false);
 
   const defaultPayer =
-    selectedPayerFilter !== 'ALL' ? selectedPayerFilter : (payers[0]?.payerCode ?? 'BRITAM');
+    selectedPayerFilter !== 'ALL' ? selectedPayerFilter : (payers[0]?.payerCode ?? '');
 
   const [memberForm, setMemberForm] = useState({
     patientId: '',
@@ -116,10 +116,10 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
     policyNumber: '',
     encounterId: '',
     intendedServiceArea: 'OPD_CONSULTATION',
-    verificationMode: 'ADAPTER' as 'ADAPTER' | 'MANUAL',
-    manualOutcome: 'ELIGIBLE',
+    verificationMode: 'MANUAL' as 'ADAPTER' | 'MANUAL',
+    manualOutcome: '',
     manualReference: '',
-    evidenceSource: 'INSURER_PORTAL',
+    evidenceSource: 'PAYER_PORTAL_MANUAL',
     evidenceDocumentRef: '',
     notes: '',
   });
@@ -456,7 +456,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                 >
                   <option value="INSURANCE_CARD">Physical / Digital Insurance Card</option>
                   <option value="EMPLOYER_LETTER">Employer / HR Undertaking Letter</option>
-                  <option value="INSURER_PORTAL">Insurer Provider Portal</option>
+                  <option value="PAYER_PORTAL_MANUAL">Insurer Provider Portal</option>
                 </select>
               </div>
             </div>
@@ -711,9 +711,10 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  3. Linked Policy (or enter Member No below)
+                  3. Linked Policy (required)
                 </label>
                 <select
+                  required
                   value={eligForm.memberPolicyId}
                   onChange={(e) => {
                     const selected = patientPoliciesForElig.find(
@@ -728,7 +729,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                   }}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 >
-                  <option value="">Select linked policy (optional)...</option>
+                  <option value="">Select the patient’s linked policy...</option>
                   {patientPoliciesForElig.map((pol) => (
                     <option key={pol.id} value={pol.id}>
                       {pol.memberNumber} — {pol.planName ?? pol.schemeName ?? pol.payerCode}
@@ -736,21 +737,6 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                   ))}
                 </select>
               </div>
-
-              {!eligForm.memberPolicyId && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Member Number
-                  </label>
-                  <input
-                    required
-                    value={eligForm.memberNumber}
-                    onChange={(e) => setEligForm({ ...eligForm, memberNumber: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="Insurer card member no."
-                  />
-                </div>
-              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -803,7 +789,9 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                   }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 >
-                  <option value="ADAPTER">Trigger Configured Payer Adapter</option>
+                  <option value="ADAPTER" disabled>
+                    Payer API unavailable (not verified)
+                  </option>
                   <option value="MANUAL">Record Manual Insurer Verification</option>
                 </select>
               </div>
@@ -820,10 +808,11 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                     onChange={(e) => setEligForm({ ...eligForm, manualOutcome: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
                   >
-                    <option value="ELIGIBLE">Eligible</option>
-                    <option value="INELIGIBLE">Ineligible</option>
-                    <option value="PENDING">Pending Insurer Confirmation</option>
-                    <option value="MANUAL_REVIEW_REQUIRED">Manual Review Required</option>
+                    <option value="">Select the documented outcome</option>
+                    <option value="Eligible">Eligible</option>
+                    <option value="Ineligible">Ineligible</option>
+                    <option value="Pending">Pending Insurer Confirmation</option>
+                    <option value="Manual review required">Manual Review Required</option>
                   </select>
                 </div>
                 <div>
@@ -847,9 +836,11 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                     onChange={(e) => setEligForm({ ...eligForm, evidenceSource: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
                   >
-                    <option value="INSURER_PORTAL">Insurer Web Portal</option>
-                    <option value="CALL_CENTRE_DESK">Insurer Care Desk / Call Reference</option>
-                    <option value="UNDERTAKING_EMAIL">Official Undertaking Email / Letter</option>
+                    <option value="PAYER_PORTAL_MANUAL">Insurer Web Portal</option>
+                    <option value="CALL_CENTRE_CONFIRMATION">
+                      Insurer Care Desk / Call Reference
+                    </option>
+                    <option value="COVER_NOTE">Official Undertaking Email / Letter</option>
                   </select>
                 </div>
               </div>

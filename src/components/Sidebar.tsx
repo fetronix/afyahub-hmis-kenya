@@ -299,6 +299,7 @@ export const Sidebar: React.FC = () => {
       configuration: [
         'system.settings.manage',
         'payment_hub.catalogue.read',
+        'payer_hub.catalogue.read',
         'users.roles.manage',
         'roles.permissions.manage',
         'facilities.update',

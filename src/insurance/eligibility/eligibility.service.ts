@@ -14,6 +14,7 @@
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db/index.ts';
+import { findFacilityPatient } from '../hub/patient-scope.ts';
 import * as schema from '../../db/schema.ts';
 import { maskIdentifier } from '../../integrations/dha/dha.eligibility.ts';
 import { openPatientIdentifiers } from '../../security/patient-identifiers.ts';
@@ -54,11 +55,7 @@ export async function checkPrivateInsuranceEligibility(params: {
     throw new PrivateInsuranceError('INVALID_PATIENT_ID', 'Valid patientId is required.', 400);
   }
 
-  const [rawPatient] = await db
-    .select()
-    .from(schema.patients)
-    .where(and(eq(schema.patients.id, patientId), eq(schema.patients.tenantId, params.tenantId)))
-    .limit(1);
+  const rawPatient = await findFacilityPatient(params.tenantId, params.facilityId, patientId);
 
   if (!rawPatient) {
     throw new PrivateInsuranceError('PATIENT_NOT_FOUND', 'Patient not found in tenant.', 404);
@@ -92,6 +89,33 @@ export async function checkPrivateInsuranceEligibility(params: {
     memberPolicy = found;
   }
 
+  if (!memberPolicy)
+    throw new PrivateInsuranceError(
+      'MEMBER_POLICY_REQUIRED',
+      'Select a membership recorded for this patient and facility.',
+      400,
+    );
+  if (
+    typeof params.input.memberNumber === 'string' &&
+    params.input.memberNumber.trim() &&
+    params.input.memberNumber.trim() !== memberPolicy.memberNumber
+  )
+    throw new PrivateInsuranceError(
+      'MEMBER_IDENTIFIER_MISMATCH',
+      'Member number does not match the selected patient policy.',
+      400,
+    );
+  if (
+    typeof params.input.policyNumber === 'string' &&
+    params.input.policyNumber.trim() &&
+    params.input.policyNumber.trim() !== (memberPolicy.policyNumber ?? '')
+  )
+    throw new PrivateInsuranceError(
+      'MEMBER_IDENTIFIER_MISMATCH',
+      'Policy number does not match the selected patient policy.',
+      400,
+    );
+
   const payerCode = String(params.input.payerCode ?? memberPolicy?.payerCode ?? '')
     .trim()
     .toUpperCase();
@@ -102,6 +126,13 @@ export async function checkPrivateInsuranceEligibility(params: {
       400,
     );
   }
+
+  if (memberPolicy && memberPolicy.payerCode !== payerCode)
+    throw new PrivateInsuranceError(
+      'PAYER_MISMATCH',
+      'Membership belongs to a different payer.',
+      400,
+    );
 
   const payerRow = await getPayerRowScoped({
     tenantId: params.tenantId,

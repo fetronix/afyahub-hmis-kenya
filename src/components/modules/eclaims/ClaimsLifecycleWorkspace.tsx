@@ -64,14 +64,14 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
 
   // Prepare form
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | ''>('');
-  const [schemeCode, setSchemeCode] = useState('SHIF');
+  const [schemeCode, setSchemeCode] = useState('');
   const [subType, setSubType] = useState<'op' | 'ip'>('op');
   const [submissionProtocol, setSubmissionProtocol] = useState<'FHIR_BUNDLE' | 'HIE_VIRTUAL_CLAIM'>(
     'FHIR_BUNDLE',
   );
   const [dischargeReason, setDischargeReason] = useState<
-    'RECOVERED' | 'REFERRED' | 'ABSCONDED' | 'DECEASED' | 'OTHER'
-  >('RECOVERED');
+    '' | 'RECOVERED' | 'REFERRED' | 'ABSCONDED' | 'DECEASED' | 'OTHER'
+  >('');
   const [consentToken, setConsentToken] = useState('');
   const [practitionerRegNumber, setPractitionerRegNumber] = useState('');
   const [practitionerRegulator, setPractitionerRegulator] = useState('KMPDC');
@@ -81,7 +81,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
   const [preparing, setPreparing] = useState(false);
 
   // Adjudication recording form
-  const [adjStatus, setAdjStatus] = useState('ADJUDICATED');
+  const [adjStatus, setAdjStatus] = useState('');
   const [adjAmount, setAdjAmount] = useState('');
   const [adjReason, setAdjReason] = useState('');
 
@@ -158,7 +158,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
         schemeCode,
         subType,
         submissionProtocol,
-        dischargeReason,
+        dischargeReason: dischargeReason || null,
         consentToken: consentToken.trim() || null,
         practitionerRegNumber: practitionerRegNumber.trim() || null,
         practitionerRegulator: practitionerRegNumber.trim() ? practitionerRegulator : null,
@@ -235,6 +235,8 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
         reason: adjReason,
       });
       setSelectedClaim(res.claim);
+      setAdjStatus('');
+      setAdjAmount('');
       setAdjReason('');
       showToast(`Recorded adjudication: ${res.claim.status}`, 'success');
       await loadClaims();
@@ -364,7 +366,9 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                 value={schemeCode}
                 onChange={(e) => setSchemeCode(e.target.value)}
                 className="field-input"
+                required
               >
+                <option value="">— Select the actual scheme —</option>
                 <option value="SHIF">SHIF (Social Health Insurance Fund)</option>
                 <option value="PHC">PHC (Primary Healthcare — KES 0.00 Bundle)</option>
                 <option value="ECCIF">ECCIF (Emergency, Chronic & Critical Illness)</option>
@@ -423,11 +427,13 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                 value={dischargeReason}
                 onChange={(e) =>
                   setDischargeReason(
-                    e.target.value as 'RECOVERED' | 'REFERRED' | 'ABSCONDED' | 'DECEASED' | 'OTHER',
+                    e.target.value as
+                      '' | 'RECOVERED' | 'REFERRED' | 'ABSCONDED' | 'DECEASED' | 'OTHER',
                   )
                 }
                 className="field-input"
               >
+                <option value="">— Not recorded —</option>
                 <option value="RECOVERED">RECOVERED</option>
                 <option value="REFERRED">REFERRED</option>
                 <option value="ABSCONDED">ABSCONDED</option>
@@ -668,16 +674,20 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                       <button
                         type="button"
                         onClick={() => void handleSubmit(selectedClaim.id)}
+                        disabled
+                        title="External SHA transport is unavailable"
                         className="btn-accent text-xs flex items-center gap-1.5"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        Submit to SHA
+                        External submission unavailable
                       </button>
                     )}
                     {selectedClaim.submissionCount > 0 && (
                       <button
                         type="button"
                         onClick={() => void handleRefreshStatus(selectedClaim.id)}
+                        disabled
+                        title="External SHA transport is unavailable"
                         className="btn-quiet text-xs flex items-center gap-1"
                       >
                         <RefreshCw className="w-3 h-3" />
@@ -737,8 +747,8 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                   selectedClaim.status === 'READY_FOR_SUBMISSION' && (
                     <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      All SHA pre-submission validation checks passed. Ready for FHIR Bundle
-                      dispatch.
+                      Local validation checks passed. External submission is unavailable and FHIR
+                      certification has not been established.
                     </div>
                   )}
 
@@ -866,7 +876,8 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                     </div>
                     <button
                       type="submit"
-                      disabled={resubmitting}
+                      disabled
+                      title="External SHA transport is unavailable"
                       className="btn-accent text-xs w-full justify-center"
                     >
                       {resubmitting ? 'Resubmitting...' : 'Validate Corrections & Resubmit to SHA'}
@@ -883,14 +894,16 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                       className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5"
                     >
                       <div className="text-xs font-bold text-navy-900">
-                        Record Authoritative Payer Adjudication Outcome
+                        Record Manual Payer Adjudication Outcome
                       </div>
                       <div className="grid grid-cols-3 gap-2">
                         <select
                           value={adjStatus}
                           onChange={(e) => setAdjStatus(e.target.value)}
                           className="field-input text-xs"
+                          required
                         >
+                          <option value="">— Select actual outcome —</option>
                           <option value="ADJUDICATED">ADJUDICATED</option>
                           <option value="PARTIALLY_ADJUDICATED">PARTIALLY_ADJUDICATED</option>
                           <option value="REJECTED">REJECTED</option>

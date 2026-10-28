@@ -51,12 +51,12 @@ export async function getFacilityPayerConfig(
         payerCode === 'SHA' ? 'Social Health Authority (SHA)' : `${payerCode} Insurance Payer`,
       payerType: payerCode === 'SHA' ? 'PUBLIC_SCHEME' : 'PRIVATE_INSURER',
       facilityRegistryCode: facility.mflCode ?? null,
-      accreditationLevel: facility.level ?? 'Level 4',
-      contractedSchemes: payerCode === 'SHA' ? ['SHIF', 'PHC', 'ECCIF'] : ['CORPORATE'],
+      accreditationLevel: facility.level ?? null,
+      contractedSchemes: [],
       defaultCodingSystem: 'ICD-11',
       requireVerifiedEligibility: true,
       eligibilityMaxAgeHours: 24,
-      isActive: true,
+      isActive: false,
       notes: null,
       updatedByUserId: null,
       createdAt: null,
@@ -89,18 +89,9 @@ export async function upsertFacilityPayerConfig(
     throw new InsuranceDomainError('INVALID_PAYER_CODE', 'payerCode is required.', 400);
   }
 
-  const maxAge = input.eligibilityMaxAgeHours ?? 24;
-  if (!Number.isSafeInteger(maxAge) || maxAge < 1 || maxAge > 720) {
-    throw new InsuranceDomainError(
-      'INVALID_ELIGIBILITY_MAX_AGE',
-      'eligibilityMaxAgeHours must be between 1 and 720 hours.',
-      400,
-    );
-  }
-
   const schemes = Array.isArray(input.contractedSchemes)
     ? input.contractedSchemes.map((s) => s.trim().toUpperCase()).filter(Boolean)
-    : ['SHIF', 'PHC', 'ECCIF'];
+    : null;
 
   const [existing] = await db
     .select()
@@ -108,10 +99,19 @@ export async function upsertFacilityPayerConfig(
     .where(
       and(
         eq(schema.insurancePayerConfigs.facilityId, scope.facilityId),
+        eq(schema.insurancePayerConfigs.tenantId, scope.tenantId),
         eq(schema.insurancePayerConfigs.payerCode, payerCode),
       ),
     )
     .limit(1);
+
+  const maxAge = input.eligibilityMaxAgeHours ?? existing?.eligibilityMaxAgeHours ?? 24;
+  if (!Number.isSafeInteger(maxAge) || maxAge < 1 || maxAge > 720)
+    throw new InsuranceDomainError(
+      'INVALID_ELIGIBILITY_MAX_AGE',
+      'eligibilityMaxAgeHours must be between 1 and 720 hours.',
+      400,
+    );
 
   let saved;
   if (existing) {
@@ -127,7 +127,7 @@ export async function upsertFacilityPayerConfig(
           input.accreditationLevel !== undefined
             ? input.accreditationLevel?.trim() || null
             : existing.accreditationLevel,
-        contractedSchemes: schemes,
+        contractedSchemes: schemes ?? existing.contractedSchemes,
         defaultCodingSystem:
           input.defaultCodingSystem ?? (existing.defaultCodingSystem as 'ICD-11' | 'ICD-10'),
         requireVerifiedEligibility:
@@ -150,12 +150,12 @@ export async function upsertFacilityPayerConfig(
         payerName: input.payerName?.trim() || 'Social Health Authority (SHA)',
         payerType: payerCode === 'SHA' ? 'PUBLIC_SCHEME' : 'PRIVATE_INSURER',
         facilityRegistryCode: input.facilityRegistryCode?.trim() || facility.mflCode || null,
-        accreditationLevel: input.accreditationLevel?.trim() || facility.level || 'Level 4',
-        contractedSchemes: schemes,
+        accreditationLevel: input.accreditationLevel?.trim() || facility.level || null,
+        contractedSchemes: schemes ?? [],
         defaultCodingSystem: input.defaultCodingSystem ?? 'ICD-11',
         requireVerifiedEligibility: input.requireVerifiedEligibility ?? true,
         eligibilityMaxAgeHours: maxAge,
-        isActive: input.isActive ?? true,
+        isActive: input.isActive ?? false,
         notes: input.notes?.trim() || null,
         updatedByUserId: scope.userId,
       })
@@ -306,6 +306,23 @@ export async function upsertServiceCodeMapping(
     )
     .limit(1);
 
+  if (
+    (input.fund !== undefined && !input.fund.trim()) ||
+    (input.paymentMechanism !== undefined && !input.paymentMechanism.trim())
+  )
+    throw new InsuranceDomainError(
+      'MAPPING_CONTEXT_REQUIRED',
+      'Fund and payment mechanism cannot be blank.',
+      400,
+    );
+
+  if (!existing && (!input.fund?.trim() || !input.accessPoint || !input.paymentMechanism?.trim()))
+    throw new InsuranceDomainError(
+      'MAPPING_CONTEXT_REQUIRED',
+      'Enter the documented payer fund, access point and payment mechanism.',
+      400,
+    );
+
   let saved;
   if (existing) {
     [saved] = await db
@@ -349,9 +366,9 @@ export async function upsertServiceCodeMapping(
         serviceArea,
         payerServiceCode,
         payerServiceName,
-        fund: (input.fund ?? 'SHIF').trim().toUpperCase(),
-        accessPoint: input.accessPoint ?? 'OP',
-        paymentMechanism: (input.paymentMechanism ?? 'FEE_FOR_SERVICE').trim().toUpperCase(),
+        fund: input.fund!.trim().toUpperCase(),
+        accessPoint: input.accessPoint!,
+        paymentMechanism: input.paymentMechanism!.trim().toUpperCase(),
         reimbursementTariff: normalizedReimbursement,
         isPhcZeroTariff: input.isPhcZeroTariff ?? false,
         requiresPreauth: input.requiresPreauth ?? false,
@@ -447,7 +464,13 @@ export async function createBenefitRule(scope: InsuranceActorScope, input: Creat
     );
   }
 
-  const copayType = input.copayType ?? 'NONE';
+  if (!input.copayType || (input.copayType !== 'NONE' && input.copayValue === undefined))
+    throw new InsuranceDomainError(
+      'COPAY_RULE_REQUIRED',
+      'Record the documented copayment type and amount.',
+      400,
+    );
+  const copayType = input.copayType;
   const copayCents =
     input.copayValue !== undefined ? requireMoneyCents(input.copayValue, 'copayValue') : 0;
   if (copayType === 'PERCENTAGE' && copayCents > 10_000) {

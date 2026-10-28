@@ -54,21 +54,16 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
   const [estimatedAmount, setEstimatedAmount] = useState('');
   const [supportingNotes, setSupportingNotes] = useState('');
   const [isElective, setIsElective] = useState(false);
-  const [consentToken, setConsentToken] = useState('');
-  const [otpInput, setOtpInput] = useState('123456');
   const [practitionerRegNumber, setPractitionerRegNumber] = useState('');
   const [practitionerRegulator, setPractitionerRegulator] = useState('KMPDC');
-  const [authorizingConsent, setAuthorizingConsent] = useState(false);
   const [submittingForm, setSubmittingForm] = useState(false);
 
   // Decision / Amendment drawer state
-  const [decisionStatus, setDecisionStatus] = useState('APPROVED');
+  const [decisionStatus, setDecisionStatus] = useState('');
   const [payerAuthRef, setPayerAuthRef] = useState('');
   const [approvedAmount, setApprovedAmount] = useState('');
-  const [validFrom, setValidFrom] = useState(() => new Date().toISOString().slice(0, 10));
-  const [validUntil, setValidUntil] = useState(() =>
-    new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10),
-  );
+  const [validFrom, setValidFrom] = useState('');
+  const [validUntil, setValidUntil] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [amendEstimatedAmount, setAmendEstimatedAmount] = useState('');
   const [amendmentReason, setAmendmentReason] = useState('');
@@ -113,7 +108,6 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
         quantity,
         estimatedAmount,
         isElective,
-        consentToken: consentToken.trim() || undefined,
         practitionerRegNumber: practitionerRegNumber.trim() || undefined,
         practitionerRegulator: practitionerRegNumber.trim() ? practitionerRegulator : undefined,
         supportingNotes: supportingNotes.trim() || undefined,
@@ -127,37 +121,6 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
       showToast(err instanceof Error ? err.message : 'Failed to create preauthorization.', 'error');
     } finally {
       setSubmittingForm(false);
-    }
-  };
-
-  const handleAuthorizeConsent = async () => {
-    if (!patientId || !requestedServiceCode.trim()) {
-      showToast('Select a patient and enter an SHA Intervention Code first.', 'warning');
-      return;
-    }
-    setAuthorizingConsent(true);
-    try {
-      const res = await shaEclaimsApi.authorizeVisitConsent(facilityId, {
-        patientId: Number(patientId),
-        serviceType: isElective ? 'INPATIENT' : 'OUTPATIENT',
-        consentMethod: 'OTP',
-        otp: otpInput.trim() || undefined,
-        interventions: [requestedServiceCode.trim()],
-        isElectivePreVisit: isElective,
-        practitionerRegNumber: practitionerRegNumber.trim() || undefined,
-        practitionerRegulator: practitionerRegNumber.trim() ? practitionerRegulator : undefined,
-      });
-      if (res.authorization.consentToken) {
-        setConsentToken(res.authorization.consentToken);
-      }
-      showToast(
-        `Consent authorized: ${res.authorization.authStatus} (${res.authorization.isSimulated ? 'Simulated' : 'Live HIE'})`,
-        'info',
-      );
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Consent authorization failed.', 'error');
-    } finally {
-      setAuthorizingConsent(false);
     }
   };
 
@@ -188,8 +151,8 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
         status: decisionStatus,
         payerAuthReference: payerAuthRef.trim() || undefined,
         approvedAmount: approvedAmount.trim() || undefined,
-        validFrom,
-        validUntil,
+        validFrom: validFrom || undefined,
+        validUntil: validUntil || undefined,
         rejectionReason: rejectionReason.trim() || undefined,
       });
       showToast(
@@ -374,37 +337,24 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
         </div>
 
         <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2 text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="inline-flex items-center gap-2 font-semibold text-navy-900 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isElective}
-                onChange={(e) => setIsElective(e.target.checked)}
-              />
-              Elective Pre-Visit Preauth (AUTHORIZED_PENDING_VISIT)
-            </label>
-            <button
-              type="button"
-              onClick={() => void handleAuthorizeConsent()}
-              disabled={!canCreatePreauth || authorizingConsent || !patientId}
-              className="btn-quiet text-xs disabled:opacity-50"
-            >
-              {authorizingConsent ? 'Authorizing...' : 'Capture HIE OTP Consent'}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <label className="inline-flex items-center gap-2 font-semibold text-navy-900">
             <input
-              type="text"
-              value={otpInput}
-              onChange={(e) => setOtpInput(e.target.value)}
-              placeholder="OTP code"
-              className="field-input text-xs"
-            />
+              type="checkbox"
+              checked={isElective}
+              onChange={(e) => setIsElective(e.target.checked)}
+            />{' '}
+            Elective pre-visit request
+          </label>
+          <p>
+            HIE consent capture and external submission are unavailable until authorized,
+            facility-isolated transport is verified. Do not enter OTPs here.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               type="text"
               value={practitionerRegNumber}
               onChange={(e) => setPractitionerRegNumber(e.target.value)}
-              placeholder="Practitioner Reg #"
+              placeholder="Practitioner registration number (optional)"
               className="field-input text-xs"
             />
             <select
@@ -418,11 +368,6 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
               <option value="PPB">PPB (Pharmacy)</option>
             </select>
           </div>
-          {consentToken && (
-            <div className="font-mono text-[11px] text-emerald-800 truncate">
-              Consent Token: {consentToken}
-            </div>
-          )}
         </div>
 
         <div>
@@ -499,8 +444,12 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
                       key={pa.id}
                       onClick={() => {
                         setSelectedPreauth(pa);
-                        setPayerAuthRef(pa.payerAuthReference ?? '');
-                        setApprovedAmount(pa.approvedAmount ?? pa.estimatedAmount);
+                        setDecisionStatus('');
+                        setPayerAuthRef('');
+                        setApprovedAmount('');
+                        setValidFrom('');
+                        setValidUntil('');
+                        setRejectionReason('');
                         setAmendEstimatedAmount(pa.estimatedAmount);
                       }}
                       className={`cursor-pointer ${
@@ -545,10 +494,12 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
                             <button
                               type="button"
                               onClick={() => void handleSubmitGateway(pa)}
+                              disabled
+                              title="External SHA transport is unavailable"
                               className="inline-flex items-center gap-1 text-brand-700 hover:underline font-semibold"
                             >
                               <Send className="w-3 h-3" />
-                              Submit
+                              External submission unavailable
                             </button>
                           )}
                       </td>
@@ -623,7 +574,7 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
               <form onSubmit={handleRecordDecision} className="space-y-3">
                 <div className="text-xs font-semibold text-navy-900 flex items-center gap-1.5">
                   <FileCheck className="w-4 h-4 text-brand-600" />
-                  Record Authoritative Payer Authorization Outcome
+                  Record Manual Payer Authorization Outcome
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
@@ -632,7 +583,9 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
                       value={decisionStatus}
                       onChange={(e) => setDecisionStatus(e.target.value)}
                       className="field-input"
+                      required
                     >
+                      <option value="">— Select actual payer outcome —</option>
                       <option value="APPROVED">APPROVED</option>
                       <option value="PARTIALLY_APPROVED">PARTIALLY_APPROVED</option>
                       <option value="REJECTED">REJECTED</option>

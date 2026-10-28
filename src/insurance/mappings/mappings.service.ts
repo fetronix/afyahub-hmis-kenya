@@ -187,10 +187,9 @@ export async function createPayerServiceMapping(params: {
       fund:
         typeof params.input.schemeCode === 'string' && params.input.schemeCode.trim()
           ? params.input.schemeCode.trim()
-          : 'GENERAL_MEDICAL',
-      accessPoint:
-        serviceArea === 'INPATIENT_BED' || serviceArea === 'THEATRE_SPECIALIST' ? 'IP' : 'OP',
-      paymentMechanism: 'FEE_FOR_SERVICE',
+          : 'NOT_SPECIFIED',
+      accessPoint: 'NOT_SPECIFIED',
+      paymentMechanism: 'NOT_SPECIFIED',
       reimbursementTariff,
       isPhcZeroTariff: false,
       requiresPreauth: Boolean(params.input.requiresPreauth),

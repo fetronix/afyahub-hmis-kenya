@@ -16,6 +16,8 @@ import { resolveFacilityScope, ScopeAccessError } from '../auth/scope.service.ts
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { PrivateInsuranceError } from '../insurance/core/types.ts';
+import { privatePolicyGuard } from '../insurance/hub/guards.ts';
+import { PayerHubError } from '../insurance/hub/service.ts';
 import { listIntegrationDiagnostics } from '../insurance/audit/diagnostics.service.ts';
 import {
   createPrivatePayer,
@@ -75,6 +77,7 @@ import {
 } from '../insurance/remittance/remittance-reconciliation.service.ts';
 
 const router = Router();
+router.use(privatePolicyGuard);
 
 interface ScopedInsuranceActor {
   tenantId: number;
@@ -156,6 +159,9 @@ function respondError(res: Response, err: unknown, fallbackMessage: string): Res
   if (err instanceof ScopeAccessError) {
     return res.status(403).json({ error: err.code, message: err.message });
   }
+  if (err instanceof PayerHubError) {
+    return res.status(err.status).json({ error: err.code, message: err.message });
+  }
   if (err instanceof PrivateInsuranceError) {
     return res.status(err.status).json({
       error: err.code,
@@ -175,7 +181,7 @@ function respondError(res: Response, err: unknown, fallbackMessage: string): Res
 
 router.get(
   '/dashboard',
-  requireAnyPermission('insurance.payers.read', 'insurance.read'),
+  requirePermission('insurance.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -773,7 +779,6 @@ router.get(
   requireAnyPermission(
     'insurance.private.claims.prepare',
     'insurance.private.claims.submit',
-    'insurance.payers.read',
     'insurance.read',
   ),
   async (req: AuthRequest, res: Response) => {
@@ -819,7 +824,6 @@ router.get(
   requireAnyPermission(
     'insurance.private.claims.prepare',
     'insurance.private.claims.submit',
-    'insurance.payers.read',
     'insurance.read',
   ),
   async (req: AuthRequest, res: Response) => {
@@ -939,7 +943,6 @@ router.get(
   requireAnyPermission(
     'insurance.private.claims.prepare',
     'insurance.private.claims.submit',
-    'insurance.payers.read',
     'insurance.read',
   ),
   async (req: AuthRequest, res: Response) => {
@@ -965,11 +968,7 @@ router.get(
 
 router.get(
   '/remittances',
-  requireAnyPermission(
-    'insurance.private.remittance.reconcile',
-    'insurance.payers.read',
-    'insurance.read',
-  ),
+  requireAnyPermission('insurance.private.remittance.reconcile', 'insurance.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -1024,11 +1023,7 @@ router.post(
 
 router.get(
   '/reconciliation',
-  requireAnyPermission(
-    'insurance.private.remittance.reconcile',
-    'insurance.payers.read',
-    'insurance.read',
-  ),
+  requireAnyPermission('insurance.private.remittance.reconcile', 'insurance.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);

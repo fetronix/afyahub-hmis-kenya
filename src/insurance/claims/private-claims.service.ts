@@ -335,7 +335,11 @@ export function evaluatePrivateClaimValidation(
     }
   }
 
-  const docTypes = new Set(ctx.attachments.map((a) => a.documentType.toUpperCase()));
+  const docTypes = new Set(
+    ctx.attachments
+      .filter((a) => a.fileName.trim() && a.storageReference.trim())
+      .map((a) => a.documentType.toUpperCase()),
+  );
   if (ctx.claimRequirements.requireInvoiceAttachment && !docTypes.has('ITEMIZED_INVOICE')) {
     issues.push({
       code: 'MISSING_INVOICE_ATTACHMENT',
@@ -630,20 +634,30 @@ export async function preparePrivateInsuranceClaim(params: {
         ),
       )
       .limit(1);
-    encounter = enc ?? null;
+    if (!enc || (invoice.encounterId && enc.id !== invoice.encounterId))
+      throw new PrivateInsuranceError(
+        'ENCOUNTER_MISMATCH',
+        'Encounter must belong to the patient, facility and invoice.',
+        404,
+      );
+    encounter = enc;
   }
 
-  const [admission] = await db
-    .select()
-    .from(schema.admissions)
-    .where(
-      and(
-        eq(schema.admissions.facilityId, params.facilityId),
-        eq(schema.admissions.patientId, invoice.patientId),
-      ),
-    )
-    .orderBy(desc(schema.admissions.id))
-    .limit(1);
+  const [admission] = encounter
+    ? await db
+        .select()
+        .from(schema.admissions)
+        .where(
+          and(
+            eq(schema.admissions.tenantId, params.tenantId),
+            eq(schema.admissions.facilityId, params.facilityId),
+            eq(schema.admissions.patientId, invoice.patientId),
+            eq(schema.admissions.encounterId, encounter.id),
+          ),
+        )
+        .orderBy(desc(schema.admissions.id))
+        .limit(1)
+    : [];
 
   const encounterType: 'OPD' | 'IPD' =
     params.input.encounterType === 'IPD' ||
@@ -718,13 +732,20 @@ export async function preparePrivateInsuranceClaim(params: {
       .where(
         and(
           eq(schema.insurancePreauthorizations.id, Number(params.input.preauthorizationId)),
+          eq(schema.insurancePreauthorizations.tenantId, params.tenantId),
           eq(schema.insurancePreauthorizations.facilityId, params.facilityId),
           eq(schema.insurancePreauthorizations.patientId, invoice.patientId),
           eq(schema.insurancePreauthorizations.payerCode, payerRow.payerCode),
         ),
       )
       .limit(1);
-    preauth = pa ?? null;
+    if (!pa || (pa.memberPolicyId && pa.memberPolicyId !== memberPolicy.id))
+      throw new PrivateInsuranceError(
+        'PREAUTH_NOT_FOUND',
+        'Preauthorization does not belong to the patient, payer and facility.',
+        404,
+      );
+    preauth = pa;
   }
 
   // Load insurer mappings & approved benefit rules
@@ -776,13 +797,7 @@ export async function preparePrivateInsuranceClaim(params: {
         fileName: String(a.fileName ?? 'attachment.pdf'),
         storageReference: String(a.storageReference ?? ''),
       }))
-    : [
-        {
-          documentType: 'ITEMIZED_INVOICE',
-          fileName: `${invoice.invoiceNumber}.pdf`,
-          storageReference: `jalicare://invoices/${invoice.id}`,
-        },
-      ];
+    : [];
 
   let totalGrossCents = 0;
   let totalDiscountCents = 0;
@@ -1094,7 +1109,15 @@ export async function validatePrivateInsuranceClaimById(params: {
     const [pa] = await db
       .select()
       .from(schema.insurancePreauthorizations)
-      .where(eq(schema.insurancePreauthorizations.id, claim.preauthorizationId))
+      .where(
+        and(
+          eq(schema.insurancePreauthorizations.id, claim.preauthorizationId),
+          eq(schema.insurancePreauthorizations.tenantId, params.tenantId),
+          eq(schema.insurancePreauthorizations.facilityId, params.facilityId),
+          eq(schema.insurancePreauthorizations.patientId, claim.patientId),
+          eq(schema.insurancePreauthorizations.payerCode, claim.payerCode),
+        ),
+      )
       .limit(1);
     preauthStatus = pa?.status ?? null;
     preauthRef = pa?.payerAuthReference ?? null;
@@ -1226,6 +1249,17 @@ export async function updateOrCorrectPrivateClaim(params: {
       ? params.input.correctionReason.trim()
       : 'Updated claim documentation / coding.';
 
+  if (
+    claim.status === 'REJECTED' &&
+    (typeof params.input.correctionReason !== 'string' ||
+      params.input.correctionReason.trim().length < 5)
+  )
+    throw new PrivateInsuranceError(
+      'CORRECTION_REASON_REQUIRED',
+      'Record an auditable correction reason.',
+      400,
+    );
+
   const updates: Partial<typeof schema.privateInsuranceClaims.$inferInsert> = {
     status: 'DRAFT',
     revisionNumber: claim.status === 'REJECTED' ? claim.revisionNumber + 1 : claim.revisionNumber,
@@ -1252,9 +1286,31 @@ export async function updateOrCorrectPrivateClaim(params: {
     }));
   }
   if (params.input.preauthorizationId !== undefined) {
-    updates.preauthorizationId = params.input.preauthorizationId
+    const requested = params.input.preauthorizationId
       ? Number(params.input.preauthorizationId)
       : null;
+    if (requested) {
+      const [preauth] = await db
+        .select()
+        .from(schema.insurancePreauthorizations)
+        .where(
+          and(
+            eq(schema.insurancePreauthorizations.id, requested),
+            eq(schema.insurancePreauthorizations.tenantId, params.tenantId),
+            eq(schema.insurancePreauthorizations.facilityId, params.facilityId),
+            eq(schema.insurancePreauthorizations.patientId, claim.patientId),
+            eq(schema.insurancePreauthorizations.payerCode, claim.payerCode),
+          ),
+        )
+        .limit(1);
+      if (!preauth || (preauth.memberPolicyId && preauth.memberPolicyId !== claim.memberPolicyId))
+        throw new PrivateInsuranceError(
+          'PREAUTH_NOT_FOUND',
+          'Preauthorization does not belong to this patient, payer and facility.',
+          404,
+        );
+    }
+    updates.preauthorizationId = requested;
   }
 
   await db.transaction(async (tx) => {
@@ -1457,7 +1513,15 @@ export async function submitPrivateInsuranceClaim(params: {
     const [pa] = await db
       .select()
       .from(schema.insurancePreauthorizations)
-      .where(eq(schema.insurancePreauthorizations.id, claim.preauthorizationId))
+      .where(
+        and(
+          eq(schema.insurancePreauthorizations.id, claim.preauthorizationId),
+          eq(schema.insurancePreauthorizations.tenantId, params.tenantId),
+          eq(schema.insurancePreauthorizations.facilityId, params.facilityId),
+          eq(schema.insurancePreauthorizations.patientId, claim.patientId),
+          eq(schema.insurancePreauthorizations.payerCode, claim.payerCode),
+        ),
+      )
       .limit(1);
     preauthRef = pa?.payerAuthReference ?? null;
   }
@@ -1632,6 +1696,37 @@ export async function recordPrivateClaimDecision(params: {
     .trim()
     .toUpperCase() as PrivateClaimStatus;
 
+  if (nextStatus === 'PAID')
+    throw new PrivateInsuranceError(
+      'RECONCILIATION_REQUIRED',
+      'A claim can only be marked paid by matching an existing billing receipt.',
+      409,
+    );
+  if (
+    ['ADJUDICATED', 'PARTIALLY_ADJUDICATED'].includes(nextStatus) &&
+    (params.input.approvedAmount === undefined ||
+      params.input.approvedAmount === null ||
+      params.input.approvedAmount === '')
+  )
+    throw new PrivateInsuranceError(
+      'APPROVED_AMOUNT_REQUIRED',
+      'Enter the actual payer-approved amount.',
+      400,
+    );
+
+  if (
+    ['ADJUDICATED', 'PARTIALLY_ADJUDICATED', 'REJECTED'].includes(nextStatus) &&
+    !(
+      typeof params.input.externalClaimReference === 'string' &&
+      params.input.externalClaimReference.trim().length >= 3
+    )
+  )
+    throw new PrivateInsuranceError(
+      'PAYER_DECISION_REFERENCE_REQUIRED',
+      'Record the actual insurer decision reference.',
+      400,
+    );
+
   if (!canTransitionPrivateClaimStatus(claim.status as PrivateClaimStatus, nextStatus)) {
     throw new PrivateInsuranceError(
       'INVALID_CLAIM_TRANSITION',
@@ -1697,7 +1792,7 @@ export async function recordPrivateClaimDecision(params: {
       claimId: claim.id,
       fromStatus: claim.status,
       toStatus: nextStatus,
-      source: 'INSURER_RESPONSE_RECORDED',
+      source: 'MANUAL_INSURER_DECISION',
       actorUserId: params.actorUserId,
       reason:
         rejectionReason ??

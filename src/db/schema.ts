@@ -1053,6 +1053,86 @@ export const insurancePayerConfigs = pgTable(
   }),
 );
 
+// Platform-owned payer metadata and facility assignment are distinct from
+// insurancePayerConfigs, which retains facility-owned workflow settings.
+export const insurancePayerDefinitions = pgTable('insurance_payer_definitions', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  displayName: text('display_name').notNull(),
+  payerType: text('payer_type').notNull(),
+  adapterKey: text('adapter_key').notNull(),
+  informationUrl: text('information_url').notNull(),
+  status: text('status').notNull().default('DISABLED'),
+  requestable: boolean('requestable').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+export const insurancePayerCapabilityPolicies = pgTable('insurance_payer_capability_policies', {
+  id: serial('id').primaryKey(),
+  providerId: integer('provider_id')
+    .notNull()
+    .references(() => insurancePayerDefinitions.id),
+  capability: text('capability').notNull(),
+  isAllowed: boolean('is_allowed').notNull().default(false),
+});
+export const insurancePayerAssignments = pgTable('insurance_payer_assignments', {
+  id: serial('id').primaryKey(),
+  providerId: integer('provider_id')
+    .notNull()
+    .references(() => insurancePayerDefinitions.id),
+  tenantId: integer('tenant_id')
+    .notNull()
+    .references(() => tenants.id),
+  facilityId: integer('facility_id')
+    .notNull()
+    .references(() => facilities.id),
+  isAllowed: boolean('is_allowed').notNull().default(false),
+  assignmentSource: text('assignment_source').notNull().default('PLATFORM'),
+  sandboxStatus: text('sandbox_status').notNull().default('NOT_TESTED'),
+  productionApproval: text('production_approval').notNull().default('NOT_REQUESTED'),
+  productionRequestedByUserId: integer('production_requested_by_user_id').references(
+    () => users.id,
+  ),
+  productionDecidedByUserId: integer('production_decided_by_user_id').references(() => users.id),
+  approvalReference: text('approval_reference'),
+  updatedByUserId: integer('updated_by_user_id').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+export const insurancePayerEnvironmentConfigs = pgTable('insurance_payer_environment_configs', {
+  id: serial('id').primaryKey(),
+  providerId: integer('provider_id')
+    .notNull()
+    .references(() => insurancePayerDefinitions.id),
+  tenantId: integer('tenant_id')
+    .notNull()
+    .references(() => tenants.id),
+  facilityId: integer('facility_id')
+    .notNull()
+    .references(() => facilities.id),
+  environment: text('environment').notNull(),
+  secretEnvPrefix: text('secret_env_prefix').notNull(),
+  providerIdentifier: text('provider_identifier'),
+  updatedByUserId: integer('updated_by_user_id').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+export const insurancePayerAccessRequests = pgTable('insurance_payer_access_requests', {
+  id: serial('id').primaryKey(),
+  providerId: integer('provider_id')
+    .notNull()
+    .references(() => insurancePayerDefinitions.id),
+  tenantId: integer('tenant_id')
+    .notNull()
+    .references(() => tenants.id),
+  facilityId: integer('facility_id')
+    .notNull()
+    .references(() => facilities.id),
+  status: text('status').notNull().default('PENDING'),
+  requestedByUserId: integer('requested_by_user_id')
+    .notNull()
+    .references(() => users.id),
+  requestedAt: timestamp('requested_at').notNull().defaultNow(),
+});
+
 export const insuranceMemberPolicies = pgTable(
   'insurance_member_policies',
   {

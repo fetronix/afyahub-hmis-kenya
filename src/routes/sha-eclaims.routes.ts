@@ -1,3 +1,4 @@
+import { shaPolicyGuard } from '../insurance/hub/guards.ts';
 /**
  * JaliCare HMIS
  * SHA eClaims, Eligibility, Benefits, Preauthorization & Remittance Routes
@@ -83,6 +84,7 @@ import {
 } from '../insurance/eclaims/remittance.service.ts';
 
 const router = Router();
+router.use(shaPolicyGuard);
 
 function parsePositiveInt(value: unknown, field: string): number {
   const num = typeof value === 'number' ? value : Number(String(value ?? '').trim());
@@ -173,11 +175,7 @@ function respondShaError(res: Response, err: unknown, fallbackMessage: string): 
     });
   }
 
-  console.error(
-    '[sha-eclaims]',
-    fallbackMessage,
-    err instanceof Error ? err.message : 'Unknown error',
-  );
+  console.error('[sha-eclaims]', fallbackMessage, 'Operation failed; details withheld.');
   return res.status(500).json({
     success: false,
     error: 'INTERNAL_SERVER_ERROR',
@@ -202,7 +200,18 @@ router.get(
 
       return res.json({
         success: true,
-        connection: status,
+        connection: {
+          ...status,
+          enabled: false,
+          disabledReason:
+            'SHA/DHA transport is blocked in the application. Mock adapters are used only in isolated tests; live use requires facility-specific authorization and verification.',
+          middlewareBaseUrl: null,
+          eclaimsBaseUrl: null,
+          hasClientId: false,
+          hasClientSecret: false,
+          hasWebhookSecret: false,
+          capabilities: [], // No operational external capability has been authorized.
+        },
         facilityConfig: {
           facilityId: facility.id,
           facilityName: facility.name,
@@ -227,7 +236,25 @@ router.get(
     try {
       const scope = await resolveActorScope(req);
       const result = await getFacilityPayerConfig(scope, 'SHA');
-      return res.json({ success: true, ...result });
+      const { config } = result;
+      return res.json({
+        success: true,
+        config: {
+          id: config.id,
+          tenantId: config.tenantId,
+          facilityId: config.facilityId,
+          payerCode: config.payerCode,
+          payerName: config.payerName,
+          facilityRegistryCode: config.facilityRegistryCode,
+          accreditationLevel: config.accreditationLevel,
+          contractedSchemes: config.contractedSchemes,
+          defaultCodingSystem: config.defaultCodingSystem,
+          requireVerifiedEligibility: config.requireVerifiedEligibility,
+          eligibilityMaxAgeHours: config.eligibilityMaxAgeHours,
+          isActive: config.isActive,
+          notes: config.notes,
+        },
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to load SHA payer configuration.');
     }
@@ -261,11 +288,25 @@ router.put(
             : undefined,
         eligibilityMaxAgeHours:
           b.eligibilityMaxAgeHours !== undefined ? Number(b.eligibilityMaxAgeHours) : undefined,
-        isActive: typeof b.isActive === 'boolean' ? b.isActive : undefined,
         notes: b.notes !== undefined ? String(b.notes ?? '') : undefined,
       });
 
-      return res.json({ success: true, config: saved });
+      return res.json({
+        success: true,
+        config: {
+          id: saved.id,
+          payerCode: saved.payerCode,
+          payerName: saved.payerName,
+          facilityRegistryCode: saved.facilityRegistryCode,
+          accreditationLevel: saved.accreditationLevel,
+          contractedSchemes: saved.contractedSchemes,
+          defaultCodingSystem: saved.defaultCodingSystem,
+          requireVerifiedEligibility: saved.requireVerifiedEligibility,
+          eligibilityMaxAgeHours: saved.eligibilityMaxAgeHours,
+          isActive: saved.isActive,
+          notes: saved.notes,
+        },
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to update SHA payer configuration.');
     }
@@ -305,13 +346,15 @@ router.post(
         tariffId: parseOptionalPositiveInt(b.tariffId, 'tariffId'),
         localCode: String(b.localCode ?? ''),
         localDescription: String(b.localDescription ?? ''),
-        serviceArea: String(b.serviceArea ?? 'OPD'),
+        serviceArea: String(b.serviceArea ?? ''),
         payerServiceCode: String(b.payerServiceCode ?? ''),
         payerServiceName: String(b.payerServiceName ?? ''),
-        fund: typeof b.fund === 'string' ? b.fund : 'SHIF',
-        accessPoint: b.accessPoint === 'IP' || b.accessPoint === 'BOTH' ? b.accessPoint : 'OP',
-        paymentMechanism:
-          typeof b.paymentMechanism === 'string' ? b.paymentMechanism : 'FEE_FOR_SERVICE',
+        fund: typeof b.fund === 'string' ? b.fund : undefined,
+        accessPoint:
+          b.accessPoint === 'OP' || b.accessPoint === 'IP' || b.accessPoint === 'BOTH'
+            ? b.accessPoint
+            : undefined,
+        paymentMechanism: typeof b.paymentMechanism === 'string' ? b.paymentMechanism : undefined,
         reimbursementTariff:
           b.reimbursementTariff !== undefined && b.reimbursementTariff !== null
             ? (b.reimbursementTariff as string | number)
@@ -362,15 +405,18 @@ router.post(
       const b = bodyObject(req);
       const created = await createBenefitRule(scope, {
         ruleCode: String(b.ruleCode ?? ''),
-        benefitPackage: String(b.benefitPackage ?? 'SHIF'),
+        benefitPackage: String(b.benefitPackage ?? ''),
         serviceCategory: String(b.serviceCategory ?? ''),
         payerServiceCode: typeof b.payerServiceCode === 'string' ? b.payerServiceCode : null,
         minFacilityLevel: typeof b.minFacilityLevel === 'string' ? b.minFacilityLevel : null,
         requiresPreauth: Boolean(b.requiresPreauth),
         requiresReferral: Boolean(b.requiresReferral),
         requiredEvidence: Array.isArray(b.requiredEvidence) ? b.requiredEvidence.map(String) : [],
-        copayType: b.copayType === 'FIXED' || b.copayType === 'PERCENTAGE' ? b.copayType : 'NONE',
-        copayValue: b.copayValue !== undefined ? (b.copayValue as string | number) : '0.00',
+        copayType:
+          b.copayType === 'NONE' || b.copayType === 'FIXED' || b.copayType === 'PERCENTAGE'
+            ? b.copayType
+            : undefined,
+        copayValue: b.copayValue !== undefined ? (b.copayValue as string | number) : undefined,
         annualLimit: b.annualLimit !== undefined ? (b.annualLimit as string | number | null) : null,
         perVisitLimit:
           b.perVisitLimit !== undefined ? (b.perVisitLimit as string | number | null) : null,
@@ -846,6 +892,10 @@ router.post(
       const result = await submitPreauthorization(scope, preauthId, defaultShaGatewayAdapter, {
         protocol,
         consentToken: typeof b.consentToken === 'string' ? b.consentToken : null,
+        serviceStart: typeof b.serviceStart === 'string' ? b.serviceStart : undefined,
+        serviceEnd: typeof b.serviceEnd === 'string' ? b.serviceEnd : undefined,
+        subType: b.subType === 'op' || b.subType === 'ip' ? b.subType : undefined,
+        schemeCode: typeof b.schemeCode === 'string' ? b.schemeCode : undefined,
       });
       return res.json({ success: true, ...result });
     } catch (err) {
@@ -955,7 +1005,7 @@ router.post(
           typeof b.practitionerRegNumber === 'string' ? b.practitionerRegNumber : null,
         practitionerRegulator:
           typeof b.practitionerRegulator === 'string' ? b.practitionerRegulator : null,
-        schemeCode: typeof b.schemeCode === 'string' ? b.schemeCode : 'SHIF',
+        schemeCode: typeof b.schemeCode === 'string' ? b.schemeCode : undefined,
         claimType:
           b.claimType === 'pharmacy' || b.claimType === 'professional' ? b.claimType : undefined,
         subType: b.subType === 'ip' || b.subType === 'op' ? b.subType : undefined,
@@ -1157,7 +1207,7 @@ router.post(
         payerRemittanceRef:
           typeof b.payerRemittanceRef === 'string' ? b.payerRemittanceRef : undefined,
         paymentDate: typeof b.paymentDate === 'string' ? b.paymentDate : undefined,
-        paymentChannel: typeof b.paymentChannel === 'string' ? b.paymentChannel : 'EFT',
+        paymentChannel: typeof b.paymentChannel === 'string' ? b.paymentChannel : undefined,
         totalRemittedAmount:
           b.totalRemittedAmount !== undefined
             ? (b.totalRemittedAmount as string | number)
@@ -1196,7 +1246,8 @@ router.post(
                   ? (a.approvedAmount as string | number | null)
                   : undefined,
               varianceReason: typeof a.varianceReason === 'string' ? a.varianceReason : null,
-              postToInvoice: typeof a.postToInvoice === 'boolean' ? a.postToInvoice : true,
+              postToInvoice: typeof a.postToInvoice === 'boolean' ? a.postToInvoice : false,
+              billingPaymentId: parseOptionalPositiveInt(a.billingPaymentId, 'billingPaymentId'),
             }))
         : [];
 
@@ -1374,6 +1425,10 @@ router.get(
  * prior to the staff `requireAuth` gate. Refuses 503 when `SHA_WEBHOOK_SECRET` is
  * unconfigured and enforces constant-time token/HMAC verification.
  */
+function isFacilityScopedCallbackVerificationImplemented(): boolean {
+  return false;
+}
+
 export function createShaWebhooksRouter(): Router {
   const webhookRouter = Router();
 
@@ -1423,6 +1478,18 @@ export function createShaWebhooksRouter(): Router {
       });
     }
 
+    // The legacy verifier uses a process-wide secret and cannot authenticate
+    // the sending facility. Never apply callbacks until the provider's
+    // facility-specific authentication and replay contract are verified.
+    if (!isFacilityScopedCallbackVerificationImplemented()) {
+      return res.status(503).json({
+        success: false,
+        error: 'SHA_CALLBACK_NOT_VERIFIED',
+        message: 'Facility-scoped callback verification is not yet available.',
+      });
+    }
+
+    /* Future facility-scoped callback processing is retained below. */
     try {
       const b =
         typeof req.body === 'object' && req.body !== null && !Array.isArray(req.body)

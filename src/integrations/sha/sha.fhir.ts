@@ -213,6 +213,7 @@ export interface ShaFhirPractitionerInput {
 export interface ShaFhirMedicationInput {
   id: string | number;
   drugCode?: string | null;
+  drugCodeSystem?: string | null;
   drugName: string;
   dosageInstruction?: string | null;
   quantityDispensed?: number | null;
@@ -224,7 +225,9 @@ export interface ShaFhirDiagnosticReportInput {
   id: string | number;
   category: 'LAB' | 'IMAGING';
   code: string;
+  codeSystem?: string | null;
   display: string;
+  status?: 'registered' | 'partial' | 'preliminary' | 'final' | 'unknown';
   conclusion?: string | null;
   effectiveDate?: string | null;
 }
@@ -379,7 +382,6 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
         resourceType: 'Organization',
         id: input.facilityRegistryCode,
         meta: { profile: [KE_ECLAIMS_PROFILES.organization] },
-        active: true,
         identifier: [
           {
             use: 'official',
@@ -432,7 +434,7 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
         resourceType: 'Coverage',
         id: `coverage-${input.patient.internalId}-${input.schemeCode.toLowerCase()}`,
         meta: { profile: [KE_ECLAIMS_PROFILES.coverage] },
-        status: 'active',
+        status: 'draft', // A constructed coverage resource is not payer-confirmed coverage.
         type: {
           coding: [
             {
@@ -466,7 +468,8 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
   let practitionerFullUrl: string | undefined;
   if (input.attendingPractitioner?.registrationNumber?.trim()) {
     const regNo = input.attendingPractitioner.registrationNumber.trim();
-    const regulator = (input.attendingPractitioner.regulator || 'KMPDC').trim().toUpperCase();
+    const regulator = input.attendingPractitioner.regulator?.trim().toUpperCase();
+    if (!regulator) throw new Error('Practitioner regulator must be supplied explicitly.');
     practitionerFullUrl = `Practitioner/practitioner-${regNo.replace(/[^a-zA-Z0-9-]/g, '-')}`;
     entries.push({
       fullUrl: practitionerFullUrl,
@@ -498,7 +501,7 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
         resourceType: 'Encounter',
         id: `encounter-${input.encounterId}`,
         meta: { profile: [KE_ECLAIMS_PROFILES.encounter] },
-        status: 'finished',
+        status: 'unknown', // An encounter ID alone does not establish completion.
         class: {
           system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode',
           code: input.subType === 'ip' ? 'IMP' : 'AMB',
@@ -541,14 +544,6 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
         resourceType: 'Condition',
         id: condId,
         meta: { profile: [KE_ECLAIMS_PROFILES.condition] },
-        clinicalStatus: {
-          coding: [
-            {
-              system: 'http://terminology.hl7.org/CodeSystem/condition-clinical',
-              code: 'active',
-            },
-          ],
-        },
         code: {
           coding: [
             {
@@ -568,23 +563,22 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
   if (Array.isArray(input.medications)) {
     for (const med of input.medications) {
       const medReqId = `medreq-${med.id}`;
-      const medCodingCode = med.drugCode?.trim() || `OCL-MED-${med.id}`;
+      const medCodingCode = med.drugCode?.trim();
+      const medCodingSystem = med.drugCodeSystem?.trim();
       entries.push({
         fullUrl: `MedicationRequest/${medReqId}`,
         resource: {
           resourceType: 'MedicationRequest',
           id: medReqId,
           meta: { profile: [KE_ECLAIMS_PROFILES.medicationRequest] },
-          status: 'completed',
+          status: 'unknown',
           intent: 'order',
           medicationCodeableConcept: {
-            coding: [
-              {
-                system: `${MOH_KENYA_OCL_BASE}/sources/MOH-KENYA/concepts`,
-                code: medCodingCode,
-                display: med.drugName,
-              },
-            ],
+            ...(medCodingCode && medCodingSystem
+              ? {
+                  coding: [{ system: medCodingSystem, code: medCodingCode, display: med.drugName }],
+                }
+              : {}),
             text: med.drugName,
           },
           subject: { reference: patientFullUrl },
@@ -606,13 +600,13 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
             meta: { profile: [KE_ECLAIMS_PROFILES.medicationDispense] },
             status: 'completed',
             medicationCodeableConcept: {
-              coding: [
-                {
-                  system: `${MOH_KENYA_OCL_BASE}/sources/MOH-KENYA/concepts`,
-                  code: medCodingCode,
-                  display: med.drugName,
-                },
-              ],
+              ...(medCodingCode && medCodingSystem
+                ? {
+                    coding: [
+                      { system: medCodingSystem, code: medCodingCode, display: med.drugName },
+                    ],
+                  }
+                : {}),
               text: med.drugName,
             },
             subject: { reference: patientFullUrl },
@@ -636,15 +630,11 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
           resourceType: 'DiagnosticReport',
           id: repId,
           meta: { profile: [KE_ECLAIMS_PROFILES.diagnosticReport] },
-          status: 'final',
+          status: rep.status ?? 'unknown',
           code: {
-            coding: [
-              {
-                system: `${MOH_KENYA_OCL_BASE}/sources/MOH-KENYA/concepts`,
-                code: rep.code,
-                display: rep.display,
-              },
-            ],
+            ...(rep.codeSystem
+              ? { coding: [{ system: rep.codeSystem, code: rep.code, display: rep.display }] }
+              : {}),
             text: rep.display,
           },
           subject: { reference: patientFullUrl },
@@ -1204,10 +1194,10 @@ export function parseShaBundleSubmissionResponse(
       }
     }
 
-    if (httpStatus >= 400 || fhirOutcome === 'error') {
+    if (httpStatus < 200 || httpStatus >= 300 || fhirOutcome === 'error') {
       return {
         accepted: false,
-        outcome: root.preAuthRef || disposition ? 'REJECTED' : 'FAILED',
+        outcome: 'FAILED',
         mediatorId: null,
         payerReference: preAuthRef ?? id,
         upstreamState: fhirOutcome || 'error',
@@ -1230,19 +1220,6 @@ export function parseShaBundleSubmissionResponse(
       };
     }
 
-    if (fhirOutcome === 'partial') {
-      return {
-        accepted: true,
-        outcome: 'PARTIALLY_APPROVED',
-        mediatorId: null,
-        payerReference: preAuthRef ?? id,
-        upstreamState: 'partial',
-        approvedAmountKes,
-        rejectionReason: disposition,
-        errors: [],
-      };
-    }
-
     if (disposition && /reject|denied|declin/i.test(disposition)) {
       return {
         accepted: false,
@@ -1256,15 +1233,40 @@ export function parseShaBundleSubmissionResponse(
       };
     }
 
+    // A FHIR processing outcome is not a coverage or authorization decision.
+    // Only explicit payer decisions can become an approval; an empty or
+    // unknown outcome is never an acknowledgement, even with HTTP 200.
+    if (fhirOutcome === 'complete' && disposition && /^approved$/i.test(disposition.trim()))
+      return {
+        accepted: true,
+        outcome: 'APPROVED',
+        mediatorId: null,
+        payerReference: preAuthRef ?? id,
+        upstreamState: fhirOutcome,
+        approvedAmountKes,
+        rejectionReason: null,
+        errors: [],
+      };
+    if (fhirOutcome === 'complete')
+      return {
+        accepted: true,
+        outcome: 'ACKNOWLEDGED',
+        mediatorId: null,
+        payerReference: preAuthRef ?? id,
+        upstreamState: fhirOutcome,
+        approvedAmountKes: null,
+        rejectionReason: null,
+        errors: [],
+      };
     return {
-      accepted: true,
-      outcome: preAuthRef || approvedAmountKes ? 'APPROVED' : 'ACKNOWLEDGED',
+      accepted: false,
+      outcome: 'FAILED',
       mediatorId: null,
-      payerReference: preAuthRef ?? id,
-      upstreamState: fhirOutcome || 'complete',
-      approvedAmountKes,
-      rejectionReason: null,
-      errors: [],
+      payerReference: null,
+      upstreamState: fhirOutcome || 'unrecognized_payload',
+      approvedAmountKes: null,
+      rejectionReason: 'Response did not contain a recognized processing outcome.',
+      errors: ['Unrecognized processing outcome.'],
     };
   }
 
@@ -1304,7 +1306,12 @@ export function parseShaBundleSubmissionResponse(
     approvedAmountKes = Number(rawApproved.trim()).toFixed(2);
   }
 
-  if (httpStatus >= 400 || upstreamState === 'failed_dispatch' || upstreamState === 'error') {
+  if (
+    httpStatus < 200 ||
+    httpStatus >= 300 ||
+    upstreamState === 'failed_dispatch' ||
+    upstreamState === 'error'
+  ) {
     const errs =
       rawErrors.length > 0 ? rawErrors : messageText ? [messageText] : [`HTTP ${httpStatus}`];
     return {
@@ -1365,8 +1372,7 @@ export function parseShaBundleSubmissionResponse(
     upstreamState === 'in-review' ||
     upstreamState === 'submitted' ||
     upstreamState === 'submitted_claim' ||
-    upstreamState === 'pending' ||
-    (httpStatus >= 200 && httpStatus < 300 && (mediatorId !== null || payerReference !== null))
+    upstreamState === 'pending'
   ) {
     return {
       accepted: true,

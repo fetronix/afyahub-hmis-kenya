@@ -36,6 +36,7 @@ import {
   canTransitionPreauthStatus,
   formatCents,
   InsuranceDomainError,
+  isConsistentShaDispatch,
   loadScopedFacility,
   loadTenantPatient,
   recordInsuranceAuditEvent,
@@ -77,7 +78,7 @@ export async function authorizePatientVisitConsent(
   adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
 ) {
   await loadScopedFacility(scope);
-  const patient = await loadTenantPatient(scope.tenantId, input.patientId);
+  const patient = await loadTenantPatient(scope.tenantId, input.patientId, scope.facilityId);
   const { config: payerConfig } = await getFacilityPayerConfig(scope, 'SHA');
 
   const [latestElig] = await db
@@ -100,6 +101,17 @@ export async function authorizePatientVisitConsent(
       409,
     );
   }
+
+  if (
+    input.memberCrNumber?.trim() &&
+    input.memberCrNumber.trim() !== patient.dhaClientRegistryId?.trim() &&
+    input.memberCrNumber.trim() !== latestElig?.memberCrNumber?.trim()
+  )
+    throw new InsuranceDomainError(
+      'IDENTIFIER_PATIENT_MISMATCH',
+      'Client Registry ID does not belong to the selected patient.',
+      400,
+    );
 
   const crNumber =
     input.memberCrNumber?.trim() ||
@@ -293,7 +305,7 @@ export async function createPreauthorization(
   input: CreatePreauthorizationInput,
 ) {
   await loadScopedFacility(scope);
-  const patient = await loadTenantPatient(scope.tenantId, input.patientId);
+  const patient = await loadTenantPatient(scope.tenantId, input.patientId, scope.facilityId);
   const payerCode = (input.payerCode ?? 'SHA').trim().toUpperCase();
 
   const clinicalIndication = input.clinicalIndication.trim();
@@ -364,6 +376,52 @@ export async function createPreauthorization(
     }
   }
 
+  if (input.eligibilityVerificationId) {
+    const [verification] = await db
+      .select({ id: schema.insuranceEligibilityVerifications.id })
+      .from(schema.insuranceEligibilityVerifications)
+      .where(
+        and(
+          eq(schema.insuranceEligibilityVerifications.id, input.eligibilityVerificationId),
+          eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
+          eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
+          eq(schema.insuranceEligibilityVerifications.patientId, patient.id),
+          eq(schema.insuranceEligibilityVerifications.payerCode, payerCode),
+        ),
+      )
+      .limit(1);
+    if (!verification)
+      throw new InsuranceDomainError(
+        'ELIGIBILITY_NOT_FOUND',
+        'Eligibility does not belong to this patient and facility.',
+        404,
+      );
+  }
+  if (input.tariffId) {
+    const [tariff] = await db
+      .select({ id: schema.facilityServiceTariffs.id })
+      .from(schema.facilityServiceTariffs)
+      .where(
+        and(
+          eq(schema.facilityServiceTariffs.id, input.tariffId),
+          eq(schema.facilityServiceTariffs.tenantId, scope.tenantId),
+          eq(schema.facilityServiceTariffs.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!tariff)
+      throw new InsuranceDomainError(
+        'TARIFF_NOT_FOUND',
+        'Tariff is not available at this facility.',
+        404,
+      );
+  }
+  if (input.consentToken?.trim() && !input.authorizationId)
+    throw new InsuranceDomainError(
+      'AUTHORIZATION_REQUIRED',
+      'Consent token must come from the selected patient authorization.',
+      400,
+    );
   let resolvedConsentToken = input.consentToken?.trim() || null;
   if (input.authorizationId) {
     const [auth] = await db
@@ -384,6 +442,12 @@ export async function createPreauthorization(
         404,
       );
     }
+    if (resolvedConsentToken && resolvedConsentToken !== auth.consentToken)
+      throw new InsuranceDomainError(
+        'AUTHORIZATION_MISMATCH',
+        'Consent token does not match the selected patient authorization.',
+        400,
+      );
     if (!resolvedConsentToken && auth.consentToken) {
       resolvedConsentToken = auth.consentToken;
     }
@@ -666,6 +730,16 @@ export async function updatePreauthorization(
     );
   }
 
+  if (
+    nextStatus === 'REJECTED' &&
+    !(input.rejectionReason?.trim() || existing.rejectionReason?.trim())
+  )
+    throw new InsuranceDomainError(
+      'REJECTION_REASON_REQUIRED',
+      'Record the payer rejection reason.',
+      400,
+    );
+
   const nextApprovedAmount =
     input.approvedAmount !== undefined &&
     input.approvedAmount !== null &&
@@ -717,7 +791,7 @@ export async function updatePreauthorization(
         ? {
             decidedByUserId: scope.userId,
             decidedAt: new Date(),
-            source: existing.isSimulated ? 'SANDBOX_SIMULATION' : 'PAYER_PORTAL_OR_CALLBACK',
+            source: existing.isSimulated ? 'SANDBOX_SIMULATION' : 'MANUAL_PAYER_DECISION',
           }
         : {}),
       updatedAt: new Date(),
@@ -745,7 +819,14 @@ export async function submitPreauthorization(
   scope: InsuranceActorScope,
   preauthId: number,
   adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
-  options?: { protocol?: 'FHIR_BUNDLE' | 'HIE_PREAUTH'; consentToken?: string | null },
+  options?: {
+    protocol?: 'FHIR_BUNDLE' | 'HIE_PREAUTH';
+    consentToken?: string | null;
+    serviceStart?: string;
+    serviceEnd?: string;
+    subType?: 'op' | 'ip';
+    schemeCode?: string;
+  },
 ) {
   const facility = await loadScopedFacility(scope);
   const existing = await getPreauthorizationById(scope, preauthId);
@@ -758,7 +839,7 @@ export async function submitPreauthorization(
     );
   }
 
-  const rawPatient = await loadTenantPatient(scope.tenantId, existing.patientId);
+  const rawPatient = await loadTenantPatient(scope.tenantId, existing.patientId, scope.facilityId);
   const patient = openPatientIdentifiers(rawPatient);
   if (!patient.shaNumber && !patient.nationalId && !patient.dhaClientRegistryId) {
     throw new InsuranceDomainError(
@@ -769,10 +850,35 @@ export async function submitPreauthorization(
   }
 
   const { config: payerConfig } = await getFacilityPayerConfig(scope, existing.payerCode);
-  const facilityRegistryCode =
-    payerConfig.facilityRegistryCode || facility.mflCode || facility.code;
+  const facilityRegistryCode = payerConfig.facilityRegistryCode || facility.mflCode;
+  if (!facilityRegistryCode)
+    throw new InsuranceDomainError(
+      'FACILITY_REGISTRY_REQUIRED',
+      'Enter the authorized facility registry identifier before submission.',
+      400,
+    );
 
-  const today = new Date().toISOString().slice(0, 10);
+  const serviceStart = options?.serviceStart?.trim() ?? '';
+  const serviceEnd = options?.serviceEnd?.trim() ?? '';
+  const subType = options?.subType;
+  const schemeCode = options?.schemeCode?.trim().toUpperCase() ?? '';
+  const isDate = (value: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (
+    !isDate(serviceStart) ||
+    !isDate(serviceEnd) ||
+    serviceStart > serviceEnd ||
+    (subType !== 'op' && subType !== 'ip') ||
+    !schemeCode ||
+    !(payerConfig.contractedSchemes as readonly string[]).includes(schemeCode)
+  )
+    throw new InsuranceDomainError(
+      'PREAUTH_CONTEXT_REQUIRED',
+      'Provide actual service dates, care setting and a facility-configured payer scheme; these cannot be inferred.',
+      400,
+    );
   const unitCents = Math.round(
     requireMoneyCents(existing.estimatedAmount, 'estimatedAmount') / Math.max(1, existing.quantity),
   );
@@ -784,8 +890,8 @@ export async function submitPreauthorization(
     use: 'preauthorization',
     preauthCategory: existing.category,
     claimType: 'institutional',
-    subType: existing.isElective ? 'ip' : 'op',
-    schemeCode: payerConfig.contractedSchemes[0] ?? 'SHIF',
+    subType,
+    schemeCode,
     facilityRegistryCode,
     facilityName: facility.name,
     patient: {
@@ -800,8 +906,8 @@ export async function submitPreauthorization(
       birthDate: patient.dateOfBirth,
     },
     encounterId: existing.encounterId,
-    billableStart: today,
-    billableEnd: today,
+    billableStart: serviceStart,
+    billableEnd: serviceEnd,
     createdIso: new Date().toISOString(),
     totalClaimedKes: existing.estimatedAmount,
     attendingPractitioner:
@@ -824,8 +930,8 @@ export async function submitPreauthorization(
         sequence: 1,
         payerServiceCode: existing.requestedServiceCode,
         payerServiceName: existing.requestedServiceName,
-        servicedStart: today,
-        servicedEnd: today,
+        servicedStart: serviceStart,
+        servicedEnd: serviceEnd,
         quantity: existing.quantity,
         unitPriceKes: formatCents(unitCents),
         netKes: existing.estimatedAmount,
@@ -875,8 +981,8 @@ export async function submitPreauthorization(
       variant: mapCategoryToHieVariant(existing.category),
       isElective: existing.isElective,
       interventionCode: existing.requestedServiceCode,
-      serviceStart: today,
-      serviceEnd: today,
+      serviceStart,
+      serviceEnd,
       clinicalIndications: existing.clinicalIndication,
       diagnoses: [
         {
@@ -905,7 +1011,22 @@ export async function submitPreauthorization(
       providerNotificationEmail: scope.userEmail ?? null,
     });
 
-    if (!hieRes.accepted) {
+    if (
+      !hieRes.accepted ||
+      hieRes.httpStatus === null ||
+      hieRes.httpStatus < 200 ||
+      hieRes.httpStatus >= 300 ||
+      hieRes.errors.length > 0 ||
+      ![
+        'SUBMITTED',
+        'PENDING',
+        'APPROVED',
+        'FINALISED',
+        'PARTIALLY_APPROVED',
+        'REJECTED',
+        'DECLINED',
+      ].includes(hieRes.status)
+    ) {
       throw new InsuranceDomainError(
         'SHA_PREAUTH_SUBMISSION_FAILED',
         hieRes.rejectionReason ?? 'DHA HIE /preauths rejected or failed preauthorization request.',
@@ -923,10 +1044,6 @@ export async function submitPreauthorization(
             ? 'REJECTED'
             : 'PENDING';
 
-    const validUntilDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-
     const [updated] = await db
       .update(schema.insurancePreauthorizations)
       .set({
@@ -941,14 +1058,9 @@ export async function submitPreauthorization(
         interimApprovedAmount: hieRes.interimApprovedAmountKes ?? existing.interimApprovedAmount,
         approvedAmount: hieRes.finalApprovedAmountKes ?? existing.approvedAmount,
         rejectionReason: hieRes.rejectionReason,
-        validFrom:
-          mappedStatus === 'APPROVED' || mappedStatus === 'PARTIALLY_APPROVED'
-            ? today
-            : existing.validFrom,
-        validUntil:
-          mappedStatus === 'APPROVED' || mappedStatus === 'PARTIALLY_APPROVED'
-            ? validUntilDate
-            : existing.validUntil,
+        // The response did not supply a validity period; do not invent one.
+        validFrom: existing.validFrom,
+        validUntil: existing.validUntil,
         fhirBundle,
         submittedByUserId: scope.userId,
         submittedAt: new Date(),
@@ -988,7 +1100,7 @@ export async function submitPreauthorization(
     };
   }
 
-  const gatewayRes = await adapter.submitBundle({
+  let gatewayRes = await adapter.submitBundle({
     tenantId: scope.tenantId,
     facilityId: scope.facilityId,
     actorUserId: scope.userId,
@@ -999,7 +1111,17 @@ export async function submitPreauthorization(
     fhirBundle,
   });
 
-  if (!gatewayRes.accepted && gatewayRes.outcome === 'FAILED') {
+  if (!isConsistentShaDispatch(gatewayRes))
+    gatewayRes = {
+      ...gatewayRes,
+      accepted: false,
+      outcome: 'FAILED',
+      approvedAmountKes: null,
+      rejectionReason: 'Unrecognized or contradictory payer processing result.',
+      errors: ['Unrecognized or contradictory payer processing result.'],
+    };
+
+  if (!gatewayRes.accepted && gatewayRes.outcome !== 'REJECTED') {
     throw new InsuranceDomainError(
       'SHA_PREAUTH_SUBMISSION_FAILED',
       gatewayRes.rejectionReason ?? 'SHA gateway could not accept the preauthorization bundle.',
@@ -1021,8 +1143,6 @@ export async function submitPreauthorization(
           ? 'REJECTED'
           : 'PENDING';
 
-  const validUntilDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
   const [updated] = await db
     .update(schema.insurancePreauthorizations)
     .set({
@@ -1033,14 +1153,9 @@ export async function submitPreauthorization(
       mediatorId: gatewayRes.mediatorId,
       approvedAmount: gatewayRes.approvedAmountKes ?? existing.approvedAmount,
       rejectionReason: gatewayRes.rejectionReason,
-      validFrom:
-        nextStatus === 'APPROVED' || nextStatus === 'PARTIALLY_APPROVED'
-          ? today
-          : existing.validFrom,
-      validUntil:
-        nextStatus === 'APPROVED' || nextStatus === 'PARTIALLY_APPROVED'
-          ? validUntilDate
-          : existing.validUntil,
+      // The gateway did not supply an authorization validity period.
+      validFrom: existing.validFrom,
+      validUntil: existing.validUntil,
       fhirBundle,
       submittedByUserId: scope.userId,
       submittedAt: new Date(),

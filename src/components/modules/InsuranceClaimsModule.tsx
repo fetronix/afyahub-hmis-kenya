@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import { payerHubApi, type FacilityPayer } from '../../api/payer-hub.client.ts';
 import { shaEclaimsApi, type ShaConnectionStatusResponse } from '../../api/sha-eclaims.client.ts';
 import {
   InsuranceClaim,
@@ -64,6 +65,7 @@ export const InsuranceClaimsModule: React.FC = () => {
     useState<InsuranceWorkspaceTab>('eligibility_benefits');
   const [shaConnection, setShaConnection] = useState<ShaConnectionStatusResponse | null>(null);
   const [claims, setClaims] = useState<InsuranceClaim[]>([]);
+  const [availablePayers, setAvailablePayers] = useState<FacilityPayer[]>([]);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [encounters, setEncounters] = useState<Encounter[]>([]);
@@ -87,7 +89,7 @@ export const InsuranceClaimsModule: React.FC = () => {
   const [isLoadingLines, setIsLoadingLines] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
   const [claimForm, setClaimForm] = useState({
-    payerName: 'Social Health Authority (SHA)',
+    payerCode: '',
     policyNumber: '',
     preAuthCode: '',
     notes: '',
@@ -97,7 +99,7 @@ export const InsuranceClaimsModule: React.FC = () => {
     async function loadClaimsData() {
       setLoading(true);
       try {
-        const [cList, invList, pList, encList, tariffList, connRes] = await Promise.all([
+        const [cList, invList, pList, encList, tariffList, connRes, catalogue] = await Promise.all([
           api.getClaims(currentFacility?.id).catch(() => [] as InsuranceClaim[]),
           api.getInvoices(currentFacility?.id).catch(() => [] as BillingInvoice[]),
           api.getPatients(currentTenant?.id, currentFacility?.id).catch(() => [] as Patient[]),
@@ -108,6 +110,9 @@ export const InsuranceClaimsModule: React.FC = () => {
             ? api.getServiceTariffs(currentFacility.id).catch(() => [] as ServiceTariff[])
             : Promise.resolve([] as ServiceTariff[]),
           shaEclaimsApi.getConnectionStatus(currentFacility?.id).catch(() => null),
+          currentFacility?.id
+            ? payerHubApi.catalogue(currentFacility.id).catch(() => null)
+            : Promise.resolve(null),
         ]);
         setClaims(cList);
         setInvoices(invList);
@@ -115,6 +120,7 @@ export const InsuranceClaimsModule: React.FC = () => {
         setEncounters(encList);
         setTariffs(tariffList);
         setShaConnection(connRes);
+        setAvailablePayers(catalogue?.providers.filter((p) => p.usableForNewClaims) ?? []);
       } catch (err) {
         console.error('Failed to load insurance claims:', err);
       } finally {
@@ -130,7 +136,7 @@ export const InsuranceClaimsModule: React.FC = () => {
     setSelectedLineIds([]);
     setOpenClaimWarning(null);
     setClaimForm({
-      payerName: 'Social Health Authority (SHA)',
+      payerCode: '',
       policyNumber: '',
       preAuthCode: '',
       notes: '',
@@ -201,7 +207,7 @@ export const InsuranceClaimsModule: React.FC = () => {
   const handleDraftClaim = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedInvoiceId || selectedLineIds.length === 0) return;
+    if (!selectedInvoiceId || selectedLineIds.length === 0 || !claimForm.payerCode) return;
 
     setIsDrafting(true);
 
@@ -209,7 +215,7 @@ export const InsuranceClaimsModule: React.FC = () => {
       const result = await api.draftClaim({
         invoiceId: Number(selectedInvoiceId),
         lineItemIds: selectedLineIds,
-        payerName: claimForm.payerName,
+        payerCode: claimForm.payerCode,
         policyNumber: claimForm.policyNumber || undefined,
         preAuthCode: claimForm.preAuthCode || undefined,
         notes: claimForm.notes || undefined,
@@ -233,12 +239,16 @@ export const InsuranceClaimsModule: React.FC = () => {
   };
 
   const handleSubmitClaim = async (claim: InsuranceClaim) => {
+    const reference = window.prompt(
+      'Enter the reference from your manual submission to the payer. This system does not transmit the claim.',
+    );
+    if (!reference?.trim()) return;
     setBusyClaimId(claim.id);
 
     try {
-      await api.submitClaim(claim.id, currentFacility?.id);
+      await api.submitClaim(claim.id, currentFacility?.id, reference.trim());
       showToast(
-        `Claim ${claim.claimNumber} marked submitted. Submit it through the payer's own channel — this system does not transmit claims.`,
+        `Manual dispatch for ${claim.claimNumber} recorded. This does not mean the payer accepted or paid it.`,
       );
       triggerRefresh();
     } catch (err: any) {
@@ -283,25 +293,28 @@ export const InsuranceClaimsModule: React.FC = () => {
   };
 
   const handleSettle = async (claim: InsuranceClaim) => {
+    const receiptId = window.prompt(
+      'Enter the ID of the existing billing receipt for this insurer and invoice. No payment will be created.',
+    );
+    if (!receiptId) return;
+    const reference = window.prompt(
+      'Enter the actual remittance or bank reference recorded on that receipt.',
+    );
+    if (!reference) return;
     setBusyClaimId(claim.id);
-
     try {
-      const result = await api.settleClaim(claim.id, currentFacility?.id);
-
-      const unapplied = result.unappliedCents / 100;
-
-      showToast(
-        `KES ${(result.appliedCents / 100).toLocaleString()} posted to invoice ${
-          result.payment.receiptNumber
-        }.` +
-          (unapplied > 0
-            ? ` KES ${unapplied.toLocaleString()} was approved beyond the outstanding balance and was not applied.`
-            : ''),
+      const result = await api.settleClaim(
+        claim.id,
+        currentFacility?.id,
+        Number(receiptId),
+        reference,
       );
-
+      showToast(
+        `Claim matched to existing receipt ${result.payment.receiptNumber}. The invoice was not changed.`,
+      );
       triggerRefresh();
     } catch (err: any) {
-      showToast(`Could not settle the claim: ${err.message}`);
+      showToast(`Could not match the receipt: ${err.message}`);
     } finally {
       setBusyClaimId(null);
     }
@@ -507,7 +520,7 @@ export const InsuranceClaimsModule: React.FC = () => {
               <p className="text-slate-700">
                 This manual ledger tab does not transmit claims to SHA or any private payer, and
                 does not verify membership. Use the <strong>SHA eClaims</strong> tabs above for
-                AfyaLink FHIR eClaims workflows, or draft manual portal claims below and settle
+                AfyaLink FHIR eClaims workflows, or draft manual portal claims below and reconcile
                 approved amounts back against the invoice.
               </p>
             </div>
@@ -792,16 +805,17 @@ export const InsuranceClaimsModule: React.FC = () => {
                     <div>
                       <label className="block font-medium text-slate-700 mb-1">Payer scheme</label>
                       <select
-                        value={claimForm.payerName}
-                        onChange={(e) => setClaimForm({ ...claimForm, payerName: e.target.value })}
+                        value={claimForm.payerCode}
+                        onChange={(e) => setClaimForm({ ...claimForm, payerCode: e.target.value })}
                         className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                        required
                       >
-                        <option value="Social Health Authority (SHA)">
-                          Social Health Authority (SHA)
-                        </option>
-                        <option value="Private insurer">Private insurer</option>
-                        <option value="Employer scheme">Employer scheme</option>
-                        <option value="Other payer">Other payer</option>
+                        <option value="">Select an enabled payer</option>
+                        {availablePayers.map((payer) => (
+                          <option key={payer.id} value={payer.code}>
+                            {payer.displayName}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -864,6 +878,7 @@ export const InsuranceClaimsModule: React.FC = () => {
                         isDrafting ||
                         !!openClaimWarning ||
                         !selectedInvoiceId ||
+                        !claimForm.payerCode ||
                         selectedLineIds.length === 0 ||
                         claimableCents <= 0
                       }

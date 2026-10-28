@@ -70,7 +70,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
   showToast,
 }) => {
   const defaultPayer =
-    selectedPayerFilter !== 'ALL' ? selectedPayerFilter : (payers[0]?.payerCode ?? 'BRITAM');
+    selectedPayerFilter !== 'ALL' ? selectedPayerFilter : (payers[0]?.payerCode ?? '');
 
   const [busy, setBusy] = useState(false);
 
@@ -79,17 +79,18 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
   const [ruleForm, setRuleForm] = useState({
     payerCode: defaultPayer,
     ruleCode: '',
-    benefitPackage: 'CORPORATE_OUTPATIENT',
+    benefitPackage: '',
     serviceCategory: 'OPD_CONSULTATION',
-    copayType: 'FIXED',
-    copayValue: '500.00',
-    deductibleAmount: '0.00',
+    copayType: '',
+    copayValue: '',
+    deductibleAmount: '',
+    coinsurancePercent: '',
     perVisitLimit: '',
     annualLimit: '',
     requiresPreauth: false,
     sourceReference: '',
-    effectiveFrom: new Date().toISOString().slice(0, 10),
-    approveImmediately: true,
+    effectiveFrom: '',
+    approveImmediately: false,
   });
 
   /* Benefit Validation Form */
@@ -114,7 +115,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
     payerServiceName: '',
     reimbursementTariff: '',
     requiresPreauth: false,
-    effectiveFrom: new Date().toISOString().slice(0, 10),
+    effectiveFrom: '',
   });
 
   /* Preauth Form & Decision Modal */
@@ -127,17 +128,19 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
     invoiceId: '',
     category: 'PROCEDURE',
     clinicalIndication: '',
-    primaryDiagnosisCode: 'J06.9',
-    primaryDiagnosisDisplay: 'Acute upper respiratory infection',
+    primaryDiagnosisCode: '',
+    primaryDiagnosisDisplay: '',
     requestedServiceCode: '',
     requestedServiceName: '',
     quantity: '1',
-    unitPrice: '5000.00',
+    unitPrice: '',
   });
 
+  const [dispatchTarget, setDispatchTarget] = useState<PrivatePreauthRecord | null>(null);
+  const [dispatchReference, setDispatchReference] = useState('');
   const [decisionTarget, setDecisionTarget] = useState<PrivatePreauthRecord | null>(null);
   const [decisionForm, setDecisionForm] = useState({
-    status: 'APPROVED',
+    status: '',
     payerAuthReference: '',
     approvedAmount: '',
     validUntil: '',
@@ -264,17 +267,25 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
     }
   };
 
-  const handleSubmitPreauth = async (pa: PrivatePreauthRecord) => {
+  const handleSubmitPreauth = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!dispatchTarget) return;
     setBusy(true);
     try {
-      await privateInsuranceApi.submitPreauthorization(pa.id, {
-        dispatchMode: 'MANUAL',
-        manualDispatchRef: `${pa.payerCode}-DISPATCH-${pa.id}`,
+      await privateInsuranceApi.submitPreauthorization(dispatchTarget.id, {
+        submissionMode: 'MANUAL',
+        manualDispatchReference: dispatchReference.trim(),
       });
-      showToast(`Submitted ${pa.preauthNumber} for insurer review.`, { tone: 'success' });
+      showToast('Manual preauthorization dispatch recorded. No API request was made.', {
+        tone: 'success',
+      });
+      setDispatchTarget(null);
+      setDispatchReference('');
       await onRefresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Submission failed.', { tone: 'error' });
+      showToast(err instanceof Error ? err.message : 'Could not record dispatch.', {
+        tone: 'error',
+      });
     } finally {
       setBusy(false);
     }
@@ -386,6 +397,50 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   placeholder="BRITAM-OPD-STD-2026"
                 />
               </div>
+              <label className="text-xs font-semibold">
+                Actual contracted benefit package
+                <input
+                  required
+                  value={ruleForm.benefitPackage}
+                  onChange={(e) => setRuleForm({ ...ruleForm, benefitPackage: e.target.value })}
+                  className="field-input"
+                />
+              </label>
+              <label className="text-xs font-semibold">
+                Contract effective from
+                <input
+                  required
+                  type="date"
+                  value={ruleForm.effectiveFrom}
+                  onChange={(e) => setRuleForm({ ...ruleForm, effectiveFrom: e.target.value })}
+                  className="field-input"
+                />
+              </label>
+              <label className="text-xs font-semibold">
+                Contract deductible (0 only if none)
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={ruleForm.deductibleAmount}
+                  onChange={(e) => setRuleForm({ ...ruleForm, deductibleAmount: e.target.value })}
+                  className="field-input"
+                />
+              </label>
+              <label className="text-xs font-semibold">
+                Contract coinsurance % (0 only if none)
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={ruleForm.coinsurancePercent}
+                  onChange={(e) => setRuleForm({ ...ruleForm, coinsurancePercent: e.target.value })}
+                  className="field-input"
+                />
+              </label>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Service Category
@@ -409,8 +464,10 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                 <select
                   value={ruleForm.copayType}
                   onChange={(e) => setRuleForm({ ...ruleForm, copayType: e.target.value })}
+                  required
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 >
+                  <option value="">— Select contract term —</option>
                   <option value="NONE">NONE</option>
                   <option value="FIXED">FIXED (KES)</option>
                   <option value="PERCENTAGE">PERCENTAGE (%)</option>
@@ -421,6 +478,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   Copayment Value
                 </label>
                 <input
+                  required
                   value={ruleForm.copayValue}
                   onChange={(e) => setRuleForm({ ...ruleForm, copayValue: e.target.value })}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -742,6 +800,16 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   placeholder="2500.00"
                 />
               </div>
+              <label className="text-xs font-semibold">
+                Mapping effective from
+                <input
+                  required
+                  type="date"
+                  value={mapForm.effectiveFrom}
+                  onChange={(e) => setMapForm({ ...mapForm, effectiveFrom: e.target.value })}
+                  className="field-input"
+                />
+              </label>
               <div className="flex items-end">
                 <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
                   <input
@@ -852,6 +920,42 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
           </button>
         )}
       </div>
+
+      {dispatchTarget && (
+        <form
+          onSubmit={handleSubmitPreauth}
+          className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3"
+          aria-label="Record manual preauthorization dispatch"
+        >
+          <h3 className="font-bold">Record manual dispatch — {dispatchTarget.preauthNumber}</h3>
+          <p className="text-xs">
+            Send through the insurer's approved manual channel first. Recording a reference does not
+            imply approval.
+          </p>
+          <label className="block text-xs font-semibold">
+            Actual portal, email or courier reference
+            <input
+              required
+              minLength={3}
+              value={dispatchReference}
+              onChange={(e) => setDispatchReference(e.target.value)}
+              className="field-input"
+            />
+          </label>
+          <div className="flex gap-3">
+            <button disabled={busy} className="btn-primary">
+              Record dispatch
+            </button>
+            <button
+              type="button"
+              onClick={() => setDispatchTarget(null)}
+              className="text-sm underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       {showPreauthForm && canManagePreauth && (
         <form
@@ -972,6 +1076,28 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                 ))}
               </select>
             </div>
+            <label className="text-xs font-semibold text-slate-700">
+              Primary diagnosis code
+              <input
+                required
+                value={preauthForm.primaryDiagnosisCode}
+                onChange={(e) =>
+                  setPreauthForm({ ...preauthForm, primaryDiagnosisCode: e.target.value })
+                }
+                className="field-input"
+              />
+            </label>
+            <label className="text-xs font-semibold text-slate-700">
+              Diagnosis description
+              <input
+                required
+                value={preauthForm.primaryDiagnosisDisplay}
+                onChange={(e) =>
+                  setPreauthForm({ ...preauthForm, primaryDiagnosisDisplay: e.target.value })
+                }
+                className="field-input"
+              />
+            </label>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Requested Service Code
@@ -1060,7 +1186,9 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                 value={decisionForm.status}
                 onChange={(e) => setDecisionForm({ ...decisionForm, status: e.target.value })}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                required
               >
+                <option value="">— Select actual decision —</option>
                 <option value="APPROVED">APPROVED</option>
                 <option value="PARTIALLY_APPROVED">PARTIALLY_APPROVED</option>
                 <option value="REJECTED">REJECTED</option>
@@ -1078,7 +1206,12 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   setDecisionForm({ ...decisionForm, payerAuthReference: e.target.value })
                 }
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Authentic Britam/PACIS Auth No."
+                placeholder="Reference from payer decision"
+                required={
+                  decisionForm.status === 'APPROVED' ||
+                  decisionForm.status === 'PARTIALLY_APPROVED' ||
+                  decisionForm.status === 'REJECTED'
+                }
               />
             </div>
             <div>
@@ -1091,10 +1224,26 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   setDecisionForm({ ...decisionForm, approvedAmount: e.target.value })
                 }
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder={decisionTarget.estimatedAmount}
+                placeholder="Enter actual payer-approved amount"
+                required={
+                  decisionForm.status === 'APPROVED' || decisionForm.status === 'PARTIALLY_APPROVED'
+                }
               />
             </div>
           </div>
+          {decisionForm.status === 'REJECTED' && (
+            <label className="text-xs font-semibold">
+              Actual rejection reason
+              <input
+                required
+                value={decisionForm.rejectionReason}
+                onChange={(e) =>
+                  setDecisionForm({ ...decisionForm, rejectionReason: e.target.value })
+                }
+                className="field-input"
+              />
+            </label>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -1232,7 +1381,10 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                       {canManagePreauth && pa.status === 'DRAFT' && (
                         <button
                           type="button"
-                          onClick={() => handleSubmitPreauth(pa)}
+                          onClick={() => {
+                            setDispatchTarget(pa);
+                            setDispatchReference('');
+                          }}
                           className="inline-flex items-center gap-1 text-brand-700 font-semibold hover:underline"
                         >
                           <Send className="w-3 h-3" /> Submit
@@ -1252,9 +1404,9 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                             onClick={() => {
                               setDecisionTarget(pa);
                               setDecisionForm({
-                                status: 'APPROVED',
+                                status: '',
                                 payerAuthReference: pa.payerAuthReference ?? '',
-                                approvedAmount: pa.estimatedAmount,
+                                approvedAmount: '',
                                 validUntil: '',
                                 conditions: '',
                                 rejectionReason: '',

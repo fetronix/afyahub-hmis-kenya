@@ -390,37 +390,22 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     });
     expect(adjudicated.status).toBe('Approved');
 
-    // Settle claim -> posts payment + updates invoice + marks Settled
-    mockDb.state!.queueSelect(
-      [
-        {
-          id: 801,
-          facilityId: 10,
-          tenantId: 1,
-          invoiceId: 900,
-          claimNumber: 'CLM-801',
-          status: 'Approved',
-          approvedAmount: '2500.00',
-        },
-      ],
-      [
-        {
-          id: 900,
-          invoiceNumber: 'INV-900',
-          totalAmount: '3000.00',
-          paidAmount: '500.00',
-          balanceAmount: '2500.00',
-          status: 'Partially Paid',
-          voidedAt: null,
-        },
-      ],
+    // Settlement requires an independently recorded receipt and remittance reference.
+    mockDb.state!.queueSelect([
+      {
+        id: 801,
+        facilityId: 10,
+        tenantId: 1,
+        invoiceId: 900,
+        claimNumber: 'CLM-801',
+        status: 'Approved',
+        approvedAmount: '2500.00',
+        payerCode: 'SHA',
+      },
+    ]);
+    await expect(claims.settleClaimScoped(ctx, 801, 'Cashier Mary')).rejects.toThrow(
+      /remittance reference/i,
     );
-    mockDb.state!.queueInsert([{ id: 951, amount: '2500.00' }]);
-    mockDb.state!.queueUpdate([], [{ id: 801, status: 'Settled', settledPaymentId: 951 }]);
-
-    const settled = await claims.settleClaimScoped(ctx, 801, 'Cashier Mary');
-    expect(settled.claim.status).toBe('Settled');
-    expect(settled.appliedCents).toBe(250_000);
 
     // List claims & claim items
     mockDb.state!.queueSelect([{ id: 801, claimNumber: 'CLM-801', status: 'Settled' }]);

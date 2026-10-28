@@ -4,11 +4,13 @@ import type { Tenant, Facility } from '../../types/index.ts';
 import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from 'lucide-react';
 import { SubscriptionBillingPanel } from './SubscriptionBillingPanel.tsx';
 import { PlatformPaymentProviders } from './payment-hub/PlatformPaymentProviders.tsx';
+import { PlatformPayerRegistry } from './payer-hub/PlatformPayerRegistry.tsx';
 import { FacilityRbacEditor } from './FacilityRbacEditor.tsx';
 import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
 import { FACILITY_MODULES } from '../../config/facility-modules.ts';
 
-type Tab = 'tenants' | 'facilities' | 'administrators' | 'billing' | 'payment_providers';
+type Tab =
+  'tenants' | 'facilities' | 'administrators' | 'billing' | 'payment_providers' | 'payer_registry';
 type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 
 type FacilityAdminInvitation = {
@@ -436,6 +438,7 @@ export const PlatformAdministrationModule: React.FC = () => {
     { id: 'administrators', label: 'Facility administrators', icon: UserPlus },
     { id: 'billing', label: 'Subscription billing', icon: CreditCard },
     { id: 'payment_providers', label: 'Payment & Banking Providers', icon: CreditCard },
+    { id: 'payer_registry', label: 'Payers & eClaims', icon: CreditCard },
   ];
 
   return (
@@ -497,6 +500,7 @@ export const PlatformAdministrationModule: React.FC = () => {
       </div>
 
       {tab === 'payment_providers' && <PlatformPaymentProviders />}
+      {tab === 'payer_registry' && <PlatformPayerRegistry />}
 
       {tab === 'tenants' && (
         <div className="grid gap-5 xl:grid-cols-2">
