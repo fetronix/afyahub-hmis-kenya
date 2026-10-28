@@ -11,6 +11,7 @@ import {
   resolveHiddenFacilityModules,
   unknownFacilityModules,
 } from '../config/facility-modules.ts';
+import { maternityModuleSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -253,7 +254,7 @@ describe('Facility module provisioning — contract tests', () => {
       'The rail cannot hide the screen that provisions modules',
     ).toBe(true);
 
-    const maternity = source('src/components/modules/MaternityModule.tsx');
+    const maternity = maternityModuleSource();
 
     expect(
       maternity.includes('Antenatal register') && maternity.includes("tab === 'anc'"),

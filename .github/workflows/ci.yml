@@ -13,7 +13,7 @@
 #
 # Jobs:
 #   static      tsc --noEmit, then eslint (0 errors required, warnings reported)
-#   unit        `npm test`: every spec, coverage thresholds enforced
+#   unit        `npm test`: every spec, including PostgreSQL-backed tests, coverage thresholds enforced
 #   database    migrations applied to PostgreSQL 16, then the DB specs
 #   build       client + server bundles, uploaded as artifacts
 #   audit       npm audit for high/critical advisories
@@ -88,8 +88,27 @@ jobs:
         run: npm run lint
 
   unit:
-    name: Unit and component tests
+    name: Coverage with PostgreSQL 16
     runs-on: ubuntu-latest
+    # Coverage covers both the modular upstream code and database-backed
+    # integration workflows. Run the entire suite against a fresh disposable
+    # database instead of silently skipping those tests or lowering the ratchet.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jalicare_test
+          POSTGRES_PASSWORD: jalicare_test_password
+          POSTGRES_DB: jalicare_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jalicare_test -d jalicare_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      JALICARE_REQUIRE_DB: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +125,9 @@ jobs:
         run: |
           echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
 
+      - name: Apply migrations to the disposable coverage database
+        run: npm run db:migrate -- --yes
+
       - name: Vitest (coverage)
         run: npm run test:coverage
 
@@ -119,9 +141,8 @@ jobs:
           if-no-files-found: warn
 
   # ------------------------------------------------------------------
-  # PostgreSQL 16. This is the job that proves the migrations actually
-  # apply, and the only place tenant isolation is tested against a real
-  # database.
+  # PostgreSQL 16. This independent job rechecks migrations, preflight and
+  # tenant isolation in addition to the database-backed coverage run.
   # ------------------------------------------------------------------
   database:
     name: Migrations and database specs (PostgreSQL 16)
@@ -175,8 +196,10 @@ jobs:
       - name: Apply migrations to an empty database
         run: npm run db:migrate -- --yes
 
-      - name: Migration status must be clean
-        run: npm run db:status
+      - name: Database preflight and migration status must be clean
+        run: |
+          npm run db:preflight
+          npm run db:status
 
       - name: Database and migration specs
         # No `--project node` filter: the config has a single environment
@@ -214,6 +237,11 @@ jobs:
         # listed by name because `src/tests/*.db.spec.ts` sits outside
         # src/tests/vitest, which is all the step above runs.
         run: npx vitest run src/tests/county-migration.db.spec.ts --reporter=verbose
+
+      - name: End-to-end HTTP + PostgreSQL integration specs
+        run: |
+          set -o pipefail
+          npx vitest run src/tests/integration/http-database.db.spec.ts --reporter=verbose 2>&1 | tee -a db-specs.log
 
       - name: Report the failing assertions
         if: failure()
@@ -275,19 +303,58 @@ jobs:
       - name: Smoke-test the production bundle
         # Starts the real artifact on a spare port and checks it answers.
         # This is the closest CI gets to the cPanel deployment.
+        #
+        # EVERY ASSERTION HERE HAS TO BE ABLE TO FAIL.
+        #
+        # The previous version could not, in the case that matters. It
+        # printed the SPA's status code with
+        # `curl -sf -o /dev/null -w '%{http_code}'` and then ended the step
+        # with `kill "$SERVER_PID"` - and a shell step reports the exit
+        # status of its *last* command. So a deployment that served a 500 on
+        # `/` reported green: the `500` appeared in the log and nothing read
+        # it. Measured, not assumed: same script, a stub answering 500 on
+        # `/`, old version exit 0, new version exit 1.
+        #
+        # (A server that never started did fail before - but by accident,
+        # because `kill` on a dead PID returns non-zero. The readiness loop
+        # itself still had no failure branch.)
+        #
+        # Now: `set -euo pipefail` so any failing command aborts the step, a
+        # readiness flag that is checked rather than assumed, and an explicit
+        # assertion that the SPA answers 200 rather than printing whatever it
+        # answered. The `trap` keeps the cleanup on the failure path too.
         run: |
+          set -euo pipefail
+
           NODE_ENV=production PORT=4321 node build/server.js &
           SERVER_PID=$!
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:4321/api/health > /dev/null; then break; fi
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4321/api/health > /dev/null; then
+              ready=1
+              break
+            fi
             sleep 1
           done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::the production bundle did not answer /api/health within 30s"
+            exit 1
+          fi
+
           echo "--- /api/health ---"
-          curl -sf http://127.0.0.1:4321/api/health
+          curl -sS http://127.0.0.1:4321/api/health
           echo
+
           echo "--- / (SPA) ---"
-          curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4321/
-          kill "$SERVER_PID"
+          spa_status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:4321/)
+          echo "$spa_status"
+          if [ "$spa_status" != "200" ]; then
+            echo "::error::the SPA answered $spa_status, expected 200"
+            exit 1
+          fi
 
       - name: Upload deployable artifacts
         uses: actions/upload-artifact@v4

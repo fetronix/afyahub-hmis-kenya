@@ -20,6 +20,7 @@ import { codesForFamily } from '../billing/tariff-matching.ts';
 import { toCents } from '../billing/billing.service.ts';
 
 import { describe, expect, it } from 'vitest';
+import { queriesSource, appSource } from './support/schema-source.ts';
 
 const TODAY = '2026-10-22';
 
@@ -685,7 +686,7 @@ describe('Service → tariff resolution — the laboratory billing reconstructio
   });
 
   it('9. THE ORDER CARRIES ITS CATALOGUE ID', async () => {
-    const queries = readFileSync(resolve(process.cwd(), 'src/db/queries.ts'), 'utf8');
+    const queries = queriesSource();
 
     expect(
       queries.includes('resolveCatalogueTestByName'),
@@ -876,7 +877,7 @@ describe('Service → tariff resolution — the laboratory billing reconstructio
       'there is exactly one place that writes an invoice line',
     ).toBe(true);
 
-    const app = readFileSync(resolve(process.cwd(), 'src/app.ts'), 'utf8');
+    const app = appSource();
 
     expect(
       app.includes("'/api/service-tariff-links'"),

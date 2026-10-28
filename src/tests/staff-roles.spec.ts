@@ -7,10 +7,12 @@ import {
   isDelegablePermission,
   isRestrictedRolePermission,
 } from '../auth/staff-role-policy.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, appSource, staffRolesServiceSource } from './support/schema-source.ts';
 import { containsCode, countCode } from './support/source-text.ts';
+import { staffAccountStatusBodySchema } from '../validation/schemas/index.ts';
+import { validateBody } from '../validation/validate.ts';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +24,7 @@ function source(path: string): string {
 
 const policy = source('src/auth/staff-role-policy.ts');
 
-const rolesService = source('src/auth/staff-roles.service.ts');
+const rolesService = staffRolesServiceSource();
 
 const rolesRoutes = source('src/auth/staff-roles.routes.ts');
 
@@ -34,7 +36,7 @@ const verificationService = source(
   'src/integrations/professional/professional-verification.service.ts',
 );
 
-const app = source('src/app.ts');
+const app = appSource();
 
 const wiring = source('src/routes/index.ts');
 
@@ -151,7 +153,7 @@ describe('Staff roles — contract tests', () => {
       'The staff roles router is mounted',
     ).toBe(true);
     expect(
-      containsCode(app, 'import staffRolesRoutes from "./auth/staff-roles.routes";'),
+      containsCode(wiring, "import staffRolesRoutes from '../auth/staff-roles.routes.ts'"),
       'The router is imported by the app',
     ).toBe(true);
 
@@ -652,10 +654,36 @@ describe('Staff roles — contract tests', () => {
     expect(containsCode(rolesRoutes, '"/:userId/status"'), 'The status route is registered').toBe(
       true,
     );
-    expect(
-      containsCode(rolesRoutes, 'typeof body.active !== "boolean"'),
-      'The route refuses a body that is not true or false',
-    ).toBe(true);
+
+    const statusValidator = validateBody(staffAccountStatusBodySchema, {
+      code: (issue) => (issue.path[0] === 'reason' ? 'INVALID_REASON' : 'INVALID_STATUS'),
+    });
+    const badRes = {
+      statusCode: 200,
+      payload: null as unknown,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(body: unknown) {
+        this.payload = body;
+        return this;
+      },
+    };
+    const nextSpy = vi.fn();
+    statusValidator({ body: { active: 'yes' } } as any, badRes as any, nextSpy);
+    expect(badRes.statusCode, 'The route refuses a body that is not true or false').toBe(400);
+    expect(badRes.payload).toMatchObject({
+      success: false,
+      error: 'VALIDATION_ERROR',
+      code: 'INVALID_STATUS',
+    });
+    expect(nextSpy).not.toHaveBeenCalled();
+
+    const goodReq = { body: { active: false, reason: 'Contract ended' } } as any;
+    statusValidator(goodReq, badRes as any, nextSpy);
+    expect(nextSpy).toHaveBeenCalledTimes(1);
+    expect(goodReq.validatedBody).toEqual({ active: false, reason: 'Contract ended' });
 
     expect(
       containsCode(panel, 'Deactivate') &&

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { PAYMENT_CHANNELS, PAYMENT_CHANNEL_LABELS, paymentChannel } from '../billing/settlement.ts';
 import { countdownTo, expiryDeadline, expiryToneClass } from '../components/ExpiryCountdown.tsx';
 import { daysUntilExpiry, expiryStatus } from '../inventory/inventory-contracts.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, appSource, staffRolesServiceSource } from './support/schema-source.ts';
 import { containsCode } from './support/source-text.ts';
 
 import { describe, expect, it } from 'vitest';
@@ -103,7 +103,7 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
       'An unrecognised method is reported, never silently absorbed',
     ).toBe(true);
 
-    const app = source('src/app.ts');
+    const app = appSource();
     expect(
       app.includes('getRevenueByPaymentChannel(db, facilityId, range)'),
       'The revenue route asks for the split',
@@ -362,7 +362,7 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
   });
 
   it('5. ROLE PERMISSIONS — THE SAVE THAT DID NOT SAVE', async () => {
-    const service = source('src/auth/staff-roles.service.ts');
+    const service = staffRolesServiceSource();
     const routes = source('src/auth/staff-roles.routes.ts');
     const panel = source('src/components/modules/StaffRolesPanel.tsx');
     const editor = source('src/components/modules/FacilityRbacEditor.tsx');

@@ -19,6 +19,7 @@ import {
 } from '../../scripts/generate-location-migration.ts';
 
 import { describe, expect, it } from 'vitest';
+import { appSource, platformRoutesSource } from './support/schema-source.ts';
 
 function source(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -372,10 +373,10 @@ describe('The two screens that write a county offer the same list', () => {
 
 describe('The API refuses a pair the forms could not produce', () => {
   it('patients', async () => {
-    const app = source('src/app.ts');
+    const app = appSource();
 
     expect(
-      app.includes("import { resolveLocation } from './constants/kenya-locations.ts'"),
+      /import \{ resolveLocation \} from '(?:\.\.\/)+constants\/kenya-locations\.ts'/.test(app),
       'the route uses the same rules as the screens',
     ).toBe(true);
 
@@ -396,7 +397,7 @@ describe('The API refuses a pair the forms could not produce', () => {
   });
 
   it('facilities', async () => {
-    const platform = source('src/routes/platform.routes.ts');
+    const platform = platformRoutesSource();
 
     expect(
       platform.includes('resolveLocation(textValue(body.county), textValue(body.subCounty))'),

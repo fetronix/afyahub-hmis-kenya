@@ -18,6 +18,11 @@ import {
   verifyPractitionerScoped,
 } from '../integrations/professional/professional-verification.service.ts';
 import { REGULATORS } from '../integrations/professional/practitioner.contracts.ts';
+import {
+  createStaffInvitationBodySchema,
+  invitationIdParamSchema,
+} from '../validation/schemas/index.ts';
+import { validateBody, validateParams } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -217,64 +222,68 @@ router.get('/roles', requirePermission('users.invite'), async (req, res) => {
     return sendError(res, error);
   }
 });
-router.post('/', requirePermission('users.invite'), async (req, res) => {
-  try {
-    const scope = getScope(req);
-    const { email, fullName, phone, designation, roleId, credentialId } = req.body ?? {};
+router.post(
+  '/',
+  requirePermission('users.invite'),
+  validateBody(createStaffInvitationBodySchema, { code: 'INVALID_INPUT' }),
+  async (req, res) => {
+    try {
+      const scope = getScope(req);
+      const { email, fullName, phone, designation, roleId, credentialId } = req.body ?? {};
 
-    if (
-      typeof email !== 'string' ||
-      typeof fullName !== 'string' ||
-      !Number.isSafeInteger(Number(roleId)) ||
-      Number(roleId) <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_INPUT',
-        message: 'Email, full name, and a valid role are required.',
+      if (
+        typeof email !== 'string' ||
+        typeof fullName !== 'string' ||
+        !Number.isSafeInteger(Number(roleId)) ||
+        Number(roleId) <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_INPUT',
+          message: 'Email, full name, and a valid role are required.',
+        });
+      }
+
+      const resolvedBase = resolveInvitationBaseUrl(req);
+      if (!resolvedBase.ok) {
+        return res.status(500).json({
+          success: false,
+          code: resolvedBase.code,
+          message: resolvedBase.message,
+        });
+      }
+
+      const result = await createStaffInvitation({
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        email,
+        fullName,
+        phone: typeof phone === 'string' ? phone : null,
+        designation: typeof designation === 'string' ? designation : null,
+        roleId: Number(roleId),
+        invitedBy: String(scope.userId),
+        credentialId:
+          Number.isSafeInteger(Number(credentialId)) && Number(credentialId) > 0
+            ? Number(credentialId)
+            : null,
       });
-    }
 
-    const resolvedBase = resolveInvitationBaseUrl(req);
+      const invitationUrl = buildInvitationUrl(
+        resolvedBase.baseUrl,
+        '/accept-staff-invitation',
+        result.token,
+      );
 
-    if (!resolvedBase.ok) {
-      return res.status(500).json({
-        success: false,
-        code: resolvedBase.code,
-        message: resolvedBase.message,
+      return res.status(201).json({
+        success: true,
+        invitation: result.invitation,
+        invitationUrl,
       });
+    } catch (error) {
+      return sendError(res, error);
     }
-
-    const result = await createStaffInvitation({
-      tenantId: scope.tenantId,
-      facilityId: scope.facilityId,
-      email,
-      fullName,
-      phone: typeof phone === 'string' ? phone : null,
-      designation: typeof designation === 'string' ? designation : null,
-      roleId: Number(roleId),
-      invitedBy: String(scope.userId),
-      credentialId:
-        Number.isSafeInteger(Number(credentialId)) && Number(credentialId) > 0
-          ? Number(credentialId)
-          : null,
-    });
-
-    const invitationUrl = buildInvitationUrl(
-      resolvedBase.baseUrl,
-      '/accept-staff-invitation',
-      result.token,
-    );
-
-    return res.status(201).json({
-      success: true,
-      invitation: result.invitation,
-      invitationUrl,
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
+  },
+);
 
 router.get('/', requirePermission('users.invitations.read'), async (req, res) => {
   try {
@@ -291,66 +300,75 @@ router.get('/', requirePermission('users.invitations.read'), async (req, res) =>
   }
 });
 
-router.post('/:id/reissue', requirePermission('users.invitations.reissue'), async (req, res) => {
-  try {
-    const scope = getScope(req);
-    const invitationId = Number(req.params.id);
+router.post(
+  '/:id/reissue',
+  requirePermission('users.invitations.reissue'),
+  validateParams(invitationIdParamSchema, { code: 'INVALID_INVITATION_ID' }),
+  async (req, res) => {
+    try {
+      const scope = getScope(req);
+      const invitationId = Number(req.params.id);
 
-    if (!Number.isSafeInteger(invitationId) || invitationId <= 0) {
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_INVITATION_ID',
-        message: 'A valid invitation ID is required.',
+      if (!Number.isSafeInteger(invitationId) || invitationId <= 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_INVITATION_ID',
+          message: 'A valid invitation ID is required.',
+        });
+      }
+
+      const resolvedBase = resolveInvitationBaseUrl(req);
+      if (!resolvedBase.ok) {
+        return res.status(500).json({
+          success: false,
+          code: resolvedBase.code,
+          message: resolvedBase.message,
+        });
+      }
+
+      const result = await reissueStaffInvitation(invitationId, scope.tenantId, scope.facilityId);
+
+      return res.json({
+        success: true,
+        invitation: result.invitation,
+        invitationUrl: buildInvitationUrl(
+          resolvedBase.baseUrl,
+          '/accept-staff-invitation',
+          result.token,
+        ),
       });
+    } catch (error) {
+      return sendError(res, error);
     }
+  },
+);
+router.post(
+  '/:id/revoke',
+  requirePermission('users.invitations.revoke'),
+  validateParams(invitationIdParamSchema, { code: 'INVALID_INVITATION_ID' }),
+  async (req, res) => {
+    try {
+      const scope = getScope(req);
+      const invitationId = Number(req.params.id);
 
-    const resolvedBase = resolveInvitationBaseUrl(req);
+      if (!Number.isSafeInteger(invitationId) || invitationId <= 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_INVITATION_ID',
+          message: 'A valid invitation ID is required.',
+        });
+      }
 
-    if (!resolvedBase.ok) {
-      return res.status(500).json({
-        success: false,
-        code: resolvedBase.code,
-        message: resolvedBase.message,
+      const result = await revokeStaffInvitation(invitationId, scope.tenantId, scope.facilityId);
+
+      return res.json({
+        success: true,
+        ...result,
       });
+    } catch (error) {
+      return sendError(res, error);
     }
-
-    const result = await reissueStaffInvitation(invitationId, scope.tenantId, scope.facilityId);
-
-    return res.json({
-      success: true,
-      invitation: result.invitation,
-      invitationUrl: buildInvitationUrl(
-        resolvedBase.baseUrl,
-        '/accept-staff-invitation',
-        result.token,
-      ),
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
-router.post('/:id/revoke', requirePermission('users.invitations.revoke'), async (req, res) => {
-  try {
-    const scope = getScope(req);
-    const invitationId = Number(req.params.id);
-
-    if (!Number.isSafeInteger(invitationId) || invitationId <= 0) {
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_INVITATION_ID',
-        message: 'A valid invitation ID is required.',
-      });
-    }
-
-    const result = await revokeStaffInvitation(invitationId, scope.tenantId, scope.facilityId);
-
-    return res.json({
-      success: true,
-      ...result,
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
+  },
+);
 
 export default router;

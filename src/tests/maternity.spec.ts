@@ -15,7 +15,12 @@ import {
   LIQUORS,
   PREGNANCY_STATUSES,
 } from '../maternity/maternity-contracts.ts';
-import { schemaSource } from './support/schema-source.ts';
+import {
+  maternityModuleSource,
+  maternityServiceSource,
+  schemaModule,
+  schemaSource,
+} from './support/schema-source.ts';
 import { containsCode } from './support/source-text.ts';
 
 import { describe, expect, it } from 'vitest';
@@ -194,15 +199,19 @@ describe('Maternity / MCH tests', () => {
   });
 
   it('5. NO INVENTED CLINICAL VALUES', async () => {
+    /*
+     * Read the maternity module itself, not the concatenated schema. The
+     * tables were extracted from the barrel into `schema/maternity.ts`; the
+     * rule below is unchanged, it is only the file that moved.
+     */
+    const block = schemaModule('maternity');
     const schema = schemaSource();
 
-    const start = schema.indexOf('export const maternityPregnancies');
-    const end = schema.indexOf(
-      '/* ============================================================\n   45. RELATIONS',
-    );
-    const block = schema.slice(start, end);
-
-    expect(start > -1 && end > start, 'the maternity tables can be isolated').toBe(true);
+    expect(
+      block.indexOf('export const maternityPregnancies') > -1 &&
+        block.indexOf('export const immunisationRecords') > -1,
+      'the maternity tables can be isolated',
+    ).toBe(true);
 
     /*
      * A default on a measurement is a fabricated reading: every row would
@@ -230,10 +239,6 @@ describe('Maternity / MCH tests', () => {
       const literal = schema.indexOf(`'${column}'`);
 
       expect(literal > -1, `${column} exists in the schema`).toBe(true);
-
-      const lineEnd = block.indexOf('\n', block.indexOf(`'${column}'`, start - start));
-
-      void lineEnd;
 
       /* Look ahead two lines for a default; a measurement must not have one. */
       const nearby = block.slice(
@@ -306,7 +311,7 @@ describe('Maternity / MCH tests', () => {
       'the extracted router is mounted at /api',
     ).toBe(true);
 
-    const server = read('src/maternity/maternity.service.ts');
+    const server = maternityServiceSource();
 
     expect(
       server.includes('maternity.read') === false && server.includes('requirePermission') === false,
@@ -363,7 +368,7 @@ describe('Maternity / MCH tests', () => {
   });
 
   it('8. THE SCREEN', async () => {
-    const ui = read('src/components/modules/MaternityModule.tsx');
+    const ui = maternityModuleSource();
 
     expect(!ui.includes('142 bpm'), 'no sample fetal heart rate is shipped').toBe(true);
     expect(!ui.includes('G2 P1'), 'no sample obstetric history is shipped').toBe(true);

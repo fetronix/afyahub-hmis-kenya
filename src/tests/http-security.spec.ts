@@ -8,6 +8,7 @@ import {
 } from '../middleware/http-security.middleware.ts';
 
 import { describe, expect, it } from 'vitest';
+import { queriesSource } from './support/schema-source.ts';
 
 function read(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -159,7 +160,7 @@ describe('HTTP security and clinical scoping tests', () => {
   it('4. CLINICAL SCOPING', async () => {
     const app = read('src/app.ts');
     const routes = allRouteSources();
-    const queries = read('src/db/queries.ts');
+    const queries = queriesSource();
 
     /* The unscoped paths must be unreachable from any file that registers a route. */
     expect(

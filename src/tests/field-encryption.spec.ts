@@ -20,6 +20,7 @@ import {
 } from '../security/patient-identifiers.ts';
 
 import { describe, expect, it } from 'vitest';
+import { functionBody, queriesSource } from './support/schema-source.ts';
 
 const KEY = randomBytes(32).toString('base64');
 
@@ -307,16 +308,14 @@ describe('Field encryption — regression tests', () => {
           .replace(/\/\*[\s\S]*?\*\//g, '')
           .replace(/^\s*\/\/.*$/gm, '');
 
-      const queries = code('src/db/queries.ts');
+      const queries = queriesSource();
 
       for (const [fn, label] of [
         ['getPatientById', 'getPatientById'],
         ['getPatientByIdScoped', 'getPatientByIdScoped'],
         ['getPatientsScoped', 'getPatientsScoped'],
       ] as Array<[string, string]>) {
-        const start = queries.indexOf(`export async function ${fn}(`);
-        const next = queries.indexOf('export async function', start + 1);
-        const block = start === -1 ? '' : queries.slice(start, next === -1 ? start + 6000 : next);
+        const block = functionBody(queries, fn);
 
         expect(
           block.includes('openPatientIdentifiers(') || block.includes('openPatientRows('),

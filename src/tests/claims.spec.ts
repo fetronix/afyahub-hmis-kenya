@@ -1,8 +1,10 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, appSource } from './support/schema-source.ts';
+import { api } from '../api/client.ts';
+import { billingClient } from '../api/clients/billing.client.ts';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -149,7 +151,7 @@ describe('Insurance claims workflow', () => {
   });
 
   it('3. ROUTES', async () => {
-    const app = readRepoFile('src/app.ts');
+    const app = appSource();
     const wiring = readRepoFile('src/routes/index.ts');
 
     /*
@@ -169,8 +171,18 @@ describe('Insurance claims workflow', () => {
       ['post', '/api/claims/:id/settle', 'insurance.claims.manage'],
     ];
 
+    /*
+     * Match on the method and the path, not on the indentation between
+     * them. The handlers now sit at module scope in
+     * `src/routes/domains/claims.routes.ts` rather than nested inside
+     * `createApp`, so Prettier indents the arguments two spaces instead of
+     * four - a formatting change, not a wiring change.
+     */
+    const registration = (method: string, route: string) =>
+      app.search(new RegExp(`router\\.${method}\\(\\s*'${route}'`));
+
     for (const [method, route, permission] of routes) {
-      const index = app.indexOf(`app.${method}(\n    '${route}'`);
+      const index = registration(method, route);
       expect(index > -1, `${method.toUpperCase()} ${route} is registered`).toBe(true);
 
       const window = app.slice(index, index + 300);
@@ -196,7 +208,7 @@ describe('Insurance claims workflow', () => {
       '/api/claims/:id/items',
       '/api/invoices/:id/claimable-lines',
     ]) {
-      const index = app.indexOf(`app.get(\n    '${route}'`);
+      const index = registration('get', route);
       expect(index > -1, `GET ${route} is registered`).toBe(true);
 
       const window = app.slice(index, index + 200);
@@ -266,19 +278,47 @@ describe('Insurance claims workflow', () => {
     expect(!/https?:\/\//.test(ui), 'the claims screen makes no external requests').toBe(true);
   });
 
-  it('5. CLIENT CONTRACT', async () => {
-    const client = readRepoFile('src/api/client.ts');
+  it('5. CLIENT CONTRACT (behavioural)', async () => {
+    const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+      });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
 
-    for (const method of [
-      'getClaimableLines',
-      'draftClaim',
-      'submitClaim',
-      'adjudicateClaim',
-      'settleClaim',
-      'getClaimItems',
-    ]) {
-      expect(client.includes(`${method}:`), `client exposes ${method}`).toBe(true);
+    try {
+      await api.getClaimableLines(42, 7);
+      await billingClient.draftClaim({ invoiceId: 42, lineItemIds: [1, 2], payerName: 'SHIF' });
+      await api.submitClaim(99, 7);
+      await api.adjudicateClaim(99, '1500.00', 'Approved per tariff', 7);
+      await api.settleClaim(99, 7);
+      await api.getClaimItems(99, 7);
+    } finally {
+      fetchSpy.mockRestore();
     }
+
+    expect(calls).toEqual([
+      { url: '/api/invoices/42/claimable-lines?facilityId=7', method: 'GET', body: undefined },
+      {
+        url: '/api/claims',
+        method: 'POST',
+        body: { invoiceId: 42, lineItemIds: [1, 2], payerName: 'SHIF' },
+      },
+      { url: '/api/claims/99/submit', method: 'POST', body: { facilityId: 7 } },
+      {
+        url: '/api/claims/99/adjudicate',
+        method: 'POST',
+        body: { approvedAmount: '1500.00', notes: 'Approved per tariff', facilityId: 7 },
+      },
+      { url: '/api/claims/99/settle', method: 'POST', body: { facilityId: 7 } },
+      { url: '/api/claims/99/items?facilityId=7', method: 'GET', body: undefined },
+    ]);
 
     const types = readRepoFile('src/types/index.ts');
     expect(types.includes('export interface ClaimableLinesResponse'), 'claimable lines typed').toBe(

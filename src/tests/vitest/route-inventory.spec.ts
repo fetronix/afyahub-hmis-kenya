@@ -44,23 +44,59 @@ process.env.NODE_ENV = 'test';
 const { createApp } = await import('../../app.ts');
 
 type Layer = {
+  regexp?: RegExp & { fast_slash?: boolean };
   route?: { path: string; methods: Record<string, boolean> };
   handle?: { stack?: Layer[] };
 };
 
 let appRoutes: string[];
+let effectiveRoutes: string[];
+
+function extractMountPrefix(regexp?: RegExp & { fast_slash?: boolean }): string {
+  if (!regexp || regexp.fast_slash) return '';
+
+  const prefix = regexp.source
+    .replace('^\\/', '/')
+    .replace('\\/?(?=\\/|$)', '')
+    .replace('(?=\\/|$)', '')
+    .replace(/\\\//g, '/')
+    .replace(/\$$/, '');
+
+  return prefix === '^' ? '' : prefix;
+}
 
 /** Route paths reachable from the app, as registered by their routers. */
 function collectRoutes(layers: Layer[]): string[] {
   const found: string[] = [];
 
   for (const layer of layers) {
-    if (layer.route) {
+    if (layer.route && typeof layer.route === 'object' && layer.route.methods) {
       for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
         if (enabled) found.push(`${method.toUpperCase()} ${layer.route.path}`);
       }
-    } else if (layer.handle?.stack) {
+    } else if (Array.isArray(layer.handle?.stack)) {
       found.push(...collectRoutes(layer.handle.stack));
+    }
+  }
+
+  return found;
+}
+
+/** Effective public URLs, including every parent router's mount prefix. */
+function collectEffectiveRoutes(layers: Layer[], prefix = ''): string[] {
+  const found: string[] = [];
+
+  for (const layer of layers) {
+    if (layer.route && typeof layer.route === 'object' && layer.route.methods) {
+      const fullPath = `${prefix}${layer.route.path}`.replace(/\/{2,}/g, '/');
+
+      for (const [method, enabled] of Object.entries(layer.route.methods ?? {})) {
+        if (enabled) found.push(`${method.toUpperCase()} ${fullPath}`);
+      }
+    } else if (Array.isArray(layer.handle?.stack)) {
+      const childPrefix = extractMountPrefix(layer.regexp);
+
+      found.push(...collectEffectiveRoutes(layer.handle.stack, `${prefix}${childPrefix}`));
     }
   }
 
@@ -69,8 +105,10 @@ function collectRoutes(layers: Layer[]): string[] {
 
 beforeAll(async () => {
   const app = (await createApp()) as unknown as { stack?: Layer[]; _router?: { stack: Layer[] } };
+  const stack = app.stack ?? app._router?.stack ?? [];
 
-  appRoutes = collectRoutes(app.stack ?? app._router?.stack ?? []);
+  appRoutes = collectRoutes(stack);
+  effectiveRoutes = collectEffectiveRoutes(stack);
 });
 
 describe('the API router', () => {
@@ -126,8 +164,15 @@ describe('every inline domain is still reachable', () => {
   for (const [family, route] of anchors) {
     it(`serves ${family}`, () => {
       expect(appRoutes).toContain(route);
+      expect(effectiveRoutes).toContain(route);
     });
   }
+
+  it('never doubles the /api mount prefix into /api/api/...', () => {
+    const doubled = effectiveRoutes.filter((route) => route.includes('/api/api/'));
+
+    expect(doubled).toStrictEqual([]);
+  });
 });
 
 describe('the routers mounted at the API root are still mounted', () => {

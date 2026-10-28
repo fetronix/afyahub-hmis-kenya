@@ -2,7 +2,8 @@
  * The diagnoses & procedures routes.
  *
  * Moved out of `createApp` unchanged: same paths, same handlers, same
- * permissions. `src/routes/index.ts` mounts this router on the API router.
+ * permissions. `src/routes/index.ts` mounts this absolute-path router at the
+ * app root after the authenticated `/api` router and its module gates.
  */
 
 import { type AuthRequest } from '../auth/auth.middleware.ts';

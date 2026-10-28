@@ -9,7 +9,7 @@
  * Bodies moved verbatim; behaviour is unchanged.
  */
 
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
@@ -31,6 +31,52 @@ export function requireSuperAdmin(req: Request, res: Response): boolean {
   }
 
   return true;
+}
+
+export function requireSuperAdminMiddleware(req: Request, res: Response, next: NextFunction): void {
+  if (!requireSuperAdmin(req, res)) return;
+  next();
+}
+
+export function isFacilityAdminContext(context: AuthorizationContext): boolean {
+  return (
+    context.isSuperAdmin !== true &&
+    context.tenantId !== null &&
+    context.tenantId !== undefined &&
+    context.roles.includes('FACILITY_ADMIN')
+  );
+}
+
+export function isRestrictedForFacilityAdmin(permission: {
+  code: string;
+  module: string;
+}): boolean {
+  const code = permission.code.toLowerCase();
+  const module = permission.module.toLowerCase();
+
+  return (
+    ['platform', 'tenants', 'subscriptions', 'security', 'rbac'].includes(module) ||
+    code.startsWith('platform.') ||
+    code.startsWith('tenants.') ||
+    code.startsWith('subscriptions.') ||
+    code.startsWith('permissions.') ||
+    code.startsWith('users.roles.') ||
+    ['roles.manage', 'roles.create', 'roles.update', 'roles.delete'].includes(code)
+  );
+}
+
+export function requireRbacAdminMiddleware(forbiddenMessage: string): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const context = getContext(req);
+    if (!context || (context.isSuperAdmin !== true && !isFacilityAdminContext(context))) {
+      res.status(403).json({
+        error: 'FORBIDDEN',
+        message: forbiddenMessage,
+      });
+      return;
+    }
+    next();
+  };
 }
 
 export function textValue(value: unknown): string | undefined {

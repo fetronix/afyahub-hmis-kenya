@@ -38,7 +38,7 @@ import { ConfigurationModule } from './components/modules/ConfigurationModule.ts
 import { PatientPortalModule } from './components/modules/PatientPortalModule.tsx';
 import { AuditLogModule } from './components/modules/AuditLogModule.tsx';
 
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const {
@@ -49,6 +49,9 @@ const AppContent: React.FC = () => {
     loading,
     isAuthenticated,
     authLoading,
+    contextLoading,
+    contextError,
+    retryContextInitialization,
   } = useHmis();
 
   /*
@@ -245,7 +248,44 @@ const AppContent: React.FC = () => {
 
         {/* Viewport Content */}
         <main className="flex-1 overflow-y-auto bg-canvas px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1400px] space-y-5">{renderModule()}</div>
+          <div className="mx-auto w-full max-w-[1400px] space-y-5">
+            {contextError && (
+              <div
+                role="alert"
+                className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm ${
+                  contextError.kind === 'forbidden'
+                    ? 'border-rose-200 bg-rose-50 text-rose-900'
+                    : 'border-amber-300 bg-amber-50 text-amber-900'
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">
+                      {contextError.kind === 'forbidden'
+                        ? 'Organization or facility access restricted'
+                        : 'Authorized organization and facility context could not be loaded'}
+                    </p>
+                    <p className="mt-0.5 text-xs opacity-90">{contextError.message}</p>
+                  </div>
+                </div>
+
+                {contextError.kind === 'error' && (
+                  <button
+                    type="button"
+                    onClick={() => void retryContextInitialization()}
+                    disabled={contextLoading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100/60 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${contextLoading ? 'animate-spin' : ''}`} />
+                    {contextLoading ? 'Retrying…' : 'Retry'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {renderModule()}
+          </div>
         </main>
       </div>
 

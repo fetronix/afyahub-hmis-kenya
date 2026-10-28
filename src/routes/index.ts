@@ -41,6 +41,7 @@ import appointmentsRoutes from './appointments.routes.ts';
 import vitalsRoutes from './vitals.routes.ts';
 import icd11Routes from '../clinical/icd11/icd11.routes.ts';
 import medicationsRoutes from './medications.routes.ts';
+import diagnosesRoutes from './diagnoses.routes.ts';
 import theatreRoutes from './theatre.routes.ts';
 import laboratoryRoutes from './laboratory.routes.ts';
 import radiologyRoutes from './radiology.routes.ts';
@@ -58,6 +59,18 @@ import bookingAdminRoutes from '../booking/booking-admin.routes.ts';
 import inpatientRoutes from './inpatient.routes.ts';
 import maternalHealthRoutes from './maternal-health.routes.ts';
 import platformRoutes from './platform.routes.ts';
+
+import auditRoutes from './domains/audit.routes.ts';
+import billingAnalyticsRoutes from './domains/billing-analytics.routes.ts';
+import billingChargesRoutes from './domains/billing-charges.routes.ts';
+import claimsRoutes from './domains/claims.routes.ts';
+import encountersRoutes from './domains/encounters.routes.ts';
+import interopRoutes from './domains/interop.routes.ts';
+import invoicesRoutes from './domains/invoices.routes.ts';
+import patientsRoutes from './domains/patients.routes.ts';
+import publicHealthRoutes from './domains/public-health.routes.ts';
+import serviceTariffLinksRoutes from './domains/service-tariff-links.routes.ts';
+import tenancyRoutes from './domains/tenancy.routes.ts';
 
 export function createApiRoutes(): Router {
   const api = Router();
@@ -145,23 +158,51 @@ export function createApiRoutes(): Router {
   api.use('/audit-logs', requireFacilityModule('audit'));
 
   /*
-   * Clinical domains that already had their own routers before this file
-   * existed. They register absolute paths under their own prefixes, so they
-   * mount at the router root rather than at a prefix.
+   * Clinical domains whose routers register `/api`-relative paths (`/wards`,
+   * `/maternity/summary`, `/immunisation/schedule`). Because `createApiRoutes`
+   * itself is mounted at `/api`, Express prepends `/api` to reach them.
    */
   api.use(maternalHealthRoutes);
   api.use(inpatientRoutes);
-  api.use(dhaRoutes);
-  api.use(billingRoutes);
-  api.use(serviceTariffsRoutes);
-  api.use(procurementRoutes);
-  api.use(pharmacyRoutes);
-  api.use(radiologyRoutes);
-  api.use(laboratoryRoutes);
-  api.use(theatreRoutes);
-  api.use(medicationsRoutes);
-  api.use(vitalsRoutes);
-  api.use(appointmentsRoutes);
-  api.use(queuesRoutes);
   return api;
+}
+
+/**
+ * Domain routers whose handlers register explicit `/api/...` paths.
+ *
+ * Mounted on `app` immediately after `app.use('/api', createApiRoutes())`,
+ * so every `/api` request still passes `requireAuth`, `requireAuthorization`,
+ * and every `requireFacilityModule` gate in `createApiRoutes()` before
+ * reaching these handlers — without doubling `/api` into `/api/api/...`.
+ */
+export function createDomainRoutes(): Router {
+  const domains = Router();
+
+  domains.use(dhaRoutes);
+  domains.use(billingRoutes);
+  domains.use(serviceTariffsRoutes);
+  domains.use(procurementRoutes);
+  domains.use(pharmacyRoutes);
+  domains.use(radiologyRoutes);
+  domains.use(laboratoryRoutes);
+  domains.use(theatreRoutes);
+  domains.use(medicationsRoutes);
+  domains.use(diagnosesRoutes);
+  domains.use(vitalsRoutes);
+  domains.use(appointmentsRoutes);
+  domains.use(queuesRoutes);
+
+  domains.use(tenancyRoutes);
+  domains.use(patientsRoutes);
+  domains.use(encountersRoutes);
+  domains.use(billingChargesRoutes);
+  domains.use(serviceTariffLinksRoutes);
+  domains.use(billingAnalyticsRoutes);
+  domains.use(claimsRoutes);
+  domains.use(invoicesRoutes);
+  domains.use(publicHealthRoutes);
+  domains.use(auditRoutes);
+  domains.use(interopRoutes);
+
+  return domains;
 }
