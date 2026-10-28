@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
+import { BirthDatePicker } from './patient-registration/BirthDatePicker.tsx';
 import { Patient } from '../../types/index.ts';
 import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
 import {
@@ -336,13 +337,9 @@ export const PatientRegistrationModule: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Date of Birth *</label>
-                  <input
-                    type="date"
-                    required
+                  <BirthDatePicker
                     value={formData.dateOfBirth}
-                    onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-700"
+                    onChange={(value) => handleInputChange('dateOfBirth', value)}
                   />
                   {patientAge !== null && (
                     <p className="mt-1 text-slate-500">
