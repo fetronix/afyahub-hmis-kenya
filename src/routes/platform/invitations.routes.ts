@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 
+import { buildInvitationUrl, resolveInvitationBaseUrl } from '../../auth/invitation-url.ts';
 import { db } from '../../db/index.ts';
 import * as queries from '../../db/queries.ts';
 import * as schema from '../../db/schema.ts';
@@ -33,31 +34,12 @@ router.post(
     const { facilityId, fullName, email, phone } =
       getValidatedBody<CreateFacilityAdminInvitationValidated>(req);
 
-    const baseUrl = process.env.APP_BASE_URL?.trim();
-
-    if (!baseUrl) {
-      res.status(500).json({
-        error: 'CONFIGURATION_ERROR',
-        message: 'APP_BASE_URL must be configured before issuing invitations.',
-      });
+    const resolvedBase = resolveInvitationBaseUrl(req);
+    if (!resolvedBase.ok) {
+      res.status(500).json({ error: 'CONFIGURATION_ERROR', message: resolvedBase.message });
       return;
     }
-
-    let invitationUrl: URL;
-
-    try {
-      invitationUrl = new URL(baseUrl);
-
-      if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
-        throw new Error('HTTPS is required.');
-      }
-    } catch {
-      res.status(500).json({
-        error: 'CONFIGURATION_ERROR',
-        message: 'APP_BASE_URL is invalid.',
-      });
-      return;
-    }
+    const invitationUrl = resolvedBase.baseUrl;
 
     try {
       const [facility] = await db
@@ -188,8 +170,11 @@ router.post(
         `Issued a facility administrator invitation for ${email}.`,
       );
 
-      const link = new URL('/accept-facility-admin-invitation', invitationUrl);
-      link.searchParams.set('token', rawToken);
+      const invitationLink = buildInvitationUrl(
+        invitationUrl,
+        '/accept-facility-admin-invitation',
+        rawToken,
+      );
 
       res.status(201).json({
         success: true,
@@ -200,7 +185,7 @@ router.post(
           facilityName: facility.name,
           email: invitation.email,
           expiresAt: invitation.expiresAt,
-          invitationLink: link.toString(),
+          invitationLink,
         },
       });
     } catch (error) {
@@ -329,22 +314,12 @@ router.post(
     const context = getContext(req)!;
     const { id } = getValidatedParams<{ id: number }>(req);
 
-    const baseUrl = process.env.APP_BASE_URL?.trim();
-    let invitationUrl: URL;
-
-    try {
-      if (!baseUrl) throw new Error('Missing APP_BASE_URL.');
-      invitationUrl = new URL(baseUrl);
-      if (invitationUrl.protocol !== 'https:' && invitationUrl.hostname !== 'localhost') {
-        throw new Error('HTTPS is required.');
-      }
-    } catch {
-      res.status(500).json({
-        error: 'CONFIGURATION_ERROR',
-        message: 'APP_BASE_URL must be a valid HTTPS URL (localhost is allowed for development).',
-      });
+    const resolvedBase = resolveInvitationBaseUrl(req);
+    if (!resolvedBase.ok) {
+      res.status(500).json({ error: 'CONFIGURATION_ERROR', message: resolvedBase.message });
       return;
     }
+    const invitationUrl = resolvedBase.baseUrl;
 
     try {
       const [existing] = await db
@@ -408,8 +383,11 @@ router.post(
         `Reissued a facility administrator invitation for ${updated.email}.`,
       );
 
-      const link = new URL('/accept-facility-admin-invitation', invitationUrl);
-      link.searchParams.set('token', rawToken);
+      const invitationLink = buildInvitationUrl(
+        invitationUrl,
+        '/accept-facility-admin-invitation',
+        rawToken,
+      );
 
       res.json({
         success: true,
@@ -418,7 +396,7 @@ router.post(
           invitationId: updated.id,
           email: updated.email,
           expiresAt: updated.expiresAt,
-          invitationLink: link.toString(),
+          invitationLink,
         },
       });
     } catch (error) {

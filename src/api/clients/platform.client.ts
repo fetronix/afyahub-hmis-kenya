@@ -40,6 +40,8 @@ export const platformClient = {
       success: boolean;
       facilityId: number;
       enabledModules: string[];
+      hiddenModules?: string[];
+      clinicalProtocols?: Record<string, unknown>;
       alwaysEnabled: string[];
       canManage: boolean;
       catalogue: Array<{
@@ -51,18 +53,29 @@ export const platformClient = {
       }>;
     }>(`${API_BASE}/facilities/${facilityId}/modules`),
 
-  updateFacilityModules: (facilityId: number, enabledModules: string[]) =>
+  updateFacilityModules: (
+    facilityId: number,
+    enabledModules: string[],
+    options?: { hiddenModules?: string[] },
+  ) =>
     fetchJson<{
       success: boolean;
       facilityId: number;
       enabledModules: string[];
+      hiddenModules?: string[];
+      clinicalProtocols?: Record<string, unknown>;
       added: string[];
       removed: string[];
+      hiddenAdded?: string[];
+      hiddenRemoved?: string[];
       alwaysEnabled: string[];
       changed: boolean;
     }>(`${API_BASE}/facilities/${facilityId}/modules`, {
       method: 'PATCH',
-      body: JSON.stringify({ enabledModules }),
+      body: JSON.stringify({
+        enabledModules,
+        ...(options?.hiddenModules !== undefined ? { hiddenModules: options.hiddenModules } : {}),
+      }),
     }),
 
   getDepartments: (facilityId?: number) =>

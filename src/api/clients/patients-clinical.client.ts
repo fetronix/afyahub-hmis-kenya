@@ -248,6 +248,16 @@ export const patientsClinicalClient = {
       body: JSON.stringify(obs),
     }),
 
+  searchIcd11: (query: string) =>
+    fetchJson<{
+      success: boolean;
+      items: Array<{ code: string; title: string; releaseId: string }>;
+      source: 'WHO_LIVE_API' | 'CACHE';
+      releaseId: string;
+      completeCatalogue: false;
+      warning: string | null;
+    }>(`${API_BASE}/icd11/search?${new URLSearchParams({ q: query }).toString()}`),
+
   getDiagnoses: (encounterId?: number, patientId?: number) => {
     const params = new URLSearchParams();
 

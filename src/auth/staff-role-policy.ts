@@ -101,6 +101,7 @@ export const DELEGABLE_PERMISSION_MODULES = [
   'inventory',
   'procurement',
   'billing',
+  'payment_hub',
   'insurance',
   'reports',
   'public_health',
@@ -138,6 +139,15 @@ export const PROTECTED_PERMISSION_PREFIXES = [
   'portal.audit.',
   'portal.invites.',
   'portal.settings.',
+  'payment_hub.global.',
+  'payment_hub.assign',
+  'payment_hub.production.',
+  'payment_hub.facility.',
+  'payment_hub.credentials.',
+  'payment_hub.transfers.',
+  'insurance.sha.configuration.',
+  'insurance.payers.manage',
+  'insurance.mappings.manage',
 ] as const;
 
 export function isDelegablePermission(permission: {

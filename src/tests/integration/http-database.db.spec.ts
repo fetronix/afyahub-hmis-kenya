@@ -25,6 +25,7 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
   let facilityUserId: number | null = null;
   let superRoleId: number | null = null;
   const createdTenantIds: number[] = [];
+  let clinicalPatientId: number | null = null;
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'production';
@@ -116,6 +117,12 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
   afterAll(async () => {
     if (closeServer) {
       await closeServer();
+    }
+
+    if (clinicalPatientId) {
+      await db.delete(schema.diagnoses).where(eq(schema.diagnoses.patientId, clinicalPatientId));
+      await db.delete(schema.encounters).where(eq(schema.encounters.patientId, clinicalPatientId));
+      await db.delete(schema.patients).where(eq(schema.patients.id, clinicalPatientId));
     }
 
     if (facilityUserId) {
@@ -230,6 +237,28 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
       .where(and(eq(schema.roles.tenantId, tenantId), eq(schema.roles.name, 'FACILITY_ADMIN')))
       .limit(1);
 
+    const provisionedCodes = await db
+      .select({ code: schema.permissions.code })
+      .from(schema.rolePermissions)
+      .innerJoin(schema.permissions, eq(schema.rolePermissions.permissionId, schema.permissions.id))
+      .where(eq(schema.rolePermissions.roleId, facAdminRole.id));
+    expect(provisionedCodes.map((p) => p.code)).toEqual(
+      expect.arrayContaining(['payment_hub.facility.manage', 'insurance.sha.read']),
+    );
+    expect(provisionedCodes.map((p) => p.code)).not.toContain('payment_hub.transactions.read');
+    expect(provisionedCodes.map((p) => p.code)).not.toContain('payment_hub.global.manage');
+
+    // Explicit clinical grant for this synthetic clinician; it is not a default finance grant.
+    const [clinicalCreate] = await db
+      .select({ id: schema.permissions.id })
+      .from(schema.permissions)
+      .where(eq(schema.permissions.code, 'clinical.create'));
+    expect(clinicalCreate).toBeDefined();
+    await db
+      .insert(schema.rolePermissions)
+      .values({ roleId: facAdminRole.id, permissionId: clinicalCreate.id })
+      .onConflictDoNothing();
+
     const [createdFacUser] = await db
       .insert(schema.users)
       .values({
@@ -288,6 +317,145 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
     expect(crossFacRbac.status).toBe(403);
     expect(crossFacRbac.body.error).toBe('FACILITY_OUT_OF_SCOPE');
 
+    // The refactored domain router must still expose scoped diagnosis writes/reads.
+    // All records here are synthetic; no live WHO service is called.
+    const [clinicalPatient] = await db
+      .insert(schema.patients)
+      .values({
+        tenantId,
+        registrationFacilityId: facilityAId,
+        mrn: `E2E-CLINICAL-${suffix}`,
+        firstName: 'Synthetic',
+        lastName: 'Patient',
+        dateOfBirth: '2000-01-01',
+        gender: 'Other',
+      })
+      .returning({ id: schema.patients.id });
+    clinicalPatientId = clinicalPatient.id;
+    const [encounterA, encounterB] = await db
+      .insert(schema.encounters)
+      .values([
+        { tenantId, facilityId: facilityAId, patientId: clinicalPatient.id },
+        { tenantId, facilityId: facilityBId, patientId: clinicalPatient.id },
+      ])
+      .returning({ id: schema.encounters.id });
+    await db.insert(schema.diagnoses).values([
+      {
+        encounterId: encounterA.id,
+        patientId: clinicalPatient.id,
+        icd10Code: 'J06.9',
+        icd10Description: 'Synthetic historical A',
+      },
+      {
+        encounterId: encounterB.id,
+        patientId: clinicalPatient.id,
+        icd10Code: 'J06.9',
+        icd10Description: 'Synthetic historical B',
+      },
+    ]);
+    const newDiagnosis = await httpJson(baseUrl, 'POST', '/api/diagnoses', {
+      token: facToken,
+      body: {
+        encounterId: encounterA.id,
+        patientId: clinicalPatient.id,
+        icd10Code: 'J06.9',
+        icd10Description: 'Synthetic new diagnosis',
+        diagnosedBy: 'Do not trust caller',
+      },
+    });
+    expect(newDiagnosis.status).toBe(201);
+    expect(newDiagnosis.body).toMatchObject({
+      codingSystem: 'ICD-10',
+      icd10Code: 'J06.9',
+      icd11Code: null,
+      diagnosedBy: 'E2E Facility A Admin',
+      codingMetadata: { autoRecoded: false },
+    });
+
+    const diagnoses = await httpJson(
+      baseUrl,
+      'GET',
+      `/api/diagnoses?patientId=${clinicalPatient.id}`,
+      {
+        token: facToken,
+      },
+    );
+    expect(diagnoses.status).toBe(200);
+    expect(diagnoses.body).toHaveLength(2);
+    expect(diagnoses.body.every((row: any) => row.encounterId === encounterA.id)).toBe(true);
+    expect(diagnoses.body.some((row: any) => row.resolvedCoding.codingSystem === 'ICD-10')).toBe(
+      true,
+    );
+    expect(JSON.stringify(diagnoses.body)).not.toContain('Synthetic historical B');
+
+    const foreignDiagnosis = await httpJson(
+      baseUrl,
+      'GET',
+      `/api/diagnoses?encounterId=${encounterB.id}`,
+      {
+        token: facToken,
+      },
+    );
+    expect(foreignDiagnosis.status).toBe(403);
+    const foreignWrite = await httpJson(baseUrl, 'POST', '/api/diagnoses', {
+      token: facToken,
+      body: {
+        encounterId: encounterB.id,
+        patientId: clinicalPatient.id,
+        icd10Code: 'J06.9',
+        icd10Description: 'Synthetic cross-facility attempt',
+      },
+    });
+    expect(foreignWrite.status).toBe(403);
+    const wrongPatient = await httpJson(baseUrl, 'POST', '/api/diagnoses', {
+      token: facToken,
+      body: {
+        encounterId: encounterA.id,
+        patientId: clinicalPatient.id + 1,
+        icd10Code: 'J06.9',
+        icd10Description: 'Synthetic mismatched patient attempt',
+      },
+    });
+    expect(wrongPatient.status).toBe(403);
+    const unverifiedCode = await httpJson(baseUrl, 'POST', '/api/diagnoses', {
+      token: facToken,
+      body: {
+        encounterId: encounterA.id,
+        patientId: clinicalPatient.id,
+        codingSystem: 'ICD-11',
+        icd11Code: '9Z99',
+        icd11Release: '2025-01',
+      },
+    });
+    expect(unverifiedCode.status).toBe(400);
+    expect(unverifiedCode.body.error).toBe('ICD11_CODE_NOT_VERIFIED');
+
+    const terminology = await httpJson(baseUrl, 'GET', '/api/icd11/status', { token: facToken });
+    expect(terminology.status).toBe(200);
+    expect(terminology.body.connectionVerified).toBe(false);
+
+    const modulePatch = await httpJson(
+      baseUrl,
+      'PATCH',
+      `/api/platform/facilities/${facilityAId}`,
+      {
+        token: superToken,
+        body: { enabledModules: ['finance'], hiddenModules: ['dialysis', 'dialysis'] },
+      },
+    );
+    expect(modulePatch.status).toBe(200);
+    expect(modulePatch.body.data.hiddenModules).toEqual(['dialysis']);
+    const disabled = await httpJson(
+      baseUrl,
+      'GET',
+      `/api/diagnoses?patientId=${clinicalPatient.id}`,
+      {
+        token: facToken,
+      },
+    );
+    expect(disabled.status).toBe(403);
+    expect(disabled.body.error).toBe('FACILITY_MODULE_DISABLED');
+
     // Verify real audit_logs rows exist for TENANT and FACILITY creation
     // and that the append-only PostgreSQL trigger blocks deletion
     const audits = await db
@@ -296,6 +464,10 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
       .where(eq(schema.auditLogs.tenantId, tenantId));
     expect(audits.some((a) => a.resource === 'TENANT' && a.action === 'CREATE')).toBe(true);
     expect(audits.some((a) => a.resource === 'FACILITY' && a.action === 'CREATE')).toBe(true);
+    const diagnosisAudit = audits.find((a) => a.resource === 'diagnosis' && a.action === 'CREATE');
+    expect(diagnosisAudit).toBeDefined();
+    expect(diagnosisAudit?.details).not.toContain('Synthetic new diagnosis');
+    expect(audits.some((a) => a.resource === 'FACILITY' && a.action === 'UPDATE')).toBe(true);
 
     let deleteBlockedReason = '';
     try {

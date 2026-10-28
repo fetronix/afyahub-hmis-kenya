@@ -39,17 +39,6 @@ export const SpecialtyModule: React.FC = () => {
     costKes: '2000',
   });
 
-  // Renal / Dialysis State
-  const [renalForm, setRenalForm] = useState({
-    dryWeightKg: '68.5',
-    preDialysisBp: '152/94',
-    accessType: 'Left Radiocephalic AV Fistula',
-    ultrafiltrationGoalL: '2.5 Liters',
-    heparinLoadingUnits: '2000 IU',
-    dialyzerType: 'High-Flux FX80',
-    sessionDurationHours: '4 Hours',
-  });
-
   useEffect(() => {
     async function loadPatients() {
       try {
@@ -324,98 +313,16 @@ export const SpecialtyModule: React.FC = () => {
         </div>
       )}
 
-      {/* RENAL / DIALYSIS VIEW */}
+      {/* The former renal example used pre-filled settings and a toast-only
+          save. It was not a clinical record or preauthorization. */}
       {activeSpecialty === 'Renal' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-5 text-xs">
-          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 uppercase">
-              Renal Unit — Haemodialysis Treatment Sheet
-            </h2>
-            <span className="text-2xs text-slate-500">SHA Dialysis Benefit Protocol</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Target Dry Weight (kg)
-              </label>
-              <input
-                type="text"
-                value={renalForm.dryWeightKg}
-                onChange={(e) => setRenalForm({ ...renalForm, dryWeightKg: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Pre-Dialysis Blood Pressure
-              </label>
-              <input
-                type="text"
-                value={renalForm.preDialysisBp}
-                onChange={(e) => setRenalForm({ ...renalForm, preDialysisBp: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-semibold"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Vascular Access</label>
-              <input
-                type="text"
-                value={renalForm.accessType}
-                onChange={(e) => setRenalForm({ ...renalForm, accessType: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Ultrafiltration Target (Liters)
-              </label>
-              <input
-                type="text"
-                value={renalForm.ultrafiltrationGoalL}
-                onChange={(e) =>
-                  setRenalForm({ ...renalForm, ultrafiltrationGoalL: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Anticoagulation (Heparin)
-              </label>
-              <input
-                type="text"
-                value={renalForm.heparinLoadingUnits}
-                onChange={(e) =>
-                  setRenalForm({ ...renalForm, heparinLoadingUnits: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Session Duration</label>
-              <input
-                type="text"
-                value={renalForm.sessionDurationHours}
-                onChange={(e) =>
-                  setRenalForm({ ...renalForm, sessionDurationHours: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end">
-            <button
-              onClick={handleSaveSpecialtyEncounter}
-              className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
-            >
-              Start Dialysis Session & Submit Pre-Auth
-            </button>
-          </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-xs text-amber-900">
+          <h2 className="font-bold">Renal and dialysis care</h2>
+          <p className="mt-2">
+            The former example form did not save clinical records or send a preauthorization. Do not
+            use it for treatment documentation. Use the dedicated dialysis workflow when it has been
+            enabled and approved for this facility.
+          </p>
         </div>
       )}
 

@@ -526,5 +526,20 @@ describe('HTTP Integration: Tenancy Boundaries, Patients, Billing, Claims & Staf
     expect(okStaffInvite.body.invitationUrl).toContain(
       'https://hmis.nyeri.example.test/accept-staff-invitation?token=staff_invite_raw_token_12345',
     );
+
+    // Reissue still uses Zod-validated parameters and preserves a deployment sub-path.
+    vi.stubEnv('APP_BASE_URL', 'https://hmis.nyeri.example.test/hmis/');
+    staffInviteMocks.reissueStaffInvitation.mockResolvedValueOnce({
+      token: 'staff_invite_reissued_token_12345',
+      invitation: { id: 71, email: 'nurse@nyeri.example.test' },
+    });
+    const reissued = await httpJson(baseUrl, 'POST', '/api/staff-invitations/71/reissue', {
+      token: TOKENS.facilityAdminA,
+    });
+    expect(reissued.status).toBe(200);
+    expect(reissued.body.invitationUrl).toBe(
+      'https://hmis.nyeri.example.test/hmis/accept-staff-invitation?token=staff_invite_reissued_token_12345',
+    );
+    vi.unstubAllEnvs();
   });
 });

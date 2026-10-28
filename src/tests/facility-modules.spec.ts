@@ -8,6 +8,7 @@ import {
   isAlwaysEnabledModule,
   isKnownFacilityModule,
   resolveFacilityModules,
+  resolveHiddenFacilityModules,
   unknownFacilityModules,
 } from '../config/facility-modules.ts';
 import { maternityModuleSource } from './support/schema-source.ts';
@@ -39,9 +40,16 @@ function schemaSource(): string {
 
 describe('Facility module provisioning — contract tests', () => {
   it('1. The catalogue is the single source of truth', async () => {
-    expect(FACILITY_MODULES.length === 20, 'The catalogue holds the 20 facility modules').toBe(
+    expect(FACILITY_MODULES.length === 23, 'The catalogue holds the 23 facility modules').toBe(
       true,
     );
+
+    expect(
+      FACILITY_MODULE_IDS.includes('dialysis') &&
+        FACILITY_MODULE_IDS.includes('accounting') &&
+        FACILITY_MODULE_IDS.includes('website_booking'),
+      'Dialysis, accounting, and website booking are first-class provisionable modules',
+    ).toBe(true);
 
     expect(
       new Set(FACILITY_MODULE_IDS).size === FACILITY_MODULE_IDS.length,
@@ -115,6 +123,18 @@ describe('Facility module provisioning — contract tests', () => {
       unknownFacilityModules('maternity').length === 0,
       'A non-array is not treated as a list of unknowns',
     ).toBe(true);
+
+    const hidden = resolveHiddenFacilityModules([
+      'inpatient',
+      'radiology',
+      'configuration',
+      'inpatient',
+      'not-a-module',
+    ]);
+    expect(
+      hidden.length === 2 && hidden[0] === 'inpatient' && hidden[1] === 'radiology',
+      'Hidden modules keep catalogue order, drop unknown ids, and never hide Configuration',
+    ).toBe(true);
   });
 
   it('3. The server enforces the same list', async () => {
@@ -139,7 +159,10 @@ describe('Facility module provisioning — contract tests', () => {
       route.includes('getFacilityByIdScoped'),
       'Module provisioning is tenant- and facility-scoped from the database',
     ).toBe(true);
-    expect(route.includes('logAuditEvent'), 'Module changes are audited').toBe(true);
+    expect(
+      route.includes('db.transaction') && route.includes('tx.insert(schema.auditLogs)'),
+      'Module changes and their audit entries commit together',
+    ).toBe(true);
     expect(
       route.includes("router.get('/:id/modules'") && route.includes("router.patch('/:id/modules'"),
       'The list can be read and written',

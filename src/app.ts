@@ -6,6 +6,9 @@ import dotenv from 'dotenv';
 import { createApiRoutes, createDomainRoutes } from './routes/index.ts';
 import portalRoutes from './portal/portal.routes.ts';
 import portalAdminRoutes from './portal/portal-admin.routes.ts';
+import publicBookingRoutes from './booking/website-booking.routes.ts';
+import paymentHubWebhookRoutes from './payment-hub/webhook.routes.ts';
+import { createShaWebhooksRouter } from './routes/sha-eclaims.routes.ts';
 import { and, count, eq, sql, sum } from 'drizzle-orm';
 import { createSystemRouter } from './routes/system.routes.ts';
 import { correlationIdFrom, moduleLogger } from './logging/logger.ts';
@@ -255,6 +258,10 @@ export async function createApp() {
    */
   app.use('/api/portal/admin', portalAdminRoutes);
   app.use('/api/portal', portalRoutes);
+  app.use('/api/webhooks/sha', createShaWebhooksRouter());
+  app.use('/api/payment-hub/webhooks', paymentHubWebhookRoutes);
+  // Facility-scoped machine-to-machine booking authenticates its own client key.
+  app.use('/api/booking/v1', publicBookingRoutes);
 
   app.use('/api', requireAuth);
   app.use('/api', requireAuthorization);

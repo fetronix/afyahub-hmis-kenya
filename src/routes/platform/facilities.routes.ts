@@ -2,6 +2,11 @@ import { Router, type Request, type Response } from 'express';
 import { eq } from 'drizzle-orm';
 
 import { resolveLocation } from '../../constants/kenya-locations.ts';
+import {
+  resolveFacilityModules,
+  resolveHiddenFacilityModules,
+  unknownFacilityModules,
+} from '../../config/facility-modules.ts';
 import { db } from '../../db/index.ts';
 import * as queries from '../../db/queries.ts';
 import * as schema from '../../db/schema.ts';
@@ -214,33 +219,51 @@ router.patch(
       ...parsedUpdates,
       updatedAt: new Date(),
     };
+    const unknown = unknownFacilityModules([
+      ...(parsedUpdates.enabledModules ?? []),
+      ...(parsedUpdates.hiddenModules ?? []),
+    ]);
+    if (unknown.length) {
+      res.status(400).json({
+        error: 'UNKNOWN_MODULE',
+        message: 'The module list contains unknown module IDs.',
+        modules: unknown,
+      });
+      return;
+    }
+    if (parsedUpdates.enabledModules)
+      updates.enabledModules = resolveFacilityModules(parsedUpdates.enabledModules);
+    if (parsedUpdates.hiddenModules)
+      updates.hiddenModules = resolveHiddenFacilityModules(parsedUpdates.hiddenModules);
 
     try {
-      const [facility] = await db
-        .update(schema.facilities)
-        .set(updates)
-        .where(eq(schema.facilities.id, facilityId))
-        .returning();
+      const facility = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(schema.facilities)
+          .set(updates)
+          .where(eq(schema.facilities.id, facilityId))
+          .returning();
+        if (!updated) return null;
+        await tx.insert(schema.auditLogs).values({
+          tenantId: updated.tenantId,
+          facilityId: updated.id,
+          userId: auditActor(context),
+          action: 'UPDATE',
+          resource: 'FACILITY',
+          resourceId: String(updated.id),
+          details: JSON.stringify({
+            fields: Object.keys(updates).filter((key) => key !== 'updatedAt'),
+            enabledModules: parsedUpdates.enabledModules ? updated.enabledModules : undefined,
+            hiddenModules: parsedUpdates.hiddenModules ? updated.hiddenModules : undefined,
+          }),
+        });
+        return updated;
+      });
 
       if (!facility) {
-        res.status(404).json({
-          error: 'NOT_FOUND',
-          message: 'Facility not found.',
-        });
+        res.status(404).json({ error: 'NOT_FOUND', message: 'Facility not found.' });
         return;
       }
-
-      await queries.logAuditEvent(
-        facility.tenantId,
-        facility.id,
-        auditActor(context),
-        'UPDATE',
-        'FACILITY',
-        String(facility.id),
-        `Updated facility configuration. Fields: ${Object.keys(updates)
-          .filter((key) => key !== 'updatedAt')
-          .join(', ')}.`,
-      );
 
       res.json({ data: facility });
     } catch (error) {

@@ -27,6 +27,8 @@ export interface Facility {
   phone?: string;
   email?: string;
   enabledModules: string[];
+  hiddenModules?: string[];
+  clinicalProtocols?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -147,8 +149,16 @@ export interface Diagnosis {
   id: number;
   encounterId: number;
   patientId: number;
-  icd10Code: string;
-  icd10Description: string;
+  icd10Code: string | null;
+  icd10Description: string | null;
+  codingSystem?: 'ICD-10' | 'ICD-11';
+  diagnosisCode?: string | null;
+  diagnosisDisplay?: string | null;
+  icd11Code?: string | null;
+  icd11Title?: string | null;
+  icd11Release?: string | null;
+  icd11FoundationUri?: string | null;
+  icd11LinearizationUri?: string | null;
   diagnosisType: string;
   status: string;
   notes?: string;

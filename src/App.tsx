@@ -26,7 +26,11 @@ import { PharmacyModule } from './components/modules/PharmacyModule.tsx';
 import { InventoryModule } from './components/modules/InventoryModule.tsx';
 import { ProcurementModule } from './components/modules/ProcurementModule.tsx';
 import { BillingCashierModule } from './components/modules/BillingCashierModule.tsx';
+import { AccountingModule } from './components/modules/AccountingModule.tsx';
+import { PaymentTransactions } from './components/modules/payment-hub/PaymentTransactions.tsx';
+import { DialysisModule } from './components/modules/DialysisModule.tsx';
 import { InsuranceClaimsModule } from './components/modules/InsuranceClaimsModule.tsx';
+import { PrivateInsuranceModule } from './components/modules/private-insurance/PrivateInsuranceModule.tsx';
 import { ReportsModule } from './components/modules/ReportsModule.tsx';
 import { PublicHealthModule } from './components/modules/PublicHealthModule.tsx';
 import { InteroperabilityModule } from './components/modules/InteroperabilityModule.tsx';
@@ -40,6 +44,7 @@ const AppContent: React.FC = () => {
   const {
     activeModule,
     authenticatedUser,
+    currentFacility,
     setActiveModule,
     loading,
     isAuthenticated,
@@ -97,6 +102,20 @@ const AppContent: React.FC = () => {
    * ---------------------------------------------------------
    */
   const renderModule = () => {
+    if (activeModule === 'dialysis' || activeModule === 'accounting') {
+      const permission = activeModule === 'dialysis' ? 'dialysis.read' : 'accounting.read';
+      const enabled = currentFacility?.enabledModules?.includes(activeModule);
+      const hidden = currentFacility?.hiddenModules?.includes(activeModule);
+      const permitted =
+        authenticatedUser?.isSuperAdmin || authenticatedUser?.permissions?.includes(permission);
+      if (!enabled || hidden || !permitted) {
+        return (
+          <div className="rounded-xl border border-hair bg-surface p-5 text-sm">
+            This module is not available for the selected facility or account.
+          </div>
+        );
+      }
+    }
     switch (activeModule) {
       case 'platform_administration':
         return authenticatedUser?.isSuperAdmin ||
@@ -131,6 +150,9 @@ const AppContent: React.FC = () => {
       case 'theatre':
         return <TheatreModule />;
 
+      case 'dialysis':
+        return <DialysisModule />;
+
       case 'specialty':
         return <SpecialtyModule />;
 
@@ -152,8 +174,27 @@ const AppContent: React.FC = () => {
       case 'finance':
         return <BillingCashierModule />;
 
+      case 'payment_transactions':
+        return !authenticatedUser?.isSuperAdmin &&
+          !authenticatedUser?.roles?.includes('SUPER_ADMIN') &&
+          currentFacility?.enabledModules?.includes('finance') &&
+          !currentFacility?.hiddenModules?.includes('finance') &&
+          authenticatedUser?.permissions?.includes('payment_hub.transactions.read') ? (
+          <PaymentTransactions />
+        ) : (
+          <div className="rounded-xl border border-hair bg-surface p-5 text-sm">
+            Payment transactions are not available for this facility or account.
+          </div>
+        );
+
+      case 'accounting':
+        return <AccountingModule />;
+
       case 'claims':
         return <InsuranceClaimsModule />;
+
+      case 'private_insurance':
+        return <PrivateInsuranceModule />;
 
       case 'analytics':
         return <ReportsModule />;

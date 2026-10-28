@@ -21,6 +21,7 @@ import {
   Network,
   Sliders,
   ShieldAlert,
+  ShieldCheck,
   QrCode,
 } from 'lucide-react';
 
@@ -80,6 +81,7 @@ export const navSections: NavSection[] = [
       { id: 'inpatient', label: 'Inpatient & Wards', icon: BedDouble },
       { id: 'maternity', label: 'Maternity & MCH', icon: Baby },
       { id: 'theatre', label: 'Operating Theatre', icon: Scissors },
+      { id: 'dialysis', label: 'Dialysis Unit', icon: Activity },
       { id: 'specialty', label: 'Specialty Clinics', icon: Eye },
     ],
   },
@@ -102,7 +104,10 @@ export const navSections: NavSection[] = [
     title: 'REVENUE & PAYERS',
     items: [
       { id: 'finance', label: 'Billing & Cashier POS', icon: Receipt },
-      { id: 'claims', label: 'SHA & E-Claims', icon: FileCheck2 },
+      { id: 'payment_transactions', label: 'Payment Transactions', icon: Receipt },
+      { id: 'accounting', label: 'Accounting & General Ledger', icon: BarChart3 },
+      { id: 'claims', label: 'Insurance & SHA eClaims', icon: FileCheck2 },
+      { id: 'private_insurance', label: 'Private Insurance', icon: ShieldCheck },
     ],
   },
   {
@@ -185,9 +190,17 @@ export const Sidebar: React.FC = () => {
     if (id === 'configuration') return true;
 
     const enabledModules = new Set(currentFacility?.enabledModules ?? []);
+    const hiddenModules = new Set(currentFacility?.hiddenModules ?? []);
 
     // Do not expose operational modules until a facility is resolved.
     if (!currentFacility) return false;
+    const configuredId =
+      id === 'claims' || id === 'private_insurance'
+        ? 'insurance'
+        : id === 'payment_transactions'
+          ? 'finance'
+          : id;
+    if (hiddenModules.has(configuredId)) return false;
 
     // Dashboard is available when at least one operational module is enabled.
     if (id === 'dashboard') {
@@ -216,17 +229,17 @@ export const Sidebar: React.FC = () => {
       ].some((moduleId) => enabledModules.has(moduleId));
     }
 
-    // The UI uses "claims"; the persisted facility setting uses "insurance".
-    if (id === 'claims') {
+    // The UI uses "claims" and "private_insurance"; the persisted facility setting uses "insurance".
+    if (id === 'claims' || id === 'private_insurance') {
       return enabledModules.has('insurance') || enabledModules.has('claims');
     }
 
-    return enabledModules.has(id);
+    return enabledModules.has(configuredId);
   };
 
   const isModuleVisible = (id: ModuleId): boolean => {
     // Global superadmins retain access to platform-management navigation.
-    if (isSuperAdmin) return true;
+    if (isSuperAdmin) return id !== 'payment_transactions';
 
     // Facility configuration overrides role permissions.
     if (!isFacilityModuleEnabled(id)) return false;
@@ -249,6 +262,7 @@ export const Sidebar: React.FC = () => {
       inpatient: ['inpatient.read'],
       maternity: ['maternity.read'],
       theatre: ['clinical.read', 'inpatient.read'],
+      dialysis: ['dialysis.read'],
       specialty: ['clinical.read'],
       laboratory: ['laboratory.read'],
       radiology: ['laboratory.read', 'clinical.read'],
@@ -256,12 +270,35 @@ export const Sidebar: React.FC = () => {
       inventory: ['inventory.read'],
       procurement: ['procurement.read'],
       finance: ['billing.read'],
-      claims: ['insurance.read'],
+      payment_transactions: ['payment_hub.transactions.read'],
+      accounting: ['accounting.read'],
+      claims: [
+        'insurance.read',
+        'insurance.sha.read',
+        'insurance.sha.eligibility.check',
+        'insurance.sha.benefits.validate',
+        'insurance.sha.preauthorization.create',
+        'insurance.sha.claims.read',
+      ],
+      private_insurance: [
+        'insurance.read',
+        'insurance.payers.read',
+        'insurance.payers.manage',
+        'insurance.members.read',
+        'insurance.members.manage',
+        'insurance.eligibility.check',
+        'insurance.benefits.validate',
+        'insurance.preauthorization.manage',
+        'insurance.private.claims.prepare',
+        'insurance.private.claims.submit',
+        'insurance.private.remittance.reconcile',
+      ],
       analytics: ['reports.read'],
       public_health: ['reports.read'],
       interoperability: ['interop.fhir.patient.read'],
       configuration: [
         'system.settings.manage',
+        'payment_hub.catalogue.read',
         'users.roles.manage',
         'roles.permissions.manage',
         'facilities.update',

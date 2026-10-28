@@ -1,0 +1,705 @@
+/**
+ * JaliCare HMIS — Private Insurance Multi-Payer Module (Britam & PACIS First)
+ * PostgreSQL End-to-End Integration & Tenant Isolation Suite
+ */
+
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
+import { eq } from 'drizzle-orm';
+import { beforeAll, expect, it } from 'vitest';
+
+import { describeDb } from './support/db.ts';
+import { db } from '../../db/index.ts';
+import * as schema from '../../db/schema.ts';
+import {
+  listPrivatePayers,
+  updatePrivatePayer,
+} from '../../insurance/payers/payer-config.service.ts';
+import {
+  createInsuranceMemberPolicy,
+  listInsuranceMembers,
+  updateInsuranceMemberPolicy,
+} from '../../insurance/eligibility/member-policy.service.ts';
+import { checkPrivateInsuranceEligibility } from '../../insurance/eligibility/eligibility.service.ts';
+import { createPayerServiceMapping } from '../../insurance/mappings/mappings.service.ts';
+import {
+  createOrApprovePayerBenefitRule,
+  validatePrivateServiceBenefit,
+} from '../../insurance/benefits/benefits.service.ts';
+import {
+  addPrivatePreauthAttachment,
+  createPrivatePreauthorization,
+  recordPrivatePreauthDecision,
+  submitPrivatePreauthorization,
+} from '../../insurance/preauthorization/preauthorization.service.ts';
+import {
+  getPrivateInsuranceClaimById,
+  preparePrivateInsuranceClaim,
+  recordPrivateClaimDecision,
+  submitPrivateInsuranceClaim,
+  updateOrCorrectPrivateClaim,
+  validatePrivateInsuranceClaimById,
+} from '../../insurance/claims/private-claims.service.ts';
+import {
+  getPrivateReconciliationRegister,
+  importPrivateRemittance,
+  reconcilePrivateRemittance,
+} from '../../insurance/remittance/remittance-reconciliation.service.ts';
+
+const ROOT = resolve(import.meta.dirname, '..', '..', '..');
+
+interface TestActor {
+  tenantId: number;
+  facilityId: number;
+  actorUserId: number;
+  actorUserUid: string;
+  actorRole: string;
+  actorDisplayName: string;
+}
+
+describeDb(
+  'Private Insurance (Britam & PACIS) PostgreSQL end-to-end workflow & tenant isolation',
+  () => {
+    let actorA: TestActor;
+    let actorB: TestActor;
+    let patientAId = 0;
+    let encounterAId = 0;
+    let tariffConsultId = 0;
+    let tariffCtId = 0;
+    let invoiceBritamId = 0;
+    let invoicePacisId = 0;
+
+    beforeAll(async () => {
+      const dbName = process.env.SQL_DB_NAME ?? 'jalicare_test';
+      if (!dbName.includes('test')) {
+        throw new Error(`Refusing to run DB integration tests against non-test DB "${dbName}".`);
+      }
+
+      execFileSync('node', ['scripts/run-script.mjs', 'migrate', '--yes'], {
+        cwd: ROOT,
+        encoding: 'utf8',
+        timeout: 120_000,
+        env: process.env,
+      });
+
+      const suffix = randomUUID().slice(0, 8);
+
+      const [tenantA] = await db
+        .insert(schema.tenants)
+        .values({ name: `Private Ins Tenant A ${suffix}`, slug: `priv-ins-a-${suffix}` })
+        .returning();
+
+      const [tenantB] = await db
+        .insert(schema.tenants)
+        .values({ name: `Private Ins Tenant B ${suffix}`, slug: `priv-ins-b-${suffix}` })
+        .returning();
+
+      const [facilityA] = await db
+        .insert(schema.facilities)
+        .values({
+          tenantId: tenantA.id,
+          code: `PRIV-FAC-A-${suffix}`,
+          name: 'Nyeri Multi-Payer Hospital A',
+          level: 'Level 4',
+        })
+        .returning();
+
+      const [facilityB] = await db
+        .insert(schema.facilities)
+        .values({
+          tenantId: tenantB.id,
+          code: `PRIV-FAC-B-${suffix}`,
+          name: 'Other Tenant Hospital B',
+          level: 'Level 3',
+        })
+        .returning();
+
+      const [userA] = await db
+        .insert(schema.users)
+        .values({
+          uid: `uid-priv-a-${suffix}`,
+          username: `priv_admin_a_${suffix}`,
+          email: `priv_a_${suffix}@example.test`,
+          passwordHash: 'not-used-in-service-test',
+          fullName: 'Insurance Desk Lead A',
+          tenantId: tenantA.id,
+          facilityId: facilityA.id,
+        })
+        .returning();
+
+      const [userB] = await db
+        .insert(schema.users)
+        .values({
+          uid: `uid-priv-b-${suffix}`,
+          username: `priv_admin_b_${suffix}`,
+          email: `priv_b_${suffix}@example.test`,
+          passwordHash: 'not-used-in-service-test',
+          fullName: 'Insurance Desk Lead B',
+          tenantId: tenantB.id,
+          facilityId: facilityB.id,
+        })
+        .returning();
+
+      actorA = {
+        tenantId: tenantA.id,
+        facilityId: facilityA.id,
+        actorUserId: userA.id,
+        actorUserUid: userA.uid,
+        actorRole: 'BILLING_CLERK',
+        actorDisplayName: userA.fullName ?? 'Insurance Desk Lead A',
+      };
+
+      actorB = {
+        tenantId: tenantB.id,
+        facilityId: facilityB.id,
+        actorUserId: userB.id,
+        actorUserUid: userB.uid,
+        actorRole: 'BILLING_CLERK',
+        actorDisplayName: userB.fullName ?? 'Insurance Desk Lead B',
+      };
+
+      const [patient] = await db
+        .insert(schema.patients)
+        .values({
+          tenantId: tenantA.id,
+          registrationFacilityId: facilityA.id,
+          mrn: `MRN-PRIV-${suffix}`,
+          firstName: 'Wanjiku',
+          lastName: 'Kamau',
+          dateOfBirth: '1991-03-15',
+          gender: 'Female',
+        })
+        .returning();
+      patientAId = patient.id;
+
+      const [encounter] = await db
+        .insert(schema.encounters)
+        .values({
+          tenantId: tenantA.id,
+          facilityId: facilityA.id,
+          patientId: patient.id,
+          encounterType: 'OUTPATIENT',
+          status: 'COMPLETED',
+          chiefComplaint: 'Chest pain and cough',
+          clinicalNotes: 'Evaluated in OPD; chest CT and consultation completed.',
+        })
+        .returning();
+      encounterAId = encounter.id;
+
+      await db.insert(schema.diagnoses).values({
+        encounterId: encounter.id,
+        patientId: patient.id,
+        icd10Code: 'J18.9',
+        icd10Description: 'Pneumonia, unspecified organism',
+      });
+
+      const [tConsult] = await db
+        .insert(schema.facilityServiceTariffs)
+        .values({
+          tenantId: tenantA.id,
+          facilityId: facilityA.id,
+          code: `OPD-CONS-${suffix}`,
+          description: 'Specialist Consultation',
+          department: 'OPD',
+          fee: '3000.00',
+        })
+        .returning();
+      tariffConsultId = tConsult.id;
+
+      const [tCt] = await db
+        .insert(schema.facilityServiceTariffs)
+        .values({
+          tenantId: tenantA.id,
+          facilityId: facilityA.id,
+          code: `IMG-CT-${suffix}`,
+          description: 'CT Chest Scan',
+          department: 'RADIOLOGY',
+          fee: '12000.00',
+        })
+        .returning();
+      tariffCtId = tCt.id;
+
+      // Invoice 1: Britam outpatient consultation (KES 3,000.00)
+      const [invBritam] = await db
+        .insert(schema.billingInvoices)
+        .values({
+          tenantId: tenantA.id,
+          facilityId: facilityA.id,
+          patientId: patient.id,
+          encounterId: encounter.id,
+          invoiceNumber: `INV-BRM-${suffix}`,
+          totalAmount: '3000.00',
+          paidAmount: '0.00',
+          balanceAmount: '3000.00',
+          status: 'Unpaid',
+          payerType: 'Insurance',
+        })
+        .returning();
+      invoiceBritamId = invBritam.id;
+
+      await db.insert(schema.billingItems).values({
+        invoiceId: invBritam.id,
+        tariffId: tConsult.id,
+        tariffCode: tConsult.code,
+        sourceType: 'OPD',
+        itemType: 'Consultation',
+        description: 'Specialist Consultation',
+        quantity: 1,
+        unitPrice: '3000.00',
+        totalAmount: '3000.00',
+      });
+
+      // Invoice 2: PACIS CT scan requiring preauth (KES 12,000.00)
+      const [invPacis] = await db
+        .insert(schema.billingInvoices)
+        .values({
+          tenantId: tenantA.id,
+          facilityId: facilityA.id,
+          patientId: patient.id,
+          encounterId: encounter.id,
+          invoiceNumber: `INV-PAC-${suffix}`,
+          totalAmount: '12000.00',
+          paidAmount: '0.00',
+          balanceAmount: '12000.00',
+          status: 'Unpaid',
+          payerType: 'Insurance',
+        })
+        .returning();
+      invoicePacisId = invPacis.id;
+
+      await db.insert(schema.billingItems).values({
+        invoiceId: invPacis.id,
+        tariffId: tCt.id,
+        tariffCode: tCt.code,
+        sourceType: 'RADIOLOGY',
+        itemType: 'Imaging',
+        description: 'CT Chest Scan',
+        quantity: 1,
+        unitPrice: '12000.00',
+        totalAmount: '12000.00',
+      });
+    });
+
+    it('executes complete Britam & PACIS workflows while preserving original invoices and enforcing tenant isolation', async () => {
+      // 1. Default Britam & PACIS configurations seeded independently per facility
+      const payersA = await listPrivatePayers({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+      });
+      const britam = payersA.find((p) => p.payerCode === 'BRITAM');
+      const pacis = payersA.find((p) => p.payerCode === 'PACIS');
+      expect(britam).toBeDefined();
+      expect(pacis).toBeDefined();
+      expect(britam?.connectionStatus).toBe('AWAITING_DOCUMENTATION');
+      expect(pacis?.connectionStatus).toBe('AWAITING_DOCUMENTATION');
+
+      await updatePrivatePayer({
+        ...actorA,
+        payerId: britam!.id,
+        input: {
+          providerIdentifier: 'BRITAM-NYERI-401',
+          claimRequirements: {
+            allowedCodingSystems: ['ICD-10'],
+            codingPolicyVerified: true,
+            codingPolicyEvidence: 'Synthetic test policy; not real payer documentation.',
+          },
+        },
+      });
+
+      // 2. Link SAME JaliCare patient to BOTH Britam and PACIS policies (multi-policy support)
+      const britamPolicy = await createInsuranceMemberPolicy({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'BRITAM',
+          memberNumber: 'BRM-770011-00',
+          policyNumber: 'CORP-BRM-2026',
+          planName: 'Britam Corporate Gold',
+          validFrom: '2026-01-01',
+          validTo: '2026-12-31',
+        },
+      });
+      expect(britamPolicy.verificationStatus).toBe('UNVERIFIED_LOCAL');
+
+      const pacisPolicy = await createInsuranceMemberPolicy({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'PACIS',
+          memberNumber: 'PAC-990022-00',
+          policyNumber: 'CORP-PAC-2026',
+          planName: 'PACIS Preferred Executive',
+          validFrom: '2026-01-01',
+          validTo: '2026-12-31',
+        },
+      });
+      expect(pacisPolicy.verificationStatus).toBe('UNVERIFIED_LOCAL');
+
+      // Duplicate active policy prevention
+      await expect(
+        createInsuranceMemberPolicy({
+          ...actorA,
+          input: {
+            patientId: patientAId,
+            payerCode: 'BRITAM',
+            memberNumber: 'BRM-770011-00',
+          },
+        }),
+      ).rejects.toThrow();
+
+      // Audited policy correction requires correctionReason
+      const correctedPolicy = await updateInsuranceMemberPolicy({
+        ...actorA,
+        memberId: britamPolicy.id,
+        input: {
+          schemeName: 'Nyeri Tea Growers Corporate',
+          correctionReason: 'Added corporate employer name from Britam card',
+        },
+      });
+      expect(correctedPolicy.correctionCount).toBe(1);
+
+      // 3. Eligibility verification: adapter returns honest Not supported; manual verification records reference
+      const adapterCheck = await checkPrivateInsuranceEligibility({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'BRITAM',
+          memberPolicyId: britamPolicy.id,
+          verificationMode: 'ADAPTER',
+        },
+      });
+      expect(adapterCheck.source).not.toBe('PAYER_LIVE_API');
+      expect(adapterCheck.outcome).not.toBe('Ineligible');
+
+      const manualBritamCheck = await checkPrivateInsuranceEligibility({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'BRITAM',
+          memberPolicyId: britamPolicy.id,
+          encounterId: encounterAId,
+          verificationMode: 'MANUAL',
+          manualOutcome: 'Eligible',
+          evidenceSource: 'PAYER_PORTAL_MANUAL',
+          manualReference: 'BRITAM-PORTAL-VER-5501',
+        },
+      });
+      expect(manualBritamCheck.outcome).toBe('Eligible');
+      expect(manualBritamCheck.source).toBe('MANUAL_VERIFICATION:PAYER_PORTAL_MANUAL');
+
+      await checkPrivateInsuranceEligibility({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'PACIS',
+          memberPolicyId: pacisPolicy.id,
+          encounterId: encounterAId,
+          verificationMode: 'MANUAL',
+          manualOutcome: 'Eligible',
+          evidenceSource: 'PAYER_PORTAL_MANUAL',
+          manualReference: 'PACIS-DESK-VER-8802',
+        },
+      });
+
+      // 4. Separate Britam & PACIS mappings and benefit/copayment rules
+      await createPayerServiceMapping({
+        ...actorA,
+        input: {
+          payerCode: 'BRITAM',
+          tariffId: tariffConsultId,
+          serviceArea: 'OPD_CONSULTATION',
+          payerServiceCode: 'BRM-SPEC-CONS',
+          reimbursementTariff: '3000.00',
+          requiresPreauth: false,
+        },
+      });
+
+      await createPayerServiceMapping({
+        ...actorA,
+        input: {
+          payerCode: 'PACIS',
+          tariffId: tariffCtId,
+          serviceArea: 'IMAGING',
+          payerServiceCode: 'PAC-IMG-CT01',
+          reimbursementTariff: '12000.00',
+          requiresPreauth: true,
+        },
+      });
+
+      await createOrApprovePayerBenefitRule({
+        ...actorA,
+        input: {
+          payerCode: 'BRITAM',
+          ruleCode: 'BRM-OPD-COPAY-500',
+          benefitPackage: 'Synthetic test package',
+          serviceCategory: 'OPD_CONSULTATION',
+          copayType: 'FIXED',
+          copayValue: '500.00',
+          sourceReference: 'Britam Schedule 2026',
+          approveImmediately: true,
+        },
+      });
+
+      const benefitVal = await validatePrivateServiceBenefit({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'BRITAM',
+          tariffId: tariffConsultId,
+          quantity: 1,
+        },
+      });
+      expect(benefitVal.decision).toBe('COVERED');
+      expect(benefitVal.estimatedCopayAmount).toBe('500.00');
+      expect(benefitVal.estimatedCoveredAmount).toBe('2500.00');
+
+      // 5. PACIS Preauthorization workflow (Draft -> Attachment -> Submit -> Approved)
+      const pacisPreauth = await createPrivatePreauthorization({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'PACIS',
+          memberPolicyId: pacisPolicy.id,
+          encounterId: encounterAId,
+          invoiceId: invoicePacisId,
+          category: 'IMAGING',
+          clinicalIndication: 'Suspected pneumonia complications',
+          primaryDiagnosisCode: 'J18.9',
+          primaryDiagnosisDisplay: 'Pneumonia',
+          requestedItems: [
+            {
+              serviceCode: 'PAC-IMG-CT01',
+              serviceName: 'CT Chest Scan',
+              quantity: 1,
+              unitPrice: '12000.00',
+            },
+          ],
+        },
+      });
+      expect(pacisPreauth.status).toBe('DRAFT');
+
+      await addPrivatePreauthAttachment({
+        ...actorA,
+        preauthId: pacisPreauth.id,
+        input: {
+          documentType: 'RADIOLOGY_REQUEST',
+          fileName: 'pacis-ct-request.pdf',
+          storageReference: 'vault://preauth/pacis-ct-request.pdf',
+        },
+      });
+
+      const submittedPreauth = await submitPrivatePreauthorization({
+        ...actorA,
+        preauthId: pacisPreauth.id,
+        input: { submissionMode: 'MANUAL', manualDispatchReference: 'PACIS-EMAIL-001' },
+      });
+      expect(submittedPreauth.status).toBe('REQUESTED');
+
+      const approvedPreauth = await recordPrivatePreauthDecision({
+        ...actorA,
+        preauthId: pacisPreauth.id,
+        input: {
+          status: 'APPROVED',
+          payerAuthReference: 'PACIS-AUTH-2026-9911',
+          approvedAmount: '12000.00',
+          validUntil: '2026-12-31',
+        },
+      });
+      expect(approvedPreauth.status).toBe('APPROVED');
+      expect(approvedPreauth.payerAuthReference).toBe('PACIS-AUTH-2026-9911');
+
+      // 6. Prepare Britam Claim from JaliCare invoice WITHOUT mutating original invoice
+      const britamClaim = await preparePrivateInsuranceClaim({
+        ...actorA,
+        input: {
+          invoiceId: invoiceBritamId,
+          payerCode: 'BRITAM',
+          memberPolicyId: britamPolicy.id,
+          encounterId: encounterAId,
+          attachmentsManifest: [
+            {
+              documentType: 'ITEMIZED_INVOICE',
+              fileName: 'synthetic-invoice.pdf',
+              storageReference: `jalicare://invoices/${invoiceBritamId}`,
+            },
+            {
+              documentType: 'SIGNED_CLAIM_FORM',
+              fileName: 'britam-signed-claim.pdf',
+              storageReference: 'vault://claims/britam-signed-claim.pdf',
+            },
+          ],
+        },
+      });
+      expect(britamClaim.status).toBe('DRAFT');
+      const validatedClaim = await validatePrivateInsuranceClaimById({
+        ...actorA,
+        claimId: britamClaim.id,
+      });
+      expect(validatedClaim.validationIssues.filter((issue) => issue.severity === 'ERROR')).toEqual(
+        [],
+      );
+      expect(validatedClaim.status).toBe('READY');
+      expect(britamClaim.grossInvoiceAmount).toBe('3000.00');
+      expect(britamClaim.confirmedCopayAmount).toBe('500.00');
+      expect(britamClaim.proposedClaimAmount).toBe('2500.00');
+
+      // Verify original JaliCare invoice is untouched and STILL Unpaid!
+      const [invBeforeSubmit] = await db
+        .select()
+        .from(schema.billingInvoices)
+        .where(eq(schema.billingInvoices.id, invoiceBritamId));
+      expect(invBeforeSubmit.status).toBe('Unpaid');
+      expect(invBeforeSubmit.paidAmount).toBe('0.00');
+
+      // Submit claim & verify duplicate-submission prevention
+      const submittedClaim = await submitPrivateInsuranceClaim({
+        ...actorA,
+        claimId: britamClaim.id,
+        input: {
+          submissionMode: 'MANUAL',
+          dispatchReference: `BRITAM-PORTAL-SUB-101-${actorA.facilityId}`,
+        },
+      });
+      expect(submittedClaim.status).toBe('SUBMITTED');
+
+      const [invAfterSubmit] = await db
+        .select()
+        .from(schema.billingInvoices)
+        .where(eq(schema.billingInvoices.id, invoiceBritamId));
+      expect(invAfterSubmit.status).toBe('Unpaid');
+
+      await expect(
+        submitPrivateInsuranceClaim({
+          ...actorA,
+          claimId: britamClaim.id,
+          input: {
+            submissionMode: 'MANUAL',
+            dispatchReference: `BRITAM-PORTAL-SUB-DUP-${actorA.facilityId}`,
+          },
+        }),
+      ).rejects.toThrow();
+
+      // 7. Rejection -> Audited Correction -> Resubmission -> Adjudication
+      const rejectedClaim = await recordPrivateClaimDecision({
+        ...actorA,
+        claimId: britamClaim.id,
+        input: {
+          status: 'REJECTED',
+          rejectionCode: 'CLINICAL_SUMMARY_REQ',
+          rejectionReason: 'Attach discharge/OPD clinical note',
+        },
+      });
+      expect(rejectedClaim.status).toBe('REJECTED');
+
+      const correctedClaim = await updateOrCorrectPrivateClaim({
+        ...actorA,
+        claimId: britamClaim.id,
+        input: {
+          correctionReason: 'Added OPD clinical note attachment alongside signed claim form',
+          attachmentsManifest: [
+            {
+              documentType: 'ITEMIZED_INVOICE',
+              fileName: 'synthetic-invoice.pdf',
+              storageReference: `jalicare://invoices/${invoiceBritamId}`,
+            },
+            {
+              documentType: 'SIGNED_CLAIM_FORM',
+              fileName: 'britam-signed-claim.pdf',
+              storageReference: 'vault://claims/britam-signed-claim.pdf',
+            },
+            {
+              documentType: 'CLINICAL_NOTES',
+              fileName: 'opd-notes.pdf',
+              storageReference: 'vault://claims/opd-notes.pdf',
+            },
+          ],
+        },
+      });
+      expect(correctedClaim.revisionNumber).toBe(2);
+      expect(correctedClaim.status).toBe('DRAFT');
+      const revalidatedClaim = await validatePrivateInsuranceClaimById({
+        ...actorA,
+        claimId: britamClaim.id,
+      });
+      expect(
+        revalidatedClaim.validationIssues.filter((issue) => issue.severity === 'ERROR'),
+      ).toEqual([]);
+      expect(revalidatedClaim.status).toBe('READY');
+
+      const resubmittedClaim = await submitPrivateInsuranceClaim({
+        ...actorA,
+        claimId: britamClaim.id,
+        isResubmission: true,
+        input: {
+          submissionMode: 'MANUAL',
+          dispatchReference: `BRITAM-PORTAL-SUB-102-${actorA.facilityId}`,
+          correctionReason: 'Synthetic test correction with supporting documents.',
+        },
+      });
+      expect(resubmittedClaim.status).toBe('SUBMITTED');
+      expect(resubmittedClaim.submissionCount).toBe(2);
+
+      // 8. Remittance Import & Transactional Additive Reconciliation
+      const remittance = await importPrivateRemittance({
+        ...actorA,
+        input: {
+          payerCode: 'BRITAM',
+          payerRemittanceRef: `BRITAM-EFT-20261028-${actorA.facilityId}`,
+          paymentChannel: 'EFT',
+          paymentDate: '2026-10-28',
+          totalRemittedAmount: '2500.00',
+        },
+      });
+
+      const reconciled = await reconcilePrivateRemittance({
+        ...actorA,
+        remittanceId: remittance.id,
+        input: {
+          allocations: [
+            {
+              claimId: britamClaim.id,
+              approvedAmount: '2500.00',
+              remittedAmount: '2500.00',
+            },
+          ],
+        },
+      });
+      expect(reconciled.remittance.status).toBe('RECONCILED');
+
+      const finalClaim = await getPrivateInsuranceClaimById({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        claimId: britamClaim.id,
+      });
+      expect(finalClaim.status).toBe('PAID');
+      expect(finalClaim.paidAmount).toBe('2500.00');
+      // Original invoice now reflects KES 2,500 paid + KES 500 patient copay balance (Partially Paid!)
+      expect(finalClaim.originalInvoice.paidAmount).toBe('2500.00');
+      expect(finalClaim.originalInvoice.balanceAmount).toBe('500.00');
+
+      const register = await getPrivateReconciliationRegister({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        payerCode: 'BRITAM',
+      });
+      expect(register.summary.entriesCount).toBe(1);
+      expect(register.summary.totalRemittedAmount).toBe('2500.00');
+
+      // 9. Cross-tenant & cross-facility isolation check: Tenant B cannot see or load Tenant A records
+      const membersB = await listInsuranceMembers({
+        tenantId: actorB.tenantId,
+        facilityId: actorB.facilityId,
+      });
+      expect(membersB).toHaveLength(0);
+
+      await expect(
+        getPrivateInsuranceClaimById({
+          tenantId: actorB.tenantId,
+          facilityId: actorB.facilityId,
+          claimId: britamClaim.id,
+        }),
+      ).rejects.toThrow();
+    });
+  },
+);

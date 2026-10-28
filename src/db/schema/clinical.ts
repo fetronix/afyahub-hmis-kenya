@@ -16,6 +16,7 @@ import {
   integer,
   timestamp,
   numeric,
+  jsonb,
   date,
   index,
 } from 'drizzle-orm/pg-core';
@@ -260,9 +261,28 @@ export const diagnoses = pgTable('diagnoses', {
     .references(() => patients.id)
     .notNull(),
 
-  icd10Code: text('icd10_code').notNull(),
+  // Nullable only for new native ICD-11 diagnoses; existing values are preserved.
+  icd10Code: text('icd10_code'),
 
-  icd10Description: text('icd10_description').notNull(),
+  icd10Description: text('icd10_description'),
+
+  codingSystem: text('coding_system').default('ICD-10').notNull(),
+
+  diagnosisCode: text('diagnosis_code'),
+
+  diagnosisDisplay: text('diagnosis_display'),
+
+  icd11Code: text('icd11_code'),
+
+  icd11Title: text('icd11_title'),
+
+  icd11Release: text('icd11_release'),
+
+  icd11FoundationUri: text('icd11_foundation_uri'),
+
+  icd11LinearizationUri: text('icd11_linearization_uri'),
+
+  codingMetadata: jsonb('coding_metadata').$type<Record<string, unknown>>().default({}).notNull(),
 
   diagnosisType: text('diagnosis_type').default('Primary'),
 

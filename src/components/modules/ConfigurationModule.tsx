@@ -4,7 +4,12 @@ import type { ServiceTariff } from '../../types/index.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import { StaffRolesPanel } from './StaffRolesPanel.tsx';
-import { FACILITY_MODULES, resolveFacilityModules } from '../../config/facility-modules.ts';
+import { FacilityPaymentIntegrations } from './payment-hub/FacilityPaymentIntegrations.tsx';
+import {
+  FACILITY_MODULES,
+  resolveFacilityModules,
+  resolveHiddenFacilityModules,
+} from '../../config/facility-modules.ts';
 import {
   Sliders,
   Building2,
@@ -44,6 +49,7 @@ export const ConfigurationModule: React.FC = () => {
   );
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
+  const canViewPaymentHub = !isSuperAdmin && permissions.has('payment_hub.catalogue.read');
 
   /*
    * The staff screen is gated on the same permission its API requires.
@@ -70,9 +76,17 @@ export const ConfigurationModule: React.FC = () => {
     !permissions.has('roles.permissions.manage'),
   );
 
+  const integrationOnly =
+    canViewPaymentHub &&
+    !isFacilityAdmin &&
+    !canManageStaff &&
+    !permissions.has('facilities.update') &&
+    !permissions.has('system.settings.manage') &&
+    !permissions.has('roles.permissions.manage');
+
   const [activeTab, setActiveTab] = useState<
     'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'
-  >(staffOnly ? 'staff' : 'facility');
+  >(integrationOnly ? 'payments' : staffOnly ? 'staff' : 'facility');
 
   useEffect(() => {
     /*
@@ -80,10 +94,9 @@ export const ConfigurationModule: React.FC = () => {
      * landing place. A facility administrator now sees the profile and
      * the module switches as well, so they are not forced to Staff.
      */
-    if (staffOnly) {
-      setActiveTab('staff');
-    }
-  }, [staffOnly]);
+    if (integrationOnly) setActiveTab('payments');
+    else if (staffOnly) setActiveTab('staff');
+  }, [staffOnly, integrationOnly]);
 
   /*
    * Facility module provisioning.
@@ -102,13 +115,17 @@ export const ConfigurationModule: React.FC = () => {
   const [moduleDraft, setModuleDraft] = useState<string[]>(() =>
     resolveFacilityModules(currentFacility?.enabledModules),
   );
+  const [hiddenDraft, setHiddenDraft] = useState<string[]>(() =>
+    resolveHiddenFacilityModules(currentFacility?.hiddenModules),
+  );
   const [moduleSaving, setModuleSaving] = useState(false);
   const [moduleError, setModuleError] = useState('');
 
   useEffect(() => {
     setModuleDraft(resolveFacilityModules(currentFacility?.enabledModules));
+    setHiddenDraft(resolveHiddenFacilityModules(currentFacility?.hiddenModules));
     setModuleError('');
-  }, [currentFacility?.id, currentFacility?.enabledModules]);
+  }, [currentFacility?.id, currentFacility?.enabledModules, currentFacility?.hiddenModules]);
 
   /*
    * Mirrors the server rule in facility-modules.routes.ts. The server
@@ -126,7 +143,12 @@ export const ConfigurationModule: React.FC = () => {
     ...moduleDraft.filter((id) => !savedModules.includes(id)),
     ...savedModules.filter((id) => !moduleDraft.includes(id)),
   ];
-  const moduleDirty = moduleChanges.length > 0;
+  const savedHidden = resolveHiddenFacilityModules(currentFacility?.hiddenModules);
+  const hiddenChanges = [
+    ...hiddenDraft.filter((id) => !savedHidden.includes(id)),
+    ...savedHidden.filter((id) => !hiddenDraft.includes(id)),
+  ];
+  const moduleDirty = moduleChanges.length + hiddenChanges.length > 0;
 
   const moduleGroups = Array.from(
     FACILITY_MODULES.reduce((groups, module) => {
@@ -307,13 +329,17 @@ export const ConfigurationModule: React.FC = () => {
     setModuleError('');
 
     try {
-      const result = await api.updateFacilityModules(currentFacility.id, moduleDraft);
+      const result = await api.updateFacilityModules(currentFacility.id, moduleDraft, {
+        hiddenModules: hiddenDraft,
+      });
 
       setCurrentFacility({
         ...currentFacility,
         enabledModules: result.enabledModules,
+        hiddenModules: result.hiddenModules ?? [],
       });
       setModuleDraft(result.enabledModules);
+      setHiddenDraft(result.hiddenModules ?? []);
 
       const enabledLabels = result.added
         .map((id) => FACILITY_MODULES.find((module) => module.id === id)?.label ?? id)
@@ -325,6 +351,9 @@ export const ConfigurationModule: React.FC = () => {
       const parts = [
         enabledLabels ? `${enabledLabels} enabled` : '',
         disabledLabels ? `${disabledLabels} disabled` : '',
+        (result.hiddenAdded?.length ?? 0) + (result.hiddenRemoved?.length ?? 0) > 0
+          ? 'navigation visibility updated'
+          : '',
       ].filter(Boolean);
 
       showToast(
@@ -370,16 +399,18 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'facility', label: 'Facility Profile', icon: Building2 },
           { id: 'modules', label: 'Modular Features Engine', icon: Layers },
           { id: 'staff', label: 'Staff & Roles', icon: UserPlus },
-          { id: 'payments', label: 'M-Pesa & Payment Channels', icon: CreditCard },
+          { id: 'payments', label: 'Payment & Banking Integrations', icon: CreditCard },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
         ]
           .filter((tab) => {
+            if (tab.id === 'payments') return canViewPaymentHub;
+            if (integrationOnly) return false;
             if (tab.id === 'staff') return canManageStaff;
             if (staffOnly) return false;
             /*
              * A facility administrator runs the facility: profile, module
-             * provisioning, staff and tariffs. Payment credentials stay
-             * with the platform. This used to return only `tariffs`,
+             * provisioning, staff and tariffs. Payment access is checked above
+             * with its own scoped permission. This used to return only `tariffs`,
              * which is why a facility administrator could never reach the
              * module switches at all.
              */
@@ -578,10 +609,38 @@ export const ConfigurationModule: React.FC = () => {
               ))}
             </div>
 
+            <div className="border-t border-hair px-5 py-4">
+              <h3 className="text-xs font-semibold text-ink">Hide from navigation</h3>
+              <p className="mt-1 text-2xs text-muted">
+                Hidden modules remain enabled and their APIs remain available to authorized staff.
+                Hiding is not an access-control setting.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {FACILITY_MODULES.filter(
+                  (module) => !module.alwaysOn && moduleDraft.includes(module.id),
+                ).map((module) => (
+                  <label key={module.id} className="flex items-center gap-2 text-xs text-ink-soft">
+                    <input
+                      type="checkbox"
+                      checked={hiddenDraft.includes(module.id)}
+                      disabled={!canProvisionModules || moduleSaving}
+                      onChange={() =>
+                        setHiddenDraft((current) =>
+                          current.includes(module.id)
+                            ? current.filter((id) => id !== module.id)
+                            : [...current, module.id],
+                        )
+                      }
+                    />
+                    Hide {module.label}
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hair px-5 py-3">
               <p className="text-2xs text-muted">
                 {moduleDirty
-                  ? `${moduleChanges.length} unsaved change${moduleChanges.length === 1 ? '' : 's'}.`
+                  ? `${moduleChanges.length + hiddenChanges.length} unsaved change${moduleChanges.length + hiddenChanges.length === 1 ? '' : 's'}.`
                   : 'Every change here is written to the facility row and recorded in the audit log.'}
               </p>
 
@@ -590,6 +649,7 @@ export const ConfigurationModule: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setModuleDraft(savedModules);
+                    setHiddenDraft(savedHidden);
                     setModuleError('');
                   }}
                   disabled={!moduleDirty || moduleSaving}
@@ -625,80 +685,8 @@ export const ConfigurationModule: React.FC = () => {
         </div>
       )}
 
-      {/* PAYMENT CHANNELS TAB */}
-      {activeTab === 'payments' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs text-xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h2 className="text-sm font-bold text-slate-900 uppercase">
-              Payment Gateway Integration & M-Pesa Credentials
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 border border-slate-200 rounded-lg space-y-3">
-              <span className="font-bold text-slate-900 text-xs">
-                Safaricom Daraja M-Pesa STK Push
-              </span>
-              <div>
-                <label className="block text-slate-600 mb-1">Business Shortcode / Paybill</label>
-                <input
-                  type="text"
-                  defaultValue="883921"
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-600 mb-1">Passkey</label>
-                {/*
-                  A Daraja passkey is a secret used to build every STK push
-                  password. It is not rendered, prefilled or bundled here: a
-                  value in this component would ship to every browser that
-                  loads the app, and this panel has no integration behind it
-                  to read one anyway.
-                */}
-                <input
-                  type="password"
-                  value=""
-                  readOnly
-                  placeholder="Held on the server"
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono bg-slate-50"
-                />
-                <p className="mt-1 text-2xs text-slate-500">
-                  The passkey stays in the server environment and is never sent to the browser.
-                </p>
-              </div>
-              <span className="text-2xs text-emerald-700 font-medium">
-                ✓ Auto-STK Push Active on Cashier POS
-              </span>
-            </div>
-
-            <div className="p-4 border border-slate-200 rounded-lg space-y-3">
-              <span className="font-bold text-slate-900 text-xs">
-                Bank Wire / PDQ Card Terminal
-              </span>
-              <div>
-                <label className="block text-slate-600 mb-1">Bank Name</label>
-                <input
-                  type="text"
-                  defaultValue="KCB Bank Kenya Ltd"
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-600 mb-1">Account Number</label>
-                <input
-                  type="text"
-                  defaultValue="1102948201"
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded font-mono"
-                />
-              </div>
-              <span className="text-2xs text-emerald-700 font-medium">
-                ✓ Card & EFT Reconciliation Active
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Facility-scoped payment settings; no fabricated credentials or active status. */}
+      {activeTab === 'payments' && <FacilityPaymentIntegrations />}
 
       {/* SERVICE PRICING TAB */}
       {isFacilityAdmin && activeTab === 'tariffs' && (

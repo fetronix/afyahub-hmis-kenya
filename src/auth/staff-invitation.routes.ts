@@ -7,6 +7,7 @@ import {
   StaffInvitationError,
 } from './staff-invitation.service';
 import { listAssignableStaffRoles } from './staff-roles.service';
+import { buildInvitationUrl, resolveInvitationBaseUrl } from './invitation-url.ts';
 import { requireAuth, type AuthRequest } from './auth.middleware';
 import { requirePermission } from './authorization.middleware';
 
@@ -243,34 +244,12 @@ router.post(
         });
       }
 
-      const baseUrl = process.env.APP_BASE_URL?.trim();
-
-      if (!baseUrl) {
+      const resolvedBase = resolveInvitationBaseUrl(req);
+      if (!resolvedBase.ok) {
         return res.status(500).json({
           success: false,
-          code: 'APP_BASE_URL_NOT_CONFIGURED',
-          message:
-            'Staff invitations are temporarily unavailable because the application URL is not configured.',
-        });
-      }
-
-      let invitationBaseUrl: URL;
-
-      try {
-        invitationBaseUrl = new URL(baseUrl);
-
-        if (
-          !['http:', 'https:'].includes(invitationBaseUrl.protocol) ||
-          invitationBaseUrl.username ||
-          invitationBaseUrl.password
-        ) {
-          throw new Error('Unsupported application URL.');
-        }
-      } catch {
-        return res.status(500).json({
-          success: false,
-          code: 'INVALID_APP_BASE_URL',
-          message: 'APP_BASE_URL must be a valid HTTP or HTTPS URL.',
+          code: resolvedBase.code,
+          message: resolvedBase.message,
         });
       }
 
@@ -289,12 +268,11 @@ router.post(
             : null,
       });
 
-      invitationBaseUrl.pathname = `${invitationBaseUrl.pathname.replace(/\/+$/, '')}/accept-staff-invitation`;
-      invitationBaseUrl.search = '';
-      invitationBaseUrl.hash = '';
-      invitationBaseUrl.searchParams.set('token', result.token);
-
-      const invitationUrl = invitationBaseUrl.toString();
+      const invitationUrl = buildInvitationUrl(
+        resolvedBase.baseUrl,
+        '/accept-staff-invitation',
+        result.token,
+      );
 
       return res.status(201).json({
         success: true,
@@ -339,48 +317,25 @@ router.post(
         });
       }
 
-      const baseUrl = process.env.APP_BASE_URL?.trim();
-
-      if (!baseUrl) {
+      const resolvedBase = resolveInvitationBaseUrl(req);
+      if (!resolvedBase.ok) {
         return res.status(500).json({
           success: false,
-          code: 'APP_BASE_URL_NOT_CONFIGURED',
-          message:
-            'Staff invitations are temporarily unavailable because the application URL is not configured.',
-        });
-      }
-
-      let invitationBaseUrl: URL;
-
-      try {
-        invitationBaseUrl = new URL(baseUrl);
-
-        if (
-          !['http:', 'https:'].includes(invitationBaseUrl.protocol) ||
-          invitationBaseUrl.username ||
-          invitationBaseUrl.password
-        ) {
-          throw new Error('Unsupported application URL.');
-        }
-      } catch {
-        return res.status(500).json({
-          success: false,
-          code: 'INVALID_APP_BASE_URL',
-          message: 'APP_BASE_URL must be a valid HTTP or HTTPS URL.',
+          code: resolvedBase.code,
+          message: resolvedBase.message,
         });
       }
 
       const result = await reissueStaffInvitation(invitationId, scope.tenantId, scope.facilityId);
 
-      invitationBaseUrl.pathname = `${invitationBaseUrl.pathname.replace(/\/+$/, '')}/accept-staff-invitation`;
-      invitationBaseUrl.search = '';
-      invitationBaseUrl.hash = '';
-      invitationBaseUrl.searchParams.set('token', result.token);
-
       return res.json({
         success: true,
         invitation: result.invitation,
-        invitationUrl: invitationBaseUrl.toString(),
+        invitationUrl: buildInvitationUrl(
+          resolvedBase.baseUrl,
+          '/accept-staff-invitation',
+          result.token,
+        ),
       });
     } catch (error) {
       return sendError(res, error);

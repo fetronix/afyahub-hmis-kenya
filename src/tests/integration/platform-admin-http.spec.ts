@@ -115,6 +115,20 @@ describe('HTTP Integration: Platform Administration, Tenant/Facility Isolation, 
   });
 
   it('provisions tenant + roles + audit log on POST /api/platform/tenants and handles PATCH, 404, 409, and safe 500s', async () => {
+    // A tenant created after seeding receives the same limited onboarding grants,
+    // without automatically acquiring finance or platform-wide hub permissions.
+    expect(FACILITY_ADMIN_PERMISSION_CODES).toEqual(
+      expect.arrayContaining([
+        'insurance.sha.read',
+        'insurance.private.claims.prepare',
+        'payment_hub.facility.manage',
+        'payment_hub.credentials.manage',
+        'payment_hub.production.request',
+      ]),
+    );
+    expect(FACILITY_ADMIN_PERMISSION_CODES).not.toContain('payment_hub.transactions.read');
+    expect(FACILITY_ADMIN_PERMISSION_CODES).not.toContain('payment_hub.global.manage');
+
     const allPermCodes = [
       ...new Set([
         ...FACILITY_ADMIN_PERMISSION_CODES,
@@ -288,22 +302,60 @@ describe('HTTP Integration: Platform Administration, Tenant/Facility Isolation, 
     expect(reassign.status).toBe(400);
     expect(reassign.body.error).toBe('VALIDATION_ERROR');
 
-    // Valid facility PATCH -> 200 + audit log
-    mockDb.state!.queueUpdate([{ id: 12, tenantId: 1, name: 'Nyeri Outpatient Centre' }]);
+    // Unknown IDs and clinical protocol mutations cannot be smuggled into module configuration.
+    const unknown = await httpJson(baseUrl, 'PATCH', '/api/platform/facilities/12', {
+      token: TOKENS.superAdmin,
+      body: { enabledModules: ['clinical'] },
+    });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body).toMatchObject({ error: 'UNKNOWN_MODULE', modules: ['clinical'] });
+
+    const clinicalProtocols = await httpJson(baseUrl, 'PATCH', '/api/platform/facilities/12', {
+      token: TOKENS.superAdmin,
+      body: { name: 'Facility', clinicalProtocols: { dialysis: {} } },
+    });
+    expect(clinicalProtocols.status).toBe(400);
+
+    // Valid facility PATCH -> normalized modules and an audit record in the same transaction.
+    mockDb.state!.queueUpdate([
+      {
+        id: 12,
+        tenantId: 1,
+        name: 'Nyeri Outpatient Centre',
+        enabledModules: ['opd', 'finance', 'configuration'],
+        hiddenModules: ['dialysis'],
+      },
+    ]);
     const patched = await httpJson(baseUrl, 'PATCH', '/api/platform/facilities/12', {
       token: TOKENS.superAdmin,
-      body: { name: 'Nyeri Outpatient Centre', enabledModules: ['clinical', 'finance'] },
+      body: {
+        name: 'Nyeri Outpatient Centre',
+        enabledModules: ['opd', 'finance'],
+        hiddenModules: ['dialysis', 'dialysis'],
+      },
     });
     expect(patched.status).toBe(200);
-    expect(auditSpy.logAuditEvent).toHaveBeenLastCalledWith(
-      1,
-      12,
-      '1',
-      'UPDATE',
-      'FACILITY',
-      '12',
-      expect.stringContaining('enabledModules'),
+    expect(mockDb.state!.calls).toContainEqual({
+      op: 'update',
+      values: expect.objectContaining({
+        enabledModules: expect.arrayContaining(['opd', 'finance', 'configuration']),
+        hiddenModules: ['dialysis'],
+      }),
+    });
+    const audit = mockDb.state!.calls.find(
+      (call) => call.op === 'insert' && (call.values as any)?.resource === 'FACILITY',
     );
+    expect(audit?.values).toMatchObject({
+      tenantId: 1,
+      facilityId: 12,
+      userId: '1',
+      action: 'UPDATE',
+      resourceId: '12',
+    });
+    expect(JSON.parse((audit!.values as any).details)).toMatchObject({
+      enabledModules: expect.arrayContaining(['opd', 'finance']),
+      hiddenModules: ['dialysis'],
+    });
   });
 
   it('manages facility-admin invitations (create, list without token hashes, revoke, reissue)', async () => {
@@ -368,7 +420,8 @@ describe('HTTP Integration: Platform Administration, Tenant/Facility Isolation, 
     expect(list.body.data[0].status).toBe('PENDING');
     expect(list.body.data[0].invitationTokenHash).toBeUndefined();
 
-    // Reissue & Revoke -> 200 + audit logs
+    // Reissue preserves an application sub-path as well as validation and audit behavior.
+    vi.stubEnv('APP_BASE_URL', 'https://hmis.nyeri.example.test/hmis/');
     mockDb.state!.queueSelect([
       { id: 88, acceptedAt: null, revokedAt: null, email: 'lead@nyeri.example.test' },
     ]);
@@ -389,6 +442,10 @@ describe('HTTP Integration: Platform Administration, Tenant/Facility Isolation, 
       { token: TOKENS.superAdmin },
     );
     expect(reissued.status).toBe(200);
+    expect(reissued.body.data.invitationLink).toContain(
+      'https://hmis.nyeri.example.test/hmis/accept-facility-admin-invitation?token=',
+    );
+    vi.unstubAllEnvs();
 
     mockDb.state!.queueUpdate([
       { id: 88, tenantId: 1, facilityId: 10, email: 'lead@nyeri.example.test' },

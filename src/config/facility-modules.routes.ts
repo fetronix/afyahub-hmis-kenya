@@ -35,6 +35,7 @@ import {
   ALWAYS_ENABLED_MODULES,
   FACILITY_MODULES,
   resolveFacilityModules,
+  resolveHiddenFacilityModules,
   unknownFacilityModules,
 } from './facility-modules.ts';
 
@@ -132,6 +133,11 @@ router.get('/:id/modules', async (req: AuthRequest, res) => {
       success: true,
       facilityId: facility.id,
       enabledModules: resolveFacilityModules(facility.enabledModules),
+      hiddenModules: resolveHiddenFacilityModules(facility.hiddenModules),
+      clinicalProtocols:
+        facility.clinicalProtocols && typeof facility.clinicalProtocols === 'object'
+          ? facility.clinicalProtocols
+          : {},
       alwaysEnabled: [...ALWAYS_ENABLED_MODULES],
       canManage: mayProvisionModules(context, facility.tenantId),
       catalogue: FACILITY_MODULES,
@@ -210,6 +216,45 @@ router.patch('/:id/modules', async (req: AuthRequest, res) => {
     return;
   }
 
+  let requestedHidden: string[] | undefined;
+  if ('hiddenModules' in body && body.hiddenModules !== undefined) {
+    if (
+      !Array.isArray(body.hiddenModules) ||
+      !body.hiddenModules.every((item) => typeof item === 'string')
+    ) {
+      res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'hiddenModules must be an array of module ids.',
+      });
+      return;
+    }
+
+    const unknownHidden = unknownFacilityModules(body.hiddenModules);
+    if (unknownHidden.length > 0) {
+      res.status(400).json({
+        success: false,
+        error: 'UNKNOWN_MODULE',
+        message: `Unknown hidden module id(s): ${unknownHidden.join(', ')}.`,
+        modules: unknownHidden,
+      });
+      return;
+    }
+
+    requestedHidden = body.hiddenModules as string[];
+  }
+
+  // Clinical protocol changes are not module provisioning. A module manager
+  // must not be able to prescribe facility clinical rules through this route.
+  if ('clinicalProtocols' in body) {
+    res.status(403).json({
+      success: false,
+      error: 'CLINICAL_PROTOCOL_PERMISSION_REQUIRED',
+      message: 'Clinical protocols require a separately authorized clinical workflow.',
+    });
+    return;
+  }
+
   try {
     const facility = await queries.getFacilityByIdScoped(context, facilityId);
 
@@ -232,58 +277,71 @@ router.patch('/:id/modules', async (req: AuthRequest, res) => {
       return;
     }
 
-    const previous = resolveFacilityModules(facility.enabledModules);
-    const next = resolveFacilityModules(requested);
-
-    const added = next.filter((id) => !previous.includes(id));
-    const removed = previous.filter((id) => !next.includes(id));
-
-    /*
-     * `resolveFacilityModules` forces always-on modules back on. The
-     * response says so (`alwaysEnabled`) rather than letting a caller
-     * believe it switched Configuration off.
-     */
-
-    const [updated] = await db
-      .update(schema.facilities)
-      .set({
-        enabledModules: next,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.facilities.id, facility.id))
-      .returning();
-
-    if (!updated) {
-      res.status(404).json({
-        success: false,
-        error: 'FACILITY_NOT_FOUND',
-        message: 'The facility was not found.',
+    // Lock the facility row so two administrators cannot silently overwrite
+    // each other's module list and so the audit entry commits with the change.
+    const result = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(schema.facilities)
+        .where(eq(schema.facilities.id, facility.id))
+        .for('update');
+      if (!locked || locked.tenantId !== facility.tenantId) throw new Error('Facility unavailable');
+      const previous = resolveFacilityModules(locked.enabledModules);
+      const next = resolveFacilityModules(requested);
+      const added = next.filter((id) => !previous.includes(id));
+      const removed = previous.filter((id) => !next.includes(id));
+      const previousHidden = resolveHiddenFacilityModules(locked.hiddenModules);
+      const nextHidden =
+        requestedHidden !== undefined
+          ? resolveHiddenFacilityModules(requestedHidden)
+          : previousHidden;
+      const hiddenAdded = nextHidden.filter((id) => !previousHidden.includes(id));
+      const hiddenRemoved = previousHidden.filter((id) => !nextHidden.includes(id));
+      const [updated] = await tx
+        .update(schema.facilities)
+        .set({
+          enabledModules: next,
+          hiddenModules: nextHidden,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.facilities.id, locked.id))
+        .returning();
+      // Unlike the legacy logAuditEvent helper, this audit is not best effort:
+      // an audit write failure rolls back the configuration change.
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        userId: String(context.userId),
+        action: 'UPDATE',
+        resource: 'facility_modules',
+        resourceId: String(facility.id),
+        details: JSON.stringify({
+          added,
+          removed,
+          hiddenAdded,
+          hiddenRemoved,
+          historicalDataPreserved: true,
+        }),
       });
-      return;
-    }
-
-    await queries.logAuditEvent(
-      facility.tenantId,
-      facility.id,
-      String(context.userId),
-      'UPDATE',
-      'facility_modules',
-      String(facility.id),
-      JSON.stringify({
-        fields: ['enabledModules'],
-        added,
-        removed,
-      }),
-    );
+      return { updated, next, nextHidden, added, removed, hiddenAdded, hiddenRemoved };
+    });
 
     res.json({
       success: true,
-      facilityId: updated.id,
-      enabledModules: next,
-      added,
-      removed,
+      facilityId: result.updated.id,
+      enabledModules: result.next,
+      hiddenModules: result.nextHidden,
+      added: result.added,
+      removed: result.removed,
+      hiddenAdded: result.hiddenAdded,
+      hiddenRemoved: result.hiddenRemoved,
       alwaysEnabled: [...ALWAYS_ENABLED_MODULES],
-      changed: added.length + removed.length > 0,
+      changed:
+        result.added.length +
+          result.removed.length +
+          result.hiddenAdded.length +
+          result.hiddenRemoved.length >
+        0,
     });
   } catch (error) {
     if (sendScopeError(res, error)) return;

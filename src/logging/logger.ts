@@ -93,6 +93,8 @@ const SECRET_KEYS = [
   'refreshToken',
   'idToken',
   'apiKey',
+  'manageToken',
+  'bookingApiKey',
   'secret',
   'clientSecret',
   'authorization',
@@ -141,6 +143,8 @@ function buildRedactPaths(): string[] {
   paths.add('req.headers.authorization');
   paths.add('req.headers.cookie');
   paths.add('req.headers["x-api-key"]');
+  paths.add('req.headers["x-booking-api-key"]');
+  paths.add('req.headers["x-booking-manage-token"]');
   paths.add('res.headers["set-cookie"]');
   paths.add('headers.authorization');
   paths.add('config.headers.authorization');

@@ -148,10 +148,19 @@ describe('Scoped DB Queries, Postnatal/Immunisation MCH Services & Patient Porta
       encounterId: 300,
       patientId: 42,
       icd10Code: 'J06.9',
-      diagnosisName: 'Acute URTI',
+      icd10Description: 'Acute URTI',
       diagnosisType: 'Primary',
     } as any);
     expect(diag.id).toBe(1);
+    expect(mockDb.state!.calls).toContainEqual({
+      op: 'insert',
+      values: expect.objectContaining({
+        resource: 'diagnosis',
+        action: 'CREATE',
+        tenantId: 1,
+        facilityId: 10,
+      }),
+    });
 
     mockDb.state!.queueSelect(
       [{ id: 300, patientId: 42, facilityId: 10, tenantId: 1 }],

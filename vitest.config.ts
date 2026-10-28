@@ -12,8 +12,8 @@
  *
  *   - coverage, measured rather than asserted;
  *   - DOM tests for React components (jsdom + Testing Library);
- *   - database tests that need a real PostgreSQL, skipped when none is
- *     reachable so a laptop without one still gets a green run;
+ *   - database tests that need a real PostgreSQL (skipped without one unless
+ *     JALICARE_REQUIRE_DB=1; the full coverage ratchet requires those tests);
  *   - a watch mode and a per-file runner for development.
  *
  * Migration is incremental: a suite moves here only once its assertions
@@ -101,6 +101,9 @@ export default defineConfig({
          * 41.45% statements, 41.96% lines, 42.93% functions, 36.73% branches
          * (up from 19.35 / 19.22 / 19.58 / 16.88 after adding Zod route-level
          * validation, HTTP integration suites, and domain service specs).
+         * After integrating the insurance, accounting and payment workflows,
+         * full-suite coverage must run with the disposable PostgreSQL database.
+         * A no-database run can execute unit tests but falls below this ratchet.
          */
         lines: 41.0,
         statements: 40.5,

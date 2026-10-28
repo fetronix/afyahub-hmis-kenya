@@ -360,10 +360,11 @@ export const PatientJourneyModal: React.FC = () => {
                       {diagnoses.map((d) => (
                         <tr key={d.id} className="hover:bg-slate-50/70">
                           <td className="px-4 py-2.5 font-mono font-bold text-teal-800">
-                            {d.icd10Code}
+                            {d.codingSystem === 'ICD-11' ? d.icd11Code : d.icd10Code}{' '}
+                            <span className="font-normal">({d.codingSystem ?? 'ICD-10'})</span>
                           </td>
                           <td className="px-4 py-2.5 font-medium text-slate-900">
-                            {d.icd10Description}
+                            {d.codingSystem === 'ICD-11' ? d.icd11Title : d.icd10Description}
                           </td>
                           <td className="px-4 py-2.5 text-slate-600">{d.diagnosisType}</td>
                           <td className="px-4 py-2.5">

@@ -56,6 +56,7 @@ export interface UpdateFacilityValidated {
   phone?: string | null;
   email?: string | null;
   enabledModules?: string[];
+  hiddenModules?: string[];
   isActive?: boolean;
 }
 
@@ -220,6 +221,33 @@ export const updateFacilitySchema = z
         return z.NEVER;
       }
       updates.enabledModules = [...new Set(modules.map((item) => item.trim()))];
+    }
+
+    if ('hiddenModules' in body) {
+      const hidden = body.hiddenModules;
+      if (
+        !Array.isArray(hidden) ||
+        !hidden.every(
+          (item) => typeof item === 'string' && item.trim().length > 0 && item.length <= 80,
+        )
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['hiddenModules'],
+          message: 'hiddenModules must be an array of non-empty strings.',
+        });
+        return z.NEVER;
+      }
+      updates.hiddenModules = [...new Set(hidden.map((item) => item.trim()))];
+    }
+
+    if ('clinicalProtocols' in body) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['clinicalProtocols'],
+        message: 'Clinical protocols require a separately authorized clinical workflow.',
+      });
+      return z.NEVER;
     }
 
     if ('isActive' in body) {
