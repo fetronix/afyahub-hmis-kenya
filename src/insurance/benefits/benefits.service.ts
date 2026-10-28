@@ -11,6 +11,7 @@
 
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
+import { findFacilityPatient } from '../hub/patient-scope.ts';
 import * as schema from '../../db/schema.ts';
 import { formatCents } from '../../billing/settlement.ts';
 import {
@@ -98,9 +99,22 @@ export async function createOrApprovePayerBenefitRule(params: {
     .toUpperCase();
   const sourceReference = String(params.input.sourceReference ?? '').trim();
   const effectiveFrom =
-    typeof params.input.effectiveFrom === 'string' && params.input.effectiveFrom.trim()
-      ? params.input.effectiveFrom.trim()
-      : new Date().toISOString().slice(0, 10);
+    typeof params.input.effectiveFrom === 'string' ? params.input.effectiveFrom.trim() : '';
+  const financialTerms = ['copayType', 'copayValue', 'deductibleAmount', 'coinsurancePercent'];
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom) ||
+    financialTerms.some(
+      (key) =>
+        params.input[key] === null ||
+        params.input[key] === undefined ||
+        String(params.input[key]).trim() === '',
+    )
+  )
+    throw new PrivateInsuranceError(
+      'BENEFIT_TERMS_REQUIRED',
+      'Enter the actual effective date and each contracted financial term; use zero only where the contract specifies none.',
+      400,
+    );
 
   if (!ruleCode || !benefitPackage || !serviceCategory || !sourceReference) {
     throw new PrivateInsuranceError(
@@ -110,7 +124,7 @@ export async function createOrApprovePayerBenefitRule(params: {
     );
   }
 
-  const copayType = String(params.input.copayType ?? 'NONE')
+  const copayType = String(params.input.copayType ?? '')
     .trim()
     .toUpperCase();
   if (!['NONE', 'FIXED', 'PERCENTAGE'].includes(copayType)) {
@@ -285,6 +299,13 @@ export async function validatePrivateServiceBenefit(params: {
     throw new PrivateInsuranceError('INVALID_PATIENT_ID', 'Valid patientId is required.', 400);
   }
 
+  if (!(await findFacilityPatient(params.tenantId, params.facilityId, patientId)))
+    throw new PrivateInsuranceError(
+      'PATIENT_NOT_FOUND',
+      'Patient is not associated with this facility.',
+      404,
+    );
+
   const payerCode = String(params.input.payerCode ?? '')
     .trim()
     .toUpperCase();
@@ -373,7 +394,13 @@ export async function validatePrivateServiceBenefit(params: {
         ),
       )
       .limit(1);
-    memberPolicy = foundPolicy ?? null;
+    if (!foundPolicy || foundPolicy.payerCode !== payerRow.payerCode)
+      throw new PrivateInsuranceError(
+        'MEMBER_POLICY_NOT_FOUND',
+        'Membership does not belong to this patient, payer and facility.',
+        404,
+      );
+    memberPolicy = foundPolicy;
   }
 
   const [latestElig] = await db
@@ -389,6 +416,27 @@ export async function validatePrivateServiceBenefit(params: {
     )
     .orderBy(desc(schema.insuranceEligibilityVerifications.checkedAt))
     .limit(1);
+
+  if (params.input.encounterId) {
+    const [encounter] = await db
+      .select({ id: schema.encounters.id })
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.id, Number(params.input.encounterId)),
+          eq(schema.encounters.tenantId, params.tenantId),
+          eq(schema.encounters.facilityId, params.facilityId),
+          eq(schema.encounters.patientId, patientId),
+        ),
+      )
+      .limit(1);
+    if (!encounter)
+      throw new PrivateInsuranceError(
+        'ENCOUNTER_NOT_FOUND',
+        'Encounter does not belong to this patient and facility.',
+        404,
+      );
+  }
 
   // Lookup insurer-specific service mapping
   const mappings = await db
@@ -468,7 +516,7 @@ export async function validatePrivateServiceBenefit(params: {
     );
   }
 
-  const hasClinicalNotes = Boolean(params.input.hasClinicalNotes ?? true);
+  const hasClinicalNotes = Boolean(params.input.hasClinicalNotes ?? false);
   const hasReferral = Boolean(params.input.hasReferral ?? false);
 
   if (matchingMapping?.requiresClinicalNotes && !hasClinicalNotes) {

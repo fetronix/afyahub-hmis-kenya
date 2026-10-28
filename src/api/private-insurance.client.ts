@@ -23,7 +23,13 @@ export interface PrivatePayerConfig {
   payerType: string;
   isActive: boolean;
   integrationType: 'DIRECT_API' | 'THIRD_PARTY_GATEWAY' | 'FILE_EXPORT' | 'MANUAL';
-  adapterKey: 'britam_direct' | 'pacis_direct' | 'smartlink_gateway' | 'sha_afyalink' | 'manual';
+  adapterKey:
+    | 'britam_direct'
+    | 'pacis_direct'
+    | 'cic_direct'
+    | 'smartlink_gateway'
+    | 'sha_afyalink'
+    | 'manual';
   adapterDisplayName: string;
   isGatewayAdapter: boolean;
   gatewayProvider: string | null;

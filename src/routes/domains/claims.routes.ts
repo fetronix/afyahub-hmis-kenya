@@ -1,3 +1,4 @@
+import { legacyClaimsGuard } from '../../insurance/hub/guards.ts';
 /**
  * Insurance claims.
  *
@@ -39,6 +40,14 @@ import {
 import { validateBody, validateParams } from '../../validation/validate.ts';
 
 const router = Router();
+router.use((req: AuthRequest, res, next) => {
+  if (
+    /^\/api\/claims(?:\/|$)/.test(req.path) ||
+    /^\/api\/invoices\/\d+\/claimable-lines$/.test(req.path)
+  )
+    return legacyClaimsGuard(req, res, next);
+  return next();
+});
 
 /*
  * =========================================================
@@ -204,6 +213,7 @@ router.post(
         req.authContext,
         req.params.id,
         req.body?.facilityId ?? null,
+        req.body?.manualReference,
       );
 
       return res.json(claim);
@@ -256,8 +266,7 @@ router.post(
 );
 
 /*
- * Settling posts the approved money against the invoice. This is the
- * only path that can move a claim to "Settled".
+ * Settling links an existing receipt; it does not post money.
  */
 
 router.post(
@@ -280,6 +289,8 @@ router.post(
         req.params.id,
         req.user.fullName,
         req.body?.facilityId ?? null,
+        req.body?.billingPaymentId,
+        req.body?.remittanceReference,
       );
 
       return res.json(result);
@@ -298,7 +309,7 @@ router.post(
 
 /*
  * Legacy status endpoint. Kept so existing screens do not break, but
- * it now goes through the same state machine: "Settled" posts money.
+ * it now goes through the same state machine: "Settled" requires an existing receipt.
  */
 
 router.put(
@@ -322,6 +333,7 @@ router.put(
           req.authContext,
           req.params.id,
           facilityId,
+          req.body?.manualReference,
         );
 
         return res.json(claim);
@@ -343,6 +355,8 @@ router.put(
           req.params.id,
           req.user.fullName,
           facilityId,
+          req.body?.billingPaymentId,
+          req.body?.remittanceReference,
         );
 
         return res.json(result.claim);

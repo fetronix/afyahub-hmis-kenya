@@ -5,6 +5,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import { StaffRolesPanel } from './StaffRolesPanel.tsx';
 import { FacilityPaymentIntegrations } from './payment-hub/FacilityPaymentIntegrations.tsx';
+import { FacilityPayerIntegrations } from './payer-hub/FacilityPayerIntegrations.tsx';
 import {
   FACILITY_MODULES,
   resolveFacilityModules,
@@ -50,6 +51,7 @@ export const ConfigurationModule: React.FC = () => {
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const canViewPaymentHub = !isSuperAdmin && permissions.has('payment_hub.catalogue.read');
+  const canViewPayerHub = !isSuperAdmin && permissions.has('payer_hub.catalogue.read');
 
   /*
    * The staff screen is gated on the same permission its API requires.
@@ -77,7 +79,7 @@ export const ConfigurationModule: React.FC = () => {
   );
 
   const integrationOnly =
-    canViewPaymentHub &&
+    (canViewPaymentHub || canViewPayerHub) &&
     !isFacilityAdmin &&
     !canManageStaff &&
     !permissions.has('facilities.update') &&
@@ -85,8 +87,16 @@ export const ConfigurationModule: React.FC = () => {
     !permissions.has('roles.permissions.manage');
 
   const [activeTab, setActiveTab] = useState<
-    'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'staff'
-  >(integrationOnly ? 'payments' : staffOnly ? 'staff' : 'facility');
+    'facility' | 'modules' | 'roles' | 'tariffs' | 'payments' | 'payers' | 'staff'
+  >(
+    integrationOnly
+      ? canViewPaymentHub
+        ? 'payments'
+        : 'payers'
+      : staffOnly
+        ? 'staff'
+        : 'facility',
+  );
 
   useEffect(() => {
     /*
@@ -94,9 +104,9 @@ export const ConfigurationModule: React.FC = () => {
      * landing place. A facility administrator now sees the profile and
      * the module switches as well, so they are not forced to Staff.
      */
-    if (integrationOnly) setActiveTab('payments');
+    if (integrationOnly) setActiveTab(canViewPaymentHub ? 'payments' : 'payers');
     else if (staffOnly) setActiveTab('staff');
-  }, [staffOnly, integrationOnly]);
+  }, [staffOnly, integrationOnly, canViewPaymentHub]);
 
   /*
    * Facility module provisioning.
@@ -400,10 +410,12 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'modules', label: 'Modular Features Engine', icon: Layers },
           { id: 'staff', label: 'Staff & Roles', icon: UserPlus },
           { id: 'payments', label: 'Payment & Banking Integrations', icon: CreditCard },
+          { id: 'payers', label: 'Payers & eClaims', icon: ShieldCheck },
           { id: 'tariffs', label: 'Service Pricing & Tariffs', icon: DollarSign },
         ]
           .filter((tab) => {
             if (tab.id === 'payments') return canViewPaymentHub;
+            if (tab.id === 'payers') return canViewPayerHub;
             if (integrationOnly) return false;
             if (tab.id === 'staff') return canManageStaff;
             if (staffOnly) return false;
@@ -687,6 +699,7 @@ export const ConfigurationModule: React.FC = () => {
 
       {/* Facility-scoped payment settings; no fabricated credentials or active status. */}
       {activeTab === 'payments' && <FacilityPaymentIntegrations />}
+      {activeTab === 'payers' && <FacilityPayerIntegrations />}
 
       {/* SERVICE PRICING TAB */}
       {isFacilityAdmin && activeTab === 'tariffs' && (

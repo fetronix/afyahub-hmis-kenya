@@ -11,7 +11,7 @@
 import { and, desc, eq, inArray, like, sql } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
-import { classifySettlement } from '../../billing/settlement.ts';
+import { matchRecordedPayerPayment, RecordedPaymentError } from '../hub/recorded-payment.ts';
 import {
   defaultShaGatewayAdapter,
   type PayerGatewayAdapter,
@@ -111,6 +111,7 @@ export async function recordRemittanceAdvice(
   let paymentDate = input.paymentDate?.trim() || null;
   let totalAmountRaw: string | number | null = input.totalRemittedAmount ?? null;
   let source = 'MANUAL_ADVICE';
+  const paymentChannel = input.paymentChannel?.trim().toUpperCase() || '';
 
   if (input.fhirPaymentNotice) {
     const parsed = parseShaPaymentNotice(input.fhirPaymentNotice);
@@ -127,10 +128,17 @@ export async function recordRemittanceAdvice(
     source = 'FHIR_PAYMENT_NOTICE';
   }
 
-  if (!payerRemittanceRef || !paymentDate || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) {
+  if (
+    !payerRemittanceRef ||
+    !paymentDate ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) ||
+    Number.isNaN(Date.parse(`${paymentDate}T00:00:00Z`)) ||
+    new Date(`${paymentDate}T00:00:00Z`).toISOString().slice(0, 10) !== paymentDate ||
+    !paymentChannel
+  ) {
     throw new InsuranceDomainError(
       'INVALID_REMITTANCE_FIELDS',
-      'payerRemittanceRef and paymentDate (YYYY-MM-DD) are required.',
+      'payerRemittanceRef, actual paymentDate (YYYY-MM-DD), and payment channel are required.',
       400,
     );
   }
@@ -175,10 +183,10 @@ export async function recordRemittanceAdvice(
       payerCode,
       remittanceNumber,
       payerRemittanceRef,
-      bankReference: input.bankReference?.trim() || payerRemittanceRef,
+      bankReference: input.bankReference?.trim() || null,
       facilityIdType: input.facilityIdType ?? 'fr-code',
       paymentDate,
-      paymentChannel: (input.paymentChannel ?? 'EFT').trim().toUpperCase(),
+      paymentChannel,
       totalRemittedAmount: formattedTotal,
       allocatedAmount: '0.00',
       unallocatedAmount: formattedTotal,
@@ -212,6 +220,7 @@ export interface ReconcileAllocationInput {
   approvedAmount?: string | number | null;
   varianceReason?: string | null;
   postToInvoice?: boolean;
+  billingPaymentId?: number | null;
 }
 
 export interface ReconcileRemittanceInput {
@@ -286,6 +295,30 @@ export async function reconcileRemittance(
   }
 
   const result = await db.transaction(async (tx) => {
+    const [lockedRemittance] = await tx
+      .select()
+      .from(schema.insuranceRemittances)
+      .where(
+        and(
+          eq(schema.insuranceRemittances.id, remittance.id),
+          eq(schema.insuranceRemittances.tenantId, scope.tenantId),
+          eq(schema.insuranceRemittances.facilityId, scope.facilityId),
+        ),
+      )
+      .for('update');
+    if (!lockedRemittance || lockedRemittance.status === 'RECONCILED')
+      throw new InsuranceDomainError(
+        'REMITTANCE_ALREADY_RECONCILED',
+        'Remittance has already been reconciled.',
+        409,
+      );
+    const previouslyAllocatedCents = parseMoneyToCents(lockedRemittance.allocatedAmount) ?? 0;
+    if (previouslyAllocatedCents + batchAllocationCents > totalRemittedCents)
+      throw new InsuranceDomainError(
+        'ALLOCATION_EXCEEDS_REMITTANCE',
+        'Allocations exceed the remaining advice balance.',
+        409,
+      );
     const createdEntries = [];
 
     for (const alloc of input.allocations) {
@@ -300,7 +333,7 @@ export async function reconcileRemittance(
             eq(schema.shaEclaims.payerCode, remittance.payerCode),
           ),
         )
-        .limit(1);
+        .for('update');
 
       if (!claim) {
         throw new InsuranceDomainError(
@@ -349,6 +382,7 @@ export async function reconcileRemittance(
           and(
             eq(schema.billingInvoices.id, claim.invoiceId),
             eq(schema.billingInvoices.facilityId, scope.facilityId),
+            eq(schema.billingInvoices.tenantId, scope.tenantId),
           ),
         )
         .limit(1);
@@ -370,7 +404,7 @@ export async function reconcileRemittance(
           ? requireMoneyCents(alloc.approvedAmount, 'approvedAmount')
           : (parseMoneyToCents(claim.totalApprovedAmount) ?? 0) > 0
             ? (parseMoneyToCents(claim.totalApprovedAmount) ?? remittedCents)
-            : remittedCents;
+            : 0;
 
       const varianceCents = claimedCents - remittedCents;
       const reconciliationStatus =
@@ -379,47 +413,35 @@ export async function reconcileRemittance(
       let postedPaymentId: number | null = null;
       let appliedCents = 0;
 
-      if (alloc.postToInvoice !== false && remittedCents > 0) {
-        const invoiceTotalCents = parseMoneyToCents(invoice.totalAmount) ?? 0;
-        const paidBeforeCents = parseMoneyToCents(invoice.paidAmount) ?? 0;
-        const priorCreditCents = parseMoneyToCents(invoice.creditBalance) ?? 0;
-
-        const settlement = classifySettlement({
-          invoiceTotalCents,
-          paidBeforeCents,
-          amountCents: remittedCents,
-        });
-
-        const receiptNumber = `RCPT-SHA-${remittance.id}-${claim.id}`;
-        const [payment] = await tx
-          .insert(schema.billingPayments)
-          .values({
+      if (alloc.postToInvoice === true)
+        throw new InsuranceDomainError(
+          'AUTOMATIC_POSTING_DISABLED',
+          'Record the receipt through billing first, then match its ID. Reconciliation never posts payments.',
+          409,
+        );
+      if (alloc.billingPaymentId !== undefined && alloc.billingPaymentId !== null) {
+        if (remittance.isSimulated || claim.isSimulated)
+          throw new InsuranceDomainError(
+            'SIMULATED_REMITTANCE',
+            'Simulated claims or advice cannot be matched to a real payment.',
+            409,
+          );
+        try {
+          const payment = await matchRecordedPayerPayment(tx, {
+            paymentId: alloc.billingPaymentId,
             invoiceId: invoice.id,
-            receiptNumber,
-            paymentMethod: 'SHA',
-            amount: formatCents(remittedCents),
-            referenceCode: remittance.payerRemittanceRef,
-            transactionCode: claim.payerClaimReference ?? claim.claimNumber,
-            settlementStatus: settlement.outcome,
-            cashierName:
-              input.cashierDisplayName?.trim() || scope.userEmail || 'SHA Reconciliation',
-          })
-          .returning();
-
-        postedPaymentId = payment.id;
-        appliedCents = remittedCents;
-
-        // Update invoice settlement balances ONLY — never alter invoice totalAmount or billingItems!
-        await tx
-          .update(schema.billingInvoices)
-          .set({
-            paidAmount: formatCents(settlement.paidAfterCents),
-            balanceAmount: formatCents(settlement.balanceAfterCents),
-            creditBalance: formatCents(Math.max(priorCreditCents, settlement.creditCents)),
-            status: settlement.invoiceStatus,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.billingInvoices.id, invoice.id));
+            payerCode: remittance.payerCode,
+            remittanceReference: remittance.payerRemittanceRef,
+            bankReference: remittance.bankReference,
+            amountCents: remittedCents,
+          });
+          postedPaymentId = payment.id;
+          appliedCents = remittedCents;
+        } catch (error) {
+          if (error instanceof RecordedPaymentError)
+            throw new InsuranceDomainError(error.code, error.message, 409);
+          throw error;
+        }
       }
 
       const [reconEntry] = await tx
@@ -444,39 +466,38 @@ export async function reconcileRemittance(
 
       createdEntries.push(reconEntry);
 
-      const priorClaimPaidCents = parseMoneyToCents(claim.totalPaidAmount) ?? 0;
-      const newClaimPaidCents = priorClaimPaidCents + remittedCents;
-      const targetClaimStatus: EclaimStatus = canTransitionEclaimStatus(claim.status, 'PAID')
-        ? 'PAID'
-        : (claim.status as EclaimStatus);
-
-      await tx
-        .update(schema.shaEclaims)
-        .set({
-          totalApprovedAmount: formatCents(approvedCents),
-          totalPaidAmount: formatCents(newClaimPaidCents),
-          settledPaymentId: postedPaymentId ?? claim.settledPaymentId,
-          status: targetClaimStatus,
-          paidAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.shaEclaims.id, claim.id));
-
-      if (targetClaimStatus !== claim.status) {
-        await tx.insert(schema.shaEclaimStatusHistory).values({
-          eclaimId: claim.id,
-          fromStatus: claim.status,
-          toStatus: targetClaimStatus,
-          source: 'REMITTANCE_RECONCILIATION',
-          actorUserId: scope.userId,
-          reason: `Reconciled KES ${formatCents(remittedCents)} from remittance ${remittance.payerRemittanceRef} (${reconciliationStatus}).`,
-          metadata: {
-            remittanceId: remittance.id,
-            remittanceNumber: remittance.remittanceNumber,
-            varianceAmount: formatCents(varianceCents),
-            postedPaymentId,
-          },
-        });
+      // A remittance advice is not itself a payer decision or a cash receipt.
+      if (postedPaymentId !== null) {
+        const priorClaimPaidCents = parseMoneyToCents(claim.totalPaidAmount) ?? 0;
+        const newClaimPaidCents = priorClaimPaidCents + appliedCents;
+        const recordedApproval = parseMoneyToCents(claim.totalApprovedAmount) ?? 0;
+        const targetClaimStatus: EclaimStatus =
+          recordedApproval > 0 &&
+          newClaimPaidCents >= recordedApproval &&
+          ['ADJUDICATED', 'PARTIALLY_ADJUDICATED'].includes(claim.status) &&
+          canTransitionEclaimStatus(claim.status, 'PAID')
+            ? 'PAID'
+            : (claim.status as EclaimStatus);
+        await tx
+          .update(schema.shaEclaims)
+          .set({
+            totalPaidAmount: formatCents(newClaimPaidCents),
+            settledPaymentId: postedPaymentId,
+            status: targetClaimStatus,
+            paidAt: targetClaimStatus === 'PAID' ? new Date() : claim.paidAt,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.shaEclaims.id, claim.id));
+        if (targetClaimStatus !== claim.status)
+          await tx.insert(schema.shaEclaimStatusHistory).values({
+            eclaimId: claim.id,
+            fromStatus: claim.status,
+            toStatus: targetClaimStatus,
+            source: 'REMITTANCE_RECONCILIATION',
+            actorUserId: scope.userId,
+            reason: 'Matched an existing billing receipt to remittance advice.',
+            metadata: { remittanceId: remittance.id, postedPaymentId },
+          });
       }
     }
 

@@ -84,7 +84,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
     isSimulated: boolean;
   } | null>(null);
   const [latestResult, setLatestResult] = useState<ShaEligibilityRecord | null>(null);
-  const [hieLookupCode, setHieLookupCode] = useState('SHA-19-152');
+  const [hieLookupCode, setHieLookupCode] = useState('');
   const [loadingHieLookup, setLoadingHieLookup] = useState(false);
   const [hieLookupData, setHieLookupData] = useState<{
     isSimulated: boolean;
@@ -126,7 +126,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
   const [quantity, setQuantity] = useState(1);
   const [preauthReference, setPreauthReference] = useState('');
   const [hasReferral, setHasReferral] = useState(false);
-  const [hasClinicalNotes, setHasClinicalNotes] = useState(true);
+  const [hasClinicalNotes, setHasClinicalNotes] = useState(false);
   const [validatingBenefit, setValidatingBenefit] = useState(false);
   const [benefitResult, setBenefitResult] = useState<ShaBenefitValidationRecord | null>(null);
   const [benefitDisclaimer, setBenefitDisclaimer] = useState<string | null>(null);
@@ -439,8 +439,8 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
                 Verify SHA Beneficiary Status
               </h3>
               <p className="text-xs text-slate-600 mt-1">
-                Checks SHA / Client Registry status. Gateway outages or missing credentials return{' '}
-                <strong>Unable to verify</strong> — never a false Ineligible or Eligible state.
+                External SHA and Client Registry verification are unavailable until approved
+                transport is verified. Existing verification history remains available.
               </p>
             </div>
 
@@ -498,7 +498,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => void handleResolveClientRegistry()}
-                disabled={!canCheckEligibility || resolvingCr || !selectedPatientId}
+                disabled
                 className="btn-quiet justify-center flex-1 disabled:opacity-50"
               >
                 <Search className="w-3.5 h-3.5" />
@@ -506,7 +506,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
               </button>
               <button
                 type="submit"
-                disabled={!canCheckEligibility || checkingElig || !selectedPatientId}
+                disabled
                 className="btn-accent justify-center flex-1 disabled:opacity-50"
               >
                 {checkingElig ? (
@@ -732,7 +732,8 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
                           <button
                             type="button"
                             onClick={() => void handleRecheckFromHistory(row)}
-                            disabled={checkingElig}
+                            disabled
+                            title="External SHA transport is unavailable"
                             className="text-brand-700 hover:underline font-semibold"
                           >
                             Recheck
@@ -771,7 +772,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
                 />
                 <button
                   type="button"
-                  disabled={!canValidateBenefits || loadingHieLookup || !selectedPatientId}
+                  disabled
                   onClick={() => void handleLookupHieUtilization()}
                   className="btn-quiet text-xs disabled:opacity-50"
                 >

@@ -11,6 +11,7 @@
 
 import { and, desc, eq, ilike, or } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
+import { findFacilityPatient } from '../hub/patient-scope.ts';
 import * as schema from '../../db/schema.ts';
 import { PrivateInsuranceError } from '../core/types.ts';
 import { recordPrivateInsuranceAudit } from '../audit/diagnostics.service.ts';
@@ -167,11 +168,7 @@ export async function createInsuranceMemberPolicy(params: {
     );
   }
 
-  const [patient] = await db
-    .select()
-    .from(schema.patients)
-    .where(and(eq(schema.patients.id, patientId), eq(schema.patients.tenantId, params.tenantId)))
-    .limit(1);
+  const patient = await findFacilityPatient(params.tenantId, params.facilityId, patientId);
 
   if (!patient) {
     throw new PrivateInsuranceError(

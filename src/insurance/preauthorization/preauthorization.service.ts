@@ -10,6 +10,7 @@
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 import { db } from '../../db/index.ts';
+import { findFacilityPatient } from '../hub/patient-scope.ts';
 import * as schema from '../../db/schema.ts';
 import { formatCents } from '../../billing/settlement.ts';
 import { getPayerAdapter, inspectSecretEnvPresence } from '../core/adapter-registry.ts';
@@ -140,6 +141,13 @@ export async function createPrivatePreauthorization(params: {
     throw new PrivateInsuranceError('INVALID_PATIENT_ID', 'Valid patientId is required.', 400);
   }
 
+  if (!(await findFacilityPatient(params.tenantId, params.facilityId, patientId)))
+    throw new PrivateInsuranceError(
+      'PATIENT_NOT_FOUND',
+      'Patient is not associated with this facility.',
+      404,
+    );
+
   const payerCode = String(params.input.payerCode ?? '')
     .trim()
     .toUpperCase();
@@ -173,7 +181,54 @@ export async function createPrivatePreauthorization(params: {
         404,
       );
     }
+    if (mp.payerCode !== payerCode)
+      throw new PrivateInsuranceError(
+        'PAYER_MISMATCH',
+        'Membership belongs to a different payer.',
+        400,
+      );
     memberPolicyId = mp.id;
+  }
+
+  if (params.input.encounterId) {
+    const [encounter] = await db
+      .select({ id: schema.encounters.id })
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.id, Number(params.input.encounterId)),
+          eq(schema.encounters.tenantId, params.tenantId),
+          eq(schema.encounters.facilityId, params.facilityId),
+          eq(schema.encounters.patientId, patientId),
+        ),
+      )
+      .limit(1);
+    if (!encounter)
+      throw new PrivateInsuranceError(
+        'ENCOUNTER_NOT_FOUND',
+        'Encounter does not belong to this patient and facility.',
+        404,
+      );
+  }
+  if (params.input.invoiceId) {
+    const [invoice] = await db
+      .select({ id: schema.billingInvoices.id })
+      .from(schema.billingInvoices)
+      .where(
+        and(
+          eq(schema.billingInvoices.id, Number(params.input.invoiceId)),
+          eq(schema.billingInvoices.tenantId, params.tenantId),
+          eq(schema.billingInvoices.facilityId, params.facilityId),
+          eq(schema.billingInvoices.patientId, patientId),
+        ),
+      )
+      .limit(1);
+    if (!invoice)
+      throw new PrivateInsuranceError(
+        'INVOICE_NOT_FOUND',
+        'Invoice does not belong to this patient and facility.',
+        404,
+      );
   }
 
   const clinicalIndication = String(params.input.clinicalIndication ?? '').trim();
@@ -210,9 +265,15 @@ export async function createPrivatePreauthorization(params: {
       const unitCents = moneyToCentsStrict(item.unitPrice as string | number, 'Item unit price');
       const lineTotalCents = unitCents * qty;
       totalEstimatedCents += lineTotalCents;
+      if (!code || !name)
+        throw new PrivateInsuranceError(
+          'REQUESTED_SERVICE_REQUIRED',
+          'Each requested item needs a real service code and name.',
+          400,
+        );
       normalizedItems.push({
-        serviceCode: code || 'UNMAPPED',
-        serviceName: name || 'Requested Clinical Service',
+        serviceCode: code,
+        serviceName: name,
         quantity: qty,
         unitPrice: formatCents(unitCents),
         estimatedTotal: formatCents(lineTotalCents),
@@ -245,6 +306,26 @@ export async function createPrivatePreauthorization(params: {
     });
   }
 
+  for (const item of normalizedItems) {
+    if (!item.tariffId) continue;
+    const [tariff] = await db
+      .select({ id: schema.facilityServiceTariffs.id })
+      .from(schema.facilityServiceTariffs)
+      .where(
+        and(
+          eq(schema.facilityServiceTariffs.id, item.tariffId),
+          eq(schema.facilityServiceTariffs.tenantId, params.tenantId),
+          eq(schema.facilityServiceTariffs.facilityId, params.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!tariff)
+      throw new PrivateInsuranceError(
+        'TARIFF_NOT_FOUND',
+        'Tariff is not available at this facility.',
+        404,
+      );
+  }
   const firstItem = normalizedItems[0];
   const preauthNumber = await nextPreauthNumber(payerRow.payerCode);
 
@@ -600,6 +681,29 @@ export async function recordPrivatePreauthDecision(params: {
       400,
     );
   }
+
+  if (
+    nextStatus === 'REJECTED' &&
+    (!payerAuthReference ||
+      typeof params.input.rejectionReason !== 'string' ||
+      !params.input.rejectionReason.trim())
+  )
+    throw new PrivateInsuranceError(
+      'PAYER_DECISION_DETAILS_REQUIRED',
+      'Enter the payer decision reference and actual rejection reason.',
+      400,
+    );
+  if (
+    (nextStatus === 'APPROVED' || nextStatus === 'PARTIALLY_APPROVED') &&
+    (params.input.approvedAmount === undefined ||
+      params.input.approvedAmount === null ||
+      params.input.approvedAmount === '')
+  )
+    throw new PrivateInsuranceError(
+      'APPROVED_AMOUNT_REQUIRED',
+      'Enter the actual payer-approved amount.',
+      400,
+    );
 
   let approvedAmount = preauth.approvedAmount;
   if (

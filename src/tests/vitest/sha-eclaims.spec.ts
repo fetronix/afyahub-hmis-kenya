@@ -52,6 +52,7 @@ import {
 } from '../../integrations/sha/sha.adapter.ts';
 import {
   assertEclaimTransition,
+  isConsistentShaDispatch,
   canTransitionEclaimStatus,
   canTransitionPreauthStatus,
   formatCents,
@@ -858,8 +859,54 @@ describe('2. Client Registry Resolution, Deceased Hard-Block & Eligibility Safet
   });
 });
 
+describe('SHA dispatch outcome consistency', () => {
+  it('never treats failed, contradictory, non-2xx or error-bearing responses as success', () => {
+    expect(
+      isConsistentShaDispatch({ accepted: true, outcome: 'FAILED', httpStatus: 200, errors: [] }),
+    ).toBe(false);
+    expect(
+      isConsistentShaDispatch({
+        accepted: false,
+        outcome: 'APPROVED',
+        httpStatus: 200,
+        errors: [],
+      }),
+    ).toBe(false);
+    expect(
+      isConsistentShaDispatch({ accepted: true, outcome: 'APPROVED', httpStatus: 503, errors: [] }),
+    ).toBe(false);
+    expect(
+      isConsistentShaDispatch({
+        accepted: true,
+        outcome: 'ACKNOWLEDGED',
+        httpStatus: 200,
+        errors: ['error'],
+      }),
+    ).toBe(false);
+    expect(
+      isConsistentShaDispatch({ accepted: true, outcome: 'REJECTED', httpStatus: 200, errors: [] }),
+    ).toBe(false);
+    expect(
+      isConsistentShaDispatch({
+        accepted: false,
+        outcome: 'REJECTED',
+        httpStatus: 200,
+        errors: ['denied'],
+      }),
+    ).toBe(true);
+    expect(
+      isConsistentShaDispatch({
+        accepted: true,
+        outcome: 'ACKNOWLEDGED',
+        httpStatus: 202,
+        errors: [],
+      }),
+    ).toBe(true);
+  });
+});
+
 describe('3. Kenya eClaims FHIR R4 v0.1.0 Bundle Builder, Validator & Combination Rules (Mocked Unit)', () => {
-  it('builds a conformant IPD Claim Bundle with inline sha-insurer Organization, Patient.name.family, Coverage.subscriber/class, Condition, Practitioner, MedicationRequest/Dispense, DiagnosticReport, and EpisodeOfCare', () => {
+  it('constructs a draft IPD bundle with inline clinical resources (not external conformance evidence)', () => {
     const bundle = buildShaFhirBundle({
       bundleUuid: 'b-uuid-001',
       claimUuid: 'c-uuid-001',
@@ -947,6 +994,18 @@ describe('3. Kenya eClaims FHIR R4 v0.1.0 Bundle Builder, Validator & Combinatio
       'DiagnosticReport',
       'Claim',
     ]);
+
+    const resource = (kind: string) =>
+      entries.find((entry) => entry.resource.resourceType === kind)!.resource;
+    expect(resource('Coverage').status).toBe('draft');
+    expect(resource('Encounter').status).toBe('unknown');
+    expect(resource('MedicationRequest').status).toBe('unknown');
+    expect(
+      (resource('MedicationRequest').medicationCodeableConcept as { coding?: unknown }).coding,
+    ).toBeUndefined();
+    expect(resource('DiagnosticReport').status).toBe('unknown');
+    expect((resource('DiagnosticReport').code as { coding?: unknown }).coding).toBeUndefined();
+    expect(resource('Condition').clinicalStatus).toBeUndefined();
 
     const claim = entries[entries.length - 1].resource;
     expect(claim.use).toBe('claim');
@@ -1082,9 +1141,18 @@ describe('3. Kenya eClaims FHIR R4 v0.1.0 Bundle Builder, Validator & Combinatio
       total: [{ amount: { value: 12000, currency: 'KES' } }],
     });
     expect(claimResp.accepted).toBe(true);
-    expect(claimResp.outcome).toBe('APPROVED');
+    // Processing completion and a reference do not establish payer approval.
+    expect(claimResp.outcome).toBe('ACKNOWLEDGED');
     expect(claimResp.payerReference).toBe('PA-AUTH-88412');
-    expect(claimResp.approvedAmountKes).toBe('12000.00');
+    expect(claimResp.approvedAmountKes).toBeNull();
+    expect(parseShaBundleSubmissionResponse(200, { id: 'synthetic-reference' }).accepted).toBe(
+      false,
+    );
+    expect(
+      parseShaBundleSubmissionResponse(200, { resourceType: 'ClaimResponse', id: 'synthetic' })
+        .accepted,
+    ).toBe(false);
+    expect(parseShaBundleSubmissionResponse(503, { status: 'queued' }).accepted).toBe(false);
 
     const status = parseShaClaimStatusResponse(200, {
       data: {

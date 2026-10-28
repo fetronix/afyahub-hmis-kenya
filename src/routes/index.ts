@@ -54,6 +54,7 @@ import shaEclaimsRoutes from './sha-eclaims.routes.ts';
 import privateInsuranceRoutes from './private-insurance.routes.ts';
 import accountingRoutes from './accounting.routes.ts';
 import paymentHubRoutes from '../payment-hub/routes.ts';
+import payerHubRoutes from '../insurance/hub/routes.ts';
 import dialysisRoutes from './dialysis.routes.ts';
 import bookingAdminRoutes from '../booking/booking-admin.routes.ts';
 import inpatientRoutes from './inpatient.routes.ts';
@@ -76,6 +77,7 @@ export function createApiRoutes(): Router {
   const api = Router();
 
   api.use('/payment-hub', paymentHubRoutes);
+  api.use('/payer-hub', payerHubRoutes);
   api.use('/platform', platformRoutes);
   api.use('/staff-invitations', staffInvitationRoutes);
   api.use('/staff-roles', staffRolesRoutes);

@@ -22,6 +22,8 @@ import {
   updateInsuranceMemberPolicy,
 } from '../../insurance/eligibility/member-policy.service.ts';
 import { checkPrivateInsuranceEligibility } from '../../insurance/eligibility/eligibility.service.ts';
+import { assignPayer, setActivation } from '../../insurance/hub/service.ts';
+import { recordSettledPayment } from '../../billing/payments.service.ts';
 import { createPayerServiceMapping } from '../../insurance/mappings/mappings.service.ts';
 import {
   createOrApprovePayerBenefitRule,
@@ -159,6 +161,18 @@ describeDb(
         actorDisplayName: userB.fullName ?? 'Insurance Desk Lead B',
       };
 
+      // Each provider is explicitly assigned by the platform and activated by
+      // the facility. Legacy auto-created defaults are not authorization.
+      const definitions = await db.select().from(schema.insurancePayerDefinitions);
+      for (const payer of definitions.filter((p) => ['BRITAM', 'PACIS'].includes(p.code))) {
+        await assignPayer(userA.id, payer.id, facilityA.id, true);
+        await setActivation(
+          { tenantId: tenantA.id, facilityId: facilityA.id, actorUserId: userA.id },
+          payer.id,
+          true,
+        );
+      }
+
       const [patient] = await db
         .insert(schema.patients)
         .values({
@@ -282,7 +296,7 @@ describeDb(
     });
 
     it('executes complete Britam & PACIS workflows while preserving original invoices and enforcing tenant isolation', async () => {
-      // 1. Default Britam & PACIS configurations seeded independently per facility
+      // 1. Britam & PACIS configurations assigned and activated explicitly
       const payersA = await listPrivatePayers({
         tenantId: actorA.tenantId,
         facilityId: actorA.facilityId,
@@ -291,8 +305,8 @@ describeDb(
       const pacis = payersA.find((p) => p.payerCode === 'PACIS');
       expect(britam).toBeDefined();
       expect(pacis).toBeDefined();
-      expect(britam?.connectionStatus).toBe('AWAITING_DOCUMENTATION');
-      expect(pacis?.connectionStatus).toBe('AWAITING_DOCUMENTATION');
+      expect(britam?.connectionStatus).toBe('NOT_CONFIGURED');
+      expect(pacis?.connectionStatus).toBe('NOT_CONFIGURED');
 
       await updatePrivatePayer({
         ...actorA,
@@ -436,10 +450,27 @@ describeDb(
           serviceCategory: 'OPD_CONSULTATION',
           copayType: 'FIXED',
           copayValue: '500.00',
-          sourceReference: 'Britam Schedule 2026',
+          deductibleAmount: '0.00',
+          coinsurancePercent: '0.00',
+          effectiveFrom: '2026-01-01',
+          sourceReference: 'Synthetic test schedule',
           approveImmediately: true,
         },
       });
+
+      const missingClinicalEvidence = await validatePrivateServiceBenefit({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'BRITAM',
+          tariffId: tariffConsultId,
+          quantity: 1,
+        },
+      });
+      expect(missingClinicalEvidence.decision).toBe('INCOMPLETE_INFORMATION');
+      expect(missingClinicalEvidence.missingRequirements).toContain(
+        'Clinical consultation notes / diagnosis required.',
+      );
 
       const benefitVal = await validatePrivateServiceBenefit({
         ...actorA,
@@ -448,6 +479,7 @@ describeDb(
           payerCode: 'BRITAM',
           tariffId: tariffConsultId,
           quantity: 1,
+          hasClinicalNotes: true,
         },
       });
       expect(benefitVal.decision).toBe('COVERED');
@@ -496,6 +528,13 @@ describeDb(
       });
       expect(submittedPreauth.status).toBe('REQUESTED');
 
+      await expect(
+        recordPrivatePreauthDecision({
+          ...actorA,
+          preauthId: pacisPreauth.id,
+          input: { status: 'APPROVED', payerAuthReference: 'SYNTHETIC-TEST-REFERENCE' },
+        }),
+      ).rejects.toThrow(/actual payer-approved amount/i);
       const approvedPreauth = await recordPrivatePreauthDecision({
         ...actorA,
         preauthId: pacisPreauth.id,
@@ -586,6 +625,7 @@ describeDb(
         claimId: britamClaim.id,
         input: {
           status: 'REJECTED',
+          externalClaimReference: 'SYNTHETIC-REJECT-001',
           rejectionCode: 'CLINICAL_SUMMARY_REQ',
           rejectionReason: 'Attach discharge/OPD clinical note',
         },
@@ -652,6 +692,18 @@ describeDb(
         },
       });
 
+      await expect(
+        reconcilePrivateRemittance({
+          ...actorA,
+          remittanceId: remittance.id,
+          input: {
+            allocations: [
+              { claimId: britamClaim.id, remittedAmount: '2500.00', postToInvoice: true },
+            ],
+          },
+        }),
+      ).rejects.toThrow(/record the receipt through billing first/i);
+
       const reconciled = await reconcilePrivateRemittance({
         ...actorA,
         remittanceId: remittance.id,
@@ -672,11 +724,11 @@ describeDb(
         facilityId: actorA.facilityId,
         claimId: britamClaim.id,
       });
-      expect(finalClaim.status).toBe('PAID');
-      expect(finalClaim.paidAmount).toBe('2500.00');
-      // Original invoice now reflects KES 2,500 paid + KES 500 patient copay balance (Partially Paid!)
-      expect(finalClaim.originalInvoice.paidAmount).toBe('2500.00');
-      expect(finalClaim.originalInvoice.balanceAmount).toBe('500.00');
+      expect(finalClaim.status).toBe('SUBMITTED');
+      expect(finalClaim.paidAmount).toBe('0.00');
+      // Advice alone is not evidence of receipt and cannot change an invoice.
+      expect(finalClaim.originalInvoice.paidAmount).toBe('0.00');
+      expect(finalClaim.originalInvoice.balanceAmount).toBe('3000.00');
 
       const register = await getPrivateReconciliationRegister({
         tenantId: actorA.tenantId,
@@ -685,6 +737,71 @@ describeDb(
       });
       expect(register.summary.entriesCount).toBe(1);
       expect(register.summary.totalRemittedAmount).toBe('2500.00');
+
+      // Synthetic payer decision and independently recorded billing receipt.
+      // Two concurrent attempts cannot allocate the same advice/payment twice.
+      await recordPrivateClaimDecision({
+        ...actorA,
+        claimId: britamClaim.id,
+        input: {
+          status: 'ADJUDICATED',
+          approvedAmount: '2500.00',
+          externalClaimReference: 'SYNTHETIC-DECISION-001',
+        },
+      });
+      const reference = `SYNTHETIC-EFT-${actorA.facilityId}`;
+      const receipt = await recordSettledPayment(
+        {
+          userId: actorA.actorUserId,
+          tenantId: actorA.tenantId,
+          facilityId: actorA.facilityId,
+          roles: ['BILLING_CLERK'],
+          permissions: ['billing.payments.record'],
+          isSuperAdmin: false,
+        },
+        {
+          invoiceId: invoiceBritamId,
+          amount: '2500.00',
+          paymentMethod: 'Insurance - BRITAM',
+          referenceCode: reference,
+        },
+        'Synthetic cashier',
+      );
+      const secondAdvice = await importPrivateRemittance({
+        ...actorA,
+        input: {
+          payerCode: 'BRITAM',
+          payerRemittanceRef: reference,
+          paymentChannel: 'EFT',
+          paymentDate: '2026-10-28',
+          totalRemittedAmount: '2500.00',
+        },
+      });
+      const match = () =>
+        reconcilePrivateRemittance({
+          ...actorA,
+          remittanceId: secondAdvice.id,
+          input: {
+            allocations: [
+              {
+                claimId: britamClaim.id,
+                remittedAmount: '2500.00',
+                billingPaymentId: receipt.payment.id,
+              },
+            ],
+          },
+        });
+      const attempts = await Promise.allSettled([match(), match()]);
+      expect(attempts.filter((a) => a.status === 'fulfilled')).toHaveLength(1);
+      expect(attempts.filter((a) => a.status === 'rejected')).toHaveLength(1);
+      const matchedClaim = await getPrivateInsuranceClaimById({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        claimId: britamClaim.id,
+      });
+      expect(matchedClaim.status).toBe('PAID');
+      expect(matchedClaim.paidAmount).toBe('2500.00');
+      expect(matchedClaim.originalInvoice.balanceAmount).toBe('500.00');
 
       // 9. Cross-tenant & cross-facility isolation check: Tenant B cannot see or load Tenant A records
       const membersB = await listInsuranceMembers({

@@ -5,9 +5,10 @@
  * insurers per facility. Never invents endpoints or exposes secrets.
  */
 
-import { and, asc, eq, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { db } from '../../db/index.ts';
+import { db, pool } from '../../db/index.ts';
+import { assertPayerAccess, PayerHubError } from '../hub/service.ts';
 import * as schema from '../../db/schema.ts';
 import {
   getPayerAdapter,
@@ -30,14 +31,16 @@ import {
   recordIntegrationDiagnostic,
   recordPrivateInsuranceAudit,
 } from '../audit/diagnostics.service.ts';
-import { BRITAM_REQUIRED_ONBOARDING_ITEMS, BritamInsuranceAdapter } from './britam.adapter.ts';
+import { BritamInsuranceAdapter } from './britam.adapter.ts';
 import { ManualFilePayerAdapter, ShaPayerBridgeAdapter } from './manual.adapter.ts';
-import { PACIS_REQUIRED_ONBOARDING_ITEMS, PacisInsuranceAdapter } from './pacis.adapter.ts';
+import { PacisInsuranceAdapter } from './pacis.adapter.ts';
 import { SmartLinkGatewayAdapter } from './smartlink.adapter.ts';
+import { CicInsuranceAdapter } from './cic.adapter.ts';
 
 // Register standard independent adapters once at module load
 registerPayerAdapter(new BritamInsuranceAdapter());
 registerPayerAdapter(new PacisInsuranceAdapter());
+registerPayerAdapter(new CicInsuranceAdapter());
 registerPayerAdapter(new SmartLinkGatewayAdapter());
 registerPayerAdapter(new ManualFilePayerAdapter());
 registerPayerAdapter(new ShaPayerBridgeAdapter());
@@ -62,6 +65,7 @@ const VALID_AUTH_METHODS = new Set<PayerAuthMethod>([
 const VALID_ADAPTER_KEYS = new Set<PayerAdapterKey>([
   'britam_direct',
   'pacis_direct',
+  'cic_direct',
   'smartlink_gateway',
   'sha_afyalink',
   'manual',
@@ -84,7 +88,12 @@ export function toPayerRuntimeConfig(
     connectionStatus: (row.connectionStatus as PayerConnectionStatus) || 'NOT_CONFIGURED',
     apiBaseUrl: row.apiBaseUrl ?? null,
     authMethod: (row.authMethod as PayerAuthMethod) || 'NONE',
-    secretEnvPrefix: row.secretEnvPrefix ?? null,
+    // Old shared prefixes are retained as data but cannot read another facility's secrets.
+    secretEnvPrefix: row.secretEnvPrefix?.startsWith(
+      `PAYER_HUB_T${row.tenantId}_F${row.facilityId}_${row.payerCode}_`,
+    )
+      ? row.secretEnvPrefix
+      : null,
     providerIdentifier: row.providerIdentifier ?? null,
     defaultCodingSystem: row.defaultCodingSystem || 'ICD-10',
     requireVerifiedEligibility: row.requireVerifiedEligibility,
@@ -121,8 +130,11 @@ export function serializePayerConfig(row: typeof schema.insurancePayerConfigs.$i
     isGatewayAdapter: adapter.isGatewayAdapter,
     gatewayProvider: runtime.gatewayProvider,
     environment: runtime.environment,
-    connectionStatus: runtime.connectionStatus,
-    apiBaseUrl: runtime.apiBaseUrl,
+    connectionStatus:
+      runtime.integrationType === 'MANUAL' || runtime.integrationType === 'FILE_EXPORT'
+        ? 'NOT_CONFIGURED'
+        : 'AWAITING_DOCUMENTATION',
+    apiBaseUrl: null, // Legacy endpoints have not been approved for use.
     authMethod: runtime.authMethod,
     secretReference: {
       envPrefix: secrets.secretEnvPrefix,
@@ -137,7 +149,7 @@ export function serializePayerConfig(row: typeof schema.insurancePayerConfigs.$i
     requireVerifiedEligibility: runtime.requireVerifiedEligibility,
     eligibilityMaxAgeHours: runtime.eligibilityMaxAgeHours,
     supportedOperations: capabilities.filter((c) => c.readyInCurrentConfig).map((c) => c.operation),
-    capabilities,
+    capabilities: capabilities.filter((c) => c.supportedByContract && c.readyInCurrentConfig),
     claimRequirements: runtime.claimRequirements,
     preauthRequirements: runtime.preauthRequirements,
     missingRequirements:
@@ -152,140 +164,23 @@ export function serializePayerConfig(row: typeof schema.insurancePayerConfigs.$i
   };
 }
 
-/**
- * Ensures Britam (`BRITAM`) and PACIS (`PACIS`) exist as separate private
- * insurer configurations for the facility with honest `AWAITING_DOCUMENTATION`
- * status until official API specs and credentials are supplied.
- */
-export async function ensureDefaultPrivatePayers(
-  tenantId: number,
-  facilityId: number,
-): Promise<void> {
-  const existing = await db
-    .select({ payerCode: schema.insurancePayerConfigs.payerCode })
-    .from(schema.insurancePayerConfigs)
-    .where(
-      and(
-        eq(schema.insurancePayerConfigs.tenantId, tenantId),
-        eq(schema.insurancePayerConfigs.facilityId, facilityId),
-      ),
-    );
-
-  const codes = new Set(existing.map((r) => r.payerCode.toUpperCase()));
-
-  if (!codes.has('BRITAM')) {
-    await db
-      .insert(schema.insurancePayerConfigs)
-      .values({
-        tenantId,
-        facilityId,
-        payerCode: 'BRITAM',
-        payerName: 'Britam Insurance (Kenya)',
-        payerType: 'PRIVATE_INSURER',
-        integrationType: 'MANUAL',
-        adapterKey: 'britam_direct',
-        gatewayProvider: null,
-        environment: 'UNCONFIGURED',
-        connectionStatus: 'AWAITING_DOCUMENTATION',
-        apiBaseUrl: null,
-        authMethod: 'NONE',
-        secretEnvPrefix: 'BRITAM_API',
-        providerIdentifier: null,
-        contractedSchemes: ['Britam Corporate Medical', 'Milele Health', 'Bima ya Wafanyikazi'],
-        defaultCodingSystem: 'ICD-10',
-        requireVerifiedEligibility: true,
-        eligibilityMaxAgeHours: 24,
-        supportedOperations: [],
-        claimRequirements: {
-          requireMemberNumber: true,
-          requirePolicyNumber: false,
-          requireDiagnosis: true,
-          requireInvoiceAttachment: true,
-          requireSignedClaimForm: true,
-          maxSubmissionDays: 90,
-          // Require explicit payer-approved coding policy before submission.
-          allowedCodingSystems: [],
-          codingPolicyVerified: false,
-        },
-        preauthRequirements: {
-          requirePreauthForInpatient: true,
-          requirePreauthForImaging: true,
-          requirePreauthForSurgery: true,
-          requirePreauthForOptical: true,
-          requirePreauthForDental: true,
-          amountThresholdKes: 20000,
-        },
-        missingRequirements: [...BRITAM_REQUIRED_ONBOARDING_ITEMS],
-        lastConnectionSummary:
-          'Awaiting official Britam technical API specification and provider panel credentials. Internal membership, manual verification, preauthorization, invoice-claim preparation, and remittance workflows are active.',
-        isActive: true,
-      })
-      .onConflictDoNothing();
-  }
-
-  if (!codes.has('PACIS')) {
-    await db
-      .insert(schema.insurancePayerConfigs)
-      .values({
-        tenantId,
-        facilityId,
-        payerCode: 'PACIS',
-        payerName: 'PACIS Insurance Company Ltd',
-        payerType: 'PRIVATE_INSURER',
-        integrationType: 'MANUAL',
-        adapterKey: 'pacis_direct',
-        gatewayProvider: null,
-        environment: 'UNCONFIGURED',
-        connectionStatus: 'AWAITING_DOCUMENTATION',
-        apiBaseUrl: null,
-        authMethod: 'NONE',
-        secretEnvPrefix: 'PACIS_API',
-        providerIdentifier: null,
-        contractedSchemes: [
-          'PACIS Corporate Medical',
-          'PACIS Family Medical',
-          'PACIS Micro-Medical',
-        ],
-        defaultCodingSystem: 'ICD-10',
-        requireVerifiedEligibility: true,
-        eligibilityMaxAgeHours: 24,
-        supportedOperations: [],
-        claimRequirements: {
-          requireMemberNumber: true,
-          requirePolicyNumber: true,
-          requireDiagnosis: true,
-          requireInvoiceAttachment: true,
-          requireSignedClaimForm: true,
-          maxSubmissionDays: 60,
-          // Require explicit payer-approved coding policy before submission.
-          allowedCodingSystems: [],
-          codingPolicyVerified: false,
-        },
-        preauthRequirements: {
-          requirePreauthForInpatient: true,
-          requirePreauthForImaging: true,
-          requirePreauthForSurgery: true,
-          requirePreauthForOptical: true,
-          requirePreauthForDental: true,
-          amountThresholdKes: 15000,
-        },
-        missingRequirements: [...PACIS_REQUIRED_ONBOARDING_ITEMS],
-        lastConnectionSummary:
-          'Awaiting official PACIS technical API specification or designated electronic claims aggregator authorization. Internal membership, manual verification, preauthorization, invoice-claim preparation, and remittance workflows are active.',
-        isActive: true,
-      })
-      .onConflictDoNothing();
-  }
-}
-
+/** No automatic insurer creation: platform assignment and facility activation are explicit. */
 export async function listPrivatePayers(params: {
   tenantId: number;
   facilityId: number;
   includePublicSha?: boolean;
 }) {
-  await ensureDefaultPrivatePayers(params.tenantId, params.facilityId);
-
+  const available = await pool.query<{ code: string }>(
+    `SELECT p.code FROM insurance_payer_definitions p
+     JOIN insurance_payer_assignments a ON a.provider_id=p.id AND a.tenant_id=$1 AND a.facility_id=$2 AND a.is_allowed
+     WHERE p.status='ACTIVE'`,
+    [params.tenantId, params.facilityId],
+  );
+  const codes = available.rows.map((r) => r.code);
+  if (!codes.length) return [];
   const conditions = [
+    inArray(schema.insurancePayerConfigs.payerCode, codes),
+    eq(schema.insurancePayerConfigs.isActive, true),
     eq(schema.insurancePayerConfigs.tenantId, params.tenantId),
     eq(schema.insurancePayerConfigs.facilityId, params.facilityId),
   ];
@@ -308,8 +203,6 @@ export async function getPayerRowScoped(params: {
   payerId?: number;
   payerCode?: string;
 }) {
-  await ensureDefaultPrivatePayers(params.tenantId, params.facilityId);
-
   const conditions = [
     eq(schema.insurancePayerConfigs.tenantId, params.tenantId),
     eq(schema.insurancePayerConfigs.facilityId, params.facilityId),
@@ -402,6 +295,37 @@ function validatePayerConfigMutation(input: Record<string, unknown>) {
   }
 }
 
+function validateFacilityOnlyConfiguration(input: Record<string, unknown>) {
+  if (input.secretEnvPrefix != null && String(input.secretEnvPrefix).trim())
+    throw new PayerHubError(
+      'SECRET_REFERENCE_FORBIDDEN',
+      'Use the facility-specific payer hub credential reference.',
+    );
+  if (input.apiBaseUrl != null && String(input.apiBaseUrl).trim())
+    throw new PayerHubError(
+      'LIVE_ADAPTER_UNAVAILABLE',
+      'No authorized private insurer API endpoint is implemented.',
+    );
+  if (input.environment === 'PRODUCTION')
+    throw new PayerHubError(
+      'PAYER_PRODUCTION_BLOCKED',
+      'Production has not been verified or approved.',
+    );
+  if (
+    input.integrationType !== undefined &&
+    !['MANUAL', 'FILE_EXPORT'].includes(String(input.integrationType))
+  )
+    throw new PayerHubError(
+      'LIVE_ADAPTER_UNAVAILABLE',
+      'Only manual/file processing is available.',
+    );
+  if (input.authMethod !== undefined && input.authMethod !== 'NONE')
+    throw new PayerHubError(
+      'LIVE_ADAPTER_UNAVAILABLE',
+      'No authorized private insurer authentication is implemented.',
+    );
+}
+
 export async function createPrivatePayer(params: {
   tenantId: number;
   facilityId: number;
@@ -427,7 +351,16 @@ export async function createPrivatePayer(params: {
     throw new PrivateInsuranceError('INVALID_PAYER_NAME', 'payerName is required.', 400);
   }
 
-  const adapterKey = (params.input.adapterKey as PayerAdapterKey) ?? 'manual';
+  const policy = await assertPayerAccess(params, payerCode, 'CONFIGURE', { configuration: true });
+  if (payerCode === 'SHA')
+    throw new PayerHubError('PAYER_MISMATCH', 'Use the SHA configuration workspace.');
+  if (params.input.adapterKey !== undefined && params.input.adapterKey !== policy.adapterKey)
+    throw new PayerHubError(
+      'ADAPTER_IMMUTABLE',
+      'Facility users cannot change the platform adapter.',
+    );
+  validateFacilityOnlyConfiguration(params.input);
+  const adapterKey = policy.adapterKey as PayerAdapterKey;
   let integrationType = (params.input.integrationType as PayerIntegrationType) ?? 'MANUAL';
   let gatewayProvider =
     typeof params.input.gatewayProvider === 'string' && params.input.gatewayProvider.trim()
@@ -448,10 +381,7 @@ export async function createPrivatePayer(params: {
 
   const environment = (params.input.environment as PayerEnvironment) ?? 'UNCONFIGURED';
   const authMethod = (params.input.authMethod as PayerAuthMethod) ?? 'NONE';
-  const secretEnvPrefix =
-    typeof params.input.secretEnvPrefix === 'string' && params.input.secretEnvPrefix.trim()
-      ? params.input.secretEnvPrefix.trim().toUpperCase()
-      : `${payerCode.replace(/[^A-Z0-9]/g, '_')}_API`;
+  const secretEnvPrefix = null; // References are provisioned separately and scoped by facility/environment.
 
   const apiBaseUrl =
     typeof params.input.apiBaseUrl === 'string' && params.input.apiBaseUrl.trim()
@@ -464,7 +394,7 @@ export async function createPrivatePayer(params: {
       tenantId: params.tenantId,
       facilityId: params.facilityId,
       payerCode,
-      payerName,
+      payerName: policy.displayName,
       payerType: 'PRIVATE_INSURER',
       integrationType,
       adapterKey,
@@ -503,7 +433,7 @@ export async function createPrivatePayer(params: {
         params.input.preauthRequirements && typeof params.input.preauthRequirements === 'object'
           ? (params.input.preauthRequirements as Record<string, unknown>)
           : {},
-      isActive: params.input.isActive !== false,
+      isActive: params.input.isActive === true,
       notes: typeof params.input.notes === 'string' ? params.input.notes : null,
       updatedByUserId: params.actorUserId,
     })
@@ -544,6 +474,18 @@ export async function updatePrivatePayer(params: {
     facilityId: params.facilityId,
     payerId: params.payerId,
   });
+
+  const policy = await assertPayerAccess(params, existing.payerCode, 'CONFIGURE', {
+    configuration: true,
+  });
+  validateFacilityOnlyConfiguration(params.input);
+  if (params.input.adapterKey !== undefined && params.input.adapterKey !== policy.adapterKey)
+    throw new PayerHubError(
+      'ADAPTER_IMMUTABLE',
+      'Facility users cannot change the platform adapter.',
+    );
+  if (params.input.payerName !== undefined && params.input.payerName !== policy.displayName)
+    throw new PayerHubError('PAYER_NAME_IMMUTABLE', 'Payer identity is managed by the platform.');
 
   const nextAdapterKey =
     (params.input.adapterKey as PayerAdapterKey | undefined) ??
@@ -707,7 +649,9 @@ export async function getPayerCapabilitiesScoped(params: {
     isGatewayAdapter: adapter.isGatewayAdapter,
     environment: runtime.environment,
     connectionStatus: runtime.connectionStatus,
-    capabilities: adapter.getCapabilities(runtime, secrets),
+    capabilities: adapter
+      .getCapabilities(runtime, secrets)
+      .filter((c) => c.supportedByContract && c.readyInCurrentConfig),
     onboardingChecklist: adapter.getRequiredOnboardingChecklist(runtime),
   };
 }

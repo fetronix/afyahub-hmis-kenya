@@ -136,7 +136,14 @@ export function isSecureHttpsEndpoint(url: string | null | undefined): boolean {
   if (!url) return false;
   try {
     const parsed = new URL(url.trim());
-    return parsed.protocol === 'https:' && Boolean(parsed.hostname);
+    return (
+      parsed.protocol === 'https:' &&
+      Boolean(parsed.hostname) &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.search &&
+      !parsed.hash
+    );
   } catch {
     return false;
   }

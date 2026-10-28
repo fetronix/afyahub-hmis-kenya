@@ -69,6 +69,44 @@ async function resolvePatientIdentifierForSha(
   let idType: ShaIdentificationType = explicitType ?? 'CLIENT_REGISTRY_ID';
   let idValue = explicitValue?.trim() || null;
 
+  if (idValue) {
+    if (!explicitType || !ALLOWED_SHA_IDENTIFICATION_TYPES.includes(explicitType))
+      throw new InsuranceDomainError(
+        'INVALID_IDENTIFICATION_TYPE',
+        'Select the type of a recorded patient identifier.',
+        400,
+      );
+    const aliases: Record<string, string[]> = {
+      CLIENT_REGISTRY_ID: ['CLIENT_REGISTRY_ID', 'CR_ID'],
+      SHA_NUMBER: ['SHA', 'SHA_NUMBER'],
+    };
+    const known = await db
+      .select()
+      .from(schema.patientIdentifiers)
+      .where(eq(schema.patientIdentifiers.patientId, patient.id));
+    const primary =
+      explicitType === 'CLIENT_REGISTRY_ID'
+        ? patient.dhaClientRegistryId
+        : explicitType === 'SHA_NUMBER'
+          ? patient.shaNumber
+          : explicitType === 'NATIONAL_ID'
+            ? patient.nationalId
+            : null;
+    const matches =
+      primary?.trim() === idValue ||
+      known.some(
+        (row) =>
+          (aliases[explicitType] ?? [explicitType]).includes(row.idType.toUpperCase()) &&
+          row.idValue.trim() === idValue,
+      );
+    if (!matches)
+      throw new InsuranceDomainError(
+        'IDENTIFIER_PATIENT_MISMATCH',
+        'The identifier must already belong to the selected patient. Update the patient record first.',
+        400,
+      );
+  }
+
   if (!idValue) {
     if (preferCrId && !explicitType && patient.dhaClientRegistryId?.trim()) {
       idType = 'CLIENT_REGISTRY_ID';
@@ -158,7 +196,7 @@ async function resolvePatientIdentifierForSha(
   if (!idValue || idValue.length < 4) {
     throw new InsuranceDomainError(
       'MISSING_SHA_IDENTIFIER',
-      'Patient has no Client Registry ID, SHA Number, National ID, Birth Certificate/Notification, Alien/Refugee ID, or Mandate Number on file. Update patient identifiers or supply one.',
+      'Patient has no Client Registry ID, SHA Number, National ID, Birth Certificate/Notification, Alien/Refugee ID, or Mandate Number on file. Update patient identifiers first.',
       400,
     );
   }
@@ -176,7 +214,7 @@ export async function resolvePatientClientRegistryIdentity(
   adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
 ) {
   await loadScopedFacility(scope);
-  const rawPatient = await loadTenantPatient(scope.tenantId, input.patientId);
+  const rawPatient = await loadTenantPatient(scope.tenantId, input.patientId, scope.facilityId);
   const patient = { ...rawPatient, ...openPatientIdentifiers(rawPatient) };
   const { idType, idValue } = await resolvePatientIdentifierForSha(
     patient,
@@ -258,7 +296,7 @@ export async function checkPatientEligibility(
   adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
 ) {
   await loadScopedFacility(scope);
-  const rawPatient = await loadTenantPatient(scope.tenantId, input.patientId);
+  const rawPatient = await loadTenantPatient(scope.tenantId, input.patientId, scope.facilityId);
   const patient = { ...rawPatient, ...openPatientIdentifiers(rawPatient) };
   const payerCode = (input.payerCode ?? adapter.payerCode).trim().toUpperCase();
 
@@ -442,7 +480,7 @@ export async function listPatientEligibilityHistory(
   patientId: number,
 ) {
   await loadScopedFacility(scope);
-  const patient = await loadTenantPatient(scope.tenantId, patientId);
+  const patient = await loadTenantPatient(scope.tenantId, patientId, scope.facilityId);
 
   const history = await db
     .select()

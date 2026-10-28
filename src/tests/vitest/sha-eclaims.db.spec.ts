@@ -19,6 +19,7 @@ import { beforeAll, expect, it } from 'vitest';
 
 import { describeDb } from './support/db.ts';
 import { db } from '../../db/index.ts';
+import { recordSettledPayment } from '../../billing/payments.service.ts';
 import * as schema from '../../db/schema.ts';
 import type { InsuranceActorScope } from '../../insurance/eclaims/contracts.ts';
 import {
@@ -262,6 +263,8 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       payerServiceCode: 'SHA-IMG-010',
       payerServiceName: 'CT Scan Head & Neck',
       fund: 'SHIF',
+      accessPoint: 'OP',
+      paymentMechanism: 'FEE_FOR_SERVICE',
       reimbursementTariff: '7000.00',
       requiresPreauth: true,
       preauthCategory: 'IMAGING',
@@ -289,6 +292,11 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     });
     expect(eligRes.verification.outcome).toBe('Eligible');
     expect(eligRes.verification.isSimulated).toBe(true);
+    // Synthetic test-only manual evidence, not a sandbox or production result.
+    await db
+      .update(schema.insuranceEligibilityVerifications)
+      .set({ isSimulated: false, source: 'MANUAL_VERIFICATION:TEST_EVIDENCE' })
+      .where(eq(schema.insuranceEligibilityVerifications.id, eligRes.verification.id));
 
     // 2b. Query DHA HIE benefits & utilization matrix + authorize beneficiary OTP consent
     const hieMatrix = await lookupPatientHieCoverageAndUtilization(scopeA, {
@@ -366,7 +374,15 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       estimatedAmount: '7000.00',
     });
 
-    const submittedPa = await submitPreauthorization(scopeA, preauth.id);
+    await expect(submitPreauthorization(scopeA, preauth.id)).rejects.toMatchObject({
+      code: 'PREAUTH_CONTEXT_REQUIRED',
+    });
+    const submittedPa = await submitPreauthorization(scopeA, preauth.id, undefined, {
+      serviceStart: '2026-01-01',
+      serviceEnd: '2026-01-01',
+      subType: 'op',
+      schemeCode: 'SHIF',
+    });
     expect(submittedPa.preauthorization.status).toBe('PENDING');
 
     const approvedPa = await updatePreauthorization(scopeA, preauth.id, {
@@ -395,6 +411,16 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(coveredCheck.validation.estimatedCoveredAmount).toBe('7000.00');
 
     // 5. Prepare, validate, submit, reject, correct & resubmit, adjudicate, and reconcile eClaim!
+    await expect(
+      prepareShaClaim(scopeA, {
+        invoiceId: invoiceAId,
+        encounterId: 999999999,
+        schemeCode: 'SHIF',
+      }),
+    ).rejects.toMatchObject({ code: 'ENCOUNTER_MISMATCH' });
+    await expect(
+      prepareShaClaim(scopeA, { invoiceId: invoiceAId, encounterId: encounterAId }),
+    ).rejects.toMatchObject({ code: 'SCHEME_REQUIRED' });
     const prepared = await prepareShaClaim(scopeA, {
       invoiceId: invoiceAId,
       encounterId: encounterAId,
@@ -443,22 +469,71 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       totalRemittedAmount: '7000.00',
     });
 
+    await expect(
+      reconcileRemittance(scopeA, remittance.id, {
+        allocations: [{ eclaimId: prepared.id, remittedAmount: '7000.00', postToInvoice: true }],
+      }),
+    ).rejects.toThrow(/record the receipt through billing first/i);
+    await expect(
+      reconcileRemittance(scopeA, remittance.id, {
+        allocations: [{ eclaimId: prepared.id, remittedAmount: '7000.00', billingPaymentId: 1 }],
+      }),
+    ).rejects.toThrow(/simulated/i);
+
     const recon = await reconcileRemittance(scopeA, remittance.id, {
-      allocations: [{ eclaimId: prepared.id, remittedAmount: '7000.00', postToInvoice: true }],
+      allocations: [{ eclaimId: prepared.id, remittedAmount: '7000.00', postToInvoice: false }],
     });
     expect(recon.remittance.status).toBe('RECONCILED');
     expect(recon.entries[0].reconciliationStatus).toBe('MATCHED');
-    expect(recon.entries[0].postedPaymentId).toBeTruthy();
+    expect(recon.entries[0].postedPaymentId).toBeNull();
 
-    // Confirm JaliCare invoice totalAmount stayed untouched (8500.00) while paidAmount became 7000.00 and balanceAmount 1500.00!
+    // Advice allocation alone must not change the invoice or mark money received.
     const [updatedInvoice] = await db
       .select()
       .from(schema.billingInvoices)
       .where(eq(schema.billingInvoices.id, invoiceAId));
     expect(updatedInvoice.totalAmount).toBe('8500.00');
-    expect(updatedInvoice.paidAmount).toBe('7000.00');
-    expect(updatedInvoice.balanceAmount).toBe('1500.00');
-    expect(updatedInvoice.status).toBe('Partially Paid');
+    expect(updatedInvoice.paidAmount).toBe('0.00');
+    expect(updatedInvoice.balanceAmount).toBe('8500.00');
+    expect(updatedInvoice.status).toBe('Unpaid');
+
+    // Synthetic local fixture only: prove a real billing record can be matched
+    // without creating another receipt; this is not a verified payer result.
+    await db
+      .update(schema.shaEclaims)
+      .set({ isSimulated: false })
+      .where(eq(schema.shaEclaims.id, prepared.id));
+    const reference = `SYNTHETIC-SHA-${randomUUID().slice(0, 8)}`;
+    const receipt = await recordSettledPayment(
+      {
+        userId: scopeA.userId,
+        tenantId: scopeA.tenantId,
+        facilityId: scopeA.facilityId,
+        roles: ['BILLING_CLERK'],
+        permissions: ['billing.payments.record'],
+        isSuperAdmin: false,
+      },
+      { invoiceId: invoiceAId, amount: '7000.00', paymentMethod: 'SHA', referenceCode: reference },
+      'Synthetic cashier',
+    );
+    const secondAdvice = await recordRemittanceAdvice(scopeA, {
+      payerRemittanceRef: reference,
+      paymentChannel: 'EFT',
+      paymentDate: '2026-10-28',
+      totalRemittedAmount: '7000.00',
+    });
+    const matched = await reconcileRemittance(scopeA, secondAdvice.id, {
+      allocations: [
+        { eclaimId: prepared.id, remittedAmount: '7000.00', billingPaymentId: receipt.payment.id },
+      ],
+    });
+    expect(matched.entries[0].postedPaymentId).toBe(receipt.payment.id);
+    const [afterMatch] = await db
+      .select()
+      .from(schema.billingInvoices)
+      .where(eq(schema.billingInvoices.id, invoiceAId));
+    expect(afterMatch.paidAmount).toBe('7000.00');
+    expect(afterMatch.balanceAmount).toBe('1500.00');
 
     // 6. Verify 2-step HIE Remittance Sync, Idempotent Callback Event Processing & ATNA Operational Report
     const syncedRems = await syncFacilityHieRemittances(scopeA, { facilityIdType: 'fr-code' });

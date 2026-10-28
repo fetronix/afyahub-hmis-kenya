@@ -125,11 +125,11 @@ export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
     ]);
     return ALL_PAYER_OPERATIONS.map((operation) => ({
       operation,
-      supportedByContract: supported.has(operation),
-      readyInCurrentConfig: supported.has(operation) && status.enabled,
-      mode: supported.has(operation) ? 'GATEWAY_ADAPTER' : 'UNSUPPORTED',
+      supportedByContract: false, // Public draft documentation is not facility authorization.
+      readyInCurrentConfig: false,
+      mode: 'UNSUPPORTED',
       reason: supported.has(operation)
-        ? `Handled via dedicated SHA eClaims FHIR R4 module (${status.mode} mode).`
+        ? `Dedicated SHA workflow exists (${status.mode} mode); live facility transport is not verified or enabled.`
         : 'Not part of the Kenya DHA eClaims FHIR R4 IG v0.1.0.',
     }));
   }
@@ -137,16 +137,14 @@ export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
   async probeConnection(): Promise<AdapterConnectionProbeResult> {
     const status = describeShaConnectionStatus(loadShaConfig());
     return {
-      verified: status.enabled && !status.isSimulated,
+      verified: false,
       connectionStatus:
-        status.mode === 'production' && status.enabled
-          ? 'PRODUCTION_AUTHORIZED'
-          : status.mode === 'sandbox' && status.enabled
-            ? 'SANDBOX_CONFIGURED'
-            : 'NOT_CONFIGURED',
+        status.mode === 'sandbox' && status.enabled ? 'SANDBOX_CONFIGURED' : 'NOT_CONFIGURED',
       httpStatus: null,
       durationMs: 0,
-      summary: status.disabledReason ?? `SHA adapter in ${status.mode} mode.`,
+      summary:
+        status.disabledReason ??
+        `SHA settings present in ${status.mode} mode; connectivity and facility authorization have not been verified.`,
       missingRequirements: status.missingSettings,
     };
   }

@@ -812,7 +812,6 @@ export interface DraftClaimResult {
 export interface ClaimSettlementResult {
   claim: InsuranceClaim;
   payment: BillingPayment;
-  settlement: PaymentSettlement;
   appliedCents: number;
   unappliedCents: number;
   facilityId: number;

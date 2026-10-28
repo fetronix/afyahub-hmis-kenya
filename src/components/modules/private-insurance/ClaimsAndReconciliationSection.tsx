@@ -69,10 +69,23 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
   showToast,
 }) => {
   const defaultPayer =
-    selectedPayerFilter !== 'ALL' ? selectedPayerFilter : (payers[0]?.payerCode ?? 'BRITAM');
+    selectedPayerFilter !== 'ALL' ? selectedPayerFilter : (payers[0]?.payerCode ?? '');
 
   const [busy, setBusy] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState<PrivateClaimDetail | null>(null);
+  const [dispatchTarget, setDispatchTarget] = useState<{
+    claim: PrivateClaimSummary;
+    resubmit: boolean;
+  } | null>(null);
+  const [dispatchReference, setDispatchReference] = useState('');
+  const [dispatchReason, setDispatchReason] = useState('');
+  const [decisionTarget, setDecisionTarget] = useState<{
+    claim: PrivateClaimSummary;
+    status: 'ADJUDICATED' | 'REJECTED';
+  } | null>(null);
+  const [decisionReference, setDecisionReference] = useState('');
+  const [decisionAmount, setDecisionAmount] = useState('');
+  const [decisionReason, setDecisionReason] = useState('');
 
   /* Claim Preparation Form */
   const [prepForm, setPrepForm] = useState({
@@ -81,16 +94,20 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
     memberPolicyId: '',
     encounterId: '',
     preauthId: '',
-    diagnosisCode: 'J06.9',
-    diagnosisDisplay: 'Acute upper respiratory infection',
-    attachmentFile: 'signed-claim-form.pdf',
+    diagnosisCode: '',
+    diagnosisDisplay: '',
+    attachmentFile: '',
+    attachmentStorageReference: '',
+    invoiceFileName: '',
+    invoiceStorageReference: '',
   });
 
   /* Correction Form */
   const [correctionForm, setCorrectionForm] = useState({
-    diagnosisCode: 'J06.9',
-    diagnosisDisplay: 'Acute upper respiratory infection',
-    attachmentFile: 'corrected-claim-bundle.pdf',
+    diagnosisCode: '',
+    diagnosisDisplay: '',
+    attachmentFile: '',
+    attachmentStorageReference: '',
     correctionReason: '',
   });
 
@@ -98,11 +115,13 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
   const [remitForm, setRemitForm] = useState({
     payerCode: defaultPayer,
     adviceReference: '',
-    paymentChannel: 'EFT',
-    paymentDate: new Date().toISOString().slice(0, 10),
+    existingRemittanceId: '',
+    paymentChannel: '',
+    paymentDate: '',
     totalRemittedAmount: '',
     claimId: '',
     allocatedAmount: '',
+    billingPaymentId: '',
   });
 
   const selectedInvoice = useMemo(
@@ -138,7 +157,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
         payerCode: prepForm.payerCode,
         memberPolicyId: Number(prepForm.memberPolicyId),
         encounterId: prepForm.encounterId ? Number(prepForm.encounterId) : undefined,
-        preauthId: prepForm.preauthId ? Number(prepForm.preauthId) : undefined,
+        preauthorizationId: prepForm.preauthId ? Number(prepForm.preauthId) : undefined,
         diagnoses: [
           {
             code: prepForm.diagnosisCode,
@@ -147,15 +166,26 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
             type: 'PRIMARY',
           },
         ],
-        attachments: prepForm.attachmentFile
-          ? [
-              {
-                documentType: 'SIGNED_CLAIM_FORM',
-                fileName: prepForm.attachmentFile,
-                storageReference: `vault://claims/${prepForm.attachmentFile}`,
-              },
-            ]
-          : [],
+        attachmentsManifest: [
+          ...(prepForm.invoiceFileName && prepForm.invoiceStorageReference
+            ? [
+                {
+                  documentType: 'ITEMIZED_INVOICE',
+                  fileName: prepForm.invoiceFileName,
+                  storageReference: prepForm.invoiceStorageReference,
+                },
+              ]
+            : []),
+          ...(prepForm.attachmentFile && prepForm.attachmentStorageReference
+            ? [
+                {
+                  documentType: 'SIGNED_CLAIM_FORM',
+                  fileName: prepForm.attachmentFile,
+                  storageReference: prepForm.attachmentStorageReference,
+                },
+              ]
+            : []),
+        ],
       });
       setSelectedClaim(detail);
       showToast(
@@ -188,53 +218,169 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
     }
   };
 
-  const handleSubmitClaim = async (claim: PrivateClaimSummary, isResubmit = false) => {
+  const openManualDispatch = (claim: PrivateClaimSummary, resubmit: boolean) => {
+    setDispatchTarget({ claim, resubmit });
+    setDispatchReference('');
+    setDispatchReason('');
+  };
+  const handleSubmitClaim = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!dispatchTarget) return;
     setBusy(true);
     try {
       const payload = {
-        submissionChannel: 'MANUAL_PORTAL',
-        manualDispatchRef: `${claim.payerCode}-PORTAL-${claim.claimNumber}`,
+        submissionMode: 'MANUAL',
+        dispatchReference: dispatchReference.trim(),
+        ...(dispatchTarget.resubmit ? { correctionReason: dispatchReason.trim() } : {}),
       };
-      const updated = isResubmit
-        ? await privateInsuranceApi.resubmitClaim(claim.id, payload)
-        : await privateInsuranceApi.submitClaim(claim.id, payload);
+      const updated = dispatchTarget.resubmit
+        ? await privateInsuranceApi.resubmitClaim(dispatchTarget.claim.id, payload)
+        : await privateInsuranceApi.submitClaim(dispatchTarget.claim.id, payload);
       setSelectedClaim(updated);
-      showToast(
-        `${updated.claimNumber} recorded as ${updated.status} (Original invoice remains ${updated.originalInvoice.status}).`,
-        { tone: 'success' },
-      );
+      setDispatchTarget(null);
+      showToast(`${updated.claimNumber}: manual dispatch recorded. No API request was made.`, {
+        tone: 'success',
+      });
       await onRefresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Claim submission failed.', {
+      showToast(err instanceof Error ? err.message : 'Could not record dispatch.', {
         tone: 'error',
       });
     } finally {
       setBusy(false);
     }
   };
+  const dispatchDialog = dispatchTarget && (
+    <form
+      onSubmit={handleSubmitClaim}
+      className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3"
+      aria-label="Record manual claim dispatch"
+    >
+      <h3 className="font-bold">Record manual dispatch — {dispatchTarget.claim.claimNumber}</h3>
+      <p className="text-xs">
+        Send the claim through the insurer's approved manual channel first. This form does not send
+        it or verify acceptance.
+      </p>
+      <label className="block text-xs font-semibold">
+        Actual insurer portal, email or courier reference
+        <input
+          required
+          minLength={3}
+          value={dispatchReference}
+          onChange={(e) => setDispatchReference(e.target.value)}
+          className="field-input"
+        />
+      </label>
+      {dispatchTarget.resubmit && (
+        <label className="block text-xs font-semibold">
+          Correction reason
+          <input
+            required
+            minLength={5}
+            value={dispatchReason}
+            onChange={(e) => setDispatchReason(e.target.value)}
+            className="field-input"
+          />
+        </label>
+      )}
+      <div className="flex gap-3">
+        <button disabled={busy} className="btn-primary">
+          Record dispatch
+        </button>
+        <button type="button" onClick={() => setDispatchTarget(null)} className="text-sm underline">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
 
-  const handleRecordDecision = async (
-    claimId: number,
-    status: string,
-    extra: Record<string, unknown> = {},
-  ) => {
+  const openDecision = (claim: PrivateClaimSummary, status: 'ADJUDICATED' | 'REJECTED') => {
+    setDecisionTarget({ claim, status });
+    setDecisionReference('');
+    setDecisionAmount('');
+    setDecisionReason('');
+  };
+  const handleRecordDecision = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!decisionTarget) return;
     setBusy(true);
     try {
-      const updated = await privateInsuranceApi.recordClaimDecision(claimId, {
-        status,
-        ...extra,
+      const updated = await privateInsuranceApi.recordClaimDecision(decisionTarget.claim.id, {
+        status: decisionTarget.status,
+        externalClaimReference: decisionReference.trim(),
+        ...(decisionTarget.status === 'ADJUDICATED'
+          ? { approvedAmount: decisionAmount }
+          : { rejectionReason: decisionReason.trim() }),
       });
       setSelectedClaim(updated);
-      showToast(`Claim updated to ${updated.status}.`, { tone: 'success' });
+      setDecisionTarget(null);
+      showToast(`Manual insurer decision recorded: ${updated.status}. No payment was created.`, {
+        tone: 'success',
+      });
       await onRefresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Decision update failed.', {
-        tone: 'error',
-      });
+      showToast(err instanceof Error ? err.message : 'Decision update failed.', { tone: 'error' });
     } finally {
       setBusy(false);
     }
   };
+  const decisionDialog = decisionTarget && (
+    <form
+      onSubmit={handleRecordDecision}
+      className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3"
+      aria-label="Record manual insurer decision"
+    >
+      <h3 className="font-bold">
+        Record {decisionTarget.status.toLowerCase()} decision — {decisionTarget.claim.claimNumber}
+      </h3>
+      <p className="text-xs">
+        Enter the actual insurer decision; a claim amount is not an approval and a decision is not a
+        payment.
+      </p>
+      <label className="block text-xs font-semibold">
+        Insurer decision reference
+        <input
+          required
+          minLength={3}
+          value={decisionReference}
+          onChange={(e) => setDecisionReference(e.target.value)}
+          className="field-input"
+        />
+      </label>
+      {decisionTarget.status === 'ADJUDICATED' ? (
+        <label className="block text-xs font-semibold">
+          Actual approved amount (KES)
+          <input
+            required
+            type="number"
+            min="0"
+            step="0.01"
+            value={decisionAmount}
+            onChange={(e) => setDecisionAmount(e.target.value)}
+            className="field-input"
+          />
+        </label>
+      ) : (
+        <label className="block text-xs font-semibold">
+          Actual rejection reason
+          <input
+            required
+            value={decisionReason}
+            onChange={(e) => setDecisionReason(e.target.value)}
+            className="field-input"
+          />
+        </label>
+      )}
+      <div className="flex gap-3">
+        <button disabled={busy} className="btn-primary">
+          Record decision
+        </button>
+        <button type="button" onClick={() => setDecisionTarget(null)} className="text-sm underline">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
 
   const handleSaveCorrectionAndRevalidate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,18 +397,27 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
             type: 'PRIMARY',
           },
         ],
-        attachments: [
-          {
-            documentType: 'SIGNED_CLAIM_FORM',
-            fileName: correctionForm.attachmentFile,
-            storageReference: `vault://claims/${correctionForm.attachmentFile}`,
-          },
-        ],
+        ...(correctionForm.attachmentFile && correctionForm.attachmentStorageReference
+          ? {
+              attachmentsManifest: [
+                ...selectedClaim.attachmentsManifest,
+                {
+                  documentType: 'SIGNED_CLAIM_FORM',
+                  fileName: correctionForm.attachmentFile,
+                  storageReference: correctionForm.attachmentStorageReference,
+                },
+              ],
+            }
+          : {}),
       });
-      setSelectedClaim(updated);
-      showToast(`Revision #${updated.revisionNumber} saved and re-validated (${updated.status}).`, {
-        tone: updated.status === 'READY' ? 'success' : 'info',
-      });
+      const validated = await privateInsuranceApi.validateClaim(updated.id);
+      setSelectedClaim(validated);
+      showToast(
+        `Revision #${validated.revisionNumber} saved and re-validated (${validated.status}).`,
+        {
+          tone: validated.status === 'READY' ? 'success' : 'info',
+        },
+      );
       await onRefresh();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Correction failed.', { tone: 'error' });
@@ -274,40 +429,66 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
   const handleImportAndReconcile = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    let recordedAdviceId: number | null = null;
     try {
-      const imported = await privateInsuranceApi.importRemittance({
-        payerCode: remitForm.payerCode,
-        adviceReference: remitForm.adviceReference,
-        paymentChannel: remitForm.paymentChannel,
-        paymentDate: remitForm.paymentDate,
-        totalRemittedAmount: remitForm.totalRemittedAmount,
-      });
+      if (
+        remitForm.existingRemittanceId &&
+        (!remitForm.claimId || !remitForm.allocatedAmount || !remitForm.billingPaymentId)
+      )
+        throw new Error('Select the claim, actual allocation amount and matching receipt.');
+      const imported = remitForm.existingRemittanceId
+        ? { id: Number(remitForm.existingRemittanceId) }
+        : await privateInsuranceApi.importRemittance({
+            payerCode: remitForm.payerCode,
+            payerRemittanceRef: remitForm.adviceReference,
+            paymentChannel: remitForm.paymentChannel,
+            paymentDate: remitForm.paymentDate,
+            totalRemittedAmount: remitForm.totalRemittedAmount,
+          });
+      if (!remitForm.existingRemittanceId) recordedAdviceId = Number(imported.id);
       if (remitForm.claimId && remitForm.allocatedAmount) {
         await privateInsuranceApi.reconcileRemittance(Number(imported.id), {
           allocations: [
             {
               claimId: Number(remitForm.claimId),
-              paidAmount: remitForm.allocatedAmount,
+              remittedAmount: remitForm.allocatedAmount,
+              ...(remitForm.billingPaymentId
+                ? { billingPaymentId: Number(remitForm.billingPaymentId) }
+                : {}),
             },
           ],
         });
-        showToast('Remittance imported and reconciled additively against JaliCare invoice.', {
-          tone: 'success',
-        });
+        showToast(
+          'Remittance advice allocated; no payment was created and the invoice was not changed.',
+          {
+            tone: 'success',
+          },
+        );
       } else {
         showToast('Remittance advice imported.', { tone: 'success' });
       }
       setRemitForm({
         ...remitForm,
         adviceReference: '',
+        existingRemittanceId: '',
+        paymentChannel: '',
+        paymentDate: '',
         totalRemittedAmount: '',
+        claimId: '',
         allocatedAmount: '',
+        billingPaymentId: '',
       });
       await onRefresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Remittance operation failed.', {
-        tone: 'error',
-      });
+      const message = err instanceof Error ? err.message : 'Remittance operation failed.';
+      if (recordedAdviceId) {
+        setRemitForm({ ...remitForm, existingRemittanceId: String(recordedAdviceId) });
+        await onRefresh();
+        showToast(
+          `Advice was recorded but matching failed. Select the saved advice to retry: ${message}`,
+          { tone: 'error' },
+        );
+      } else showToast(message, { tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -319,6 +500,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
   if (activeScreen === 'claim_prepare') {
     return (
       <div className="space-y-6">
+        {dispatchDialog}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-brand-600" />
@@ -443,6 +625,59 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label className="text-xs font-semibold text-slate-700">
+                  Diagnosis description
+                  <input
+                    required
+                    value={prepForm.diagnosisDisplay}
+                    onChange={(e) => setPrepForm({ ...prepForm, diagnosisDisplay: e.target.value })}
+                    className="field-input"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Existing signed claim form file name (optional)
+                  <input
+                    value={prepForm.attachmentFile}
+                    onChange={(e) => setPrepForm({ ...prepForm, attachmentFile: e.target.value })}
+                    className="field-input"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Existing secure storage reference
+                  <input
+                    value={prepForm.attachmentStorageReference}
+                    onChange={(e) =>
+                      setPrepForm({ ...prepForm, attachmentStorageReference: e.target.value })
+                    }
+                    className="field-input"
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="text-xs font-semibold">
+                  Existing itemized invoice document name
+                  <input
+                    value={prepForm.invoiceFileName}
+                    onChange={(e) => setPrepForm({ ...prepForm, invoiceFileName: e.target.value })}
+                    className="field-input"
+                  />
+                </label>
+                <label className="text-xs font-semibold">
+                  Existing invoice document storage reference
+                  <input
+                    value={prepForm.invoiceStorageReference}
+                    onChange={(e) =>
+                      setPrepForm({ ...prepForm, invoiceStorageReference: e.target.value })
+                    }
+                    className="field-input"
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-slate-600">
+                Document references must point to existing securely stored evidence; this form does
+                not upload files.
+              </p>
               <div className="flex justify-end">
                 <button
                   type="submit"
@@ -485,7 +720,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 {canSubmitClaims && selectedClaim.status === 'READY' && (
                   <button
                     type="button"
-                    onClick={() => handleSubmitClaim(selectedClaim, false)}
+                    onClick={() => openManualDispatch(selectedClaim, false)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white"
                   >
                     Submit Claim
@@ -547,6 +782,8 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
   if (activeScreen === 'claim_tracking') {
     return (
       <div className="space-y-6">
+        {dispatchDialog}
+        {decisionDialog}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Send className="w-5 h-5 text-brand-600" />
@@ -617,7 +854,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                         {canSubmitClaims && c.status === 'READY' && (
                           <button
                             type="button"
-                            onClick={() => handleSubmitClaim(c, false)}
+                            onClick={() => openManualDispatch(c, false)}
                             className="text-ember-700 font-semibold hover:underline"
                           >
                             Submit
@@ -627,23 +864,14 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                           <>
                             <button
                               type="button"
-                              onClick={() =>
-                                handleRecordDecision(c.id, 'ADJUDICATED', {
-                                  approvedAmount: c.proposedClaimAmount,
-                                })
-                              }
+                              onClick={() => openDecision(c, 'ADJUDICATED')}
                               className="text-brand-700 font-semibold hover:underline"
                             >
                               Mark Adjudicated
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                handleRecordDecision(c.id, 'REJECTED', {
-                                  rejectionCode: 'DOC_MISSING',
-                                  rejectionReason: 'Insurer requested additional clinical notes',
-                                })
-                              }
+                              onClick={() => openDecision(c, 'REJECTED')}
                               className="text-rose-700 font-semibold hover:underline"
                             >
                               Mark Rejected
@@ -708,6 +936,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
     );
     return (
       <div className="space-y-6">
+        {dispatchDialog}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Wrench className="w-5 h-5 text-ember-600" />
@@ -794,12 +1023,35 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
                 />
               </div>
+              <label className="text-xs font-semibold text-slate-700">
+                Diagnosis description
+                <input
+                  required
+                  value={correctionForm.diagnosisDisplay}
+                  onChange={(e) =>
+                    setCorrectionForm({ ...correctionForm, diagnosisDisplay: e.target.value })
+                  }
+                  className="field-input"
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                Existing secure document reference
+                <input
+                  value={correctionForm.attachmentStorageReference}
+                  onChange={(e) =>
+                    setCorrectionForm({
+                      ...correctionForm,
+                      attachmentStorageReference: e.target.value,
+                    })
+                  }
+                  className="field-input"
+                />
+              </label>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Supporting Document File Name
                 </label>
                 <input
-                  required
                   value={correctionForm.attachmentFile}
                   onChange={(e) =>
                     setCorrectionForm({ ...correctionForm, attachmentFile: e.target.value })
@@ -826,7 +1078,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
               {canSubmitClaims && selectedClaim.status === 'READY' && (
                 <button
                   type="button"
-                  onClick={() => handleSubmitClaim(selectedClaim, true)}
+                  onClick={() => openManualDispatch(selectedClaim, true)}
                   className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-brand-600 text-white"
                 >
                   Resubmit Corrected Claim
@@ -861,12 +1113,40 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
             Insurer Remittance Advice &amp; Additive Invoice Reconciliation
           </h2>
           <p className="text-sm text-slate-600 mt-0.5">
-            Imports Britam / PACIS EFT remittance advices and posts additive payment receipts to
-            JaliCare invoices inside a database transaction, tracking approved vs paid variances.
+            Record insurer advice and match an independently recorded receipt. This does not create
+            payments, alter invoices or verify a bank transfer.
           </p>
 
           {canReconcileRemittances && (
             <form onSubmit={handleImportAndReconcile} className="mt-4 space-y-4">
+              <label className="block text-xs font-semibold text-slate-700">
+                Existing unallocated advice (optional)
+                <select
+                  value={remitForm.existingRemittanceId}
+                  onChange={(e) => {
+                    const selected = remittances.find((r) => String(r.id) === e.target.value);
+                    setRemitForm({
+                      ...remitForm,
+                      existingRemittanceId: e.target.value,
+                      payerCode: selected ? String(selected.payerCode ?? '') : remitForm.payerCode,
+                      claimId: '',
+                      allocatedAmount: '',
+                      billingPaymentId: '',
+                    });
+                  }}
+                  className="field-input"
+                >
+                  <option value="">Record new advice</option>
+                  {remittances
+                    .filter((r) => r.status !== 'RECONCILED')
+                    .map((r) => (
+                      <option key={String(r.id)} value={String(r.id)}>
+                        {String(r.remittanceNumber)} · {String(r.payerCode)} ·{' '}
+                        {String(r.payerRemittanceRef)}
+                      </option>
+                    ))}
+                </select>
+              </label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Insurer</label>
@@ -887,7 +1167,8 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                     EFT / Remittance Advice Reference
                   </label>
                   <input
-                    required
+                    required={!remitForm.existingRemittanceId}
+                    disabled={Boolean(remitForm.existingRemittanceId)}
                     value={remitForm.adviceReference}
                     onChange={(e) =>
                       setRemitForm({ ...remitForm, adviceReference: e.target.value })
@@ -901,7 +1182,8 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                     Total Remitted Batch Amount (KES)
                   </label>
                   <input
-                    required
+                    required={!remitForm.existingRemittanceId}
+                    disabled={Boolean(remitForm.existingRemittanceId)}
                     value={remitForm.totalRemittedAmount}
                     onChange={(e) =>
                       setRemitForm({ ...remitForm, totalRemittedAmount: e.target.value })
@@ -910,22 +1192,47 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                     placeholder="2500.00"
                   />
                 </div>
+                <label className="text-xs font-semibold">
+                  Actual advice payment date
+                  <input
+                    type="date"
+                    required={!remitForm.existingRemittanceId}
+                    disabled={Boolean(remitForm.existingRemittanceId)}
+                    value={remitForm.paymentDate}
+                    onChange={(e) => setRemitForm({ ...remitForm, paymentDate: e.target.value })}
+                    className="field-input"
+                  />
+                </label>
+                <label className="text-xs font-semibold">
+                  Actual payment channel
+                  <select
+                    required={!remitForm.existingRemittanceId}
+                    disabled={Boolean(remitForm.existingRemittanceId)}
+                    value={remitForm.paymentChannel}
+                    onChange={(e) => setRemitForm({ ...remitForm, paymentChannel: e.target.value })}
+                    className="field-input"
+                  >
+                    <option value="">— Select —</option>
+                    <option value="EFT">EFT</option>
+                    <option value="RTGS">RTGS</option>
+                    <option value="CHEQUE">Cheque</option>
+                    <option value="UNKNOWN">Not stated on advice</option>
+                  </select>
+                </label>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Allocate Immediately to Submitted/Adjudicated Claim (Optional)
                   </label>
                   <select
                     value={remitForm.claimId}
-                    onChange={(e) => {
-                      const cl = reconcilableClaims.find(
-                        (item) => String(item.id) === e.target.value,
-                      );
+                    onChange={(e) =>
                       setRemitForm({
                         ...remitForm,
                         claimId: e.target.value,
-                        allocatedAmount: cl?.proposedClaimAmount ?? remitForm.allocatedAmount,
-                      });
-                    }}
+                        allocatedAmount: '',
+                        billingPaymentId: '',
+                      })
+                    }
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   >
                     <option value="">Import batch only (allocate later)...</option>
@@ -940,9 +1247,10 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Claim Paid Allocation (KES)
+                    Advice Allocation (KES)
                   </label>
                   <input
+                    required={Boolean(remitForm.claimId)}
                     value={remitForm.allocatedAmount}
                     onChange={(e) =>
                       setRemitForm({ ...remitForm, allocatedAmount: e.target.value })
@@ -952,6 +1260,22 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                   />
                 </div>
               </div>
+              <label className="block text-xs font-semibold text-slate-700">
+                Existing billing receipt ID (required when allocating; must match payer, invoice,
+                amount and advice reference)
+                <input
+                  required={Boolean(remitForm.claimId)}
+                  type="number"
+                  min="1"
+                  value={remitForm.billingPaymentId}
+                  onChange={(e) => setRemitForm({ ...remitForm, billingPaymentId: e.target.value })}
+                  className="field-input"
+                />
+              </label>
+              <p className="text-xs text-slate-600">
+                Advice alone is not payment. Record receipts independently in billing. This form
+                never posts money.
+              </p>
               <div className="flex justify-end">
                 <button
                   type="submit"
@@ -1013,9 +1337,9 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                   <td className="px-4 py-2.5 font-bold text-brand-700">
                     {String(r.payerCode ?? '')}
                   </td>
-                  <td className="px-4 py-2.5 font-mono">{String(r.adviceReference ?? '')}</td>
+                  <td className="px-4 py-2.5 font-mono">{String(r.payerRemittanceRef ?? '')}</td>
                   <td className="px-4 py-2.5">KES {String(r.totalRemittedAmount ?? '0.00')}</td>
-                  <td className="px-4 py-2.5">KES {String(r.reconciledAmount ?? '0.00')}</td>
+                  <td className="px-4 py-2.5">KES {String(r.allocatedAmount ?? '0.00')}</td>
                   <td className="px-4 py-2.5 font-semibold">{String(r.status ?? '')}</td>
                 </tr>
               ))}

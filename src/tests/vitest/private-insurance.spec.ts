@@ -740,8 +740,8 @@ describe('Decimal-safe benefit, copayment, deductible, and claim validation logi
       const runtime = toPayerRuntimeConfig(fakeRow);
       expect(runtime.payerCode).toBe('BRITAM');
       const serialized = serializePayerConfig(fakeRow);
-      expect(serialized.secretReference.envPrefix).toBe('BRITAM_API');
-      expect(serialized.secretReference.hasClientSecret).toBe(true);
+      expect(serialized.secretReference.envPrefix).toBeNull();
+      expect(serialized.secretReference.hasClientSecret).toBe(false);
       expect(JSON.stringify(serialized)).not.toContain('SuperSecretValueDoNotLeak999');
     } finally {
       delete process.env.BRITAM_API_CLIENT_SECRET;

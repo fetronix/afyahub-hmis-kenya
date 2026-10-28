@@ -12,7 +12,8 @@
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
-import { classifySettlement, formatCents, parseMoneyToCents } from '../../billing/settlement.ts';
+import { formatCents, parseMoneyToCents } from '../../billing/settlement.ts';
+import { matchRecordedPayerPayment, RecordedPaymentError } from '../hub/recorded-payment.ts';
 import { moneyToCentsStrict, PrivateInsuranceError } from '../core/types.ts';
 import { recordPrivateInsuranceAudit } from '../audit/diagnostics.service.ts';
 import { getPayerRowScoped, listPrivatePayers } from '../payers/payer-config.service.ts';
@@ -120,9 +121,22 @@ export async function importPrivateRemittance(params: {
   }
 
   const paymentDate =
-    typeof params.input.paymentDate === 'string' && params.input.paymentDate.trim()
-      ? params.input.paymentDate.trim()
-      : new Date().toISOString().slice(0, 10);
+    typeof params.input.paymentDate === 'string' ? params.input.paymentDate.trim() : '';
+  const paymentChannel =
+    typeof params.input.paymentChannel === 'string'
+      ? params.input.paymentChannel.trim().toUpperCase()
+      : '';
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) ||
+    Number.isNaN(Date.parse(`${paymentDate}T00:00:00Z`)) ||
+    new Date(`${paymentDate}T00:00:00Z`).toISOString().slice(0, 10) !== paymentDate ||
+    !paymentChannel
+  )
+    throw new PrivateInsuranceError(
+      'REMITTANCE_DETAILS_REQUIRED',
+      'Enter the actual advice date and payment channel.',
+      400,
+    );
 
   const remittanceNumber = await nextPrivateRemittanceNumber(payerRow.payerCode);
   const formattedTotal = formatCents(totalCents);
@@ -135,17 +149,17 @@ export async function importPrivateRemittance(params: {
       payerCode: payerRow.payerCode,
       remittanceNumber,
       payerRemittanceRef,
+      bankReference:
+        typeof params.input.bankReference === 'string' && params.input.bankReference.trim()
+          ? params.input.bankReference.trim()
+          : null,
       paymentDate,
-      paymentChannel: String(params.input.paymentChannel ?? 'EFT')
-        .trim()
-        .toUpperCase(),
+      paymentChannel,
       totalRemittedAmount: formattedTotal,
       allocatedAmount: '0.00',
       unallocatedAmount: formattedTotal,
       status: 'RECEIVED',
-      source: String(params.input.source ?? 'REMITTANCE_IMPORT')
-        .trim()
-        .toUpperCase(),
+      source: 'MANUAL_ADVICE',
       isSimulated: false,
       notes: typeof params.input.notes === 'string' ? params.input.notes : null,
       receivedByUserId: params.actorUserId,
@@ -242,6 +256,32 @@ export async function reconcilePrivateRemittance(params: {
   }
 
   const result = await db.transaction(async (tx) => {
+    // Recheck under the remittance lock: simultaneous allocations cannot both
+    // consume the same balance based on a stale pre-transaction read.
+    const [lockedRemittance] = await tx
+      .select()
+      .from(schema.insuranceRemittances)
+      .where(
+        and(
+          eq(schema.insuranceRemittances.id, remittance.id),
+          eq(schema.insuranceRemittances.tenantId, params.tenantId),
+          eq(schema.insuranceRemittances.facilityId, params.facilityId),
+        ),
+      )
+      .for('update');
+    if (!lockedRemittance || lockedRemittance.status === 'RECONCILED')
+      throw new PrivateInsuranceError(
+        'REMITTANCE_ALREADY_RECONCILED',
+        'Remittance has already been reconciled.',
+        409,
+      );
+    const priorAllocatedCents = parseMoneyToCents(lockedRemittance.allocatedAmount) ?? 0;
+    if (priorAllocatedCents + batchAllocatedCents > totalRemittedCents)
+      throw new PrivateInsuranceError(
+        'ALLOCATION_EXCEEDS_REMITTANCE',
+        'Allocations exceed the remaining advice balance.',
+        409,
+      );
     const createdAllocations = [];
 
     for (const alloc of allocations) {
@@ -257,7 +297,7 @@ export async function reconcilePrivateRemittance(params: {
             eq(schema.privateInsuranceClaims.payerCode, remittance.payerCode),
           ),
         )
-        .limit(1);
+        .for('update');
 
       if (!claim) {
         throw new PrivateInsuranceError(
@@ -305,6 +345,7 @@ export async function reconcilePrivateRemittance(params: {
           and(
             eq(schema.billingInvoices.id, claim.invoiceId),
             eq(schema.billingInvoices.facilityId, params.facilityId),
+            eq(schema.billingInvoices.tenantId, params.tenantId),
           ),
         )
         .limit(1);
@@ -329,7 +370,7 @@ export async function reconcilePrivateRemittance(params: {
           ? moneyToCentsStrict(alloc.approvedAmount as string | number, 'Approved amount')
           : (parseMoneyToCents(claim.approvedAmount) ?? 0) > 0
             ? (parseMoneyToCents(claim.approvedAmount) ?? remittedCents)
-            : remittedCents;
+            : 0;
 
       const varianceCents = claimedCents - remittedCents;
       const reconciliationStatus =
@@ -338,47 +379,39 @@ export async function reconcilePrivateRemittance(params: {
       let postedPaymentId: number | null = null;
       let appliedCents = 0;
 
-      if (alloc.postToInvoice !== false && remittedCents > 0) {
-        const invoiceTotalCents = parseMoneyToCents(invoice.totalAmount) ?? 0;
-        const paidBeforeCents = parseMoneyToCents(invoice.paidAmount) ?? 0;
-        const priorCreditCents = parseMoneyToCents(invoice.creditBalance) ?? 0;
-
-        const settlement = classifySettlement({
-          invoiceTotalCents,
-          paidBeforeCents,
-          amountCents: remittedCents,
-        });
-
-        const receiptNumber = `RCPT-${remittance.payerCode}-${remittance.id}-${claim.id}`;
-        const [payment] = await tx
-          .insert(schema.billingPayments)
-          .values({
+      if (alloc.postToInvoice === true)
+        throw new PrivateInsuranceError(
+          'AUTOMATIC_POSTING_DISABLED',
+          'Record the receipt through billing first, then match its ID. Reconciliation never posts payments.',
+          409,
+        );
+      if (
+        alloc.billingPaymentId !== undefined &&
+        alloc.billingPaymentId !== null &&
+        alloc.billingPaymentId !== ''
+      ) {
+        if (remittance.isSimulated)
+          throw new PrivateInsuranceError(
+            'SIMULATED_REMITTANCE',
+            'Simulated advice cannot be matched to a real payment.',
+            409,
+          );
+        try {
+          const payment = await matchRecordedPayerPayment(tx, {
+            paymentId: alloc.billingPaymentId,
             invoiceId: invoice.id,
-            receiptNumber,
-            paymentMethod: `Insurance - ${remittance.payerCode}`,
-            amount: formatCents(remittedCents),
-            referenceCode: remittance.payerRemittanceRef,
-            transactionCode: claim.externalClaimReference ?? claim.claimNumber,
-            settlementStatus: settlement.outcome,
-            cashierName:
-              params.actorDisplayName ?? `Insurance Reconciliation (${remittance.payerCode})`,
-          })
-          .returning();
-
-        postedPaymentId = payment.id;
-        appliedCents = remittedCents;
-
-        // Additive settlement balance update ONLY — original invoice totalAmount & lines remain intact!
-        await tx
-          .update(schema.billingInvoices)
-          .set({
-            paidAmount: formatCents(settlement.paidAfterCents),
-            balanceAmount: formatCents(settlement.balanceAfterCents),
-            creditBalance: formatCents(Math.max(priorCreditCents, settlement.creditCents)),
-            status: settlement.invoiceStatus,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.billingInvoices.id, invoice.id));
+            payerCode: remittance.payerCode,
+            remittanceReference: remittance.payerRemittanceRef,
+            bankReference: remittance.bankReference,
+            amountCents: remittedCents,
+          });
+          postedPaymentId = payment.id;
+          appliedCents = remittedCents;
+        } catch (error) {
+          if (error instanceof RecordedPaymentError)
+            throw new PrivateInsuranceError(error.code, error.message, 409);
+          throw error;
+        }
       }
 
       const [allocRow] = await tx
@@ -407,32 +440,37 @@ export async function reconcilePrivateRemittance(params: {
 
       createdAllocations.push(allocRow);
 
-      const priorClaimPaidCents = parseMoneyToCents(claim.paidAmount) ?? 0;
-      const newClaimPaidCents = priorClaimPaidCents + remittedCents;
-      const nextClaimStatus = newClaimPaidCents >= approvedCents ? 'PAID' : 'PARTIALLY_ADJUDICATED';
-
-      await tx
-        .update(schema.privateInsuranceClaims)
-        .set({
-          approvedAmount: formatCents(approvedCents),
-          paidAmount: formatCents(newClaimPaidCents),
-          status: nextClaimStatus,
-          settledPaymentId: postedPaymentId ?? claim.settledPaymentId,
-          paidAt: nextClaimStatus === 'PAID' ? new Date() : claim.paidAt,
-          adjudicatedAt: claim.adjudicatedAt ?? new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.privateInsuranceClaims.id, claim.id));
-
-      await tx.insert(schema.privateInsuranceClaimStatusHistory).values({
-        claimId: claim.id,
-        fromStatus: claim.status,
-        toStatus: nextClaimStatus,
-        source: 'REMITTANCE_RECONCILIATION',
-        actorUserId: params.actorUserId,
-        reason: `Reconciled KES ${formatCents(remittedCents)} under remittance ${remittance.remittanceNumber} (${reconciliationStatus}).`,
-        metadata: { remittanceId: remittance.id, postedPaymentId },
-      });
+      // Advice allocation alone is not a payer decision or proof of payment.
+      if (postedPaymentId !== null) {
+        const priorClaimPaidCents = parseMoneyToCents(claim.paidAmount) ?? 0;
+        const newClaimPaidCents = priorClaimPaidCents + appliedCents;
+        const recordedApproval = parseMoneyToCents(claim.approvedAmount) ?? 0;
+        const nextClaimStatus =
+          recordedApproval > 0 &&
+          newClaimPaidCents >= recordedApproval &&
+          ['PARTIALLY_ADJUDICATED', 'ADJUDICATED'].includes(claim.status)
+            ? 'PAID'
+            : claim.status;
+        await tx
+          .update(schema.privateInsuranceClaims)
+          .set({
+            paidAmount: formatCents(newClaimPaidCents),
+            status: nextClaimStatus,
+            settledPaymentId: postedPaymentId,
+            paidAt: nextClaimStatus === 'PAID' ? new Date() : claim.paidAt,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.privateInsuranceClaims.id, claim.id));
+        await tx.insert(schema.privateInsuranceClaimStatusHistory).values({
+          claimId: claim.id,
+          fromStatus: claim.status,
+          toStatus: nextClaimStatus,
+          source: 'REMITTANCE_RECONCILIATION',
+          actorUserId: params.actorUserId,
+          reason: 'Matched an existing billing receipt to remittance advice.',
+          metadata: { remittanceId: remittance.id, postedPaymentId },
+        });
+      }
     }
 
     const updatedAllocatedCents = priorAllocatedCents + batchAllocatedCents;

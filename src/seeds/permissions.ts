@@ -1075,6 +1075,58 @@ const PERMISSIONS = [
       'Export trial balance, profit & loss, balance sheet, fixed asset, and reconciliation schedules.',
   },
 
+  /* Payer hub: platform policy and facility operations are separate. */
+  {
+    code: 'payer_hub.global.read',
+    name: 'View Global Payer Registry',
+    module: 'payer_hub',
+    description:
+      'View payer definitions and assignment metadata without clinical or financial records.',
+  },
+  {
+    code: 'payer_hub.global.manage',
+    name: 'Manage Global Payer Registry',
+    module: 'payer_hub',
+    description: 'Register payers and control internal workflow policy.',
+  },
+  {
+    code: 'payer_hub.assign',
+    name: 'Assign Payers to Facilities',
+    module: 'payer_hub',
+    description: 'Grant or revoke payer assignments.',
+  },
+  {
+    code: 'payer_hub.production.approve',
+    name: 'Review Payer Production Requests',
+    module: 'payer_hub',
+    description: 'Review production requests; approval remains blocked until verified.',
+  },
+  {
+    code: 'payer_hub.catalogue.read',
+    name: 'View Facility Payer Catalogue',
+    module: 'payer_hub',
+    description: 'View assigned payers, manual workflow availability and onboarding blockers.',
+  },
+  {
+    code: 'payer_hub.facility.manage',
+    name: 'Manage Facility Payer Activation',
+    module: 'payer_hub',
+    description: 'Request assigned payers and configure facility activation.',
+  },
+  {
+    code: 'payer_hub.credentials.manage',
+    name: 'Manage Payer Credential References',
+    module: 'payer_hub',
+    description:
+      'Configure facility-specific server-side environment references, never raw credentials.',
+  },
+  {
+    code: 'payer_hub.production.request',
+    name: 'Request Payer Production Approval',
+    module: 'payer_hub',
+    description: 'Request a platform production review without enabling live transport.',
+  },
+
   /* Payment & banking hub: no finance or transfer permission is granted by default. */
   {
     code: 'payment_hub.global.read',
@@ -1387,12 +1439,17 @@ async function seedPermissions(): Promise<void> {
     'payment_hub.global.manage',
     'payment_hub.assign',
     'payment_hub.production.approve',
+    'payer_hub.global.read',
+    'payer_hub.global.manage',
+    'payer_hub.assign',
+    'payer_hub.production.approve',
   ]);
   for (const permission of allPermissions) {
     if (
       permission.code === 'tariffs.read' ||
       permission.code === 'tariffs.manage' ||
-      (permission.code.startsWith('payment_hub.') && !platformHubPermissions.has(permission.code))
+      ((permission.code.startsWith('payment_hub.') || permission.code.startsWith('payer_hub.')) &&
+        !platformHubPermissions.has(permission.code))
     ) {
       continue;
     }
@@ -1450,6 +1507,11 @@ async function seedPermissions(): Promise<void> {
      * database seeded before this permission existed still works.
      */
     'facilities.modules.manage',
+    'patients.read',
+    'payer_hub.catalogue.read',
+    'payer_hub.facility.manage',
+    'payer_hub.credentials.manage',
+    'payer_hub.production.request',
     'payment_hub.catalogue.read',
     'payment_hub.facility.manage',
     'payment_hub.credentials.manage',

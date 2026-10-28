@@ -57,7 +57,7 @@ export async function validateServiceBenefits(
   input: ValidateServiceBenefitInput,
 ) {
   const facility = await loadScopedFacility(scope);
-  const patient = await loadTenantPatient(scope.tenantId, input.patientId);
+  const patient = await loadTenantPatient(scope.tenantId, input.patientId, scope.facilityId);
   const payerCode = (input.payerCode ?? 'SHA').trim().toUpperCase();
   const serviceDate = (input.serviceDate ?? new Date().toISOString().slice(0, 10)).trim();
   const quantity = input.quantity ?? 1;
@@ -282,7 +282,12 @@ export async function validateServiceBenefits(
   let copayCents = 0;
   let coveredCents: number | null = null;
 
-  if (!eligibility && payerConfig.requireVerifiedEligibility) {
+  if (eligibility?.isSimulated) {
+    decision = 'UNABLE_TO_VERIFY';
+    verificationSource = 'SIMULATED_NOT_VERIFIED';
+    missingRequirements.push('A non-simulated payer or documented manual eligibility check');
+    reason = 'A simulated result cannot verify patient eligibility or coverage.';
+  } else if (!eligibility && payerConfig.requireVerifiedEligibility) {
     decision = 'UNABLE_TO_VERIFY';
     verificationSource = 'NO_ELIGIBILITY_VERIFICATION';
     missingRequirements.push('Verified SHA patient eligibility check');
@@ -329,7 +334,7 @@ export async function validateServiceBenefits(
   } else {
     verificationSource = isSimulated
       ? 'APPROVED_FACILITY_RULE_WITH_SIMULATED_ELIGIBILITY'
-      : 'APPROVED_FACILITY_RULE';
+      : 'APPROVED_FACILITY_RULE_ESTIMATE';
 
     // Check facility KEPH accreditation level
     const facilityRank = parseFacilityLevelRank(payerConfig.accreditationLevel ?? facility.level);
@@ -554,7 +559,7 @@ export async function getPatientBenefitsSummary(
   payerCode = 'SHA',
 ) {
   await loadScopedFacility(scope);
-  const patient = await loadTenantPatient(scope.tenantId, patientId);
+  const patient = await loadTenantPatient(scope.tenantId, patientId, scope.facilityId);
   const { config: payerConfig } = await getFacilityPayerConfig(scope, payerCode);
 
   const [latestEligibility] = await db
@@ -645,7 +650,7 @@ export async function lookupPatientHieCoverageAndUtilization(
   adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
 ) {
   await loadScopedFacility(scope);
-  const patient = await loadTenantPatient(scope.tenantId, input.patientId);
+  const patient = await loadTenantPatient(scope.tenantId, input.patientId, scope.facilityId);
   const { config: payerConfig } = await getFacilityPayerConfig(scope, 'SHA');
 
   const [latestEligibility] = await db
@@ -668,6 +673,17 @@ export async function lookupPatientHieCoverageAndUtilization(
       409,
     );
   }
+
+  if (
+    input.memberCrNumber?.trim() &&
+    input.memberCrNumber.trim() !== patient.dhaClientRegistryId?.trim() &&
+    input.memberCrNumber.trim() !== latestEligibility?.memberCrNumber?.trim()
+  )
+    throw new InsuranceDomainError(
+      'IDENTIFIER_PATIENT_MISMATCH',
+      'Client Registry ID does not belong to the selected patient.',
+      400,
+    );
 
   const crNumber =
     input.memberCrNumber?.trim() ||

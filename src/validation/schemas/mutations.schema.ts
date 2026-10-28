@@ -83,6 +83,7 @@ export const draftClaimBodySchema = z
       .max(500, 'lineItemIds exceeds maximum batch size.')
       .optional(),
     payerName: z.string().trim().max(160).optional(),
+    payerCode: z.string().trim().min(2).max(24).optional(),
     policyNumber: z.string().trim().max(120).optional(),
     preAuthCode: z.string().trim().max(120).optional(),
     notes: z.string().trim().max(1000).optional(),

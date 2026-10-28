@@ -235,6 +235,7 @@ export const billingClient = {
     invoiceId: number;
     lineItemIds?: number[];
     payerName?: string;
+    payerCode?: string;
     policyNumber?: string;
     preAuthCode?: string;
     notes?: string;
@@ -245,10 +246,10 @@ export const billingClient = {
       body: JSON.stringify(claim),
     }),
 
-  submitClaim: (id: number, facilityId?: number) =>
+  submitClaim: (id: number, facilityId?: number, manualReference?: string) =>
     fetchJson<InsuranceClaim>(`${API_BASE}/claims/${id}/submit`, {
       method: 'POST',
-      body: JSON.stringify({ facilityId }),
+      body: JSON.stringify({ facilityId, manualReference }),
     }),
 
   adjudicateClaim: (id: number, approvedAmount: string, notes?: string, facilityId?: number) =>
@@ -261,10 +262,15 @@ export const billingClient = {
       }),
     }),
 
-  settleClaim: (id: number, facilityId?: number) =>
+  settleClaim: (
+    id: number,
+    facilityId?: number,
+    billingPaymentId?: number,
+    remittanceReference?: string,
+  ) =>
     fetchJson<ClaimSettlementResult>(`${API_BASE}/claims/${id}/settle`, {
       method: 'POST',
-      body: JSON.stringify({ facilityId }),
+      body: JSON.stringify({ facilityId, billingPaymentId, remittanceReference }),
     }),
 
   updateClaimStatus: (id: number, status: string, approvedAmount?: string, notes?: string) =>
