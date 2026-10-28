@@ -218,7 +218,9 @@ jobs:
         run: npx vitest run src/tests/county-migration.db.spec.ts --reporter=verbose
 
       - name: End-to-end HTTP + PostgreSQL integration specs
-        run: npx vitest run src/tests/integration/http-database.db.spec.ts --reporter=verbose
+        run: |
+          set -o pipefail
+          npx vitest run src/tests/integration/http-database.db.spec.ts --reporter=verbose 2>&1 | tee -a db-specs.log
 
       - name: Report the failing assertions
         if: failure()

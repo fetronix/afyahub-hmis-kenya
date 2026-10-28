@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { createApp } from '../../app.ts';
@@ -27,7 +27,7 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
   const createdTenantIds: number[] = [];
 
   beforeAll(async () => {
-    process.env.NODE_ENV = 'test';
+    process.env.NODE_ENV = 'production';
     process.env.APP_BASE_URL = 'https://hmis.e2e.example.test';
 
     // Ensure required permission catalogue codes exist for tenant provisioning
@@ -51,11 +51,17 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
         .onConflictDoNothing();
     }
 
-    // Ensure SUPER_ADMIN system role exists
+    // Ensure global SUPER_ADMIN system role exists
     const [existingSuperRole] = await db
       .select({ id: schema.roles.id })
       .from(schema.roles)
-      .where(eq(schema.roles.name, 'SUPER_ADMIN'))
+      .where(
+        and(
+          eq(schema.roles.name, 'SUPER_ADMIN'),
+          isNull(schema.roles.tenantId),
+          eq(schema.roles.isActive, true),
+        ),
+      )
       .limit(1);
 
     if (existingSuperRole) {
@@ -115,20 +121,26 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
     if (facilityUserId) {
       await db.delete(schema.sessions).where(eq(schema.sessions.userId, facilityUserId));
       await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, facilityUserId));
+      await db.delete(schema.loginAttempts).where(eq(schema.loginAttempts.userId, facilityUserId));
+      await db
+        .delete(schema.loginAttempts)
+        .where(eq(schema.loginAttempts.usernameOrEmail, facilityUsername));
       await db.delete(schema.users).where(eq(schema.users.id, facilityUserId));
     }
 
     if (superUserId) {
       await db.delete(schema.sessions).where(eq(schema.sessions.userId, superUserId));
       await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, superUserId));
+      await db.delete(schema.loginAttempts).where(eq(schema.loginAttempts.userId, superUserId));
       await db
         .delete(schema.loginAttempts)
         .where(eq(schema.loginAttempts.usernameOrEmail, superUsername));
       await db.delete(schema.users).where(eq(schema.users.id, superUserId));
     }
 
+    // Note: audit_logs is protected by the PostgreSQL append-only trigger
+    // (0017_consent_allergy_audit_integrity) and has no FK to tenants/facilities.
     if (createdTenantIds.length > 0) {
-      await db.delete(schema.auditLogs).where(inArray(schema.auditLogs.tenantId, createdTenantIds));
       await db
         .delete(schema.facilityOnboarding)
         .where(inArray(schema.facilityOnboarding.tenantId, createdTenantIds));
@@ -277,11 +289,16 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
     expect(crossFacRbac.body.error).toBe('FACILITY_OUT_OF_SCOPE');
 
     // Verify real audit_logs rows exist for TENANT and FACILITY creation
+    // and that the append-only PostgreSQL trigger blocks deletion
     const audits = await db
       .select()
       .from(schema.auditLogs)
       .where(eq(schema.auditLogs.tenantId, tenantId));
     expect(audits.some((a) => a.resource === 'TENANT' && a.action === 'CREATE')).toBe(true);
     expect(audits.some((a) => a.resource === 'FACILITY' && a.action === 'CREATE')).toBe(true);
+
+    await expect(
+      db.delete(schema.auditLogs).where(eq(schema.auditLogs.tenantId, tenantId)),
+    ).rejects.toThrow(/append-only/i);
   });
 });
