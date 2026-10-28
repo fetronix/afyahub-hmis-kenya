@@ -19,8 +19,9 @@ import {
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { appSource } from './support/schema-source.ts';
+import { api } from '../api/client.ts';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -242,16 +243,28 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
   });
 
   it('Ui Wiring', async () => {
-    const client = readRepoFile('src/api/client.ts');
+    const requestedUrls: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      requestedUrls.push(String(input));
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
 
-    expect(client.includes('getOperationsReport'), 'client exposes the operations report').toBe(
-      true,
-    );
-    expect(client.includes('getOccupancyTrend'), 'client exposes the occupancy trend').toBe(true);
-    expect(
-      client.includes("params.set('from', range.from)"),
-      'client sends the revenue period start',
-    ).toBe(true);
+    try {
+      await api.getOperationsReport(10);
+      await api.getOccupancyTrend(10, 30);
+      await api.getRevenueReport(10, { from: '2026-10-01', to: '2026-10-28' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(requestedUrls).toEqual([
+      '/api/reporting/operations?facilityId=10',
+      '/api/reporting/occupancy-trend?facilityId=10&days=30',
+      '/api/analytics/revenue?facilityId=10&from=2026-10-01&to=2026-10-28',
+    ]);
 
     const app = readRepoFile('src/App.tsx');
     expect(app.includes("case 'analytics':"), 'App routes the analytics module').toBe(true);

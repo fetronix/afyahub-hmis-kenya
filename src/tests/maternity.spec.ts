@@ -15,7 +15,12 @@ import {
   LIQUORS,
   PREGNANCY_STATUSES,
 } from '../maternity/maternity-contracts.ts';
-import { schemaModule, schemaSource } from './support/schema-source.ts';
+import {
+  maternityModuleSource,
+  maternityServiceSource,
+  schemaModule,
+  schemaSource,
+} from './support/schema-source.ts';
 import { containsCode } from './support/source-text.ts';
 
 import { describe, expect, it } from 'vitest';
@@ -306,7 +311,7 @@ describe('Maternity / MCH tests', () => {
       'the extracted router is mounted at /api',
     ).toBe(true);
 
-    const server = read('src/maternity/maternity.service.ts');
+    const server = maternityServiceSource();
 
     expect(
       server.includes('maternity.read') === false && server.includes('requirePermission') === false,
@@ -363,7 +368,7 @@ describe('Maternity / MCH tests', () => {
   });
 
   it('8. THE SCREEN', async () => {
-    const ui = read('src/components/modules/MaternityModule.tsx');
+    const ui = maternityModuleSource();
 
     expect(!ui.includes('142 bpm'), 'no sample fetal heart rate is shipped').toBe(true);
     expect(!ui.includes('G2 P1'), 'no sample obstetric history is shipped').toBe(true);

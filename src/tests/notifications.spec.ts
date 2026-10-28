@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import { maternityModuleSource } from './support/schema-source.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -139,8 +140,12 @@ describe('Notification dialog — contract tests', () => {
     ];
 
     for (const path of moduleFiles) {
+      const content =
+        path === 'src/components/modules/MaternityModule.tsx'
+          ? maternityModuleSource()
+          : source(path);
       expect(
-        !/fixed bottom-\d+ right-\d+[^"]*z-\d+/.test(source(path)),
+        !/fixed bottom-\d+ right-\d+[^"]*z-\d+/.test(content),
         `${path} does not draw its own toast`,
       ).toBe(true);
     }

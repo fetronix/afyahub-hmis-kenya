@@ -9,7 +9,12 @@ import {
   outstandingDoses,
 } from '../immunisation/immunisation-contracts.ts';
 import { buildPartographPlot, partographGuidance } from '../maternity/maternity-contracts.ts';
-import { schemaModule, schemaSource } from './support/schema-source.ts';
+import {
+  apiClientSource,
+  maternityModuleSource,
+  schemaModule,
+  schemaSource,
+} from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -580,9 +585,9 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
   });
 
   it('7. THE SCREEN', async () => {
-    const module = read('src/components/modules/MaternityModule.tsx');
+    const module = maternityModuleSource();
     const chart = read('src/components/maternity/PartographChart.tsx');
-    const client = read('src/api/client.ts');
+    const client = apiClientSource();
 
     expect(module.includes("'postnatal'"), 'the postnatal tab exists').toBe(true);
     expect(module.includes("'immunisation'"), 'the immunisation tab exists').toBe(true);
