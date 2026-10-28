@@ -29,6 +29,14 @@ import {
   requireAnyPermission,
   requireSuperAdmin,
 } from '../../auth/authorization.middleware.ts';
+import {
+  adjudicateClaimBodySchema,
+  claimIdParamSchema,
+  claimOptionalFacilityBodySchema,
+  draftClaimBodySchema,
+  invoiceIdParamSchema,
+} from '../../validation/schemas/index.ts';
+import { validateBody, validateParams } from '../../validation/validate.ts';
 
 const router = Router();
 
@@ -82,6 +90,7 @@ router.get(
 router.get(
   '/api/invoices/:id/claimable-lines',
   requireAnyPermission('insurance.read', 'billing.read'),
+  validateParams(invoiceIdParamSchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -115,6 +124,7 @@ router.get(
 router.get(
   '/api/claims/:id/items',
   requireAnyPermission('insurance.read', 'billing.read'),
+  validateParams(claimIdParamSchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -148,6 +158,7 @@ router.get(
 router.post(
   '/api/claims',
   requirePermission('insurance.claims.create'),
+  validateBody(draftClaimBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext || !req.user) {
@@ -177,6 +188,8 @@ router.post(
 router.post(
   '/api/claims/:id/submit',
   requirePermission('insurance.claims.create'),
+  validateParams(claimIdParamSchema),
+  validateBody(claimOptionalFacilityBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -210,6 +223,8 @@ router.post(
 router.post(
   '/api/claims/:id/adjudicate',
   requirePermission('insurance.claims.manage'),
+  validateParams(claimIdParamSchema),
+  validateBody(adjudicateClaimBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -248,6 +263,8 @@ router.post(
 router.post(
   '/api/claims/:id/settle',
   requirePermission('insurance.claims.manage'),
+  validateParams(claimIdParamSchema),
+  validateBody(claimOptionalFacilityBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext || !req.user) {

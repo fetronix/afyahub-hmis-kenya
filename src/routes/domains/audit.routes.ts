@@ -16,6 +16,8 @@ import {
   requireAnyPermission,
   requireSuperAdmin,
 } from '../../auth/authorization.middleware.ts';
+import { auditLogsQuerySchema } from '../../validation/schemas/index.ts';
+import { validateQuery } from '../../validation/validate.ts';
 
 const router = Router();
 
@@ -26,6 +28,7 @@ const router = Router();
 router.get(
   '/api/audit-logs',
   requirePermission('audit.read'),
+  validateQuery(auditLogsQuerySchema, { code: 'INVALID_FACILITY_ID' }),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({
