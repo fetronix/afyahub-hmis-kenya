@@ -22,6 +22,8 @@ import { resolveFacilityScope, ScopeAccessError } from '../auth/scope.service.ts
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { defaultShaGatewayAdapter } from '../integrations/sha/sha.adapter.ts';
+import { facilityActionBodySchema } from '../validation/schemas/index.ts';
+import { validateBody } from '../validation/validate.ts';
 import { loadShaConfig } from '../integrations/sha/sha.config.ts';
 import {
   InsuranceDomainError,
@@ -1042,6 +1044,7 @@ router.get(
 router.post(
   '/claims/:claimId/validate',
   requirePermission('insurance.sha.claims.prepare'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
