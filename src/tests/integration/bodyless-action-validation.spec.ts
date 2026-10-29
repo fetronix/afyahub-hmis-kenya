@@ -24,6 +24,7 @@ vi.mock('../../insurance/hub/guards.ts', async (original) => ({
 }));
 import shaRoutes from '../../routes/sha-eclaims.routes.ts';
 import privateInsuranceRoutes from '../../routes/private-insurance.routes.ts';
+import dialysisRoutes from '../../routes/dialysis.routes.ts';
 import { facilityActionBodySchema } from '../../validation/schemas/index.ts';
 
 describe('bodyless action boundaries', () => {
@@ -41,6 +42,7 @@ describe('bodyless action boundaries', () => {
     });
     app.use('/api/insurance/sha', shaRoutes);
     app.use('/api/insurance', privateInsuranceRoutes);
+    app.use('/api/dialysis', dialysisRoutes);
     ({ baseUrl, close } = await startTestServer(app));
   });
   afterAll(async () => {
@@ -48,6 +50,16 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/dialysis/treatment-plans/:id/authorize rejects malformed input before the handler', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/dialysis/treatment-plans/1/authorize', {
+      body: { facilityId: -1 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
   });
 
   it('POST /api/insurance/claims/:id/validate rejects a non-object body at the route', async () => {
