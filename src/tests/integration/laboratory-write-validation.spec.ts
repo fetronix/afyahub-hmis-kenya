@@ -2,7 +2,15 @@ import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
-const queries = vi.hoisted(() => ({ updateLabOrderStatus: vi.fn(), addLabResult: vi.fn() }));
+const queries = vi.hoisted(() => ({
+  updateLabOrderStatus: vi.fn(),
+  addLabResult: vi.fn(),
+  createLabOrderBatch: vi.fn(),
+}));
+vi.mock('../../billing/service-charges.ts', async (original) => ({
+  ...(await original<typeof import('../../billing/service-charges.ts')>()),
+  chargeLabOrderBatch: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../../db/queries.ts', () => queries);
 vi.mock('../../auth/authorization.middleware.ts', () => ({
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -27,6 +35,47 @@ describe('laboratory write body validation', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/lab-orders/batch rejects invalid requests before the service', async () => {
+    const valid = {
+      patientId: 2,
+      encounterId: 3,
+      investigations: ['Requested test'],
+      clinicalIndication: 'Clinical indication',
+      specimenType: 'Specimen',
+      priority: 'Routine',
+    };
+    for (const body of [
+      {},
+      { ...valid, priority: 'unsupported' },
+      { ...valid, investigations: [] },
+      { ...valid, patientId: -1 },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/lab-orders/batch', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(queries.createLabOrderBatch).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/lab-orders/batch accepts actual investigations without assigning codes or prices', async () => {
+    queries.createLabOrderBatch.mockResolvedValue({ orders: [], queue: {} });
+    const response = await httpJson(baseUrl, 'POST', '/api/lab-orders/batch', {
+      body: {
+        patientId: 2,
+        encounterId: 3,
+        investigations: [' Requested test '],
+        clinicalIndication: 'Clinical indication',
+        specimenType: 'Specimen',
+        priority: 'Routine',
+      },
+    });
+    expect(response.status).toBe(201);
+    expect(queries.createLabOrderBatch).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ investigations: ['Requested test'] }),
+    );
   });
 
   it('POST /api/lab-results rejects invalid measurement payloads before the service', async () => {

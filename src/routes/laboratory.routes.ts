@@ -18,6 +18,7 @@ import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
 import {
+  createLabOrderBatchBodySchema,
   createLabResultBodySchema,
   updateLabOrderStatusBodySchema,
 } from '../validation/schemas/index.ts';
@@ -62,14 +63,15 @@ router.get(
 router.post(
   '/api/lab-orders/batch',
   requirePermission('laboratory.orders.create'),
-
+  validateBody(createLabOrderBatchBodySchema),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({ error: 'Authentication context is required.' });
     }
 
     try {
-      const result = await queries.createLabOrderBatch(req.authContext, req.body);
+      const body = getValidatedBody<Parameters<typeof queries.createLabOrderBatch>[1]>(req);
+      const result = await queries.createLabOrderBatch(req.authContext, body);
 
       /*
        * Every order in the batch is priced, not just the first.
