@@ -27,6 +27,7 @@ import privateInsuranceRoutes from '../../routes/private-insurance.routes.ts';
 import dialysisRoutes from '../../routes/dialysis.routes.ts';
 import accountingRoutes from '../../routes/accounting.routes.ts';
 import {
+  closeFinancialPeriodBodySchema,
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
   facilityActionBodySchema,
@@ -56,6 +57,16 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/periods/:id/close rejects missing closing notes', async () => {
+    expect(closeFinancialPeriodBodySchema.safeParse({ notes: 'Reviewed' }).success).toBe(true);
+    for (const body of [{}, { notes: '  ' }, { notes: 4 }]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/periods/1/close', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/periods rejects invalid dates before scope lookup', async () => {

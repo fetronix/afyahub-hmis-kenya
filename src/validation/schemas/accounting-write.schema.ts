@@ -4,6 +4,8 @@ import { isoDateStringSchema, positiveIntField } from './common.schema.ts';
 const facilityId = positiveIntField('facilityId must be a positive integer.').nullable().optional();
 const text = (maximum: number) => z.string().trim().min(1).max(maximum);
 
+export const closeFinancialPeriodBodySchema = z.object({ facilityId, notes: text(1000) });
+
 export const createFinancialPeriodBodySchema = z
   .object({
     facilityId,

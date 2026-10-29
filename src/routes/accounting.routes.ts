@@ -4,6 +4,7 @@ import { requirePermission } from '../auth/authorization.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import * as queries from '../db/queries.ts';
 import {
+  closeFinancialPeriodBodySchema,
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
   facilityActionBodySchema,
@@ -128,6 +129,7 @@ router.post(
 router.post(
   '/periods/:id/close',
   requirePermission('accounting.periods.close'),
+  validateBody(closeFinancialPeriodBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.json({
