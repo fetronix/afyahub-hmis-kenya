@@ -11,6 +11,8 @@ import * as queries from '../db/queries.ts';
 import { respondInternalError } from './shared/errors.ts';
 import { requireAuthContext } from './shared/request.ts';
 import { Router, type Response } from 'express';
+import { updateQueueStatusBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -53,13 +55,14 @@ router.post(
 router.put(
   '/api/queues/:id/status',
   requirePermission('appointments.update'),
+  validateBody(updateQueueStatusBodySchema),
   async (req: AuthRequest, res: Response) => {
     const context = requireAuthContext(req, res);
 
     if (!context) return;
 
     try {
-      const { status } = req.body ?? {};
+      const { status } = getValidatedBody<{ status: string }>(req);
 
       const updated = await queries.updateQueueStatusScoped(
         context,
