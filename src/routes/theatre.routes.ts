@@ -12,6 +12,8 @@ import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import { createTheatreCaseBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -40,8 +42,9 @@ router.get(
 router.post(
   '/api/theatre-cases',
   requirePermission('clinical.create'),
+  validateBody(createTheatreCaseBodySchema),
   async (req: AuthRequest, res: Response) => {
-    const body = (req.body ?? {}) as Record<string, unknown>;
+    const body = getValidatedBody<Record<string, unknown>>(req);
 
     const facility = await requireScopedFacility(req, res, body.facilityId ?? req.query.facilityId);
 

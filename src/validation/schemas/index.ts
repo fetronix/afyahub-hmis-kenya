@@ -10,3 +10,4 @@ export * from './queue.schema.ts';
 export * from './laboratory.schema.ts';
 export * from './medications.schema.ts';
 export * from './radiology.schema.ts';
+export * from './theatre.schema.ts';
