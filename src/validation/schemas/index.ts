@@ -4,3 +4,4 @@ export * from './facility.schema.ts';
 export * from './rbac.schema.ts';
 export * from './auth.schema.ts';
 export * from './mutations.schema.ts';
+export * from './appointments.schema.ts';
