@@ -19,6 +19,7 @@ import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
 import {
   createLabOrderBatchBodySchema,
+  createLabOrderBodySchema,
   createLabResultBodySchema,
   updateLabOrderStatusBodySchema,
 } from '../validation/schemas/index.ts';
@@ -111,13 +112,15 @@ router.post(
 router.post(
   '/api/lab-orders',
   requirePermission('laboratory.orders.create'),
+  validateBody(createLabOrderBodySchema),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({ error: 'Authentication context is required.' });
     }
 
     try {
-      const order = await queries.createLabOrder(req.authContext, req.body);
+      const body = getValidatedBody<Parameters<typeof queries.createLabOrder>[1]>(req);
+      const order = await queries.createLabOrder(req.authContext, body);
 
       const labOrder = order as {
         id?: number;

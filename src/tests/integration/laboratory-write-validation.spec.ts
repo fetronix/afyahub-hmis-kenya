@@ -6,6 +6,7 @@ const queries = vi.hoisted(() => ({
   updateLabOrderStatus: vi.fn(),
   addLabResult: vi.fn(),
   createLabOrderBatch: vi.fn(),
+  createLabOrder: vi.fn(),
 }));
 vi.mock('../../billing/service-charges.ts', async (original) => ({
   ...(await original<typeof import('../../billing/service-charges.ts')>()),
@@ -76,6 +77,32 @@ describe('laboratory write body validation', () => {
       expect.any(Object),
       expect.objectContaining({ investigations: ['Requested test'] }),
     );
+  });
+
+  it('POST /api/lab-orders rejects invalid and pre-completed orders before the service', async () => {
+    for (const body of [
+      {},
+      { patientId: 2, testName: '' },
+      { patientId: 2, testName: 'Test', status: 'Completed' },
+      { patientId: 'bad', testName: 'Test' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/lab-orders', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(queries.createLabOrder).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/lab-orders accepts an encounter-linked order without inventing a code', async () => {
+    queries.createLabOrder.mockResolvedValue({ testName: 'Requested test' });
+    const response = await httpJson(baseUrl, 'POST', '/api/lab-orders', {
+      body: { encounterId: '3', testName: ' Requested test ' },
+    });
+    expect(response.status).toBe(201);
+    expect(queries.createLabOrder).toHaveBeenCalledWith(expect.any(Object), {
+      encounterId: 3,
+      testName: 'Requested test',
+    });
   });
 
   it('POST /api/lab-results rejects invalid measurement payloads before the service', async () => {

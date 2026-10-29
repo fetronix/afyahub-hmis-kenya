@@ -31,6 +31,25 @@ export const createLabOrderBatchBodySchema = z
     message: 'Duplicate tests are not allowed in one submission.',
   });
 
+export const createLabOrderBodySchema = z
+  .object({
+    tenantId: optionalId('tenantId'),
+    facilityId: optionalId('facilityId'),
+    patientId: optionalId('patientId'),
+    encounterId: optionalId('encounterId'),
+    testId: optionalId('testId'),
+    testName: z.string().trim().min(1, 'A test name is required.').max(200),
+    status: z.literal('Ordered').optional(),
+    clinicalIndication: z.string().trim().max(2000).nullable().optional(),
+    specimenType: z.string().trim().max(120).nullable().optional(),
+    priority: z.enum(['Routine', 'Urgent', 'STAT']).nullable().optional(),
+    clinicalNotes: optionalClinicalText,
+    orderedBy: z.string().trim().max(200).nullable().optional(),
+  })
+  .refine((body) => body.patientId != null || body.encounterId != null, {
+    message: 'A patient or encounter is required.',
+  });
+
 export const createLabResultBodySchema = z.object({
   orderId: positiveIntField('A valid order ID is required.'),
   patientId: positiveIntField('A valid patient ID is required.'),
