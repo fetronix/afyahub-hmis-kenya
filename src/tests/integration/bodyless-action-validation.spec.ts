@@ -31,6 +31,7 @@ import {
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
   createExpenseRequestBodySchema,
+  decideExpenseRequestBodySchema,
   facilityActionBodySchema,
   postJournalBodySchema,
   reverseJournalBodySchema,
@@ -60,6 +61,24 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/expenses/:id/decision rejects invalid decisions and notes', async () => {
+    expect(
+      decideExpenseRequestBodySchema.safeParse({ decision: 'approve', notes: 'Reviewed' }).success,
+    ).toBe(true);
+    for (const body of [
+      {},
+      { decision: 'APPROVE', notes: '' },
+      { decision: 'PAY', notes: 'Reviewed' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/expenses/1/decision', {
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/expenses rejects malformed expense requests before scope lookup', async () => {

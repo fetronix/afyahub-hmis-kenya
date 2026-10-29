@@ -8,6 +8,7 @@ import {
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
   createExpenseRequestBodySchema,
+  decideExpenseRequestBodySchema,
   facilityActionBodySchema,
   postJournalBodySchema,
   reverseJournalBodySchema,
@@ -243,6 +244,7 @@ router.post(
 router.post(
   '/expenses/:id/decision',
   requirePermission('accounting.expenses.approve'),
+  validateBody(decideExpenseRequestBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.json({

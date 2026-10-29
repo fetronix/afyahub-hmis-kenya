@@ -8,6 +8,16 @@ import {
 const facilityId = positiveIntField('facilityId must be a positive integer.').nullable().optional();
 const text = (maximum: number) => z.string().trim().min(1).max(maximum);
 
+export const decideExpenseRequestBodySchema = z.object({
+  facilityId,
+  decision: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .pipe(z.enum(['APPROVE', 'REJECT'])),
+  notes: text(1000),
+});
+
 export const createExpenseRequestBodySchema = z
   .object({
     facilityId,
