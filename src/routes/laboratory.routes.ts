@@ -17,6 +17,8 @@ import { chargeSafely } from './shared/charges.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import { updateLabOrderStatusBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -170,9 +172,13 @@ router.post(
 router.put(
   '/api/lab-orders/:id/status',
   requirePermission('laboratory.results.enter'),
+  validateBody(updateLabOrderStatusBodySchema),
   async (req: AuthRequest, res) => {
     try {
-      const { status, accessionNumber } = req.body;
+      const { status, accessionNumber } = getValidatedBody<{
+        status: string;
+        accessionNumber?: string;
+      }>(req);
 
       const order = await queries.updateLabOrderStatus(
         req.authContext!,
