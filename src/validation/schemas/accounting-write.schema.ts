@@ -5,6 +5,13 @@ import { validateBalancedJournalLines } from '../../accounting/accounting.servic
 const facilityId = positiveIntField('facilityId must be a positive integer.').nullable().optional();
 const text = (maximum: number) => z.string().trim().min(1).max(maximum);
 
+export const reverseJournalBodySchema = z.object({
+  facilityId,
+  entryDate: isoDateStringSchema(),
+  reason: text(500),
+  idempotencyKey: text(128).optional(),
+});
+
 export const postJournalBodySchema = z.object({
   facilityId,
   entryDate: isoDateStringSchema(),

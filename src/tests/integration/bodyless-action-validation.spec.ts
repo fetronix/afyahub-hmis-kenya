@@ -32,6 +32,7 @@ import {
   createFinancialPeriodBodySchema,
   facilityActionBodySchema,
   postJournalBodySchema,
+  reverseJournalBodySchema,
 } from '../../validation/schemas/index.ts';
 
 describe('bodyless action boundaries', () => {
@@ -58,6 +59,24 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/journals/:id/reverse rejects invalid dates or reasons before scope lookup', async () => {
+    expect(
+      reverseJournalBodySchema.safeParse({ entryDate: '2027-01-01', reason: 'Duplicate' }).success,
+    ).toBe(true);
+    for (const body of [
+      {},
+      { entryDate: '2027-01-01', reason: '' },
+      { entryDate: '2027-02-30', reason: 'Duplicate' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/journals/1/reverse', {
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/journals rejects unbalanced lines before scope lookup', async () => {

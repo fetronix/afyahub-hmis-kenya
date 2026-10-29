@@ -9,6 +9,7 @@ import {
   createFinancialPeriodBodySchema,
   facilityActionBodySchema,
   postJournalBodySchema,
+  reverseJournalBodySchema,
 } from '../validation/schemas/index.ts';
 import { validateBody } from '../validation/validate.ts';
 import {
@@ -167,6 +168,7 @@ router.post(
 router.post(
   '/journals/:id/reverse',
   requirePermission('accounting.journals.post'),
+  validateBody(reverseJournalBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await reverseJournalScoped(await scoped(req), Number(req.params.id), {
