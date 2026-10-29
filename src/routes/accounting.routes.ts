@@ -6,6 +6,7 @@ import * as queries from '../db/queries.ts';
 import {
   closeFinancialPeriodBodySchema,
   createAccountBodySchema,
+  createBankAccountBodySchema,
   createFinancialPeriodBodySchema,
   createExpenseRequestBodySchema,
   decideExpenseRequestBodySchema,
@@ -284,6 +285,7 @@ router.get('/bank', requirePermission('accounting.read'), async (req: AuthReques
 router.post(
   '/bank/accounts',
   requirePermission('accounting.bank.manage'),
+  validateBody(createBankAccountBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.status(201).json({

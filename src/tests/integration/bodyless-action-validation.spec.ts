@@ -29,6 +29,7 @@ import accountingRoutes from '../../routes/accounting.routes.ts';
 import {
   closeFinancialPeriodBodySchema,
   createAccountBodySchema,
+  createBankAccountBodySchema,
   createFinancialPeriodBodySchema,
   createExpenseRequestBodySchema,
   decideExpenseRequestBodySchema,
@@ -61,6 +62,31 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/bank/accounts rejects full account numbers and malformed masks', async () => {
+    const body = {
+      accountName: 'Synthetic',
+      bankCode: 'SYN',
+      bankName: 'Synthetic',
+      glAccountId: 1,
+      accountLastFour: '1234',
+    };
+    expect(createBankAccountBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [
+      {},
+      { ...body, accountLastFour: '123456' },
+      { ...body, accountNumber: '12345678' },
+      { ...body, password: 'not-a-real-password' },
+      { ...body, glAccountId: -1 },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/bank/accounts', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/expenses/:id/decision rejects invalid decisions and notes', async () => {

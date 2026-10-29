@@ -8,6 +8,26 @@ import {
 const facilityId = positiveIntField('facilityId must be a positive integer.').nullable().optional();
 const text = (maximum: number) => z.string().trim().min(1).max(maximum);
 
+export const createBankAccountBodySchema = z
+  .object({
+    facilityId,
+    accountName: text(160),
+    bankCode: text(80),
+    bankName: text(160),
+    glAccountId: positiveIntField('A valid ledger account is required.'),
+    accountLastFour: z
+      .union([
+        z
+          .string()
+          .trim()
+          .regex(/^\d{4}$/),
+        z.literal(''),
+      ])
+      .nullable()
+      .optional(),
+  })
+  .strict();
+
 export const decideExpenseRequestBodySchema = z.object({
   facilityId,
   decision: z
