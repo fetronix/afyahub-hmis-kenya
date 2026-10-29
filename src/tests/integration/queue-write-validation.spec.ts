@@ -29,6 +29,32 @@ describe('queue write body validation', () => {
     vi.clearAllMocks();
   });
 
+  it('POST /api/queues rejects invalid bodies before invoking the service', async () => {
+    for (const body of [
+      {},
+      { patientId: -1, queueType: 'Triage' },
+      { patientId: 1, queueType: '' },
+      { encounterId: 1, queueType: 'Triage', waitingTimeMinutes: -1 },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/queues', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(queries.createQueueEntry).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/queues allows an encounter-derived patient and strips record metadata', async () => {
+    queries.createQueueEntry.mockResolvedValue({ id: 1 });
+    const response = await httpJson(baseUrl, 'POST', '/api/queues', {
+      body: { encounterId: '3', queueType: ' Triage ', id: 99 },
+    });
+    expect(response.status).toBe(201);
+    expect(queries.createQueueEntry).toHaveBeenCalledWith(expect.any(Object), {
+      encounterId: 3,
+      queueType: 'Triage',
+    });
+  });
+
   it('PUT /api/queues/:id/status rejects invalid bodies before invoking the service', async () => {
     for (const body of [{}, { status: 42 }, { status: '  ' }]) {
       const response = await httpJson(baseUrl, 'PUT', '/api/queues/1/status', { body });

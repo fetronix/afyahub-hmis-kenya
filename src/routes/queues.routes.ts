@@ -11,7 +11,10 @@ import * as queries from '../db/queries.ts';
 import { respondInternalError } from './shared/errors.ts';
 import { requireAuthContext } from './shared/request.ts';
 import { Router, type Response } from 'express';
-import { updateQueueStatusBodySchema } from '../validation/schemas/index.ts';
+import {
+  createQueueEntryBodySchema,
+  updateQueueStatusBodySchema,
+} from '../validation/schemas/index.ts';
 import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
@@ -37,13 +40,15 @@ router.get('/api/queues', requirePermission('appointments.read'), async (req, re
 router.post(
   '/api/queues',
   requirePermission('appointments.create'),
+  validateBody(createQueueEntryBodySchema),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({ error: 'Authentication context is required.' });
     }
 
     try {
-      const item = await queries.createQueueEntry(req.authContext, req.body);
+      const body = getValidatedBody<Parameters<typeof queries.createQueueEntry>[1]>(req);
+      const item = await queries.createQueueEntry(req.authContext, body);
 
       res.status(201).json(item);
     } catch (err: any) {
