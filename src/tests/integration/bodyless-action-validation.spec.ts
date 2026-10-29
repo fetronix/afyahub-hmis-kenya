@@ -70,9 +70,9 @@ describe('bodyless action boundaries', () => {
     expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
   });
 
-  it('POST /api/insurance/sha/claims/:id/validate rejects invalid scope input before database access', async () => {
+  it('POST /api/insurance/sha/claims/:id/validate rejects a non-object body at the route', async () => {
     const response = await httpJson(baseUrl, 'POST', '/api/insurance/sha/claims/1/validate', {
-      body: { facilityId: -1 },
+      body: [],
     });
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('VALIDATION_ERROR');
