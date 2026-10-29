@@ -7,7 +7,9 @@ const queries = vi.hoisted(() => ({
   createMedication: vi.fn(),
   logAuditEvent: vi.fn(),
 }));
+const allergy = vi.hoisted(() => ({ checkMedicationAllergies: vi.fn() }));
 vi.mock('../../db/queries.ts', () => queries);
+vi.mock('../../clinical/allergy.service.ts', () => allergy);
 vi.mock('../../auth/authorization.middleware.ts', () => ({
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
@@ -31,6 +33,59 @@ describe('medication write body validation', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    allergy.checkMedicationAllergies.mockResolvedValue({ warnings: [] });
+  });
+
+  it('POST /api/medications rejects malformed prescriptions before allergy lookup or write', async () => {
+    const valid = {
+      encounterId: 1,
+      patientId: 2,
+      drugName: 'Medication',
+      dosage: 'as recorded',
+      frequency: 'as recorded',
+      duration: 'as recorded',
+    };
+    for (const body of [
+      {},
+      { ...valid, patientId: 0 },
+      { ...valid, dosage: '' },
+      { ...valid, status: 'Dispensed' },
+      { ...valid, allergyAcknowledged: 'yes' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/medications', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(allergy.checkMedicationAllergies).not.toHaveBeenCalled();
+    expect(queries.createMedication).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/medications preserves the allergy check and strips client-controlled metadata', async () => {
+    queries.createMedication.mockResolvedValue({ id: 1 });
+    const response = await httpJson(baseUrl, 'POST', '/api/medications', {
+      body: {
+        encounterId: '1',
+        patientId: 2,
+        drugName: ' Medication ',
+        dosage: 'as recorded',
+        frequency: 'as recorded',
+        duration: 'as recorded',
+        allergyAcknowledged: false,
+        id: 99,
+      },
+    });
+    expect(response.status).toBe(201);
+    expect(allergy.checkMedicationAllergies).toHaveBeenCalledWith(expect.any(Object), 2, [
+      'Medication',
+    ]);
+    expect(queries.createMedication).toHaveBeenCalledWith({
+      encounterId: 1,
+      patientId: 2,
+      drugName: 'Medication',
+      dosage: 'as recorded',
+      frequency: 'as recorded',
+      duration: 'as recorded',
+    });
   });
 
   it('PUT /api/medications/:id/status rejects malformed statuses before the service', async () => {
