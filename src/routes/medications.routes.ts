@@ -12,6 +12,8 @@ import * as queries from '../db/queries.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import { medicationStatusBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -113,9 +115,10 @@ router.post(
 router.put(
   '/api/medications/:id/status',
   requirePermission('pharmacy.dispense'),
+  validateBody(medicationStatusBodySchema),
   async (req, res) => {
     try {
-      const { status } = req.body;
+      const { status } = getValidatedBody<{ status: string }>(req);
 
       const med = await queries.updateMedicationStatus(Number(req.params.id), status);
 

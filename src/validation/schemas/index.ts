@@ -8,3 +8,4 @@ export * from './appointments.schema.ts';
 export * from './inventory-write.schema.ts';
 export * from './queue.schema.ts';
 export * from './laboratory.schema.ts';
+export * from './medications.schema.ts';
