@@ -2,7 +2,7 @@ import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
-const queries = vi.hoisted(() => ({ updateLabOrderStatus: vi.fn() }));
+const queries = vi.hoisted(() => ({ updateLabOrderStatus: vi.fn(), addLabResult: vi.fn() }));
 vi.mock('../../db/queries.ts', () => queries);
 vi.mock('../../auth/authorization.middleware.ts', () => ({
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -27,6 +27,36 @@ describe('laboratory write body validation', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/lab-results rejects invalid measurement payloads before the service', async () => {
+    for (const body of [
+      {},
+      { orderId: -1, patientId: 2, parameterName: 'Parameter', measuredValue: '4' },
+      { orderId: 1, patientId: 2, parameterName: 'Parameter', measuredValue: 4 },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/lab-results', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(queries.addLabResult).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/lab-results forwards normalized values without claiming clinical interpretation', async () => {
+    queries.addLabResult.mockResolvedValue({ id: 1 });
+    const response = await httpJson(baseUrl, 'POST', '/api/lab-results', {
+      body: { orderId: '1', patientId: 2, parameterName: ' Parameter ', measuredValue: ' 4 ' },
+    });
+    expect(response.status).toBe(201);
+    expect(queries.addLabResult).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        orderId: 1,
+        patientId: 2,
+        parameterName: 'Parameter',
+        measuredValue: '4',
+      }),
+    );
   });
 
   it('PUT /api/lab-orders/:id/status rejects invalid collection statuses before the service', async () => {

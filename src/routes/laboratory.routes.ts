@@ -17,7 +17,10 @@ import { chargeSafely } from './shared/charges.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
-import { updateLabOrderStatusBodySchema } from '../validation/schemas/index.ts';
+import {
+  createLabResultBodySchema,
+  updateLabOrderStatusBodySchema,
+} from '../validation/schemas/index.ts';
 import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
@@ -220,6 +223,7 @@ router.get(
 router.post(
   '/api/lab-results',
   requirePermission('laboratory.results.enter'),
+  validateBody(createLabResultBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const {
@@ -231,23 +235,16 @@ router.post(
         referenceRange,
         flag,
         notes,
-      } = req.body ?? {};
-
-      if (
-        !Number.isInteger(Number(orderId)) ||
-        Number(orderId) <= 0 ||
-        !Number.isInteger(Number(patientId)) ||
-        Number(patientId) <= 0 ||
-        typeof parameterName !== 'string' ||
-        !parameterName.trim() ||
-        typeof measuredValue !== 'string' ||
-        !measuredValue.trim()
-      ) {
-        res.status(400).json({
-          error: 'Valid order, patient, parameter name, and measured value are required.',
-        });
-        return;
-      }
+      } = getValidatedBody<{
+        orderId: number;
+        patientId: number;
+        parameterName: string;
+        measuredValue: string;
+        unit?: string | null;
+        referenceRange?: string | null;
+        flag?: string | null;
+        notes?: string | null;
+      }>(req);
 
       const result = await queries.addLabResult(req.authContext!, {
         orderId: Number(orderId),
