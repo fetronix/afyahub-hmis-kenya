@@ -224,15 +224,22 @@ export const diagnosticsPharmacyClient = {
       body: JSON.stringify(data),
     }),
 
-  getSuppliers: (tenantId?: number) =>
-    fetchJson<Supplier[]>(`${API_BASE}/suppliers${tenantId ? `?tenantId=${tenantId}` : ''}`),
+  getSuppliers: (tenantId?: number, facilityId?: number) => {
+    const params = new URLSearchParams();
+    if (tenantId) params.set('tenantId', String(tenantId));
+    if (facilityId) params.set('facilityId', String(facilityId));
+    const query = params.toString();
+    return fetchJson<Supplier[]>(`${API_BASE}/suppliers${query ? `?${query}` : ''}`);
+  },
 
   getPurchaseOrders: (facilityId?: number) =>
     fetchJson<PurchaseOrder[]>(
       `${API_BASE}/purchase-orders${facilityId ? `?facilityId=${facilityId}` : ''}`,
     ),
 
-  createPurchaseOrder: (po: Partial<PurchaseOrder>) =>
+  createPurchaseOrder: (
+    po: Partial<PurchaseOrder> & { supplierName?: string; confirmDuplicateSupplier?: boolean },
+  ) =>
     fetchJson<PurchaseOrder>(`${API_BASE}/purchase-orders`, {
       method: 'POST',
       body: JSON.stringify(po),

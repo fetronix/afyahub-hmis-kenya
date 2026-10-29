@@ -1,8 +1,8 @@
 /**
  * The procurement routes.
  *
- * Moved out of `createApp` unchanged: same paths, same handlers, same
- * permissions. `src/routes/index.ts` mounts this router on the API router.
+ * Existing paths and permission guards remain in place. `src/routes/index.ts`
+ * mounts this router after the facility-module gates.
  */
 
 import { type AuthRequest } from '../auth/auth.middleware.ts';
@@ -114,17 +114,45 @@ router.post(
 
     if (!facility) return;
 
+    // Creating a request is not approval. Do not allow procurement.create
+    // to set approval metadata or a pre-approved status through this route.
+    if (
+      (body.status !== undefined && body.status !== 'Pending Approval') ||
+      (body.approvedBy !== undefined && body.approvedBy !== null && body.approvedBy !== '')
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_PURCHASE_ORDER_STATUS',
+        message: 'New purchase orders must be pending approval and cannot specify an approver.',
+      });
+    }
+
     try {
+      // Whitelist client fields. IDs, timestamps, approval metadata and the
+      // tenant/facility scope must not be writable through a body spread.
       const payload = {
-        ...body,
         facilityId: facility.id,
         tenantId: facility.tenantId,
+        supplierId: body.supplierId,
+        supplierName: body.supplierName,
+        confirmDuplicateSupplier: body.confirmDuplicateSupplier,
+        poNumber: body.poNumber,
+        totalAmount: body.totalAmount,
+        status: 'Pending Approval',
+        orderedBy: body.orderedBy,
       } as Parameters<typeof queries.createPurchaseOrder>[0];
 
-      const po = await queries.createPurchaseOrder(payload);
+      const po = await queries.createPurchaseOrder(payload, req.authContext?.userId);
 
       res.status(201).json(po);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (err instanceof queries.PurchaseOrderError) {
+        return res.status(err.statusCode).json({
+          success: false,
+          error: err.code,
+          message: err.message,
+        });
+      }
       respondInternalError(res, err, 'POST /api/purchase-orders');
     }
   },
