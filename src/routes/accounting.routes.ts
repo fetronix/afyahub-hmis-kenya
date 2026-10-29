@@ -3,7 +3,7 @@ import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import * as queries from '../db/queries.ts';
-import { facilityActionBodySchema } from '../validation/schemas/index.ts';
+import { createAccountBodySchema, facilityActionBodySchema } from '../validation/schemas/index.ts';
 import { validateBody } from '../validation/validate.ts';
 import {
   AccountingIntegrityError,
@@ -92,6 +92,7 @@ router.get('/overview', requirePermission('accounting.read'), async (req: AuthRe
 router.post(
   '/accounts',
   requirePermission('accounting.coa.manage'),
+  validateBody(createAccountBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.status(201).json({

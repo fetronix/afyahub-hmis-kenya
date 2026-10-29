@@ -26,7 +26,10 @@ import shaRoutes from '../../routes/sha-eclaims.routes.ts';
 import privateInsuranceRoutes from '../../routes/private-insurance.routes.ts';
 import dialysisRoutes from '../../routes/dialysis.routes.ts';
 import accountingRoutes from '../../routes/accounting.routes.ts';
-import { facilityActionBodySchema } from '../../validation/schemas/index.ts';
+import {
+  createAccountBodySchema,
+  facilityActionBodySchema,
+} from '../../validation/schemas/index.ts';
 
 describe('bodyless action boundaries', () => {
   let baseUrl: string;
@@ -52,6 +55,25 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/accounts rejects invalid account payloads before scope lookup', async () => {
+    const body = {
+      accountCode: 'SYN',
+      accountName: 'Synthetic',
+      accountType: 'ASSET',
+      normalBalance: 'DEBIT',
+      subType: 'OTHER',
+    };
+    expect(createAccountBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [{}, { ...body, accountType: 'invalid' }, { ...body, accountName: '' }]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/accounts', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/expenses/:id/post rejects malformed input before the handler', async () => {

@@ -12,3 +12,4 @@ export * from './medications.schema.ts';
 export * from './radiology.schema.ts';
 export * from './theatre.schema.ts';
 export * from './actions.schema.ts';
+export * from './accounting-write.schema.ts';
