@@ -17,6 +17,8 @@ import { handleInventoryError, handleScopeError, respondInternalError } from './
 import { requireAuthContext } from './shared/request.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import { createInventoryItemBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -158,15 +160,21 @@ router.get('/api/inventory', requirePermission('inventory.read'), async (req, re
   }
 });
 
-router.post('/api/inventory', requirePermission('inventory.manage'), async (req, res) => {
-  try {
-    const item = await queries.createInventoryItem(req.body);
+router.post(
+  '/api/inventory',
+  requirePermission('inventory.manage'),
+  validateBody(createInventoryItemBodySchema),
+  async (req, res) => {
+    try {
+      const body = getValidatedBody<Parameters<typeof queries.createInventoryItem>[0]>(req);
+      const item = await queries.createInventoryItem(body);
 
-    res.status(201).json(item);
-  } catch (err: any) {
-    respondInternalError(res, err, 'POST /api/inventory');
-  }
-});
+      res.status(201).json(item);
+    } catch (err: any) {
+      respondInternalError(res, err, 'POST /api/inventory');
+    }
+  },
+);
 
 router.post(
   '/api/pharmacy/dispense',
