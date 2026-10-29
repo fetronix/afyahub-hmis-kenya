@@ -52,6 +52,16 @@ describe('bodyless action boundaries', () => {
     vi.clearAllMocks();
   });
 
+  it('POST /api/dialysis/schedules/:id/start rejects malformed input before the handler', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/dialysis/schedules/1/start', {
+      body: { facilityId: -1 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+
   it('POST /api/dialysis/treatment-plans/:id/authorize rejects malformed input before the handler', async () => {
     const response = await httpJson(baseUrl, 'POST', '/api/dialysis/treatment-plans/1/authorize', {
       body: { facilityId: -1 },

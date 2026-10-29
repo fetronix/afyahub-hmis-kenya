@@ -182,6 +182,7 @@ router.post(
 router.post(
   '/schedules/:id/start',
   requirePermission('dialysis.sessions.record'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await startDialysisSessionScoped(await scoped(req), Number(req.params.id));
