@@ -343,19 +343,45 @@ describeDb('purchase orders with existing or newly entered suppliers', () => {
     expect(await supplierCount(tenantB, name)).toBe(1);
   });
 
-  it('rolls back a new supplier when the purchase-order insert fails', async () => {
-    const name = `Rollback ${suffix}`;
+  it('rejects an invalid amount without creating a supplier', async () => {
+    const name = `Invalid amount ${suffix}`;
     const result = await post(actorA.token, {
-      ...order(facilityA, 'rollback'),
+      ...order(facilityA, 'invalid-amount'),
       totalAmount: 'not-a-number',
       supplierName: name,
     });
-    expect(result.status).toBe(500);
+    expect(result.status).toBe(400);
     expect(await supplierCount(tenantA, name)).toBe(0);
-    const orders = await pool.query('SELECT count(*) FROM purchase_orders WHERE po_number=$1', [
-      order(facilityA, 'rollback').poNumber,
-    ]);
-    expect(Number(orders.rows[0].count)).toBe(0);
+  });
+
+  it('rolls back a new supplier, lines and order when audit insertion fails', async () => {
+    const name = `Rollback ${suffix}`;
+    const number = order(facilityA, 'rollback').poNumber;
+    // Test-only failure, limited to this synthetic PO; the trigger is always removed.
+    const fn = `proc_rollback_${suffix}`;
+    await pool.query(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.resource = 'PurchaseOrder' AND EXISTS (SELECT 1 FROM purchase_orders WHERE id::text=NEW.resource_id AND po_number='${number}') THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END $$`);
+    await pool.query(
+      `CREATE TRIGGER "${fn}" BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION "${fn}"()`,
+    );
+    try {
+      const result = await post(actorA.token, {
+        ...order(facilityA, 'rollback'),
+        supplierName: name,
+        items: [{ description: 'Synthetic item', quantity: '2', unit: 'box', unitPrice: '5.00' }],
+      });
+      expect(result.status).toBe(500);
+      expect(await supplierCount(tenantA, name)).toBe(0);
+      expect(
+        Number(
+          (await pool.query('SELECT count(*) FROM purchase_orders WHERE po_number=$1', [number]))
+            .rows[0].count,
+        ),
+      ).toBe(0);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS "${fn}" ON audit_logs`);
+      await pool.query(`DROP FUNCTION IF EXISTS "${fn}"()`);
+    }
   });
 
   it('does not duplicate a supplier or order on a repeated submission with the same PO number', async () => {

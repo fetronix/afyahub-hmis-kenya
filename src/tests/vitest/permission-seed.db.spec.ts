@@ -48,6 +48,9 @@ describeDb('permission seed plans missing rows without writing', () => {
   it('plans newly-created permission grants without performing writes', async () => {
     const out = run(['--dry-run']);
     expect(out).toContain('would create permission payment_hub.global.read');
+    expect(out).toContain('would create permission procurement.reject');
+    expect(out).not.toContain('would grant SUPER_ADMIN -> procurement.approve');
+    expect(out).not.toMatch(/would grant FACILITY_ADMIN\(\d+\) -> procurement\.reject/);
     expect(out).toContain('would grant SUPER_ADMIN -> payment_hub.global.read');
     expect(out).toMatch(/would grant FACILITY_ADMIN\(\d+\) -> payment_hub.catalogue.read/);
     expect(out).not.toMatch(
@@ -83,6 +86,10 @@ describeDb('permission seed plans missing rows without writing', () => {
       name: 'SUPER_ADMIN',
       code: 'payment_hub.transfers.initiate',
     });
+    const procurement = await testPool().query(
+      `SELECT r.name,p.code FROM "${schema}".role_permissions rp JOIN "${schema}".roles r ON r.id=rp.role_id JOIN "${schema}".permissions p ON p.id=rp.permission_id WHERE p.code IN ('procurement.approve','procurement.reject','procurement.complete','procurement.delete','procurement.update')`,
+    );
+    expect(procurement.rows).toEqual([]);
     expect(run(['--dry-run'])).toMatch(/Rows that would be written\s*:\s*0/);
   });
 });

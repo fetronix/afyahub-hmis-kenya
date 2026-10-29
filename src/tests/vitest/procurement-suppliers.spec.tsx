@@ -12,6 +12,12 @@ const mocks = vi.hoisted(() => ({
   context: {
     currentFacility: { id: 21, tenantId: 17 } as { id: number; tenantId: number } | null,
     currentUser: { name: 'Synthetic staff' },
+    authenticatedUser: {
+      id: 4,
+      tenantId: 17,
+      isSuperAdmin: false,
+      permissions: ['procurement.read', 'procurement.create', 'procurement.update'],
+    },
     refreshKey: 0,
   },
 }));
@@ -43,7 +49,11 @@ const another = { id: 13, tenantId: 17, name: 'Another Supplier', isActive: true
 const openModal = async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Generate Purchase Order' }));
   await waitFor(() => expect(screen.getByLabelText('Select Supplier *')).toBeEnabled());
-  const amount = screen.getByLabelText('Estimated Total Order Amount (KES) *');
+  fireEvent.change(screen.getByLabelText('Line 1 description *'), {
+    target: { value: 'Requested item' },
+  });
+  fireEvent.change(screen.getByLabelText('Line 1 unit *'), { target: { value: 'unit' } });
+  const amount = screen.getByLabelText('Line 1 unit price (KES) *');
   expect(amount).toHaveValue('');
   fireEvent.change(amount, { target: { value: '123.45' } });
 };
@@ -76,7 +86,9 @@ describe('create supplier purchase order', () => {
       screen.getByText(/supplier will be saved for reuse in this organisation/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/does not verify or approve/i)).toBeInTheDocument();
-    expect(screen.getByText(/item descriptions are not currently saved/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/purpose, lines, quantities and quoted amounts are saved/i),
+    ).toBeInTheDocument();
     enterName('  New Medical Supplies  ');
     submit();
     await waitFor(() => expect(mocks.createPurchaseOrder).toHaveBeenCalledTimes(1));
@@ -89,6 +101,7 @@ describe('create supplier purchase order', () => {
       totalAmount: '123.45',
       status: 'Pending Approval',
       orderedBy: 'Synthetic staff',
+      items: [{ description: 'Requested item', quantity: '1', unit: 'unit', unitPrice: '123.45' }],
     });
     expect(payload).not.toHaveProperty('supplierId');
     expect(payload).not.toHaveProperty('phone');
@@ -150,13 +163,13 @@ describe('create supplier purchase order', () => {
   it('requires a user-entered amount instead of using a sample estimate', async () => {
     render(<ProcurementModule />);
     await openModal();
-    fireEvent.change(screen.getByLabelText('Estimated Total Order Amount (KES) *'), {
+    fireEvent.change(screen.getByLabelText('Line 1 unit price (KES) *'), {
       target: { value: '' },
     });
     enterName('New supplier');
     submit();
     expect(mocks.createPurchaseOrder).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Estimated Total Order Amount (KES) *')).toBeInvalid();
+    expect(screen.getByLabelText('Line 1 unit price (KES) *')).toBeInvalid();
   });
 
   it('offers a new name when suppliers exist and rejects a whitespace-only name', async () => {
@@ -366,7 +379,7 @@ describe('create supplier purchase order', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('Select Supplier *')).toHaveValue(String(another.id));
     expect(screen.queryByLabelText('New supplier name *')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Estimated Total Order Amount (KES) *')).toHaveValue('');
+    expect(screen.getByLabelText('Line 1 unit price (KES) *')).toHaveValue('');
     expect(mocks.showToast).toHaveBeenCalledWith(
       'Purchase order submitted for the facility selected when you started.',
     );

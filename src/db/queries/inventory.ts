@@ -8,6 +8,15 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
+import {
+  calculateOrder,
+  calculateOrderItems,
+  hasControlCharacters,
+  OrderInputError,
+  optionalOrderText,
+  orderDate,
+  validateAmount,
+} from '../../procurement/order-items.ts';
 
 import { moduleLogger } from '../../logging/logger.ts';
 
@@ -82,18 +91,18 @@ export async function getSuppliers(tenantId?: number) {
   }
 }
 
-export async function getPurchaseOrders(facilityId?: number) {
+export async function getPurchaseOrders(facilityId: number, tenantId: number) {
   try {
-    if (facilityId) {
-      return await db
-        .select()
-        .from(schema.purchaseOrders)
-        .where(eq(schema.purchaseOrders.facilityId, facilityId))
-        .orderBy(desc(schema.purchaseOrders.createdAt));
-    }
+    // Check both dimensions even if legacy data contains inconsistent references.
     return await db
       .select()
       .from(schema.purchaseOrders)
+      .where(
+        and(
+          eq(schema.purchaseOrders.facilityId, facilityId),
+          eq(schema.purchaseOrders.tenantId, tenantId),
+        ),
+      )
       .orderBy(desc(schema.purchaseOrders.createdAt));
   } catch (error) {
     log.error({ err: error }, 'purchase_orders.fetch_failed');
@@ -106,6 +115,7 @@ export type PurchaseOrderCreate = Omit<typeof schema.purchaseOrders.$inferInsert
   supplierId?: number | null;
   supplierName?: string | null;
   confirmDuplicateSupplier?: boolean;
+  items?: unknown;
 };
 
 export class PurchaseOrderError extends Error {
@@ -134,7 +144,36 @@ function isPurchaseOrderNumberConflict(error: unknown): boolean {
 }
 
 export async function createPurchaseOrder(data: PurchaseOrderCreate, actorUserId?: number) {
-  const { supplierId, supplierName, confirmDuplicateSupplier, ...order } = data;
+  const { supplierId, supplierName, confirmDuplicateSupplier, items: rawItems, ...order } = data;
+  let items: ReturnType<typeof calculateOrderItems>['items'] = [];
+  try {
+    // Legacy clients may still send an amount-only order. The new UI always sends lines.
+    const calculated = rawItems === undefined ? null : calculateOrder(rawItems, order);
+    items = calculated?.items ?? [];
+    order.totalAmount = calculated?.total ?? validateAmount(order.totalAmount);
+    order.subtotalAmount = calculated?.subtotal ?? null;
+    if (calculated) {
+      order.taxAmount = calculated.taxAmount;
+      order.shippingAmount = calculated.shippingAmount;
+      order.discountAmount = calculated.discountAmount;
+    } else if (
+      order.taxAmount !== undefined ||
+      order.shippingAmount !== undefined ||
+      order.discountAmount !== undefined
+    ) {
+      throw new OrderInputError('Adjustments require itemized order lines.');
+    }
+    order.deliveryAddress = optionalOrderText(order.deliveryAddress, 'Delivery address', 1000);
+    order.paymentTerms = optionalOrderText(order.paymentTerms, 'Payment terms', 500);
+    order.description = optionalOrderText(order.description, 'Description', 2000);
+    order.notes = optionalOrderText(order.notes, 'Notes', 2000);
+    order.expectedDeliveryDate = orderDate(order.expectedDeliveryDate);
+    order.createdByUserId = actorUserId ?? null;
+  } catch (error) {
+    if (error instanceof OrderInputError)
+      throw new PurchaseOrderError(400, 'INVALID_PURCHASE_ORDER', error.message);
+    throw error;
+  }
   const hasId = supplierId !== undefined && supplierId !== null;
   const hasName = supplierName !== undefined && supplierName !== null;
 
@@ -153,7 +192,12 @@ export async function createPurchaseOrder(data: PurchaseOrderCreate, actorUserId
       'Invalid duplicate supplier confirmation.',
     );
   }
-  if (typeof order.poNumber !== 'string' || !order.poNumber.trim()) {
+  if (
+    typeof order.poNumber !== 'string' ||
+    !order.poNumber.trim() ||
+    order.poNumber.trim().length > 100 ||
+    hasControlCharacters(order.poNumber)
+  ) {
     throw new PurchaseOrderError(
       400,
       'INVALID_PURCHASE_ORDER',
@@ -161,6 +205,7 @@ export async function createPurchaseOrder(data: PurchaseOrderCreate, actorUserId
     );
   }
 
+  order.poNumber = order.poNumber.trim();
   let existingId: number | undefined;
   let newName: string | undefined;
   if (hasId) {
@@ -255,9 +300,11 @@ export async function createPurchaseOrder(data: PurchaseOrderCreate, actorUserId
             and(
               eq(schema.suppliers.id, existingId!),
               eq(schema.suppliers.tenantId, order.tenantId),
+              eq(schema.suppliers.isActive, true),
             ),
           )
-          .limit(1);
+          .limit(1)
+          .for('update');
         if (!supplier) {
           // Do not disclose whether an ID exists outside the tenant.
           throw new PurchaseOrderError(404, 'SUPPLIER_NOT_FOUND', 'Supplier not found.');
@@ -269,6 +316,32 @@ export async function createPurchaseOrder(data: PurchaseOrderCreate, actorUserId
         .insert(schema.purchaseOrders)
         .values({ ...order, supplierId: chosenSupplierId })
         .returning();
+
+      if (items.length) {
+        await tx.insert(schema.purchaseOrderItems).values(
+          items.map((item, index) => ({
+            purchaseOrderId: po.id,
+            lineNumber: index + 1,
+            ...item,
+          })),
+        );
+      }
+      await tx.insert(schema.purchaseOrderEvents).values({
+        purchaseOrderId: po.id,
+        eventType: 'CREATED',
+        toStatus: 'Pending Approval',
+        actorUserId: actorUserId ?? null,
+        details: { itemized: items.length > 0 },
+      });
+      await tx.insert(schema.auditLogs).values({
+        tenantId: order.tenantId,
+        facilityId: order.facilityId,
+        userId: actorUserId === undefined ? null : String(actorUserId),
+        action: 'CREATE',
+        resource: 'PurchaseOrder',
+        resourceId: String(po.id),
+        details: 'Purchase order created pending approval.',
+      });
 
       if (newSupplierId !== undefined) {
         await tx.insert(schema.auditLogs).values({

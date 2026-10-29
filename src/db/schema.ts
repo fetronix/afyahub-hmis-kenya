@@ -274,6 +274,8 @@ export {
   pharmacyDispensations,
   suppliers,
   purchaseOrders,
+  purchaseOrderItems,
+  purchaseOrderEvents,
 } from './schema/inventory.ts';
 
 import {

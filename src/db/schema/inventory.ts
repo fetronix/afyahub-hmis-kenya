@@ -17,10 +17,16 @@ import {
   timestamp,
   boolean,
   numeric,
+  date,
+  jsonb,
+  index,
+  check,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
+import { sql } from 'drizzle-orm';
 import { facilities, tenants } from './tenancy.ts';
+import { users } from './auth.ts';
 
 import { patients } from './patients.ts';
 
@@ -172,6 +178,8 @@ export const suppliers = pgTable('suppliers', {
 
   isActive: boolean('is_active').default(true),
 
+  revision: integer('revision').default(1).notNull(),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
 
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -209,7 +217,65 @@ export const purchaseOrders = pgTable('purchase_orders', {
 
   approvedBy: text('approved_by'),
 
+  description: text('description'),
+  expectedDeliveryDate: date('expected_delivery_date'),
+  deliveryAddress: text('delivery_address'),
+  paymentTerms: text('payment_terms'),
+  subtotalAmount: numeric('subtotal_amount', { precision: 12, scale: 2 }),
+  taxAmount: numeric('tax_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+  shippingAmount: numeric('shipping_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+  discountAmount: numeric('discount_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+  notes: text('notes'),
+  createdByUserId: integer('created_by_user_id').references(() => users.id),
+  revision: integer('revision').default(1).notNull(),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
 
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+/** Line revisions are retained when a pending order is edited. */
+export const purchaseOrderItems = pgTable(
+  'purchase_order_items',
+  {
+    id: serial('id').primaryKey(),
+    purchaseOrderId: integer('purchase_order_id')
+      .references(() => purchaseOrders.id)
+      .notNull(),
+    lineNumber: integer('line_number').notNull(),
+    description: text('description').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unit: text('unit').notNull(),
+    unitPrice: numeric('unit_price', { precision: 12, scale: 2 }).notNull(),
+    lineTotal: numeric('line_total', { precision: 12, scale: 2 }).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orderIdx: index('purchase_order_items_order_idx').on(table.purchaseOrderId),
+    quantityCheck: check('purchase_order_items_quantity_chk', sql`${table.quantity} > 0`),
+    priceCheck: check(
+      'purchase_order_items_price_chk',
+      sql`${table.unitPrice} >= 0 AND ${table.lineTotal} >= 0`,
+    ),
+  }),
+);
+
+/** Append-only workflow and edit history, with the authenticated actor. */
+export const purchaseOrderEvents = pgTable(
+  'purchase_order_events',
+  {
+    id: serial('id').primaryKey(),
+    purchaseOrderId: integer('purchase_order_id')
+      .references(() => purchaseOrders.id)
+      .notNull(),
+    eventType: text('event_type').notNull(),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status'),
+    actorUserId: integer('actor_user_id').references(() => users.id),
+    note: text('note'),
+    details: jsonb('details').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({ orderIdx: index('purchase_order_events_order_idx').on(table.purchaseOrderId) }),
+);

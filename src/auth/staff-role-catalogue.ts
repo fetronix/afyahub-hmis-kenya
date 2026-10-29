@@ -103,7 +103,13 @@ export const STAFF_ROLE_CATALOGUE = [
   {
     name: 'INVENTORY_OFFICER',
     description: 'Manages inventory and procurement activities.',
-    permissions: ['inventory.manage', 'inventory.read', 'procurement.create', 'procurement.read'],
+    permissions: [
+      'inventory.manage',
+      'inventory.read',
+      'procurement.create',
+      'procurement.read',
+      'procurement.update',
+    ],
   },
   {
     name: 'LABORATORY_TECHNICIAN',
