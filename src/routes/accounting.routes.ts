@@ -3,6 +3,8 @@ import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import * as queries from '../db/queries.ts';
+import { facilityActionBodySchema } from '../validation/schemas/index.ts';
+import { validateBody } from '../validation/validate.ts';
 import {
   AccountingIntegrityError,
   closeFinancialPeriodScoped,
@@ -245,6 +247,7 @@ router.post(
 router.post(
   '/expenses/:id/post',
   requirePermission('accounting.journals.post'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await postApprovedExpenseScoped(await scoped(req), Number(req.params.id));

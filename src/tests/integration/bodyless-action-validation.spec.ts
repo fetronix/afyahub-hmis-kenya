@@ -25,6 +25,7 @@ vi.mock('../../insurance/hub/guards.ts', async (original) => ({
 import shaRoutes from '../../routes/sha-eclaims.routes.ts';
 import privateInsuranceRoutes from '../../routes/private-insurance.routes.ts';
 import dialysisRoutes from '../../routes/dialysis.routes.ts';
+import accountingRoutes from '../../routes/accounting.routes.ts';
 import { facilityActionBodySchema } from '../../validation/schemas/index.ts';
 
 describe('bodyless action boundaries', () => {
@@ -43,6 +44,7 @@ describe('bodyless action boundaries', () => {
     app.use('/api/insurance/sha', shaRoutes);
     app.use('/api/insurance', privateInsuranceRoutes);
     app.use('/api/dialysis', dialysisRoutes);
+    app.use('/api/accounting', accountingRoutes);
     ({ baseUrl, close } = await startTestServer(app));
   });
   afterAll(async () => {
@@ -50,6 +52,16 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/expenses/:id/post rejects malformed input before the handler', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/accounting/expenses/1/post', {
+      body: { facilityId: -1 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
   });
 
   it('POST /api/dialysis/schedules/:id/start rejects malformed input before the handler', async () => {
