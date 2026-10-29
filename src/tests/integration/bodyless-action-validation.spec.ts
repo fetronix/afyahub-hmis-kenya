@@ -31,6 +31,7 @@ import {
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
   facilityActionBodySchema,
+  postJournalBodySchema,
 } from '../../validation/schemas/index.ts';
 
 describe('bodyless action boundaries', () => {
@@ -57,6 +58,36 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/journals rejects unbalanced lines before scope lookup', async () => {
+    const body = {
+      entryDate: '2027-01-01',
+      description: 'Synthetic journal',
+      lines: [
+        { accountId: 1, debitKes: '10.00' },
+        { accountId: 2, creditKes: '10.00' },
+      ],
+    };
+    expect(postJournalBodySchema.safeParse(body).success).toBe(true); // Key may be supplied in a header.
+    for (const invalid of [
+      {},
+      {
+        ...body,
+        lines: [
+          { accountId: 1, debitKes: '10.00' },
+          { accountId: 2, creditKes: '9.00' },
+        ],
+      },
+      { ...body, entryDate: '2027-02-30' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/journals', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/periods/:id/close rejects missing closing notes', async () => {

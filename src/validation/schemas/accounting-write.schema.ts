@@ -1,8 +1,24 @@
 import { z } from 'zod';
 import { isoDateStringSchema, positiveIntField } from './common.schema.ts';
+import { validateBalancedJournalLines } from '../../accounting/accounting.service.ts';
 
 const facilityId = positiveIntField('facilityId must be a positive integer.').nullable().optional();
 const text = (maximum: number) => z.string().trim().min(1).max(maximum);
+
+export const postJournalBodySchema = z.object({
+  facilityId,
+  entryDate: isoDateStringSchema(),
+  description: text(500),
+  // The key may instead be supplied in the Idempotency-Key header; the service enforces it.
+  idempotencyKey: text(128).optional(),
+  lines: z.unknown().superRefine((value, ctx) => {
+    try {
+      validateBalancedJournalLines(value);
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'Journal lines must be valid and balanced.' });
+    }
+  }),
+});
 
 export const closeFinancialPeriodBodySchema = z.object({ facilityId, notes: text(1000) });
 

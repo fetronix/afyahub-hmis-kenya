@@ -8,6 +8,7 @@ import {
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
   facilityActionBodySchema,
+  postJournalBodySchema,
 } from '../validation/schemas/index.ts';
 import { validateBody } from '../validation/validate.ts';
 import {
@@ -149,6 +150,7 @@ router.post(
 router.post(
   '/journals',
   requirePermission('accounting.journals.post'),
+  validateBody(postJournalBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await postJournalScoped(await scoped(req), {
