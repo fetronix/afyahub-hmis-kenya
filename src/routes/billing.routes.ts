@@ -16,6 +16,8 @@ import { handleInpatientError, handleScopeError } from './shared/errors.ts';
 import { requireAuthContext } from './shared/request.ts';
 import { and, eq } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import { voidInvoiceBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -209,20 +211,13 @@ router.get(
 router.post(
   '/api/invoices/:id/void',
   requirePermission('billing.update'),
+  validateBody(voidInvoiceBodySchema),
   async (req: AuthRequest, res: Response) => {
     const context = requireAuthContext(req, res);
 
     if (!context) return;
 
-    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
-
-    if (!reason) {
-      return res.status(400).json({
-        success: false,
-        error: 'VOID_REASON_REQUIRED',
-        message: 'A reason is required to void an invoice.',
-      });
-    }
+    const { reason } = getValidatedBody<{ reason: string }>(req);
 
     try {
       const invoice = await queries.voidInvoiceScoped(context, Number(req.params.id), reason);
