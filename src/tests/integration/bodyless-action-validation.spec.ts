@@ -16,12 +16,14 @@ vi.mock('../../auth/authorization.middleware.ts', async (original) => ({
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   requireAnyPermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
+// Isolate the route middleware. In the full app, payer policy guards run first and may query the database.
 vi.mock('../../insurance/hub/guards.ts', async (original) => ({
   ...(await original<typeof import('../../insurance/hub/guards.ts')>()),
   shaPolicyGuard: (_req: unknown, _res: unknown, next: () => void) => next(),
   privatePolicyGuard: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 import shaRoutes from '../../routes/sha-eclaims.routes.ts';
+import privateInsuranceRoutes from '../../routes/private-insurance.routes.ts';
 import { facilityActionBodySchema } from '../../validation/schemas/index.ts';
 
 describe('bodyless action boundaries', () => {
@@ -38,6 +40,7 @@ describe('bodyless action boundaries', () => {
       next();
     });
     app.use('/api/insurance/sha', shaRoutes);
+    app.use('/api/insurance', privateInsuranceRoutes);
     ({ baseUrl, close } = await startTestServer(app));
   });
   afterAll(async () => {
@@ -45,6 +48,16 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/insurance/claims/:id/validate rejects a non-object body at the route', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/insurance/claims/1/validate', {
+      body: [],
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
   });
 
   it('POST /api/insurance/sha/claims/:id/submit rejects invalid scope input before database or external access', async () => {
