@@ -7,6 +7,7 @@ const queries = vi.hoisted(() => ({
   addLabResult: vi.fn(),
   createLabOrderBatch: vi.fn(),
   createLabOrder: vi.fn(),
+  verifyLabResult: vi.fn(),
 }));
 vi.mock('../../billing/service-charges.ts', async (original) => ({
   ...(await original<typeof import('../../billing/service-charges.ts')>()),
@@ -25,7 +26,10 @@ describe('laboratory write body validation', () => {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
-      Object.assign(req, { authContext: { tenantId: 1, facilityId: 10, userId: 2 } });
+      Object.assign(req, {
+        authContext: { tenantId: 1, facilityId: 10, userId: 2 },
+        user: { id: 2, fullName: 'Synthetic verifier', username: 'synthetic' },
+      });
       next();
     });
     app.use(laboratoryRoutes);
@@ -132,6 +136,26 @@ describe('laboratory write body validation', () => {
         parameterName: 'Parameter',
         measuredValue: '4',
       }),
+    );
+  });
+
+  it('POST /api/lab-results/:id/verify rejects malformed bodies before verification', async () => {
+    for (const body of [[1], { facilityId: -1 }]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/lab-results/1/verify', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(queries.verifyLabResult).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/lab-results/:id/verify still allows an empty body', async () => {
+    queries.verifyLabResult.mockResolvedValue({ id: 1 });
+    const response = await httpJson(baseUrl, 'POST', '/api/lab-results/1/verify');
+    expect(response.status).toBe(200);
+    expect(queries.verifyLabResult).toHaveBeenCalledWith(
+      expect.any(Object),
+      1,
+      'Synthetic verifier',
     );
   });
 

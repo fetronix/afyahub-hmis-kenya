@@ -62,6 +62,10 @@ export const createLabResultBodySchema = z.object({
 });
 
 /** Collection status only. This endpoint cannot publish or verify a result. */
+export const verifyLabResultBodySchema = z.object({
+  facilityId: optionalId('facilityId'),
+});
+
 export const updateLabOrderStatusBodySchema = z.object({
   status: z.enum(['Ordered', 'Sample Collected']),
   accessionNumber: z.string().trim().max(200).optional(),

@@ -22,6 +22,7 @@ import {
   createLabOrderBodySchema,
   createLabResultBodySchema,
   updateLabOrderStatusBodySchema,
+  verifyLabResultBodySchema,
 } from '../validation/schemas/index.ts';
 import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
@@ -273,6 +274,7 @@ router.post(
 router.post(
   '/api/lab-results/:id/verify',
   requirePermission('laboratory.results.verify'),
+  validateBody(verifyLabResultBodySchema),
   async (req: AuthRequest, res) => {
     try {
       if (!req.authContext || !req.user) {
