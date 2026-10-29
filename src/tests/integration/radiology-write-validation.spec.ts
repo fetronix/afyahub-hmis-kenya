@@ -53,6 +53,35 @@ describe('radiology write body validation', () => {
     expect(queries.getFacilityByIdScoped).not.toHaveBeenCalled();
   });
 
+  it('PUT /api/radiology-orders/:id/report rejects blank or malformed reports before scope lookup', async () => {
+    for (const body of [
+      {},
+      { findings: '', impression: '  ', reportedBy: 'Clinician' },
+      { findings: 5, reportedBy: 'Clinician' },
+    ]) {
+      const response = await httpJson(baseUrl, 'PUT', '/api/radiology-orders/1/report', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(queries.getFacilityByIdScoped).not.toHaveBeenCalled();
+    expect(queries.updateRadiologyReport).not.toHaveBeenCalled();
+  });
+
+  it('PUT /api/radiology-orders/:id/report forwards only supplied findings after scope check', async () => {
+    queries.getRadiologyOrderScoped.mockResolvedValue({ id: 1 });
+    queries.updateRadiologyReport.mockResolvedValue({ id: 1 });
+    const response = await httpJson(baseUrl, 'PUT', '/api/radiology-orders/1/report', {
+      body: { findings: ' Actual findings ', reportedBy: ' Clinician ' },
+    });
+    expect(response.status).toBe(200);
+    expect(queries.updateRadiologyReport).toHaveBeenCalledWith(
+      1,
+      'Actual findings',
+      undefined,
+      'Clinician',
+    );
+  });
+
   it('POST /api/radiology-orders uses validated fields and the resolved facility', async () => {
     queries.createRadiologyOrder.mockResolvedValue({});
     const response = await httpJson(baseUrl, 'POST', '/api/radiology-orders', {
