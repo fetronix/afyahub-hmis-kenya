@@ -30,6 +30,7 @@ import {
   closeFinancialPeriodBodySchema,
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
+  createExpenseRequestBodySchema,
   facilityActionBodySchema,
   postJournalBodySchema,
   reverseJournalBodySchema,
@@ -59,6 +60,35 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/expenses rejects malformed expense requests before scope lookup', async () => {
+    const body = {
+      expenseAccountId: 1,
+      payableAccountId: 2,
+      amountKes: '10.00',
+      incurredDate: '2027-01-01',
+      payeeName: 'Synthetic',
+      category: 'Other',
+      description: 'Recorded expense',
+    };
+    expect(createExpenseRequestBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [
+      {},
+      { ...body, amountKes: '-1' },
+      { ...body, payableAccountId: 1 },
+      {
+        ...body,
+        supportingDocuments: [{ name: 'Document', storageReference: 'https://example.test/file' }],
+      },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/expenses', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/journals/:id/reverse rejects invalid dates or reasons before scope lookup', async () => {

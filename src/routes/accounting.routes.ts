@@ -7,6 +7,7 @@ import {
   closeFinancialPeriodBodySchema,
   createAccountBodySchema,
   createFinancialPeriodBodySchema,
+  createExpenseRequestBodySchema,
   facilityActionBodySchema,
   postJournalBodySchema,
   reverseJournalBodySchema,
@@ -226,6 +227,7 @@ router.get('/expenses', requirePermission('accounting.read'), async (req: AuthRe
 router.post(
   '/expenses',
   requirePermission('accounting.expenses.request'),
+  validateBody(createExpenseRequestBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await createExpenseRequestScoped(await scoped(req), {

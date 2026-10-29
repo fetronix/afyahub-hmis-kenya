@@ -1,9 +1,47 @@
 import { z } from 'zod';
 import { isoDateStringSchema, positiveIntField } from './common.schema.ts';
-import { validateBalancedJournalLines } from '../../accounting/accounting.service.ts';
+import {
+  parseKesToCents,
+  validateBalancedJournalLines,
+} from '../../accounting/accounting.service.ts';
 
 const facilityId = positiveIntField('facilityId must be a positive integer.').nullable().optional();
 const text = (maximum: number) => z.string().trim().min(1).max(maximum);
+
+export const createExpenseRequestBodySchema = z
+  .object({
+    facilityId,
+    expenseAccountId: positiveIntField('A valid expense account is required.'),
+    payableAccountId: positiveIntField('A valid payable account is required.'),
+    amountKes: z.unknown().refine((value) => {
+      try {
+        return parseKesToCents(value) > 0n;
+      } catch {
+        return false;
+      }
+    }, 'Expense amount must be a positive KES amount.'),
+    incurredDate: isoDateStringSchema(),
+    idempotencyKey: text(128).optional(),
+    payeeName: text(160),
+    category: text(80),
+    description: text(500),
+    serviceLine: z.string().trim().max(80).nullable().optional(),
+    supportingDocuments: z
+      .array(
+        z.object({
+          name: text(160),
+          storageReference: text(300)
+            .regex(/^[A-Za-z0-9][A-Za-z0-9._/:-]*$/)
+            .refine((ref) => !/^https?:/i.test(ref)),
+        }),
+      )
+      .max(20)
+      .nullable()
+      .optional(),
+  })
+  .refine((body) => body.expenseAccountId !== body.payableAccountId, {
+    message: 'Expense and payable accounts must be distinct.',
+  });
 
 export const reverseJournalBodySchema = z.object({
   facilityId,
