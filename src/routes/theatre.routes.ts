@@ -12,7 +12,10 @@ import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
-import { createTheatreCaseBodySchema } from '../validation/schemas/index.ts';
+import {
+  createTheatreCaseBodySchema,
+  updateTheatreCaseBodySchema,
+} from '../validation/schemas/index.ts';
 import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
@@ -74,7 +77,9 @@ router.post(
 router.put(
   '/api/theatre-cases/:id',
   requirePermission('clinical.update'),
+  validateBody(updateTheatreCaseBodySchema),
   async (req: AuthRequest, res: Response) => {
+    const body = getValidatedBody<Record<string, unknown>>(req);
     const caseId = Number(req.params.id);
 
     if (!Number.isSafeInteger(caseId) || caseId <= 0) {
@@ -86,11 +91,7 @@ router.put(
       return;
     }
 
-    const facility = await requireScopedFacility(
-      req,
-      res,
-      req.query.facilityId ?? (req.body ?? {}).facilityId,
-    );
+    const facility = await requireScopedFacility(req, res, req.query.facilityId ?? body.facilityId);
 
     if (!facility) return;
 
@@ -106,8 +107,6 @@ router.put(
 
         return;
       }
-
-      const body = (req.body ?? {}) as Record<string, unknown>;
 
       const payload = {
         ...body,

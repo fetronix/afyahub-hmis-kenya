@@ -59,6 +59,35 @@ describe('theatre write body validation', () => {
     expect(queries.getFacilityByIdScoped).not.toHaveBeenCalled();
   });
 
+  it('PUT /api/theatre-cases/:id rejects invalid or empty changes before scope lookup', async () => {
+    for (const body of [
+      {},
+      { status: 'invented' },
+      { preOpChecklist: { confirmed: 'yes' } },
+      { id: 99 },
+    ]) {
+      const response = await httpJson(baseUrl, 'PUT', '/api/theatre-cases/1', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(queries.getFacilityByIdScoped).not.toHaveBeenCalled();
+    expect(queries.updateTheatreCase).not.toHaveBeenCalled();
+  });
+
+  it('PUT /api/theatre-cases/:id checks scope and does not allow identity reassignment', async () => {
+    queries.getTheatreCaseScoped.mockResolvedValue({ id: 1 });
+    queries.updateTheatreCase.mockResolvedValue({ id: 1 });
+    const response = await httpJson(baseUrl, 'PUT', '/api/theatre-cases/1', {
+      body: { status: 'Recovery', patientId: 99, id: 99 },
+    });
+    expect(response.status).toBe(200);
+    expect(queries.updateTheatreCase).toHaveBeenCalledWith(1, {
+      status: 'Recovery',
+      facilityId: 10,
+      tenantId: 1,
+    });
+  });
+
   it('POST /api/theatre-cases uses only submitted fields and the resolved facility', async () => {
     queries.createTheatreCase.mockResolvedValue({ id: 1 });
     const response = await httpJson(baseUrl, 'POST', '/api/theatre-cases', {
