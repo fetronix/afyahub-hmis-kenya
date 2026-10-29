@@ -9,3 +9,4 @@ export * from './inventory-write.schema.ts';
 export * from './queue.schema.ts';
 export * from './laboratory.schema.ts';
 export * from './medications.schema.ts';
+export * from './radiology.schema.ts';

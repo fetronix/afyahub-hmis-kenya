@@ -15,6 +15,8 @@ import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import { createRadiologyOrderBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -44,9 +46,10 @@ router.get(
 router.post(
   '/api/radiology-orders',
   requirePermission('clinical.create'),
+  validateBody(createRadiologyOrderBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
-      const body = (req.body ?? {}) as Record<string, unknown>;
+      const body = getValidatedBody<Record<string, unknown>>(req);
 
       const facility = await requireScopedFacility(
         req,
