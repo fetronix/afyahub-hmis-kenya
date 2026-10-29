@@ -1,8 +1,20 @@
 import { z } from 'zod';
-import { positiveIntField } from './common.schema.ts';
+import { isoDateStringSchema, positiveIntField } from './common.schema.ts';
 
 const facilityId = positiveIntField('facilityId must be a positive integer.').nullable().optional();
 const text = (maximum: number) => z.string().trim().min(1).max(maximum);
+
+export const createFinancialPeriodBodySchema = z
+  .object({
+    facilityId,
+    periodCode: text(40),
+    name: text(160),
+    startDate: isoDateStringSchema(),
+    endDate: isoDateStringSchema(),
+  })
+  .refine((body) => body.startDate <= body.endDate, {
+    message: 'Period start must not be after its end.',
+  });
 
 export const createAccountBodySchema = z.object({
   facilityId,

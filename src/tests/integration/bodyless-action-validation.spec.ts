@@ -28,6 +28,7 @@ import dialysisRoutes from '../../routes/dialysis.routes.ts';
 import accountingRoutes from '../../routes/accounting.routes.ts';
 import {
   createAccountBodySchema,
+  createFinancialPeriodBodySchema,
   facilityActionBodySchema,
 } from '../../validation/schemas/index.ts';
 
@@ -55,6 +56,28 @@ describe('bodyless action boundaries', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/periods rejects invalid dates before scope lookup', async () => {
+    const body = {
+      periodCode: '2027-01',
+      name: 'Synthetic',
+      startDate: '2027-01-01',
+      endDate: '2027-01-31',
+    };
+    expect(createFinancialPeriodBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [
+      {},
+      { ...body, startDate: '2027-02-30' },
+      { ...body, startDate: '2027-02-01' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/periods', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
   });
 
   it('POST /api/accounting/accounts rejects invalid account payloads before scope lookup', async () => {
