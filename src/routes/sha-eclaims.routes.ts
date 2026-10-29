@@ -1060,6 +1060,7 @@ router.post(
 router.post(
   '/claims/:claimId/submit',
   requirePermission('insurance.sha.claims.submit'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);

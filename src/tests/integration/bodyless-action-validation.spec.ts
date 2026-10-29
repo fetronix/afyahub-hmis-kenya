@@ -47,6 +47,16 @@ describe('bodyless action boundaries', () => {
     vi.clearAllMocks();
   });
 
+  it('POST /api/insurance/sha/claims/:id/submit rejects invalid scope input before database or external access', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/insurance/sha/claims/1/submit', {
+      body: { facilityId: -1 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+
   it('POST /api/insurance/sha/claims/:id/validate rejects invalid scope input before database access', async () => {
     const response = await httpJson(baseUrl, 'POST', '/api/insurance/sha/claims/1/validate', {
       body: { facilityId: -1 },
