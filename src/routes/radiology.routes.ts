@@ -15,6 +15,11 @@ import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import {
+  createRadiologyOrderBodySchema,
+  radiologyReportBodySchema,
+} from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -44,9 +49,10 @@ router.get(
 router.post(
   '/api/radiology-orders',
   requirePermission('clinical.create'),
+  validateBody(createRadiologyOrderBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
-      const body = (req.body ?? {}) as Record<string, unknown>;
+      const body = getValidatedBody<Record<string, unknown>>(req);
 
       const facility = await requireScopedFacility(
         req,
@@ -96,7 +102,14 @@ router.post(
 router.put(
   '/api/radiology-orders/:id/report',
   requireAnyPermission('clinical.update', 'laboratory.results.enter'),
+  validateBody(radiologyReportBodySchema),
   async (req: AuthRequest, res: Response) => {
+    const body = getValidatedBody<{
+      facilityId?: number | null;
+      findings?: string;
+      impression?: string;
+      reportedBy: string;
+    }>(req);
     const orderId = Number(req.params.id);
 
     if (!Number.isSafeInteger(orderId) || orderId <= 0) {
@@ -108,11 +121,7 @@ router.put(
       return;
     }
 
-    const facility = await requireScopedFacility(
-      req,
-      res,
-      req.query.facilityId ?? (req.body ?? {}).facilityId,
-    );
+    const facility = await requireScopedFacility(req, res, req.query.facilityId ?? body.facilityId);
 
     if (!facility) return;
 
@@ -129,7 +138,7 @@ router.put(
         return;
       }
 
-      const { findings, impression, reportedBy } = req.body;
+      const { findings, impression, reportedBy } = body;
 
       const order = await queries.updateRadiologyReport(orderId, findings, impression, reportedBy);
 

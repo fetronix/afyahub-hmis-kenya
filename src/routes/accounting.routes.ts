@@ -4,6 +4,18 @@ import { requirePermission } from '../auth/authorization.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import * as queries from '../db/queries.ts';
 import {
+  closeFinancialPeriodBodySchema,
+  createAccountBodySchema,
+  createBankAccountBodySchema,
+  createFinancialPeriodBodySchema,
+  createExpenseRequestBodySchema,
+  decideExpenseRequestBodySchema,
+  facilityActionBodySchema,
+  postJournalBodySchema,
+  reverseJournalBodySchema,
+} from '../validation/schemas/index.ts';
+import { validateBody } from '../validation/validate.ts';
+import {
   AccountingIntegrityError,
   closeFinancialPeriodScoped,
   createAccountScoped,
@@ -90,6 +102,7 @@ router.get('/overview', requirePermission('accounting.read'), async (req: AuthRe
 router.post(
   '/accounts',
   requirePermission('accounting.coa.manage'),
+  validateBody(createAccountBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.status(201).json({
@@ -105,6 +118,7 @@ router.post(
 router.post(
   '/periods',
   requirePermission('accounting.coa.manage'),
+  validateBody(createFinancialPeriodBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.status(201).json({
@@ -120,6 +134,7 @@ router.post(
 router.post(
   '/periods/:id/close',
   requirePermission('accounting.periods.close'),
+  validateBody(closeFinancialPeriodBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.json({
@@ -139,6 +154,7 @@ router.post(
 router.post(
   '/journals',
   requirePermission('accounting.journals.post'),
+  validateBody(postJournalBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await postJournalScoped(await scoped(req), {
@@ -155,6 +171,7 @@ router.post(
 router.post(
   '/journals/:id/reverse',
   requirePermission('accounting.journals.post'),
+  validateBody(reverseJournalBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await reverseJournalScoped(await scoped(req), Number(req.params.id), {
@@ -212,6 +229,7 @@ router.get('/expenses', requirePermission('accounting.read'), async (req: AuthRe
 router.post(
   '/expenses',
   requirePermission('accounting.expenses.request'),
+  validateBody(createExpenseRequestBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await createExpenseRequestScoped(await scoped(req), {
@@ -227,6 +245,7 @@ router.post(
 router.post(
   '/expenses/:id/decision',
   requirePermission('accounting.expenses.approve'),
+  validateBody(decideExpenseRequestBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.json({
@@ -245,6 +264,7 @@ router.post(
 router.post(
   '/expenses/:id/post',
   requirePermission('accounting.journals.post'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await postApprovedExpenseScoped(await scoped(req), Number(req.params.id));
@@ -265,6 +285,7 @@ router.get('/bank', requirePermission('accounting.read'), async (req: AuthReques
 router.post(
   '/bank/accounts',
   requirePermission('accounting.bank.manage'),
+  validateBody(createBankAccountBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.status(201).json({

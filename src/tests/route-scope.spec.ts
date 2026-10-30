@@ -96,11 +96,19 @@ describe('Route scope and claim integrity — regression tests', () => {
     ]) {
       const block = routeBlock(marker, 1600);
 
+      const delegatedProcurement = marker.includes('/api/purchase-orders');
       expect(
-        block.includes('requireScopedFacility'),
+        delegatedProcurement
+          ? block.includes('scope(req, res')
+          : block.includes('requireScopedFacility'),
         `${marker.split('\n')[1]} resolves its facility from the authenticated scope`,
       ).toBe(true);
     }
+
+    const procurement = source('src/routes/procurement.routes.ts');
+    expect(procurement).toContain('await requireScopedFacility(req, res, rawFacilityId)');
+    expect(procurement).toContain('tenantId: facility.tenantId');
+    expect(procurement).toContain('facilityId: facility.id');
 
     /* The helper moved to src/routes/shared/scoping.ts; check it there. */
     const scoping = source('src/routes/shared/scoping.ts');
@@ -126,7 +134,11 @@ describe('Route scope and claim integrity — regression tests', () => {
       const block = routeBlock(marker, 1800);
 
       expect(
-        /facilityId:\s*facility\.id/.test(block) && /tenantId:\s*facility\.tenantId/.test(block),
+        marker.includes('/api/purchase-orders')
+          ? /facilityId:\s*access\.facilityId/.test(block) &&
+              /tenantId:\s*access\.tenantId/.test(block)
+          : /facilityId:\s*facility\.id/.test(block) &&
+              /tenantId:\s*facility\.tenantId/.test(block),
         `${marker.split('\n')[1]} overwrites facility and tenant from the session`,
       ).toBe(true);
     }
@@ -150,7 +162,8 @@ describe('Route scope and claim integrity — regression tests', () => {
 
     expect(
       suppliers.includes('process.env') === false &&
-        suppliers.includes('context.tenantId') &&
+        suppliers.includes('scope(req, res') &&
+        suppliers.includes('access.tenantId') &&
         suppliers.includes('TENANT_ACCESS_DENIED'),
       'Suppliers are filtered by the session tenant, not the query string',
     ).toBe(true);

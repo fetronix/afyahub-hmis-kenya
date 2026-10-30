@@ -447,8 +447,8 @@ export async function createRadiologyOrder(data: typeof schema.radiologyOrders.$
 
 export async function updateRadiologyReport(
   id: number,
-  findings: string,
-  impression: string,
+  findings: string | undefined,
+  impression: string | undefined,
   reportedBy: string,
 ) {
   try {

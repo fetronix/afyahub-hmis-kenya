@@ -8,6 +8,8 @@
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import * as queries from '../db/queries.ts';
 import { respondInternalError } from './shared/errors.ts';
+import { createAppointmentBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 import { Router } from 'express';
 
 const router = Router();
@@ -28,14 +30,20 @@ router.get('/api/appointments', requirePermission('appointments.read'), async (r
   }
 });
 
-router.post('/api/appointments', requirePermission('appointments.create'), async (req, res) => {
-  try {
-    const appt = await queries.createAppointment(req.body);
+router.post(
+  '/api/appointments',
+  requirePermission('appointments.create'),
+  validateBody(createAppointmentBodySchema),
+  async (req, res) => {
+    try {
+      const body = getValidatedBody<Parameters<typeof queries.createAppointment>[0]>(req);
+      const appt = await queries.createAppointment(body);
 
-    res.status(201).json(appt);
-  } catch (err: any) {
-    respondInternalError(res, err, 'POST /api/appointments');
-  }
-});
+      res.status(201).json(appt);
+    } catch (err: any) {
+      respondInternalError(res, err, 'POST /api/appointments');
+    }
+  },
+);
 
 export default router;

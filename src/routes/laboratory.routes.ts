@@ -17,6 +17,14 @@ import { chargeSafely } from './shared/charges.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import {
+  createLabOrderBatchBodySchema,
+  createLabOrderBodySchema,
+  createLabResultBodySchema,
+  updateLabOrderStatusBodySchema,
+  verifyLabResultBodySchema,
+} from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -57,14 +65,15 @@ router.get(
 router.post(
   '/api/lab-orders/batch',
   requirePermission('laboratory.orders.create'),
-
+  validateBody(createLabOrderBatchBodySchema),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({ error: 'Authentication context is required.' });
     }
 
     try {
-      const result = await queries.createLabOrderBatch(req.authContext, req.body);
+      const body = getValidatedBody<Parameters<typeof queries.createLabOrderBatch>[1]>(req);
+      const result = await queries.createLabOrderBatch(req.authContext, body);
 
       /*
        * Every order in the batch is priced, not just the first.
@@ -104,13 +113,15 @@ router.post(
 router.post(
   '/api/lab-orders',
   requirePermission('laboratory.orders.create'),
+  validateBody(createLabOrderBodySchema),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({ error: 'Authentication context is required.' });
     }
 
     try {
-      const order = await queries.createLabOrder(req.authContext, req.body);
+      const body = getValidatedBody<Parameters<typeof queries.createLabOrder>[1]>(req);
+      const order = await queries.createLabOrder(req.authContext, body);
 
       const labOrder = order as {
         id?: number;
@@ -170,9 +181,13 @@ router.post(
 router.put(
   '/api/lab-orders/:id/status',
   requirePermission('laboratory.results.enter'),
+  validateBody(updateLabOrderStatusBodySchema),
   async (req: AuthRequest, res) => {
     try {
-      const { status, accessionNumber } = req.body;
+      const { status, accessionNumber } = getValidatedBody<{
+        status: string;
+        accessionNumber?: string;
+      }>(req);
 
       const order = await queries.updateLabOrderStatus(
         req.authContext!,
@@ -214,6 +229,7 @@ router.get(
 router.post(
   '/api/lab-results',
   requirePermission('laboratory.results.enter'),
+  validateBody(createLabResultBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const {
@@ -225,23 +241,16 @@ router.post(
         referenceRange,
         flag,
         notes,
-      } = req.body ?? {};
-
-      if (
-        !Number.isInteger(Number(orderId)) ||
-        Number(orderId) <= 0 ||
-        !Number.isInteger(Number(patientId)) ||
-        Number(patientId) <= 0 ||
-        typeof parameterName !== 'string' ||
-        !parameterName.trim() ||
-        typeof measuredValue !== 'string' ||
-        !measuredValue.trim()
-      ) {
-        res.status(400).json({
-          error: 'Valid order, patient, parameter name, and measured value are required.',
-        });
-        return;
-      }
+      } = getValidatedBody<{
+        orderId: number;
+        patientId: number;
+        parameterName: string;
+        measuredValue: string;
+        unit?: string | null;
+        referenceRange?: string | null;
+        flag?: string | null;
+        notes?: string | null;
+      }>(req);
 
       const result = await queries.addLabResult(req.authContext!, {
         orderId: Number(orderId),
@@ -265,6 +274,7 @@ router.post(
 router.post(
   '/api/lab-results/:id/verify',
   requirePermission('laboratory.results.verify'),
+  validateBody(verifyLabResultBodySchema),
   async (req: AuthRequest, res) => {
     try {
       if (!req.authContext || !req.user) {

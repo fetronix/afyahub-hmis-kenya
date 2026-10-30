@@ -18,6 +18,8 @@ import * as schema from '../db/schema.ts';
 import { PrivateInsuranceError } from '../insurance/core/types.ts';
 import { privatePolicyGuard } from '../insurance/hub/guards.ts';
 import { PayerHubError } from '../insurance/hub/service.ts';
+import { facilityActionBodySchema } from '../validation/schemas/index.ts';
+import { validateBody } from '../validation/validate.ts';
 import { listIntegrationDiagnostics } from '../insurance/audit/diagnostics.service.ts';
 import {
   createPrivatePayer,
@@ -864,6 +866,7 @@ router.patch(
 router.post(
   '/claims/:claimId/validate',
   requirePermission('insurance.private.claims.prepare'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);

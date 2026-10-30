@@ -458,6 +458,7 @@ export interface Supplier {
   kraPin?: string;
   address?: string;
   isActive: boolean;
+  revision?: number;
 }
 
 export interface PurchaseOrder {
@@ -469,8 +470,45 @@ export interface PurchaseOrder {
   totalAmount: string;
   status: string;
   orderedBy?: string;
-  approvedBy?: string;
+  approvedBy?: string | null;
+  description?: string | null;
+  expectedDeliveryDate?: string | null;
+  deliveryAddress?: string | null;
+  paymentTerms?: string | null;
+  notes?: string | null;
+  subtotalAmount?: string | null;
+  taxAmount?: string;
+  shippingAmount?: string;
+  discountAmount?: string;
+  createdByUserId?: number | null;
+  revision?: number;
   createdAt: string;
+}
+
+export interface PurchaseOrderItem {
+  id?: number;
+  lineNumber?: number;
+  description: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  lineTotal?: string;
+}
+
+export interface PurchaseOrderEvent {
+  id: number;
+  eventType: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  actorUserId: number | null;
+  note: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface PurchaseOrderDetail extends PurchaseOrder {
+  items: PurchaseOrderItem[];
+  events: PurchaseOrderEvent[];
 }
 
 export interface BillingInvoice {

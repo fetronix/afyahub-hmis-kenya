@@ -11,8 +11,8 @@
  * - UPDATES the name / module / description of an existing permission
  *   row. Those three columns are platform-owned: they are the label the
  *   screens print, not a facility decision.
- * - INSERTS a role_permissions row for SUPER_ADMIN (except facility tariffs
- *   and facility-owned payment operations) and for each tenant
+ * - INSERTS a role_permissions row for SUPER_ADMIN (except facility tariffs,
+ *   procurement mutations and facility-owned payment/payer operations) and for each tenant
  *   FACILITY_ADMIN (the invitation set) when that
  *   grant is absent.
  *
@@ -925,23 +925,48 @@ const PERMISSIONS = [
 
   {
     code: 'procurement.read',
-    name: 'View Procurement',
+    name: 'View Suppliers and Purchase Orders',
     module: 'procurement',
-    description: 'View procurement information.',
+    description: 'View tenant suppliers and facility purchase orders and history.',
   },
 
   {
     code: 'procurement.create',
-    name: 'Create Procurement Requests',
+    name: 'Create Suppliers and Purchase Orders',
     module: 'procurement',
-    description: 'Create procurement requests.',
+    description: 'Create supplier records and pending purchase orders.',
+  },
+
+  {
+    code: 'procurement.update',
+    name: 'Edit Procurement',
+    module: 'procurement',
+    description: 'Edit pending purchase orders and supplier details.',
+  },
+  {
+    code: 'procurement.delete',
+    name: 'Cancel Procurement',
+    module: 'procurement',
+    description: 'Cancel pending orders and deactivate suppliers without deleting history.',
+  },
+  {
+    code: 'procurement.reject',
+    name: 'Reject Purchase Orders',
+    module: 'procurement',
+    description: 'Reject pending purchase orders with a reason.',
+  },
+  {
+    code: 'procurement.complete',
+    name: 'Complete Purchase Orders',
+    module: 'procurement',
+    description: 'Record administrative completion of approved purchase orders.',
   },
 
   {
     code: 'procurement.approve',
-    name: 'Approve Procurement',
+    name: 'Approve Purchase Orders',
     module: 'procurement',
-    description: 'Approve procurement transactions.',
+    description: 'Approve itemized purchase orders created and edited by other users.',
   },
 
   /* ==========================================================
@@ -1432,8 +1457,8 @@ async function seedPermissions(): Promise<void> {
     }
   }
 
-  // Platform administration does not grant facility payment credentials,
-  // financial operations or transfers. Facility tariffs are also separate.
+  // Platform administration does not grant facility procurement mutations,
+  // payment credentials, financial operations or transfers. Facility tariffs are also separate.
   const platformHubPermissions = new Set([
     'payment_hub.global.read',
     'payment_hub.global.manage',
@@ -1446,6 +1471,7 @@ async function seedPermissions(): Promise<void> {
   ]);
   for (const permission of allPermissions) {
     if (
+      (permission.code.startsWith('procurement.') && permission.code !== 'procurement.read') ||
       permission.code === 'tariffs.read' ||
       permission.code === 'tariffs.manage' ||
       ((permission.code.startsWith('payment_hub.') || permission.code.startsWith('payer_hub.')) &&

@@ -7,6 +7,8 @@ import type {
   LabResult,
   LabTest,
   PurchaseOrder,
+  PurchaseOrderDetail,
+  PurchaseOrderItem,
   QueueItem,
   RadiologyOrder,
   ReceiveBatchResult,
@@ -232,16 +234,73 @@ export const diagnosticsPharmacyClient = {
     return fetchJson<Supplier[]>(`${API_BASE}/suppliers${query ? `?${query}` : ''}`);
   },
 
+  createSupplier: (
+    data: Partial<Supplier> & { facilityId: number; confirmDuplicateSupplier?: boolean },
+  ) => fetchJson<Supplier>(`${API_BASE}/suppliers`, { method: 'POST', body: JSON.stringify(data) }),
+  updateSupplier: (
+    id: number,
+    data: Partial<Supplier> & {
+      facilityId: number;
+      expectedRevision: number;
+      confirmDuplicateSupplier?: boolean;
+    },
+  ) =>
+    fetchJson<Supplier>(`${API_BASE}/suppliers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deactivateSupplier: (
+    id: number,
+    data: { facilityId: number; expectedRevision: number; note: string },
+  ) =>
+    fetchJson<Supplier>(`${API_BASE}/suppliers/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify(data),
+    }),
+
   getPurchaseOrders: (facilityId?: number) =>
     fetchJson<PurchaseOrder[]>(
       `${API_BASE}/purchase-orders${facilityId ? `?facilityId=${facilityId}` : ''}`,
     ),
 
+  getPurchaseOrder: (id: number, facilityId: number) =>
+    fetchJson<PurchaseOrderDetail>(`${API_BASE}/purchase-orders/${id}?facilityId=${facilityId}`),
+
   createPurchaseOrder: (
-    po: Partial<PurchaseOrder> & { supplierName?: string; confirmDuplicateSupplier?: boolean },
+    po: Partial<PurchaseOrder> & {
+      supplierName?: string;
+      confirmDuplicateSupplier?: boolean;
+      items?: PurchaseOrderItem[];
+    },
   ) =>
     fetchJson<PurchaseOrder>(`${API_BASE}/purchase-orders`, {
       method: 'POST',
       body: JSON.stringify(po),
     }),
+  updatePurchaseOrder: (
+    id: number,
+    po: Partial<PurchaseOrder> & {
+      facilityId: number;
+      expectedRevision: number;
+      items: PurchaseOrderItem[];
+    },
+  ) =>
+    fetchJson<PurchaseOrder>(`${API_BASE}/purchase-orders/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(po),
+    }),
+  transitionPurchaseOrder: (
+    id: number,
+    action: 'approve' | 'reject' | 'complete' | 'cancel',
+    data: {
+      facilityId: number;
+      expectedRevision: number;
+      note?: string;
+      confirmAdministrativeCompletion?: boolean;
+    },
+  ) =>
+    fetchJson<PurchaseOrder>(
+      `${API_BASE}/purchase-orders/${id}${action === 'cancel' ? '' : `/${action}`}`,
+      { method: action === 'cancel' ? 'DELETE' : 'POST', body: JSON.stringify(data) },
+    ),
 };

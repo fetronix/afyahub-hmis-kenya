@@ -4,6 +4,8 @@ import { requirePermission } from '../auth/authorization.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import { AccountingIntegrityError } from '../accounting/accounting.service.ts';
 import * as queries from '../db/queries.ts';
+import { facilityActionBodySchema } from '../validation/schemas/index.ts';
+import { validateBody } from '../validation/validate.ts';
 import {
   DialysisSafetyError,
   addSessionObservationScoped,
@@ -150,6 +152,7 @@ router.post(
 router.post(
   '/treatment-plans/:id/authorize',
   requirePermission('dialysis.plans.authorize'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res) => {
     try {
       res.json({
@@ -179,6 +182,7 @@ router.post(
 router.post(
   '/schedules/:id/start',
   requirePermission('dialysis.sessions.record'),
+  validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const result = await startDialysisSessionScoped(await scoped(req), Number(req.params.id));

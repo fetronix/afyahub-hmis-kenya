@@ -40,4 +40,47 @@ describe('procurement API client', () => {
       poNumber: 'PO-TEST',
     });
   });
+  it('sends scoped optimistic revisions for updates, decisions and soft deletion', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () =>
+          new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await diagnosticsPharmacyClient.getPurchaseOrder(44, 21);
+    await diagnosticsPharmacyClient.updatePurchaseOrder(44, {
+      facilityId: 21,
+      expectedRevision: 2,
+      items: [{ description: 'Synthetic', quantity: '1', unit: 'box', unitPrice: '10' }],
+    });
+    await diagnosticsPharmacyClient.transitionPurchaseOrder(44, 'approve', {
+      facilityId: 21,
+      expectedRevision: 3,
+    });
+    await diagnosticsPharmacyClient.transitionPurchaseOrder(44, 'cancel', {
+      facilityId: 21,
+      expectedRevision: 4,
+      note: 'Duplicate',
+    });
+    await diagnosticsPharmacyClient.deactivateSupplier(4, {
+      facilityId: 21,
+      expectedRevision: 1,
+      note: 'Inactive',
+    });
+    expect(
+      fetchMock.mock.calls.map((call) => [call[0], (call[1] as RequestInit | undefined)?.method]),
+    ).toEqual([
+      ['/api/purchase-orders/44?facilityId=21', undefined],
+      ['/api/purchase-orders/44', 'PUT'],
+      ['/api/purchase-orders/44/approve', 'POST'],
+      ['/api/purchase-orders/44', 'DELETE'],
+      ['/api/suppliers/4', 'DELETE'],
+    ]);
+    expect(JSON.parse((fetchMock.mock.calls[3][1] as RequestInit).body as string)).toEqual({
+      facilityId: 21,
+      expectedRevision: 4,
+      note: 'Duplicate',
+    });
+  });
 });

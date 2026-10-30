@@ -12,6 +12,11 @@ import * as queries from '../db/queries.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import {
+  createMedicationBodySchema,
+  medicationStatusBodySchema,
+} from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -36,6 +41,7 @@ router.get('/api/medications', requirePermission('pharmacy.read'), async (req, r
 router.post(
   '/api/medications',
   requirePermission('clinical.create'),
+  validateBody(createMedicationBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -45,7 +51,7 @@ router.post(
         });
       }
 
-      const body = (req.body ?? {}) as Record<string, unknown>;
+      const body = getValidatedBody<Record<string, unknown>>(req);
 
       /*
        * The allergy check runs before the prescription is written.
@@ -113,9 +119,10 @@ router.post(
 router.put(
   '/api/medications/:id/status',
   requirePermission('pharmacy.dispense'),
+  validateBody(medicationStatusBodySchema),
   async (req, res) => {
     try {
-      const { status } = req.body;
+      const { status } = getValidatedBody<{ status: string }>(req);
 
       const med = await queries.updateMedicationStatus(Number(req.params.id), status);
 
