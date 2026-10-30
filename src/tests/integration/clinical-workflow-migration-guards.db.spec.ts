@@ -11,6 +11,7 @@ describeDb('clinical workflow migration preflights', () => {
       'medication_status_events',
     ],
     ['drizzle/0035_shared_lab_specimens.sql', 'lab_specimens', 'lab_specimen_orders'],
+    ['drizzle/0036_refund_receipt_safety.sql', 'billing_refunds', 'billing_refund_receipt_seq'],
   ])('refuses to adopt an unjournaled %s object', async (file, existing, absent) => {
     if (!(process.env.SQL_DB_NAME ?? '').includes('test'))
       throw new Error('Disposable test database required.');

@@ -50,6 +50,14 @@ describeDb('permission seed plans missing rows without writing', () => {
     expect(out).toContain('would create permission payment_hub.global.read');
     expect(out).toContain('would create permission procurement.reject');
     expect(out).not.toContain('would grant SUPER_ADMIN -> procurement.approve');
+    for (const permission of [
+      'billing.read',
+      'billing.payments.record',
+      'accounting.journals.post',
+      'tariffs.manage',
+      'insurance.read',
+    ])
+      expect(out).not.toContain(`would grant SUPER_ADMIN -> ${permission}`);
     expect(out).not.toMatch(/would grant FACILITY_ADMIN\(\d+\) -> procurement\.reject/);
     expect(out).toContain('would grant SUPER_ADMIN -> payment_hub.global.read');
     expect(out).toMatch(/would grant FACILITY_ADMIN\(\d+\) -> payment_hub.catalogue.read/);

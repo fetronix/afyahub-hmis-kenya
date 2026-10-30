@@ -25,6 +25,8 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 
+import { readInvoicePaymentLedger } from './payment-ledger.ts';
+
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import { getFacilityByIdScoped } from '../db/queries.ts';
@@ -46,7 +48,12 @@ export type PaymentErrorCode =
   | 'INVOICE_VOIDED'
   | 'INVOICE_RECONCILIATION_REQUIRED'
   | 'DUPLICATE_TRANSACTION_CODE'
-  | 'PAYMENT_EXCEEDS_BALANCE';
+  | 'PAYMENT_EXCEEDS_BALANCE'
+  | 'REFUND_FORBIDDEN'
+  | 'REFUND_IDEMPOTENCY_CONFLICT'
+  | 'PAYMENT_NOT_FOUND'
+  | 'PAYER_REFUND_REVIEW_REQUIRED'
+  | 'REFUND_EXCEEDS_RECEIPT';
 
 export class PaymentDomainError extends Error {
   readonly code: PaymentErrorCode;
@@ -265,26 +272,11 @@ export async function recordSettledPayment(
           409,
         );
       }
-      const ledger = await tx
-        .select({ amount: schema.billingPayments.amount })
-        .from(schema.billingPayments)
-        .where(eq(schema.billingPayments.invoiceId, invoice.id));
-      let ledgerCents = 0;
-      for (const entry of ledger) {
-        const cents = parseMoneyToCents(entry.amount);
-        if (cents === null || cents <= 0 || !Number.isSafeInteger(ledgerCents + cents)) {
-          throw new PaymentDomainError(
-            'INVOICE_RECONCILIATION_REQUIRED',
-            'The invoice payment ledger requires authorized review.',
-            409,
-          );
-        }
-        ledgerCents += cents;
-      }
-      if (ledgerCents !== paidCents) {
+      const ledger = await readInvoicePaymentLedger(tx, invoice.id);
+      if (!ledger || ledger.netCents !== paidCents) {
         throw new PaymentDomainError(
           'INVOICE_RECONCILIATION_REQUIRED',
-          'The invoice balance and payment ledger disagree; authorized review is required.',
+          'The invoice balance, receipts and refunds disagree; authorized review is required.',
           409,
         );
       }

@@ -220,9 +220,12 @@ export const Header: React.FC = () => {
       --------------------------------------------------------------- */}
 
       <div className="flex items-center gap-1.5 sm:gap-3">
-        <div className="hidden items-center gap-1.5 rounded-full border border-hair bg-canvas py-1 pl-2 pr-2.5 lg:flex">
+        <div
+          className="hidden items-center gap-1.5 rounded-full border border-hair bg-canvas py-1 pl-2 pr-2.5 lg:flex"
+          title="DHA onboarding, validation and regulatory approval are not established by this label."
+        >
           <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
-          <span className="text-2xs font-semibold text-ink-soft">DHA ready</span>
+          <span className="text-2xs font-semibold text-ink-soft">DHA review</span>
           <span className="text-2xs text-slate-300">·</span>
           <span className="font-mono text-2xs text-muted">FHIR R4</span>
         </div>

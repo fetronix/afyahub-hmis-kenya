@@ -239,7 +239,14 @@ export const Sidebar: React.FC = () => {
 
   const isModuleVisible = (id: ModuleId): boolean => {
     // Global superadmins retain access to platform-management navigation.
-    if (isSuperAdmin) return id !== 'payment_transactions';
+    if (isSuperAdmin)
+      return ![
+        'payment_transactions',
+        'finance',
+        'accounting',
+        'claims',
+        'private_insurance',
+      ].includes(id);
 
     // Facility configuration overrides role permissions.
     if (!isFacilityModuleEnabled(id)) return false;

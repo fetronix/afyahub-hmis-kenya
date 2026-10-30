@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const mocked = vi.hoisted(() => ({
@@ -36,6 +36,7 @@ describe('Pharmacy retry recovery in one browser', () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.clearAllMocks();
+    mocked.context.currentFacility = { id: 10 };
     mocked.api.getMedications.mockResolvedValue([
       {
         id: 42,
@@ -116,6 +117,67 @@ describe('Pharmacy retry recovery in one browser', () => {
     expect(mocked.context.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Review the prescription and billing queue'),
     );
+  });
+
+  it('shows a failed worklist as unavailable, not empty, and retries safely', async () => {
+    mocked.api.getMedications.mockRejectedValueOnce(new Error('Synthetic database failure'));
+    const user = userEvent.setup();
+    render(<PharmacyModule />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Pharmacy data could not be loaded. Do not assume the worklist is empty.',
+    );
+    expect(screen.queryByText(/No prescriptions in/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Dispense Item' })).not.toBeInTheDocument();
+    expect(mocked.api.dispenseMedication).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Retry loading pharmacy data' }));
+    expect(await screen.findByRole('button', { name: 'Dispense Item' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('does not retain another facility worklist while the new facility loads', async () => {
+    const view = render(<PharmacyModule />);
+    expect(await screen.findByText(/Synthetic medicine/)).toBeInTheDocument();
+
+    let complete!: (items: unknown[]) => void;
+    mocked.api.getMedications.mockImplementationOnce(
+      () => new Promise((resolve) => (complete = resolve)),
+    );
+    mocked.context.currentFacility = { id: 11 };
+    view.rerender(<PharmacyModule />);
+    expect(screen.queryByText(/Synthetic medicine/)).not.toBeInTheDocument();
+    expect(screen.getByText('Loading pharmacy data...')).toBeInTheDocument();
+    await act(async () => {
+      complete([]);
+    });
+    expect(await screen.findByText(/No prescriptions in/)).toBeInTheDocument();
+  });
+
+  it('ignores an old facility response that arrives after a facility switch', async () => {
+    let completeOld!: (items: unknown[]) => void;
+    mocked.api.getMedications.mockImplementationOnce(
+      () => new Promise((resolve) => (completeOld = resolve)),
+    );
+    const view = render(<PharmacyModule />);
+    await waitFor(() => expect(mocked.api.getMedications).toHaveBeenCalledTimes(1));
+    mocked.context.currentFacility = { id: 11 };
+    view.rerender(<PharmacyModule />);
+    expect(await screen.findByText(/Synthetic medicine/)).toBeInTheDocument();
+
+    await act(async () => {
+      completeOld([
+        {
+          id: 99,
+          patientId: 88,
+          drugName: 'Old facility synthetic medicine',
+          quantity: 1,
+          status: 'Prescribed',
+        },
+      ]);
+    });
+    expect(screen.queryByText(/Old facility synthetic medicine/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Synthetic medicine/)).toBeInTheDocument();
   });
 
   it('does not send a dispensing request when the saved identity is malformed', async () => {

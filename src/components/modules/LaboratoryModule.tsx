@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { LabTest, LabOrder, LabResult, Patient } from '../../types/index.ts';
+import { LabOrder, LabResult, Patient } from '../../types/index.ts';
 import {
   FlaskConical,
   CheckCircle2,
@@ -32,13 +32,23 @@ export const LaboratoryModule: React.FC = () => {
   );
   const can = (permission: string) => isSuperAdmin || permissions.has(permission);
   const canVerifyLabResults = can('laboratory.results.verify');
-  const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
   const [orderResults, setOrderResults] = useState<LabResult[]>([]);
   const [sharedOrderId, setSharedOrderId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsError, setResultsError] = useState('');
+  const [resultSaving, setResultSaving] = useState(false);
+  const [verifyingResult, setVerifyingResult] = useState<number | null>(null);
+  const resultVersion = useRef(0);
+  const selectedOrderId = useRef<number | null>(null);
+  const scope =
+    currentTenant?.id && currentFacility?.id ? `${currentTenant.id}:${currentFacility.id}` : null;
 
   // Result Entry Form
   const [resultParam, setResultParam] = useState({
@@ -50,40 +60,86 @@ export const LaboratoryModule: React.FC = () => {
     notes: '',
   });
 
-  useEffect(() => {
-    async function loadLabData() {
-      setLoading(true);
-      try {
-        const [tests, orders, pList] = await Promise.all([
-          api.getLabTests(currentFacility?.id),
-          api.getLabOrders(currentFacility?.id),
-          api.getPatients(currentTenant?.id, currentFacility?.id),
-        ]);
-        setLabTests(tests);
-        setLabOrders(orders);
-        setPatients(pList);
-        if (orders.length > 0 && !selectedOrder) {
-          selectOrder(orders[0]);
-        }
-      } catch (err) {
-        console.error('Failed to load lab data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadLabData();
-  }, [currentTenant, currentFacility, refreshKey]);
-
   const selectOrder = async (order: LabOrder) => {
+    const version = ++resultVersion.current;
+    const changed = selectedOrderId.current !== order.id;
+    selectedOrderId.current = order.id;
     setSelectedOrder(order);
     setSharedOrderId('');
+    setOrderResults([]);
+    setResultsError('');
+    setResultsLoading(true);
+    if (changed)
+      setResultParam({
+        parameterName: '',
+        measuredValue: '',
+        unit: '',
+        referenceRange: '',
+        flag: '',
+        notes: '',
+      });
     try {
       const results = await api.getLabResults(order.id);
-      setOrderResults(results);
-    } catch (err) {
-      console.error('Failed to load lab results:', err);
+      if (version === resultVersion.current) {
+        if (!Array.isArray(results)) throw new Error('Invalid laboratory result response');
+        setOrderResults(results);
+      }
+    } catch {
+      if (version === resultVersion.current)
+        setResultsError('Results could not be loaded. Do not assume no results exist.');
+    } finally {
+      if (version === resultVersion.current) setResultsLoading(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLabData() {
+      setLoading(true);
+      setLoadError('');
+      setLoadedScope(null);
+      setLabOrders([]);
+      setPatients([]);
+      setOrderResults([]);
+      if (!scope || !currentTenant?.id || !currentFacility?.id) {
+        setLoadError('Select an authorized facility to load laboratory data.');
+        setLoading(false);
+        return;
+      }
+      try {
+        const [orders, pList] = await Promise.all([
+          api.getLabOrders(currentFacility.id),
+          api.getPatients(currentTenant.id, currentFacility.id),
+        ]);
+        if (cancelled) return;
+        if (!Array.isArray(orders) || !Array.isArray(pList))
+          throw new Error('Invalid laboratory response');
+        setLabOrders(orders);
+        setPatients(pList);
+        setLoadedScope(scope);
+        const next = orders.find((row) => row.id === selectedOrderId.current) ?? orders[0] ?? null;
+        if (next) void selectOrder(next);
+        else {
+          selectedOrderId.current = null;
+          setSelectedOrder(null);
+          setResultsLoading(false);
+          setResultsError('');
+        }
+      } catch {
+        if (!cancelled)
+          setLoadError(
+            'Laboratory data could not be loaded. Do not assume the specimen queue is empty.',
+          );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadLabData();
+    return () => {
+      cancelled = true;
+      resultVersion.current += 1;
+    };
+  }, [scope, currentTenant?.id, currentFacility?.id, refreshKey, reload]);
 
   const handleUpdateOrderStatus = async (
     id: number,
@@ -110,7 +166,7 @@ export const LaboratoryModule: React.FC = () => {
 
   const handleAddResult = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrder) return;
+    if (!selectedOrder || resultsLoading || resultsError || resultSaving) return;
     if (selectedOrder.status !== 'Sample Collected' || !selectedOrder.sampleAccessionNumber) {
       showToast('Record specimen collection before entering results.');
       return;
@@ -121,6 +177,8 @@ export const LaboratoryModule: React.FC = () => {
       return;
     }
 
+    const version = resultVersion.current;
+    setResultSaving(true);
     try {
       const created = await api.addLabResult({
         orderId: selectedOrder.id,
@@ -133,30 +191,77 @@ export const LaboratoryModule: React.FC = () => {
         notes: resultParam.notes,
       });
 
-      setOrderResults((prev) => [...prev, created]);
+      if (version === resultVersion.current) {
+        setOrderResults((prev) => [...prev, created]);
+        setResultParam({
+          parameterName: '',
+          measuredValue: '',
+          unit: '',
+          referenceRange: '',
+          flag: '',
+          notes: '',
+        });
+      }
       showToast('Lab result saved. It has not been published by this action.');
       triggerRefresh();
-    } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+    } catch {
+      showToast(
+        'Result entry could not be confirmed. It may have been saved; review results before entering it again.',
+      );
+      triggerRefresh();
+    } finally {
+      setResultSaving(false);
     }
   };
 
   const handleVerifyLabResult = async (result: LabResult) => {
-    if (!selectedOrder || result.status === 'Verified') return;
-
+    if (!selectedOrder || result.status === 'Verified' || verifyingResult !== null) return;
+    const orderId = selectedOrder.id;
+    const version = resultVersion.current;
+    setVerifyingResult(result.id);
     try {
       await api.verifyLabResult(result.id);
-      const refreshedResults = await api.getLabResults(selectedOrder.id);
-      setOrderResults(refreshedResults);
-      showToast('Laboratory result verified successfully.');
+      try {
+        const refreshedResults = await api.getLabResults(orderId);
+        if (version === resultVersion.current) setOrderResults(refreshedResults);
+        showToast('Laboratory result verified successfully.');
+      } catch {
+        if (version === resultVersion.current)
+          setResultsError('Verification was recorded, but results could not be refreshed.');
+        showToast(
+          'Verification was recorded, but results could not be refreshed. Review before another action.',
+        );
+      }
       triggerRefresh();
-    } catch (err: any) {
-      showToast(`Error: ${err.message || 'Could not verify laboratory result.'}`);
+    } catch {
+      showToast(
+        'Verification could not be confirmed. Review the result status before trying again.',
+      );
+      triggerRefresh();
+    } finally {
+      setVerifyingResult(null);
     }
   };
   const getPatient = (patientId: number) => {
     return patients.find((p) => p.id === patientId);
   };
+
+  if (loading || loadedScope !== scope || loadError) {
+    return (
+      <div className="rounded border bg-white p-5 text-xs">
+        {loadError ? (
+          <div role="alert">
+            {loadError}{' '}
+            <button type="button" className="underline" onClick={() => setReload((n) => n + 1)}>
+              Retry laboratory data
+            </button>
+          </div>
+        ) : (
+          <p role="status">Loading laboratory data...</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -395,7 +500,24 @@ export const LaboratoryModule: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-mono">
-                        {orderResults.length === 0 ? (
+                        {resultsLoading ? (
+                          <tr>
+                            <td colSpan={8}>Loading results...</td>
+                          </tr>
+                        ) : resultsError ? (
+                          <tr>
+                            <td colSpan={8} role="alert">
+                              {resultsError}{' '}
+                              <button
+                                type="button"
+                                className="underline"
+                                onClick={() => selectOrder(selectedOrder)}
+                              >
+                                Retry results
+                              </button>
+                            </td>
+                          </tr>
+                        ) : orderResults.length === 0 ? (
                           <tr>
                             <td colSpan={8} className="text-center py-6 text-slate-400 font-sans">
                               No results entered yet for this investigation. Use form below to
@@ -448,6 +570,7 @@ export const LaboratoryModule: React.FC = () => {
                                 {canVerifyLabResults && r.status !== 'Verified' ? (
                                   <button
                                     type="button"
+                                    disabled={verifyingResult !== null}
                                     onClick={() => handleVerifyLabResult(r)}
                                     className="px-2 py-1 rounded bg-teal-700 text-white font-semibold hover:bg-teal-800 whitespace-nowrap"
                                   >
@@ -569,6 +692,9 @@ export const LaboratoryModule: React.FC = () => {
                     <button
                       type="submit"
                       disabled={
+                        resultsLoading ||
+                        resultSaving ||
+                        Boolean(resultsError) ||
                         selectedOrder.status !== 'Sample Collected' ||
                         !selectedOrder.sampleAccessionNumber
                       }

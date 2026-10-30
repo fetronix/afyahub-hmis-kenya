@@ -41,6 +41,7 @@ import {
 } from '../accounting/bank-integration.service.ts';
 
 import { inspectBillingConsistencyScoped } from '../accounting/billing-diagnostics.service.ts';
+import { inspectBillingLedgerScoped } from '../accounting/billing-ledger-diagnostics.service.ts';
 
 const router = Router();
 
@@ -98,6 +99,25 @@ router.get(
   async (req: AuthRequest, res) => {
     try {
       const report = await inspectBillingConsistencyScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        afterId: req.query.afterId,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/billing-ledger-review',
+  requirePermission('accounting.read'),
+  requirePermission('billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectBillingLedgerScoped(await scoped(req), {
         startDate: req.query.startDate,
         endDate: req.query.endDate,
         afterId: req.query.afterId,

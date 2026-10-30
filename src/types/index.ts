@@ -744,6 +744,25 @@ export interface LabServiceDiagnostics {
   tests: LabServiceDiagnostic[];
 }
 
+export interface FacilityTariffValidation {
+  facilityId: number;
+  asOfDate: string;
+  summary: { examined: number; review: number; invalid: number; manualOnly: number };
+  checks: Array<{
+    key: string;
+    kind: 'CATALOGUE' | 'FAMILY_SCENARIO' | 'TARIFF' | 'LINK';
+    serviceType: string | null;
+    name: string;
+    code: string | null;
+    result: 'RESOLVED' | 'REVIEW' | 'INVALID' | 'MANUAL_ONLY';
+    reasons: string[];
+    tariffId: number | null;
+    tariffCode: string | null;
+  }>;
+  nextOffset: number | null;
+  limitations: string[];
+}
+
 export interface BillingPayment {
   id: number;
   invoiceId: number;
@@ -757,6 +776,29 @@ export interface BillingPayment {
   cashierName: string;
   paymentDate: string;
 }
+
+export interface BillingRefund {
+  id: number;
+  invoiceId: number;
+  paymentId: number;
+  refundNumber: string;
+  amount: string;
+  refundMethod: string;
+  externalReference: string | null;
+  reason: string;
+  actorUserId: number;
+  createdAt: string;
+  status?: 'MANUALLY_RECORDED';
+}
+
+export interface RecordRefundResult {
+  refund: BillingRefund;
+  replayed: boolean;
+  accounting: 'NOT_POSTED';
+}
+
+export type RefundStatusResult =
+  { status: 'NOT_FOUND' } | { status: 'RECORDED'; refund: BillingRefund; accounting: 'NOT_POSTED' };
 
 export type SettlementOutcome = 'FULLY_PAID' | 'BALANCE_REMAINING' | 'OVERPAID';
 

@@ -102,6 +102,16 @@ const AppContent: React.FC = () => {
    * ---------------------------------------------------------
    */
   const renderModule = () => {
+    if (
+      authenticatedUser?.isSuperAdmin &&
+      ['finance', 'accounting', 'claims', 'private_insurance'].includes(activeModule)
+    ) {
+      return (
+        <div className="rounded-xl border border-hair bg-surface p-5 text-sm">
+          Facility financial operations require an authorized facility account.
+        </div>
+      );
+    }
     if (activeModule === 'dialysis' || activeModule === 'accounting') {
       const permission = activeModule === 'dialysis' ? 'dialysis.read' : 'accounting.read';
       const enabled = currentFacility?.enabledModules?.includes(activeModule);
@@ -133,13 +143,21 @@ const AppContent: React.FC = () => {
         );
 
       case 'registration':
-        return <PatientRegistrationModule />;
+        return (
+          <PatientRegistrationModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'reception':
         return <ReceptionQueueModule />;
 
       case 'opd':
-        return <OutpatientModule />;
+        return (
+          <OutpatientModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'inpatient':
         return <InpatientModule />;
@@ -157,13 +175,21 @@ const AppContent: React.FC = () => {
         return <SpecialtyModule />;
 
       case 'laboratory':
-        return <LaboratoryModule />;
+        return (
+          <LaboratoryModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'radiology':
         return <RadiologyModule />;
 
       case 'pharmacy':
-        return <PharmacyModule />;
+        return (
+          <PharmacyModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'inventory':
         return <InventoryModule />;
@@ -172,7 +198,11 @@ const AppContent: React.FC = () => {
         return <ProcurementModule />;
 
       case 'finance':
-        return <BillingCashierModule />;
+        return (
+          <BillingCashierModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'payment_transactions':
         return !authenticatedUser?.isSuperAdmin &&
@@ -188,7 +218,11 @@ const AppContent: React.FC = () => {
         );
 
       case 'accounting':
-        return <AccountingModule />;
+        return (
+          <AccountingModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'claims':
         return <InsuranceClaimsModule />;

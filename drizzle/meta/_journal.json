@@ -253,6 +253,13 @@
             "when": 1792900000023,
             "tag": "0035_shared_lab_specimens",
             "breakpoints": true
+        },
+        {
+            "idx": 36,
+            "version": "7",
+            "when": 1792900000024,
+            "tag": "0036_refund_receipt_safety",
+            "breakpoints": true
         }
     ]
 }

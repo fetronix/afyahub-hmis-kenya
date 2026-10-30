@@ -52,6 +52,19 @@ export interface BillingConsistencyReport {
   nextAfterId: number | null;
   limitations: { ledgerReconciliation: string; notice: string };
 }
+export interface BillingLedgerReview extends BillingConsistencyReport {
+  sourceEvents: Array<{
+    sourceType: string;
+    sourceId: number;
+    invoiceId: number;
+    amount: string | null;
+    payerLinked: boolean;
+    journalIds: number[];
+    issues: string[];
+    assessment: string;
+  }>;
+  ledgerPageSummary: { examined: number; unposted: number; requiringReview: number };
+}
 export interface DialysisWorkspace {
   protocol: {
     version: string;
@@ -114,6 +127,10 @@ export const sprintApi = {
   billingConsistency: (facilityId: number, startDate: string, endDate: string, afterId = 0) =>
     fetchJson<BillingConsistencyReport>(
       `/api/accounting/billing-consistency?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterId: String(afterId) })}`,
+    ),
+  billingLedgerReview: (facilityId: number, startDate: string, endDate: string, afterId = 0) =>
+    fetchJson<BillingLedgerReview>(
+      `/api/accounting/billing-ledger-review?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterId: String(afterId) })}`,
     ),
   createAccount: (body: unknown) =>
     post<{ account: { id: number } }>('/api/accounting/accounts', body),

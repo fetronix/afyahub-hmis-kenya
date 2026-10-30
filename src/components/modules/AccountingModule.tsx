@@ -3,7 +3,7 @@ import { getSessionToken } from '../../api/client.ts';
 import {
   sprintApi,
   type AccountingOverview,
-  type BillingConsistencyReport,
+  type BillingLedgerReview,
 } from '../../api/client-sprint.client.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 
@@ -19,7 +19,7 @@ export const AccountingModule: React.FC = () => {
   const [data, setData] = useState<AccountingOverview | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
-  const [billingReport, setBillingReport] = useState<BillingConsistencyReport | null>(null);
+  const [billingReport, setBillingReport] = useState<BillingLedgerReview | null>(null);
   const [billingReportError, setBillingReportError] = useState('');
   const [account, setAccount] = useState({
     accountCode: '',
@@ -77,7 +77,9 @@ export const AccountingModule: React.FC = () => {
     if (!currentFacility) return;
     try {
       setBillingReportError('');
-      setBillingReport(await sprintApi.billingConsistency(currentFacility.id, start, end, afterId));
+      setBillingReport(
+        await sprintApi.billingLedgerReview(currentFacility.id, start, end, afterId),
+      );
     } catch (error: unknown) {
       setBillingReportError(
         error instanceof Error ? error.message : 'Billing consistency review failed.',
@@ -119,10 +121,11 @@ export const AccountingModule: React.FC = () => {
       </header>
       {can('accounting.read') && can('billing.read') && (
         <section className="rounded-xl border border-hair bg-surface p-4 space-y-2 text-xs">
-          <h2 className="font-semibold">Invoice and receipt consistency review</h2>
+          <h2 className="font-semibold">Billing and ledger exception review</h2>
           <p>
-            Checks current invoice headers, lines and receipts for invoices created in the selected
-            date range. This is not a general-ledger, refund, bank or payer reconciliation.
+            Checks current invoice lines, receipts, refunds, voids and source-linked journals for
+            invoices created in the selected date range. This is a partial exception review, not a
+            full general-ledger, bank or payer reconciliation.
           </p>
           <button className={buttonClass} onClick={() => void loadBillingReport()}>
             Review first page
@@ -161,6 +164,41 @@ export const AccountingModule: React.FC = () => {
                         <td>{row.paid ?? 'Missing'}</td>
                         <td>{row.paymentTotal ?? 'Missing'}</td>
                         <td>{row.issues.join(', ') || 'No mismatch detected'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <h3 className="font-semibold">Source-linked journal checks</h3>
+              <p>
+                Examined {billingReport.ledgerPageSummary.examined} source events;{' '}
+                {billingReport.ledgerPageSummary.unposted} have no linked journal. An amount match
+                does not verify accounting classification.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr>
+                      <th>Invoice ID</th>
+                      <th>Source</th>
+                      <th>Amount</th>
+                      <th>Journal IDs</th>
+                      <th>Findings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {billingReport.sourceEvents.map((event) => (
+                      <tr key={`${event.sourceType}:${event.sourceId}`}>
+                        <td>{event.invoiceId}</td>
+                        <td>
+                          {event.sourceType} #{event.sourceId}
+                          {event.payerLinked ? ' (payer-linked receipt)' : ''}
+                        </td>
+                        <td>{event.amount ?? 'Missing'}</td>
+                        <td>{event.journalIds.join(', ') || 'None'}</td>
+                        <td>
+                          {event.issues.join(', ') || 'Amount match only — account review required'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

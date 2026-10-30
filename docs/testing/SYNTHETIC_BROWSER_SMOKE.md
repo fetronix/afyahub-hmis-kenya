@@ -1,0 +1,12 @@
+# Synthetic production-browser smoke
+
+This is an automated engineering smoke, **not** facility or clinical acceptance. It writes synthetic patients, care records, invoices and other fixtures and creates a synthetic platform bootstrap account. It does not delete or reset a database, migrate it, contact a real provider, transfer funds or use real patients.
+
+1. Create a **new, disposable, isolated local PostgreSQL database**; verify independently that it contains no real data. Apply the migration chain only under an approved synthetic migration plan. Historical migration `0002` contains destructive statements; do not run this fresh-chain exercise against an existing or production database.
+2. Configure `SQL_HOST` as `127.0.0.1`, `localhost` or `::1`, `SQL_PORT`, `SQL_DB_NAME` containing both `browser` or `synthetic` and `test`, `SQL_ADMIN_USER` and `SQL_ADMIN_PASSWORD` through a protected environment or secret manager. The name/loopback guard and acknowledgement do **not** prove the database is disposable.
+3. Install the locked development dependencies, provide a compatible local Chromium/Chrome executable via `CHROME_EXECUTABLE_PATH`, and run `npm run build:deploy`. `puppeteer-core` does not install a browser.
+4. Set `BROWSER_SMOKE_SYNTHETIC=YES` and run `npm run test:browser:synthetic`. The default local port is 4192; override with `BROWSER_SMOKE_PORT` if needed. The harness generates and discards random synthetic passwords and a field key, and does not pass database/bootstrap secrets into the browser process.
+
+The browser sandbox remains enabled by default. `BROWSER_NO_SANDBOX=1` is only for a separately isolated, disposable environment that cannot run Chromium's sandbox; it is not a recommended facility browser configuration. Platform bootstrap does not authorize a super-admin to perform facility financial work. The test credentials are not displayed or intended for facility use.
+
+The script checks only the paths it explicitly exercises and refuses unexpected observed HTTP errors. A pre-login session probe may return 401 without an authorization header. Review the report and run additional clinical, security, cross-device, provider and human acceptance testing before any deployment.

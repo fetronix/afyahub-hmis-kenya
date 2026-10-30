@@ -35,6 +35,9 @@ export const PharmacyModule: React.FC = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [filter, setFilter] = useState<'Pending' | 'Dispensed' | 'All'>('Pending');
 
   // Dispensing Target Modal
@@ -53,6 +56,11 @@ export const PharmacyModule: React.FC = () => {
     authenticatedUser?.id && currentFacility?.id
       ? `jalicare:pharmacy:pending:${authenticatedUser.id}:${currentFacility.id}`
       : null;
+  const activeScope =
+    authenticatedUser?.id && currentTenant?.id && currentFacility?.id
+      ? `${authenticatedUser.id}:${currentTenant.id}:${currentFacility.id}`
+      : null;
+  const dataReady = Boolean(activeScope && loadedScope === activeScope && !loading && !loadError);
 
   useEffect(() => {
     if (!storageKey) {
@@ -76,34 +84,62 @@ export const PharmacyModule: React.FC = () => {
   }, [storageKey]);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadPharmacy() {
+      // Never present data from a previous facility or a failed refresh as a
+      // current, empty worklist. The scope check also hides it immediately,
+      // before this effect runs after a facility change.
       setLoading(true);
+      setLoadError('');
+      setLoadedScope(null);
+      setPrescriptions([]);
+      setInventory([]);
+      setPatients([]);
+      setBatches([]);
+      setBatchesUnavailable(false);
+      setDispenseTarget(null);
+      setSelectedInventoryItem(null);
+
+      if (!activeScope || !currentTenant?.id || !currentFacility?.id) {
+        setLoadError('A signed-in user and facility are required to load pharmacy data.');
+        setLoading(false);
+        return;
+      }
+
       try {
-        setBatchesUnavailable(false);
-        const [meds, inv, pList, batchList] = await Promise.all([
+        const [meds, inv, pList, batchResult] = await Promise.all([
           api.getMedications(),
-          api.getInventory(currentFacility?.id),
-          api.getPatients(currentTenant?.id, currentFacility?.id),
-          api.getInventoryBatches(currentFacility?.id).catch((err) => {
-            console.error('Failed to load stock batches:', err);
-            setBatchesUnavailable(true);
-            return [] as InventoryBatchRow[];
-          }),
+          api.getInventory(currentFacility.id),
+          api.getPatients(currentTenant.id, currentFacility.id),
+          api
+            .getInventoryBatches(currentFacility.id)
+            .then((rows) => ({ rows, unavailable: false }))
+            .catch(() => ({ rows: [] as InventoryBatchRow[], unavailable: true })),
         ]);
+        // An earlier request may finish after the user changes facilities.
+        if (cancelled) return;
         setPrescriptions(meds);
         setInventory(inv);
         setPatients(pList);
-        setBatches(batchList);
-      } catch (err) {
-        console.error('Failed to load pharmacy data:', err);
+        setBatches(batchResult.rows);
+        setBatchesUnavailable(batchResult.unavailable);
+        setLoadedScope(activeScope);
+      } catch {
+        if (cancelled) return;
+        setLoadError('Pharmacy data could not be loaded. Do not assume the worklist is empty.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    loadPharmacy();
-  }, [currentTenant, currentFacility, refreshKey]);
+    void loadPharmacy();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeScope, currentTenant?.id, currentFacility?.id, refreshKey, reloadVersion]);
 
   const openDispenseModal = (med: Medication) => {
+    if (!dataReady) return;
     if (storageError || (pendingDispense && pendingDispense.prescriptionId !== med.id)) {
       showToast('Resolve the unconfirmed dispensing request before starting a different one.');
       return;
@@ -303,6 +339,7 @@ export const PharmacyModule: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  disabled={!dataReady}
                   onClick={() => {
                     const medication = prescriptions.find(
                       (m) => m.id === pendingDispense?.prescriptionId,
@@ -310,7 +347,7 @@ export const PharmacyModule: React.FC = () => {
                     if (medication) openDispenseModal(medication);
                     else showToast('Prescription is unavailable; review the dispensing records.');
                   }}
-                  className="rounded border border-amber-700 px-2 py-1"
+                  className="rounded border border-amber-700 px-2 py-1 disabled:opacity-50"
                 >
                   Resume same request
                 </button>
@@ -329,109 +366,128 @@ export const PharmacyModule: React.FC = () => {
         <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
           <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
             <Pill className="w-4 h-4 text-teal-700" />
-            <span>Dispensing Worklist ({filteredMeds.length})</span>
+            <span>Dispensing Worklist{dataReady ? ` (${filteredMeds.length})` : ''}</span>
           </h2>
-          <span className="text-2xs text-slate-400 font-mono">
-            Kenya Pharmacy & Poisons Board Rules
-          </span>
+          <span className="text-2xs text-slate-400 font-mono">Facility policy review required</span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Patient Full Name</th>
-                <th className="px-4 py-2.5 font-medium">Drug Name & Strength</th>
-                <th className="px-4 py-2.5 font-medium">Dosage & Frequency</th>
-                <th className="px-4 py-2.5 font-medium">Duration & Route</th>
-                <th className="px-4 py-2.5 font-medium">Prescriber</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
-                <th className="px-4 py-2.5 font-medium text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-mono">
-              {filteredMeds.length === 0 ? (
+        {!dataReady ? (
+          <div className="p-5 text-xs">
+            {loadError ? (
+              <div role="alert" className="space-y-2 text-rose-800">
+                <p>{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => setReloadVersion((version) => version + 1)}
+                  className="rounded border border-rose-700 px-3 py-1 font-semibold"
+                >
+                  Retry loading pharmacy data
+                </button>
+              </div>
+            ) : (
+              <p role="status" className="text-slate-600">
+                Loading pharmacy data...
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-slate-400 font-sans">
-                    No prescriptions in "{filter}" state.
-                  </td>
+                  <th className="px-4 py-2.5 font-medium">Patient Full Name</th>
+                  <th className="px-4 py-2.5 font-medium">Drug Name & Strength</th>
+                  <th className="px-4 py-2.5 font-medium">Dosage & Frequency</th>
+                  <th className="px-4 py-2.5 font-medium">Duration & Route</th>
+                  <th className="px-4 py-2.5 font-medium">Prescriber</th>
+                  <th className="px-4 py-2.5 font-medium">Status</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Action</th>
                 </tr>
-              ) : (
-                filteredMeds.map((m) => {
-                  const patient = getPatient(m.patientId);
-                  const isDispensed = m.status === 'Dispensed';
-                  const canDispense = ['Prescribed', 'Partially Dispensed'].includes(m.status);
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-mono">
+                {filteredMeds.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-10 text-slate-400 font-sans">
+                      No prescriptions in "{filter}" state.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredMeds.map((m) => {
+                    const patient = getPatient(m.patientId);
+                    const isDispensed = m.status === 'Dispensed';
+                    const canDispense = ['Prescribed', 'Partially Dispensed'].includes(m.status);
 
-                  return (
-                    <tr key={m.id} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-3 font-sans">
-                        {patient ? (
-                          <button
-                            onClick={() => {
-                              setSelectedPatient(patient);
-                              setIsJourneyModalOpen(true);
-                            }}
-                            className="font-semibold text-slate-900 hover:text-teal-700 text-left block"
-                          >
-                            {patient.firstName} {patient.lastName}
-                          </button>
-                        ) : (
-                          <span>Patient #{m.patientId}</span>
-                        )}
-                        <span className="text-2xs text-slate-400 font-mono">
-                          {patient?.mrn} · {patient?.payerType}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-sans font-semibold text-slate-900">
-                        {m.drugName} {m.dosage}
-                      </td>
-                      <td className="px-4 py-3 font-sans text-slate-700">
-                        {m.frequency} (prescribed: {m.quantity}; dispensed:{' '}
-                        {m.quantityDispensed ?? 0})
-                      </td>
-                      <td className="px-4 py-3 font-sans text-slate-600">
-                        {m.duration} ({m.route})
-                      </td>
-                      <td className="px-4 py-3 font-sans text-slate-600">
-                        {m.prescribedBy || 'Physician'}
-                      </td>
-                      <td className="px-4 py-3 font-sans">
-                        <span
-                          className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                            isDispensed
-                              ? 'bg-emerald-50 text-emerald-800'
-                              : 'bg-amber-50 text-amber-800'
-                          }`}
-                        >
-                          {m.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-sans">
-                        {canDispense ? (
-                          <button
-                            onClick={() => openDispenseModal(m)}
-                            className="px-3 py-1 text-2xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded transition-colors shadow-xs"
-                          >
-                            Dispense Item
-                          </button>
-                        ) : (
-                          <span className="text-2xs text-slate-400 flex items-center justify-end gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{m.status}</span>
+                    return (
+                      <tr key={m.id} className="hover:bg-slate-50/70">
+                        <td className="px-4 py-3 font-sans">
+                          {patient ? (
+                            <button
+                              onClick={() => {
+                                setSelectedPatient(patient);
+                                setIsJourneyModalOpen(true);
+                              }}
+                              className="font-semibold text-slate-900 hover:text-teal-700 text-left block"
+                            >
+                              {patient.firstName} {patient.lastName}
+                            </button>
+                          ) : (
+                            <span>Patient #{m.patientId}</span>
+                          )}
+                          <span className="text-2xs text-slate-400 font-mono">
+                            {patient?.mrn} · {patient?.payerType}
                           </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        </td>
+                        <td className="px-4 py-3 font-sans font-semibold text-slate-900">
+                          {m.drugName} {m.dosage}
+                        </td>
+                        <td className="px-4 py-3 font-sans text-slate-700">
+                          {m.frequency} (prescribed: {m.quantity}; dispensed:{' '}
+                          {m.quantityDispensed ?? 0})
+                        </td>
+                        <td className="px-4 py-3 font-sans text-slate-600">
+                          {m.duration} ({m.route})
+                        </td>
+                        <td className="px-4 py-3 font-sans text-slate-600">
+                          {m.prescribedBy || 'Physician'}
+                        </td>
+                        <td className="px-4 py-3 font-sans">
+                          <span
+                            className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                              isDispensed
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'bg-amber-50 text-amber-800'
+                            }`}
+                          >
+                            {m.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-sans">
+                          {canDispense ? (
+                            <button
+                              onClick={() => openDispenseModal(m)}
+                              className="px-3 py-1 text-2xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded transition-colors shadow-xs"
+                            >
+                              Dispense Item
+                            </button>
+                          ) : (
+                            <span className="text-2xs text-slate-400 flex items-center justify-end gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{m.status}</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* DISPENSING MODAL */}
-      {dispenseTarget && (
+      {dispenseTarget && dataReady && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
             <div className="border-b border-slate-200 pb-3">

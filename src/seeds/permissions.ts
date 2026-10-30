@@ -1,3 +1,4 @@
+import { isFacilityFinancialPermission } from '../auth/permission-boundaries.ts';
 /**
  * JaliCare HMIS
  * Permission Seed
@@ -740,6 +741,14 @@ const PERMISSIONS = [
     name: 'Record Payments',
     module: 'billing',
     description: 'Record patient payments.',
+  },
+
+  {
+    code: 'billing.refunds.record',
+    name: 'Record Manual Refunds',
+    module: 'billing',
+    description:
+      'Record an externally performed refund against an existing receipt; does not initiate transfers.',
   },
 
   /* ==========================================================
@@ -1510,8 +1519,7 @@ async function seedPermissions(): Promise<void> {
     if (
       permission.code.startsWith('theatre.') ||
       (permission.code.startsWith('procurement.') && permission.code !== 'procurement.read') ||
-      permission.code === 'tariffs.read' ||
-      permission.code === 'tariffs.manage' ||
+      isFacilityFinancialPermission(permission.code) ||
       ((permission.code.startsWith('payment_hub.') || permission.code.startsWith('payer_hub.')) &&
         !platformHubPermissions.has(permission.code))
     ) {

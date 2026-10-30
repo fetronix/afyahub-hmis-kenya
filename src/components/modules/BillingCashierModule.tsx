@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import { RefundsPanel } from './RefundsPanel.tsx';
 import { BillingInvoice, BillingItem, Patient } from '../../types/index.ts';
 import {
   classifySettlement,
@@ -27,6 +28,7 @@ export const BillingCashierModule: React.FC = () => {
     currentTenant,
     currentFacility,
     currentUser,
+    authenticatedUser,
     setSelectedPatient,
     setIsJourneyModalOpen,
     showToast,
@@ -38,6 +40,21 @@ export const BillingCashierModule: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<BillingInvoice | null>(null);
   const [invoiceItems, setInvoiceItems] = useState<BillingItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [itemsError, setItemsError] = useState('');
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const selectionVersion = useRef(0);
+  const selectedInvoiceId = useRef<number | null>(null);
+  const scope =
+    currentTenant?.id && currentFacility?.id && authenticatedUser?.id
+      ? `${authenticatedUser.id}:${currentTenant.id}:${currentFacility.id}`
+      : null;
+  const canRecordPayment = Boolean(
+    !authenticatedUser?.isSuperAdmin &&
+    authenticatedUser?.permissions?.includes('billing.payments.record'),
+  );
 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -51,40 +68,84 @@ export const BillingCashierModule: React.FC = () => {
   const [isPostingPayment, setIsPostingPayment] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     async function loadBilling() {
       setLoading(true);
+      setLoadError('');
+      setLoadedScope(null);
+      setInvoices([]);
+      setPatients([]);
+      setInvoiceItems([]);
+      setItemsError('');
+      setIsPaymentModalOpen(false);
+      if (!scope || !currentTenant?.id || !currentFacility?.id) {
+        setLoadError('A signed-in user and facility are required to load billing.');
+        setLoading(false);
+        return;
+      }
       try {
         const [inv, pList] = await Promise.all([
-          api.getInvoices(currentFacility?.id),
-          api.getPatients(currentTenant?.id, currentFacility?.id),
+          api.getInvoices(currentFacility.id),
+          api.getPatients(currentTenant.id, currentFacility.id),
         ]);
+        if (cancelled) return;
+        if (!Array.isArray(inv) || !Array.isArray(pList))
+          throw new Error('Invalid billing response');
         setInvoices(inv);
         setPatients(pList);
-        if (inv.length > 0 && !selectedInvoice) {
-          selectInvoice(inv[0]);
+        const next = inv.find((row) => row.id === selectedInvoiceId.current) ?? inv[0] ?? null;
+        selectedInvoiceId.current = next?.id ?? null;
+        setSelectedInvoice(next);
+        setLoadedScope(scope);
+        if (next) {
+          const version = ++selectionVersion.current;
+          setItemsLoading(true);
+          try {
+            const items = await api.getInvoiceItems(next.id);
+            if (!cancelled && version === selectionVersion.current) setInvoiceItems(items);
+          } catch {
+            if (!cancelled && version === selectionVersion.current)
+              setItemsError('Invoice lines could not be loaded.');
+          } finally {
+            if (!cancelled && version === selectionVersion.current) setItemsLoading(false);
+          }
+        } else {
+          setItemsLoading(false);
         }
-      } catch (err) {
-        console.error('Failed to load invoices:', err);
+      } catch {
+        if (!cancelled)
+          setLoadError('Billing data could not be loaded. Do not assume there are no invoices.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    loadBilling();
-  }, [currentTenant, currentFacility, refreshKey]);
+    void loadBilling();
+    return () => {
+      cancelled = true;
+      selectionVersion.current += 1;
+    };
+  }, [scope, currentTenant?.id, currentFacility?.id, refreshKey, reload]);
 
   const selectInvoice = async (inv: BillingInvoice) => {
+    const version = ++selectionVersion.current;
+    selectedInvoiceId.current = inv.id;
     setSelectedInvoice(inv);
+    setInvoiceItems([]);
+    setItemsError('');
+    setItemsLoading(true);
     try {
       const items = await api.getInvoiceItems(inv.id);
-      setInvoiceItems(items);
-    } catch (err) {
-      console.error('Failed to load line items:', err);
+      if (version === selectionVersion.current) setInvoiceItems(items);
+    } catch {
+      if (version === selectionVersion.current) setItemsError('Invoice lines could not be loaded.');
+    } finally {
+      if (version === selectionVersion.current) setItemsLoading(false);
     }
   };
 
   const openPaymentModal = (inv: BillingInvoice) => {
-    setSelectedInvoice(inv);
-    setPaymentAmount(inv.balanceAmount || inv.totalAmount || '0');
+    void selectInvoice(inv);
+    setPaymentAmount(inv.balanceAmount ?? '');
     setTransactionCode('');
     setConfirmOverpay(null);
     setIsPaymentModalOpen(true);
@@ -114,8 +175,12 @@ export const BillingCashierModule: React.FC = () => {
        * once, then resend with the flag set.
        */
       if (err?.code === 'PAYMENT_EXCEEDS_BALANCE') {
-        const excess = Number(err?.detail?.excessCents ?? 0);
-        setConfirmOverpay(excess);
+        const excess = Number(err?.detail?.excessCents);
+        if (Number.isSafeInteger(excess) && excess > 0) setConfirmOverpay(excess);
+        else
+          showToast(
+            'Overpayment amount could not be verified. Review the receipt before retrying.',
+          );
         return;
       }
 
@@ -137,11 +202,13 @@ export const BillingCashierModule: React.FC = () => {
     const amountCents = parseMoneyToCents(paymentAmount);
     const totalCents = parseMoneyToCents(selectedInvoice.totalAmount);
 
-    if (amountCents === null || amountCents <= 0 || totalCents === null) return null;
+    const paidCents = parseMoneyToCents(selectedInvoice.paidAmount);
+    if (amountCents === null || amountCents <= 0 || totalCents === null || paidCents === null)
+      return null;
 
     return classifySettlement({
       invoiceTotalCents: totalCents,
-      paidBeforeCents: parseMoneyToCents(selectedInvoice.paidAmount) ?? 0,
+      paidBeforeCents: paidCents,
       amountCents,
     });
   })();
@@ -150,8 +217,41 @@ export const BillingCashierModule: React.FC = () => {
     return patients.find((p) => p.id === patientId);
   };
 
-  const totalOutstanding = invoices.reduce((acc, i) => acc + Number(i.balanceAmount || 0), 0);
-  const totalCollections = invoices.reduce((acc, i) => acc + Number(i.paidAmount || 0), 0);
+  const totalCents = (field: 'balanceAmount' | 'paidAmount') => {
+    let sum = 0;
+    for (const invoice of invoices) {
+      const value = parseMoneyToCents(invoice[field]);
+      if (value === null || value < 0 || !Number.isSafeInteger(sum + value)) return null;
+      sum += value;
+    }
+    return sum;
+  };
+  const totalOutstanding = totalCents('balanceAmount');
+  const totalCollections = totalCents('paidAmount');
+  const showAmount = (value: number | null) =>
+    value === null ? 'Unavailable' : `KES ${(value / 100).toLocaleString()}`;
+  const showMoney = (value: string | number | null | undefined) =>
+    showAmount(parseMoneyToCents(value));
+  if (loading || loadedScope !== scope || loadError) {
+    return (
+      <div className="rounded border border-slate-200 bg-white p-5 text-xs">
+        {loadError ? (
+          <div role="alert">
+            <p>{loadError}</p>
+            <button
+              type="button"
+              onClick={() => setReload((n) => n + 1)}
+              className="mt-2 underline"
+            >
+              Retry billing data
+            </button>
+          </div>
+        ) : (
+          <p role="status">Loading billing data...</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -170,10 +270,10 @@ export const BillingCashierModule: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="text-right">
             <div className="text-2xs text-slate-400 uppercase font-semibold">
-              Today's Collections
+              Recorded net payments (displayed invoices)
             </div>
             <div className="font-mono font-bold text-base text-teal-800">
-              KES {totalCollections.toLocaleString()}
+              {showAmount(totalCollections)}
             </div>
           </div>
         </div>
@@ -194,7 +294,7 @@ export const BillingCashierModule: React.FC = () => {
             Outstanding Patient Balances
           </span>
           <div className="text-2xl font-bold font-mono text-rose-700 mt-1">
-            KES {totalOutstanding.toLocaleString()}
+            {showAmount(totalOutstanding)}
           </div>
           <div className="text-2xs text-slate-500 mt-1">Unsettled or pending clearance</div>
         </div>
@@ -204,7 +304,7 @@ export const BillingCashierModule: React.FC = () => {
             Active Cashier Workstation
           </span>
           <div className="text-sm font-bold text-slate-900 mt-1">{currentUser.name}</div>
-          <div className="text-2xs text-slate-500 mt-1">{currentUser.role} · Shift Open</div>
+          <div className="text-2xs text-slate-500 mt-1">{currentUser.role} · Signed in</div>
         </div>
       </div>
 
@@ -223,7 +323,8 @@ export const BillingCashierModule: React.FC = () => {
             {invoices.map((inv) => {
               const patient = getPatient(inv.patientId);
               const isSelected = selectedInvoice?.id === inv.id;
-              const hasBalance = Number(inv.balanceAmount || 0) > 0;
+              const balance = parseMoneyToCents(inv.balanceAmount);
+              const hasBalance = balance !== null && balance > 0;
 
               return (
                 <div
@@ -261,19 +362,17 @@ export const BillingCashierModule: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 text-xs font-mono">
-                    <span className="text-slate-500">
-                      Total: KES {Number(inv.totalAmount).toLocaleString()}
-                    </span>
+                    <span className="text-slate-500">Total: {showMoney(inv.totalAmount)}</span>
                     <span
                       className={
                         hasBalance ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'
                       }
                     >
-                      Bal: KES {Number(inv.balanceAmount).toLocaleString()}
+                      Bal: {showMoney(inv.balanceAmount)}
                     </span>
                   </div>
 
-                  {hasBalance && (
+                  {hasBalance && canRecordPayment && (
                     <div className="mt-2 pt-1">
                       <button
                         onClick={(e) => {
@@ -321,14 +420,15 @@ export const BillingCashierModule: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {Number(selectedInvoice.balanceAmount || 0) > 0 && (
-                    <button
-                      onClick={() => openPaymentModal(selectedInvoice)}
-                      className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
-                    >
-                      Receive Payment
-                    </button>
-                  )}
+                  {canRecordPayment &&
+                    (parseMoneyToCents(selectedInvoice.balanceAmount) ?? -1) > 0 && (
+                      <button
+                        onClick={() => openPaymentModal(selectedInvoice)}
+                        className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
+                      >
+                        Receive Payment
+                      </button>
+                    )}
                 </div>
               </div>
 
@@ -376,53 +476,72 @@ export const BillingCashierModule: React.FC = () => {
                 <h3 className="text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                   Itemized Tariff & Service Charges
                 </h3>
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
-                      <tr>
-                        <th className="px-4 py-2.5 font-medium">Item Description</th>
-                        <th className="px-4 py-2.5 font-medium">Department</th>
-                        <th className="px-4 py-2.5 font-medium text-right">Qty</th>
-                        <th className="px-4 py-2.5 font-medium text-right">Unit Price</th>
-                        <th className="px-4 py-2.5 font-medium text-right">Total Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {invoiceItems.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50/70">
-                          <td className="px-4 py-2.5 font-sans font-medium text-slate-900">
-                            {item.description}
-                          </td>
-                          <td className="px-4 py-2.5 font-sans text-slate-600">{item.itemType}</td>
-                          <td className="px-4 py-2.5 text-right">{item.quantity}</td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">
-                            KES {Number(item.unitPrice).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-bold text-slate-900">
-                            KES {Number(item.totalAmount).toLocaleString()}
-                          </td>
+                {itemsError ? (
+                  <div role="alert" className="text-rose-800">
+                    {itemsError}{' '}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => selectInvoice(selectedInvoice)}
+                    >
+                      Retry invoice lines
+                    </button>
+                  </div>
+                ) : itemsLoading ? (
+                  <p role="status">Loading invoice lines...</p>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
+                        <tr>
+                          <th className="px-4 py-2.5 font-medium">Item Description</th>
+                          <th className="px-4 py-2.5 font-medium">Department</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Qty</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Unit Price</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Total Amount</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        {invoiceItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50/70">
+                            <td className="px-4 py-2.5 font-sans font-medium text-slate-900">
+                              {item.description}
+                            </td>
+                            <td className="px-4 py-2.5 font-sans text-slate-600">
+                              {item.itemType}
+                            </td>
+                            <td className="px-4 py-2.5 text-right">{item.quantity}</td>
+                            <td className="px-4 py-2.5 text-right text-slate-600">
+                              {showMoney(item.unitPrice)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-bold text-slate-900">
+                              {showMoney(item.totalAmount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
+
+              <RefundsPanel invoiceId={selectedInvoice.id} />
 
               {/* Financial Totals Strip */}
               <div className="flex justify-end pt-2">
                 <div className="w-64 space-y-1.5 text-xs font-mono">
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal:</span>
-                    <span>KES {Number(selectedInvoice.totalAmount).toLocaleString()}</span>
+                    <span>{showMoney(selectedInvoice.totalAmount)}</span>
                   </div>
                   <div className="flex justify-between text-emerald-700">
                     <span>Paid to Date:</span>
-                    <span>KES {Number(selectedInvoice.paidAmount || 0).toLocaleString()}</span>
+                    <span>{showMoney(selectedInvoice.paidAmount)}</span>
                   </div>
                   <div className="flex justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-slate-200">
                     <span>Balance Due:</span>
                     <span className="text-rose-700">
-                      KES {Number(selectedInvoice.balanceAmount || 0).toLocaleString()}
+                      {showMoney(selectedInvoice.balanceAmount)}
                     </span>
                   </div>
                 </div>
@@ -448,7 +567,7 @@ export const BillingCashierModule: React.FC = () => {
                 <p className="text-2xs text-slate-500">Invoice: {selectedInvoice.invoiceNumber}</p>
               </div>
               <span className="font-mono font-bold text-sm text-teal-800">
-                KES {Number(selectedInvoice.balanceAmount).toLocaleString()} Due
+                {showMoney(selectedInvoice.balanceAmount)} Due
               </span>
             </div>
 

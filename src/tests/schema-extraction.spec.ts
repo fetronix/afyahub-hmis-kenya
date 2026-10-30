@@ -36,6 +36,7 @@ describe('schema barrel: pre-extraction contract', () => {
         'medicationStatusEvents',
         'labSpecimens',
         'labSpecimenOrders',
+        'billingRefunds',
       ].sort(),
     );
   });

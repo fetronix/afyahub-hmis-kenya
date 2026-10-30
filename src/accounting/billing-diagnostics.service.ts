@@ -20,6 +20,9 @@ type DiagnosticRow = {
   paymentCount: number;
   paymentTotal: string | null;
   invalidPayments: number;
+  refundCount: number;
+  refundTotal: string | null;
+  invalidRefunds: number;
 };
 
 function cents(value: string | null): bigint | null {
@@ -62,7 +65,8 @@ export async function inspectBillingConsistencyScoped(
        i.total_amount::text AS total, i.paid_amount::text AS paid,
        i.balance_amount::text AS balance, i.credit_balance::text AS credit,
        li.count AS "lineCount", li.total AS "lineTotal", li.invalid AS "invalidLines",
-       p.count AS "paymentCount", p.total AS "paymentTotal", p.invalid AS "invalidPayments"
+       p.count AS "paymentCount", p.total AS "paymentTotal", p.invalid AS "invalidPayments",
+       r.count AS "refundCount", r.total AS "refundTotal", r.invalid AS "invalidRefunds"
      FROM billing_invoices i
      CROSS JOIN LATERAL (
        SELECT count(*)::int AS count, COALESCE(sum(b.total_amount),0)::text AS total,
@@ -76,6 +80,13 @@ export async function inspectBillingConsistencyScoped(
          count(*) FILTER (WHERE p.amount IS NULL OR p.amount <= 0 OR p.amount::text IN ('NaN','Infinity','-Infinity'))::int AS invalid
        FROM billing_payments p WHERE p.invoice_id=i.id
      ) p
+     CROSS JOIN LATERAL (
+       SELECT count(*)::int AS count, COALESCE(sum(r.amount),0)::text AS total,
+         count(*) FILTER (WHERE r.amount IS NULL OR r.amount <= 0 OR r.amount::text IN ('NaN','Infinity','-Infinity')
+           OR p2.id IS NULL OR p2.invoice_id <> i.id OR r.tenant_id <> i.tenant_id OR r.facility_id <> i.facility_id
+           OR (SELECT sum(r2.amount) FROM billing_refunds r2 WHERE r2.payment_id=r.payment_id) > p2.amount)::int AS invalid
+       FROM billing_refunds r LEFT JOIN billing_payments p2 ON p2.id=r.payment_id WHERE r.invoice_id=i.id
+     ) r
      WHERE i.tenant_id=$1 AND i.facility_id=$2 AND i.created_at >= $3::date
        AND i.created_at < ($4::date + interval '1 day') AND i.id > $5
      ORDER BY i.id LIMIT $6`,
@@ -89,7 +100,8 @@ export async function inspectBillingConsistencyScoped(
       balance = cents(r.balance),
       credit = cents(r.credit);
     const lineTotal = cents(r.lineTotal),
-      paymentTotal = cents(r.paymentTotal);
+      paymentTotal = cents(r.paymentTotal),
+      refundTotal = cents(r.refundTotal);
     if (total === null || paid === null || balance === null || credit === null)
       issues.push('INVALID_HEADER_AMOUNT');
     if (
@@ -110,9 +122,17 @@ export async function inspectBillingConsistencyScoped(
     if (total !== null && lineTotal !== null && total !== lineTotal)
       issues.push('LINE_TOTAL_MISMATCH');
     if (r.invalidPayments || paymentTotal === null) issues.push('INVALID_PAYMENT');
-    if (paid !== null && paymentTotal !== null && paid !== paymentTotal)
+    if (
+      r.invalidRefunds ||
+      refundTotal === null ||
+      (paymentTotal !== null && refundTotal > paymentTotal)
+    )
+      issues.push('INVALID_REFUND');
+    const netPayments =
+      paymentTotal !== null && refundTotal !== null ? paymentTotal - refundTotal : null;
+    if (paid !== null && netPayments !== null && paid !== netPayments)
       issues.push('PAYMENT_TOTAL_MISMATCH');
-    if (r.status === 'Void' && (paymentTotal === null || paymentTotal > 0n))
+    if (r.status === 'Void' && (netPayments === null || netPayments > 0n))
       issues.push('VOID_WITH_PAYMENT');
     return { ...r, issues };
   });
@@ -127,7 +147,7 @@ export async function inspectBillingConsistencyScoped(
     limitations: {
       ledgerReconciliation: 'NOT_IMPLEMENTED',
       notice:
-        'Current invoice totals, lines and receipts are compared for the selected invoice creation dates. This does not reconcile the general ledger, refunds, claims, bank statements or external payment settlement.',
+        'Current invoice totals, lines, receipts and recorded refunds are compared for the selected invoice creation dates. This does not reconcile the general ledger, claims, bank statements or external payment settlement.',
     },
   };
 }

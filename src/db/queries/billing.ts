@@ -16,6 +16,7 @@ import { requireTenantScope, requireFacilityScope } from '../../auth/scope.servi
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
 import { parseMoneyToCents } from '../../billing/settlement.ts';
+import { readInvoicePaymentLedger } from '../../billing/payment-ledger.ts';
 
 import { moduleLogger } from '../../logging/logger.ts';
 
@@ -125,19 +126,9 @@ export async function recordPayment(paymentData: typeof schema.billingPayments.$
       ) {
         throw new Error('INVOICE_RECONCILIATION_REQUIRED');
       }
-      const ledger = await tx
-        .select({ amount: schema.billingPayments.amount })
-        .from(schema.billingPayments)
-        .where(eq(schema.billingPayments.invoiceId, invoice.id));
-      let ledgerCents = 0;
-      for (const entry of ledger) {
-        const cents = parseMoneyToCents(entry.amount);
-        if (cents === null || cents <= 0 || !Number.isSafeInteger(ledgerCents + cents)) {
-          throw new Error('INVOICE_RECONCILIATION_REQUIRED');
-        }
-        ledgerCents += cents;
-      }
-      if (ledgerCents !== paidCents) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+      const ledger = await readInvoicePaymentLedger(tx, invoice.id);
+      if (!ledger || ledger.netCents !== paidCents)
+        throw new Error('INVOICE_RECONCILIATION_REQUIRED');
 
       if (amountCents > balanceCents) {
         throw new Error('PAYMENT_EXCEEDS_BALANCE');
@@ -259,7 +250,24 @@ export async function getInvoiceDetailScoped(context: AuthorizationContext, invo
     .where(eq(schema.billingPayments.invoiceId, invoice.id))
     .orderBy(desc(schema.billingPayments.createdAt));
 
-  return { invoice, items, payments };
+  const refunds = await db
+    .select({
+      id: schema.billingRefunds.id,
+      invoiceId: schema.billingRefunds.invoiceId,
+      paymentId: schema.billingRefunds.paymentId,
+      refundNumber: schema.billingRefunds.refundNumber,
+      amount: schema.billingRefunds.amount,
+      refundMethod: schema.billingRefunds.refundMethod,
+      externalReference: schema.billingRefunds.externalReference,
+      reason: schema.billingRefunds.reason,
+      actorUserId: schema.billingRefunds.actorUserId,
+      createdAt: schema.billingRefunds.createdAt,
+    })
+    .from(schema.billingRefunds)
+    .where(eq(schema.billingRefunds.invoiceId, invoice.id))
+    .orderBy(desc(schema.billingRefunds.createdAt));
+
+  return { invoice, items, payments, refunds };
 }
 
 /**

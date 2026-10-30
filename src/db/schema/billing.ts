@@ -20,6 +20,7 @@ import {
   date,
   uniqueIndex,
   index,
+  check,
 } from 'drizzle-orm/pg-core';
 
 import { sql } from 'drizzle-orm';
@@ -29,6 +30,7 @@ import { facilities, tenants } from './tenancy.ts';
 import { patients } from './patients.ts';
 
 import { encounters } from './clinical.ts';
+import { users } from './auth.ts';
 
 export const facilityServiceTariffs = pgTable(
   'facility_service_tariffs',
@@ -404,6 +406,47 @@ export const billingPayments = pgTable('billing_payments', {
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+/** Immutable, additive manual refund receipts; original payments are retained. */
+export const billingRefunds = pgTable(
+  'billing_refunds',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    invoiceId: integer('invoice_id')
+      .references(() => billingInvoices.id)
+      .notNull(),
+    paymentId: integer('payment_id')
+      .references(() => billingPayments.id)
+      .notNull(),
+    refundNumber: text('refund_number').notNull().unique(),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    refundMethod: text('refund_method').notNull(),
+    externalReference: text('external_reference'),
+    reason: text('reason').notNull(),
+    manualConfirmation: boolean('manual_confirmation').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    actorUserId: integer('actor_user_id')
+      .references(() => users.id)
+      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('billing_refunds_facility_key_idx').on(table.facilityId, table.idempotencyKey),
+    index('billing_refunds_invoice_idx').on(table.invoiceId, table.id),
+    index('billing_refunds_payment_idx').on(table.paymentId, table.id),
+    check(
+      'billing_refund_amount_chk',
+      sql`${table.amount} > 0 AND ${table.amount}::text NOT IN ('NaN','Infinity','-Infinity')`,
+    ),
+  ],
+);
 
 /* ============================================================
    42. INSURANCE / SHA CLAIMS

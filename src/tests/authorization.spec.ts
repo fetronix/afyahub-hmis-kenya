@@ -54,6 +54,30 @@ describe('RBAC / Authorization Tests', () => {
     });
 
     expect(isSuperAdmin(superAdmin), 'SUPER_ADMIN should be recognized as super admin').toBe(true);
+    const staleFinancialGrants = {
+      ...superAdmin,
+      permissions: [
+        ...superAdmin.permissions,
+        'billing.read',
+        'billing.payments.record',
+        'accounting.journals.post',
+        'tariffs.manage',
+        'insurance.private.remittance.reconcile',
+      ],
+    };
+    for (const permission of [
+      'billing.read',
+      'billing.payments.record',
+      'accounting.journals.post',
+      'tariffs.manage',
+      'insurance.private.remittance.reconcile',
+    ]) {
+      expect(
+        hasPermission(staleFinancialGrants, permission),
+        `global role cannot use ${permission}`,
+      ).toBe(false);
+    }
+    expect(hasPermission(staleFinancialGrants, 'platform.read')).toBe(true);
 
     expect(hasRole(superAdmin, 'SUPER_ADMIN'), 'SUPER_ADMIN should have SUPER_ADMIN role').toBe(
       true,

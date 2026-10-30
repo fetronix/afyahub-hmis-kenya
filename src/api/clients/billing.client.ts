@@ -5,11 +5,15 @@ import type {
   BillingInvoice,
   BillingItem,
   BillingPayment,
+  BillingRefund,
+  RecordRefundResult,
+  RefundStatusResult,
   ClaimSettlementResult,
   ClaimableLinesResponse,
   DraftClaimResult,
   InsuranceClaim,
   LabServiceDiagnostics,
+  FacilityTariffValidation,
   OccupancyTrendResponse,
   OperationsReport,
   PaymentLedgerRow,
@@ -27,7 +31,30 @@ export const billingClient = {
       invoice: BillingInvoice;
       items: BillingItem[];
       payments: BillingPayment[];
+      refunds: BillingRefund[];
     }>(`${API_BASE}/invoices/${id}`),
+
+  recordManualRefund: (input: {
+    facilityId: number;
+    invoiceId: number;
+    paymentId: number;
+    amount: string;
+    refundMethod: 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER' | 'CHEQUE';
+    externalReference?: string;
+    reason: string;
+    manualConfirmation: true;
+    idempotencyKey: string;
+  }) =>
+    fetchJson<RecordRefundResult>(`${API_BASE}/billing/refunds`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  checkRefundStatus: (input: { facilityId: number; idempotencyKey: string }) =>
+    fetchJson<RefundStatusResult>(`${API_BASE}/billing/refunds/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   voidInvoice: (id: number, reason: string) =>
     fetchJson<BillingInvoice>(`${API_BASE}/invoices/${id}/void`, {
@@ -176,6 +203,11 @@ export const billingClient = {
     fetchJson<ServiceTariffLink>(
       `${API_BASE}/service-tariff-links/${encodeURIComponent(String(id))}/deactivate`,
       { method: 'PATCH', body: JSON.stringify({ facilityId }) },
+    ),
+
+  getFacilityTariffValidation: (facilityId: number, offset = 0) =>
+    fetchJson<FacilityTariffValidation>(
+      `${API_BASE}/billing/tariff-validation?facilityId=${encodeURIComponent(String(facilityId))}&offset=${encodeURIComponent(String(offset))}&limit=100`,
     ),
 
   getLabServiceDiagnostics: (facilityId: number) =>

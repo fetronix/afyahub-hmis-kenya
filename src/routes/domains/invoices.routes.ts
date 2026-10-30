@@ -12,6 +12,7 @@ import type { AuthRequest } from '../../auth/auth.middleware.ts';
 import { and, count, eq, sql, sum } from 'drizzle-orm';
 import * as billing from '../../billing/billing.service.ts';
 import * as billingPayments from '../../billing/payments.service.ts';
+import { checkRefundStatus, recordManualRefund } from '../../billing/refunds.service.ts';
 import { db } from '../../db/index.ts';
 import {
   facilityHasTariffModule,
@@ -44,6 +45,8 @@ import {
   createInvoiceBodySchema,
   paymentLedgerQuerySchema,
   recordPaymentBodySchema,
+  refundBodySchema,
+  refundStatusBodySchema,
 } from '../../validation/schemas/index.ts';
 import { validateBody, validateQuery } from '../../validation/validate.ts';
 
@@ -372,6 +375,59 @@ router.post(
         success: false,
         error: 'PAYMENT_RECORD_FAILED',
         message: 'Failed to record payment.',
+      });
+    }
+  },
+);
+
+/** Manual accounting record only; no bank, card or mobile transfer is initiated. */
+router.post(
+  '/api/billing/refunds',
+  requirePermission('billing.read'),
+  requirePermission('billing.refunds.record'),
+  validateBody(refundBodySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext)
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const headerKey = req.get('Idempotency-Key');
+      if (headerKey && req.body.idempotencyKey && headerKey !== req.body.idempotencyKey) {
+        return res.status(400).json({ success: false, error: 'REFUND_IDEMPOTENCY_MISMATCH' });
+      }
+      const result = await recordManualRefund(req.authContext, {
+        ...req.body,
+        idempotencyKey: headerKey ?? req.body.idempotencyKey,
+      });
+      return res.status(result.replayed ? 200 : 201).json(result);
+    } catch (error: unknown) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      console.error('Refund receipt failed; transaction rolled back.');
+      return res.status(500).json({
+        success: false,
+        error: 'REFUND_RECORD_FAILED',
+        message: 'Refund could not be recorded.',
+      });
+    }
+  },
+);
+
+router.post(
+  '/api/billing/refunds/status',
+  requirePermission('billing.read'),
+  requirePermission('billing.refunds.record'),
+  validateBody(refundStatusBodySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext)
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      return res.json(await checkRefundStatus(req.authContext, req.body));
+    } catch (error: unknown) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      console.error('Refund status could not be loaded.');
+      return res.status(500).json({
+        success: false,
+        error: 'REFUND_STATUS_FAILED',
+        message: 'Refund status could not be loaded.',
       });
     }
   },
