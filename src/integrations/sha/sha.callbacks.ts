@@ -106,12 +106,15 @@ export async function registerCallbackEndpoint(
       clearTimeout(timer);
       return {
         registered: false,
-        source: epRes.status >= 500 ? 'UNAVAILABLE' : 'AUTHORITATIVE_PAYER',
+        source:
+          epRes.status >= 500 || (epRes.ok && !endpointId) ? 'UNAVAILABLE' : 'AUTHORITATIVE_PAYER',
         mode: cfg.mode,
         isSimulated: false,
         endpointId: null,
         operationId: null,
-        errorMessage: `HIE callback endpoint registration returned HTTP ${epRes.status}.`,
+        errorMessage: epRes.ok
+          ? 'HIE callback endpoint response did not include an endpoint identifier; registration is not confirmed.'
+          : `HIE callback endpoint registration returned HTTP ${epRes.status}.`,
         correlationId,
       };
     }
@@ -135,16 +138,22 @@ export async function registerCallbackEndpoint(
     const opJson = asObj(await opRes.json().catch(() => null));
     const operationId = opJson ? readStr(opJson, 'operation_id') : null;
 
+    // An HTTP success alone does not confirm that the callback operation exists.
+    // Keep the endpoint ID for follow-up if registration only partially completed.
+    const registered = opRes.ok && operationId !== null;
     return {
-      registered: opRes.ok,
-      source: 'AUTHORITATIVE_PAYER',
+      registered,
+      source:
+        opRes.status >= 500 || (opRes.ok && !operationId) ? 'UNAVAILABLE' : 'AUTHORITATIVE_PAYER',
       mode: cfg.mode,
       isSimulated: false,
       endpointId,
       operationId,
-      errorMessage: opRes.ok
+      errorMessage: registered
         ? null
-        : `HIE callback operation registration returned HTTP ${opRes.status}.`,
+        : opRes.ok
+          ? 'HIE callback operation response did not include an operation identifier; registration is not confirmed.'
+          : `HIE callback operation registration returned HTTP ${opRes.status}.`,
       correlationId,
     };
   } catch (error) {

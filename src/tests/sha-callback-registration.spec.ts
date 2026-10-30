@@ -57,7 +57,7 @@ describe('SHA callback registration with injected responses', () => {
   it.each([
     { status: 403, payload: {}, expectedSource: 'AUTHORITATIVE_PAYER' },
     { status: 503, payload: {}, expectedSource: 'UNAVAILABLE' },
-    { status: 200, payload: {}, expectedSource: 'AUTHORITATIVE_PAYER' },
+    { status: 200, payload: {}, expectedSource: 'UNAVAILABLE' },
   ])(
     'does not register or send an operation after an unusable endpoint response ($status)',
     async ({ status, payload, expectedSource }) => {
@@ -72,6 +72,30 @@ describe('SHA callback registration with injected responses', () => {
     },
   );
 
+  it.each([
+    ['missing operation identifier', () => json({})],
+    ['invalid operation response', () => new Response('not JSON', { status: 200 })],
+    ['empty operation identifier', () => json({ operation_id: '  ' })],
+  ])(
+    'does not claim registration after a successful HTTP response with %s',
+    async (_label, response) => {
+      const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+        const url = String(input);
+        if (url.endsWith('/tenants/token')) return json({ access_token: 'synthetic-token' });
+        if (url.endsWith('/operations')) return response();
+        return json({ endpoint_id: 'synthetic-endpoint' });
+      });
+      const result = await stubbedAdapter(fetchImpl).registerCallbackEndpoint(request);
+      expect(result).toMatchObject({
+        registered: false,
+        source: 'UNAVAILABLE',
+        endpointId: 'synthetic-endpoint',
+        operationId: null,
+      });
+      expect(result.errorMessage).toContain('operation identifier');
+    },
+  );
+
   it('reports operation rejection rather than successful registration', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
@@ -82,6 +106,7 @@ describe('SHA callback registration with injected responses', () => {
     const result = await stubbedAdapter(fetchImpl).registerCallbackEndpoint(request);
     expect(result).toMatchObject({
       registered: false,
+      source: 'UNAVAILABLE',
       endpointId: 'synthetic-endpoint',
       operationId: null,
     });
