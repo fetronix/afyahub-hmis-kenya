@@ -1,0 +1,19 @@
+# This stack is only for `npm run test:docker`. It is intentionally separate
+# from the deployment Compose project and never mounts a persistent volume.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: jalicare_test
+      POSTGRES_DB: jalicare_test
+      POSTGRES_PASSWORD: ${JALICARE_TEST_DB_PASSWORD:?Run npm run test:docker}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '127.0.0.1::5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U jalicare_test -d jalicare_test']
+      interval: 2s
+      timeout: 5s
+      retries: 60

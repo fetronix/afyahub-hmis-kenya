@@ -14,6 +14,7 @@
 # Jobs:
 #   static      tsc --noEmit, then eslint (0 errors required, warnings reported)
 #   unit        `npm test`: every spec, including PostgreSQL-backed tests, coverage thresholds enforced
+#   bootstrap   clean checkout runs the exact Docker install/migrate/test command
 #   database    migrations applied to PostgreSQL 16, then the DB specs
 #   build       client + server bundles, uploaded as artifacts
 #   audit       npm audit for high/critical advisories
@@ -139,6 +140,20 @@ jobs:
           path: coverage/
           retention-days: 14
           if-no-files-found: warn
+
+  # No service, node_modules cache or pre-existing database: exercise the
+  # same from-scratch command documented for a developer's fresh clone.
+  bootstrap:
+    name: Fresh checkout Docker bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install, migrate and run the complete suite in an isolated project
+        run: npm run test:docker
 
   # ------------------------------------------------------------------
   # PostgreSQL 16. This independent job rechecks migrations, preflight and

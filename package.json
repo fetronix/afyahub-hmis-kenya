@@ -18,6 +18,7 @@
     "db:grant-inpatient-permissions": "tsx scripts/grant-inpatient-permissions.ts",
     "locations:migration": "tsx scripts/generate-location-migration.ts",
     "test": "vitest run --coverage",
+    "test:docker": "node scripts/test-docker.mjs",
     "db:status:all": "node scripts/run-script.mjs migration-status --expect-all",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:permissions": "node scripts/run-script.mjs seed-permissions",
