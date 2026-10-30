@@ -83,8 +83,8 @@ export default defineConfig({
        * raised as suites migrate. A threshold that nobody can meet is a
        * threshold everybody disables.
        *
-       * Measured on 2026-10-25 with `npm run test:coverage`: see
-       * docs/quality/TESTING.md for the numbers this was set from.
+       * The latest database-backed measurements and remaining gaps are in
+       * docs/quality/COVERAGE.md.
        */
       thresholds: {
         /*
@@ -97,17 +97,47 @@ export default defineConfig({
          * exercise is now counted, where before an un-instrumented
          * subprocess ran it.
          *
-         * Measured 2026-10-30 on a clean checkout with PostgreSQL 16:
-         * 54.63% lines, 53.83% statements, 58.16% functions, 46.67% branches.
+         * Measured 2026-10-30 at 1c336f8 on a clean checkout with PostgreSQL 16:
+         * 56.16% lines, 55.35% statements, 58.74% functions, 48.96% branches.
          * Raise each metric only when its full-suite measurement supports it;
-         * in particular, a 55% branch threshold would fail at this baseline.
+         * in particular, a 55% branch threshold would currently fail.
          * The full suite must run with a disposable PostgreSQL database; a
          * no-database run can fall below this ratchet.
          */
-        lines: 50.0,
-        statements: 50.0,
-        functions: 55.0,
-        branches: 45.0,
+        lines: 55.0,
+        statements: 55.0,
+        functions: 58.0,
+        branches: 48.0,
+
+        // Newly exercised payer and SHA boundaries retain their measured gains.
+        'src/insurance/payers/cic.adapter.ts': {
+          lines: 90,
+          statements: 90,
+          functions: 90,
+        },
+        'src/insurance/mappings/mappings.service.ts': {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 80,
+        },
+        'src/insurance/eclaims/eligibility.service.ts': {
+          lines: 90,
+          statements: 90,
+          functions: 80,
+          branches: 75,
+        },
+        'src/insurance/hub/patient-scope.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        'src/integrations/sha/sha.callbacks.ts': {
+          lines: 95,
+          statements: 90,
+          branches: 85,
+        },
 
         'src/validation/validate.ts': {
           lines: 90,

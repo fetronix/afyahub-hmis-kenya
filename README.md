@@ -427,11 +427,12 @@ against a database whose name does not contain `test`.
 
 ### Coverage
 
-Measured, not asserted. Current figures are in
-[`docs/quality/BASELINE.md`](docs/quality/BASELINE.md) and enforced as a
-ratchet in `vitest.config.ts`: global thresholds sit just below the measured
-value so coverage cannot regress, plus high per-module thresholds on the
-pricing rules, where a defect bills a patient the wrong amount.
+Measured, not asserted. The latest database-backed figures and remaining
+branch-coverage gap are in [`docs/quality/COVERAGE.md`](docs/quality/COVERAGE.md).
+`vitest.config.ts` enforces global and risk-specific per-module ratchets;
+coverage does not establish correctness, payer approval or live connectivity.
+The earlier historical baseline remains in
+[`docs/quality/BASELINE.md`](docs/quality/BASELINE.md).
 
 ```bash
 npm run test:coverage
