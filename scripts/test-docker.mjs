@@ -215,7 +215,7 @@ export async function runDockerBootstrap({
   }
   const password = randomBytes(24).toString('hex');
   const home = mkdtempSync(join(tmpdir(), 'jalicare-test-'));
-  const composeEnv = { ...dockerEnv, JALICARE_TEST_DB_PASSWORD: password };
+  const composeEnv = { ...dockerEnv, POSTGRES_PASSWORD: password };
   const testEnv = {
     ...system,
     HOME: home,
@@ -243,14 +243,8 @@ export async function runDockerBootstrap({
   const installEnv = { ...testEnv, ...copyAllowed(parentEnv, NETWORK_KEYS) };
   const compose = ['compose', '-f', TEST_COMPOSE_FILE, '-p', project];
   log(`[test:docker] Isolated Compose project: ${project}`);
-  // Compose still interpolates POSTGRES_PASSWORD for `down`. This harmless
-  // placeholder is sufficient for cleanup; it is not the database password.
-  const cleanupEnv =
-    process.platform === 'win32'
-      ? "$env:JALICARE_TEST_DB_PASSWORD='cleanup-only'; "
-      : 'JALICARE_TEST_DB_PASSWORD=cleanup-only ';
   log(
-    `[test:docker] If interrupted, clean up with: ${cleanupEnv}docker ${compose.join(' ')} down --volumes --remove-orphans`,
+    `[test:docker] If interrupted, clean up with: docker ${compose.join(' ')} down --volumes --remove-orphans`,
   );
 
   let failure;

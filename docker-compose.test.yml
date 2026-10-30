@@ -6,7 +6,8 @@ services:
     environment:
       POSTGRES_USER: jalicare_test
       POSTGRES_DB: jalicare_test
-      POSTGRES_PASSWORD: ${JALICARE_TEST_DB_PASSWORD:?Run npm run test:docker}
+      # The bootstrap supplies a new value in the Compose process environment.
+      POSTGRES_PASSWORD:
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - '127.0.0.1::5432'

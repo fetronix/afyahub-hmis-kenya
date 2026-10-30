@@ -67,6 +67,7 @@ describe('fresh Docker test bootstrap', () => {
     const compose = readFileSync(join(ROOT, TEST_COMPOSE_FILE), 'utf8');
     expect(compose).toMatch(/^\s+db:\s*$/m);
     expect(compose).toContain('image: postgres:16');
+    expect(compose).toMatch(/^\s+POSTGRES_PASSWORD:\s*$/m);
     expect(compose).toContain("'127.0.0.1::5432'");
     expect(compose).toContain('tmpfs:');
     expect(compose).not.toMatch(/^\s*volumes:/m);
@@ -113,6 +114,7 @@ describe('fresh Docker test bootstrap', () => {
       DHA_ALLOW_PRODUCTION: 'false',
     });
     expect(env.SQL_ADMIN_PASSWORD).not.toBe(inheritedEnv.SQL_ADMIN_PASSWORD);
+    expect(calls[up].options.env.POSTGRES_PASSWORD).toBe(env.SQL_ADMIN_PASSWORD);
     expect(env.SHA_CLIENT_SECRET).toBeUndefined();
     expect(env.NODE_OPTIONS).toBeUndefined();
     expect(env.COMPOSE_FILE).toBeUndefined();
