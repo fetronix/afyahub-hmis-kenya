@@ -97,18 +97,17 @@ export default defineConfig({
          * exercise is now counted, where before an un-instrumented
          * subprocess ran it.
          *
-         * Measured 2026-10-28 with `npm test` across 66 spec files:
-         * 41.45% statements, 41.96% lines, 42.93% functions, 36.73% branches
-         * (up from 19.35 / 19.22 / 19.58 / 16.88 after adding Zod route-level
-         * validation, HTTP integration suites, and domain service specs).
-         * After integrating the insurance, accounting and payment workflows,
-         * full-suite coverage must run with the disposable PostgreSQL database.
-         * A no-database run can execute unit tests but falls below this ratchet.
+         * Measured 2026-10-30 on a clean checkout with PostgreSQL 16:
+         * 54.63% lines, 53.83% statements, 58.16% functions, 46.67% branches.
+         * Raise each metric only when its full-suite measurement supports it;
+         * in particular, a 55% branch threshold would fail at this baseline.
+         * The full suite must run with a disposable PostgreSQL database; a
+         * no-database run can fall below this ratchet.
          */
-        lines: 41.0,
-        statements: 40.5,
-        functions: 41.5,
-        branches: 35.5,
+        lines: 50.0,
+        statements: 50.0,
+        functions: 55.0,
+        branches: 45.0,
 
         'src/validation/validate.ts': {
           lines: 90,
