@@ -23,7 +23,16 @@ const schemaExports = schema as Record<string, unknown>;
 
 describe('schema barrel: pre-extraction contract', () => {
   it('preserves exactly the public exports used by the app and drizzle-kit', () => {
-    expect(Object.keys(schema).sort()).toEqual(publicExports);
+    // New domain tables are explicit additions; every original export remains required.
+    expect(Object.keys(schema).sort()).toEqual(
+      [
+        ...publicExports,
+        'theatreRooms',
+        'theatreBookings',
+        'theatreScheduleEvents',
+        'theatreLegacyReviewEvents',
+      ].sort(),
+    );
   });
 
   it.each(Object.entries(baseline.tables))('%s keeps its table metadata', (name, expected) => {

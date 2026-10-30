@@ -72,6 +72,43 @@ function plan(action: 'create' | 'update' | 'grant', message: string): void {
    ============================================================ */
 
 const PERMISSIONS = [
+  // Facility administrators explicitly delegate these; none imply clinical clearance.
+  {
+    code: 'theatre.read',
+    name: 'Read theatre schedule',
+    module: 'theatre',
+    description: 'View facility theatre cases, rooms, practitioners and scheduling history.',
+  },
+  {
+    code: 'theatre.reports.read',
+    name: 'Read theatre scheduling reports',
+    module: 'theatre',
+    description: 'View aggregated facility scheduling reports, not clinical outcomes.',
+  },
+  {
+    code: 'theatre.rooms.manage',
+    name: 'Manage theatre rooms',
+    module: 'theatre',
+    description: 'Create rooms and change their operational state.',
+  },
+  {
+    code: 'theatre.schedule.create',
+    name: 'Schedule theatre cases',
+    module: 'theatre',
+    description: 'Create a structured theatre booking.',
+  },
+  {
+    code: 'theatre.schedule.reconcile',
+    name: 'Review historical theatre reservations',
+    module: 'theatre',
+    description: 'Record or revoke an explicit scheduling-only legacy reservation attestation.',
+  },
+  {
+    code: 'theatre.schedule.manage',
+    name: 'Change theatre bookings',
+    module: 'theatre',
+    description: 'Reschedule or cancel a scheduled theatre case.',
+  },
   /* ==========================================================
      PLATFORM
      ========================================================== */
@@ -1471,6 +1508,7 @@ async function seedPermissions(): Promise<void> {
   ]);
   for (const permission of allPermissions) {
     if (
+      permission.code.startsWith('theatre.') ||
       (permission.code.startsWith('procurement.') && permission.code !== 'procurement.read') ||
       permission.code === 'tariffs.read' ||
       permission.code === 'tariffs.manage' ||

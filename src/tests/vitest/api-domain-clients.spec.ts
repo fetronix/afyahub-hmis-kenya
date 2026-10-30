@@ -14,6 +14,7 @@ import {
   patientsClinicalClient,
   platformClient,
   setSessionToken,
+  theatreClient,
 } from '../../api/client.ts';
 import { sanitizeServerErrorMessage } from '../../api/clients/http.ts';
 
@@ -64,6 +65,7 @@ describe('Domain API clients and backward-compatible src/api/client.ts facade', 
       patientsClinicalClient,
       maternityClient,
       inpatientClient,
+      theatreClient,
       diagnosticsPharmacyClient,
       billingClient,
     ];

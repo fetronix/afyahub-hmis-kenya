@@ -43,6 +43,7 @@ import icd11Routes from '../clinical/icd11/icd11.routes.ts';
 import medicationsRoutes from './medications.routes.ts';
 import diagnosesRoutes from './diagnoses.routes.ts';
 import theatreRoutes from './theatre.routes.ts';
+import theatreSchedulingRoutes from './theatre-scheduling.routes.ts';
 import laboratoryRoutes from './laboratory.routes.ts';
 import radiologyRoutes from './radiology.routes.ts';
 import pharmacyRoutes from './pharmacy.routes.ts';
@@ -131,6 +132,7 @@ export function createApiRoutes(): Router {
   api.use('/inpatient', requireFacilityModule('inpatient'));
   api.use('/nursing-notes', requireFacilityModule('inpatient'));
   api.use('/theatre-cases', requireFacilityModule('theatre'));
+  api.use('/theatre', requireFacilityModule('theatre'));
 
   api.use('/lab-tests', requireFacilityModule('laboratory'));
   api.use('/lab-orders', requireFacilityModule('laboratory'));
@@ -188,6 +190,7 @@ export function createDomainRoutes(): Router {
   domains.use(radiologyRoutes);
   domains.use(laboratoryRoutes);
   domains.use(theatreRoutes);
+  domains.use(theatreSchedulingRoutes);
   domains.use(medicationsRoutes);
   domains.use(diagnosesRoutes);
   domains.use(vitalsRoutes);

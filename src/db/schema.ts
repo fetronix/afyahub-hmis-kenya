@@ -12,6 +12,7 @@ export * from './schema/patients.ts';
 export * from './schema/referrals.ts';
 export * from './schema/clinical.ts';
 export * from './schema/inpatient.ts';
+export * from './schema/theatre-scheduling.ts';
 export * from './schema/laboratory.ts';
 export * from './schema/inventory.ts';
 export * from './schema/billing.ts';
