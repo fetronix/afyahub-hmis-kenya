@@ -102,8 +102,7 @@ export async function recordChargeAttempt(
     encounterType: request.encounterType ?? null,
     aliases: [...(request.aliases ?? [])],
     quantity,
-    fallbackUnitPrice:
-      request.fallbackUnitPrice === undefined ? null : String(request.fallbackUnitPrice),
+    fallbackUnitPrice: request.fallbackUnitPrice == null ? null : String(request.fallbackUnitPrice),
     reason: result.reason,
     detail: result.message ?? null,
     codesTried: [...(result.codesTried ?? request.codes ?? [])],
@@ -240,7 +239,7 @@ export async function recordChargeAttempt(
       return null;
     }
 
-    console.error('Billing: could not record skipped charge:', error);
+    console.error('Billing: could not record a skipped charge; manual reconciliation is required.');
 
     return null;
   }
@@ -264,8 +263,8 @@ export async function chargeAndRecord(
 
   try {
     result = await chargeForService(executor, request);
-  } catch (error: unknown) {
-    console.error('Billing charge failed:', error);
+  } catch {
+    console.error('Billing charge failed; manual reconciliation is required.');
 
     result = {
       charged: false,
@@ -275,7 +274,16 @@ export async function chargeAndRecord(
   }
 
   if (!result.charged) {
-    await recordChargeAttempt(executor, request, result);
+    const attemptId = await recordChargeAttempt(executor, request, result);
+    if (result.reason === 'TARIFF_NOT_CONFIGURED' && attemptId === null) {
+      // The usual message promises a retry-queue entry. Do not make that
+      // claim when the write failed or no stable source identity exists.
+      return {
+        ...result,
+        message:
+          'The service was recorded but not billed. The unpriced charge could not be recorded in the retry queue; manual reconciliation is required.',
+      };
+    }
   }
 
   return result;

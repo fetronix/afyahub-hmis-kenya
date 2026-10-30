@@ -6,7 +6,7 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
@@ -390,12 +390,16 @@ export async function verifyLabResult(
         eq(schema.labResults.id, resultId),
         eq(schema.labResults.orderId, order.id),
         eq(schema.labResults.patientId, order.patientId),
+        // Rechecked after the row lock: concurrent verifiers cannot overwrite the first stamp.
+        sql`${schema.labResults.status} IS DISTINCT FROM 'Verified'`,
+        isNull(schema.labResults.verifiedBy),
+        isNull(schema.labResults.verifiedAt),
       ),
     )
     .returning();
 
   if (!updated[0]) {
-    throw new Error('Laboratory result could not be verified.');
+    throw new Error('Laboratory result is already verified or requires review.');
   }
 
   return updated[0];

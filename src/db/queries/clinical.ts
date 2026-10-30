@@ -10,7 +10,7 @@ import { and, desc, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
-import { ScopeAccessError } from '../../auth/scope.service.ts';
+import { ScopeAccessError, resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import {
   normalizeNewDiagnosisCoding,
@@ -18,6 +18,7 @@ import {
 } from '../../clinical/icd11/icd11.service.ts';
 
 import { loadEncounterInScope, loadPatientInScope } from './shared.ts';
+import { getFacilityByIdScoped } from './tenancy.ts';
 
 import { moduleLogger } from '../../logging/logger.ts';
 
@@ -295,6 +296,61 @@ export async function getMedications(encounterId?: number, patientId?: number) {
     log.error({ err: error }, 'medications.fetch_failed');
     throw new Error('Failed to fetch prescriptions', { cause: error });
   }
+}
+
+/** Facility-scoped worklist. Medication ownership follows the encounter,
+ * including older records which have no facility column of their own. */
+export async function getMedicationsScoped(
+  context: AuthorizationContext,
+  input: { encounterId?: number; patientId?: number; facilityId?: number } = {},
+) {
+  const facilityId = resolveFacilityScope(context, input.facilityId);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+  if (!facility) throw new ScopeAccessError('Facility not found.', 'FACILITY_ACCESS_DENIED');
+  for (const id of [input.encounterId, input.patientId]) {
+    if (id !== undefined && (!Number.isSafeInteger(id) || id <= 0))
+      throw new ScopeAccessError('Invalid clinical record filter.', 'INVALID_SCOPE_ID');
+  }
+  const rows = await db
+    .select({ medication: schema.medications })
+    .from(schema.medications)
+    .innerJoin(
+      schema.encounters,
+      and(
+        eq(schema.medications.encounterId, schema.encounters.id),
+        eq(schema.medications.patientId, schema.encounters.patientId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.encounters.tenantId, facility.tenantId),
+        eq(schema.encounters.facilityId, facility.id),
+        ...(input.encounterId !== undefined ? [eq(schema.encounters.id, input.encounterId)] : []),
+        ...(input.patientId !== undefined
+          ? [eq(schema.encounters.patientId, input.patientId)]
+          : []),
+      ),
+    )
+    .orderBy(desc(schema.medications.prescribedAt));
+  return rows.map((row) => row.medication);
+}
+
+/** A prescription cannot be attached to another facility's encounter or patient. */
+export async function createMedicationScoped(
+  context: AuthorizationContext,
+  data: typeof schema.medications.$inferInsert,
+) {
+  const encounter = await loadEncounterInScope(context, Number(data.encounterId));
+  if (encounter.patientId !== Number(data.patientId))
+    throw new ScopeAccessError(
+      'The patient does not match the encounter.',
+      'PATIENT_ENCOUNTER_MISMATCH',
+    );
+  const [created] = await db
+    .insert(schema.medications)
+    .values({ ...data, encounterId: encounter.id, patientId: encounter.patientId })
+    .returning();
+  return created;
 }
 
 export async function createMedication(data: typeof schema.medications.$inferInsert) {

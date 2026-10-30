@@ -35,9 +35,7 @@ export const PharmacyModule: React.FC = () => {
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
   const [batches, setBatches] = useState<InventoryBatchRow[]>([]);
   const [dispenseQty, setDispenseQty] = useState(1);
-  const [dispenseNotes, setDispenseNotes] = useState(
-    'Labelled: Take with plenty of water after food.',
-  );
+  const [dispenseNotes, setDispenseNotes] = useState('');
 
   useEffect(() => {
     async function loadPharmacy() {
@@ -69,22 +67,14 @@ export const PharmacyModule: React.FC = () => {
     setDispenseTarget(med);
     setDispenseQty(med.quantity || 1);
 
-    // Try to match inventory item by drug name
-    const match = inventory.find(
-      (i) =>
-        i.name.toLowerCase().includes(med.drugName.toLowerCase()) ||
-        (i.genericName && i.genericName.toLowerCase().includes(med.drugName.toLowerCase())),
-    );
-
-    if (match) {
-      setSelectedInventoryItem(match);
-    } else if (inventory.length > 0) {
-      setSelectedInventoryItem(inventory[0]);
-    }
+    // The pharmacist must explicitly identify the actual product; a fuzzy
+    // match or the first inventory item is not clinical verification.
+    setSelectedInventoryItem(null);
+    setDispenseNotes('');
   };
 
   const handleConfirmDispense = async () => {
-    if (!dispenseTarget) return;
+    if (!dispenseTarget || !selectedInventoryItem) return;
 
     try {
       /*
@@ -96,13 +86,10 @@ export const PharmacyModule: React.FC = () => {
         facilityId: currentFacility?.id,
         prescriptionId: dispenseTarget.id,
         patientId: dispenseTarget.patientId,
-        itemId: selectedInventoryItem ? selectedInventoryItem.id : undefined,
+        itemId: selectedInventoryItem.id,
         quantityDispensed: Number(dispenseQty),
         dispensedBy: currentUser.name,
         notes: dispenseNotes,
-        drugName: dispenseTarget.drugName,
-        encounterId: dispenseTarget.encounterId,
-        unitPrice: dispenseTarget.unitPrice,
       });
 
       const billingNote = result?.billing?.charged
@@ -298,10 +285,11 @@ export const PharmacyModule: React.FC = () => {
                   value={selectedInventoryItem?.id || ''}
                   onChange={(e) => {
                     const found = inventory.find((i) => i.id.toString() === e.target.value);
-                    if (found) setSelectedInventoryItem(found);
+                    setSelectedInventoryItem(found ?? null);
                   }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
+                  <option value="">Select the verified stock item</option>
                   {inventory.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name} ({item.currentStock} in stock · KES{' '}
@@ -384,7 +372,7 @@ export const PharmacyModule: React.FC = () => {
                 <div>
                   ✓ Deducts <strong>{dispenseQty}</strong> units from Pharmacy Store stock.
                 </div>
-                <div>✓ Creates pending patient invoice item for cashier collection.</div>
+                <div>Billing is attempted only when a facility tariff is configured.</div>
               </div>
             </div>
 
@@ -398,7 +386,8 @@ export const PharmacyModule: React.FC = () => {
               </button>
               <button
                 onClick={handleConfirmDispense}
-                className="px-4 py-1.5 bg-teal-700 text-white rounded-md font-semibold hover:bg-teal-800"
+                disabled={!selectedInventoryItem}
+                className="px-4 py-1.5 bg-teal-700 text-white rounded-md font-semibold hover:bg-teal-800 disabled:opacity-50"
               >
                 Authorize & Dispense
               </button>

@@ -44,6 +44,7 @@ export type PaymentErrorCode =
   | 'FACILITY_NOT_FOUND'
   | 'FACILITY_MODULE_DISABLED'
   | 'INVOICE_VOIDED'
+  | 'INVOICE_RECONCILIATION_REQUIRED'
   | 'DUPLICATE_TRANSACTION_CODE'
   | 'PAYMENT_EXCEEDS_BALANCE';
 
@@ -242,8 +243,51 @@ export async function recordSettledPayment(
         }
       }
 
-      const totalCents = parseMoneyToCents(invoice.totalAmount) ?? 0;
-      const paidCents = parseMoneyToCents(invoice.paidAmount) ?? 0;
+      const totalCents = parseMoneyToCents(invoice.totalAmount);
+      const paidCents = parseMoneyToCents(invoice.paidAmount);
+      const balanceCents = parseMoneyToCents(invoice.balanceAmount);
+      const creditCents = parseMoneyToCents(invoice.creditBalance);
+      if (
+        totalCents === null ||
+        paidCents === null ||
+        balanceCents === null ||
+        creditCents === null ||
+        totalCents < 0 ||
+        paidCents < 0 ||
+        balanceCents < 0 ||
+        creditCents < 0 ||
+        balanceCents !== Math.max(0, totalCents - paidCents) ||
+        creditCents !== Math.max(0, paidCents - totalCents)
+      ) {
+        throw new PaymentDomainError(
+          'INVOICE_RECONCILIATION_REQUIRED',
+          'Invoice amounts are missing or inconsistent; authorized review is required before accepting payment.',
+          409,
+        );
+      }
+      const ledger = await tx
+        .select({ amount: schema.billingPayments.amount })
+        .from(schema.billingPayments)
+        .where(eq(schema.billingPayments.invoiceId, invoice.id));
+      let ledgerCents = 0;
+      for (const entry of ledger) {
+        const cents = parseMoneyToCents(entry.amount);
+        if (cents === null || cents <= 0 || !Number.isSafeInteger(ledgerCents + cents)) {
+          throw new PaymentDomainError(
+            'INVOICE_RECONCILIATION_REQUIRED',
+            'The invoice payment ledger requires authorized review.',
+            409,
+          );
+        }
+        ledgerCents += cents;
+      }
+      if (ledgerCents !== paidCents) {
+        throw new PaymentDomainError(
+          'INVOICE_RECONCILIATION_REQUIRED',
+          'The invoice balance and payment ledger disagree; authorized review is required.',
+          409,
+        );
+      }
 
       const settlement = classifySettlement({
         invoiceTotalCents: totalCents,
@@ -306,6 +350,16 @@ export async function recordSettledPayment(
       if (!updatedInvoice) {
         throw new Error('Invoice update returned no record');
       }
+      // A receipt and its minimal audit must commit or roll back together.
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
+        facilityId,
+        userId: String(context.userId),
+        action: 'CREATE',
+        resource: 'Payment',
+        resourceId: String(payment.id),
+        details: 'Payment receipt recorded.',
+      });
 
       return {
         payment,

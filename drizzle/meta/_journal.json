@@ -225,6 +225,13 @@
             "when": 1792900000019,
             "tag": "0031_theatre_scheduling",
             "breakpoints": true
+        },
+        {
+            "idx": 32,
+            "version": "7",
+            "when": 1792900000020,
+            "tag": "0032_inpatient_active_admission_guards",
+            "breakpoints": true
         }
     ]
 }

@@ -222,16 +222,6 @@ router.post(
     try {
       const invoice = await queries.voidInvoiceScoped(context, Number(req.params.id), reason);
 
-      await queries.logAuditEvent(
-        invoice.tenantId,
-        invoice.facilityId,
-        String(context.userId),
-        'UPDATE',
-        'Invoice',
-        String(invoice.id),
-        `Invoice ${invoice.invoiceNumber} voided: ${reason}`,
-      );
-
       return res.json(invoice);
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;

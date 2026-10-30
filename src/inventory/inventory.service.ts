@@ -14,9 +14,9 @@
  *               draw first-expiry-first-out and is refused when the
  *               usable stock cannot cover the request.
  *   Untracked — the item has no batch rows, as is the case for every
- *               item created before this change. Dispensing keeps the
- *               old behaviour of decrementing current_stock so existing
- *               facilities are not blocked, and the response says so.
+ *               item created before this change. Dispensing uses the
+ *               plain-count behaviour only when the recorded stock is
+ *               sufficient; expiry cannot be verified and is disclosed.
  *
  * Scoping: inventory_batches has no facility column, so every query
  * reaches the facility through inventory_items.facility_id. Neither
@@ -28,6 +28,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { getFacilityByIdScoped, requirePatientInTenant } from '../db/queries.ts';
+import { loadPatientInScope } from '../db/queries/shared.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 
@@ -51,8 +52,12 @@ export type InventoryErrorCode =
   | 'FACILITY_NOT_FOUND'
   | 'BATCH_NOT_FOUND'
   | 'INSUFFICIENT_STOCK'
+  | 'STOCK_RECONCILIATION_REQUIRED'
   | 'EXPIRED_BATCH'
-  | 'PATIENT_NOT_FOUND';
+  | 'PATIENT_NOT_FOUND'
+  | 'PRESCRIPTION_NOT_FOUND'
+  | 'PRESCRIPTION_ALREADY_DISPENSED'
+  | 'PRESCRIPTION_QUANTITY_REVIEW';
 
 export class InventoryDomainError extends Error {
   public readonly code: InventoryErrorCode;
@@ -245,6 +250,30 @@ export async function receiveBatchScoped(
      * the row wins: a different date for the same batch number is a
      * data-entry problem, not a reason to extend shelf life.
      */
+    // All stock operations acquire the item lock before a batch lock.
+    // Updating first prevents a receive/dispense lock-order deadlock.
+    const [updatedItem] = await tx
+      .update(schema.inventoryItems)
+      .set({
+        currentStock: sql`${schema.inventoryItems.currentStock} + ${quantity}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.inventoryItems.id, item.id),
+          eq(schema.inventoryItems.facilityId, facilityId),
+          sql`${schema.inventoryItems.currentStock} >= 0`,
+        ),
+      )
+      .returning();
+    if (!updatedItem) {
+      throw new InventoryDomainError(
+        'STOCK_RECONCILIATION_REQUIRED',
+        'Recorded stock is missing or invalid; review it before receiving a batch.',
+        409,
+      );
+    }
+
     const [batch] = await tx
       .insert(schema.inventoryBatches)
       .values({
@@ -261,15 +290,6 @@ export async function receiveBatchScoped(
           costPerUnit,
         },
       })
-      .returning();
-
-    const [updatedItem] = await tx
-      .update(schema.inventoryItems)
-      .set({
-        currentStock: sql`COALESCE(${schema.inventoryItems.currentStock}, 0) + ${quantity}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.inventoryItems.id, item.id))
       .returning();
 
     return {
@@ -457,6 +477,7 @@ export interface DispenseResult {
     quantity: number;
   }>;
   stockAfter: number | null;
+  billingContext: { drugName: string; encounterId: number | null };
 }
 
 /**
@@ -488,13 +509,21 @@ export async function dispenseFefoScoped(
     throw new InventoryDomainError('PATIENT_NOT_FOUND', 'Patient not found.', 404);
   }
 
-  const itemId =
-    typeof input.itemId === 'number' && Number.isSafeInteger(input.itemId) ? input.itemId : null;
+  // A successful dispensing must identify the stock item actually handed out.
+  const itemId = parsePositiveInt(input.itemId, 'Stock item ID', 2_147_483_647);
 
   const prescriptionId =
-    typeof input.prescriptionId === 'number' && Number.isSafeInteger(input.prescriptionId)
-      ? input.prescriptionId
-      : null;
+    input.prescriptionId === undefined || input.prescriptionId === null
+      ? null
+      : parsePositiveInt(input.prescriptionId, 'Prescription ID', 2_147_483_647);
+
+  // A prescription supplies an encounter that is checked inside the
+  // transaction below. An unlinked dispense must independently establish
+  // that the patient is registered at, or has been seen at, this facility;
+  // membership in the same tenant alone does not grant facility access.
+  if (prescriptionId === null) {
+    await loadPatientInScope({ ...context, tenantId, facilityId }, patientId);
+  }
 
   const notes = typeof input.notes === 'string' ? input.notes.slice(0, 2000) : null;
 
@@ -507,18 +536,73 @@ export async function dispenseFefoScoped(
      * on any path, which is what the linter reported.
      */
     let item: typeof schema.inventoryItems.$inferSelect;
-    /*
-     * The empty array is NOT dead: when the dispense has no tracked item
-     * the `if` below is skipped entirely and this value is what the
-     * result reports. TypeScript agrees (TS2454 without it); the
-     * lint rule cannot see the branch.
-     */
-
+    let prescription: typeof schema.medications.$inferSelect | null = null;
+    if (prescriptionId !== null) {
+      const [foundPrescription] = await tx
+        .select()
+        .from(schema.medications)
+        .where(eq(schema.medications.id, prescriptionId))
+        .limit(1)
+        .for('update');
+      if (!foundPrescription || foundPrescription.patientId !== patientId) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_NOT_FOUND',
+          'Prescription not found in the authorized facility.',
+          404,
+        );
+      }
+      const [encounter] = await tx
+        .select({ id: schema.encounters.id })
+        .from(schema.encounters)
+        .where(
+          and(
+            eq(schema.encounters.id, foundPrescription.encounterId),
+            eq(schema.encounters.patientId, patientId),
+            eq(schema.encounters.tenantId, tenantId),
+            eq(schema.encounters.facilityId, facilityId),
+          ),
+        )
+        .limit(1);
+      if (!encounter) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_NOT_FOUND',
+          'Prescription not found in the authorized facility.',
+          404,
+        );
+      }
+      if (foundPrescription.status !== 'Prescribed') {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_ALREADY_DISPENSED',
+          'Prescription is not available for dispensing.',
+          409,
+        );
+      }
+      const [priorDispensation] = await tx
+        .select({ id: schema.pharmacyDispensations.id })
+        .from(schema.pharmacyDispensations)
+        .where(eq(schema.pharmacyDispensations.prescriptionId, prescriptionId))
+        .limit(1);
+      if (priorDispensation) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_ALREADY_DISPENSED',
+          'A dispensation already exists; the prescription requires review.',
+          409,
+        );
+      }
+      if (!foundPrescription.quantity || foundPrescription.quantity !== quantity) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_QUANTITY_REVIEW',
+          'Quantity must match the prescription; partial dispensing requires a supported review workflow.',
+          409,
+        );
+      }
+      prescription = foundPrescription;
+    }
     let allocations: DispenseResult['allocations'] = [];
     let stockTracking: 'FEFO' | 'untracked' = 'untracked';
     let stockAfter: number | null = null;
 
-    if (itemId !== null) {
+    {
       const [found] = await tx
         .select()
         .from(schema.inventoryItems)
@@ -528,13 +612,21 @@ export async function dispenseFefoScoped(
             eq(schema.inventoryItems.facilityId, facilityId),
           ),
         )
-        .limit(1);
+        .limit(1)
+        .for('update');
 
-      if (!found) {
-        throw new InventoryDomainError('ITEM_NOT_FOUND', 'Stock item not found.', 404);
+      if (!found || found.isActive === false) {
+        throw new InventoryDomainError('ITEM_NOT_FOUND', 'Active stock item not found.', 404);
       }
 
       item = found;
+      if (item.currentStock === null || item.currentStock < quantity) {
+        throw new InventoryDomainError(
+          'INSUFFICIENT_STOCK',
+          'Recorded stock is insufficient or requires reconciliation.',
+          409,
+        );
+      }
 
       const lots = await tx
         .select({
@@ -630,7 +722,25 @@ export async function dispenseFefoScoped(
         );
     }
 
-    return { dispensation, stockTracking, allocations, stockAfter };
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      action: 'CREATE',
+      resource: 'PharmacyDispensation',
+      resourceId: String(dispensation.id),
+      details: `Dispensation recorded; stock tracking: ${stockTracking}.`,
+    });
+    return {
+      dispensation,
+      stockTracking,
+      allocations,
+      stockAfter,
+      billingContext: {
+        drugName: prescription?.drugName ?? item.name,
+        encounterId: prescription?.encounterId ?? null,
+      },
+    };
   });
 }
 

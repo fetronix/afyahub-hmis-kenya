@@ -4,7 +4,7 @@ import { httpJson, startTestServer } from './support/http-harness.ts';
 
 const queries = vi.hoisted(() => ({
   updateMedicationStatus: vi.fn(),
-  createMedication: vi.fn(),
+  createMedicationScoped: vi.fn(),
   logAuditEvent: vi.fn(),
 }));
 const allergy = vi.hoisted(() => ({ checkMedicationAllergies: vi.fn() }));
@@ -57,11 +57,11 @@ describe('medication write body validation', () => {
       expect(response.body.error).toBe('VALIDATION_ERROR');
     }
     expect(allergy.checkMedicationAllergies).not.toHaveBeenCalled();
-    expect(queries.createMedication).not.toHaveBeenCalled();
+    expect(queries.createMedicationScoped).not.toHaveBeenCalled();
   });
 
   it('POST /api/medications preserves the allergy check and strips client-controlled metadata', async () => {
-    queries.createMedication.mockResolvedValue({ id: 1 });
+    queries.createMedicationScoped.mockResolvedValue({ id: 1 });
     const response = await httpJson(baseUrl, 'POST', '/api/medications', {
       body: {
         encounterId: '1',
@@ -78,7 +78,7 @@ describe('medication write body validation', () => {
     expect(allergy.checkMedicationAllergies).toHaveBeenCalledWith(expect.any(Object), 2, [
       'Medication',
     ]);
-    expect(queries.createMedication).toHaveBeenCalledWith({
+    expect(queries.createMedicationScoped).toHaveBeenCalledWith(expect.any(Object), {
       encounterId: 1,
       patientId: 2,
       drugName: 'Medication',
@@ -97,12 +97,12 @@ describe('medication write body validation', () => {
     expect(queries.updateMedicationStatus).not.toHaveBeenCalled();
   });
 
-  it('PUT /api/medications/:id/status forwards a normalized value', async () => {
-    queries.updateMedicationStatus.mockResolvedValue({ id: 1, status: 'Dispensed' });
+  it('PUT /api/medications/:id/status cannot bypass the dispensing transaction', async () => {
     const response = await httpJson(baseUrl, 'PUT', '/api/medications/1/status', {
       body: { status: ' Dispensed ' },
     });
-    expect(response.status).toBe(200);
-    expect(queries.updateMedicationStatus).toHaveBeenCalledWith(1, 'Dispensed');
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('MEDICATION_STATUS_WORKFLOW_REQUIRED');
+    expect(queries.updateMedicationStatus).not.toHaveBeenCalled();
   });
 });

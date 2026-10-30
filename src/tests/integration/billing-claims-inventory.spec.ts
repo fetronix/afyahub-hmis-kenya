@@ -452,7 +452,27 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
 
     // FEFO dispense spans two unexpired lots earliest-expiry-first
     mockDb.state!.queueSelect(
-      [{ id: 50, facilityId: 10, itemCode: 'DRG-AMOX', name: 'Amoxicillin 500mg' }],
+      [
+        {
+          id: 99,
+          patientId: 42,
+          encounterId: 55,
+          drugName: 'Amoxicillin 500mg',
+          status: 'Prescribed',
+          quantity: 30,
+        },
+      ],
+      [{ id: 55 }],
+      [],
+      [
+        {
+          id: 50,
+          facilityId: 10,
+          itemCode: 'DRG-AMOX',
+          name: 'Amoxicillin 500mg',
+          currentStock: 70,
+        },
+      ],
       [
         { id: 601, batchNumber: 'LOT-LATER', expiryDate: '2028-12-31', quantityRemaining: 50 },
         { id: 602, batchNumber: 'LOT-SOONER', expiryDate: '2027-03-31', quantityRemaining: 20 },

@@ -367,7 +367,7 @@ router.post(
       if (handlePaymentError(err, res)) return;
       if (handleScopeError(err, res)) return;
 
-      console.error('Failed to record payment:', err);
+      console.error('Failed to record payment; transaction rolled back.');
       return res.status(500).json({
         success: false,
         error: 'PAYMENT_RECORD_FAILED',
