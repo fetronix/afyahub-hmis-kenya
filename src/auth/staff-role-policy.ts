@@ -96,6 +96,7 @@ export const DELEGABLE_PERMISSION_MODULES = [
   'clinical',
   'inpatient',
   'maternity',
+  'theatre',
   'laboratory',
   'pharmacy',
   'inventory',

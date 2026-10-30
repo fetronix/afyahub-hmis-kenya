@@ -75,6 +75,7 @@ export {
 } from './clients/maternity.client.ts';
 
 export { inpatientClient } from './clients/inpatient.client.ts';
+export { theatreClient } from './clients/theatre.client.ts';
 export { diagnosticsPharmacyClient } from './clients/diagnostics-pharmacy.client.ts';
 export { billingClient } from './clients/billing.client.ts';
 
@@ -82,6 +83,7 @@ import { authClient } from './clients/auth.client.ts';
 import { billingClient } from './clients/billing.client.ts';
 import { diagnosticsPharmacyClient } from './clients/diagnostics-pharmacy.client.ts';
 import { inpatientClient } from './clients/inpatient.client.ts';
+import { theatreClient } from './clients/theatre.client.ts';
 import { maternityClient } from './clients/maternity.client.ts';
 import { patientsClinicalClient } from './clients/patients-clinical.client.ts';
 import { platformClient } from './clients/platform.client.ts';
@@ -92,6 +94,7 @@ export const api = {
   ...patientsClinicalClient,
   ...maternityClient,
   ...inpatientClient,
+  ...theatreClient,
   ...diagnosticsPharmacyClient,
   ...billingClient,
 };

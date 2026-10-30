@@ -61,9 +61,9 @@ function routeBlock(startMarker: string, length = 2200): string {
 describe('Route scope and claim integrity — regression tests', () => {
   it('1. Every route that had no guard now has one', async () => {
     const guarded: Array<[string, string]> = [
-      ["app.get(\n    '/api/theatre-cases'", 'clinical.read'],
-      ["app.post(\n    '/api/theatre-cases'", 'clinical.create'],
-      ["app.put(\n    '/api/theatre-cases/:id'", 'clinical.update'],
+      ["app.get(\n    '/api/theatre-cases'", 'theatre.read'],
+      ["app.post(\n    '/api/theatre-cases'", 'theatre.schedule.create'],
+      ["app.put(\n    '/api/theatre-cases/:id'", 'theatre.schedule.manage'],
       ["app.get(\n    '/api/radiology-orders'", 'clinical.read'],
       ["app.post(\n    '/api/radiology-orders'", 'clinical.create'],
       ["app.put(\n    '/api/radiology-orders/:id/report'", 'clinical.update'],
@@ -127,7 +127,6 @@ describe('Route scope and claim integrity — regression tests', () => {
      * body first and then override the identifiers.
      */
     for (const marker of [
-      "app.post(\n    '/api/theatre-cases'",
       "app.post(\n    '/api/radiology-orders'",
       "app.post(\n    '/api/purchase-orders'",
     ]) {
@@ -142,6 +141,14 @@ describe('Route scope and claim integrity — regression tests', () => {
         `${marker.split('\n')[1]} overwrites facility and tenant from the session`,
       ).toBe(true);
     }
+
+    // Legacy Theatre writes are rejected, rather than attempting to scope an unsafe write.
+    expect(routeBlock("app.post(\n    '/api/theatre-cases'", 1800)).toContain(
+      'LEGACY_THEATRE_WRITE_DISABLED',
+    );
+    const theatreScheduling = source('src/routes/theatre-scheduling.routes.ts');
+    expect(theatreScheduling).toContain('tenantId: facility.tenantId');
+    expect(theatreScheduling).toContain('facilityId: facility.id');
 
     /*
      * Object-level ownership: updating a case or reporting a study first

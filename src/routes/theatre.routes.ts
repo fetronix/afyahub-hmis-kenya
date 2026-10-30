@@ -1,17 +1,10 @@
-/**
- * The theatre cases routes.
- *
- * Moved out of `createApp` unchanged: same paths, same handlers, same
- * permissions. `src/routes/index.ts` mounts this router on the API router.
- */
-
+/** Legacy Theatre routes: historical reads remain; unsafe direct writes are retired. */
+import { Router, type Response } from 'express';
 import { type AuthRequest } from '../auth/auth.middleware.ts';
-import { requireAnyPermission, requirePermission } from '../auth/authorization.middleware.ts';
+import { requirePermission } from '../auth/authorization.middleware.ts';
 import * as queries from '../db/queries.ts';
 import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
-import { and } from 'drizzle-orm';
-import { Router, type Response } from 'express';
 import {
   createTheatreCaseBodySchema,
   updateTheatreCaseBodySchema,
@@ -20,105 +13,70 @@ import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
-// =========================================================
-// THEATRE CASES
-// =========================================================
-
 router.get(
   '/api/theatre-cases',
-  requireAnyPermission('clinical.read', 'inpatient.read'),
+  // Legacy rows can contain full clinical notes and checklist JSON.
+  requirePermission('theatre.read', 'clinical.read'),
   async (req: AuthRequest, res: Response) => {
     const facility = await requireScopedFacility(req, res, req.query.facilityId);
-
     if (!facility) return;
-
     try {
-      const list = await queries.getTheatreCases(facility.id);
-
-      res.json(list);
-    } catch (err: any) {
-      respondInternalError(res, err, 'GET /api/theatre-cases');
+      res.json(await queries.getTheatreCases(facility.id));
+    } catch (error: unknown) {
+      respondInternalError(res, error, 'GET /api/theatre-cases');
     }
   },
 );
 
+// The old free-text path had neither patient scope nor conflict protection.
+// Keep validation and the URL, but refuse all writes instead of silently
+// migrating legacy or signed records into an unaudited workflow.
 router.post(
   '/api/theatre-cases',
-  requirePermission('clinical.create'),
+  requirePermission('theatre.schedule.create'),
   validateBody(createTheatreCaseBodySchema),
   async (req: AuthRequest, res: Response) => {
     const body = getValidatedBody<Record<string, unknown>>(req);
-
     const facility = await requireScopedFacility(req, res, body.facilityId ?? req.query.facilityId);
-
     if (!facility) return;
-
-    try {
-      /*
-       * Required columns are enforced by the table, and the two
-       * identifiers are taken from the resolved facility rather than
-       * from the payload, so the record cannot be filed elsewhere.
-       */
-      const payload = {
-        ...body,
-        facilityId: facility.id,
-        tenantId: facility.tenantId,
-      } as Parameters<typeof queries.createTheatreCase>[0];
-
-      const tc = await queries.createTheatreCase(payload);
-
-      res.status(201).json(tc);
-    } catch (err: any) {
-      respondInternalError(res, err, 'POST /api/theatre-cases');
-    }
+    res.status(409).json({
+      success: false,
+      error: 'LEGACY_THEATRE_WRITE_DISABLED',
+      message: 'Use the structured Theatre scheduling API.',
+    });
   },
 );
 
 router.put(
   '/api/theatre-cases/:id',
-  requirePermission('clinical.update'),
+  requirePermission('theatre.schedule.manage'),
   validateBody(updateTheatreCaseBodySchema),
   async (req: AuthRequest, res: Response) => {
     const body = getValidatedBody<Record<string, unknown>>(req);
-    const caseId = Number(req.params.id);
-
-    if (!Number.isSafeInteger(caseId) || caseId <= 0) {
-      res.status(400).json({
-        success: false,
-        error: 'INVALID_THEATRE_CASE_ID',
-      });
-
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      res.status(400).json({ success: false, error: 'INVALID_THEATRE_CASE_ID' });
       return;
     }
-
     const facility = await requireScopedFacility(req, res, req.query.facilityId ?? body.facilityId);
-
     if (!facility) return;
-
     try {
-      const existing = await queries.getTheatreCaseScoped(caseId, facility.id);
-
-      if (!existing) {
+      if (!(await queries.getTheatreCaseScoped(id, facility.id))) {
         res.status(404).json({
           success: false,
           error: 'THEATRE_CASE_NOT_FOUND',
           message: 'The theatre case was not found in this facility.',
         });
-
         return;
       }
-
-      const payload = {
-        ...body,
-        facilityId: facility.id,
-        tenantId: facility.tenantId,
-      } as Parameters<typeof queries.updateTheatreCase>[1];
-
-      const tc = await queries.updateTheatreCase(caseId, payload);
-
-      res.json(tc);
-    } catch (err: any) {
-      respondInternalError(res, err, 'PUT /api/theatre-cases/:id');
+      res.status(409).json({
+        success: false,
+        error: 'LEGACY_THEATRE_WRITE_DISABLED',
+        message:
+          'Direct status and checklist updates are unavailable; use the structured scheduling API.',
+      });
+    } catch (error: unknown) {
+      respondInternalError(res, error, 'PUT /api/theatre-cases/:id');
     }
   },
 );

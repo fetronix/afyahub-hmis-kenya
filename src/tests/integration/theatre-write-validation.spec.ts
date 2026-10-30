@@ -74,22 +74,18 @@ describe('theatre write body validation', () => {
     expect(queries.updateTheatreCase).not.toHaveBeenCalled();
   });
 
-  it('PUT /api/theatre-cases/:id checks scope and does not allow identity reassignment', async () => {
+  it('PUT /api/theatre-cases/:id refuses even a scoped direct status change', async () => {
     queries.getTheatreCaseScoped.mockResolvedValue({ id: 1 });
-    queries.updateTheatreCase.mockResolvedValue({ id: 1 });
     const response = await httpJson(baseUrl, 'PUT', '/api/theatre-cases/1', {
       body: { status: 'Recovery', patientId: 99, id: 99 },
     });
-    expect(response.status).toBe(200);
-    expect(queries.updateTheatreCase).toHaveBeenCalledWith(1, {
-      status: 'Recovery',
-      facilityId: 10,
-      tenantId: 1,
-    });
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('LEGACY_THEATRE_WRITE_DISABLED');
+    expect(queries.getTheatreCaseScoped).toHaveBeenCalledWith(1, 10);
+    expect(queries.updateTheatreCase).not.toHaveBeenCalled();
   });
 
-  it('POST /api/theatre-cases uses only submitted fields and the resolved facility', async () => {
-    queries.createTheatreCase.mockResolvedValue({ id: 1 });
+  it('POST /api/theatre-cases refuses the old free-text path after scope resolution', async () => {
     const response = await httpJson(baseUrl, 'POST', '/api/theatre-cases', {
       body: {
         patientId: '2',
@@ -100,14 +96,9 @@ describe('theatre write body validation', () => {
         id: 99,
       },
     });
-    expect(response.status).toBe(201);
-    expect(queries.createTheatreCase).toHaveBeenCalledWith({
-      tenantId: 1,
-      facilityId: 10,
-      patientId: 2,
-      procedureName: 'Procedure',
-      leadSurgeon: 'Clinician',
-      scheduledStart: '2027-01-01 10:00',
-    });
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('LEGACY_THEATRE_WRITE_DISABLED');
+    expect(queries.getFacilityByIdScoped).toHaveBeenCalled();
+    expect(queries.createTheatreCase).not.toHaveBeenCalled();
   });
 });

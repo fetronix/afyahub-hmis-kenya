@@ -218,6 +218,13 @@
             "when": 1792900000018,
             "tag": "0030_procurement_workflow",
             "breakpoints": true
+        },
+        {
+            "idx": 31,
+            "version": "7",
+            "when": 1792900000019,
+            "tag": "0031_theatre_scheduling",
+            "breakpoints": true
         }
     ]
 }
