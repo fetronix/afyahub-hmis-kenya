@@ -193,6 +193,8 @@ export interface Medication {
   route: string;
   instructions?: string;
   quantity: number;
+  /** Sum of actual dispensing records; may be absent in older clients. */
+  quantityDispensed?: number;
   unitPrice: string;
   status: string;
   prescribedBy?: string;
@@ -388,6 +390,8 @@ export interface LabOrder {
   status: string;
   clinicalIndication?: string | null;
   specimenType?: string | null;
+  /** Present only where a specimen has been explicitly linked. */
+  specimenId?: number | null;
   priority?: string | null;
   clinicalNotes?: string | null;
   sampleCollectedAt?: string;
@@ -635,7 +639,9 @@ export interface BillingChargeAttemptOutcome {
 export interface BillingChargeRetrySummary {
   tried: number;
   billed: number;
+  duplicates: number;
   stillPending: number;
+  skipped: number;
 }
 
 export interface TariffMatchRow {

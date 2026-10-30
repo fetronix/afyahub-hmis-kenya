@@ -23,7 +23,6 @@ import {
   handleScopeError,
   respondInternalError,
 } from '../../routes/shared/errors.ts';
-import * as queries from '../../db/queries.ts';
 import { requestedFacilityHint, requireScopedFacility } from '../../routes/shared/scoping.ts';
 import {
   requireAuthorization,
@@ -123,6 +122,7 @@ router.post(
         tenantId: context.tenantId ?? 0,
         facilityId,
         attemptId,
+        actorUserId: context.userId,
       });
 
       if (!outcome) {
@@ -133,23 +133,11 @@ router.post(
         });
       }
 
-      if (outcome.status === 'BILLED') {
-        await queries.logAuditEvent(
-          context.tenantId ?? 0,
-          facilityId,
-          String(context.userId),
-          'UPDATE',
-          'BillingChargeAttempt',
-          String(attemptId),
-          `Unbilled charge retried and billed as ${outcome.result.tariffCode ?? 'tariff'} on invoice ${outcome.result.invoiceNumber ?? '—'}.`,
-        );
-      }
-
       return res.json(outcome);
     } catch (error: unknown) {
       if (handleScopeError(error, res)) return;
 
-      console.error('Charge attempt retry error:', error);
+      console.error('Charge attempt retry failed.');
       return res.status(500).json({
         success: false,
         error: 'CHARGE_ATTEMPT_RETRY_FAILED',
@@ -174,23 +162,14 @@ router.post(
       const summary = await chargeAttempts.retryPendingChargeAttempts(db, {
         tenantId: context.tenantId ?? 0,
         facilityId,
+        actorUserId: context.userId,
       });
-
-      await queries.logAuditEvent(
-        context.tenantId ?? 0,
-        facilityId,
-        String(context.userId),
-        'UPDATE',
-        'BillingChargeAttempt',
-        'batch',
-        `Retried ${summary.tried} unbilled charge(s): ${summary.billed} billed, ${summary.stillPending} still waiting.`,
-      );
 
       return res.json(summary);
     } catch (error: unknown) {
       if (handleScopeError(error, res)) return;
 
-      console.error('Charge attempt batch retry error:', error);
+      console.error('Charge attempt batch retry failed.');
       return res.status(500).json({
         success: false,
         error: 'CHARGE_ATTEMPT_RETRY_FAILED',
@@ -222,12 +201,18 @@ router.post(
       const facilityId = resolveFacilityScope(context, requestedFacilityHint(req));
 
       const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+      if (!reason || reason.length > 1000)
+        return res.status(400).json({
+          error: 'CHARGE_ATTEMPT_REASON_REQUIRED',
+          message: 'Provide a reason for the write-off.',
+        });
 
       const voided = await chargeAttempts.voidChargeAttempt(db, {
         tenantId: context.tenantId ?? 0,
         facilityId,
         attemptId,
-        ...(reason ? { reason } : {}),
+        reason,
+        actorUserId: context.userId,
       });
 
       if (!voided) {
@@ -237,21 +222,11 @@ router.post(
         });
       }
 
-      await queries.logAuditEvent(
-        context.tenantId ?? 0,
-        facilityId,
-        String(context.userId),
-        'UPDATE',
-        'BillingChargeAttempt',
-        String(attemptId),
-        `Unbilled charge written off${reason ? `: ${reason}` : '.'}`,
-      );
-
       return res.json({ success: true, id: attemptId, status: 'VOID' });
     } catch (error: unknown) {
       if (handleScopeError(error, res)) return;
 
-      console.error('Charge attempt void error:', error);
+      console.error('Charge attempt write-off failed.');
       return res.status(500).json({
         success: false,
         error: 'CHARGE_ATTEMPT_VOID_FAILED',

@@ -40,6 +40,8 @@ import {
   saveBankReconciliationScoped,
 } from '../accounting/bank-integration.service.ts';
 
+import { inspectBillingConsistencyScoped } from '../accounting/billing-diagnostics.service.ts';
+
 const router = Router();
 
 async function scoped(req: AuthRequest): Promise<AccountingScope> {
@@ -88,6 +90,25 @@ function fail(res: Response, error: unknown) {
     message: 'Accounting operation failed.',
   });
 }
+
+router.get(
+  '/billing-consistency',
+  requirePermission('accounting.read'),
+  requirePermission('billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectBillingConsistencyScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        afterId: req.query.afterId,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
 
 router.get('/overview', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
   try {

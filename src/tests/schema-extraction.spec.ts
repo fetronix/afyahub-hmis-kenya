@@ -31,6 +31,11 @@ describe('schema barrel: pre-extraction contract', () => {
         'theatreBookings',
         'theatreScheduleEvents',
         'theatreLegacyReviewEvents',
+        'pharmacyDispenseRequests',
+        'pharmacyDispenseAllocations',
+        'medicationStatusEvents',
+        'labSpecimens',
+        'labSpecimenOrders',
       ].sort(),
     );
   });

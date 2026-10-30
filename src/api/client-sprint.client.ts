@@ -37,6 +37,21 @@ export interface AccountingOverview {
   };
   limitations: { notice: string; billingReconciliation: string; serviceLineProfitability: string };
 }
+export interface BillingConsistencyReport {
+  invoices: Array<{
+    id: number;
+    invoiceNumber: string;
+    status: string | null;
+    total: string | null;
+    paid: string | null;
+    lineTotal: string | null;
+    paymentTotal: string | null;
+    issues: string[];
+  }>;
+  pageSummary: { examined: number; requiringReview: number };
+  nextAfterId: number | null;
+  limitations: { ledgerReconciliation: string; notice: string };
+}
 export interface DialysisWorkspace {
   protocol: {
     version: string;
@@ -95,6 +110,10 @@ export const sprintApi = {
   accountingOverview: (facilityId: number, startDate: string, endDate: string) =>
     fetchJson<AccountingOverview>(
       `/api/accounting/overview?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate })}`,
+    ),
+  billingConsistency: (facilityId: number, startDate: string, endDate: string, afterId = 0) =>
+    fetchJson<BillingConsistencyReport>(
+      `/api/accounting/billing-consistency?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterId: String(afterId) })}`,
     ),
   createAccount: (body: unknown) =>
     post<{ account: { id: number } }>('/api/accounting/accounts', body),

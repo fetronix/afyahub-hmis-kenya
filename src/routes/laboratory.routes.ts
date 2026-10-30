@@ -7,6 +7,8 @@
 
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
+import { resolveFacilityScope } from '../auth/scope.service.ts';
+import { LaboratoryDomainError } from '../clinical/laboratory-contracts.ts';
 import * as billing from '../billing/billing.service.ts';
 import { chargeLabOrderBatch } from '../billing/service-charges.ts';
 import { billingServiceKeys } from '../billing/tariff-codes.ts';
@@ -28,21 +30,39 @@ import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
+function handleLaboratoryError(error: unknown, res: Response): boolean {
+  if (handleScopeError(error, res)) return true;
+  if (error instanceof LaboratoryDomainError) {
+    res.status(error.status).json({ success: false, error: error.code, message: error.message });
+    return true;
+  }
+  return false;
+}
+
 // =========================================================
 // LABORATORY
 // =========================================================
 
-router.get('/api/lab-tests', requirePermission('laboratory.read'), async (req, res) => {
-  try {
-    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : undefined;
-
-    const list = await queries.getLabTests(facilityId);
-
-    res.json(list);
-  } catch (err: any) {
-    respondInternalError(res, err, 'GET /api/lab-tests');
-  }
-});
+router.get(
+  '/api/lab-tests',
+  requirePermission('laboratory.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.authContext) return res.status(401).json({ error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const facilityId = resolveFacilityScope(
+        req.authContext,
+        req.query.facilityId !== undefined ? Number(req.query.facilityId) : undefined,
+      );
+      const facility = await queries.getFacilityByIdScoped(req.authContext, facilityId);
+      if (!facility) return res.status(404).json({ error: 'FACILITY_NOT_FOUND' });
+      return res.json(await queries.getLabTests(facility.id));
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] GET /api/lab-tests failed.');
+      return res.status(500).json({ error: 'The request could not be completed.' });
+    }
+  },
+);
 
 router.get(
   '/api/lab-orders',
@@ -56,8 +76,10 @@ router.get(
       const list = await queries.getLabOrders(req.authContext!, facilityId, patientId);
 
       res.json(list);
-    } catch (err: any) {
-      respondInternalError(res, err, 'GET /api/lab-orders');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] GET /api/lab-orders failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
@@ -184,9 +206,10 @@ router.put(
   validateBody(updateLabOrderStatusBodySchema),
   async (req: AuthRequest, res) => {
     try {
-      const { status, accessionNumber } = getValidatedBody<{
+      const { status, accessionNumber, sharedOrderId } = getValidatedBody<{
         status: string;
         accessionNumber?: string;
+        sharedOrderId?: number;
       }>(req);
 
       const order = await queries.updateLabOrderStatus(
@@ -194,11 +217,14 @@ router.put(
         Number(req.params.id),
         status,
         accessionNumber,
+        sharedOrderId,
       );
 
       res.json(order);
-    } catch (err: any) {
-      respondInternalError(res, err, 'PUT /api/lab-orders/:id/status');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] PUT /api/lab-orders/:id/status failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
@@ -220,8 +246,10 @@ router.get(
       );
 
       res.json(list);
-    } catch (err: any) {
-      respondInternalError(res, err, 'GET /api/lab-results');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] GET /api/lab-results failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
@@ -264,8 +292,10 @@ router.post(
       });
 
       res.status(201).json(result);
-    } catch (err: any) {
-      respondInternalError(res, err, 'POST /api/lab-results');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] POST /api/lab-results failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
@@ -293,13 +323,10 @@ router.post(
       const result = await queries.verifyLabResult(req.authContext, resultId, verifier);
 
       res.json(result);
-    } catch (err: any) {
-      if (typeof handleScopeError === 'function' && handleScopeError(err, res)) {
-        return;
-      }
-      res.status(400).json({
-        error: err instanceof Error ? err.message : 'Could not verify laboratory result.',
-      });
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] POST /api/lab-results/:id/verify failed.');
+      res.status(500).json({ error: 'Could not verify laboratory result.' });
     }
   },
 );

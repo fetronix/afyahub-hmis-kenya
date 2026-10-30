@@ -115,6 +115,12 @@ export const OutpatientModule: React.FC = () => {
     unitPrice: '',
   });
   const [prescriptions, setPrescriptions] = useState<Medication[]>([]);
+  const [medicationChange, setMedicationChange] = useState<{
+    id: number;
+    action: string;
+    reason: string;
+  } | null>(null);
+  const [changingMedication, setChangingMedication] = useState(false);
 
   // Laboratory batch-order form
   const [labTests, setLabTests] = useState<LabTest[]>([]);
@@ -283,16 +289,17 @@ export const OutpatientModule: React.FC = () => {
             consultBilling.unit ? ` (${consultBilling.unit})` : ''
           } on ${consultBilling.invoiceNumber}.`,
         );
-      } else {
-        /*
-         * The server has already recorded this in the retry queue, so
-         * the message says where to find it rather than implying the
-         * fee was simply lost.
-         */
+      } else if (consultBilling?.reason === 'DUPLICATE') {
         showToast(
-          `Visit started, but the consultation was not billed: ${
-            consultBilling?.message ?? 'the server returned no billing result'
-          } It is listed under Configuration → Services & Tariffs → “Charges that could not be priced”, and can be billed once a price is set.`,
+          'Visit started. A consultation charge record already exists; review its invoice.',
+        );
+      } else {
+        // A missing result or queue-write failure is not proof of a queued charge.
+        showToast(
+          `Visit started, but this consultation charge was not confirmed: ${
+            consultBilling?.message ??
+            'the server returned no billing result; manual reconciliation is required'
+          }`,
         );
       }
     } catch (err: any) {
@@ -669,6 +676,28 @@ export const OutpatientModule: React.FC = () => {
       }
 
       showToast(`Error: ${err.message}`);
+    }
+  };
+
+  const handleMedicationChange = async () => {
+    if (!medicationChange || !medicationChange.reason.trim() || changingMedication) return;
+    setChangingMedication(true);
+    try {
+      const updated = await api.updateMedicationStatus(
+        medicationChange.id,
+        medicationChange.action,
+        medicationChange.reason,
+      );
+      setPrescriptions((rows) =>
+        rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)),
+      );
+      setMedicationChange(null);
+      triggerRefresh();
+      showToast(`Prescription status updated to ${updated.status}.`);
+    } catch (error: any) {
+      showToast(`Prescription status was not changed: ${error.message}`);
+    } finally {
+      setChangingMedication(false);
     }
   };
 
@@ -1463,6 +1492,70 @@ export const OutpatientModule: React.FC = () => {
                 >
                   Prescribe & Route to Pharmacy
                 </button>
+                {prescriptions.length > 0 && (
+                  <div className="border-t border-slate-200 pt-3 space-y-2">
+                    <div className="font-semibold">Prescriptions in this visit</div>
+                    {prescriptions.map((med) => (
+                      <div key={med.id} className="rounded border border-slate-200 p-2 space-y-1">
+                        <div>
+                          <strong>{med.drugName}</strong> · {med.status} · prescribed {med.quantity}
+                          , dispensed {med.quantityDispensed ?? 0}
+                        </div>
+                        {['Prescribed', 'Partially Dispensed', 'On Hold'].includes(med.status) && (
+                          <select
+                            aria-label={`Change status for ${med.drugName}`}
+                            value={medicationChange?.id === med.id ? medicationChange.action : ''}
+                            onChange={(event) =>
+                              setMedicationChange(
+                                event.target.value
+                                  ? { id: med.id, action: event.target.value, reason: '' }
+                                  : null,
+                              )
+                            }
+                            className="w-full border border-slate-200 rounded p-1"
+                          >
+                            <option value="">Select a clinical status change</option>
+                            {med.status !== 'On Hold' && (
+                              <option value="On Hold">Put on hold</option>
+                            )}
+                            {med.status === 'On Hold' && <option value="Resume">Resume</option>}
+                            {(med.quantityDispensed ?? 0) === 0 && (
+                              <option value="Cancelled">Cancel</option>
+                            )}
+                            <option value="Discontinued">Discontinue</option>
+                          </select>
+                        )}
+                        {medicationChange?.id === med.id && (
+                          <div className="space-y-1">
+                            <label className="block" htmlFor={`med-reason-${med.id}`}>
+                              Reason for this change
+                            </label>
+                            <input
+                              id={`med-reason-${med.id}`}
+                              value={medicationChange.reason}
+                              maxLength={1000}
+                              onChange={(event) =>
+                                setMedicationChange({
+                                  ...medicationChange,
+                                  reason: event.target.value,
+                                })
+                              }
+                              className="w-full border border-slate-200 rounded p-1"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleMedicationChange}
+                              disabled={changingMedication || !medicationChange.reason.trim()}
+                              className="rounded bg-slate-800 text-white px-2 py-1 disabled:opacity-50"
+                            >
+                              {changingMedication ? 'Saving...' : 'Record status change'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -232,6 +232,27 @@
             "when": 1792900000020,
             "tag": "0032_inpatient_active_admission_guards",
             "breakpoints": true
+        },
+        {
+            "idx": 33,
+            "version": "7",
+            "when": 1792900000021,
+            "tag": "0033_lab_accession_safety",
+            "breakpoints": true
+        },
+        {
+            "idx": 34,
+            "version": "7",
+            "when": 1792900000022,
+            "tag": "0034_pharmacy_workflow_safety",
+            "breakpoints": true
+        },
+        {
+            "idx": 35,
+            "version": "7",
+            "when": 1792900000023,
+            "tag": "0035_shared_lab_specimens",
+            "breakpoints": true
         }
     ]
 }

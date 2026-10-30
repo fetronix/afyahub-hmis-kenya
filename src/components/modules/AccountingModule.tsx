@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getSessionToken } from '../../api/client.ts';
-import { sprintApi, type AccountingOverview } from '../../api/client-sprint.client.ts';
+import {
+  sprintApi,
+  type AccountingOverview,
+  type BillingConsistencyReport,
+} from '../../api/client-sprint.client.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';
@@ -15,6 +19,8 @@ export const AccountingModule: React.FC = () => {
   const [data, setData] = useState<AccountingOverview | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
+  const [billingReport, setBillingReport] = useState<BillingConsistencyReport | null>(null);
+  const [billingReportError, setBillingReportError] = useState('');
   const [account, setAccount] = useState({
     accountCode: '',
     accountName: '',
@@ -49,6 +55,10 @@ export const AccountingModule: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    setBillingReport(null);
+    setBillingReportError('');
+  }, [currentFacility?.id, start, end]);
   const run = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);
     try {
@@ -61,6 +71,17 @@ export const AccountingModule: React.FC = () => {
       return false;
     } finally {
       setBusy(false);
+    }
+  };
+  const loadBillingReport = async (afterId = 0) => {
+    if (!currentFacility) return;
+    try {
+      setBillingReportError('');
+      setBillingReport(await sprintApi.billingConsistency(currentFacility.id, start, end, afterId));
+    } catch (error: unknown) {
+      setBillingReportError(
+        error instanceof Error ? error.message : 'Billing consistency review failed.',
+      );
     }
   };
   const exportCsv = async () => {
@@ -96,6 +117,68 @@ export const AccountingModule: React.FC = () => {
           this ledger; unrecorded costs are not included.
         </p>
       </header>
+      {can('accounting.read') && can('billing.read') && (
+        <section className="rounded-xl border border-hair bg-surface p-4 space-y-2 text-xs">
+          <h2 className="font-semibold">Invoice and receipt consistency review</h2>
+          <p>
+            Checks current invoice headers, lines and receipts for invoices created in the selected
+            date range. This is not a general-ledger, refund, bank or payer reconciliation.
+          </p>
+          <button className={buttonClass} onClick={() => void loadBillingReport()}>
+            Review first page
+          </button>
+          {billingReportError && (
+            <p role="alert" className="text-red-700">
+              {billingReportError}
+            </p>
+          )}
+          {billingReport && (
+            <>
+              <p>
+                Examined {billingReport.pageSummary.examined}; requiring review{' '}
+                {billingReport.pageSummary.requiringReview} on this page.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr>
+                      <th>Invoice</th>
+                      <th>Status</th>
+                      <th>Total</th>
+                      <th>Lines</th>
+                      <th>Paid</th>
+                      <th>Receipts</th>
+                      <th>Findings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {billingReport.invoices.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.invoiceNumber}</td>
+                        <td>{row.status ?? 'Unknown'}</td>
+                        <td>{row.total ?? 'Missing'}</td>
+                        <td>{row.lineTotal ?? 'Missing'}</td>
+                        <td>{row.paid ?? 'Missing'}</td>
+                        <td>{row.paymentTotal ?? 'Missing'}</td>
+                        <td>{row.issues.join(', ') || 'No mismatch detected'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {billingReport.nextAfterId !== null && (
+                <button
+                  className={buttonClass}
+                  onClick={() => void loadBillingReport(billingReport.nextAfterId!)}
+                >
+                  Next page
+                </button>
+              )}
+              <p>{billingReport.limitations.notice}</p>
+            </>
+          )}
+        </section>
+      )}
       <section className="rounded-xl border border-hair bg-surface p-4 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs">

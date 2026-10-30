@@ -113,7 +113,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     expect(segments.length).toBeGreaterThanOrEqual(2);
 
     // chargeForService: missing tariff -> TARIFF_NOT_CONFIGURED
-    mockDb.state!.queueSelect([], []); // loadActiveFacilityTariffs + diagnostics
+    mockDb.state!.queueSelect([{ id: 42 }], [{ id: 10 }], [], [], []); // scope, prior charge, tariffs and diagnostics
     const unpriced = await billing.chargeForService(mockDb.state!.executor as any, {
       tenantId: 1,
       facilityId: 10,
@@ -129,6 +129,9 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     // chargeForService: matched active tariff -> inserts item + recalculates invoice
     mockDb.state!.reset();
     mockDb.state!.queueSelect(
+      [{ id: 42 }], // locked patient
+      [{ id: 10 }], // authorized facility
+      [], // no prior source charge
       [
         {
           id: 5,
@@ -145,6 +148,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
           effectiveTo: null,
         },
       ], // loadActiveFacilityTariffs
+      [], // no tariff links
       [
         {
           id: 900,
@@ -153,20 +157,23 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
           totalAmount: '0.00',
           paidAmount: '0.00',
           balanceAmount: '0.00',
+          creditBalance: '0.00',
+          voidedAt: null,
         },
-      ], // findOrCreateOpenInvoice existing open invoice
-      [], // duplicate idempotency check
-      [{ totalAmount: '1500.00' }], // recalculateInvoiceTotals lines
-      [{ id: 900, paidAmount: '500.00', status: 'Pending' }], // recalculateInvoiceTotals invoice
+      ], // locked existing open invoice
+      [{ total: '0.00', invalid: 0 }], // line total before charging
+      [], // no existing payments
+      [{ total: '1500.00', invalid: 0 }], // totals after insert
+      [{ id: 900, paidAmount: '0.00', status: 'Pending' }], // locked header
     );
     mockDb.state!.queueInsert([{ id: 701, invoiceId: 900, totalAmount: '1500.00' }]);
     mockDb.state!.queueUpdate([
       {
         id: 900,
         totalAmount: '1500.00',
-        paidAmount: '500.00',
-        balanceAmount: '1000.00',
-        status: 'Partially Paid',
+        paidAmount: '0.00',
+        balanceAmount: '1500.00',
+        status: 'Pending',
       },
     ]);
 
@@ -244,36 +251,39 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
       }),
     ).toBe(1);
 
-    mockDb.state!.queueSelect([
-      {
-        id: 31,
-        tenantId: 1,
-        facilityId: 10,
-        patientId: 42,
-        encounterId: null,
-        sourceType: 'CONSULTATION',
-        sourceId: 88,
-        idempotencySuffix: null,
-        wardType: null,
-        wardName: null,
-        itemType: 'Consultation',
-        description: 'OPD Visit',
-        codes: ['CONS-OPD'],
-        serviceKeys: [],
-        family: null,
-        serviceName: null,
-        encounterType: null,
-        aliases: [],
-        quantity: 1,
-        fallbackUnitPrice: null,
-        reason: 'TARIFF_NOT_CONFIGURED',
-        detail: 'Missing tariff',
-        codesTried: ['CONS-OPD'],
-        status: 'BILLED',
-        attempts: 1,
-        resolvedInvoiceId: 900,
-      },
-    ]);
+    mockDb.state!.queueSelect(
+      [{ sourceType: 'CONSULTATION', sourceId: 88, idempotencySuffix: null }],
+      [
+        {
+          id: 31,
+          tenantId: 1,
+          facilityId: 10,
+          patientId: 42,
+          encounterId: null,
+          sourceType: 'CONSULTATION',
+          sourceId: 88,
+          idempotencySuffix: null,
+          wardType: null,
+          wardName: null,
+          itemType: 'Consultation',
+          description: 'OPD Visit',
+          codes: ['CONS-OPD'],
+          serviceKeys: [],
+          family: null,
+          serviceName: null,
+          encounterType: null,
+          aliases: [],
+          quantity: 1,
+          fallbackUnitPrice: null,
+          reason: 'TARIFF_NOT_CONFIGURED',
+          detail: 'Missing tariff',
+          codesTried: ['CONS-OPD'],
+          status: 'BILLED',
+          attempts: 1,
+          resolvedInvoiceId: 900,
+        },
+      ],
+    );
     const alreadyBilled = await attempts.retryChargeAttempt(mockDb.state!.executor as any, {
       tenantId: 1,
       facilityId: 10,
@@ -281,6 +291,18 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     });
     expect(alreadyBilled?.status).toBe('BILLED');
 
+    mockDb.state!.queueSelect(
+      [{ sourceType: 'CONSULTATION', sourceId: 88, idempotencySuffix: null }],
+      [
+        {
+          id: 31,
+          sourceType: 'CONSULTATION',
+          sourceId: 88,
+          idempotencySuffix: null,
+          status: 'PENDING',
+        },
+      ],
+    );
     mockDb.state!.queueUpdate([{ id: 31 }]);
     const voided = await attempts.voidChargeAttempt(mockDb.state!.executor as any, {
       tenantId: 1,
@@ -289,6 +311,21 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
       reason: 'Waived by clinical director',
     });
     expect(voided).toBe(true);
+  });
+
+  it('reports an unavailable charge queue instead of treating a database error as zero', async () => {
+    const missing = Object.assign(new Error('synthetic missing queue'), { code: '42P01' });
+    mockDb.state!.queueSelect(missing);
+    await expect(
+      attempts.listChargeAttempts(mockDb.state!.executor as any, { tenantId: 1, facilityId: 10 }),
+    ).rejects.toBe(missing);
+    mockDb.state!.queueSelect(missing);
+    await expect(
+      attempts.countPendingChargeAttempts(mockDb.state!.executor as any, {
+        tenantId: 1,
+        facilityId: 10,
+      }),
+    ).rejects.toBe(missing);
   });
 
   it('drives the full insurance claim lifecycle: claimable lines -> draft -> submit -> adjudicate -> settle', async () => {
@@ -452,6 +489,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
 
     // FEFO dispense spans two unexpired lots earliest-expiry-first
     mockDb.state!.queueSelect(
+      [], // no prior request with this idempotency key
       [
         {
           id: 99,
@@ -487,6 +525,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
       prescriptionId: 99,
       quantityDispensed: 30,
       dispensedBy: 'Pharm. Otieno',
+      idempotencyKey: 'synthetic-test-dispense',
     });
     expect(dispensed.stockTracking).toBe('FEFO');
     expect(dispensed.allocations).toEqual([

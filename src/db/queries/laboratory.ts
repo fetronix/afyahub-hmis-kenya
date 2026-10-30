@@ -6,12 +6,14 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, desc, eq, getTableColumns, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
 import { resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
+import { LaboratoryDomainError } from '../../clinical/laboratory-contracts.ts';
 
 import { resolveCatalogueTestByName, resolveQueueOrLabScope } from './shared.ts';
 
@@ -64,7 +66,12 @@ export async function getLabOrders(
   }
 
   return db
-    .select()
+    .select({
+      ...getTableColumns(schema.labOrders),
+      specimenId: sql<
+        number | null
+      >`(SELECT specimen_id FROM lab_specimen_orders WHERE order_id = "lab_orders"."id")`,
+    })
     .from(schema.labOrders)
     .where(and(...conditions))
     .orderBy(desc(schema.labOrders.orderedAt));
@@ -142,66 +149,208 @@ export async function createLabOrder(
   }
 }
 
+/** Collection is an explicit action. A retry returns the existing accession. */
 export async function updateLabOrderStatus(
   context: AuthorizationContext,
   id: number,
   status: string,
   accessionNumber?: string,
+  sharedOrderId?: number,
 ) {
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new Error('Invalid laboratory order ID.');
+  if (!Number.isSafeInteger(id) || id <= 0 || !['Ordered', 'Sample Collected'].includes(status)) {
+    throw new LaboratoryDomainError(
+      'LAB_INVALID_INPUT',
+      'A valid collection request is required.',
+      400,
+    );
   }
-
-  // This endpoint handles collection workflow only; it cannot publish results.
-  if (status !== 'Ordered' && status !== 'Sample Collected') {
-    throw new Error('Unsupported laboratory order status.');
-  }
-
-  const found = await db
+  const [found] = await db
     .select()
     .from(schema.labOrders)
     .where(eq(schema.labOrders.id, id))
     .limit(1);
-
-  const order = found[0];
-  if (!order) {
-    throw new Error('Laboratory order not found.');
+  if (!found)
+    throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
+  const facility = await getFacilityByIdScoped(context, found.facilityId);
+  if (!facility || facility.tenantId !== found.tenantId) {
+    throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
   }
-
-  const facility = await getFacilityByIdScoped(context, order.facilityId);
-  if (!facility || facility.tenantId !== order.tenantId) {
-    throw new Error('Laboratory order not found in the authorized facility.');
+  try {
+    return await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(schema.labOrders)
+        .where(
+          and(
+            eq(schema.labOrders.id, id),
+            eq(schema.labOrders.tenantId, facility.tenantId),
+            eq(schema.labOrders.facilityId, facility.id),
+          ),
+        )
+        .limit(1)
+        .for('update');
+      if (!order)
+        throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
+      const accession = accessionNumber?.trim();
+      if (
+        status === 'Ordered' &&
+        order.status === 'Ordered' &&
+        !order.sampleCollectedAt &&
+        !order.sampleAccessionNumber
+      ) {
+        return order;
+      }
+      if (
+        status === 'Sample Collected' &&
+        order.status === 'Sample Collected' &&
+        order.sampleCollectedAt &&
+        order.sampleAccessionNumber
+      ) {
+        if (
+          accession &&
+          accession.toLowerCase() !== order.sampleAccessionNumber.trim().toLowerCase()
+        ) {
+          throw new LaboratoryDomainError(
+            'LAB_ACCESSION_CHANGE_REQUIRES_REVIEW',
+            'Changing a recorded accession requires an authorized correction workflow.',
+            409,
+          );
+        }
+        if (sharedOrderId !== undefined) {
+          const links = await tx
+            .select({
+              specimenId: schema.labSpecimenOrders.specimenId,
+              orderId: schema.labSpecimenOrders.orderId,
+            })
+            .from(schema.labSpecimenOrders)
+            .where(inArray(schema.labSpecimenOrders.orderId, [id, sharedOrderId]));
+          if (links.length !== 2 || links[0].specimenId !== links[1].specimenId) {
+            throw new LaboratoryDomainError(
+              'LAB_ACCESSION_CHANGE_REQUIRES_REVIEW',
+              'Changing a recorded specimen requires an authorized correction workflow.',
+              409,
+            );
+          }
+        }
+        return order;
+      }
+      if (
+        status !== 'Sample Collected' ||
+        order.status !== 'Ordered' ||
+        order.sampleCollectedAt ||
+        order.sampleAccessionNumber
+      ) {
+        throw new LaboratoryDomainError(
+          'LAB_STATE_CONFLICT',
+          'The laboratory order is not available for collection; review its existing state.',
+          409,
+        );
+      }
+      let specimen: typeof schema.labSpecimens.$inferSelect;
+      if (sharedOrderId !== undefined) {
+        if (!Number.isSafeInteger(sharedOrderId) || sharedOrderId <= 0 || sharedOrderId === id) {
+          throw new LaboratoryDomainError(
+            'LAB_SHARED_SPECIMEN_INVALID',
+            'Select a different collected specimen order.',
+            400,
+          );
+        }
+        const [shared] = await tx
+          .select({ specimen: schema.labSpecimens, source: schema.labOrders })
+          .from(schema.labSpecimenOrders)
+          .innerJoin(
+            schema.labSpecimens,
+            eq(schema.labSpecimens.id, schema.labSpecimenOrders.specimenId),
+          )
+          .innerJoin(schema.labOrders, eq(schema.labOrders.id, schema.labSpecimenOrders.orderId))
+          .where(eq(schema.labSpecimenOrders.orderId, sharedOrderId))
+          .limit(1);
+        if (
+          !shared ||
+          shared.specimen.tenantId !== facility.tenantId ||
+          shared.specimen.facilityId !== facility.id ||
+          shared.specimen.patientId !== order.patientId ||
+          shared.source.tenantId !== facility.tenantId ||
+          shared.source.facilityId !== facility.id ||
+          shared.source.patientId !== order.patientId ||
+          shared.source.status !== 'Sample Collected' ||
+          !shared.source.sampleCollectedAt ||
+          shared.source.sampleAccessionNumber?.trim().toLowerCase() !==
+            shared.specimen.accessionNumber.trim().toLowerCase() ||
+          !order.specimenType?.trim() ||
+          !shared.source.specimenType?.trim() ||
+          order.specimenType.trim().toLowerCase() !==
+            shared.source.specimenType.trim().toLowerCase() ||
+          (accession &&
+            accession.toLowerCase() !== shared.specimen.accessionNumber.trim().toLowerCase())
+        ) {
+          throw new LaboratoryDomainError(
+            'LAB_SHARED_SPECIMEN_REVIEW',
+            'The selected specimen is unavailable or requires laboratory review.',
+            409,
+          );
+        }
+        specimen = shared.specimen;
+      } else {
+        [specimen] = await tx
+          .insert(schema.labSpecimens)
+          .values({
+            tenantId: facility.tenantId,
+            facilityId: facility.id,
+            patientId: order.patientId,
+            accessionNumber: accession || `JC-${randomUUID()}`,
+            collectedAt: new Date(),
+            collectedByUserId: context.userId,
+          })
+          .returning();
+      }
+      // Link first so the database guard can recognize an explicitly shared specimen.
+      await tx.insert(schema.labSpecimenOrders).values({ specimenId: specimen.id, orderId: id });
+      const [updated] = await tx
+        .update(schema.labOrders)
+        .set({
+          status: 'Sample Collected',
+          sampleCollectedAt: specimen.collectedAt,
+          sampleAccessionNumber: specimen.accessionNumber,
+        })
+        .where(eq(schema.labOrders.id, id))
+        .returning();
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        userId: String(context.userId),
+        action: 'UPDATE',
+        resource: 'LabOrder',
+        resourceId: String(id),
+        details:
+          sharedOrderId === undefined
+            ? 'Specimen collection recorded.'
+            : 'Order linked to an existing collected specimen.',
+      });
+      return updated;
+    });
+  } catch (error) {
+    let cause: unknown = error;
+    for (let i = 0; i < 5 && cause && typeof cause === 'object'; i++) {
+      const info = cause as { code?: string; constraint?: string; cause?: unknown };
+      if (
+        info.code === '23505' &&
+        [
+          'lab_orders_facility_accession_uq',
+          'lab_orders_accession_identity_guard',
+          'lab_specimens_facility_accession_uq',
+        ].includes(info.constraint ?? '')
+      ) {
+        throw new LaboratoryDomainError(
+          'LAB_ACCESSION_IN_USE',
+          'That accession is already assigned within this facility.',
+          409,
+        );
+      }
+      cause = info.cause;
+    }
+    throw error;
   }
-
-  const updateData: {
-    status: string;
-    sampleCollectedAt?: Date;
-    sampleAccessionNumber?: string;
-  } = { status };
-
-  if (status === 'Sample Collected') {
-    updateData.sampleCollectedAt = new Date();
-    updateData.sampleAccessionNumber =
-      accessionNumber?.trim() || `ACC-${Date.now().toString().slice(-6)}`;
-  }
-
-  const updated = await db
-    .update(schema.labOrders)
-    .set(updateData)
-    .where(
-      and(
-        eq(schema.labOrders.id, id),
-        eq(schema.labOrders.facilityId, facility.id),
-        eq(schema.labOrders.tenantId, facility.tenantId),
-      ),
-    )
-    .returning();
-
-  if (!updated[0]) {
-    throw new Error('Laboratory order could not be updated.');
-  }
-
-  return updated[0];
 }
 
 export async function getLabResults(
@@ -286,52 +435,84 @@ export async function addLabResult(
   context: AuthorizationContext,
   data: typeof schema.labResults.$inferInsert,
 ) {
-  if (!Number.isInteger(data.orderId) || data.orderId <= 0) {
-    throw new Error('Valid laboratory order ID is required.');
-  }
-
-  const found = await db
-    .select()
-    .from(schema.labOrders)
-    .where(eq(schema.labOrders.id, data.orderId))
-    .limit(1);
-
-  const order = found[0];
-  if (!order) {
-    throw new Error('Laboratory order not found.');
-  }
-
-  const facility = await getFacilityByIdScoped(context, order.facilityId);
-  if (!facility || facility.tenantId !== order.tenantId) {
-    throw new Error('Laboratory order not found in the authorized facility.');
-  }
-
-  if (data.patientId !== order.patientId) {
-    throw new Error('Result patient must match the laboratory order patient.');
-  }
-
   if (
+    !Number.isSafeInteger(data.orderId) ||
+    data.orderId <= 0 ||
     typeof data.parameterName !== 'string' ||
     !data.parameterName.trim() ||
     typeof data.measuredValue !== 'string' ||
     !data.measuredValue.trim()
   ) {
-    throw new Error('Parameter name and measured value are required.');
+    throw new LaboratoryDomainError(
+      'LAB_INVALID_INPUT',
+      'Order, parameter and measured value are required.',
+      400,
+    );
   }
-
-  const inserted = await db
-    .insert(schema.labResults)
-    .values({
-      ...data,
-      parameterName: data.parameterName.trim(),
-      measuredValue: data.measuredValue.trim(),
-      status: 'Pending Verification',
-      verifiedBy: null,
-      verifiedAt: null,
-    })
-    .returning();
-
-  return inserted[0];
+  const [found] = await db
+    .select()
+    .from(schema.labOrders)
+    .where(eq(schema.labOrders.id, data.orderId))
+    .limit(1);
+  if (!found)
+    throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
+  const facility = await getFacilityByIdScoped(context, found.facilityId);
+  if (!facility || facility.tenantId !== found.tenantId) {
+    throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
+  }
+  return db.transaction(async (tx) => {
+    const [order] = await tx
+      .select()
+      .from(schema.labOrders)
+      .where(
+        and(
+          eq(schema.labOrders.id, data.orderId),
+          eq(schema.labOrders.tenantId, facility.tenantId),
+          eq(schema.labOrders.facilityId, facility.id),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    if (!order || data.patientId !== order.patientId) {
+      throw new LaboratoryDomainError(
+        'LAB_ORDER_NOT_FOUND',
+        'Laboratory order not found for this patient.',
+        404,
+      );
+    }
+    if (
+      order.status !== 'Sample Collected' ||
+      !order.sampleCollectedAt ||
+      !order.sampleAccessionNumber?.trim()
+    ) {
+      throw new LaboratoryDomainError(
+        'LAB_SPECIMEN_NOT_COLLECTED',
+        'Record specimen collection before entering results.',
+        409,
+      );
+    }
+    const [inserted] = await tx
+      .insert(schema.labResults)
+      .values({
+        ...data,
+        parameterName: data.parameterName.trim(),
+        measuredValue: data.measuredValue.trim(),
+        status: 'Pending Verification',
+        verifiedBy: null,
+        verifiedAt: null,
+      })
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId: facility.tenantId,
+      facilityId: facility.id,
+      userId: String(context.userId),
+      action: 'CREATE',
+      resource: 'LabResult',
+      resourceId: String(inserted.id),
+      details: 'Laboratory result entered; pending verification.',
+    });
+    return inserted;
+  });
 }
 
 export async function verifyLabResult(
@@ -374,35 +555,53 @@ export async function verifyLabResult(
     throw new Error('Laboratory result not found in the authorized facility.');
   }
 
-  if (result.status === 'Verified' || result.verifiedAt || result.verifiedBy) {
-    throw new Error('This laboratory result has already been verified.');
+  if (
+    order.status !== 'Sample Collected' ||
+    !order.sampleCollectedAt ||
+    !order.sampleAccessionNumber?.trim()
+  ) {
+    throw new LaboratoryDomainError(
+      'LAB_SPECIMEN_NOT_COLLECTED',
+      'Specimen collection must be reviewed before verification.',
+      409,
+    );
   }
-
-  const updated = await db
-    .update(schema.labResults)
-    .set({
-      status: 'Verified',
-      verifiedBy: verifiedBy.trim(),
-      verifiedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(schema.labResults.id, resultId),
-        eq(schema.labResults.orderId, order.id),
-        eq(schema.labResults.patientId, order.patientId),
-        // Rechecked after the row lock: concurrent verifiers cannot overwrite the first stamp.
-        sql`${schema.labResults.status} IS DISTINCT FROM 'Verified'`,
-        isNull(schema.labResults.verifiedBy),
-        isNull(schema.labResults.verifiedAt),
-      ),
-    )
-    .returning();
-
-  if (!updated[0]) {
-    throw new Error('Laboratory result is already verified or requires review.');
-  }
-
-  return updated[0];
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(schema.labResults)
+      .set({
+        status: 'Verified',
+        verifiedBy: verifiedBy.trim(),
+        verifiedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.labResults.id, resultId),
+          eq(schema.labResults.orderId, order.id),
+          eq(schema.labResults.patientId, order.patientId),
+          eq(schema.labResults.status, 'Pending Verification'),
+          isNull(schema.labResults.verifiedBy),
+          isNull(schema.labResults.verifiedAt),
+        ),
+      )
+      .returning();
+    if (!updated)
+      throw new LaboratoryDomainError(
+        'LAB_RESULT_STATE_CONFLICT',
+        'This result is already verified or requires review.',
+        409,
+      );
+    await tx.insert(schema.auditLogs).values({
+      tenantId: facility.tenantId,
+      facilityId: facility.id,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'LabResult',
+      resourceId: String(resultId),
+      details: 'Laboratory result verified.',
+    });
+    return updated;
+  });
 }
 
 // Radiology

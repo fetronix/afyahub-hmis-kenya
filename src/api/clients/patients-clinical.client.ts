@@ -324,11 +324,12 @@ export const patientsClinicalClient = {
       body: JSON.stringify(med),
     }),
 
-  updateMedicationStatus: (id: number, status: string) =>
+  updateMedicationStatus: (id: number, status: string, reason?: string) =>
     fetchJson<Medication>(`${API_BASE}/medications/${id}/status`, {
       method: 'PUT',
       body: JSON.stringify({
         status,
+        reason,
       }),
     }),
 };

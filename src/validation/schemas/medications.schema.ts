@@ -38,4 +38,5 @@ export const createMedicationBodySchema = z.object({
 /** Validates syntax only; this does not establish status transitions or record ownership. */
 export const medicationStatusBodySchema = z.object({
   status: z.string().trim().min(1, 'A medication status is required.').max(80),
+  reason: z.string().trim().min(1).max(1000).optional(),
 });

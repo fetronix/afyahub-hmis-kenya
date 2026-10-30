@@ -437,7 +437,7 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
       const summary = await api.retryChargeAttempts(facilityId);
 
       setAttemptNotice(
-        `${summary.tried} retried · ${summary.billed} billed · ${summary.stillPending} still waiting for a tariff.`,
+        `${summary.tried} reviewed · ${summary.billed} newly billed · ${summary.duplicates} already had a verified charge · ${summary.stillPending} still pending · ${summary.skipped} skipped.`,
       );
 
       await loadAttempts();
@@ -454,7 +454,14 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
     setAttemptNotice('');
 
     try {
-      await api.voidChargeAttempt(attempt.id, facilityId, 'Written off from the tariff screen.');
+      const reason = window
+        .prompt('Enter the authorized reason for writing off this charge:')
+        ?.trim();
+      if (!reason) {
+        setAttemptNotice('Write-off cancelled: a reason is required.');
+        return;
+      }
+      await api.voidChargeAttempt(attempt.id, facilityId, reason);
       setAttemptNotice('Written off. The record is kept.');
       await loadAttempts();
     } catch (err) {
@@ -1271,11 +1278,12 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">
-              Charges that could not be priced
+              Charges awaiting billing or pricing review
             </h3>
             <p className="mt-1 text-xs text-slate-500">
-              Recorded on the clinical record, but no invoice line exists, so nothing has been
-              claimed for them. Fix the price list, then retry.
+              Pending work includes charges not yet attempted and charges that could not be priced.
+              Review the source and any existing invoice before retrying; this list does not
+              establish claim or payment status.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1311,7 +1319,8 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
 
         {attempts !== null && attempts.attempts.length === 0 && (
           <p className="mt-3 text-xs text-slate-500">
-            Nothing is waiting. Every charge this facility attempted has an invoice line.
+            No charge attempts were returned. This does not prove that every clinical event was
+            billed.
           </p>
         )}
 

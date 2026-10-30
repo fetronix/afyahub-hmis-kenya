@@ -565,7 +565,7 @@ describe("Tariff matching — the facility's own price list", () => {
       true,
     );
     expect(
-      panel.includes('Charges that could not be priced'),
+      panel.includes('Charges awaiting billing or pricing review'),
       'the queue is visible on the tariff screen',
     ).toBe(true);
     expect(panel.includes('Retry all'), 'with a retry action').toBe(true);

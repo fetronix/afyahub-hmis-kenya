@@ -1,5 +1,7 @@
 # Priority 1 engineering increment — evidence and outstanding work
 
+> **Historical snapshot:** Subsequent implementation and current verification are recorded in [Implementation progress and remaining release gates](./IMPLEMENTATION_PROGRESS_2026-10-30.md). Where they differ, use the newer report; neither is facility acceptance.
+
 **Assessment date:** 2026-10-30
 
 **Base:** `bebfec4a3d19a7ae8e1251b9cb6cf3dee46ef49c` on `main`

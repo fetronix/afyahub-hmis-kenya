@@ -66,12 +66,18 @@ export const diagnosticsPharmacyClient = {
       body: JSON.stringify(order),
     }),
 
-  updateLabOrderStatus: (id: number, status: string, accessionNumber?: string) =>
+  updateLabOrderStatus: (
+    id: number,
+    status: string,
+    accessionNumber?: string,
+    sharedOrderId?: number,
+  ) =>
     fetchJson<LabOrder>(`${API_BASE}/lab-orders/${id}/status`, {
       method: 'PUT',
       body: JSON.stringify({
         status,
         accessionNumber,
+        sharedOrderId,
       }),
     }),
 
@@ -196,11 +202,26 @@ export const diagnosticsPharmacyClient = {
       body: JSON.stringify(item),
     }),
 
+  checkDispenseRequest: (data: { facilityId: number; idempotencyKey: string }) =>
+    fetchJson<
+      | { status: 'NOT_FOUND' }
+      | {
+          status: 'RECORDED';
+          prescriptionId: number | null;
+          quantity: number;
+          dispensationId: number;
+        }
+    >(`${API_BASE}/pharmacy/dispense/status`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   dispenseMedication: (data: {
     prescriptionId?: number;
     patientId: number;
     itemId?: number;
     quantityDispensed: number;
+    idempotencyKey?: string;
     batchNumber?: string;
     dispensedBy: string;
     notes?: string;
@@ -215,8 +236,12 @@ export const diagnosticsPharmacyClient = {
       stockTracking?: 'FEFO' | 'untracked';
       allocations?: DispenseAllocation[];
       stockAfter?: number | null;
+      replayed?: boolean;
+      prescriptionComplete?: boolean;
+      queueWarning?: string | null;
       billing?: {
         charged: boolean;
+        reason?: string;
         invoiceNumber?: string;
         totalAmount?: string;
         message?: string;

@@ -4,7 +4,8 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createSession } from '../../auth/session.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { verifyLabResult } from '../../db/queries/laboratory.ts';
-import { pool } from '../../db/index.ts';
+import { db, pool } from '../../db/index.ts';
+import { retryChargeAttempt } from '../../billing/charge-attempts.ts';
 import { dispenseFefoScoped, receiveBatchScoped } from '../../inventory/inventory.service.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
@@ -16,7 +17,13 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
   let base: string, close: () => Promise<void>, ctx: AuthorizationContext;
   let sequence = 0;
   const call = (method: string, path: string, token?: string, body?: Record<string, unknown>) =>
-    httpJson(base, method, path, { token, body });
+    httpJson(base, method, path, {
+      token,
+      body:
+        path === '/api/pharmacy/dispense' && body && !('idempotencyKey' in body)
+          ? { ...body, idempotencyKey: randomUUID() }
+          : body,
+    });
   const prescription = async (quantity: number, name = 'Synthetic medication') =>
     (
       await pool.query(
@@ -74,6 +81,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     const permissions = [
       'patients.create',
       'clinical.create',
+      'clinical.update',
       'billing.read',
       'billing.payments.record',
       'pharmacy.read',
@@ -259,7 +267,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     ]);
   });
 
-  it('refuses invalid prescriptions, unsupported partials and insufficient untracked stock', async () => {
+  it('refuses invalid prescriptions, excess quantities and insufficient untracked stock', async () => {
     const id = await prescription(8),
       stockId = await item(8);
     const body = {
@@ -273,10 +281,10 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
       (
         await call('POST', '/api/pharmacy/dispense', managerToken, {
           ...body,
-          quantityDispensed: 4,
+          quantityDispensed: 9,
         })
       ).body.error,
-    ).toBe('PRESCRIPTION_QUANTITY_REVIEW');
+    ).toBe('PRESCRIPTION_QUANTITY_EXCEEDED');
     expect(
       (
         await call('POST', '/api/pharmacy/dispense', managerToken, {
@@ -306,6 +314,258 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
       (await pool.query('SELECT id FROM pharmacy_dispensations WHERE prescription_id=$1', [id]))
         .rows,
     ).toHaveLength(0);
+  });
+
+  it('checks a dispensing retry identity without leaking across facility or permission boundaries', async () => {
+    const id = await prescription(4),
+      stockId = await item(4);
+    const key = `status-${randomUUID()}`;
+    const query = { facilityId: facility, idempotencyKey: key };
+    expect((await call('POST', '/api/pharmacy/dispense/status', limitedToken, query)).status).toBe(
+      403,
+    );
+    expect((await call('POST', '/api/pharmacy/dispense/status', otherToken, query)).status).toBe(
+      403,
+    );
+    expect((await call('POST', '/api/pharmacy/dispense/status', managerToken, query)).body).toEqual(
+      {
+        status: 'NOT_FOUND',
+      },
+    );
+    expect(
+      (
+        await call('POST', '/api/pharmacy/dispense/status', managerToken, {
+          ...query,
+          idempotencyKey: 'x',
+        })
+      ).status,
+    ).toBe(400);
+    const recorded = await call('POST', '/api/pharmacy/dispense', managerToken, {
+      prescriptionId: id,
+      patientId: patient,
+      itemId: stockId,
+      facilityId: facility,
+      quantityDispensed: 2,
+      idempotencyKey: key,
+    });
+    expect(recorded.status).toBe(201);
+    expect((await call('POST', '/api/pharmacy/dispense/status', managerToken, query)).body).toEqual(
+      {
+        status: 'RECORDED',
+        prescriptionId: id,
+        quantity: 2,
+        dispensationId: recorded.body.id,
+      },
+    );
+    expect(
+      (
+        await call('POST', '/api/pharmacy/dispense/status', otherToken, {
+          facilityId: otherFacility,
+          idempotencyKey: key,
+        })
+      ).body,
+    ).toEqual({ status: 'NOT_FOUND' });
+  });
+
+  it('supports partial dispensing, same-key retry and a separate final fill', async () => {
+    const id = await prescription(10),
+      stockId = await item(15);
+    await batch(stockId, `PART-${suffix}`, '2040-01-01', 15);
+    const key = randomUUID();
+    const body = {
+      prescriptionId: id,
+      patientId: patient,
+      itemId: stockId,
+      facilityId: facility,
+      quantityDispensed: 4,
+      idempotencyKey: key,
+    };
+    const [first, retry] = await Promise.all([
+      call('POST', '/api/pharmacy/dispense', managerToken, body),
+      call('POST', '/api/pharmacy/dispense', managerToken, body),
+    ]);
+    expect([first.status, retry.status]).toEqual([201, 201]);
+    expect(first.body.id).toBe(retry.body.id);
+    expect([first.body.replayed, retry.body.replayed].sort()).toEqual([false, true]);
+    expect(first.body.allocations).toEqual(retry.body.allocations);
+    expect(first.body.prescriptionComplete).toBe(false);
+    expect(
+      (await pool.query('SELECT status FROM medications WHERE id=$1', [id])).rows[0].status,
+    ).toBe('Partially Dispensed');
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [stockId])).rows[0]
+        .current_stock,
+    ).toBe(11);
+    expect(
+      (await pool.query('SELECT id FROM pharmacy_dispensations WHERE prescription_id=$1', [id]))
+        .rows,
+    ).toHaveLength(1);
+    expect(
+      (
+        await pool.query(
+          'SELECT quantity FROM pharmacy_dispense_allocations WHERE dispensation_id=$1',
+          [first.body.id],
+        )
+      ).rows,
+    ).toEqual([{ quantity: 4 }]);
+    expect(
+      (
+        await call('POST', '/api/pharmacy/dispense', managerToken, {
+          ...body,
+          quantityDispensed: 5,
+        })
+      ).body.error,
+    ).toBe('IDEMPOTENCY_CONFLICT');
+    const list = await call('GET', '/api/medications', managerToken);
+    expect(list.body.find((m: { id: number }) => m.id === id).quantityDispensed).toBe(4);
+    const final = await call('POST', '/api/pharmacy/dispense', managerToken, {
+      ...body,
+      quantityDispensed: 6,
+      idempotencyKey: randomUUID(),
+    });
+    expect(final.status).toBe(201);
+    expect(final.body.prescriptionComplete).toBe(true);
+    expect(
+      (await pool.query('SELECT status FROM medications WHERE id=$1', [id])).rows[0].status,
+    ).toBe('Dispensed');
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [stockId])).rows[0]
+        .current_stock,
+    ).toBe(5);
+    expect(
+      (await pool.query('SELECT id FROM pharmacy_dispensations WHERE prescription_id=$1', [id]))
+        .rows,
+    ).toHaveLength(2);
+    expect(
+      (
+        await call('POST', '/api/pharmacy/dispense', managerToken, {
+          ...body,
+          idempotencyKey: randomUUID(),
+        })
+      ).status,
+    ).toBe(409);
+  });
+
+  it('serializes competing partial fills and refuses missing keys and product changes', async () => {
+    const id = await prescription(10),
+      stockId = await item(20),
+      otherItem = await item(20);
+    const body = {
+      prescriptionId: id,
+      patientId: patient,
+      itemId: stockId,
+      facilityId: facility,
+      quantityDispensed: 6,
+    };
+    expect(
+      (
+        await call('POST', '/api/pharmacy/dispense', managerToken, {
+          ...body,
+          idempotencyKey: null,
+        })
+      ).body.error,
+    ).toBe('IDEMPOTENCY_KEY_REQUIRED');
+    const [first, second] = await Promise.all([
+      call('POST', '/api/pharmacy/dispense', managerToken, body),
+      call('POST', '/api/pharmacy/dispense', managerToken, body),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([201, 409]);
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [stockId])).rows[0]
+        .current_stock,
+    ).toBe(14);
+    expect(
+      (
+        await call('POST', '/api/pharmacy/dispense', managerToken, {
+          ...body,
+          quantityDispensed: 4,
+          itemId: otherItem,
+        })
+      ).body.error,
+    ).toBe('PRESCRIPTION_PRODUCT_REVIEW');
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [otherItem]))
+        .rows[0].current_stock,
+    ).toBe(20);
+  });
+
+  it('allows authorized clinical hold, resume and discontinuation without dispensing or losing partial history', async () => {
+    const id = await prescription(8),
+      stockId = await item(12);
+    const status = (token: string, next: string, reason = 'Synthetic clinical reason') =>
+      call('PUT', `/api/medications/${id}/status`, token, { status: next, reason });
+    expect((await status(limitedToken, 'On Hold')).status).toBe(403);
+    expect((await status(otherToken, 'On Hold')).status).not.toBe(200);
+    expect(
+      (await call('PUT', `/api/medications/${id}/status`, managerToken, { status: 'On Hold' })).body
+        .error,
+    ).toBe('MEDICATION_REASON_REQUIRED');
+    expect((await status(managerToken, 'On Hold')).body.status).toBe('On Hold');
+    const body = {
+      prescriptionId: id,
+      patientId: patient,
+      itemId: stockId,
+      facilityId: facility,
+      quantityDispensed: 4,
+    };
+    expect((await call('POST', '/api/pharmacy/dispense', managerToken, body)).status).toBe(409);
+    expect((await status(managerToken, 'Resume')).body.status).toBe('Prescribed');
+    expect((await call('POST', '/api/pharmacy/dispense', managerToken, body)).status).toBe(201);
+    expect((await status(managerToken, 'Cancelled')).body.error).toBe('MEDICATION_STATE_CONFLICT');
+    expect((await status(managerToken, 'On Hold')).body.status).toBe('On Hold');
+    expect((await status(managerToken, 'Resume')).body.status).toBe('Partially Dispensed');
+    expect((await status(managerToken, 'Discontinued')).body.status).toBe('Discontinued');
+    expect((await call('POST', '/api/pharmacy/dispense', managerToken, body)).status).toBe(409);
+    const events = (
+      await pool.query(
+        'SELECT from_status,to_status,actor_user_id FROM medication_status_events WHERE medication_id=$1 ORDER BY id',
+        [id],
+      )
+    ).rows;
+    expect(events.map((e) => e.to_status)).toEqual([
+      'On Hold',
+      'Prescribed',
+      'On Hold',
+      'Partially Dispensed',
+      'Discontinued',
+    ]);
+    expect(events.every((e) => e.actor_user_id === actorId)).toBe(true);
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [stockId])).rows[0]
+        .current_stock,
+    ).toBe(8);
+  });
+
+  it('rolls back a medication status transition when its audit fails', async () => {
+    const id = await prescription(3);
+    const fn = `test_med_audit_${suffix.replaceAll('-', '')}`;
+    const trigger = `test_med_audit_trigger_${suffix.replaceAll('-', '')}`;
+    await pool.query(
+      `CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit failure'; END $$`,
+    );
+    await pool.query(
+      `CREATE TRIGGER "${trigger}" BEFORE INSERT ON audit_logs FOR EACH ROW WHEN (NEW.facility_id = ${facility} AND NEW.resource = 'Medication') EXECUTE FUNCTION "${fn}"()`,
+    );
+    try {
+      expect(
+        (
+          await call('PUT', `/api/medications/${id}/status`, managerToken, {
+            status: 'On Hold',
+            reason: 'Synthetic reason',
+          })
+        ).status,
+      ).toBe(500);
+      expect(
+        (await pool.query('SELECT status FROM medications WHERE id=$1', [id])).rows[0].status,
+      ).toBe('Prescribed');
+      expect(
+        (await pool.query('SELECT id FROM medication_status_events WHERE medication_id=$1', [id]))
+          .rows,
+      ).toHaveLength(0);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS "${trigger}" ON audit_logs`);
+      await pool.query(`DROP FUNCTION IF EXISTS "${fn}"()`);
+    }
   });
 
   it('does not turn an unknown stock balance into zero during receipt', async () => {
@@ -382,7 +642,86 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     ).toHaveLength(1);
   });
 
-  it('reports an unpriced charge queue failure instead of claiming it was recorded', async () => {
+  it('leaves durable billing work when a dispensing commits before the billing step runs', async () => {
+    const id = await prescription(2, `Synthetic outbox ${suffix}`),
+      stockId = await item(2);
+    // Call the service directly to simulate a process stopping after its
+    // clinical transaction commits but before the HTTP route prices it.
+    const recorded = await dispenseFefoScoped(ctx, {
+      prescriptionId: id,
+      patientId: patient,
+      itemId: stockId,
+      facilityId: facility,
+      quantityDispensed: 2,
+      dispensedBy: 'Synthetic',
+      idempotencyKey: `outbox-${suffix}`,
+    });
+    const [pending] = (
+      await pool.query(
+        "SELECT id,reason,status,attempts,codes FROM billing_charge_attempts WHERE source_type='PHARMACY' AND source_id=$1",
+        [recorded.dispensation.id],
+      )
+    ).rows;
+    expect(pending).toMatchObject({ reason: 'BILLING_PENDING', status: 'PENDING', attempts: 0 });
+    expect(
+      (
+        await pool.query(
+          "SELECT id FROM billing_items WHERE source_type='PHARMACY' AND source_id=$1",
+          [recorded.dispensation.id],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    await pool.query(
+      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee) VALUES($1,$2,$3,$4,'Pharmacy','Tablet','2.50')",
+      [tenant, facility, pending.codes[0], `Synthetic outbox ${suffix}`],
+    );
+    // A changed clinical source cannot be silently repriced from the queue.
+    await pool.query('UPDATE medications SET drug_name=$1 WHERE id=$2', [
+      'Synthetic changed label',
+      id,
+    ]);
+    expect(
+      await retryChargeAttempt(db, {
+        tenantId: tenant,
+        facilityId: facility,
+        attemptId: pending.id,
+        actorUserId: actorId,
+      }),
+    ).toMatchObject({ status: 'PENDING', result: { charged: false, reason: 'INVALID_INPUT' } });
+    expect(
+      (
+        await pool.query(
+          "SELECT id FROM billing_items WHERE source_type='PHARMACY' AND source_id=$1",
+          [recorded.dispensation.id],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    // Restore only this synthetic fixture, then retry the original source.
+    await pool.query('UPDATE medications SET drug_name=$1 WHERE id=$2', [
+      `Synthetic outbox ${suffix}`,
+      id,
+    ]);
+    const retried = await retryChargeAttempt(db, {
+      tenantId: tenant,
+      facilityId: facility,
+      attemptId: pending.id,
+      actorUserId: actorId,
+    });
+    expect(retried).toMatchObject({
+      status: 'BILLED',
+      result: { charged: true, totalAmount: '5.00' },
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT id FROM billing_items WHERE source_type='PHARMACY' AND source_id=$1",
+          [recorded.dispensation.id],
+        )
+      ).rows,
+    ).toHaveLength(1);
+  });
+
+  it('rolls back dispensing and stock if durable billing work cannot be recorded', async () => {
     const id = await prescription(2),
       stockId = await item(2);
     const fn = `test_charge_attempt_${suffix.replaceAll('-', '')}`,
@@ -401,20 +740,18 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         facilityId: facility,
         quantityDispensed: 2,
       });
-      expect(response.status).toBe(201);
-      expect(response.body.billing).toMatchObject({
-        charged: false,
-        reason: 'TARIFF_NOT_CONFIGURED',
-      });
-      expect(response.body.billing.message).toContain('could not be recorded');
+      expect(response.status).toBe(500);
       expect(
-        (
-          await pool.query(
-            "SELECT id FROM billing_charge_attempts WHERE source_type='PHARMACY' AND source_id=$1",
-            [response.body.id],
-          )
-        ).rows,
+        (await pool.query('SELECT id FROM pharmacy_dispensations WHERE prescription_id=$1', [id]))
+          .rows,
       ).toHaveLength(0);
+      expect(
+        (await pool.query('SELECT status FROM medications WHERE id=$1', [id])).rows[0].status,
+      ).toBe('Prescribed');
+      expect(
+        (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [stockId]))
+          .rows[0].current_stock,
+      ).toBe(2);
     } finally {
       await pool.query(`DROP TRIGGER IF EXISTS "${trigger}" ON billing_charge_attempts`);
       await pool.query(`DROP FUNCTION IF EXISTS "${fn}"()`);
@@ -442,6 +779,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
           facilityId: facility,
           quantityDispensed: 4,
           dispensedBy: 'Synthetic',
+          idempotencyKey: randomUUID(),
         }),
       ).rejects.toThrow();
       expect(
@@ -480,6 +818,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         facilityId: facility,
         quantityDispensed: 4,
         dispensedBy: 'Synthetic',
+        idempotencyKey: randomUUID(),
       }),
       receiveBatchScoped(
         ctx,
@@ -540,6 +879,272 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
       ).rows,
     ).toHaveLength(1);
     // This price belongs solely to the disposable synthetic fixture, not a real tariff schedule.
+  });
+
+  it('requires collection before result entry and prevents regression or re-accessioning', async () => {
+    const order = await call('POST', '/api/lab-orders', managerToken, {
+      patientId: patient,
+      encounterId: encounter,
+      testName: 'Synthetic guarded assay',
+      specimenType: 'Synthetic',
+    });
+    expect(order.status).toBe(201);
+    const body = {
+      orderId: order.body.id,
+      patientId: patient,
+      parameterName: 'Synthetic',
+      measuredValue: 'Actual synthetic measurement',
+    };
+    const early = await call('POST', '/api/lab-results', managerToken, body);
+    expect(early.status).toBe(409);
+    expect(early.body.error).toBe('LAB_SPECIMEN_NOT_COLLECTED');
+    expect(
+      (await pool.query('SELECT id FROM lab_results WHERE order_id=$1', [order.body.id])).rows,
+    ).toHaveLength(0);
+    const collect = () =>
+      call('PUT', `/api/lab-orders/${order.body.id}/status`, managerToken, {
+        status: 'Sample Collected',
+      });
+    const [first, retry] = await Promise.all([collect(), collect()]);
+    expect(first.status).toBe(200);
+    expect(retry.status).toBe(200);
+    expect(first.body.sampleAccessionNumber).toMatch(/^JC-/);
+    expect(retry.body.sampleAccessionNumber).toBe(first.body.sampleAccessionNumber);
+    expect(
+      (
+        await call('PUT', `/api/lab-orders/${order.body.id}/status`, managerToken, {
+          status: 'Ordered',
+        })
+      ).body.error,
+    ).toBe('LAB_STATE_CONFLICT');
+    expect(
+      (
+        await call('PUT', `/api/lab-orders/${order.body.id}/status`, managerToken, {
+          status: 'Sample Collected',
+          accessionNumber: 'Different synthetic accession',
+        })
+      ).body.error,
+    ).toBe('LAB_ACCESSION_CHANGE_REQUIRES_REVIEW');
+    expect(
+      (
+        await pool.query("SELECT id FROM audit_logs WHERE resource='LabOrder' AND resource_id=$1", [
+          String(order.body.id),
+        ])
+      ).rows,
+    ).toHaveLength(1);
+    const entered = await call('POST', '/api/lab-results', managerToken, body);
+    expect(entered.status).toBe(201);
+    expect(
+      (
+        await pool.query(
+          "SELECT id FROM audit_logs WHERE resource='LabResult' AND resource_id=$1 AND action='CREATE'",
+          [String(entered.body.id)],
+        )
+      ).rows,
+    ).toHaveLength(1);
+  });
+
+  it('prevents concurrent duplicate accessions within a facility', async () => {
+    const make = () =>
+      call('POST', '/api/lab-orders', managerToken, {
+        patientId: patient,
+        encounterId: encounter,
+        testName: 'Synthetic duplicate accession',
+        specimenType: 'Synthetic',
+      });
+    const [one, two] = await Promise.all([make(), make()]);
+    expect(one.status).toBe(201);
+    expect(two.status).toBe(201);
+    const accession = `ACC-DUP-${suffix}`;
+    const [first, second] = await Promise.all([
+      call('PUT', `/api/lab-orders/${one.body.id}/status`, managerToken, {
+        status: 'Sample Collected',
+        accessionNumber: accession,
+      }),
+      call('PUT', `/api/lab-orders/${two.body.id}/status`, managerToken, {
+        status: 'Sample Collected',
+        accessionNumber: ` ${accession.toLowerCase()} `,
+      }),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    expect([first.body.error, second.body.error]).toContain('LAB_ACCESSION_IN_USE');
+    const rows = (
+      await pool.query(
+        'SELECT status,sample_accession_number FROM lab_orders WHERE id=ANY($1::int[])',
+        [[one.body.id, two.body.id]],
+      )
+    ).rows;
+    expect(rows.filter((r) => r.status === 'Sample Collected')).toHaveLength(1);
+    expect(
+      rows.filter((r) => r.status === 'Ordered' && r.sample_accession_number === null),
+    ).toHaveLength(1);
+  });
+
+  it('explicitly shares one collected specimen across compatible orders without sharing across patients', async () => {
+    const make = (type = 'Synthetic blood') =>
+      call('POST', '/api/lab-orders', managerToken, {
+        patientId: patient,
+        encounterId: encounter,
+        testName: 'Synthetic panel',
+        specimenType: type,
+      });
+    const [first, second, incompatible] = await Promise.all([
+      make(),
+      make(),
+      make('Synthetic urine'),
+    ]);
+    expect([first.status, second.status, incompatible.status]).toEqual([201, 201, 201]);
+    const collected = await call('PUT', `/api/lab-orders/${first.body.id}/status`, managerToken, {
+      status: 'Sample Collected',
+    });
+    expect(collected.status).toBe(200);
+    const linked = await call('PUT', `/api/lab-orders/${second.body.id}/status`, managerToken, {
+      status: 'Sample Collected',
+      sharedOrderId: first.body.id,
+    });
+    expect(linked.status).toBe(200);
+    expect(linked.body.sampleAccessionNumber).toBe(collected.body.sampleAccessionNumber);
+    expect(linked.body.sampleCollectedAt).toBe(collected.body.sampleCollectedAt);
+    expect(
+      (
+        await call('PUT', `/api/lab-orders/${second.body.id}/status`, managerToken, {
+          status: 'Sample Collected',
+          sharedOrderId: first.body.id,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call('PUT', `/api/lab-orders/${incompatible.body.id}/status`, managerToken, {
+          status: 'Sample Collected',
+          sharedOrderId: first.body.id,
+        })
+      ).body.error,
+    ).toBe('LAB_SHARED_SPECIMEN_REVIEW');
+    const orders = await call('GET', '/api/lab-orders', managerToken);
+    const ids = orders.body.filter((r: { id: number }) =>
+      [first.body.id, second.body.id].includes(r.id),
+    );
+    expect(ids).toHaveLength(2);
+    expect(ids[0].specimenId).toBe(ids[1].specimenId);
+    const patientB = (
+      await pool.query(
+        "INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender) VALUES($1,$2,$3,'Synthetic','Other','2000-01-01','Other') RETURNING id",
+        [tenant, facility, `SHARED-${suffix}`],
+      )
+    ).rows[0].id;
+    const otherOrder = (
+      await pool.query(
+        "INSERT INTO lab_orders(tenant_id,facility_id,patient_id,test_name,status,specimen_type) VALUES($1,$2,$3,'Synthetic','Ordered','Synthetic blood') RETURNING id",
+        [tenant, facility, patientB],
+      )
+    ).rows[0].id;
+    expect(
+      (
+        await call('PUT', `/api/lab-orders/${otherOrder}/status`, managerToken, {
+          status: 'Sample Collected',
+          sharedOrderId: first.body.id,
+        })
+      ).body.error,
+    ).toBe('LAB_SHARED_SPECIMEN_REVIEW');
+    await expect(
+      pool.query('UPDATE lab_orders SET sample_accession_number=$1 WHERE id=$2', [
+        collected.body.sampleAccessionNumber,
+        otherOrder,
+      ]),
+    ).rejects.toMatchObject({ code: '23505' });
+    expect(
+      (await pool.query('SELECT sample_accession_number FROM lab_orders WHERE id=$1', [otherOrder]))
+        .rows[0].sample_accession_number,
+    ).toBeNull();
+  });
+
+  it('rolls back collection, result entry and verification if their audit cannot be saved', async () => {
+    const order = await call('POST', '/api/lab-orders', managerToken, {
+      patientId: patient,
+      encounterId: encounter,
+      testName: 'Synthetic audit test',
+      specimenType: 'Synthetic',
+    });
+    expect(order.status).toBe(201);
+    const fn = `test_lab_audit_${suffix.replaceAll('-', '')}`;
+    const trigger = `test_lab_audit_trigger_${suffix.replaceAll('-', '')}`;
+    await pool.query(
+      `CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit failure'; END $$`,
+    );
+    const enable = async (resource: string, action: string) =>
+      pool.query(
+        `CREATE TRIGGER "${trigger}" BEFORE INSERT ON audit_logs FOR EACH ROW WHEN (NEW.facility_id = ${facility} AND NEW.resource = '${resource}' AND NEW.action = '${action}') EXECUTE FUNCTION "${fn}"()`,
+      );
+    const disable = async () => pool.query(`DROP TRIGGER IF EXISTS "${trigger}" ON audit_logs`);
+    try {
+      await enable('LabOrder', 'UPDATE');
+      expect(
+        (
+          await call('PUT', `/api/lab-orders/${order.body.id}/status`, managerToken, {
+            status: 'Sample Collected',
+          })
+        ).status,
+      ).toBe(500);
+      expect(
+        (
+          await pool.query('SELECT status,sample_accession_number FROM lab_orders WHERE id=$1', [
+            order.body.id,
+          ])
+        ).rows[0],
+      ).toEqual({ status: 'Ordered', sample_accession_number: null });
+      await disable();
+      expect(
+        (
+          await call('PUT', `/api/lab-orders/${order.body.id}/status`, managerToken, {
+            status: 'Sample Collected',
+          })
+        ).status,
+      ).toBe(200);
+      const body = {
+        orderId: order.body.id,
+        patientId: patient,
+        parameterName: 'Synthetic',
+        measuredValue: 'Synthetic',
+      };
+      await enable('LabResult', 'CREATE');
+      expect((await call('POST', '/api/lab-results', managerToken, body)).status).toBe(500);
+      expect(
+        (await pool.query('SELECT id FROM lab_results WHERE order_id=$1', [order.body.id])).rows,
+      ).toHaveLength(0);
+      await disable();
+      const result = await call('POST', '/api/lab-results', managerToken, body);
+      expect(result.status).toBe(201);
+      await enable('LabResult', 'UPDATE');
+      expect(
+        (await call('POST', `/api/lab-results/${result.body.id}/verify`, managerToken, {})).status,
+      ).toBe(500);
+      expect(
+        (
+          await pool.query('SELECT status,verified_by,verified_at FROM lab_results WHERE id=$1', [
+            result.body.id,
+          ])
+        ).rows[0],
+      ).toEqual({ status: 'Pending Verification', verified_by: null, verified_at: null });
+    } finally {
+      await disable();
+      await pool.query(`DROP FUNCTION IF EXISTS "${fn}"()`);
+    }
+  });
+
+  it('scopes the laboratory catalogue to the authorized facility', async () => {
+    const codes = [`LAB-A-${suffix}`, `LAB-B-${suffix}`];
+    await pool.query(
+      "INSERT INTO lab_tests(facility_id,code,name) VALUES($1,$2,'Synthetic A'),($3,$4,'Synthetic B')",
+      [facility, codes[0], otherFacility, codes[1]],
+    );
+    const local = await call('GET', '/api/lab-tests', managerToken);
+    expect(local.status).toBe(200);
+    expect(local.body.map((r: { code: string }) => r.code)).toContain(codes[0]);
+    expect(local.body.map((r: { code: string }) => r.code)).not.toContain(codes[1]);
+    expect(
+      (await call('GET', `/api/lab-tests?facilityId=${otherFacility}`, managerToken)).status,
+    ).toBe(403);
   });
 
   it('orders, collects, records and verifies a synthetic lab result; concurrent verifiers cannot overwrite it', async () => {

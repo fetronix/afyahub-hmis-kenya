@@ -1,0 +1,68 @@
+# HMIS implementation progress and remaining release gates
+
+**Date:** 2026-10-30 (Africa/Nairobi)
+**Branch / PR:** `arena/a910f921-afyahub-hmis-kenya`, [draft PR #27](https://github.com/fetronix/afyahub-hmis-kenya/pull/27) against `main`
+**Scope of evidence:** isolated synthetic PostgreSQL and local automated checks, not a facility deployment.
+
+## Decision
+
+**Not ready for actual facility operation or clinical acceptance.** This increment implements and tests additional safety work; it does not complete the full HMIS, refund or accounting lifecycle, validate a facility's prices, establish provider connectivity, or replace clinician and facility acceptance. Do not merge, deploy or migrate a real database on the strength of this report alone.
+
+The earlier baseline and Priority 1 report are historical snapshots. This report supersedes their descriptions of laboratory accession handling, pharmacy partial dispensing, automatic charge locking, and the local test counts; their other unverified-module warnings remain relevant.
+
+## Changes made
+
+- **Automatic billing and unpriced work:** the ordinary clinical charge path locks a stable source identity before the patient/invoice and queue rows. A queue retry, clinical replay and write-off serialize; a written-off attempt cannot be billed by those paths. A successful replay resolves a pending attempt and writes its audit in the transaction. A pre-existing charge is checked before tariff resolution. Historical contradictory queue records require review; a duplicate is counted separately only when an invoice and item are identified. Missing queue reads are errors, not an asserted zero. The exported low-level `chargeForService` function itself is not a replacement for the queue-aware wrapper; new production call sites must not bypass it. Other clinical events still do not all have durable billing work recorded in their own transaction.
+- **Laboratory:** scoped collection is state-checked, collision-resistant and audited; result entry and verification require collection. An explicitly selected, already collected specimen can be linked to another order for the same patient and facility when specimen-type text matches. Its original accession and collection time are preserved. Text matching is not clinical proof of suitability; barcode printing, critical-result escalation and controlled result amendments remain open.
+- **Pharmacy:** locked cumulative partial fills, persistent FEFO allocations, same-key replay and reasoned clinician hold/resume/discontinue transitions preserve stock and dispensing history. Each new dispensing records pending billing work in the existing charge-attempt table in the same transaction as stock, status and audit; a crash before post-commit pricing therefore leaves work for manual retry. If this durable record cannot be written the dispensing transaction rolls back rather than claiming success. A missing tariff does not itself prevent dispensing. Retries validate the stored pharmacy source before pricing.
+- **Pharmacy browser recovery:** a scoped, permission-checked status lookup and a browser-retained retry identity support response-loss recovery across dialog reopening and page reload. Only an opaque key and prescription identifier are retained, not patient names, notes, request bodies or credentials. A `NOT_FOUND` result does not permit an automatic new key: the operator can retry the same request. Clearing browser storage, another device, or simultaneous new actions from separate tabs still require manual record review; this is not a universal exactly-once guarantee. A pharmacist still must verify the selected product and strength; the initial inventory-to-prescription catalogue identity is not established. Items without tracked batches have no verified expiry.
+- **Accounting / tariffs:** an authorized, read-only, paginated invoice/receipt consistency diagnostic flags header, line and receipt mismatches. Its selected range is based on invoice creation date; it is explicitly **not** general-ledger, refund, bank, claim or external-settlement reconciliation. Tariff writes require an explicit unit and valid calendar dates. The CSV in `docs/billing/` remains a blank intake worksheet, not an importer or a source of approved tariffs.
+- **Operational honesty:** OPD no longer promises that an unconfirmed charge is in the queue, and queue views do not claim every clinical event has been billed. Readiness reports the packaged migration-journal count or unknown, rather than a stale hardcoded number; it does not verify that the database is migrated.
+
+Relevant implementation files include `src/billing/billing.service.ts`, `src/billing/charge-attempts.ts`, `src/inventory/inventory.service.ts`, `src/db/queries/{clinical,laboratory}.ts`, `src/routes/{pharmacy,laboratory,medications,accounting}.routes.ts`, `src/accounting/billing-diagnostics.service.ts`, the corresponding clients and modules, and the regression specs under `src/tests/integration/` and `src/tests/vitest/`.
+
+## Readiness classification
+
+These classifications apply to the end-to-end module, not merely to an endpoint or a passing test. The requested categories are **complete and automated-tested**, **complete but requires browser acceptance**, **blocked by external credentials/approval**, and **not complete**.
+
+| Area | Classification | Evidence / remaining gate |
+| --- | --- | --- |
+| Registration, patient identity, appointments, reception, queues, OPD, triage and consultation | **Not complete** | Existing workflows and focused synthetic journey exist; full isolation, duplicate resolution, exception handling and browser-to-discharge acceptance are not established. |
+| Laboratory | **Not complete** | Collection, explicit specimen sharing and verification have focused PostgreSQL coverage; historical conflicts, amendments, release/escalation, barcode policy and clinical acceptance remain. |
+| Pharmacy and inventory | **Not complete** | Partial fill, retry, stock and audit safeguards have focused tests. Product/strength identity, cross-device duplicate recovery, returns/reversals, historic records and clinical acceptance remain. |
+| Inpatient, wards, nursing and emergency | **Not complete** | Admission/bed locking and focused tests exist; the complete nursing, medication, billing and discharge journey remains unverified. |
+| Theatre | **Not complete** | Existing scheduling implementation and prior synthetic tests do not establish consent, checklist, perioperative documentation or clinical sign-off. |
+| Maternity, MCH, newborn and immunisation | **Not complete** | Existing modules and focused tests are not end-to-end antenatal, delivery, newborn and postnatal acceptance. |
+| Radiology, procurement, dialysis and specialty workflows | **Not complete** | Existing APIs/UI and some tests are not a full persistence, isolation, audit and facility-accepted journey. No dialysis protocol is inferred. |
+| Patient portal and public health/FHIR | **Not complete** | Sharing/recovery, privacy threat modelling, authoritative mappings, external interoperability and browser acceptance remain. |
+| Billing, receipt, refund, adjustment and accounting | **Not complete** | Focused invoice/receipt and charge tests pass; refunds, controlled financial reversals, approved adjustments, full event coverage and automatic source-linked ledger postings/reconciliation remain absent. A diagnostic is not reconciliation. |
+| Facility tariffs / service mapping | **Not complete**; facility data **blocked by approval** | No validated importer or approved facility-specific tariff schedule was provided. No price is inferred from synthetic fixtures. |
+| SHA/HIE, AfyaLink, Britam, PACIS and other payer interfaces | **Blocked by external credentials/approval**, and implementation remains incomplete | Separate authorized contracts, facility onboarding, security, sandbox tests and callbacks are required. A mock, local policy, HTTP response or estimate does not prove eligibility, preauthorization, claim acceptance or payment. |
+| M-Pesa, card, SMS/email and banking | **Blocked by external credentials/approval**, and implementation remains incomplete | No live connection was tested. Callback authentication, contracted providers and external reconciliation remain necessary; bank transfers remain disabled pending approval. |
+| Focused safety components in this increment | **Automated-tested; browser and clinical acceptance still required** | This describes the individual code paths and tests below, not an end-to-end module declared complete. |
+
+## Migration and historical-data gate
+
+The added migrations are `0033_lab_accession_safety.sql`, `0034_pharmacy_workflow_safety.sql`, and `0035_shared_lab_specimens.sql` in the existing journal. They add safety structures without inventing historic specimen links or pharmacy allocations. Same-named unjournaled objects cause a preflight failure rather than silently trusting their definition.
+
+**Important:** 0033 refuses existing normalized duplicate accessions within a facility. Some may be legitimate historical shared specimens/panels. The migration does not determine that and must not silently deduplicate them. Before any real deployment: make and verify backups, rehearse against an authorized isolated copy, review conflicts with laboratory leadership and agree a documented, authorized reconciliation/migration plan; only then schedule migration and rollback procedures. 0035 replaces 0033's newly created index with an explicit specimen guard. Do not backfill inferred relationships or alter historical clinical records without authorization. The existing historical migration chain also contains destructive statements in 0002; it was run here **only** on a newly created synthetic database.
+
+## Verification actually performed
+
+| Check | Result and limitation |
+| --- | --- |
+| Fresh migrations | PostgreSQL 16.2: all **36** migrations applied to newly created isolated `jalicare_completion_verified_test`; status reported all applied, dry run reported zero pending. No existing or production database was modified. |
+| Complete local PostgreSQL-backed coverage suite | **167 files / 1,616 tests passed**, with `JALICARE_REQUIRE_DB=1`; coverage **58.15% statements, 52.45% branches, 60.37% functions, 59.09% lines**, above configured thresholds 55/48/58/55. Passing tests do not establish clinical or regulatory acceptance. |
+| Focused safety checks | Fresh-chain targeted run: **49 tests passed** across migration guards, laboratory, billing races, clinical workflows and pharmacy browser-state recovery. The expanded clinical suite has 23 tests; charge concurrency suite has 13. |
+| Typecheck / lint / format | `npm run typecheck` and `npm run format:check` passed. `npm run lint` passed with **0 errors and 67 warnings**; warnings remain, including an effect warning in the new pharmacy recovery view. `git diff --check` passed. |
+| Build / deployment dry run | `npm run build:deploy` passed; Vite warned that its main minified bundle exceeds 500 kB. `npm run verify:deploy` passed its no-write dry-run checks and **11** deployment tests using synthetic configuration. |
+| Production startup smoke | A one-shot production bundle started against the synthetic database. Static HTML and security headers, health/readiness, protected API, synthetic bootstrap/login/session and JSON 404 passed. A generated synthetic bootstrap password was never printed and was discarded; this does not create a credential for facility use. |
+| Dependencies | `npm audit --omit=dev --audit-level=moderate`: **0 production vulnerabilities**. Full audit: **4 moderate development-chain advisories** through `drizzle-kit` / esbuild; the suggested forced breaking change was not applied. |
+| Local Docker / hosted CI | Local Docker CLI/daemon were unavailable. Hosted CI results must be checked against the **current PR head**; previous passing PR checks were for the older committed head and do not verify later changes. |
+| Browser / clinical / external | No real browser executable was available for an end-to-end browser run. Three jsdom recovery tests are not browser acceptance. No facility clinician, live provider, payer sandbox, production cPanel server or real patient data was used. |
+
+## Bootstrap and external decisions
+
+For a separately authorized test installation, use the existing `src/bootstrap-admin.ts` with an operator-provided, strong `ADMIN_PASSWORD` supplied through a protected host environment or secret manager, not source, chat, fixtures or logs. Set `ADMIN_USERNAME` and `ADMIN_EMAIL` in that protected environment, configure a stable secret `FIELD_ENCRYPTION_KEY`, and run the documented bootstrap after the approved migration/backup process. The bootstrap creates a platform-level administrator and does not overwrite an existing password; facility administration and finance require their own scoped authorization and onboarding. Remove temporary bootstrap secrets from the process environment afterward. The synthetic smoke-test credential was discarded and cannot be used for browser acceptance.
+
+Before real use, obtain facility-approved service catalogue and tariffs, workflow and clinical sign-off, independent privacy/security review and DPIA evidence, backup/restore rehearsal, a validated deployment plan, and any provider contracts, credentials and approvals. No compliance or external connection is asserted. Refund design, safe import, event-to-ledger bridges, operational reconciliation, and remaining workflows require implementation and regression testing before this can be represented as complete.

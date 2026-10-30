@@ -37,6 +37,7 @@ export const LaboratoryModule: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
   const [orderResults, setOrderResults] = useState<LabResult[]>([]);
+  const [sharedOrderId, setSharedOrderId] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Result Entry Form
@@ -75,6 +76,7 @@ export const LaboratoryModule: React.FC = () => {
 
   const selectOrder = async (order: LabOrder) => {
     setSelectedOrder(order);
+    setSharedOrderId('');
     try {
       const results = await api.getLabResults(order.id);
       setOrderResults(results);
@@ -83,12 +85,22 @@ export const LaboratoryModule: React.FC = () => {
     }
   };
 
-  const handleUpdateOrderStatus = async (id: number, status: string) => {
+  const handleUpdateOrderStatus = async (
+    id: number,
+    status: string,
+    existingSpecimenOrderId?: number,
+  ) => {
     try {
-      const accessionNum = `ACC-${Date.now().toString().slice(-6)}`;
-      await api.updateLabOrderStatus(id, status, accessionNum);
+      const updated = await api.updateLabOrderStatus(
+        id,
+        status,
+        undefined,
+        existingSpecimenOrderId,
+      );
+      setLabOrders((orders) => orders.map((order) => (order.id === id ? updated : order)));
+      setSelectedOrder((order) => (order?.id === id ? updated : order));
       showToast(
-        `Lab Order marked as ${status}${status === 'Sample Collected' ? ` (Accession: ${accessionNum})` : ''}`,
+        `Lab order marked as ${updated.status}${updated.sampleAccessionNumber ? ` (Accession: ${updated.sampleAccessionNumber})` : ''}`,
       );
       triggerRefresh();
     } catch (err: any) {
@@ -99,6 +111,10 @@ export const LaboratoryModule: React.FC = () => {
   const handleAddResult = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrder) return;
+    if (selectedOrder.status !== 'Sample Collected' || !selectedOrder.sampleAccessionNumber) {
+      showToast('Record specimen collection before entering results.');
+      return;
+    }
 
     if (!resultParam.parameterName.trim() || !resultParam.measuredValue.trim()) {
       showToast('Enter both a parameter name and an actual measured value.');
@@ -151,8 +167,8 @@ export const LaboratoryModule: React.FC = () => {
             Clinical Pathology & Diagnostic Laboratory
           </h1>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Specimen accessioning, LOINC test catalog, reference ranges, critical flag validation,
-            and report publishing.
+            Specimen accessioning, result entry and verification. Review specimen suitability and
+            clinical results according to facility policy.
           </p>
         </div>
 
@@ -171,7 +187,7 @@ export const LaboratoryModule: React.FC = () => {
               <FlaskConical className="w-4 h-4 text-teal-700" />
               <span>Specimen Queue ({labOrders.length})</span>
             </h2>
-            <span className="text-2xs text-slate-400 font-mono">Barcoded Accession</span>
+            <span className="text-2xs text-slate-400 font-mono">Accession number</span>
           </div>
 
           <div className="p-3 space-y-2 flex-1 overflow-y-auto max-h-[600px]">
@@ -236,7 +252,7 @@ export const LaboratoryModule: React.FC = () => {
                         }}
                         className="w-full py-1 bg-teal-700 text-white text-2xs font-medium rounded hover:bg-teal-800 transition-colors"
                       >
-                        Collect Sample & Accession Barcode
+                        Record Collection & Assign Accession
                       </button>
                     </div>
                   )}
@@ -273,6 +289,60 @@ export const LaboratoryModule: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {selectedOrder.status === 'Ordered' &&
+                  selectedOrder.specimenType &&
+                  can('laboratory.results.enter') &&
+                  (() => {
+                    const candidates = labOrders.filter(
+                      (order) =>
+                        order.id !== selectedOrder.id &&
+                        order.patientId === selectedOrder.patientId &&
+                        order.status === 'Sample Collected' &&
+                        order.specimenId &&
+                        order.specimenType?.trim().toLowerCase() ===
+                          selectedOrder.specimenType?.trim().toLowerCase(),
+                    );
+                    if (!candidates.length) return null;
+                    return (
+                      <div className="rounded border border-slate-200 p-3 space-y-2">
+                        <label className="block font-semibold" htmlFor="shared-specimen">
+                          Use a previously collected specimen
+                        </label>
+                        <p>
+                          Only link the specimen after confirming it is suitable for this
+                          investigation.
+                        </p>
+                        <select
+                          id="shared-specimen"
+                          value={sharedOrderId}
+                          onChange={(event) => setSharedOrderId(event.target.value)}
+                          className="w-full border border-slate-200 rounded p-1"
+                        >
+                          <option value="">Select a collected specimen</option>
+                          {candidates.map((order) => (
+                            <option key={order.id} value={order.id}>
+                              {order.testName} · {order.sampleAccessionNumber}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!sharedOrderId}
+                          onClick={() =>
+                            handleUpdateOrderStatus(
+                              selectedOrder.id,
+                              'Sample Collected',
+                              Number(sharedOrderId),
+                            )
+                          }
+                          className="rounded bg-teal-700 text-white px-2 py-1 disabled:opacity-50"
+                        >
+                          Link selected specimen
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                 {/* Patient Summary */}
                 {(() => {
@@ -498,7 +568,16 @@ export const LaboratoryModule: React.FC = () => {
                   <div className="flex justify-end pt-2">
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
+                      disabled={
+                        selectedOrder.status !== 'Sample Collected' ||
+                        !selectedOrder.sampleAccessionNumber
+                      }
+                      title={
+                        selectedOrder.status !== 'Sample Collected'
+                          ? 'Record specimen collection first'
+                          : undefined
+                      }
+                      className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Save Result
                     </button>

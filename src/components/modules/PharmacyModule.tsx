@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import {
+  clearPendingDispense,
+  readPendingDispense,
+  savePendingDispense,
+  type PendingDispense,
+} from '../../clinical/pharmacy-retry-storage.ts';
 import { Medication, InventoryItem, Patient, InventoryBatchRow } from '../../types/index.ts';
 import {
   Pill,
@@ -18,6 +24,7 @@ export const PharmacyModule: React.FC = () => {
     currentTenant,
     currentFacility,
     currentUser,
+    authenticatedUser,
     setSelectedPatient,
     setIsJourneyModalOpen,
     showToast,
@@ -36,17 +43,50 @@ export const PharmacyModule: React.FC = () => {
   const [batches, setBatches] = useState<InventoryBatchRow[]>([]);
   const [dispenseQty, setDispenseQty] = useState(1);
   const [dispenseNotes, setDispenseNotes] = useState('');
+  const [dispenseKey, setDispenseKey] = useState('');
+  const [isDispensing, setIsDispensing] = useState(false);
+  const [batchesUnavailable, setBatchesUnavailable] = useState(false);
+  const [pendingDispense, setPendingDispense] = useState<PendingDispense | null>(null);
+  const [storageError, setStorageError] = useState('');
+  const [checkingPending, setCheckingPending] = useState(false);
+  const storageKey =
+    authenticatedUser?.id && currentFacility?.id
+      ? `jalicare:pharmacy:pending:${authenticatedUser.id}:${currentFacility.id}`
+      : null;
+
+  useEffect(() => {
+    if (!storageKey) {
+      setPendingDispense(null);
+      setStorageError('A signed-in user and facility are required.');
+      return;
+    }
+    const refreshPending = () => {
+      try {
+        setPendingDispense(readPendingDispense(window.localStorage, storageKey));
+        setStorageError('');
+      } catch {
+        setStorageError(
+          'The saved retry identity cannot be read. Review dispensing records before continuing.',
+        );
+      }
+    };
+    refreshPending();
+    window.addEventListener('storage', refreshPending);
+    return () => window.removeEventListener('storage', refreshPending);
+  }, [storageKey]);
 
   useEffect(() => {
     async function loadPharmacy() {
       setLoading(true);
       try {
+        setBatchesUnavailable(false);
         const [meds, inv, pList, batchList] = await Promise.all([
           api.getMedications(),
           api.getInventory(currentFacility?.id),
           api.getPatients(currentTenant?.id, currentFacility?.id),
           api.getInventoryBatches(currentFacility?.id).catch((err) => {
             console.error('Failed to load stock batches:', err);
+            setBatchesUnavailable(true);
             return [] as InventoryBatchRow[];
           }),
         ]);
@@ -64,8 +104,13 @@ export const PharmacyModule: React.FC = () => {
   }, [currentTenant, currentFacility, refreshKey]);
 
   const openDispenseModal = (med: Medication) => {
+    if (storageError || (pendingDispense && pendingDispense.prescriptionId !== med.id)) {
+      showToast('Resolve the unconfirmed dispensing request before starting a different one.');
+      return;
+    }
     setDispenseTarget(med);
-    setDispenseQty(med.quantity || 1);
+    setDispenseQty(Math.max(1, (med.quantity || 1) - (med.quantityDispensed || 0)));
+    setDispenseKey(pendingDispense?.key ?? crypto.randomUUID());
 
     // The pharmacist must explicitly identify the actual product; a fuzzy
     // match or the first inventory item is not clinical verification.
@@ -74,8 +119,29 @@ export const PharmacyModule: React.FC = () => {
   };
 
   const handleConfirmDispense = async () => {
-    if (!dispenseTarget || !selectedInventoryItem) return;
-
+    if (!dispenseTarget || !selectedInventoryItem || isDispensing) return;
+    if (!storageKey || !currentFacility?.id || storageError) {
+      showToast('A recoverable retry identity is required before dispensing.');
+      return;
+    }
+    let key = dispenseKey;
+    try {
+      // Re-read immediately before submission in case another tab updated it.
+      const saved = readPendingDispense(window.localStorage, storageKey);
+      if (saved && saved.prescriptionId !== dispenseTarget.id) {
+        setPendingDispense(saved);
+        showToast('Resolve the unconfirmed dispensing request before starting a different one.');
+        return;
+      }
+      key = saved?.key ?? key;
+      const pending = { key, prescriptionId: dispenseTarget.id };
+      if (!saved) savePendingDispense(window.localStorage, storageKey, pending);
+      setPendingDispense(pending);
+    } catch {
+      setStorageError('The retry identity could not be saved. No dispensing request was sent.');
+      return;
+    }
+    setIsDispensing(true);
     try {
       /*
        * Billing is now raised server-side from the facility's service
@@ -88,15 +154,18 @@ export const PharmacyModule: React.FC = () => {
         patientId: dispenseTarget.patientId,
         itemId: selectedInventoryItem.id,
         quantityDispensed: Number(dispenseQty),
+        idempotencyKey: key,
         dispensedBy: currentUser.name,
         notes: dispenseNotes,
       });
 
       const billingNote = result?.billing?.charged
         ? `Billed KES ${result.billing.totalAmount} on ${result.billing.invoiceNumber}.`
-        : result?.billing?.message
-          ? `Not billed: ${result.billing.message}`
-          : 'Not billed.';
+        : result?.billing?.reason === 'DUPLICATE'
+          ? 'A charge for this dispensing was already recorded.'
+          : result?.billing?.message
+            ? `Not billed: ${result.billing.message}`
+            : 'Not billed.';
 
       const allocationNote =
         result?.allocations && result.allocations.length > 0
@@ -107,17 +176,69 @@ export const PharmacyModule: React.FC = () => {
             ? 'Item has no tracked batches; stock deducted from the plain count.'
             : 'Stock deducted.';
 
-      showToast(`Medication dispensed. ${allocationNote} ${billingNote}`);
+      let clearWarning = '';
+      try {
+        clearPendingDispense(window.localStorage, storageKey, key);
+        setPendingDispense(readPendingDispense(window.localStorage, storageKey));
+      } catch {
+        clearWarning =
+          ' The browser could not clear the retry identity; check the recorded result before continuing.';
+        setStorageError('The recorded dispensing needs a browser retry-identity review.');
+      }
+      showToast(
+        `${result?.replayed ? 'Previous dispensing retrieved.' : 'Medication dispensed.'} ${allocationNote} ${billingNote} ${result?.queueWarning || ''}${clearWarning}`,
+      );
       setDispenseTarget(null);
       triggerRefresh();
     } catch (err: any) {
-      showToast(`Dispensing failed: ${err.message}`);
+      showToast(
+        `Dispensing could not be confirmed: ${err.message}. Retry this same request before starting another.`,
+      );
+    } finally {
+      setIsDispensing(false);
+    }
+  };
+
+  const checkPendingDispense = async () => {
+    if (!pendingDispense || !storageKey || !currentFacility?.id || checkingPending) return;
+    setCheckingPending(true);
+    try {
+      const outcome = await api.checkDispenseRequest({
+        facilityId: currentFacility.id,
+        idempotencyKey: pendingDispense.key,
+      });
+      if (outcome.status === 'NOT_FOUND') {
+        showToast(
+          'No committed record was found. Reopen this prescription and retry the same product, quantity and notes with the retained identity; do not start a second action.',
+        );
+        return;
+      }
+      if (outcome.prescriptionId !== pendingDispense.prescriptionId) {
+        showToast(
+          'The recorded result does not match the pending prescription. Manual review is required.',
+        );
+        return;
+      }
+      clearPendingDispense(window.localStorage, storageKey, pendingDispense.key);
+      setPendingDispense(readPendingDispense(window.localStorage, storageKey));
+      showToast(
+        `A dispensing of ${outcome.quantity} unit(s) was recorded. Review the prescription and billing queue before another action.`,
+      );
+      triggerRefresh();
+    } catch {
+      showToast(
+        'The dispensing status could not be confirmed. Keep the retry identity and review before continuing.',
+      );
+    } finally {
+      setCheckingPending(false);
     }
   };
 
   const filteredMeds = prescriptions.filter((m) => {
     if (filter === 'All') return true;
-    return filter === 'Pending' ? m.status === 'Prescribed' : m.status === 'Dispensed';
+    return filter === 'Pending'
+      ? ['Prescribed', 'Partially Dispensed'].includes(m.status)
+      : m.status === 'Dispensed';
   });
 
   const getPatient = (patientId: number) => {
@@ -156,6 +277,53 @@ export const PharmacyModule: React.FC = () => {
         </div>
       </div>
 
+      {(pendingDispense || storageError) && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 space-y-2"
+        >
+          <p className="font-semibold">Unconfirmed dispensing needs review</p>
+          {storageError ? (
+            <p>{storageError}</p>
+          ) : (
+            <>
+              <p>
+                Prescription #{pendingDispense?.prescriptionId} has a retained retry identity. Check
+                whether it was recorded before starting another dispensing. Clinical notes are not
+                stored in this browser.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={checkPendingDispense}
+                  disabled={checkingPending}
+                  className="rounded border border-amber-700 px-2 py-1 disabled:opacity-50"
+                >
+                  {checkingPending ? 'Checking...' : 'Check recorded result'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const medication = prescriptions.find(
+                      (m) => m.id === pendingDispense?.prescriptionId,
+                    );
+                    if (medication) openDispenseModal(medication);
+                    else showToast('Prescription is unavailable; review the dispensing records.');
+                  }}
+                  className="rounded border border-amber-700 px-2 py-1"
+                >
+                  Resume same request
+                </button>
+              </div>
+              <p>
+                For a retry, re-enter the same product, quantity and notes. If the browser data is
+                cleared or another device is used, review the dispensing record manually.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Main Prescriptions Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
@@ -192,6 +360,7 @@ export const PharmacyModule: React.FC = () => {
                 filteredMeds.map((m) => {
                   const patient = getPatient(m.patientId);
                   const isDispensed = m.status === 'Dispensed';
+                  const canDispense = ['Prescribed', 'Partially Dispensed'].includes(m.status);
 
                   return (
                     <tr key={m.id} className="hover:bg-slate-50/70">
@@ -217,7 +386,8 @@ export const PharmacyModule: React.FC = () => {
                         {m.drugName} {m.dosage}
                       </td>
                       <td className="px-4 py-3 font-sans text-slate-700">
-                        {m.frequency} (Qty: {m.quantity})
+                        {m.frequency} (prescribed: {m.quantity}; dispensed:{' '}
+                        {m.quantityDispensed ?? 0})
                       </td>
                       <td className="px-4 py-3 font-sans text-slate-600">
                         {m.duration} ({m.route})
@@ -237,7 +407,7 @@ export const PharmacyModule: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-sans">
-                        {!isDispensed ? (
+                        {canDispense ? (
                           <button
                             onClick={() => openDispenseModal(m)}
                             className="px-3 py-1 text-2xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded transition-colors shadow-xs"
@@ -247,7 +417,7 @@ export const PharmacyModule: React.FC = () => {
                         ) : (
                           <span className="text-2xs text-slate-400 flex items-center justify-end gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Dispensed</span>
+                            <span>{m.status}</span>
                           </span>
                         )}
                       </td>
@@ -292,8 +462,7 @@ export const PharmacyModule: React.FC = () => {
                   <option value="">Select the verified stock item</option>
                   {inventory.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name} ({item.currentStock} in stock · KES{' '}
-                      {Number(item.sellingPrice).toLocaleString()}/unit)
+                      {item.name} ({item.currentStock ?? 'unknown'} in stock)
                     </option>
                   ))}
                 </select>
@@ -304,6 +473,10 @@ export const PharmacyModule: React.FC = () => {
                 <input
                   type="number"
                   min={1}
+                  max={Math.max(
+                    0,
+                    dispenseTarget.quantity - (dispenseTarget.quantityDispensed || 0),
+                  )}
                   value={dispenseQty}
                   onChange={(e) => setDispenseQty(Number(e.target.value))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold"
@@ -313,6 +486,13 @@ export const PharmacyModule: React.FC = () => {
               {/* FEFO — the server picks the lot, not the pharmacist */}
               {(() => {
                 if (!selectedInventoryItem) return null;
+                if (batchesUnavailable)
+                  return (
+                    <div className="text-rose-700">
+                      Batch information could not be loaded. The server will still validate stock
+                      and expiry.
+                    </div>
+                  );
 
                 const lots = batches.filter((b) => b.itemId === selectedInventoryItem.id);
                 const usable = lots
@@ -380,16 +560,23 @@ export const PharmacyModule: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setDispenseTarget(null)}
+                disabled={isDispensing}
                 className="px-3.5 py-1.5 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmDispense}
-                disabled={!selectedInventoryItem}
+                disabled={
+                  !selectedInventoryItem ||
+                  isDispensing ||
+                  !Number.isInteger(dispenseQty) ||
+                  dispenseQty <= 0 ||
+                  dispenseQty > dispenseTarget.quantity - (dispenseTarget.quantityDispensed || 0)
+                }
                 className="px-4 py-1.5 bg-teal-700 text-white rounded-md font-semibold hover:bg-teal-800 disabled:opacity-50"
               >
-                Authorize & Dispense
+                {isDispensing ? 'Recording...' : 'Authorize & Dispense'}
               </button>
             </div>
           </div>

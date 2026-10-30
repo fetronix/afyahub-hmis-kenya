@@ -19,7 +19,7 @@
  *    a patient leaves with a single bill rather than one per service.
  */
 
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 
 import type { db as database } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
@@ -38,6 +38,7 @@ import {
   PAYMENT_CHANNEL_LABELS,
   PAYMENT_CHANNELS,
   paymentChannel,
+  parseMoneyToCents,
   type PaymentChannel,
 } from './settlement.ts';
 import type { BillingFamily } from './tariff-codes.ts';
@@ -69,7 +70,7 @@ export type BillingSourceType =
   | 'MANUAL';
 
 export type ChargeSkipReason =
-  'TARIFF_NOT_CONFIGURED' | 'DUPLICATE' | 'INVOICE_CLOSED' | 'INVALID_INPUT';
+  'TARIFF_NOT_CONFIGURED' | 'DUPLICATE' | 'INVOICE_CLOSED' | 'INVALID_INPUT' | 'ATTEMPT_VOIDED';
 
 export interface ChargeRequest {
   tenantId: number;
@@ -738,16 +739,14 @@ async function nextInvoiceNumber(executor: Executor): Promise<string> {
  */
 async function findOrCreateOpenInvoice(executor: Executor, request: ChargeRequest) {
   const scope = and(
+    eq(schema.billingInvoices.tenantId, request.tenantId),
     eq(schema.billingInvoices.facilityId, request.facilityId),
     eq(schema.billingInvoices.patientId, request.patientId),
     isNull(schema.billingInvoices.voidedAt),
     inArray(schema.billingInvoices.status, OPEN_INVOICE_STATUSES),
     request.encounterId
       ? eq(schema.billingInvoices.encounterId, request.encounterId)
-      : or(
-          isNull(schema.billingInvoices.encounterId),
-          eq(schema.billingInvoices.status, 'Pending'),
-        ),
+      : isNull(schema.billingInvoices.encounterId),
   );
 
   const [existing] = await executor
@@ -755,7 +754,8 @@ async function findOrCreateOpenInvoice(executor: Executor, request: ChargeReques
     .from(schema.billingInvoices)
     .where(scope)
     .orderBy(desc(schema.billingInvoices.createdAt))
-    .limit(1);
+    .limit(1)
+    .for('update');
 
   if (existing) return existing;
 
@@ -785,6 +785,57 @@ async function findOrCreateOpenInvoice(executor: Executor, request: ChargeReques
 }
 
 /**
+ * Do not add a line to a header whose financial history already disagrees.
+ * The caller holds the invoice row lock for the enclosing transaction.
+ */
+async function assertInvoiceCanAcceptCharge(
+  executor: Executor,
+  invoice: typeof schema.billingInvoices.$inferSelect,
+) {
+  const total = parseMoneyToCents(invoice.totalAmount);
+  const paid = parseMoneyToCents(invoice.paidAmount);
+  const balance = parseMoneyToCents(invoice.balanceAmount);
+  const credit = parseMoneyToCents(invoice.creditBalance);
+  if (
+    total === null ||
+    paid === null ||
+    balance === null ||
+    credit === null ||
+    total < 0 ||
+    paid < 0 ||
+    balance < 0 ||
+    credit < 0 ||
+    balance !== Math.max(0, total - paid) ||
+    credit !== Math.max(0, paid - total)
+  ) {
+    throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  }
+  const [lineSummary] = await executor
+    .select({
+      total: sql<string>`COALESCE(SUM(${schema.billingItems.totalAmount}), 0)`,
+      invalid: sql<number>`COUNT(*) FILTER (WHERE ${schema.billingItems.totalAmount} IS NULL OR ${schema.billingItems.totalAmount} < 0)::int`,
+    })
+    .from(schema.billingItems)
+    .where(eq(schema.billingItems.invoiceId, invoice.id));
+  if (!lineSummary || lineSummary.invalid !== 0 || parseMoneyToCents(lineSummary.total) !== total) {
+    throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  }
+  const rows = await executor
+    .select({ amount: schema.billingPayments.amount })
+    .from(schema.billingPayments)
+    .where(eq(schema.billingPayments.invoiceId, invoice.id));
+  let ledger = 0;
+  for (const row of rows) {
+    const cents = parseMoneyToCents(row.amount);
+    if (cents === null || cents <= 0 || !Number.isSafeInteger(ledger + cents)) {
+      throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+    }
+    ledger += cents;
+  }
+  if (ledger !== paid) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+}
+
+/**
  * Recalculate an invoice from its line items.
  *
  * Totals are derived, never incremented, so they cannot drift out of
@@ -794,11 +845,15 @@ export async function recalculateInvoiceTotals(executor: Executor, invoiceId: nu
   const [summed] = await executor
     .select({
       total: sql<string>`COALESCE(SUM(${schema.billingItems.totalAmount}), 0)`,
+      invalid: sql<number>`COUNT(*) FILTER (WHERE ${schema.billingItems.totalAmount} IS NULL OR ${schema.billingItems.totalAmount} < 0)::int`,
     })
     .from(schema.billingItems)
     .where(eq(schema.billingItems.invoiceId, invoiceId));
 
-  const totalCents = toCents(summed?.total);
+  const totalCents = parseMoneyToCents(summed?.total);
+  if (!summed || summed.invalid !== 0 || totalCents === null || totalCents < 0) {
+    throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  }
 
   const [invoice] = await executor
     .select({
@@ -811,7 +866,8 @@ export async function recalculateInvoiceTotals(executor: Executor, invoiceId: nu
 
   if (!invoice) return null;
 
-  const paidCents = toCents(invoice.paidAmount);
+  const paidCents = parseMoneyToCents(invoice.paidAmount);
+  if (paidCents === null || paidCents < 0) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
   const balanceCents = Math.max(0, totalCents - paidCents);
 
   /*
@@ -863,7 +919,26 @@ export async function chargeForService(
   executor: Executor,
   request: ChargeRequest,
 ): Promise<ChargeResult> {
-  if (!Number.isSafeInteger(request.facilityId) || !Number.isSafeInteger(request.patientId)) {
+  // The pool creates a transaction; an existing Drizzle transaction uses a
+  // savepoint. Never fall back to a sequence of independent pool statements.
+  return executor.transaction((tx) => chargeForServiceInTransaction(tx, request));
+}
+
+async function chargeForServiceInTransaction(
+  executor: Executor,
+  request: ChargeRequest,
+): Promise<ChargeResult> {
+  if (
+    !Number.isSafeInteger(request.tenantId) ||
+    request.tenantId <= 0 ||
+    !Number.isSafeInteger(request.facilityId) ||
+    request.facilityId <= 0 ||
+    !Number.isSafeInteger(request.patientId) ||
+    request.patientId <= 0 ||
+    (request.encounterId != null &&
+      (!Number.isSafeInteger(request.encounterId) || request.encounterId <= 0)) ||
+    (request.quantity != null && (!Number.isSafeInteger(request.quantity) || request.quantity <= 0))
+  ) {
     return {
       charged: false,
       reason: 'INVALID_INPUT',
@@ -877,6 +952,84 @@ export async function chargeForService(
       : 1;
 
   const quantityLabel = quantity === 1 ? '' : ` × ${quantity}`;
+
+  const idempotencyKey = buildIdempotencyKey(request);
+
+  /* ---- 2. Serialize invoice creation and lock the selected header ---- */
+
+  // Every automatic charge for this patient uses the same patient lock.
+  // This serializes first-invoice creation as well as competing sources.
+  const [patient] = await executor
+    .select({ id: schema.patients.id })
+    .from(schema.patients)
+    .where(
+      and(
+        eq(schema.patients.id, request.patientId),
+        eq(schema.patients.tenantId, request.tenantId),
+      ),
+    )
+    .limit(1)
+    .for('update');
+  const [facility] = await executor
+    .select({ id: schema.facilities.id })
+    .from(schema.facilities)
+    .where(
+      and(
+        eq(schema.facilities.id, request.facilityId),
+        eq(schema.facilities.tenantId, request.tenantId),
+      ),
+    )
+    .limit(1);
+  if (!patient || !facility) throw new Error('CHARGE_SCOPE_INVALID');
+  if (request.encounterId != null) {
+    const [encounter] = await executor
+      .select({ id: schema.encounters.id })
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.id, request.encounterId),
+          eq(schema.encounters.tenantId, request.tenantId),
+          eq(schema.encounters.facilityId, request.facilityId),
+          eq(schema.encounters.patientId, request.patientId),
+        ),
+      )
+      .limit(1);
+    if (!encounter) throw new Error('CHARGE_SCOPE_INVALID');
+  }
+
+  // A retry of a voided or already billed source must not create an empty
+  // invoice or silently move the historical line to a new invoice.
+  const [prior] = await executor
+    .select({
+      id: schema.billingItems.id,
+      invoiceId: schema.billingItems.invoiceId,
+      invoiceNumber: schema.billingInvoices.invoiceNumber,
+      tenantId: schema.billingInvoices.tenantId,
+      facilityId: schema.billingInvoices.facilityId,
+      patientId: schema.billingInvoices.patientId,
+    })
+    .from(schema.billingItems)
+    .innerJoin(schema.billingInvoices, eq(schema.billingItems.invoiceId, schema.billingInvoices.id))
+    .where(eq(schema.billingItems.idempotencyKey, idempotencyKey))
+    .limit(1);
+  if (prior) {
+    if (
+      prior.tenantId !== request.tenantId ||
+      prior.facilityId !== request.facilityId ||
+      prior.patientId !== request.patientId
+    ) {
+      throw new Error('CHARGE_IDENTITY_CONFLICT');
+    }
+    return {
+      charged: false,
+      reason: 'DUPLICATE',
+      invoiceId: prior.invoiceId,
+      invoiceNumber: prior.invoiceNumber,
+      itemId: prior.id,
+      message:
+        'This service already has a charge record; review its invoice before any correction.',
+    };
+  }
 
   /* ---- 1. Price it from the facility tariff ---------------------- */
 
@@ -908,9 +1061,9 @@ export async function chargeForService(
 
   const tariff = match.tariff;
 
-  const unitPriceCents = tariff ? toCents(tariff.fee) : toCents(request.fallbackUnitPrice);
+  const unitPriceCents = parseMoneyToCents(tariff ? tariff.fee : request.fallbackUnitPrice);
 
-  if (unitPriceCents <= 0) {
+  if (unitPriceCents === null || unitPriceCents <= 0) {
     return {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
@@ -935,7 +1088,7 @@ export async function chargeForService(
       message: `${
         match.failure?.message ??
         `No active tariff matched ${summariseCodes(request.codes)} for this facility.`
-      } The service was recorded but not billed, and it is listed under Configuration → Services & Tariffs → “Charges that could not be priced” so it can be billed once the price is set.`,
+      } The service was recorded but not billed, and it is listed under Configuration → Services & Tariffs → “Charges awaiting billing or pricing review” so it can be billed once the price is set.`,
     };
   }
 
@@ -943,15 +1096,11 @@ export async function chargeForService(
     ? `${tariff.description}${quantityLabel}`
     : `${request.description ?? request.fallbackDescription ?? request.itemType}${quantityLabel}`;
 
-  const idempotencyKey = buildIdempotencyKey(request);
-
-  /* ---- 2. Attach to an open invoice ----------------------------- */
-
   const invoice = await findOrCreateOpenInvoice(executor, request);
 
-  const invoiceStatus = invoice.status ?? 'Pending';
+  const invoiceStatus = invoice.status;
 
-  if (!CHARGEABLE_STATUSES.has(invoiceStatus) && invoiceStatus !== 'Paid') {
+  if (!invoiceStatus || invoice.voidedAt || !CHARGEABLE_STATUSES.has(invoiceStatus)) {
     return {
       charged: false,
       reason: 'INVOICE_CLOSED',
@@ -961,9 +1110,12 @@ export async function chargeForService(
     };
   }
 
+  await assertInvoiceCanAcceptCharge(executor, invoice);
+
   /* ---- 3. Insert the line, deduplicated ------------------------- */
 
   const totalCents = unitPriceCents * quantity;
+  if (!Number.isSafeInteger(totalCents)) throw new Error('CHARGE_AMOUNT_INVALID');
 
   const inserted = await executor
     .insert(schema.billingItems)
@@ -998,6 +1150,16 @@ export async function chargeForService(
   /* ---- 4. Re-derive invoice totals ----------------------------- */
 
   const updatedInvoice = await recalculateInvoiceTotals(executor, invoice.id);
+  if (!updatedInvoice) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  await executor.insert(schema.auditLogs).values({
+    tenantId: request.tenantId,
+    facilityId: request.facilityId,
+    userId: 'SYSTEM',
+    action: 'CREATE',
+    resource: 'BillingItem',
+    resourceId: String(inserted[0].id),
+    details: 'Automatic service charge recorded.',
+  });
 
   return {
     charged: true,

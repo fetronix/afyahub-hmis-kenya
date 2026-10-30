@@ -62,7 +62,7 @@ describeDb('Invoice and payment acceptance (synthetic PostgreSQL)', () => {
     const [f, otherFacility] = (
       await pool.query(
         "INSERT INTO facilities(tenant_id,code,name,enabled_modules) VALUES($1,$2,'Synthetic A',$5::jsonb),($3,$4,'Synthetic B',$5::jsonb) RETURNING id",
-        [tenant, `BA-${suffix}`, b, `BB-${suffix}`, JSON.stringify(['finance'])],
+        [tenant, `BA-${suffix}`, b, `BB-${suffix}`, JSON.stringify(['finance', 'accounting'])],
       )
     ).rows.map((r) => r.id);
     facility = f;
@@ -72,7 +72,12 @@ describeDb('Invoice and payment acceptance (synthetic PostgreSQL)', () => {
         [tenant, facility, `BP-${suffix}`],
       )
     ).rows[0].id;
-    for (const code of ['billing.read', 'billing.update', 'billing.payments.record'])
+    for (const code of [
+      'billing.read',
+      'billing.update',
+      'billing.payments.record',
+      'accounting.read',
+    ])
       await pool.query(
         "INSERT INTO permissions(code,name,module) VALUES($1,$1,'billing') ON CONFLICT(code) DO NOTHING",
         [code],
@@ -102,12 +107,14 @@ describeDb('Invoice and payment acceptance (synthetic PostgreSQL)', () => {
       'billing.read',
       'billing.update',
       'billing.payments.record',
+      'accounting.read',
     ]);
     const reader = await actor('reader', tenant, facility, ['billing.read']);
     const foreign = await actor('foreign', b, otherFacility, [
       'billing.read',
       'billing.update',
       'billing.payments.record',
+      'accounting.read',
     ]);
     actorId = manager.id;
     token = manager.token;
@@ -126,6 +133,45 @@ describeDb('Invoice and payment acceptance (synthetic PostgreSQL)', () => {
   });
   afterAll(async () => {
     if (close) await close();
+  });
+
+  it('reports current invoice/receipt mismatches without claiming ledger reconciliation', async () => {
+    const good = await invoice();
+    await recordSettledPayment(
+      ctx,
+      { invoiceId: good, facilityId: facility, amount: '20.00', paymentMethod: 'Cash' },
+      'Synthetic cashier',
+    );
+    const bad = await invoice();
+    await pool.query(
+      "UPDATE billing_invoices SET balance_amount='90.00', paid_amount='10.00' WHERE id=$1",
+      [bad],
+    );
+    await pool.query("UPDATE billing_items SET unit_price='99.00' WHERE invoice_id=$1", [bad]);
+    const url = (after: number, f = facility) =>
+      `/api/accounting/billing-consistency?facilityId=${f}&startDate=2000-01-01&endDate=2099-12-31&afterId=${after}&limit=1`;
+    expect((await call('GET', url(good - 1), readerToken)).status).toBe(403);
+    expect((await call('GET', url(good - 1), foreignToken)).status).toBe(403);
+    const first = await call('GET', url(good - 1), token);
+    expect(first.status).toBe(200);
+    expect(first.body.invoices[0].id).toBe(good);
+    expect(first.body.invoices[0].issues).toEqual([]);
+    expect(first.body.nextAfterId).toBe(good);
+    expect(first.body.limitations.ledgerReconciliation).toBe('NOT_IMPLEMENTED');
+    const second = await call('GET', url(first.body.nextAfterId), token);
+    expect(second.body.invoices[0].id).toBe(bad);
+    expect(second.body.invoices[0].issues).toContain('INVALID_LINE');
+    expect(second.body.invoices[0].issues).toContain('PAYMENT_TOTAL_MISMATCH');
+    expect(second.body.pageSummary.requiringReview).toBe(1);
+    expect(
+      (
+        await call(
+          'GET',
+          `/api/accounting/billing-consistency?facilityId=${facility}&startDate=2099-01-01&endDate=2000-01-01`,
+          token,
+        )
+      ).status,
+    ).toBe(400);
   });
 
   it('retains an unpaid voided invoice and lines, records an audit, and refuses later receipts', async () => {
