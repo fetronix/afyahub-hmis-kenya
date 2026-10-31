@@ -135,6 +135,21 @@ try {
       [tenant, facility, `JC-HISTORICAL-${suffix}`, master],
     )
   ).rows[0];
+  const waiting = (
+    await pool.query(
+      `INSERT INTO billing_charge_attempts
+        (tenant_id,facility_id,patient_id,source_type,item_type,description,reason,detail)
+       VALUES($1,$2,$3,'CONSULTATION','CONSULTATION','Synthetic pending review','SERVICE_NOT_CONFIGURED','Synthetic pending detail')
+       RETURNING id`,
+      [tenant, facility, patient],
+    )
+  ).rows[0].id;
+  const pendingBefore = (
+    await pool.query(
+      'SELECT row_to_json(b) AS snapshot FROM billing_charge_attempts b WHERE id=$1',
+      [waiting],
+    )
+  ).rows[0].snapshot;
   phase = 'server';
   server = spawn('node', ['build/server.js'], {
     cwd: root,
@@ -182,9 +197,11 @@ try {
   });
   page = await browser.newPage();
   const masterRequests = [];
+  const reviewRequests = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
     if (/^\/api\/master(?:-|\/)/.test(path)) masterRequests.push(path);
+    if (path.startsWith('/api/billing/charge-attempts')) reviewRequests.push(path);
   });
   page.on('pageerror', (error) => runtimeErrors.push(error.name));
   await page.setViewport({ width: 1440, height: 900 });
@@ -297,25 +314,21 @@ try {
     await handle.dispose();
   };
   const clickTariffRow = async (code, action) => {
-    const clicked = await page.evaluate(
-      (key, name) => {
-        const section = [...document.querySelectorAll('h3')].find(
-          (el) => el.textContent.trim() === 'Tariffs',
-        )?.parentElement;
-        const row = [...(section?.querySelectorAll('b') ?? [])].find(
-          (el) => el.textContent.trim() === key,
-        )?.parentElement?.parentElement;
-        const button = [...(row?.querySelectorAll('button') ?? [])].find(
-          (el) => el.textContent.trim() === name && !el.disabled,
-        );
-        if (!button) return false;
-        button.click();
-        return true;
-      },
-      code,
-      action,
-    );
-    check(clicked, `Tariff ${action} control unavailable`);
+    const selector = `button[aria-label="${action} tariff ${code}"]`;
+    await page.waitForSelector(selector);
+    await page.click(selector);
+  };
+  const selectLabel = async (labelText, value) => {
+    const handle = await page.evaluateHandle((text) => {
+      const label = [...document.querySelectorAll('label')].find(
+        (node) => node.childNodes[0]?.textContent.trim() === text && node.querySelector('select'),
+      );
+      return label?.querySelector('select') ?? null;
+    }, labelText);
+    const select = handle.asElement();
+    check(select, `Select not found: ${labelText}`);
+    await select.select(String(value));
+    await handle.dispose();
   };
   const makeService = async (code, name, department, category, unit, price) =>
     api('POST', '/api/facility-services', {
@@ -344,6 +357,21 @@ try {
     'Retired master price list or master-only tariff was visible',
   );
   check(
+    !configurationText.includes('Charges awaiting billing or pricing review') &&
+      !configurationText.includes('Synthetic pending review') &&
+      !configurationText.includes('Retry all'),
+    'Pending billing review panel is still visible',
+  );
+  check(
+    await page.evaluate(() =>
+      Boolean(
+        document.querySelector('table[aria-label="Facility services"]') &&
+        document.querySelector('table[aria-label="Facility tariffs"]'),
+      ),
+    ),
+    'Redesigned tables are unavailable',
+  );
+  check(
     JSON.stringify(
       (
         await pool.query(
@@ -361,6 +389,8 @@ try {
   await typeLabel('Service name', 'Synthetic browser consultation');
   await typeLabel('Service code', 'BROWSER-CONS');
   await typeLabel('Description', 'Synthetic browser consultation');
+  await selectLabel('Service category', 'CONSULTATION');
+  await typeLabel('Billing unit', 'Visit');
   await typeLabel('Initial price (KES)', '100.00');
   let pending = responseFor('POST', '/api/facility-services');
   await click('Save service');
@@ -370,6 +400,45 @@ try {
   await waitText('Synthetic browser consultation');
   await page.waitForFunction(
     () => !document.body.innerText.includes('Loading facility services and tariffs…'),
+  );
+  check(
+    (
+      await pool.query('SELECT fee::text FROM facility_service_tariffs WHERE id=$1', [
+        consultation.tariff.id,
+      ])
+    ).rows[0].fee === '100.00',
+    'Initial price did not persist exactly',
+  );
+  await page.click('button[aria-label="Edit service BROWSER-CONS"]');
+  await typeLabel('Description', 'Synthetic browser consultation revised', true);
+  pending = responseFor('PUT', `/api/facility-services/${consultation.service.id}`);
+  await click('Save service');
+  check((await pending).status() === 200, 'Service edit did not persist');
+  await waitText('Service changes saved.');
+  const serviceDb = (
+    await pool.query(
+      'SELECT code,name,description,department,category,unit,is_active,auto_bill FROM facility_services WHERE id=$1',
+      [consultation.service.id],
+    )
+  ).rows[0];
+  check(
+    serviceDb.code === 'BROWSER-CONS' &&
+      serviceDb.name === 'Synthetic browser consultation' &&
+      serviceDb.description === 'Synthetic browser consultation revised' &&
+      serviceDb.department === 'opd' &&
+      serviceDb.category === 'CONSULTATION' &&
+      serviceDb.unit === 'Visit' &&
+      serviceDb.is_active &&
+      serviceDb.auto_bill,
+    'Service edit changed unintended data',
+  );
+  check(
+    (
+      await pool.query('SELECT fee::text FROM facility_service_tariffs WHERE id=$1', [
+        consultation.tariff.id,
+      ])
+    ).rows[0].fee === '100.00',
+    'Service edit changed the tariff price',
   );
   await clickTariffRow('BROWSER-CONS', 'Edit');
   await typeLabel('Price (KES)', '150.00', true);
@@ -388,7 +457,79 @@ try {
   ).rows[0];
   check(tariffDb.fee === '150.00', 'Tariff UI value differs from persisted value');
   console.log(
-    'Browser created service and edited its facility tariff, with PostgreSQL verification: PASS',
+    'Browser created and edited a service and its tariff, with PostgreSQL verification: PASS',
+  );
+
+  await click('Add tariff');
+  await selectLabel('Service', consultation.service.id);
+  await typeLabel('Tariff code', 'BROWSER-CONS-ALT');
+  await typeLabel('Tariff description', 'Synthetic inactive alternate');
+  await typeLabel('Price (KES)', '75.35');
+  await chooseLabelInput('Active tariff', 'checkbox');
+  pending = responseFor('POST', '/api/facility-tariffs');
+  await click('Save tariff');
+  const alternateResponse = await pending;
+  check(alternateResponse.status() === 201, 'Alternate tariff UI did not persist');
+  const alternate = await alternateResponse.json();
+  await waitText('Tariff saved.');
+  const alternateDb = (
+    await pool.query(
+      'SELECT code,fee::text,facility_service_id,is_active FROM facility_service_tariffs WHERE id=$1',
+      [alternate.id],
+    )
+  ).rows[0];
+  check(
+    alternateDb.code === 'BROWSER-CONS-ALT' &&
+      alternateDb.fee === '75.35' &&
+      alternateDb.facility_service_id === consultation.service.id &&
+      !alternateDb.is_active,
+    'Alternate tariff did not persist accurately',
+  );
+  await page.reload({ waitUntil: 'networkidle2' });
+  await page.waitForFunction(
+    () => document.querySelector('aside')?.innerText.includes('Outpatient Services'),
+    { timeout: 25000 },
+  );
+  await click('System Configuration', 'aside button');
+  await click('Facility Services & Tariffs');
+  await waitText('KES 150.00');
+  await waitText('KES 75.35');
+  await waitText('Synthetic browser consultation revised');
+  check(
+    JSON.stringify(
+      (
+        await pool.query(
+          'SELECT row_to_json(b) AS snapshot FROM billing_charge_attempts b WHERE id=$1',
+          [waiting],
+        )
+      ).rows[0].snapshot,
+    ) === JSON.stringify(pendingBefore),
+    'The pending billing record was modified',
+  );
+  check(reviewRequests.length === 0, 'The pricing screen called the pending billing review API');
+  if (process.env.BROWSER_SMOKE_SCREENSHOT_PATH)
+    await page.screenshot({ path: process.env.BROWSER_SMOKE_SCREENSHOT_PATH, fullPage: true });
+  await page.setViewport({ width: 390, height: 844 });
+  const mobileTables = await page.evaluate(() => {
+    const services = document.querySelector('[aria-label="Scrollable services table"]');
+    const tariffs = document.querySelector('[aria-label="Scrollable tariffs table"]');
+    return {
+      servicesScrollable: Boolean(services && services.scrollWidth > services.clientWidth),
+      tariffsScrollable: Boolean(tariffs && tariffs.scrollWidth > tariffs.clientWidth),
+    };
+  });
+  check(
+    mobileTables.servicesScrollable && mobileTables.tariffsScrollable,
+    'Mobile pricing tables are not scrollable',
+  );
+  if (process.env.BROWSER_SMOKE_SCREENSHOT_PATH)
+    await page.screenshot({
+      path: process.env.BROWSER_SMOKE_SCREENSHOT_PATH.replace(/\.png$/i, '-mobile.png'),
+      fullPage: true,
+    });
+  await page.setViewport({ width: 1440, height: 900 });
+  console.log(
+    'Browser saved both tables, reloaded their exact prices and preserved the pending billing record: PASS',
   );
 
   phase = 'permanent service and tariff deletion';
@@ -396,6 +537,8 @@ try {
   await typeLabel('Service name', 'Synthetic deletion service');
   await typeLabel('Service code', 'BROWSER-DELETE');
   await typeLabel('Description', 'Synthetic deletion service');
+  await selectLabel('Service category', 'CONSULTATION');
+  await typeLabel('Billing unit', 'Visit');
   await typeLabel('Initial price (KES)', '12.00');
   pending = responseFor('POST', '/api/facility-services');
   await click('Save service');
@@ -728,6 +871,21 @@ try {
   );
   check(runtimeErrors.length === 0, `Browser runtime errors: ${runtimeErrors.join(',')}`);
   check(masterRequests.length === 0, `Retired master API called: ${masterRequests.join(',')}`);
+  check(
+    reviewRequests.length === 0,
+    `Pending billing review API called: ${reviewRequests.join(',')}`,
+  );
+  check(
+    JSON.stringify(
+      (
+        await pool.query(
+          'SELECT row_to_json(b) AS snapshot FROM billing_charge_attempts b WHERE id=$1',
+          [waiting],
+        )
+      ).rows[0].snapshot,
+    ) === JSON.stringify(pendingBefore),
+    'The original pending billing record changed during the clinical journey',
+  );
   console.log(
     'Browser completed lab, imaging and consultation: one unpaid KES 575 invoice with four lines; retries protected: PASS',
   );

@@ -68,6 +68,16 @@ const createServiceInput = serviceInput.extend({
   initialPrice: money,
   initialTariffCode: code.optional(),
 });
+// Service identity is immutable; compare every editable value under the row
+// lock so two open forms cannot silently overwrite one another.
+const updateServiceInput = serviceInput.extend({
+  expectedState: z.object({
+    name: z.string(),
+    description: z.string(),
+    isActive: z.boolean(),
+    autoBill: z.boolean(),
+  }),
+});
 const tariffInput = z
   .object({
     serviceId: z.number().int().positive(),
@@ -80,6 +90,7 @@ const tariffInput = z
     effectiveTo: day,
     isActive: z.boolean(),
     autoBill: z.boolean(),
+    expectedRevision: z.number().int().positive().optional(),
   })
   .refine(
     (x) => !x.effectiveFrom || !x.effectiveTo || x.effectiveFrom <= x.effectiveTo,
@@ -195,6 +206,7 @@ function tariffAuditSnapshot(row: FacilityTariffRow) {
     isActive: row.isActive,
     autoBill: row.autoBill,
     archivedAt: row.archivedAt,
+    revision: row.revision,
   };
 }
 
@@ -436,9 +448,12 @@ router.put(
     try {
       const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
       if (!facility || !req.authContext) return;
-      const parsed = serviceInput.safeParse(req.body);
+      const parsed = updateServiceInput.safeParse(req.body);
       if (!parsed.success)
-        throw new FacilityServiceError('INVALID_SERVICE', 'Provide valid service details.');
+        throw new FacilityServiceError(
+          'INVALID_SERVICE',
+          'Provide valid service details and reload the service before editing.',
+        );
       const data = parsed.data;
       const department = requireModule(facility, data.department, data.category);
       const serviceId = id(req.params.id),
@@ -471,6 +486,17 @@ router.put(
           throw new FacilityServiceError(
             'SERVICE_IDENTITY_IMMUTABLE',
             'Create a new service to change its code, department, category or billing unit.',
+            409,
+          );
+        if (
+          old.name !== data.expectedState.name ||
+          old.description !== data.expectedState.description ||
+          old.isActive !== data.expectedState.isActive ||
+          old.autoBill !== data.expectedState.autoBill
+        )
+          throw new FacilityServiceError(
+            'SERVICE_CHANGED',
+            'This service changed while you were editing. Reload and review the latest values before saving.',
             409,
           );
         const [row] = await tx
@@ -761,6 +787,11 @@ async function tariffWrite(req: AuthRequest, res: Response, edit: boolean) {
       );
     const data = parsed.data,
       actor = req.authContext.userId;
+    if (edit && data.expectedRevision === undefined)
+      throw new FacilityServiceError(
+        'TARIFF_REVISION_REQUIRED',
+        'Reload the tariff and review its latest values before saving.',
+      );
     const tariffId = edit ? id(req.params.id) : null;
     const result = await db.transaction(async (tx) => {
       const [service] = await tx
@@ -820,6 +851,12 @@ async function tariffWrite(req: AuthRequest, res: Response, edit: boolean) {
             'Active or inactive tariff not found.',
             404,
           );
+        if (old.revision !== data.expectedRevision)
+          throw new FacilityServiceError(
+            'TARIFF_CHANGED',
+            'This tariff changed while you were editing. Reload and review the latest values before saving.',
+            409,
+          );
         if (old.facilityServiceId !== null && old.facilityServiceId !== service.id)
           throw new FacilityServiceError(
             'TARIFF_SERVICE_IMMUTABLE',
@@ -838,22 +875,8 @@ async function tariffWrite(req: AuthRequest, res: Response, edit: boolean) {
           .where(eq(schema.facilityServiceTariffs.id, old.id))
           .returning();
         await audit(tx, facility, actor, 'UPDATE', 'FACILITY_SERVICE_TARIFF', row.id, {
-          before: {
-            code: old.code,
-            fee: old.fee,
-            isActive: old.isActive,
-            autoBill: old.autoBill,
-            effectiveFrom: old.effectiveFrom,
-            effectiveTo: old.effectiveTo,
-          },
-          after: {
-            code: row.code,
-            fee: row.fee,
-            isActive: row.isActive,
-            autoBill: row.autoBill,
-            effectiveFrom: row.effectiveFrom,
-            effectiveTo: row.effectiveTo,
-          },
+          before: tariffAuditSnapshot(old),
+          after: tariffAuditSnapshot(row),
         });
         return row;
       }

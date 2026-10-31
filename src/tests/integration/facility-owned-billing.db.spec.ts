@@ -211,6 +211,7 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     const edit = await call('PUT', `/api/facility-tariffs/${a.tariff.id}`, {
       facilityId: facility,
       serviceId: a.service.id,
+      expectedRevision: a.tariff.revision,
       code: 'SHARED-CODE',
       description: 'Synthetic revised',
       department: 'finance',
@@ -303,6 +304,216 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       ).body.tariff.fee,
     ).toBe('29.50');
     expect((await call('GET', `/api/master-tariffs?facilityId=${facility}`)).status).toBe(404);
+  });
+
+  it('prevents stale concurrent service edits from overwriting another user’s changes', async () => {
+    const created = await createService('EDIT-SERVICE', 'OTHER', 'finance', '123.45', 'Service');
+    const original = created.service;
+    const expectedState = {
+      name: original.name,
+      description: original.description,
+      isActive: original.isActive,
+      autoBill: original.autoBill,
+    };
+    const input = {
+      facilityId: facility,
+      code: original.code,
+      description: original.description,
+      department: original.department,
+      category: original.category,
+      unit: original.unit,
+      isActive: original.isActive,
+      autoBill: original.autoBill,
+    };
+    const path = `/api/facility-services/${original.id}`;
+    const missingSnapshot = await call('PUT', path, { ...input, name: 'Missing state' });
+    expect(missingSnapshot.status).toBe(400);
+    const results = await Promise.all([
+      call('PUT', path, { ...input, name: 'Synthetic edit A', expectedState }),
+      call('PUT', path, { ...input, name: 'Synthetic edit B', expectedState }),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(results.find((result) => result.status === 409)?.body.error).toBe('SERVICE_CHANGED');
+    const winner = results.find((result) => result.status === 200)!.body;
+    expect(['Synthetic edit A', 'Synthetic edit B']).toContain(winner.name);
+    expect(
+      (
+        await pool.query(
+          'SELECT name,code,department,category,unit,is_active,auto_bill FROM facility_services WHERE id=$1',
+          [original.id],
+        )
+      ).rows[0],
+    ).toEqual({
+      name: winner.name,
+      code: original.code,
+      department: 'finance',
+      category: 'OTHER',
+      unit: 'Service',
+      is_active: true,
+      auto_bill: true,
+    });
+    expect(
+      (
+        await pool.query('SELECT fee::text FROM facility_service_tariffs WHERE id=$1', [
+          created.tariff.id,
+        ])
+      ).rows[0].fee,
+    ).toBe('123.45');
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM audit_logs WHERE facility_id=$1 AND resource='FACILITY_SERVICE' AND resource_id=$2 AND action='UPDATE'",
+          [facility, String(original.id)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('persists exact tariff edits once under concurrency and preserves invoice, queue and other-facility history', async () => {
+    const created = await createService('EDIT-PRICE', 'OTHER', 'finance', '123.45', 'Service');
+    const foreign = await createService(
+      'EDIT-PRICE',
+      'OTHER',
+      'finance',
+      '321.54',
+      'Service',
+      otherToken,
+      other,
+    );
+    const invoice = await call('POST', '/api/invoices', {
+      invoice: { facilityId: facility, patientId: patient, invoiceNumber: `SYN-EDIT-${suffix}` },
+      items: [{ tariffId: created.tariff.id, quantity: 2 }],
+    });
+    expect(invoice.status, JSON.stringify(invoice.body)).toBe(201);
+    const pending = (
+      await pool.query(
+        "INSERT INTO billing_charge_attempts(tenant_id,facility_id,patient_id,source_type,item_type,description,reason,detail) VALUES($1,$2,$3,'CONSULTATION','CONSULTATION','Synthetic pending review','SERVICE_NOT_CONFIGURED','Synthetic pending detail') RETURNING id",
+        [tenant, facility, patient],
+      )
+    ).rows[0].id;
+    const snapshot = async () => ({
+      invoice: (
+        await pool.query(
+          'SELECT total_amount::text,paid_amount::text,balance_amount::text,status FROM billing_invoices WHERE id=$1',
+          [invoice.body.id],
+        )
+      ).rows[0],
+      items: (
+        await pool.query(
+          'SELECT tariff_id,facility_service_id,tariff_code,description,quantity,unit_price::text,total_amount::text FROM billing_items WHERE invoice_id=$1 ORDER BY id',
+          [invoice.body.id],
+        )
+      ).rows,
+      pending: (
+        await pool.query(
+          'SELECT status,reason,detail,attempts FROM billing_charge_attempts WHERE id=$1',
+          [pending],
+        )
+      ).rows[0],
+      foreign: (
+        await pool.query(
+          'SELECT fee::text,revision,facility_service_id FROM facility_service_tariffs WHERE id=$1',
+          [foreign.tariff.id],
+        )
+      ).rows[0],
+    });
+    const before = await snapshot();
+    expect(before.invoice.total_amount).toBe('246.90');
+    expect(before.items[0].unit_price).toBe('123.45');
+    const input = {
+      facilityId: facility,
+      serviceId: created.service.id,
+      code: created.tariff.code,
+      description: 'Synthetic edited price',
+      department: 'finance',
+      unit: 'Service',
+      effectiveFrom: null,
+      effectiveTo: null,
+      isActive: true,
+      autoBill: true,
+    };
+    const path = `/api/facility-tariffs/${created.tariff.id}`;
+    const missingRevision = await call('PUT', path, { ...input, fee: '200.00' });
+    expect(missingRevision.status).toBe(400);
+    expect(missingRevision.body.error).toBe('TARIFF_REVISION_REQUIRED');
+    const results = await Promise.all([
+      call('PUT', path, { ...input, fee: '234.56', expectedRevision: created.tariff.revision }),
+      call('PUT', path, { ...input, fee: '345.67', expectedRevision: created.tariff.revision }),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(results.find((result) => result.status === 409)?.body.error).toBe('TARIFF_CHANGED');
+    const winner = results.find((result) => result.status === 200)!.body;
+    expect(['234.56', '345.67']).toContain(winner.fee);
+    const saved = (
+      await pool.query(
+        'SELECT fee::text,revision,facility_service_id FROM facility_service_tariffs WHERE id=$1',
+        [created.tariff.id],
+      )
+    ).rows[0];
+    expect(saved).toEqual({
+      fee: winner.fee,
+      revision: created.tariff.revision + 1,
+      facility_service_id: created.service.id,
+    });
+    expect(await snapshot()).toEqual(before);
+    const audits = (
+      await pool.query(
+        "SELECT details FROM audit_logs WHERE facility_id=$1 AND resource='FACILITY_SERVICE_TARIFF' AND resource_id=$2 AND action='UPDATE'",
+        [facility, String(created.tariff.id)],
+      )
+    ).rows;
+    expect(audits).toHaveLength(1);
+    expect(JSON.parse(audits[0].details)).toMatchObject({
+      before: { fee: '123.45', serviceId: created.service.id },
+      after: { fee: winner.fee, serviceId: created.service.id },
+    });
+  });
+
+  it('rolls back an edited tariff if its audit cannot be recorded', async () => {
+    const created = await createService('EDIT-AUDIT', 'OTHER', 'finance', '87.65', 'Service');
+    const fn = `synthetic_edit_audit_${suffix}`;
+    const trigger = `synthetic_edit_audit_trigger_${suffix}`;
+    await pool.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.facility_id=${facility} AND NEW.action='UPDATE' AND NEW.resource='FACILITY_SERVICE_TARIFF' AND NEW.resource_id='${created.tariff.id}' THEN
+        RAISE EXCEPTION 'Synthetic edit audit failure';
+      END IF;
+      RETURN NEW;
+    END $$`);
+    await pool.query(
+      `CREATE TRIGGER ${trigger} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+    );
+    try {
+      const result = await call('PUT', `/api/facility-tariffs/${created.tariff.id}`, {
+        facilityId: facility,
+        serviceId: created.service.id,
+        expectedRevision: created.tariff.revision,
+        code: created.tariff.code,
+        description: 'Synthetic refused edit',
+        department: 'finance',
+        unit: 'Service',
+        fee: '99.99',
+        effectiveFrom: null,
+        effectiveTo: null,
+        isActive: true,
+        autoBill: true,
+      });
+      expect(result.status).toBe(500);
+      expect(
+        (
+          await pool.query(
+            'SELECT fee::text,revision,description FROM facility_service_tariffs WHERE id=$1',
+            [created.tariff.id],
+          )
+        ).rows[0],
+      ).toEqual({
+        fee: '87.65',
+        revision: created.tariff.revision,
+        description: created.tariff.description,
+      });
+    } finally {
+      await pool.query(`DROP TRIGGER ${trigger} ON audit_logs`);
+      await pool.query(`DROP FUNCTION ${fn}()`);
+    }
   });
 
   it('records consultation, laboratory and imaging only on completion and deduplicates retries', async () => {
@@ -521,6 +732,7 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     const updated = await call('PUT', `/api/facility-tariffs/${unpriced.tariff.id}`, {
       facilityId: facility,
       serviceId: unpriced.service.id,
+      expectedRevision: unpriced.tariff.revision,
       code: 'LAB-ZERO',
       description: 'Synthetic priced after completion',
       department: 'laboratory',
@@ -797,6 +1009,12 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       unit: 'Examination',
       isActive: false,
       autoBill: true,
+      expectedState: {
+        name: deactivated.body.name,
+        description: deactivated.body.description,
+        isActive: deactivated.body.isActive,
+        autoBill: deactivated.body.autoBill,
+      },
     });
     expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
     const replay = await call('POST', '/api/radiology-orders', body);

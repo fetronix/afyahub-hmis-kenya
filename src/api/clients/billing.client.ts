@@ -38,6 +38,11 @@ export interface FacilityServiceInput {
   isActive: boolean;
   autoBill: boolean;
 }
+export type FacilityServiceExpectedState = Pick<
+  FacilityService,
+  'name' | 'description' | 'isActive' | 'autoBill'
+>;
+
 export interface FacilityTariffInput {
   facilityId: number;
   serviceId: number;
@@ -73,7 +78,10 @@ export const billingClient = {
       `${API_BASE}/facility-services`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
-  updateFacilityService: (id: number, input: FacilityServiceInput) =>
+  updateFacilityService: (
+    id: number,
+    input: FacilityServiceInput & { expectedState: FacilityServiceExpectedState },
+  ) =>
     fetchJson<FacilityService>(`${API_BASE}/facility-services/${id}`, {
       method: 'PUT',
       body: JSON.stringify(input),
@@ -97,7 +105,7 @@ export const billingClient = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  updateFacilityTariff: (id: number, input: FacilityTariffInput) =>
+  updateFacilityTariff: (id: number, input: FacilityTariffInput & { expectedRevision: number }) =>
     fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs/${id}`, {
       method: 'PUT',
       body: JSON.stringify(input),
