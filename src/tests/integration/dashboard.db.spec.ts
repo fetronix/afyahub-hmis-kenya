@@ -10,11 +10,13 @@ import { httpJson, startTestServer } from './support/http-harness.ts';
 
 describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', () => {
   const suffix = randomUUID().slice(0, 8);
-  const enabled = ['registration', 'reception', 'opd', 'inpatient', 'finance', 'audit'];
+  const enabled = ['registration', 'reception', 'opd', 'inpatient', 'theatre', 'finance', 'audit'];
   let tenant: number, facility: number, sibling: number, foreignFacility: number;
   let patient: number, oldPatient: number, siblingPatient: number, manager: number;
   let token: string,
     limited: string,
+    wardOnly: string,
+    theatreOnly: string,
     foreign: string,
     noAccess: string,
     expired: string,
@@ -67,6 +69,7 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
       'appointments.read',
       'clinical.read',
       'inpatient.read',
+      'theatre.read',
       'billing.read',
       'tariffs.read',
       'audit.read',
@@ -104,6 +107,8 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
     manager = full.user;
     token = full.token;
     limited = (await actor('limited', tenant, facility, ['patients.read'])).token;
+    wardOnly = (await actor('ward', tenant, facility, ['inpatient.read'])).token;
+    theatreOnly = (await actor('theatre', tenant, facility, ['theatre.read'])).token;
     foreign = (await actor('foreign', otherTenant, foreignFacility, permissions)).token;
     noAccess = (await actor('none', tenant, facility, [])).token;
     expired = (await actor('expired', tenant, facility, ['patients.read'])).token;
@@ -129,6 +134,13 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
     await pool.query(
       "INSERT INTO admissions(tenant_id,facility_id,patient_id,ward_id,bed_id,admission_date,created_at) VALUES($1,$2,$3,$4,$5,'2025-04-04 10:00','2025-04-04 10:00')",
       [tenant, facility, patient, ward, bed],
+    );
+    await pool.query(
+      `INSERT INTO theatre_cases(tenant_id,facility_id,patient_id,procedure_name,lead_surgeon,scheduled_start,status) VALUES
+      ($1,$2,$4,'Synthetic procedure A','Synthetic surgeon','2025-04-04 10:00','Scheduled'),
+      ($1,$2,$4,'Synthetic procedure B','Synthetic surgeon','2025-04-05 10:00','Scheduled'),
+      ($1,$3,$5,'Sibling private procedure','Synthetic surgeon','2025-04-05 10:00','Scheduled')`,
+      [tenant, facility, sibling, patient, siblingPatient],
     );
     const invoices = await pool.query(
       `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,status,voided_at,created_at) VALUES
@@ -285,6 +297,22 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
     } finally {
       await pool.query("UPDATE facilities SET hidden_modules='[]'::jsonb WHERE id=$1", [facility]);
     }
+  });
+
+  it('gates theatre counts and samples by theatre.read, not unrelated inpatient access', async () => {
+    const ward = await call('GET', overview(), wardOnly);
+    expect(ward.status).toBe(200);
+    expect(ward.body.operations.theatre.status).toBe('restricted');
+    expect(JSON.stringify(ward.body)).not.toContain('Synthetic procedure');
+    const specialist = await call('GET', overview(), theatreOnly);
+    expect(specialist.status).toBe(200);
+    expect(specialist.body.operations.theatre).toMatchObject({
+      status: 'ok',
+      data: { scheduled: 2 },
+    });
+    expect(specialist.body.operations.theatre.data.samples).toHaveLength(2);
+    expect(JSON.stringify(specialist.body)).not.toContain('Sibling private procedure');
+    expect(specialist.body.operations.beds.status).toBe('restricted');
   });
 
   it('limits upcoming appointments by facility and masks patients registered elsewhere', async () => {

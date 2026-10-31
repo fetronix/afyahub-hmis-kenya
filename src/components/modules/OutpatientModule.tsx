@@ -915,11 +915,11 @@ export const OutpatientModule: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
-            <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <h1 className="ui-page-title flex items-center gap-2">
               <Stethoscope className="w-4 h-4 text-teal-700" />
               <span>Outpatient Triage & Clinical Consultation Desk</span>
             </h1>
-            <p className="text-2xs text-slate-500">
+            <p className="ui-page-description">
               Examining Clinician: <strong className="text-slate-800">{currentUser.name}</strong> (
               {currentUser.role})
             </p>

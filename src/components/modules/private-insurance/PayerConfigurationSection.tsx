@@ -77,10 +77,10 @@ export const PayerConfigurationSection: React.FC<Props> = ({
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            ['Active memberships', k?.activeMembersCount ?? 0],
-            ['Pending preauthorizations', k?.pendingPreauthsCount ?? 0],
-            ['Claims awaiting submission', k?.pendingSubmissionCount ?? 0],
-            ['Advice awaiting allocation', k?.unreconciledRemittancesCount ?? 0],
+            ['Active memberships', k?.activeMembersCount ?? 'Unavailable'],
+            ['Pending preauthorizations', k?.pendingPreauthsCount ?? 'Unavailable'],
+            ['Claims awaiting submission', k?.pendingSubmissionCount ?? 'Unavailable'],
+            ['Advice awaiting allocation', k?.unreconciledRemittancesCount ?? 'Unavailable'],
           ].map(([label, value]) => (
             <div key={label} className={card}>
               <p className="text-xs text-slate-500">{label}</p>

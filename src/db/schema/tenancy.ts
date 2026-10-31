@@ -97,6 +97,9 @@ export const facilities = pgTable(
 
     address: text('address'),
 
+    // Optional facility override; NULL inherits the tenant's configured timezone.
+    timezone: text('timezone'),
+
     phone: text('phone'),
 
     email: text('email'),

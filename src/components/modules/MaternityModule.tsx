@@ -1,3 +1,4 @@
+import { PageHeader } from '../ui/layout.tsx';
 /**
  * JaliCare HMIS
  * Maternity & MCH
@@ -228,12 +229,10 @@ export const MaternityModule: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-4 rounded-card border border-hair bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Maternity &amp; MCH
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Maternity &amp; MCH</h1>
+          <p className="ui-page-description">
             Antenatal care, labour with a partograph, and delivery — recorded against one pregnancy.
           </p>
           <p className="mt-2 text-2xs font-semibold uppercase tracking-[0.12em] text-brand-700">
@@ -255,7 +254,7 @@ export const MaternityModule: React.FC = () => {
             Refresh
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       {error && (
         <div

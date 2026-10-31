@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   CheckCircle2,
@@ -448,7 +449,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
               )}
 
               <div className="overflow-x-auto">
-                <table className="table-quiet w-full text-xs text-left">
+                <DataTable className="table-quiet w-full text-xs text-left">
                   <thead>
                     <tr>
                       <th>Operation</th>
@@ -481,7 +482,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </>
           )}
@@ -778,7 +779,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                     </div>
                   </div>
                   {rem.entries.length > 0 && (
-                    <table className="table-quiet w-full text-xs text-left bg-white rounded-lg">
+                    <DataTable className="table-quiet w-full text-xs text-left bg-white rounded-lg">
                       <thead>
                         <tr>
                           <th>eClaim</th>
@@ -805,7 +806,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </DataTable>
                   )}
                 </div>
               ))}
@@ -1056,7 +1057,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
             Configured SHA Service-Code Mappings ({mappings.length})
           </h4>
           <div className="overflow-x-auto">
-            <table className="table-quiet w-full text-xs text-left">
+            <DataTable className="table-quiet w-full text-xs text-left">
               <thead>
                 <tr>
                   <th>Local Code</th>
@@ -1094,7 +1095,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       </div>
@@ -1255,7 +1256,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
             Versioned SHA Benefit Rules ({rules.length})
           </h4>
           <div className="overflow-x-auto">
-            <table className="table-quiet w-full text-xs text-left">
+            <DataTable className="table-quiet w-full text-xs text-left">
               <thead>
                 <tr>
                   <th>Rule & Version</th>
@@ -1322,7 +1323,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -675,7 +676,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
           )}
 
           <div className="overflow-x-auto">
-            <table className="table-quiet w-full text-left text-xs">
+            <DataTable className="table-quiet w-full text-left text-xs">
               <thead>
                 <tr>
                   <th>Checked At</th>
@@ -744,7 +745,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       )}
@@ -1054,7 +1055,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
                     Recent Coverage Checks for Selected Patient
                   </h4>
                   <div className="overflow-x-auto">
-                    <table className="table-quiet w-full text-xs text-left">
+                    <DataTable className="table-quiet w-full text-xs text-left">
                       <thead>
                         <tr>
                           <th>Date</th>
@@ -1083,7 +1084,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </DataTable>
                   </div>
                 </div>
               )}

@@ -1,3 +1,4 @@
+import { DataTable } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
@@ -275,7 +276,7 @@ export const DhaCompliancePanel: React.FC = () => {
 
               {open && (
                 <div className="overflow-x-auto border-t border-hair">
-                  <table className="table-quiet">
+                  <DataTable className="table-quiet">
                     <thead>
                       <tr>
                         <th>ID</th>
@@ -312,7 +313,7 @@ export const DhaCompliancePanel: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               )}
             </div>

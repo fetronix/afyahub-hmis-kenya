@@ -1,3 +1,4 @@
+import { PageHeader } from '../../ui/layout.tsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { paymentHubApi, type HubTransaction } from '../../../api/payment-hub.client.ts';
 import { useHmis } from '../../../context/HmisContext.tsx';
@@ -92,14 +93,14 @@ export const PaymentTransactions: React.FC = () => {
   const facilityId = currentFacility.id;
   return (
     <section className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">
-          Payment Transactions &amp; Reconciliation
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">
-          {currentFacility.name} · Sandbox activity is separate from real receipts.
-        </p>
-      </div>
+      <PageHeader>
+        <div>
+          <h1 className="ui-page-title">Payment Transactions &amp; Reconciliation</h1>
+          <p className="ui-page-description">
+            {currentFacility.name} · Sandbox activity is separate from real receipts.
+          </p>
+        </div>
+      </PageHeader>
       <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
         An accepted request and a callback are not proof of payment. Callbacks are unverified hints;
         no payment request automatically creates a receipt or changes an invoice.

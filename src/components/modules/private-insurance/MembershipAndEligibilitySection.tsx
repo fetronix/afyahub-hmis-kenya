@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -562,7 +563,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
 
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <DataTable className="w-full text-left text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Patient</th>
@@ -638,7 +639,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       </div>
@@ -872,7 +873,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
           <span className="text-xs text-slate-500">{verifications.length} records</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <DataTable className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-3">Checked At</th>
@@ -934,7 +935,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
     </div>

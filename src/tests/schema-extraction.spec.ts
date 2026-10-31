@@ -48,6 +48,8 @@ describe('schema barrel: pre-extraction contract', () => {
         'insuranceClaimDispatchGuards',
         'accountingBillingPostings',
         'facilityTariffImportBatches',
+        'notificationAlertStates',
+        'notificationReadReceipts',
       ].sort(),
     );
   });

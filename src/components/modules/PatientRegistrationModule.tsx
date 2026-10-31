@@ -1,3 +1,5 @@
+import { PrimaryButton } from '../ui/controls.tsx';
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
@@ -303,27 +305,22 @@ export const PatientRegistrationModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Patient Identification & Registration
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Patient Identification & Registration</h1>
+          <p className="ui-page-description">
             Search central medical records, check duplicates, review SHA eligibility information,
             and register returning/new patients.
           </p>
         </div>
 
         <div className="flex items-center gap-2 self-stretch sm:self-auto">
-          <button
-            onClick={() => setIsRegistering(!isRegistering)}
-            className="flex-1 sm:flex-none px-4 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 active:bg-orange-800 rounded-lg transition-colors shadow-xs flex items-center justify-center gap-1.5"
-          >
+          <PrimaryButton onClick={() => setIsRegistering(!isRegistering)} className="sm:flex-none">
             <UserPlus className="w-3.5 h-3.5" />
             <span>{isRegistering ? 'View Patient Directory' : 'New Patient Registration'}</span>
-          </button>
+          </PrimaryButton>
         </div>
-      </div>
+      </PageHeader>
 
       {isRegistering ? (
         /* REGISTRATION FORM */
@@ -785,7 +782,7 @@ export const PatientRegistrationModule: React.FC = () => {
           {/* Table */}
           {!directoryError && (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <DataTable className="w-full text-xs text-left">
                 <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-2.5 font-medium">MRN #</th>
@@ -912,7 +909,7 @@ export const PatientRegistrationModule: React.FC = () => {
                     })
                   )}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )}
         </div>

@@ -1,3 +1,7 @@
+import { FormField, PrimaryButton, SecondaryButton } from '../ui/controls.tsx';
+import { ErrorState, StatusBadge } from '../ui/feedback.tsx';
+import { Modal } from '../ui/overlays.tsx';
+import { DataTable, FilterToolbar, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
@@ -31,6 +35,8 @@ export const ReceptionQueueModule: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedStation, setSelectedStation] = useState<string>('All');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadAttempt, setReloadAttempt] = useState(0);
 
   // New Appointment Form Modal
   const [isApptModalOpen, setIsApptModalOpen] = useState(false);
@@ -43,36 +49,57 @@ export const ReceptionQueueModule: React.FC = () => {
   const [portalPatient, setPortalPatient] = useState<{ id: number; name: string } | null>(null);
   const [apptForm, setApptForm] = useState({
     patientId: '',
-    scheduledTime: '2026-10-06 10:00',
+    scheduledTime: '',
     durationMinutes: 30,
     appointmentType: 'Specialist Consultation',
-    reason: 'Follow-up on hypertension management',
-    notes: 'Bring previous lab slips and medications',
+    reason: '',
+    notes: '',
   });
 
   useEffect(() => {
+    let active = true;
     async function loadData() {
+      if (!currentFacility?.id || !currentTenant?.id) {
+        setQueues([]);
+        setAppointments([]);
+        setPatients([]);
+        setLoadError('Select an authorized facility to load reception.');
+        setLoading(false);
+        return;
+      }
       setLoading(true);
+      setLoadError('');
       try {
         const [qList, aList, pList] = await Promise.all([
-          api.getQueues(currentFacility?.id, selectedStation),
-          api.getAppointments(currentFacility?.id),
-          api.getPatients(currentTenant?.id, currentFacility?.id),
+          api.getQueues(currentFacility.id, selectedStation),
+          api.getAppointments(currentFacility.id),
+          api.getPatients(currentTenant.id, currentFacility.id),
         ]);
+        if (!active) return;
         setQueues(qList);
         setAppointments(aList);
         setPatients(pList);
-        if (pList.length > 0 && !apptForm.patientId) {
-          setApptForm((prev) => ({ ...prev, patientId: pList[0].id.toString() }));
-        }
+        setApptForm((prev) => ({
+          ...prev,
+          patientId: pList.some((patient) => String(patient.id) === prev.patientId)
+            ? prev.patientId
+            : '',
+        }));
       } catch (err) {
-        console.error('Failed to load reception queues:', err);
+        if (!active) return;
+        setQueues([]);
+        setAppointments([]);
+        setPatients([]);
+        setLoadError(err instanceof Error ? err.message : 'Unable to load reception records.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
-    loadData();
-  }, [currentTenant, currentFacility, selectedStation, refreshKey]);
+    void loadData();
+    return () => {
+      active = false;
+    };
+  }, [currentTenant?.id, currentFacility?.id, selectedStation, refreshKey, reloadAttempt]);
 
   const updateStatus = async (id: number, status: string) => {
     try {
@@ -107,6 +134,14 @@ export const ReceptionQueueModule: React.FC = () => {
       });
       showToast('Appointment booked successfully!');
       setIsApptModalOpen(false);
+      setApptForm({
+        patientId: '',
+        scheduledTime: '',
+        durationMinutes: 30,
+        appointmentType: 'Specialist Consultation',
+        reason: '',
+        notes: '',
+      });
       triggerRefresh();
     } catch (err: any) {
       showToast(`Booking failed: ${err.message}`);
@@ -123,30 +158,32 @@ export const ReceptionQueueModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Reception, Queues & Appointment Navigation
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Reception, Queues & Appointment Navigation</h1>
+          <p className="ui-page-description">
             Real-time patient flow tracking, calling station tokens, and outpatient clinic booking
             desk.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsApptModalOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 active:bg-orange-800 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
-          >
+          <PrimaryButton onClick={() => setIsApptModalOpen(true)}>
             <Plus className="w-3.5 h-3.5" />
             <span>Book Appointment</span>
-          </button>
+          </PrimaryButton>
         </div>
-      </div>
+      </PageHeader>
+
+      {loadError && (
+        <ErrorState
+          message={loadError}
+          onRetry={() => setReloadAttempt((attempt) => attempt + 1)}
+        />
+      )}
 
       {/* Queue Filter Segmented Controls */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center gap-2">
+      <FilterToolbar>
         <span className="text-xs font-semibold text-slate-600 px-2 flex items-center gap-1.5">
           <Filter className="w-3.5 h-3.5 text-slate-400" />
           <span>Station Filter:</span>
@@ -164,7 +201,7 @@ export const ReceptionQueueModule: React.FC = () => {
             {st}
           </button>
         ))}
-      </div>
+      </FilterToolbar>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active Live Queue Tokens (2 cols) */}
@@ -173,14 +210,15 @@ export const ReceptionQueueModule: React.FC = () => {
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-blue-700" />
               <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-                Active Queue Tokens ({queues.length})
+                Active Queue Tokens (
+                {loading ? 'Loading…' : loadError ? 'Unavailable' : queues.length})
               </h2>
             </div>
             <span className="text-2xs text-slate-400 font-mono">Live Calling Console</span>
           </div>
 
           <div className="divide-y divide-slate-100 overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <DataTable className="w-full text-xs text-left">
               <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Token #</th>
@@ -197,6 +235,12 @@ export const ReceptionQueueModule: React.FC = () => {
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-slate-400 font-sans">
                       Loading queue status...
+                    </td>
+                  </tr>
+                ) : loadError ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-rose-700">
+                      Queue data unavailable.
                     </td>
                   </tr>
                 ) : queues.length === 0 ? (
@@ -248,17 +292,17 @@ export const ReceptionQueueModule: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-slate-600">{q.waitingTimeMinutes} mins</td>
                         <td className="px-4 py-3 font-sans">
-                          <span
-                            className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                          <StatusBadge
+                            tone={
                               q.status === 'In-Progress'
-                                ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                                ? 'info'
                                 : q.status === 'Called'
-                                  ? 'bg-orange-50 text-orange-900 border border-orange-200 font-semibold'
-                                  : 'bg-slate-100 text-slate-700'
-                            }`}
+                                  ? 'warning'
+                                  : 'neutral'
+                            }
                           >
                             {q.status}
-                          </span>
+                          </StatusBadge>
                         </td>
                         <td className="px-4 py-3 text-right font-sans">
                           <div className="flex items-center justify-end gap-1.5">
@@ -310,7 +354,7 @@ export const ReceptionQueueModule: React.FC = () => {
                   })
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
 
@@ -320,7 +364,8 @@ export const ReceptionQueueModule: React.FC = () => {
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-orange-600" />
               <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-                Upcoming Appointments ({appointments.length})
+                Upcoming Appointments (
+                {loading ? 'Loading…' : loadError ? 'Unavailable' : appointments.length})
               </h2>
             </div>
             <button
@@ -332,7 +377,15 @@ export const ReceptionQueueModule: React.FC = () => {
           </div>
 
           <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-            {appointments.length === 0 ? (
+            {loading ? (
+              <p role="status" className="py-4 text-center text-xs text-muted">
+                Loading appointments…
+              </p>
+            ) : loadError ? (
+              <p className="py-4 text-center text-xs text-rose-700">
+                Appointment data unavailable.
+              </p>
+            ) : appointments.length === 0 ? (
               <div className="text-center py-10 text-xs text-slate-400">
                 No scheduled clinic appointments.
               </div>
@@ -403,110 +456,101 @@ export const ReceptionQueueModule: React.FC = () => {
       ) : null}
 
       {/* Appointment Booking Modal */}
-      {isApptModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
-            <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">
-                Schedule Patient Clinic Appointment
-              </h3>
-              <p className="text-2xs text-slate-500">
-                Book clinic slots for follow-up or specialty consultations.
-              </p>
-            </div>
+      <Modal
+        open={isApptModalOpen}
+        onClose={() => setIsApptModalOpen(false)}
+        title="Schedule Patient Clinic Appointment"
 
-            <form onSubmit={handleCreateAppointment} className="space-y-4">
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Select Patient *</label>
-                <select
-                  required
-                  value={apptForm.patientId}
-                  onChange={(e) => setApptForm({ ...apptForm, patientId: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
-                >
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName} ({p.mrn} · {p.phone})
-                    </option>
-                  ))}
-                </select>
-              </div>
+        actions={
+          <>
+            <SecondaryButton onClick={() => setIsApptModalOpen(false)}>Cancel</SecondaryButton>
+            <PrimaryButton type="submit" form="appointment-form">
+              Confirm Booking
+            </PrimaryButton>
+          </>
+        }
+      >
+        <p className="mb-4 text-xs text-muted">
+          Book clinic slots for follow-up or specialty consultations.
+        </p>
+        <form id="appointment-form" onSubmit={handleCreateAppointment} className="space-y-4">
+          <FormField label="Select patient *" htmlFor="appointment-patient">
+            <select
+              id="appointment-patient"
+              required
+              value={apptForm.patientId}
+              onChange={(e) => setApptForm({ ...apptForm, patientId: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
+            >
+              <option value="">Select a patient</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.firstName} {p.lastName} ({p.mrn} · {p.phone})
+                </option>
+              ))}
+            </select>
+          </FormField>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Date & Time *</label>
-                  <input
-                    type="text"
-                    required
-                    value={apptForm.scheduledTime}
-                    onChange={(e) => setApptForm({ ...apptForm, scheduledTime: e.target.value })}
-                    placeholder="YYYY-MM-DD HH:MM"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Duration (Mins)</label>
-                  <input
-                    type="number"
-                    value={apptForm.durationMinutes}
-                    onChange={(e) =>
-                      setApptForm({ ...apptForm, durationMinutes: Number(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Appointment Type</label>
-                <select
-                  value={apptForm.appointmentType}
-                  onChange={(e) => setApptForm({ ...apptForm, appointmentType: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                >
-                  <option value="Specialist Consultation">Specialist Consultation</option>
-                  <option value="Routine Chronic Follow-up">
-                    Routine Chronic Follow-up (Hypertension/Diabetes)
-                  </option>
-                  <option value="Antenatal Care (ANC)">Antenatal Care (ANC Clinic)</option>
-                  <option value="Post-Op Review">Post-Op Review</option>
-                  <option value="Dental Checkup">Dental Checkup</option>
-                  <option value="Eye Examination">Eye Examination</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">
-                  Clinical Indication / Reason
-                </label>
-                <input
-                  type="text"
-                  value={apptForm.reason}
-                  onChange={(e) => setApptForm({ ...apptForm, reason: e.target.value })}
-                  placeholder="e.g. 3-month HbA1c review"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsApptModalOpen(false)}
-                  className="px-3.5 py-1.5 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-blue-700 text-white rounded-md font-semibold hover:bg-blue-800"
-                >
-                  Confirm Booking
-                </button>
-              </div>
-            </form>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField
+              label="Date & time *"
+              htmlFor="appointment-time"
+              hint="Use YYYY-MM-DD HH:MM."
+            >
+              <input
+                id="appointment-time"
+                aria-describedby="appointment-time-hint"
+                type="text"
+                required
+                value={apptForm.scheduledTime}
+                onChange={(e) => setApptForm({ ...apptForm, scheduledTime: e.target.value })}
+                placeholder="YYYY-MM-DD HH:MM"
+                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+              />
+            </FormField>
+            <FormField label="Duration (minutes)" htmlFor="appointment-duration">
+              <input
+                id="appointment-duration"
+                type="number"
+                value={apptForm.durationMinutes}
+                onChange={(e) =>
+                  setApptForm({ ...apptForm, durationMinutes: Number(e.target.value) })
+                }
+                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+              />
+            </FormField>
           </div>
-        </div>
-      )}
+
+          <FormField label="Appointment type" htmlFor="appointment-type">
+            <select
+              id="appointment-type"
+              value={apptForm.appointmentType}
+              onChange={(e) => setApptForm({ ...apptForm, appointmentType: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-md"
+            >
+              <option value="Specialist Consultation">Specialist Consultation</option>
+              <option value="Routine Chronic Follow-up">
+                Routine Chronic Follow-up (Hypertension/Diabetes)
+              </option>
+              <option value="Antenatal Care (ANC)">Antenatal Care (ANC Clinic)</option>
+              <option value="Post-Op Review">Post-Op Review</option>
+              <option value="Dental Checkup">Dental Checkup</option>
+              <option value="Eye Examination">Eye Examination</option>
+            </select>
+          </FormField>
+
+          <FormField label="Clinical indication / reason" htmlFor="appointment-reason">
+            <input
+              id="appointment-reason"
+              type="text"
+              value={apptForm.reason}
+              onChange={(e) => setApptForm({ ...apptForm, reason: e.target.value })}
+              placeholder="Enter a reason if applicable"
+              className="w-full px-3 py-2 border border-slate-200 rounded-md"
+            />
+          </FormField>
+        </form>
+      </Modal>
     </div>
   );
 };

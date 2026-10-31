@@ -1,3 +1,4 @@
+import { DataTable } from '../ui/layout.tsx';
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api/client.ts';
 import type { FacilityTariffValidation } from '../../types/index.ts';
@@ -77,7 +78,7 @@ export function TariffValidationPanel({ facilityId }: { facilityId: number }) {
             ))}
           </ul>
           <div className="max-h-96 overflow-auto">
-            <table className="w-full text-left">
+            <DataTable className="w-full text-left">
               <thead>
                 <tr>
                   <th>Source</th>
@@ -102,7 +103,7 @@ export function TariffValidationPanel({ facilityId }: { facilityId: number }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           <div className="flex gap-2">
             <button

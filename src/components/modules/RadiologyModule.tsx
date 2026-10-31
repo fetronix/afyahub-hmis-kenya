@@ -1,16 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { FormField, PrimaryButton, SecondaryButton } from '../ui/controls.tsx';
+import { AlertBanner, ErrorState } from '../ui/feedback.tsx';
+import { Modal } from '../ui/overlays.tsx';
+import { PageHeader } from '../ui/layout.tsx';
+import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { RadiologyOrder, Patient } from '../../types/index.ts';
-import {
-  Scan,
-  CheckCircle2,
-  Clock,
-  UserCheck,
-  Plus,
-  FileText,
-  Image as ImageIcon,
-} from 'lucide-react';
+import { Scan, CheckCircle2, Clock, UserCheck, Plus, FileText } from 'lucide-react';
 
 export const RadiologyModule: React.FC = () => {
   const {
@@ -26,51 +22,106 @@ export const RadiologyModule: React.FC = () => {
   const [orders, setOrders] = useState<RadiologyOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<RadiologyOrder | null>(null);
+  const selectedOrderRef = useRef<RadiologyOrder | null>(null);
+  const [patientLookup, setPatientLookup] = useState<{
+    id: number;
+    patient: Patient | null;
+    failed: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadAttempt, setReloadAttempt] = useState(0);
 
   // New Request Form Modal
   const [isNewReqModalOpen, setIsNewReqModalOpen] = useState(false);
   const [reqForm, setReqForm] = useState({
     patientId: '',
     modality: 'X-Ray',
-    procedureName: 'Chest X-Ray PA View',
-    clinicalIndication: 'Chronic productive cough, weight loss, r/o pulmonary tuberculosis',
+    procedureName: '',
+    clinicalIndication: '',
   });
 
   // Report Editor State
   const [reportFindings, setReportFindings] = useState('');
   const [reportImpression, setReportImpression] = useState('');
 
-  useEffect(() => {
-    async function loadRadiology() {
-      setLoading(true);
-      try {
-        const [rList, pList] = await Promise.all([
-          api.getRadiologyOrders(currentFacility?.id),
-          api.getPatients(currentTenant?.id, currentFacility?.id),
-        ]);
-        setOrders(rList);
-        setPatients(pList);
-        if (pList.length > 0 && !reqForm.patientId) {
-          setReqForm((prev) => ({ ...prev, patientId: pList[0].id.toString() }));
-        }
-        if (rList.length > 0 && !selectedOrder) {
-          selectOrder(rList[0]);
-        }
-      } catch (err) {
-        console.error('Failed to load radiology orders:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadRadiology();
-  }, [currentTenant, currentFacility, refreshKey]);
-
   const selectOrder = (order: RadiologyOrder) => {
+    selectedOrderRef.current = order;
     setSelectedOrder(order);
     setReportFindings(order.radiologistFindings || '');
     setReportImpression(order.impression || '');
   };
+
+  useEffect(() => {
+    let active = true;
+    async function loadRadiology() {
+      if (!currentTenant?.id || !currentFacility?.id) {
+        setOrders([]);
+        setPatients([]);
+        selectedOrderRef.current = null;
+        setSelectedOrder(null);
+        setLoadError('Select an authorized facility to load radiology.');
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setLoadError('');
+      try {
+        const [rList, pList] = await Promise.all([
+          api.getRadiologyOrders(currentFacility.id),
+          api.getPatients(currentTenant.id, currentFacility.id),
+        ]);
+        if (!active) return;
+        setOrders(rList);
+        setPatients(pList);
+        setReqForm((previous) => ({
+          ...previous,
+          patientId: pList.some((patient) => String(patient.id) === previous.patientId)
+            ? previous.patientId
+            : '',
+        }));
+        const currentSelection = selectedOrderRef.current;
+        if (rList.length > 0 && !currentSelection) selectOrder(rList[0]);
+        if (currentSelection && !rList.some((order) => order.id === currentSelection.id)) {
+          selectedOrderRef.current = null;
+          setSelectedOrder(null);
+        }
+      } catch (err) {
+        if (!active) return;
+        setOrders([]);
+        setPatients([]);
+        selectedOrderRef.current = null;
+        setSelectedOrder(null);
+        setLoadError(err instanceof Error ? err.message : 'Unable to load radiology records.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void loadRadiology();
+    return () => {
+      active = false;
+    };
+  }, [currentTenant?.id, currentFacility?.id, refreshKey, reloadAttempt]);
+
+  useEffect(() => {
+    let active = true;
+    const patientId = selectedOrder?.patientId;
+    if (!patientId || patients.some((patient) => patient.id === patientId))
+      return () => {
+        active = false;
+      };
+    void api
+      .getPatient(patientId)
+      .then((patient) => {
+        if (active) setPatientLookup({ id: patientId, patient, failed: false });
+      })
+      .catch(() => {
+        if (active) setPatientLookup({ id: patientId, patient: null, failed: true });
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedOrder?.patientId, patients]);
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,6 +146,7 @@ export const RadiologyModule: React.FC = () => {
 
       showToast('Radiology imaging request created!');
       setIsNewReqModalOpen(false);
+      setReqForm({ patientId: '', modality: 'X-Ray', procedureName: '', clinicalIndication: '' });
       triggerRefresh();
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
@@ -107,7 +159,7 @@ export const RadiologyModule: React.FC = () => {
       await api.updateRadiologyReport(selectedOrder.id, {
         findings: reportFindings,
         impression: reportImpression,
-        reportedBy: `${currentUser.name} (Radiologist)`,
+        reportedBy: currentUser.name,
       });
 
       showToast('Radiology report published to patient longitudinal record.');
@@ -124,35 +176,38 @@ export const RadiologyModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Diagnostic Radiology & Medical Imaging
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
-            X-Ray, Ultrasound, CT Scan, and MRI requests with PACS simulation and official
-            radiologist reporting.
+          <h1 className="ui-page-title">Diagnostic Radiology & Medical Imaging</h1>
+          <p className="ui-page-description">
+            X-ray, ultrasound, CT and MRI requests and recorded imaging reports.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsNewReqModalOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
-          >
+          <PrimaryButton onClick={() => setIsNewReqModalOpen(true)}>
             <Plus className="w-3.5 h-3.5" />
             <span>New Imaging Request</span>
-          </button>
+          </PrimaryButton>
         </div>
-      </div>
+      </PageHeader>
 
+      {loadError && (
+        <ErrorState
+          message={loadError}
+          onRetry={() => setReloadAttempt((attempt) => attempt + 1)}
+        />
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Imaging Orders Queue (1 col) */}
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs flex flex-col">
           <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
             <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
               <Scan className="w-4 h-4 text-teal-700" />
-              <span>Imaging Requests ({orders.length})</span>
+              <span>
+                Imaging Requests ({loading ? 'Loading…' : loadError ? 'Unavailable' : orders.length}
+                )
+              </span>
             </h2>
             <span className="text-2xs text-slate-400 font-mono">Modality Worklist</span>
           </div>
@@ -163,10 +218,12 @@ export const RadiologyModule: React.FC = () => {
               const isSelected = selectedOrder?.id === ord.id;
 
               return (
-                <div
+                <button
+                  type="button"
                   key={ord.id}
                   onClick={() => selectOrder(ord)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                  aria-pressed={isSelected}
+                  className={`w-full text-left p-3 rounded-lg border cursor-pointer transition-all ${
                     isSelected
                       ? 'border-teal-700 bg-teal-50/40'
                       : 'border-slate-200 bg-white hover:border-slate-300'
@@ -193,8 +250,8 @@ export const RadiologyModule: React.FC = () => {
                       {patient
                         ? `${patient.firstName} ${patient.lastName}`
                         : `Patient #${ord.patientId}`}
-                    </strong>{' '}
-                    ({patient?.mrn})
+                    </strong>
+                    {patient?.mrn ? ` (${patient.mrn})` : ''}
                   </div>
 
                   <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 text-3xs text-slate-400 font-mono">
@@ -203,7 +260,7 @@ export const RadiologyModule: React.FC = () => {
                     </span>
                     <span>{new Date(ord.createdAt).toLocaleDateString()}</span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -220,7 +277,7 @@ export const RadiologyModule: React.FC = () => {
                   </h2>
                   <div className="text-2xs text-slate-500 mt-0.5">
                     Modality: <strong>{selectedOrder.modality}</strong> · Ordered by:{' '}
-                    <strong>{selectedOrder.orderedBy || 'Clinician'}</strong>
+                    <strong>{selectedOrder.orderedBy || 'Not recorded'}</strong>
                   </div>
                 </div>
                 <span
@@ -236,53 +293,50 @@ export const RadiologyModule: React.FC = () => {
 
               {/* Patient info */}
               {(() => {
-                const pat = getPatient(selectedOrder.patientId);
+                const lookup = patientLookup?.id === selectedOrder.patientId ? patientLookup : null;
+                const pat = getPatient(selectedOrder.patientId) ?? lookup?.patient ?? null;
                 return (
-                  <div className="bg-slate-50 p-3 rounded-lg flex items-center justify-between text-2xs">
+                  <div className="bg-slate-50 p-3 rounded-lg flex flex-wrap gap-2 items-center justify-between text-2xs">
                     <div>
                       Patient:{' '}
                       <strong className="text-slate-800">
-                        {pat?.firstName} {pat?.lastName}
+                        {pat
+                          ? `${pat.firstName} ${pat.lastName}`
+                          : `Patient #${selectedOrder.patientId}`}
                       </strong>{' '}
-                      ({pat?.gender} · {pat?.dateOfBirth})
+                      {pat
+                        ? `(${[pat.mrn, pat.gender, pat.dateOfBirth].filter(Boolean).join(' · ')})`
+                        : lookup?.failed
+                          ? '(details unavailable)'
+                          : '(loading details…)'}
                     </div>
                     <div>
                       Clinical Indication:{' '}
                       <strong className="text-slate-700">
-                        {selectedOrder.clinicalIndication || 'Routine imaging'}
+                        {selectedOrder.clinicalIndication || 'Not recorded'}
                       </strong>
                     </div>
                   </div>
                 );
               })()}
 
-              {/* PACS DICOM Simulation Preview Banner */}
-              <div className="p-4 bg-slate-950 text-slate-300 rounded-xl border border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-teal-400">
-                    <ImageIcon className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-white text-xs">
-                      PACS DICOM Study #DCM-{selectedOrder.id}982
-                    </div>
-                    <div className="text-2xs text-slate-400 font-mono">
-                      Modality: {selectedOrder.modality} · 128 Slices · Window: Mediastinum/Bone
-                    </div>
-                  </div>
-                </div>
-                <span className="px-3 py-1 bg-slate-800 text-teal-300 text-2xs font-mono rounded border border-slate-700">
-                  DICOM 3.0 Connected
-                </span>
-              </div>
+              <AlertBanner tone="info" className="text-xs">
+                <strong>Imaging connection not verified.</strong> This screen records requests and
+                text reports; it does not verify a PACS connection or the presence of a DICOM study.
+                Use the facility's authorized imaging viewer to review images.
+              </AlertBanner>
 
               {/* Radiologist Report Editor */}
               <div className="space-y-3 pt-2">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">
+                  <label
+                    htmlFor="radiology-findings"
+                    className="block font-medium text-slate-700 mb-1"
+                  >
                     Radiological Findings
                   </label>
                   <textarea
+                    id="radiology-findings"
                     rows={4}
                     value={reportFindings}
                     onChange={(e) => setReportFindings(e.target.value)}
@@ -292,10 +346,14 @@ export const RadiologyModule: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">
+                  <label
+                    htmlFor="radiology-impression"
+                    className="block font-medium text-slate-700 mb-1"
+                  >
                     Impression / Radiologist Conclusion
                   </label>
                   <textarea
+                    id="radiology-impression"
                     rows={2}
                     value={reportImpression}
                     onChange={(e) => setReportImpression(e.target.value)}
@@ -304,7 +362,7 @@ export const RadiologyModule: React.FC = () => {
                   />
                 </div>
 
-                <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+                <div className="pt-2 flex flex-wrap gap-3 items-center justify-between border-t border-slate-100">
                   <span className="text-2xs text-slate-400">
                     Sign-off: <strong>{currentUser.name}</strong> ({currentUser.role})
                   </span>
@@ -312,7 +370,7 @@ export const RadiologyModule: React.FC = () => {
                     onClick={handleSaveReport}
                     className="px-5 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
                   >
-                    Publish Official Radiology Report
+                    Save Imaging Report
                   </button>
                 </div>
               </div>
@@ -325,96 +383,80 @@ export const RadiologyModule: React.FC = () => {
         </div>
       </div>
 
-      {/* NEW REQUEST MODAL */}
-      {isNewReqModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
-            <div className="border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">
-                Request Diagnostic Medical Imaging
-              </h3>
-              <p className="text-2xs text-slate-500">
-                Order X-Ray, Ultrasound, CT Scan or MRI with clinical indication.
-              </p>
-            </div>
-
-            <form onSubmit={handleCreateOrder} className="space-y-4">
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Select Patient *</label>
-                <select
-                  required
-                  value={reqForm.patientId}
-                  onChange={(e) => setReqForm({ ...reqForm, patientId: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                >
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName} ({p.mrn} · {p.payerType})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Imaging Modality</label>
-                  <select
-                    value={reqForm.modality}
-                    onChange={(e) => setReqForm({ ...reqForm, modality: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                  >
-                    <option value="X-Ray">X-Ray (Plain Radiography)</option>
-                    <option value="Ultrasound">Ultrasound (Sonography)</option>
-                    <option value="CT Scan">CT Scan (Computed Tomography)</option>
-                    <option value="MRI">MRI (Magnetic Resonance)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Procedure Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={reqForm.procedureName}
-                    onChange={(e) => setReqForm({ ...reqForm, procedureName: e.target.value })}
-                    placeholder="e.g. Chest X-Ray PA View"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">
-                  Clinical Indication & History *
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={reqForm.clinicalIndication}
-                  onChange={(e) => setReqForm({ ...reqForm, clinicalIndication: e.target.value })}
-                  placeholder="Clinical reason, suspected pathology, relevant prior exams..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsNewReqModalOpen(false)}
-                  className="px-3.5 py-1.5 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-teal-700 text-white rounded-md font-semibold hover:bg-teal-800"
-                >
-                  Send Imaging Request
-                </button>
-              </div>
-            </form>
+      {/* New requests remain explicit; no patient or clinical history is pre-filled. */}
+      <Modal
+        open={isNewReqModalOpen}
+        onClose={() => setIsNewReqModalOpen(false)}
+        title="Request Diagnostic Medical Imaging"
+        actions={
+          <>
+            <SecondaryButton onClick={() => setIsNewReqModalOpen(false)}>Cancel</SecondaryButton>
+            <PrimaryButton type="submit" form="radiology-request-form">
+              Send Imaging Request
+            </PrimaryButton>
+          </>
+        }
+      >
+        <p className="mb-4 text-xs text-muted">
+          Order X-ray, ultrasound, CT or MRI with a clinical indication.
+        </p>
+        <form id="radiology-request-form" onSubmit={handleCreateOrder} className="space-y-4">
+          <FormField label="Select patient *" htmlFor="radiology-patient">
+            <select
+              id="radiology-patient"
+              required
+              value={reqForm.patientId}
+              onChange={(event) => setReqForm({ ...reqForm, patientId: event.target.value })}
+              className="field-input"
+            >
+              <option value="">Select a patient</option>
+              {patients.map((patient) => (
+                <option key={patient.id} value={patient.id}>
+                  {patient.firstName} {patient.lastName} ({patient.mrn} · {patient.payerType})
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField label="Imaging modality" htmlFor="radiology-modality">
+              <select
+                id="radiology-modality"
+                value={reqForm.modality}
+                onChange={(event) => setReqForm({ ...reqForm, modality: event.target.value })}
+                className="field-input"
+              >
+                <option value="X-Ray">X-Ray (Plain Radiography)</option>
+                <option value="Ultrasound">Ultrasound (Sonography)</option>
+                <option value="CT Scan">CT Scan (Computed Tomography)</option>
+                <option value="MRI">MRI (Magnetic Resonance)</option>
+              </select>
+            </FormField>
+            <FormField label="Procedure title *" htmlFor="radiology-procedure">
+              <input
+                id="radiology-procedure"
+                required
+                value={reqForm.procedureName}
+                onChange={(event) => setReqForm({ ...reqForm, procedureName: event.target.value })}
+                placeholder="Enter procedure title"
+                className="field-input"
+              />
+            </FormField>
           </div>
-        </div>
-      )}
+          <FormField label="Clinical indication & history *" htmlFor="radiology-indication">
+            <textarea
+              id="radiology-indication"
+              rows={3}
+              required
+              value={reqForm.clinicalIndication}
+              onChange={(event) =>
+                setReqForm({ ...reqForm, clinicalIndication: event.target.value })
+              }
+              placeholder="Enter the clinical reason and relevant history"
+              className="field-input h-auto py-2"
+            />
+          </FormField>
+        </form>
+      </Modal>
     </div>
   );
 };

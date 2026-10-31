@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { HmisProvider, useHmis } from './context/HmisContext.tsx';
+import { InboxProvider } from './context/InboxContext.tsx';
 
-import { Header } from './components/Header.tsx';
+import { Header, moduleTitles } from './components/Header.tsx';
+import { PageBreadcrumbs } from './components/ui/layout.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { LoginScreen } from './components/LoginScreen.tsx';
 import { StaffInvitationAcceptance } from './components/StaffInvitationAcceptance.tsx';
@@ -155,7 +157,9 @@ const AppContent: React.FC = () => {
           authenticatedUser?.roles?.includes('SUPER_ADMIN') ? (
           <SuperAdminDashboardModule onNavigate={(module) => setActiveModule(module as any)} />
         ) : (
-          <HospitalDashboard />
+          <HospitalDashboard
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
         );
 
       case 'registration':
@@ -166,7 +170,11 @@ const AppContent: React.FC = () => {
         );
 
       case 'reception':
-        return <ReceptionQueueModule />;
+        return (
+          <ReceptionQueueModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'opd':
         return (
@@ -188,7 +196,11 @@ const AppContent: React.FC = () => {
         return <DialysisModule />;
 
       case 'specialty':
-        return <SpecialtyModule />;
+        return (
+          <SpecialtyModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'laboratory':
         return (
@@ -198,7 +210,11 @@ const AppContent: React.FC = () => {
         );
 
       case 'radiology':
-        return <RadiologyModule />;
+        return (
+          <RadiologyModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'pharmacy':
         return (
@@ -208,7 +224,11 @@ const AppContent: React.FC = () => {
         );
 
       case 'inventory':
-        return <InventoryModule />;
+        return (
+          <InventoryModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'procurement':
         return <ProcurementModule />;
@@ -244,13 +264,21 @@ const AppContent: React.FC = () => {
         return <InsuranceClaimsModule />;
 
       case 'private_insurance':
-        return <PrivateInsuranceModule />;
+        return (
+          <PrivateInsuranceModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'analytics':
         return <ReportsModule />;
 
       case 'public_health':
-        return <PublicHealthModule />;
+        return (
+          <PublicHealthModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       case 'interoperability':
         /*
@@ -274,10 +302,18 @@ const AppContent: React.FC = () => {
         return <PatientPortalModule />;
 
       case 'audit':
-        return <AuditLogModule />;
+        return (
+          <AuditLogModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
 
       default:
-        return <HospitalDashboard />;
+        return (
+          <HospitalDashboard
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
     }
   };
 
@@ -287,12 +323,23 @@ const AppContent: React.FC = () => {
    * ---------------------------------------------------------
    */
   return (
-    <div className="flex h-screen h-[100dvh] w-screen overflow-hidden bg-[#f2f5fb] font-sans text-ink antialiased">
+    <div className="app-shell flex h-screen h-[100dvh] w-screen overflow-hidden bg-canvas font-sans text-ink antialiased">
       <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
-        <main className="min-w-0 flex-1 overflow-y-auto bg-[#f2f5fb] px-3 py-4 sm:px-5 sm:py-5 lg:px-7">
+        <main className="app-workspace min-w-0 flex-1 overflow-y-auto bg-canvas px-3 py-4 sm:px-5 sm:py-5 lg:px-7">
           <div className="mx-auto w-full max-w-[1400px] space-y-5">
+            {activeModule !== 'dashboard' && (
+              <PageBreadcrumbs
+                items={[
+                  {
+                    label: authenticatedUser?.isSuperAdmin ? 'Platform Dashboard' : 'Dashboard',
+                    onClick: () => setActiveModule('dashboard'),
+                  },
+                  { label: moduleTitles[activeModule] },
+                ]}
+              />
+            )}
             {contextError && (
               <div
                 role="alert"
@@ -378,7 +425,9 @@ export default function App() {
 
   return (
     <HmisProvider>
-      <AppContent />
+      <InboxProvider>
+        <AppContent />
+      </InboxProvider>
     </HmisProvider>
   );
 }

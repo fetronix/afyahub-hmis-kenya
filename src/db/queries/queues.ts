@@ -22,12 +22,16 @@ import { moduleLogger } from '../../logging/logger.ts';
 const log = moduleLogger('db.queues');
 
 // Queues
-export async function getQueues(facilityId?: number, queueType?: string) {
+export async function getQueues(facilityId?: number, queueType?: string, activeOnly = false) {
   try {
     const query = db.select().from(schema.queues);
     const conditions = [];
     if (facilityId) conditions.push(eq(schema.queues.facilityId, facilityId));
     if (queueType && queueType !== 'All') conditions.push(eq(schema.queues.queueType, queueType));
+    if (activeOnly)
+      conditions.push(
+        sql`lower(coalesce(${schema.queues.status}, '')) IN ('waiting','called','in-progress','in progress','serving')`,
+      );
 
     if (conditions.length > 0) {
       return await query

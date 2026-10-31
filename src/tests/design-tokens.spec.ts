@@ -50,42 +50,35 @@ describe('Design-token contract tests', () => {
       expect(css.includes(token), `The theme defines ${token}`).toBe(true);
     }
 
-    /*
-     * The logo is blue and orange. A green or clay ramp would be a
-     * different product. The blue is sky, not navy: brand-500 is the
-     * colour a primary button and an active tab actually show.
-     */
-    expect(/--color-brand-500:\s*#0ea5e9;/i.test(css), 'The primary is sky blue').toBe(true);
-    expect(
-      /--color-brand-600:\s*#0284c7;/i.test(css),
-      'The primary hover is one step deeper than sky',
-    ).toBe(true);
-    expect(
-      /--color-brand-700:\s*#0369a1;/i.test(css),
-      'The deep primary is still blue, not navy',
-    ).toBe(true);
-    expect(
-      /--color-navy-900:\s*#0b2f46;/i.test(css),
-      'The rail is deep blue rather than near-black',
-    ).toBe(true);
-    expect(
-      /--color-ember-500:\s*#f97316;/i.test(css),
-      'The bright orange is the orange of the logo',
-    ).toBe(true);
+    // The approved dashboard direction uses a deeper hospital-blue action ramp;
+    // the navy frame and orange brand accent remain part of the identity.
+    expect(/--color-brand-500:\s*#2c78f6;/i.test(css), 'The bright blue token').toBe(true);
+    expect(/--color-brand-600:\s*#075cf1;/i.test(css), 'The middle blue token').toBe(true);
+    expect(/--color-brand-700:\s*#0756d6;/i.test(css), 'The primary-action blue').toBe(true);
+    expect(/--color-navy-900:\s*#0b2f46;/i.test(css), 'The navy brand frame').toBe(true);
+    expect(/--color-ember-500:\s*#f97316;/i.test(css), 'The orange brand accent').toBe(true);
 
-    /*
-     * Orange 500 does not carry white text at AA. The call to action is
-     * therefore orange with a navy label, and this assertion keeps a
-     * later edit from putting white back on it.
-     */
-    const accentRule = css.slice(
-      css.indexOf('.btn-accent'),
-      css.indexOf('}', css.indexOf('.btn-accent')),
-    );
+    // White primary-action text must remain readable against the actual token,
+    // rather than assuming that every blue step has sufficient contrast.
+    const luminance = (hex: string) => {
+      const channels = hex.match(/.{2}/g)!.map((part) => {
+        const value = parseInt(part, 16) / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    };
+    const primary = css.match(/--color-brand-700:\s*#([0-9a-f]{6});/i)![1];
     expect(
-      accentRule.includes('bg-ember-500') && accentRule.includes('text-navy-950'),
-      'The orange call to action uses a dark label for contrast',
-    ).toBe(true);
+      1.05 / (luminance(primary) + 0.05),
+      'White on primary meets WCAG AA for normal text',
+    ).toBeGreaterThanOrEqual(4.5);
+    for (const selector of ['.btn-primary', '.btn-accent', '.ui-button-primary']) {
+      const rule = css.slice(css.indexOf(selector), css.indexOf('}', css.indexOf(selector)));
+      expect(
+        rule.includes('bg-brand-700') && rule.includes('text-white'),
+        `${selector} uses the tested pair`,
+      ).toBe(true);
+    }
 
     /*
      * Status colours must not be re-pointed: a warning has to keep

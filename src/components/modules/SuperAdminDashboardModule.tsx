@@ -1,3 +1,4 @@
+import { PageHeader, StatCard } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.ts';
 
@@ -134,13 +135,13 @@ export function SuperAdminDashboardModule({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <PageHeader>
         <div>
           <p className="text-sm font-medium uppercase tracking-wider text-teal-700">
             JaliCare HMIS · Platform administration
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Platform Management</h1>
-          <p className="mt-2 text-sm text-slate-600">
+          <h1 className="ui-page-title">Platform Management</h1>
+          <p className="ui-page-description">
             Manage organizations, facilities, subscriptions, access and platform oversight.
           </p>
         </div>
@@ -152,7 +153,7 @@ export function SuperAdminDashboardModule({
         >
           {loading ? 'Refreshing…' : 'Refresh data'}
         </button>
-      </div>
+      </PageHeader>
 
       {errors.length > 0 && (
         <div
@@ -171,14 +172,17 @@ export function SuperAdminDashboardModule({
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <article key={card.title} className={cardClass}>
-            <p className="text-sm font-medium text-slate-500">{card.title}</p>
-            <p className="mt-3 text-3xl font-bold text-slate-900">{loading ? '…' : card.value}</p>
-            <p className="mt-2 text-sm text-slate-600">{card.description}</p>
-            <button type="button" className={buttonClass} onClick={() => onNavigate(card.module)}>
-              {card.action}
-            </button>
-          </article>
+          <StatCard
+            key={card.title}
+            label={card.title}
+            value={loading ? '…' : card.value}
+            detail={card.description}
+            action={
+              <button type="button" className={buttonClass} onClick={() => onNavigate(card.module)}>
+                {card.action}
+              </button>
+            }
+          />
         ))}
       </section>
 

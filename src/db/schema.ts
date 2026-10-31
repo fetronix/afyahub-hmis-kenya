@@ -38,3 +38,5 @@ export * from './schema/payment-hub.ts';
 export * from './schema/relations-tenancy-auth.ts';
 export * from './schema/relations-clinical.ts';
 export * from './schema/relations-operations.ts';
+
+export * from './schema/notifications.ts';

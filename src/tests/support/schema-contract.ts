@@ -68,6 +68,24 @@ export function tableContract(table: PgTable) {
 /** Exact metadata changes introduced by reviewed additive migrations. The original
  * extraction fixture remains unchanged; all other columns and indexes still match it. */
 export function contractWithReviewedAdditions(name: string, original: unknown) {
+  if (name === 'facilities') {
+    const expected = structuredClone(original) as {
+      columns: Array<{ name: string } & Record<string, unknown>>;
+    };
+    const position = expected.columns.findIndex((column) => column.name === 'phone');
+    if (position < 0) throw new Error('Expected historical phone column not found');
+    expected.columns.splice(position, 0, {
+      name: 'timezone',
+      type: 'text',
+      notNull: false,
+      primary: false,
+      hasDefault: false,
+      default: null,
+      unique: false,
+      uniqueName: null,
+    });
+    return expected;
+  }
   if (name !== 'shaEclaims' && name !== 'privateInsuranceClaims') return original;
   const expected = structuredClone(original) as {
     columns: Array<{ name: string } & Record<string, unknown>>;

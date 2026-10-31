@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
@@ -217,12 +218,10 @@ export const InteroperabilityModule: React.FC = () => {
         : 'text-red-700 bg-red-50 border-red-200';
 
   const header = (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+    <PageHeader>
       <div>
-        <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-          DHA / AfyaConnect Integration
-        </h1>
-        <p className="mt-1 text-xs leading-relaxed text-muted">
+        <h1 className="ui-page-title">DHA / AfyaConnect Integration</h1>
+        <p className="ui-page-description">
           Eligibility, benefit coverage and the FHIR patient resource. Readiness is reported as it
           is, including what is not implemented.
         </p>
@@ -245,7 +244,7 @@ export const InteroperabilityModule: React.FC = () => {
           <span>Re-check</span>
         </button>
       </div>
-    </div>
+    </PageHeader>
   );
 
   /*
@@ -625,7 +624,7 @@ export const InteroperabilityModule: React.FC = () => {
           <p className="text-2xs text-slate-500 py-2">No calls recorded for this facility yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-2xs">
+            <DataTable className="w-full text-2xs">
               <thead>
                 <tr className="text-left text-slate-500 border-b border-slate-100">
                   <th className="py-1.5 pr-3 font-semibold">When</th>
@@ -660,7 +659,7 @@ export const InteroperabilityModule: React.FC = () => {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </div>

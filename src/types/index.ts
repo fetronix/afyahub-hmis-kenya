@@ -23,6 +23,8 @@ export interface Facility {
   county: string;
   subCounty: string;
   mflCode: string;
+  /** NULL inherits the tenant timezone. */
+  timezone?: string | null;
   address?: string;
   phone?: string;
   email?: string;
@@ -446,8 +448,8 @@ export interface InventoryItem {
   dosageForm?: string;
   currentStock: number;
   reorderLevel: number;
-  unitCost: string;
-  sellingPrice: string;
+  unitCost: string | null;
+  sellingPrice: string | null;
   storeLocation: string;
   isActive: boolean;
 }

@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 
@@ -225,7 +226,7 @@ export const AncRegisterSection: React.FC<AncRegisterSectionProps> = ({
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <DataTable className="w-full text-left text-xs">
             <thead className="bg-slate-50/80 text-2xs uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Patient</th>
@@ -282,7 +283,7 @@ export const AncRegisterSection: React.FC<AncRegisterSectionProps> = ({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </section>
 

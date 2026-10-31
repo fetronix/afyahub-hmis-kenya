@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -596,7 +597,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
             )}
 
             <div className="overflow-x-auto">
-              <table className="table-quiet w-full text-xs text-left">
+              <DataTable className="table-quiet w-full text-xs text-left">
                 <thead>
                   <tr>
                     <th>Claim #</th>
@@ -660,7 +661,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                     ))
                   )}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
 
@@ -824,7 +825,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                     Claim Line Items ({selectedClaim.items?.length ?? 0})
                   </h4>
                   <div className="overflow-x-auto">
-                    <table className="table-quiet w-full text-xs text-left">
+                    <DataTable className="table-quiet w-full text-xs text-left">
                       <thead>
                         <tr>
                           <th>#</th>
@@ -851,7 +852,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </DataTable>
                   </div>
                 </div>
 

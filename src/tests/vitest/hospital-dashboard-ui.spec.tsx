@@ -11,7 +11,9 @@ import type { DashboardOverview } from '../../dashboard/dashboard.types.ts';
 let context: any;
 vi.mock('../../context/HmisContext.tsx', () => ({ useHmis: () => context }));
 vi.mock('../../components/modules/DashboardModule.tsx', () => ({
-  DashboardModule: () => <div>Existing operational screen</div>,
+  DashboardModule: ({ appointments }: { appointments?: React.ReactNode }) => (
+    <div>Existing operational screen{appointments}</div>
+  ),
 }));
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data });
 const makeOverview = (facilityId = 10): DashboardOverview => ({
@@ -48,6 +50,12 @@ const makeOverview = (facilityId = 10): DashboardOverview => ({
   admissions: ok({ current: 0, previous: 0 }),
   flow: ok([{ start: '2025-04-01', end: '2025-04-30', registered: 2, returning: 1 }]),
   activity: ok([]),
+  operations: {
+    queues: ok({ active: 0 }),
+    beds: ok({ occupied: 0, total: 0 }),
+    theatre: ok({ scheduled: 0, samples: [] }),
+    laboratory: ok({ pending: 0, samples: [] }),
+  },
   appointments: ok([
     {
       id: 7,
@@ -83,7 +91,7 @@ describe('hospital dashboard behavior', () => {
         ],
       },
       currentUser: { name: 'Synthetic Clinician', role: 'Clinician' },
-      currentTenant: { id: 1, name: 'Synthetic Tenant' },
+      currentTenant: { id: 1, name: 'Synthetic Tenant', timezone: 'Africa/Nairobi' },
       facilities: [],
       tenants: [],
       setCurrentFacility: vi.fn(),
@@ -115,8 +123,8 @@ describe('hospital dashboard behavior', () => {
     expect(
       within(screen.getByText('Admission records').closest('article')!).getByText('0'),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Operational dashboard/ }));
     expect(screen.getByText('Existing operational screen')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Synthetic Clinician/ })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reception' }));
     expect(context.setActiveModule).toHaveBeenCalledWith('reception');
   });
@@ -124,7 +132,15 @@ describe('hospital dashboard behavior', () => {
   it('renders a zone-less audit wall time as stored, without shifting it to the browser timezone', async () => {
     const data = makeOverview();
     data.activity = ok([
-      { id: 11, action: 'CREATE', resource: 'Patient', at: '2025-04-05T11:00:00' },
+      {
+        id: 11,
+        action: 'CREATE',
+        resource: 'Patient',
+        module: 'Registration',
+        reference: '15',
+        actor: 'Synthetic Clinician',
+        at: '2025-04-05T11:00:00',
+      },
     ]);
     vi.spyOn(api, 'getDashboardOverview').mockResolvedValue(data);
     render(<HospitalDashboard />);
@@ -259,9 +275,5 @@ describe('hospital dashboard behavior', () => {
     await user.click(await screen.findByRole('button', { name: /Synthetic Patient/ }));
     expect(context.setDirectorySearch).toHaveBeenCalledWith('TEST-001');
     expect(context.setActiveModule).toHaveBeenCalledWith('registration');
-    await user.click(screen.getByRole('button', { name: 'Notifications' }));
-    expect(
-      screen.getByText(/persistent notification inbox is not configured/i),
-    ).toBeInTheDocument();
   });
 });

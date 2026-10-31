@@ -185,7 +185,7 @@ export const patientsClinicalClient = {
       body: JSON.stringify(encounter),
     }),
 
-  getQueues: (facilityId?: number, queueType?: string) => {
+  getQueues: (facilityId?: number, queueType?: string, activeOnly = false) => {
     const params = new URLSearchParams();
 
     if (facilityId) {
@@ -195,6 +195,8 @@ export const patientsClinicalClient = {
     if (queueType) {
       params.append('queueType', queueType);
     }
+
+    if (activeOnly) params.append('active', 'true');
 
     const query = params.toString();
 

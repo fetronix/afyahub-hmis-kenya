@@ -1,371 +1,174 @@
-import React, { useState, useEffect } from 'react';
-import { useHmis } from '../../context/HmisContext.tsx';
+import React, { useEffect, useState } from 'react';
 import { api } from '../../api/client.ts';
-import { Patient } from '../../types/index.ts';
-import { Activity, Eye, Smile, Stethoscope } from 'lucide-react';
+import { useHmis } from '../../context/HmisContext.tsx';
+import type { Patient } from '../../types/index.ts';
+import { PrimaryButton, SecondaryButton, Tabs } from '../ui/controls.tsx';
+import { AlertBanner, ErrorState } from '../ui/feedback.tsx';
+import { PageHeader, SummaryCard } from '../ui/layout.tsx';
 
-type SpecialtyType = 'Dental' | 'Optical' | 'ENT' | 'Renal';
+type Specialty = 'Dental' | 'Optical' | 'ENT' | 'Renal';
+const specialties: Array<{ id: Specialty; label: string; title: string }> = [
+  { id: 'Dental', label: 'Dental & oral health', title: 'Dental care' },
+  { id: 'Optical', label: 'Ophthalmology & optical', title: 'Ophthalmology and optical care' },
+  { id: 'ENT', label: 'Ear, nose & throat', title: 'Ear, nose and throat care' },
+  { id: 'Renal', label: 'Renal & haemodialysis', title: 'Renal and dialysis care' },
+];
 
+/**
+ * The old dental/optical/ENT forms were local examples: their save buttons only
+ * displayed a toast and never created a note, prescription or charge. Keep the
+ * real patient-record access and specialty navigation, but do not imply those
+ * examples are clinical documentation. The existing outpatient and dialysis
+ * workspaces remain the supported routes to their own persisted workflows.
+ */
 export const SpecialtyModule: React.FC = () => {
   const {
+    currentTenant,
     currentFacility,
-    currentUser,
+    authenticatedUser,
+    setActiveModule,
     setSelectedPatient,
     setIsJourneyModalOpen,
-    showToast,
     refreshKey,
   } = useHmis();
-  const [activeSpecialty, setActiveSpecialty] = useState<SpecialtyType>('Dental');
+  const [activeSpecialty, setActiveSpecialty] = useState<Specialty>('Dental');
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
-
-  // Dental Form State
-  const [dentalForm, setDentalForm] = useState({
-    quadrant: 'Upper Right (Q1)',
-    toothNumber: '16 (First Molar)',
-    condition: 'Dental Caries (Deep)',
-    procedure: 'Composite Restoration + Scaling',
-    anestheticUsed: 'Lidocaine 2% with Adrenaline',
-    costKes: '3500',
-  });
-
-  // Optical Form State
-  const [opticalForm, setOpticalForm] = useState({
-    visualAcuityRight: '6/6',
-    visualAcuityLeft: '6/9',
-    intraocularPressure: '15 mmHg',
-    fundusExam: 'Normal disc, cup-to-disc ratio 0.3, clear macula',
-    prescribedLenses: 'OD: -0.50 DS / OS: -0.75 DS',
-    costKes: '2000',
-  });
+  const [selectedPatientId, setSelectedPatientId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    let active = true;
     async function loadPatients() {
+      if (!currentTenant?.id || !currentFacility?.id) {
+        setPatients([]);
+        setError('Select an authorized facility to load the patient directory.');
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setError('');
       try {
-        const pList = await api.getPatients(undefined, currentFacility?.id);
-        setPatients(pList);
-        if (pList.length > 0 && !selectedPatientId) {
-          setSelectedPatientId(pList[0].id.toString());
-        }
-      } catch (err) {
-        console.error('Failed to load patients for specialty clinic:', err);
+        const list = await api.getPatients(currentTenant.id, currentFacility.id);
+        if (!active) return;
+        setPatients(list);
+        setSelectedPatientId((id) => (list.some((patient) => String(patient.id) === id) ? id : ''));
+      } catch (cause) {
+        if (!active) return;
+        setPatients([]);
+        setSelectedPatientId('');
+        setError(cause instanceof Error ? cause.message : 'Patient directory unavailable.');
+      } finally {
+        if (active) setLoading(false);
       }
     }
-    loadPatients();
-  }, [currentFacility, refreshKey]);
+    void loadPatients();
+    return () => {
+      active = false;
+    };
+  }, [currentTenant?.id, currentFacility?.id, refreshKey, retry]);
 
-  const handleSaveSpecialtyEncounter = () => {
-    const pat = patients.find((p) => p.id.toString() === selectedPatientId);
-    showToast(`Logged ${activeSpecialty} clinical record for ${pat?.firstName} ${pat?.lastName}.`);
-  };
-
-  const currentPatient = patients.find((p) => p.id.toString() === selectedPatientId);
+  const currentPatient = patients.find((patient) => String(patient.id) === selectedPatientId);
+  const canOpen = (module: 'opd' | 'dialysis', permission: string) =>
+    Boolean(
+      currentFacility?.enabledModules?.includes(module) &&
+      !currentFacility?.hiddenModules?.includes(module) &&
+      authenticatedUser?.permissions?.includes(permission),
+    );
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Specialized Clinical Framework
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
-            Clinical documentation suites for Dental, Optical, ENT and Renal Dialysis.
+          <h1 className="ui-page-title">Specialized Clinical Framework</h1>
+          <p className="ui-page-description">
+            Navigate specialty care and the existing patient record without inventing clinical data.
           </p>
         </div>
-
         {currentPatient && (
-          <button
+          <SecondaryButton
             onClick={() => {
               setSelectedPatient(currentPatient);
               setIsJourneyModalOpen(true);
             }}
-            className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
           >
-            Patient Record: {currentPatient.firstName} ({currentPatient.mrn})
-          </button>
+            Patient record: {currentPatient.firstName} ({currentPatient.mrn})
+          </SecondaryButton>
         )}
-      </div>
+      </PageHeader>
 
-      {/* Specialty Tabs */}
-      <div className="bg-white border border-slate-200 rounded-xl p-2 shadow-xs flex flex-wrap items-center gap-2">
-        {[
-          { id: 'Dental', label: 'Dental & Oral Health', icon: Smile },
-          { id: 'Optical', label: 'Ophthalmology & Optical', icon: Eye },
-          { id: 'Renal', label: 'Renal & Haemodialysis', icon: Activity },
-          { id: 'ENT', label: 'Ear, Nose & Throat (ENT)', icon: Stethoscope },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeSpecialty === tab.id;
+      <AlertBanner tone="warning">
+        Specialty-specific notes, prescriptions and charges cannot be saved from this screen. The
+        former example forms did not persist records or create billing charges. Use an authorized
+        clinical workflow; nothing here records that a procedure was performed.
+      </AlertBanner>
 
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSpecialty(tab.id as SpecialtyType)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
-                isActive
-                  ? 'bg-teal-700 text-white font-semibold shadow-xs'
-                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <Tabs
+        label="Specialty care"
+        idPrefix="specialty"
+        value={activeSpecialty}
+        onChange={(value) => setActiveSpecialty(value as Specialty)}
+        items={specialties.map(({ id, label }) => ({ id, label }))}
+      />
 
-      {/* Patient Selector */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <span className="font-semibold text-slate-700 shrink-0">Patient:</span>
-          <select
-            value={selectedPatientId}
-            onChange={(e) => setSelectedPatientId(e.target.value)}
-            className="w-full sm:w-auto px-3 py-1.5 border border-slate-200 rounded-md font-medium"
-          >
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName} (MRN: {p.mrn} · Payer: {p.payerType})
-              </option>
-            ))}
-          </select>
-        </div>
-        <span className="text-2xs text-slate-500 font-mono hidden sm:inline">
-          Specialist Unit Active
-        </span>
-      </div>
+      {error && <ErrorState message={error} onRetry={() => setRetry((value) => value + 1)} />}
+      <SummaryCard>
+        <label className="field-label" htmlFor="specialty-patient">
+          Patient record
+        </label>
+        <select
+          id="specialty-patient"
+          value={selectedPatientId}
+          onChange={(event) => setSelectedPatientId(event.target.value)}
+          className="field-input max-w-xl"
+          disabled={loading || Boolean(error)}
+        >
+          <option value="">{loading ? 'Loading patients…' : 'Select a patient'}</option>
+          {patients.map((patient) => (
+            <option key={patient.id} value={patient.id}>
+              {patient.firstName} {patient.lastName} (MRN: {patient.mrn})
+            </option>
+          ))}
+        </select>
+        <p className="mt-2 text-xs text-muted">
+          Select a patient only to open the existing record. Patient selection does not carry to
+          another workspace; select and verify the patient there again.
+        </p>
+      </SummaryCard>
 
-      {/* DENTAL CLINIC VIEW */}
-      {activeSpecialty === 'Dental' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-5 text-xs">
-          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 uppercase">
-              Dental Examination & Odontogram Chart
-            </h2>
-            <span className="text-2xs text-slate-500">KMPDC Dental Board Standard</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Dental Quadrant</label>
-              <select
-                value={dentalForm.quadrant}
-                onChange={(e) => setDentalForm({ ...dentalForm, quadrant: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              >
-                <option value="Upper Right (Q1)">Upper Right (Q1)</option>
-                <option value="Upper Left (Q2)">Upper Left (Q2)</option>
-                <option value="Lower Left (Q3)">Lower Left (Q3)</option>
-                <option value="Lower Right (Q4)">Lower Right (Q4)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Tooth Notation</label>
-              <input
-                type="text"
-                value={dentalForm.toothNumber}
-                onChange={(e) => setDentalForm({ ...dentalForm, toothNumber: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Dental Condition</label>
-              <input
-                type="text"
-                value={dentalForm.condition}
-                onChange={(e) => setDentalForm({ ...dentalForm, condition: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Procedure Performed</label>
-              <input
-                type="text"
-                value={dentalForm.procedure}
-                onChange={(e) => setDentalForm({ ...dentalForm, procedure: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Local Anaesthesia</label>
-              <input
-                type="text"
-                value={dentalForm.anestheticUsed}
-                onChange={(e) => setDentalForm({ ...dentalForm, anestheticUsed: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Procedure Tariff (KES)
-              </label>
-              <input
-                type="text"
-                value={dentalForm.costKes}
-                onChange={(e) => setDentalForm({ ...dentalForm, costKes: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-semibold"
-              />
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end">
-            <button
-              onClick={handleSaveSpecialtyEncounter}
-              className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
-            >
-              Save Dental Note & Add Billing Charge
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* OPTICAL CLINIC VIEW */}
-      {activeSpecialty === 'Optical' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-5 text-xs">
-          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 uppercase">
-              Ophthalmology & Visual Acuity Assessment
-            </h2>
-            <span className="text-2xs text-slate-500">Snellen Acuity & Slit Lamp Exam</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Visual Acuity Right Eye (OD)
-              </label>
-              <input
-                type="text"
-                value={opticalForm.visualAcuityRight}
-                onChange={(e) =>
-                  setOpticalForm({ ...opticalForm, visualAcuityRight: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Visual Acuity Left Eye (OS)
-              </label>
-              <input
-                type="text"
-                value={opticalForm.visualAcuityLeft}
-                onChange={(e) =>
-                  setOpticalForm({ ...opticalForm, visualAcuityLeft: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Intraocular Pressure (IOP)
-              </label>
-              <input
-                type="text"
-                value={opticalForm.intraocularPressure}
-                onChange={(e) =>
-                  setOpticalForm({ ...opticalForm, intraocularPressure: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Funduscopy & Retinal Examination
-              </label>
-              <input
-                type="text"
-                value={opticalForm.fundusExam}
-                onChange={(e) => setOpticalForm({ ...opticalForm, fundusExam: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Spectacle Prescription
-              </label>
-              <input
-                type="text"
-                value={opticalForm.prescribedLenses}
-                onChange={(e) =>
-                  setOpticalForm({ ...opticalForm, prescribedLenses: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end">
-            <button
-              onClick={handleSaveSpecialtyEncounter}
-              className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
-            >
-              Save Optical Prescription
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* The former renal example used pre-filled settings and a toast-only
-          save. It was not a clinical record or preauthorization. */}
-      {activeSpecialty === 'Renal' && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-xs text-amber-900">
-          <h2 className="font-bold">Renal and dialysis care</h2>
-          <p className="mt-2">
-            The former example form did not save clinical records or send a preauthorization. Do not
-            use it for treatment documentation. Use the dedicated dialysis workflow when it has been
-            enabled and approved for this facility.
-          </p>
-        </div>
-      )}
-
-      {/* ENT VIEW */}
-      {activeSpecialty === 'ENT' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4 text-xs">
-          <div className="border-b border-slate-100 pb-3">
-            <h2 className="text-sm font-bold text-slate-900 uppercase">
-              Ear, Nose & Throat (ENT) Specialist Consultation
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Otoscopy (Right & Left Tympanic Membrane)
-              </label>
-              <input
-                type="text"
-                defaultValue="Right TM intact, pearly grey with normal cone of light. Left TM hyperemic, mild retraction."
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Anterior Rhinoscopy & Turbinates
-              </label>
-              <input
-                type="text"
-                defaultValue="Nasal septum midline. Moderate hypertrophy of inferior turbinates, pale mucosa."
-                className="w-full px-3 py-2 border border-slate-200 rounded-md"
-              />
-            </div>
-          </div>
-          <div className="pt-3 border-t border-slate-100 flex justify-end">
-            <button
-              onClick={handleSaveSpecialtyEncounter}
-              className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
-            >
-              Save ENT Notes
-            </button>
-          </div>
-        </div>
-      )}
+      {specialties.map((specialty) => (
+        <SummaryCard
+          key={specialty.id}
+          role="tabpanel"
+          id={`specialty-panel-${specialty.id}`}
+          aria-labelledby={`specialty-tab-${specialty.id}`}
+          hidden={specialty.id !== activeSpecialty}
+        >
+          {specialty.id === activeSpecialty && (
+            <>
+              <h2 className="text-base font-bold text-ink">{specialty.title}</h2>
+              <p className="mt-2 text-sm text-ink-soft">
+                {activeSpecialty === 'Renal'
+                  ? 'Use the dedicated dialysis workflow only when it is enabled, authorized and clinically approved for this facility.'
+                  : 'Specialty-specific documentation is not implemented here. The existing outpatient workspace can record its supported encounter notes; use facility-approved procedures for specialty care.'}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {activeSpecialty === 'Renal' && canOpen('dialysis', 'dialysis.read') && (
+                  <PrimaryButton onClick={() => setActiveModule('dialysis')}>
+                    Open dialysis
+                  </PrimaryButton>
+                )}
+                {canOpen('opd', 'clinical.read') && (
+                  <SecondaryButton onClick={() => setActiveModule('opd')}>
+                    Open outpatient
+                  </SecondaryButton>
+                )}
+              </div>
+            </>
+          )}
+        </SummaryCard>
+      ))}
     </div>
   );
 };

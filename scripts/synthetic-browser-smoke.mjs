@@ -822,7 +822,7 @@ try {
   console.log('Navigation: Inventory & Batches: PASS');
   phase = 'outpatient';
   await clickText('Outpatient Services', 'aside button');
-  await waitText('OUTPATIENT TRIAGE & CLINICAL CONSULTATION DESK');
+  await waitText('Outpatient Triage & Clinical Consultation Desk');
   await page.waitForFunction(
     () =>
       [...document.querySelectorAll('main button')].some((x) =>

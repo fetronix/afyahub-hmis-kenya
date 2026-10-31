@@ -32,6 +32,7 @@ import { Router } from 'express';
 
 import complianceRoutes from '../compliance/compliance.routes.ts';
 import dashboardRoutes from '../dashboard/dashboard.routes.ts';
+import inboxRoutes from '../notifications/inbox.routes.ts';
 import facilityModuleRoutes from '../config/facility-modules.routes.ts';
 import clinicalRecordsRoutes from '../clinical/clinical-records.routes.ts';
 import staffInvitationRoutes from '../auth/staff-invitation.routes.ts';
@@ -81,6 +82,7 @@ export function createApiRoutes(): Router {
 
   // Dashboard sections enforce their own module and permission boundaries.
   api.use('/dashboard', dashboardRoutes);
+  api.use('/notifications', inboxRoutes);
   api.use('/payment-hub', paymentHubRoutes);
   api.use('/payer-hub', payerHubRoutes);
   api.use('/platform', platformRoutes);
