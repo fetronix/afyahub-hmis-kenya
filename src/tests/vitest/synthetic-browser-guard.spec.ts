@@ -2,7 +2,10 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const script = resolve('scripts/synthetic-browser-smoke.mjs');
+const scripts = [
+  resolve('scripts/synthetic-browser-smoke.mjs'),
+  resolve('scripts/dashboard-browser-synthetic.mjs'),
+];
 const safeEnv = {
   ...process.env,
   BROWSER_SMOKE_SYNTHETIC: 'YES',
@@ -14,20 +17,21 @@ const safeEnv = {
 };
 
 describe('Synthetic browser harness database guard', () => {
-  for (const [description, override] of [
-    ['missing explicit acknowledgement', { BROWSER_SMOKE_SYNTHETIC: '' }],
-    ['remote database host', { SQL_HOST: 'remote.example.test' }],
-    ['non-synthetic database name', { SQL_DB_NAME: 'hospital' }],
-  ] as const) {
-    it(`refuses ${description} before fixture creation`, () => {
-      const result = spawnSync(process.execPath, [script], {
-        env: { ...safeEnv, ...override },
-        encoding: 'utf8',
-        timeout: 10_000,
+  for (const script of scripts)
+    for (const [description, override] of [
+      ['missing explicit acknowledgement', { BROWSER_SMOKE_SYNTHETIC: '' }],
+      ['remote database host', { SQL_HOST: 'remote.example.test' }],
+      ['non-synthetic database name', { SQL_DB_NAME: 'hospital' }],
+    ] as const) {
+      it(`${script.split('/').at(-1)} refuses ${description} before fixture creation`, () => {
+        const result = spawnSync(process.execPath, [script], {
+          env: { ...safeEnv, ...override },
+          encoding: 'utf8',
+          timeout: 10_000,
+        });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('Use BROWSER_SMOKE_SYNTHETIC=YES');
+        expect(result.stdout).not.toContain('Synthetic isolated fixture');
       });
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('Use BROWSER_SMOKE_SYNTHETIC=YES');
-      expect(result.stdout).not.toContain('Synthetic isolated fixture');
-    });
-  }
+    }
 });

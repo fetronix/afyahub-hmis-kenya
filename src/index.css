@@ -485,3 +485,57 @@
     0 8px 18px -4px rgba(14, 66, 134, 0.12),
     inset 0 1px 0 #ffffff;
 }
+
+/* Reference-aligned facility dashboard shell, scoped so clinical modules keep their existing styles. */
+.dashboard-header,
+.dashboard-sidebar,
+.hospital-dashboard {
+  font-family: 'JaliCare Inter', Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.brand-mark {
+  background: linear-gradient(145deg, #0767e9, #044ba9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 5px 14px rgba(0, 45, 120, 0.24);
+}
+.dashboard-sidebar {
+  background-image: linear-gradient(170deg, #122443 0%, #0c1931 100%);
+}
+.dashboard-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(190, 207, 232, 0.25) transparent;
+}
+.metric-card {
+  box-shadow: 0 3px 7px rgba(20, 50, 100, 0.16);
+}
+.metric-blue {
+  background: linear-gradient(125deg, #0867f9 0%, #0349d2 100%);
+}
+.metric-green {
+  background: linear-gradient(125deg, #08b15d 0%, #008146 100%);
+}
+.metric-purple {
+  background: linear-gradient(125deg, #9862f7 0%, #6230ce 100%);
+}
+.metric-orange {
+  background: linear-gradient(125deg, #ff970f 0%, #e66b00 100%);
+}
+.metric-icon {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.dashboard-empty {
+  padding: 2.25rem 0.5rem;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #7588a2;
+}
+@media (max-width: 480px) {
+  .hospital-dashboard .metric-card {
+    min-height: 108px;
+  }
+  .hospital-dashboard .category-chart {
+    justify-content: center;
+  }
+}

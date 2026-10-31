@@ -191,6 +191,10 @@ interface HmisContextType {
 
   setActiveModule: (mod: ModuleId) => void;
 
+  /** Search handoff from the global header to the existing patient directory. */
+  directorySearch: string;
+  setDirectorySearch: (value: string) => void;
+
   /*
   |--------------------------------------------------------------------------
   | Patient Journey
@@ -368,6 +372,7 @@ export const HmisProvider: React.FC<{
   */
 
   const [activeModule, setActiveModule] = useState<ModuleId>('dashboard');
+  const [directorySearch, setDirectorySearch] = useState('');
 
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
@@ -496,6 +501,7 @@ export const HmisProvider: React.FC<{
     setCurrentTenantState(null);
     setFacilities([]);
     setCurrentFacilityState(null);
+    setDirectorySearch('');
   }, []);
 
   /*
@@ -1200,6 +1206,7 @@ export const HmisProvider: React.FC<{
     }
 
     setCurrentFacilityState(facility);
+    setDirectorySearch('');
 
     triggerRefresh();
   };
@@ -1315,6 +1322,8 @@ export const HmisProvider: React.FC<{
         activeModule,
 
         setActiveModule,
+        directorySearch,
+        setDirectorySearch,
 
         /*
         |--------------------------------------------------------------------------

@@ -1,32 +1,12 @@
-import React, { useState } from 'react';
-
+import React, { useEffect, useRef, useState } from 'react';
+import { Bell, ChevronDown, LogOut, Menu, Search, X } from 'lucide-react';
+import { api } from '../api/client.ts';
 import { useHmis, type ModuleId } from '../context/HmisContext.tsx';
+import type { DashboardSearchResult } from '../dashboard/dashboard.types.ts';
 
-import { navSections, superAdminNavSections } from './Sidebar.tsx';
-
-import {
-  ChevronDown,
-  ChevronRight,
-  LogOut,
-  Menu,
-  X,
-  UserCircle,
-  ShieldCheck,
-  LayoutDashboard,
-} from 'lucide-react';
-
-/*
-|--------------------------------------------------------------------------
-| Module Titles
-|--------------------------------------------------------------------------
-|
-| One place that names where the user is. Rendered as the last crumb of
-| the breadcrumb so the rail can stay quiet.
-|
-*/
-
+// Preserve the contextual module titles from the existing shell while keeping the dashboard header compact.
 const moduleTitles: Record<ModuleId, string> = {
-  dashboard: 'Executive & Clinical Overview',
+  dashboard: 'Hospital Dashboard',
   registration: 'Patient Registration & Identity',
   reception: 'Reception, Queue & Appointments',
   opd: 'Outpatient Triage & Consultation',
@@ -54,303 +34,437 @@ const moduleTitles: Record<ModuleId, string> = {
   audit: 'Immutable Security Audit Trail',
 };
 
-/*
- * The group a module belongs to comes from the rail itself, so the two
- * cannot disagree about where "Laboratory" lives.
- */
-const sectionLabel = (id: ModuleId, isSuperAdmin: boolean): string | null => {
-  const sections = isSuperAdmin
-    ? [...superAdminNavSections, ...navSections]
-    : [...navSections, ...superAdminNavSections];
+type HeaderProps = { collapsed: boolean; onToggleCollapse: () => void };
 
-  const match = sections.find((section) => section.items.some((item) => item.id === id));
-
-  if (!match) return null;
-
-  const words = match.title.toLowerCase();
-  return words.charAt(0).toUpperCase() + words.slice(1);
+// Remount scope-sensitive search state immediately when the authenticated user or facility changes.
+export const Header: React.FC<HeaderProps> = (props) => {
+  const { authenticatedUser, currentFacility } = useHmis();
+  return (
+    <HeaderContent
+      key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+      {...props}
+    />
+  );
 };
 
-/*
-|--------------------------------------------------------------------------
-| Header
-|--------------------------------------------------------------------------
-*/
-
-export const Header: React.FC = () => {
+const HeaderContent: React.FC<HeaderProps> = ({ collapsed, onToggleCollapse }) => {
   const {
     authenticatedUser,
     currentUser,
     activeModule,
+    currentFacility,
+    facilities,
+    setCurrentFacility,
+    currentTenant,
+    tenants,
+    setCurrentTenant,
     setActiveModule,
+    setDirectorySearch,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
     logout,
   } = useHmis();
-
-  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [term, setTerm] = useState('');
+  const [focused, setFocused] = useState(false);
+  const [searchState, setSearchState] = useState<{
+    facility: number;
+    term: string;
+    result?: DashboardSearchResult;
+    loading?: boolean;
+    error?: string;
+  } | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const isSuperAdmin = Boolean(authenticatedUser?.isSuperAdmin);
+  const canSearch =
+    !isSuperAdmin &&
+    Boolean(currentFacility) &&
+    Boolean(
+      authenticatedUser?.permissions?.some((p) =>
+        ['patients.read', 'billing.read', 'tariffs.read'].includes(p),
+      ),
+    );
+  const trimmed = term.trim();
+  const facilityId = currentFacility?.id;
+  const visibleState =
+    searchState && searchState.facility === currentFacility?.id && searchState.term === trimmed
+      ? searchState
+      : null;
 
-  /*
-  |--------------------------------------------------------------------------
-  | Authoritative User Identity
-  |--------------------------------------------------------------------------
-  |
-  | The role displayed here is NOT an authorization mechanism. The backend
-  | RBAC decides what a session may do; this is a label for the human.
-  |
-  */
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && canSearch) {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (event.key === 'Escape') {
+        setFocused(false);
+        setProfileOpen(false);
+        setNotificationsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', shortcut);
+    return () => window.removeEventListener('keydown', shortcut);
+  }, [canSearch]);
 
-  const displayName = authenticatedUser?.fullName || currentUser?.name || 'Authenticated User';
+  useEffect(() => {
+    if (!profileOpen && !notificationsOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (profileOpen && !profileRef.current?.contains(target)) setProfileOpen(false);
+      if (notificationsOpen && !notificationsRef.current?.contains(target))
+        setNotificationsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [profileOpen, notificationsOpen]);
 
-  const username = authenticatedUser?.username || '';
-  const email = authenticatedUser?.email || '';
-  const displayRole = currentUser?.role || 'Authenticated User';
-  const department = currentUser?.department || 'JaliCare HMIS';
-  const professionalId = currentUser?.license || '';
+  useEffect(() => {
+    if (!canSearch || !facilityId || trimmed.length < 2 || trimmed.length > 80) return;
+    const controller = new AbortController();
+    const id = facilityId;
+    const timer = window.setTimeout(() => {
+      setSearchState({ facility: id, term: trimmed, loading: true });
+      api
+        .searchDashboard(id, trimmed, controller.signal)
+        .then((result) => {
+          if (!controller.signal.aborted) setSearchState({ facility: id, term: trimmed, result });
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted)
+            setSearchState({
+              facility: id,
+              term: trimmed,
+              error: error instanceof Error ? error.message : 'Search is unavailable.',
+            });
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [canSearch, facilityId, trimmed]);
 
-  const isSuperAdmin = Boolean(
-    authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
-  );
-
-  const group = sectionLabel(activeModule, isSuperAdmin);
-
-  const userInitials =
-    displayName
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((name) => name.charAt(0))
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() || 'JC';
-
-  const handleLogout = async () => {
-    if (loggingOut) {
-      return;
-    }
-
-    setLoggingOut(true);
-
-    try {
-      await logout();
-    } finally {
-      setLoggingOut(false);
-      setUserDropdownOpen(false);
-    }
+  const name = authenticatedUser?.fullName || currentUser?.name || 'Signed-in user';
+  const role =
+    authenticatedUser?.designation ||
+    authenticatedUser?.roles?.join(', ') ||
+    currentUser?.role ||
+    'Staff';
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
+  const closeSearch = () => {
+    setFocused(false);
+    setTerm('');
+    setSearchState(null);
   };
+  const result = visibleState?.result;
 
   return (
-    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-hair bg-surface px-3 sm:px-5">
-      {/* ---------------------------------------------------------------
-          Brand + breadcrumb
-      --------------------------------------------------------------- */}
-
-      <div className="flex min-w-0 items-center gap-2.5 sm:gap-4">
-        <button
-          type="button"
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="-ml-1 rounded-lg p-2 text-ink-soft transition-colors hover:bg-slate-100 hover:text-ink md:hidden"
-          aria-label="Toggle navigation menu"
-        >
-          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-
-        <div className="flex items-center gap-2.5">
-          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-700 text-white shadow-sm">
-            <span className="text-base font-bold leading-none tracking-tight">J</span>
-            <span
-              aria-hidden="true"
-              className="absolute bottom-0 right-0 h-2 w-2 rounded-tl-[4px] bg-ember-500"
-              title="Care Indicator"
-            />
-          </div>
-
-          <div className="flex flex-col leading-none">
-            <span className="flex items-center gap-1.5">
-              <span className="text-[15px] font-bold tracking-tight text-navy-900 whitespace-nowrap">
-                Jali<span className="text-ember-600">Care</span>
-              </span>
-              <span className="hidden rounded bg-navy-50 px-1.5 py-0.5 text-3xs font-bold uppercase leading-none tracking-[0.14em] text-navy-600 sm:inline">
-                HMIS
-              </span>
-            </span>
-            <span className="mt-1 hidden text-3xs font-medium tracking-wide text-muted sm:inline">
-              Healthcare. Empowered.
-            </span>
-          </div>
-        </div>
-
-        <span aria-hidden="true" className="hidden h-8 w-px bg-hair md:block" />
-
-        {/* Breadcrumb: home › department › screen */}
-        <nav
-          aria-label="Breadcrumb"
-          className="hidden min-w-0 items-center gap-1.5 text-xs md:flex"
-        >
-          <button
-            type="button"
-            onClick={() => setActiveModule('dashboard')}
-            className="flex items-center gap-1 rounded px-1 py-0.5 text-muted transition-colors hover:bg-brand-50 hover:text-brand-700"
-            aria-label="Go to overview"
-          >
-            <LayoutDashboard className="h-3.5 w-3.5" />
-          </button>
-
-          {group && (
-            <>
-              <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" />
-              <span className="whitespace-nowrap text-muted">{group}</span>
-            </>
-          )}
-
-          <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" />
-          <span
-            className="truncate font-semibold text-navy-800"
-            aria-current="page"
-            title={moduleTitles[activeModule]}
-          >
-            {moduleTitles[activeModule]}
+    <header className="dashboard-header relative z-30 flex h-[76px] shrink-0 items-center gap-3 border-b border-[#e5eaf2] bg-white px-4 sm:gap-5 sm:px-6">
+      <button
+        type="button"
+        onClick={() =>
+          window.matchMedia('(min-width: 768px)').matches
+            ? onToggleCollapse()
+            : setIsMobileMenuOpen(!isMobileMenuOpen)
+        }
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#172948] transition hover:bg-[#edf2f9]"
+        aria-label={
+          isMobileMenuOpen
+            ? 'Close navigation'
+            : collapsed
+              ? 'Expand navigation'
+              : 'Toggle navigation'
+        }
+      >
+        {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </button>
+      <div className="relative min-w-0 flex-1 max-w-[530px]">
+        <label className="flex h-10 items-center gap-2.5 rounded-[9px] border border-[#e2e7f0] bg-[#f3f6fb] px-3 text-[#627593] focus-within:border-[#96b8f5] focus-within:ring-2 focus-within:ring-[#dbe9ff]">
+          <Search className="h-[17px] w-[17px] shrink-0" />
+          <input
+            ref={searchRef}
+            value={term}
+            onChange={(event) => {
+              setTerm(event.target.value);
+              setFocused(true);
+            }}
+            onFocus={() => setFocused(true)}
+            placeholder={
+              canSearch
+                ? 'Search patients, invoices, or services...'
+                : 'Search unavailable for this account'
+            }
+            aria-label="Search patients, invoices, or services"
+            maxLength={80}
+            disabled={!canSearch}
+            className="w-full min-w-0 bg-transparent text-[13px] text-[#1b2c47] outline-none placeholder:text-[#6e809b] disabled:cursor-not-allowed"
+          />
+          <span className="hidden whitespace-nowrap text-[11px] text-[#8290a5] lg:block">
+            Ctrl + K
           </span>
-        </nav>
+          {term && (
+            <button
+              type="button"
+              onClick={closeSearch}
+              aria-label="Clear search"
+              className="rounded p-1 hover:bg-[#e3eaf5]"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </label>
+        {focused && trimmed.length >= 2 && (
+          <div
+            className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[60vh] overflow-y-auto rounded-xl border border-[#dfe6f0] bg-white p-2 shadow-[0_16px_40px_rgba(13,33,68,.16)]"
+            role="region"
+            aria-label="Search results"
+          >
+            {visibleState?.loading || !visibleState ? (
+              <p className="p-3 text-xs text-[#6b7b95]">Searching authorized records…</p>
+            ) : visibleState.error ? (
+              <p role="alert" className="p-3 text-xs text-rose-700">
+                {visibleState.error}
+              </p>
+            ) : result ? (
+              <>
+                {result.patients.length > 0 && (
+                  <div>
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#8a99af]">
+                      Patients
+                    </p>
+                    {result.patients.map((patient) => (
+                      <button
+                        key={patient.id}
+                        type="button"
+                        onClick={() => {
+                          setDirectorySearch(patient.mrn);
+                          setActiveModule('registration');
+                          closeSearch();
+                        }}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs hover:bg-[#f1f6ff]"
+                      >
+                        <span className="font-semibold text-[#142744]">{patient.name}</span>
+                        <span className="text-[#71829a]">{patient.mrn} · Open directory</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {result.invoices.length > 0 && (
+                  <div>
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#8a99af]">
+                      Invoices
+                    </p>
+                    {result.invoices.map((invoice) => (
+                      <div
+                        key={invoice.id}
+                        className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs"
+                      >
+                        <span>
+                          <strong className="text-[#142744]">{invoice.number}</strong>{' '}
+                          <span className="text-[#71829a]">
+                            · {invoice.status || 'Status unavailable'}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveModule('finance');
+                            closeSearch();
+                          }}
+                          className="font-semibold text-[#075cf1] hover:underline"
+                        >
+                          Open billing
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {result.services.length > 0 && (
+                  <div>
+                    <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#8a99af]">
+                      Configured services
+                    </p>
+                    {result.services.map((service) => (
+                      <div key={service.id} className="px-3 py-2 text-xs">
+                        <strong className="text-[#142744]">{service.description}</strong>
+                        <span className="ml-2 text-[#71829a]">{service.code}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {result.patients.length + result.invoices.length + result.services.length === 0 && (
+                  <p className="p-3 text-xs text-[#6b7b95]">
+                    No matches in the record types available to your account.
+                  </p>
+                )}
+                {Object.values(result.available).some((available) => !available) && (
+                  <p className="border-t border-[#edf0f5] px-3 pt-2 text-[10px] text-[#8795a9]">
+                    Some record types are unavailable to this account or facility.
+                  </p>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
       </div>
-
-      {/* ---------------------------------------------------------------
-          Interoperability marker + user menu
-      --------------------------------------------------------------- */}
-
-      <div className="flex items-center gap-1.5 sm:gap-3">
-        <div
-          className="hidden items-center gap-1.5 rounded-full border border-hair bg-canvas py-1 pl-2 pr-2.5 lg:flex"
-          title="DHA onboarding, validation and regulatory approval are not established by this label."
+      {activeModule && activeModule !== 'dashboard' && (
+        <p
+          className="hidden max-w-[220px] truncate text-xs font-medium text-[#60728e] xl:block"
+          title={moduleTitles[activeModule]}
         >
-          <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
-          <span className="text-2xs font-semibold text-ink-soft">DHA review</span>
-          <span className="text-2xs text-slate-300">·</span>
-          <span className="font-mono text-2xs text-muted">FHIR R4</span>
-        </div>
-
-        <div className="relative">
+          {moduleTitles[activeModule]}
+        </p>
+      )}
+      <span className="sr-only" aria-live="polite">
+        {activeModule ? moduleTitles[activeModule] : ''}
+      </span>
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-3">
+        <div className="relative" ref={notificationsRef}>
           <button
             type="button"
-            onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-            className="flex items-center gap-2 rounded-lg border border-hair bg-surface py-1 pl-1 pr-2.5 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/40 sm:pr-3"
-            aria-haspopup="menu"
-            aria-expanded={userDropdownOpen}
+            onClick={() => {
+              setNotificationsOpen(!notificationsOpen);
+              setProfileOpen(false);
+            }}
+            aria-label="Notifications"
+            aria-expanded={notificationsOpen}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#183053] hover:bg-[#f2f5fa]"
           >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-navy-800 text-2xs font-semibold text-white">
-              {userInitials}
-            </span>
-
-            <span className="hidden min-w-0 flex-col sm:flex">
-              <span className="max-w-28 truncate text-xs font-semibold leading-tight text-navy-900 sm:max-w-32">
-                {displayName}
-              </span>
-              <span className="max-w-28 truncate text-2xs font-medium leading-tight text-brand-700 sm:max-w-32">
-                {displayRole}
-              </span>
-            </span>
-
-            <ChevronDown
-              className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${
-                userDropdownOpen ? 'rotate-180' : ''
-              }`}
-            />
+            <Bell className="h-[19px] w-[19px]" />
           </button>
-
-          {userDropdownOpen && (
-            <>
-              {/* Click-away layer: the menu must not trap the page. */}
-              <div
-                className="fixed inset-0 z-40"
-                aria-hidden="true"
-                onClick={() => setUserDropdownOpen(false)}
-              />
-
-              <div
-                className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-hair bg-surface py-1.5 text-xs shadow-lift animate-in fade-in zoom-in-95 duration-100"
-                role="menu"
-              >
-                <div className="border-b border-hair px-3 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-navy-800 text-sm font-semibold text-white">
-                      {userInitials}
-                    </span>
-
-                    <div className="min-w-0">
-                      <div className="truncate font-semibold text-navy-900">{displayName}</div>
-
-                      {username && (
-                        <div className="mt-0.5 truncate text-2xs text-muted">@{username}</div>
-                      )}
-
-                      <div className="mt-0.5 text-2xs font-semibold text-brand-700">
-                        {displayRole}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5 px-3 py-3">
-                  <div>
-                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
-                      Email
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-ink-soft">
-                      {email || 'No email available'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
-                      Work area
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-soft">
-                      <UserCircle className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{department}</span>
-                    </div>
-                  </div>
-
-                  {professionalId && (
-                    <div>
-                      <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
-                        Professional ID
-                      </div>
-                      <div className="mt-0.5 font-mono text-xs text-ink-soft">{professionalId}</div>
-                    </div>
-                  )}
-
-                  {authenticatedUser && (
-                    <div>
-                      <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted">
-                        Account status
-                      </div>
-                      <div className="mt-0.5 text-xs text-ink-soft">
-                        {authenticatedUser.accountStatus}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-1 border-t border-hair pt-1">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      void handleLogout();
+          {notificationsOpen && (
+            <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-[#e0e7f0] bg-white p-4 shadow-xl">
+              <p className="text-sm font-bold text-[#132644]">Notifications</p>
+              <p className="mt-2 text-xs leading-relaxed text-[#71819a]">
+                A persistent notification inbox is not configured. No unread count is available.
+              </p>
+            </div>
+          )}
+        </div>
+        <span className="hidden h-8 w-px bg-[#e9edf3] sm:block" />
+        <div className="relative" ref={profileRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setProfileOpen(!profileOpen);
+              setNotificationsOpen(false);
+            }}
+            aria-haspopup="menu"
+            aria-expanded={profileOpen}
+            className="flex items-center gap-2 rounded-lg p-1 text-left hover:bg-[#f5f7fb]"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#dce9fd] text-xs font-bold text-[#1750a3]">
+              {initials}
+            </span>
+            <span className="hidden min-w-0 sm:block">
+              <span className="block max-w-[150px] truncate text-[12px] font-semibold text-[#132644]">
+                {name}
+              </span>
+              <span className="block max-w-[150px] truncate text-[11px] text-[#72829a]">
+                {role}
+              </span>
+            </span>
+            <ChevronDown className="hidden h-3.5 w-3.5 text-[#8190a5] sm:block" />
+          </button>
+          {profileOpen && (
+            <div
+              className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-[#e0e7f0] bg-white p-4 shadow-xl"
+              role="menu"
+            >
+              <p className="text-sm font-bold text-[#132644]">{name}</p>
+              {authenticatedUser?.username && (
+                <p className="mt-1 text-xs text-[#73839c]">@{authenticatedUser.username}</p>
+              )}
+              <p className="mt-1 break-all text-xs text-[#73839c]">
+                {authenticatedUser?.email || 'Email unavailable'}
+              </p>
+              <p className="mt-1 text-xs text-[#73839c]">{role}</p>
+              {currentUser?.department && (
+                <p className="mt-1 text-xs text-[#73839c]">Work area: {currentUser.department}</p>
+              )}
+              {currentUser?.license && (
+                <p className="mt-1 text-xs text-[#73839c]">
+                  Professional ID: {currentUser.license}
+                </p>
+              )}
+              {authenticatedUser?.accountStatus && (
+                <p className="mt-1 text-xs text-[#73839c]">
+                  Account: {authenticatedUser.accountStatus}
+                </p>
+              )}
+              {tenants.length > 1 && (
+                <label className="mt-4 block text-[11px] font-semibold text-[#546882]">
+                  Organization
+                  <select
+                    aria-label="Organization"
+                    value={currentTenant?.id ?? ''}
+                    onChange={(event) => {
+                      const tenant = tenants.find((item) => item.id === Number(event.target.value));
+                      if (tenant) void setCurrentTenant(tenant);
                     }}
-                    disabled={loggingOut}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-1 block w-full rounded-lg border border-[#dce4ef] bg-white px-2 py-2 text-xs"
                   >
-                    <LogOut className="h-4 w-4" />
-
-                    <span className="font-semibold">
-                      {loggingOut ? 'Signing out...' : 'Sign out'}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </>
+                    {tenants.map((tenant) => (
+                      <option value={tenant.id} key={tenant.id}>
+                        {tenant.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {facilities.length > 1 && (
+                <label className="mt-3 block text-[11px] font-semibold text-[#546882]">
+                  Facility
+                  <select
+                    aria-label="Facility"
+                    value={currentFacility?.id ?? ''}
+                    onChange={(event) => {
+                      const facility = facilities.find(
+                        (item) => item.id === Number(event.target.value),
+                      );
+                      if (facility) setCurrentFacility(facility);
+                    }}
+                    className="mt-1 block w-full rounded-lg border border-[#dce4ef] bg-white px-2 py-2 text-xs"
+                  >
+                    {facilities.map((facility) => (
+                      <option value={facility.id} key={facility.id}>
+                        {facility.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {currentFacility && facilities.length <= 1 && (
+                <p className="mt-3 text-xs text-[#73839c]">{currentFacility.name}</p>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={loggingOut}
+                onClick={() => {
+                  setLoggingOut(true);
+                  void logout().finally(() => {
+                    setLoggingOut(false);
+                    setProfileOpen(false);
+                  });
+                }}
+                className="mt-4 flex w-full items-center gap-2 border-t border-[#edf0f5] pt-3 text-left text-xs font-semibold text-rose-700 hover:text-rose-900 disabled:opacity-50"
+              >
+                <LogOut className="h-4 w-4" />
+                {loggingOut ? 'Signing out…' : 'Sign out'}
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -6,6 +6,7 @@ import {
   authClient,
   billingClient,
   clearSessionToken,
+  dashboardClient,
   diagnosticsPharmacyClient,
   getSessionToken,
   hasSessionToken,
@@ -61,6 +62,7 @@ describe('Domain API clients and backward-compatible src/api/client.ts facade', 
   it('re-exports every domain client method on `api` without method name collisions', () => {
     const domainClients = [
       authClient,
+      dashboardClient,
       platformClient,
       patientsClinicalClient,
       maternityClient,

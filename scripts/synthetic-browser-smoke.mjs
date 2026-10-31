@@ -303,7 +303,7 @@ try {
   );
   check(
     await page.evaluate(() =>
-      document.querySelector('aside')?.innerText.includes('Synthetic Browser Facility'),
+      document.querySelector('main')?.innerText.includes('Synthetic Browser Facility'),
     ),
     'Facility context not displayed',
   );
@@ -443,7 +443,7 @@ try {
   );
   console.log('Real-browser reload and recorded-result recovery without duplicate: PASS');
   phase = 'registration';
-  await clickText('Patient Directory', 'aside button');
+  await clickText('Patient Management', 'aside button');
   await waitText('Patient Identification & Registration');
   await clickText('New Patient Registration');
   await page.type('input[placeholder="e.g. Juma"]', 'Synthetic');
@@ -521,7 +521,7 @@ try {
   console.log('Laboratory specimen collection, result entry and verification: PASS');
 
   phase = 'billing and lost refund response';
-  await clickText('Billing & Cashier POS', 'aside button');
+  await clickText('Billing & Invoicing', 'aside button');
   await waitText('Patient Billing, Cashier POS & Receipts');
   await waitText(`RCP-BROWSER-${suffix}`);
   await clickText('Record manual refund');
@@ -619,11 +619,11 @@ try {
   phase = 'refund reload';
   await page.reload({ waitUntil: 'networkidle2' });
   await page.waitForFunction(
-    () => document.querySelector('aside')?.innerText.includes('Billing & Cashier POS'),
+    () => document.querySelector('aside')?.innerText.includes('Billing & Invoicing'),
     { timeout: 18000 },
   );
   phase = 'refund recovery page';
-  await clickText('Billing & Cashier POS', 'aside button');
+  await clickText('Billing & Invoicing', 'aside button');
   await waitText('Unconfirmed refund needs review');
   console.log('Refund pending displayed after reload');
   phase = 'refund recovery status';
@@ -686,7 +686,7 @@ try {
   );
   await clickText('Inventory & Batches', 'aside button');
   await waitText('Hospital Inventory, Batches & Stores');
-  await clickText('Billing & Cashier POS', 'aside button');
+  await clickText('Billing & Invoicing', 'aside button');
   await waitText(`INV-SPLIT-${suffix}`);
   await page.evaluate(
     (number) =>
@@ -794,10 +794,10 @@ try {
   );
   await page.reload({ waitUntil: 'networkidle2' });
   await page.waitForFunction(
-    () => document.querySelector('aside')?.innerText.includes('Billing & Cashier POS'),
+    () => document.querySelector('aside')?.innerText.includes('Billing & Invoicing'),
     { timeout: 18000 },
   );
-  await clickText('Billing & Cashier POS', 'aside button');
+  await clickText('Billing & Invoicing', 'aside button');
   await waitText('Unconfirmed receipt request');
   await clickText('Check receipt status');
   await page.waitForFunction(
@@ -821,7 +821,7 @@ try {
   await waitText('Hospital Inventory, Batches & Stores');
   console.log('Navigation: Inventory & Batches: PASS');
   phase = 'outpatient';
-  await clickText('Outpatient & Triage', 'aside button');
+  await clickText('Outpatient Services', 'aside button');
   await waitText('OUTPATIENT TRIAGE & CLINICAL CONSULTATION DESK');
   await page.waitForFunction(
     () =>
@@ -855,7 +855,7 @@ try {
   check(observations === 1, 'OPD observation was not persisted');
   console.log('Outpatient patient selection and measured observation persistence: PASS');
   phase = 'inpatient';
-  await clickText('Inpatient & Wards', 'aside button');
+  await clickText('Inpatient Management', 'aside button');
   await waitText('Inpatient Care, Wards & Bed Board');
   await waitText('Synthetic browser ward');
   await clickText('Admit Patient to Ward');
