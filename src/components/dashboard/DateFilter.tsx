@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown } from 'lucide-react';
 import {
   rangeForPreset,
@@ -28,9 +28,29 @@ const presets: Array<{ id: Exclude<DatePreset, 'custom'>; label: string }> = [
 export const DateFilter: React.FC<{
   value: DashboardRange;
   preset: DatePreset;
+  today?: string;
   onChange: (range: DashboardRange, preset: DatePreset) => void;
-}> = ({ value, preset, onChange }) => {
+}> = ({ value, preset, today, onChange }) => {
   const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        root.current?.querySelector('button')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', outside);
+    window.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [open]);
   const [start, setStart] = useState(value.start);
   const [end, setEnd] = useState(value.end);
   const [error, setError] = useState('');
@@ -41,7 +61,7 @@ export const DateFilter: React.FC<{
     setOpen(!open);
   };
   return (
-    <div className="relative shrink-0">
+    <div ref={root} className="relative shrink-0">
       <button
         type="button"
         onClick={openMenu}
@@ -66,7 +86,7 @@ export const DateFilter: React.FC<{
                 type="button"
                 key={item.id}
                 onClick={() => {
-                  onChange(rangeForPreset(item.id), item.id);
+                  onChange(rangeForPreset(item.id, today), item.id);
                   setOpen(false);
                 }}
                 className={`rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-[#edf4ff] ${preset === item.id ? 'bg-[#edf4ff] text-[#075cf1]' : 'text-[#344760]'}`}
@@ -125,3 +145,6 @@ export const DateFilter: React.FC<{
     </div>
   );
 };
+
+/** Shared name for the existing validated, facility-date-aware range control. */
+export const DateRangePicker = DateFilter;

@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FileCheck, Lock, Plus, RefreshCw, Send } from 'lucide-react';
 import type { Patient } from '../../../types/index.ts';
@@ -433,7 +434,7 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
           )}
 
           <div className="overflow-x-auto">
-            <table className="table-quiet w-full text-xs text-left">
+            <DataTable className="table-quiet w-full text-xs text-left">
               <thead>
                 <tr>
                   <th>Preauth #</th>
@@ -521,7 +522,7 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
 

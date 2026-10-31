@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 /**
  * JaliCare HMIS
  * Patient portal management — facility administration
@@ -478,7 +479,7 @@ function AccountsTab() {
           </p>
         ) : (
           <div className="overflow-x-auto px-4 pb-4">
-            <table className="table-quiet w-full min-w-[720px]">
+            <DataTable className="table-quiet w-full min-w-[720px]">
               <thead>
                 <tr>
                   <th>Patient</th>
@@ -513,7 +514,7 @@ function AccountsTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </section>
@@ -1124,7 +1125,7 @@ function AuditTab() {
           </p>
         ) : (
           <div className="overflow-x-auto px-4 pb-4">
-            <table className="table-quiet w-full min-w-[720px]">
+            <DataTable className="table-quiet w-full min-w-[720px]">
               <thead>
                 <tr>
                   <th>When</th>
@@ -1150,7 +1151,7 @@ function AuditTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </section>
@@ -1291,11 +1292,11 @@ export const PatientPortalModule: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+      <PageHeader>
         <div>
           <p className="eyebrow">Patient portal</p>
-          <h1 className="display-title mt-1">Patient Portal Management</h1>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ink-soft">
+          <h1 className="ui-page-title">Patient Portal Management</h1>
+          <p className="ui-page-description">
             Invitations, accounts, settings and oversight for the patient-facing record portal.
             Patients are invited from the reception screen; this section manages the programme.
           </p>
@@ -1305,7 +1306,7 @@ export const PatientPortalModule: React.FC = () => {
           <ShieldCheck className="h-4 w-4" />
           Staff-only surface
         </div>
-      </header>
+      </PageHeader>
 
       <nav className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-surface p-1">
         {TABS.map((entry) => {

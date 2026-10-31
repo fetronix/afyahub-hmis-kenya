@@ -34,7 +34,29 @@ export interface DashboardOverview {
   }>;
   admissions: DashboardPanel<{ current: number; previous: number }>;
   flow: DashboardPanel<Array<DashboardRange & { registered: number; returning: number }>>;
-  activity: DashboardPanel<Array<{ id: number; action: string; resource: string; at: string }>>;
+  activity: DashboardPanel<
+    Array<{
+      id: number;
+      action: string;
+      resource: string;
+      module: string | null;
+      reference: string | null;
+      actor: string | null;
+      at: string;
+    }>
+  >;
+  operations: {
+    queues: DashboardPanel<{ active: number }>;
+    beds: DashboardPanel<{ occupied: number; total: number }>;
+    theatre: DashboardPanel<{
+      scheduled: number;
+      samples: Array<{ id: number; procedure: string; start: string }>;
+    }>;
+    laboratory: DashboardPanel<{
+      pending: number;
+      samples: Array<{ id: number; test: string; status: string | null }>;
+    }>;
+  };
   appointments: DashboardPanel<
     Array<{
       id: number;

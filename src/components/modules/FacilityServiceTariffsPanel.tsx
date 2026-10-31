@@ -1,4 +1,5 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import { DataTable } from '../ui/layout.tsx';
+import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.ts';
 import { TariffValidationPanel } from './TariffValidationPanel.tsx';
 import type {
@@ -967,7 +968,7 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
 
           {diagnostics && diagnostics.tests.length > 0 && (
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <DataTable className="w-full text-left text-xs">
                 <thead className="text-slate-500">
                   <tr>
                     <th className="py-1 pr-3 font-medium">Test</th>
@@ -1021,7 +1022,7 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )}
         </section>
@@ -1455,7 +1456,7 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <DataTable className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 <th className="px-3 py-3 font-semibold">Code / Service</th>
@@ -1524,7 +1525,7 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </section>

@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useHmis } from '../../context/HmisContext.tsx';
@@ -246,12 +247,10 @@ export const ReportsModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="rounded-card border border-hair bg-surface p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Reports &amp; Analytics
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Reports &amp; Analytics</h1>
+          <p className="ui-page-description">
             {currentFacility.name}
             <span className="mx-1.5 text-slate-300">·</span>
             <span className="font-mono">{currentFacility.mflCode || 'No MFL'}</span>
@@ -288,7 +287,7 @@ export const ReportsModule: React.FC = () => {
             Refresh
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       {error && (
         <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
@@ -594,7 +593,7 @@ export const ReportsModule: React.FC = () => {
                 <EmptyRow>No wards configured for this facility.</EmptyRow>
               ) : (
                 <div className="overflow-x-auto -mx-5 px-5">
-                  <table className="w-full text-xs text-left">
+                  <DataTable className="w-full text-xs text-left">
                     <thead className="text-2xs text-slate-500 uppercase tracking-wider">
                       <tr>
                         <th className="py-2 font-medium">Ward</th>
@@ -645,7 +644,7 @@ export const ReportsModule: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               )}
             </SectionCard>
@@ -781,7 +780,7 @@ export const ReportsModule: React.FC = () => {
                 <EmptyRow>No patients are currently admitted.</EmptyRow>
               ) : (
                 <div className="overflow-x-auto -mx-5 px-5">
-                  <table className="w-full text-xs text-left">
+                  <DataTable className="w-full text-xs text-left">
                     <thead className="text-2xs text-slate-500 uppercase tracking-wider">
                       <tr>
                         <th className="py-2 font-medium">Patient</th>
@@ -817,7 +816,7 @@ export const ReportsModule: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               )}
             </SectionCard>

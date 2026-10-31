@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
@@ -284,12 +285,10 @@ export const PharmacyModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Outpatient Pharmacy & Drug Dispensing POS
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Outpatient Pharmacy & Drug Dispensing POS</h1>
+          <p className="ui-page-description">
             Prescription verification, batch & expiry control, real-time stock deduction, and
             patient dosage instructions.
           </p>
@@ -311,7 +310,7 @@ export const PharmacyModule: React.FC = () => {
             </button>
           ))}
         </div>
-      </div>
+      </PageHeader>
 
       {(pendingDispense || storageError) && (
         <div
@@ -392,7 +391,7 @@ export const PharmacyModule: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <DataTable className="w-full text-xs text-left">
               <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Patient Full Name</th>
@@ -481,7 +480,7 @@ export const PharmacyModule: React.FC = () => {
                   })
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </div>

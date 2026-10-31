@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, getSessionToken } from '../../api/client.ts';
 import type { Tenant, Facility } from '../../types/index.ts';
@@ -120,6 +121,7 @@ export const PlatformAdministrationModule: React.FC = () => {
     email: '',
     phone: '',
     address: '',
+    timezone: '',
   });
   const [enabledModuleSelection, setEnabledModuleSelection] = useState<string[]>([
     ...DEFAULT_FACILITY_MODULES,
@@ -324,6 +326,7 @@ export const PlatformAdministrationModule: React.FC = () => {
         email: '',
         phone: '',
         address: '',
+        timezone: '',
       });
       return;
     }
@@ -338,6 +341,7 @@ export const PlatformAdministrationModule: React.FC = () => {
       email: selectedFacility.email ?? '',
       phone: selectedFacility.phone ?? '',
       address: selectedFacility.address ?? '',
+      timezone: selectedFacility.timezone ?? '',
     });
   }, [selectedFacility]);
 
@@ -380,6 +384,7 @@ export const PlatformAdministrationModule: React.FC = () => {
           email: editFacilityForm.email.trim() || null,
           phone: editFacilityForm.phone.trim() || null,
           address: editFacilityForm.address.trim() || null,
+          timezone: editFacilityForm.timezone.trim() || null,
         },
         'PATCH',
       );
@@ -443,15 +448,13 @@ export const PlatformAdministrationModule: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <header className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+      <PageHeader>
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-blue-700">
             Platform controls
           </p>
-          <h1 className="mt-1 text-xl font-bold text-slate-900">
-            Tenant & Facility Administration
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="ui-page-title">Tenant & Facility Administration</h1>
+          <p className="ui-page-description">
             Register organizations, onboard facilities, and invite facility administrators.
           </p>
         </div>
@@ -463,7 +466,7 @@ export const PlatformAdministrationModule: React.FC = () => {
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
-      </header>
+      </PageHeader>
 
       {error && (
         <div
@@ -975,6 +978,25 @@ export const PlatformAdministrationModule: React.FC = () => {
                   </div>
                 </div>
 
+                <div>
+                  <label className={labelClass} htmlFor="facility-timezone">
+                    Facility timezone (IANA)
+                  </label>
+                  <input
+                    id="facility-timezone"
+                    className={fieldClass}
+                    maxLength={100}
+                    placeholder="Inherit tenant timezone"
+                    value={editFacilityForm.timezone}
+                    onChange={(e) =>
+                      setEditFacilityForm({ ...editFacilityForm, timezone: e.target.value })
+                    }
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Leave blank to inherit the tenant timezone. For example, Africa/Nairobi.
+                  </p>
+                </div>
+
                 <p className="text-xs text-slate-500">
                   Facility ID: {selectedFacility.id} · Tenant ID: {selectedFacility.tenantId}
                 </p>
@@ -1214,7 +1236,7 @@ export const PlatformAdministrationModule: React.FC = () => {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <DataTable className="min-w-full divide-y divide-slate-200 text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Recipient</th>
@@ -1284,7 +1306,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </div>

@@ -8,7 +8,8 @@
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import * as queries from '../db/queries.ts';
-import { respondInternalError } from './shared/errors.ts';
+import { handleScopeError, respondInternalError } from './shared/errors.ts';
+import { resolveFacilityScope } from '../auth/scope.service.ts';
 import { requireAuthContext } from './shared/request.ts';
 import { Router, type Response } from 'express';
 import {
@@ -23,19 +24,40 @@ const router = Router();
 // QUEUES
 // =========================================================
 
-router.get('/api/queues', requirePermission('appointments.read'), async (req, res) => {
-  try {
-    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : undefined;
-
-    const queueType = req.query.queueType as string;
-
-    const list = await queries.getQueues(facilityId, queueType);
-
-    res.json(list);
-  } catch (err: any) {
-    respondInternalError(res, err, 'GET /api/queues');
-  }
-});
+router.get(
+  '/api/queues',
+  requirePermission('appointments.read'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext) return res.status(401).json({ error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const raw = req.query.facilityId;
+      if (
+        raw !== undefined &&
+        (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+      )
+        return res.status(400).json({
+          error: 'INVALID_FACILITY_ID',
+          message: 'facilityId must be a positive integer.',
+        });
+      const facilityId = resolveFacilityScope(
+        req.authContext,
+        raw === undefined ? undefined : Number(raw),
+      );
+      const facility = await queries.getFacilityByIdScoped(req.authContext, facilityId);
+      if (!facility) return res.status(404).json({ error: 'FACILITY_NOT_FOUND' });
+      const queueType = typeof req.query.queueType === 'string' ? req.query.queueType : undefined;
+      const active = req.query.active;
+      if (active !== undefined && active !== 'true' && active !== 'false')
+        return res
+          .status(400)
+          .json({ error: 'INVALID_QUEUE_FILTER', message: 'active must be true or false.' });
+      return res.json(await queries.getQueues(facility.id, queueType, active === 'true'));
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      return respondInternalError(res, err, 'GET /api/queues');
+    }
+  },
+);
 
 router.post(
   '/api/queues',

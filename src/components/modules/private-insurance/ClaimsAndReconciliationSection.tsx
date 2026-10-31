@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useMemo, useState } from 'react';
 import {
   Activity,
@@ -764,7 +765,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
             )}
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <DataTable className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2">Line</th>
@@ -791,7 +792,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
         )}
@@ -820,7 +821,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
 
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <DataTable className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Claim #</th>
@@ -906,7 +907,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
 
@@ -972,7 +973,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <table className="w-full text-left text-xs">
+          <DataTable className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-3">Claim #</th>
@@ -1020,7 +1021,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
 
         {selectedClaim && (
@@ -1344,7 +1345,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
           <div className="px-5 py-3 border-b border-slate-200 font-bold text-sm">
             Remittance Batches ({remittances.length})
           </div>
-          <table className="w-full text-left text-xs">
+          <DataTable className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2.5">Batch #</th>
@@ -1369,7 +1370,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
     );
@@ -1396,7 +1397,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
           Adapter Diagnostics Log ({diagnostics?.diagnostics.length ?? 0})
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <DataTable className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2.5">Time</th>
@@ -1432,7 +1433,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 
@@ -1441,7 +1442,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
           Immutable Private Insurance Audit Events ({diagnostics?.auditEvents.length ?? 0})
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <DataTable className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-2.5">Timestamp</th>
@@ -1466,7 +1467,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
     </div>

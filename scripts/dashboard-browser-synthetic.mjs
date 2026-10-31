@@ -102,10 +102,20 @@ try {
     'audit',
     'configuration',
   ];
+  if (process.env.ENTERPRISE_UI_SMOKE === 'YES') {
+    modules.push('accounting', 'dialysis', 'patient_portal');
+  }
   const facility = (
     await pool.query(
-      'INSERT INTO facilities(tenant_id,code,name,enabled_modules) VALUES($1,$2,$3,$4::jsonb) RETURNING id',
-      [tenant, `SYN-DASH-${suffix}`, 'Synthetic Hospital — Test Facility', JSON.stringify(modules)],
+      'INSERT INTO facilities(tenant_id,code,name,enabled_modules,mfl_code,timezone) VALUES($1,$2,$3,$4::jsonb,$5,$6) RETURNING id',
+      [
+        tenant,
+        `SYN-DASH-${suffix}`,
+        'Synthetic Hospital — Test Facility',
+        JSON.stringify(modules),
+        `SYN-${suffix}`,
+        'Africa/Nairobi',
+      ],
     )
   ).rows[0].id;
   const hash = await argon2.hash(password, {
@@ -132,6 +142,7 @@ try {
     'appointments.read',
     'clinical.read',
     'inpatient.read',
+    'theatre.read',
     'maternity.read',
     'laboratory.read',
     'pharmacy.read',
@@ -144,6 +155,21 @@ try {
     'audit.read',
     'users.invite',
   ];
+  if (process.env.ENTERPRISE_UI_SMOKE === 'YES') {
+    permissions.push(
+      'dialysis.read',
+      'accounting.read',
+      'payment_hub.transactions.read',
+      'insurance.sha.read',
+      'insurance.sha.claims.read',
+      'insurance.payers.read',
+      'insurance.members.read',
+      'portal.accounts.manage',
+      'system.settings.manage',
+      'facilities.update',
+      'audit.security.read',
+    );
+  }
   for (const code of permissions) {
     await pool.query(
       "INSERT INTO permissions(code,name,module) VALUES($1,$1,'synthetic') ON CONFLICT(code) DO NOTHING",
@@ -177,6 +203,12 @@ try {
         [tenant, facility, id, `${encounterDay} 10:00`],
       );
   }
+  if (process.env.ENTERPRISE_UI_SMOKE === 'YES') {
+    await pool.query(
+      "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,modality,procedure_name,clinical_indication,ordered_by) VALUES($1,$2,$3,'X-Ray','Synthetic imaging request','Synthetic clinical reason','Synthetic Clinician')",
+      [tenant, facility, patientIds[0]],
+    );
+  }
   const ward = (
     await pool.query(
       "INSERT INTO wards(facility_id,name,code) VALUES($1,'Synthetic Ward',$2) RETURNING id",
@@ -185,10 +217,10 @@ try {
   ).rows[0].id;
   for (let i = 0; i < 5; i++) {
     const bed = (
-      await pool.query('INSERT INTO beds(ward_id,bed_number) VALUES($1,$2) RETURNING id', [
-        ward,
-        `S-${i}`,
-      ])
+      await pool.query(
+        "INSERT INTO beds(ward_id,bed_number,status,current_patient_id) VALUES($1,$2,'Occupied',$3) RETURNING id",
+        [ward, `S-${i}`, patientIds[i]],
+      )
     ).rows[0].id;
     const when = `${dateInMonth(1 + i * 5)} 11:00`;
     await pool.query(
@@ -268,8 +300,27 @@ try {
       [tenant, facility, patientIds[i + 15], `${today} 23:${String(10 + i * 10).padStart(2, '0')}`],
     );
   await pool.query(
+    "INSERT INTO queues(tenant_id,facility_id,patient_id,queue_type,token_number,status) VALUES($1,$2,$3,'Triage','SYN-TRG-1','Waiting')",
+    [tenant, facility, patientIds[15]],
+  );
+  await pool.query(
     "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,fee) VALUES($1,$2,$3,'Synthetic Consultation','OPD',1000)",
     [tenant, facility, `SYN-CONSULT-${suffix}`],
+  );
+  // All names and quantities are synthetic. Alerts are derived from these persisted rows.
+  const addDays = (n) => new Date(Date.UTC(year, month - 1, day + n)).toISOString().slice(0, 10);
+  const inventory = await pool.query(
+    `INSERT INTO inventory_items(facility_id,item_code,name,unit,current_stock,reorder_level,unit_cost,selling_price) VALUES
+    ($1,$2,'Synthetic Amoxicillin 500mg','capsules',100,20,50,75),
+    ($1,$3,'Synthetic Saline','bags',5,15,10,15),
+    ($1,$4,'Synthetic Glucose Strips','packs',0,10,1,5) RETURNING id`,
+    [facility, `SYN-MED-${suffix}`, `SYN-LOW-${suffix}`, `SYN-OUT-${suffix}`],
+  );
+  const medicine = inventory.rows[0].id;
+  await pool.query(
+    `INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES
+    ($1,'SYN-EXPIRED',$2,12),($1,'SYN-SOON',$3,18),($1,'SYN-30',$4,20)`,
+    [medicine, addDays(-1), addDays(7), addDays(30)],
   );
   console.log('Isolated synthetic dashboard fixture and secure bootstrap: PASS');
 
@@ -317,7 +368,9 @@ try {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.name));
   const dashboardResponses = [];
+  const rateLimited = [];
   page.on('response', (response) => {
+    if (response.status() === 429) rateLimited.push(new URL(response.url()).pathname);
     if (response.url().includes('/api/dashboard/overview'))
       dashboardResponses.push({
         status: response.status(),
@@ -353,14 +406,49 @@ try {
     await page.evaluate(() => document.body.innerText.includes('Collection rate')),
     'Billing limitation not displayed.',
   );
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[aria-label="Active operational alerts"]')
+        ?.innerText.includes('expired batch'),
+    { timeout: 25000 },
+  );
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('button[aria-controls="notification-centre"]')
+        ?.getAttribute('aria-label')
+        ?.includes('unread'),
+    { timeout: 25000 },
+  );
   await mkdir(screenshotDir, { recursive: true });
-  await page.screenshot({ path: resolve(screenshotDir, 'desktop-synthetic.png') });
+  await page.screenshot({ path: resolve(screenshotDir, 'refinement-desktop-synthetic.png') });
+  await page.click('button[aria-controls="notification-centre"]');
+  await page.waitForFunction(
+    () => document.querySelector('#notification-centre')?.innerText.includes('SYN-EXPIRED'),
+    { timeout: 10000 },
+  );
+  await page.screenshot({
+    path: resolve(screenshotDir, 'refinement-desktop-notifications-synthetic.png'),
+  });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() =>
+    Array.from(document.querySelectorAll('h2'))
+      .find((el) => el.textContent.trim() === 'Operational overview')
+      ?.scrollIntoView(),
+  );
+  await page.screenshot({
+    path: resolve(screenshotDir, 'refinement-desktop-operations-synthetic.png'),
+  });
+  await page.evaluate(() => {
+    document.querySelector('main').scrollTop = 0;
+  });
   await page.setViewport({ width: 1024, height: 900, deviceScaleFactor: 1 });
   check(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     'Tablet has horizontal page overflow.',
   );
-  await page.screenshot({ path: resolve(screenshotDir, 'tablet-synthetic.png') });
+  await page.screenshot({ path: resolve(screenshotDir, 'refinement-tablet-synthetic.png') });
   await page.setViewport({
     width: 390,
     height: 844,
@@ -381,11 +469,27 @@ try {
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     'Mobile has horizontal page overflow.',
   );
-  await page.screenshot({ path: resolve(screenshotDir, 'mobile-synthetic.png') });
+  await page.screenshot({ path: resolve(screenshotDir, 'refinement-mobile-synthetic.png') });
+  await page.click('button[aria-controls="notification-centre"]');
+  await page.waitForFunction(
+    () => document.querySelector('#notification-centre')?.innerText.includes('SYN-EXPIRED'),
+    { timeout: 10000 },
+  );
+  check(
+    await page.evaluate(() => {
+      const box = document.querySelector('#notification-centre').getBoundingClientRect();
+      return box.left >= 0 && box.right <= innerWidth;
+    }),
+    'Mobile notification panel is outside the viewport.',
+  );
+  await page.screenshot({
+    path: resolve(screenshotDir, 'refinement-mobile-notifications-synthetic.png'),
+  });
+  await page.keyboard.press('Escape');
   await page.evaluate(() => {
     document.querySelector('main').scrollTop = document.querySelector('main').scrollHeight;
   });
-  await page.screenshot({ path: resolve(screenshotDir, 'mobile-lower-synthetic.png') });
+  await page.screenshot({ path: resolve(screenshotDir, 'refinement-mobile-lower-synthetic.png') });
   await page.evaluate(() => {
     document.querySelector('main').scrollTop = 0;
   });
@@ -395,6 +499,45 @@ try {
     { timeout: 5000 },
   );
   await page.click('button[aria-label="Close menu"]');
+  await page.setViewport({
+    width: 320,
+    height: 568,
+    deviceScaleFactor: 1,
+    isMobile: true,
+    hasTouch: true,
+  });
+  await page.waitForFunction(
+    () => document.querySelector('main')?.innerText.includes('Synthetic Hospital — Test Facility'),
+    { timeout: 25000 },
+  );
+  check(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    'Small mobile has horizontal page overflow.',
+  );
+  await page.click('button[aria-controls="notification-centre"]');
+  await page.waitForSelector('#notification-centre');
+  check(
+    await page.evaluate(() => {
+      const box = document.querySelector('#notification-centre').getBoundingClientRect();
+      return box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight;
+    }),
+    'Small mobile notification panel extends outside the viewport.',
+  );
+  check(
+    await page.evaluate(() => {
+      const row = document.querySelector('[aria-label="Notification severity filters"]');
+      const r = row.getBoundingClientRect();
+      return Array.from(row.querySelectorAll('button')).every((button) => {
+        const b = button.getBoundingClientRect();
+        return b.top >= r.top && b.bottom <= r.bottom;
+      });
+    }),
+    'Small mobile severity filters are vertically clipped.',
+  );
+  await page.screenshot({
+    path: resolve(screenshotDir, 'refinement-small-mobile-notifications-synthetic.png'),
+  });
+  await page.keyboard.press('Escape');
   await page.setViewport({ width: 1568, height: 882, deviceScaleFactor: 1 });
   await page.waitForFunction(
     () => document.querySelector('main')?.innerText.includes('Synthetic Hospital — Test Facility'),
@@ -430,13 +573,93 @@ try {
       params.get('end') === yesterday,
     'Yesterday did not request the selected date range.',
   );
-  await page.click('button[aria-label="Notifications"]');
+  await page.click('button[aria-controls="notification-centre"]');
+  await page.waitForSelector('button[aria-label="Mark Expired stock read"]');
+  const individual = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/notifications/read') && response.request().method() === 'POST',
+  );
+  await page.click('button[aria-label="Mark Expired stock read"]');
+  check((await individual).status() === 200, 'Mark individual read failed.');
+  await page.waitForFunction(
+    () => !document.querySelector('button[aria-label="Mark Expired stock read"]'),
+    { timeout: 10000 },
+  );
+  await page.reload({ waitUntil: 'networkidle2' });
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('button[aria-controls="notification-centre"]')
+        ?.getAttribute('aria-label')
+        ?.includes('unread'),
+    { timeout: 25000 },
+  );
+  await page.click('button[aria-controls="notification-centre"]');
+  await page.waitForFunction(
+    () => document.querySelector('#notification-centre')?.innerText.includes('SYN-EXPIRED'),
+    { timeout: 10000 },
+  );
+  check(
+    !(await page.$('button[aria-label="Mark Expired stock read"]')),
+    'Read state did not survive reload.',
+  );
+  await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#notification-centre button'))
+      .find((button) => button.textContent.trim() === 'Warning')
+      .click(),
+  );
+  await page.waitForFunction(
+    () =>
+      document.querySelector('#notification-centre')?.innerText.includes('Low stock') &&
+      !document.querySelector('#notification-centre')?.innerText.includes('Expired stock'),
+    { timeout: 10000 },
+  );
+  await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#notification-centre button'))
+      .find((button) => button.textContent.trim() === 'All')
+      .click(),
+  );
+  const allRead = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/notifications/read-all') &&
+      response.request().method() === 'POST',
+  );
+  await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#notification-centre button'))
+      .find((button) => button.textContent.trim() === 'Mark all read')
+      .click(),
+  );
+  check((await allRead).status() === 200, 'Mark all read failed.');
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('button[aria-controls="notification-centre"]')
+        ?.getAttribute('aria-label')
+        ?.includes('0 unread'),
+    { timeout: 10000 },
+  );
   check(
     await page.evaluate(() =>
-      document.body.innerText.includes('persistent notification inbox is not configured'),
+      document
+        .querySelector('button[aria-controls="notification-centre"]')
+        ?.getAttribute('aria-label')
+        ?.includes('critical alerts active'),
     ),
-    'Notification limitation not shown.',
+    'Critical active indicator disappeared after marking read.',
   );
+  check(
+    await page.evaluate(() =>
+      document
+        .querySelector('[aria-label="Active operational alerts"]')
+        ?.innerText.includes('expired batch'),
+    ),
+    'Read action incorrectly cleared the active alert.',
+  );
+  const audit = await pool.query(
+    "SELECT count(*)::int AS count FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND user_id=$3 AND action='MARK_READ'",
+    [tenant, facility, String(user)],
+  );
+  check(audit.rows[0].count >= 2, 'Notification read actions were not audited.');
   await page.keyboard.press('Escape');
   const searchResponse = page.waitForResponse(
     (response) =>
@@ -471,13 +694,497 @@ try {
     { timeout: 10000 },
     mrn,
   );
+  if (process.env.ENTERPRISE_UI_SMOKE === 'YES') {
+    const uiDir = resolve(root, 'docs/ui/screenshots');
+    await mkdir(uiDir, { recursive: true });
+    // Separate browser context and bootstrap account: platform administration must
+    // not acquire facility-financial access merely by being a super administrator.
+    const platformContext = await browser.createBrowserContext();
+    try {
+      const platform = await platformContext.newPage();
+      platform.on('pageerror', (error) => errors.push(error.name));
+      const platformAuthStatuses = [];
+      platform.on('response', (response) => {
+        const path = new URL(response.url()).pathname;
+        if (path.startsWith('/api/auth/')) platformAuthStatuses.push([path, response.status()]);
+        if (response.status() === 429) rateLimited.push(path);
+      });
+      await platform.setViewport({ width: 1568, height: 882, deviceScaleFactor: 1 });
+      await platform.goto(base, { waitUntil: 'networkidle2' });
+      await platform.type('input[placeholder="Username or Email"]', env.ADMIN_USERNAME);
+      await platform.type('input[placeholder="Password"]', env.ADMIN_PASSWORD);
+      await platform.click('button[type="submit"]');
+      try {
+        await platform.waitForFunction(
+          () =>
+            ['Platform Management', 'Tenant & Facility Administration'].some((title) =>
+              document.querySelector('main h1')?.textContent.includes(title),
+            ),
+          { timeout: 25000 },
+        );
+      } catch (cause) {
+        const state = await platform.evaluate(() => ({
+          login: Boolean(document.querySelector('input[placeholder="Username or Email"]')),
+          headings: [...document.querySelectorAll('h1')].map((element) =>
+            element.textContent.trim(),
+          ),
+          alerts: [...document.querySelectorAll('[role="alert"]')].map((element) =>
+            element.textContent.trim().slice(0, 120),
+          ),
+        }));
+        throw new Error(
+          `Synthetic platform login did not reach the dashboard: ${JSON.stringify(state)}, auth statuses: ${JSON.stringify(platformAuthStatuses)}`,
+          { cause },
+        );
+      }
+      await platform.click('aside button[title="Platform Management"]');
+      await platform.waitForFunction(
+        () => document.querySelector('main h1')?.textContent.includes('Platform Management'),
+        { timeout: 25000 },
+      );
+      check(
+        !(await platform.$('aside button[title="Billing & Invoicing"]')),
+        'Platform account was offered facility-financial navigation.',
+      );
+      const financeStatus = await platform.evaluate(async (facilityId) => {
+        const token = localStorage.getItem('jalicare_session_token');
+        const response = await fetch(`/api/invoices?facilityId=${facilityId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return response.status;
+      }, facility);
+      check(
+        financeStatus === 403,
+        `Platform account unexpectedly accessed facility invoices (HTTP ${financeStatus}).`,
+      );
+      await platform.click('aside button[title="Tenant & Facility Management"]');
+      await platform.waitForFunction(
+        () =>
+          document
+            .querySelector('main h1')
+            ?.textContent.includes('Tenant & Facility Administration'),
+        { timeout: 25000 },
+      );
+      await platform.waitForNetworkIdle({ idleTime: 300, timeout: 15000 });
+      for (const width of [1568, 768, 320]) {
+        await platform.setViewport({
+          width,
+          height: width === 1568 ? 882 : width === 768 ? 1024 : 568,
+          deviceScaleFactor: 1,
+        });
+        const state = await platform.evaluate(() => ({
+          shells: document.querySelectorAll('.app-shell').length,
+          headers: document.querySelectorAll('.dashboard-header').length,
+          breadcrumbs: document.querySelectorAll('nav[aria-label="Breadcrumb"]').length,
+          viewport: innerWidth,
+          pageWidth: document.documentElement.scrollWidth,
+          mainWidth: document.querySelector('main').clientWidth,
+          contentWidth: document.querySelector('main').scrollWidth,
+        }));
+        check(
+          state.shells === 1 &&
+            state.headers === 1 &&
+            state.breadcrumbs === 1 &&
+            state.pageWidth <= state.viewport &&
+            state.contentWidth <= state.mainWidth + 1,
+          `Platform layout at ${width}px: ${JSON.stringify(state)}`,
+        );
+        if (width === 1568 || width === 320)
+          await platform.screenshot({
+            path: resolve(
+              uiDir,
+              `platform-administration-${width === 1568 ? 'desktop' : 'small-mobile'}-synthetic.png`,
+            ),
+          });
+      }
+      console.log(
+        'Platform administration shell, desktop/tablet/mobile and facility-financial denial: PASS',
+      );
+    } finally {
+      await platformContext.close();
+    }
+
+    const screens = [
+      ['Patient Management', 'Patient Identification & Registration', 'registration'],
+      ['Appointments & Queue', 'Reception, Queues & Appointment Navigation', 'reception'],
+      ['Outpatient Services', 'Outpatient Triage & Clinical Consultation Desk', 'outpatient'],
+      ['Inpatient Management', 'Inpatient Care, Wards & Bed Board', 'inpatient'],
+      ['Maternity & MCH', 'Maternity & MCH', 'maternity'],
+      ['Operating Theatre', 'Theatre scheduling', 'theatre'],
+      ['Dialysis Unit', 'Dialysis unit', 'dialysis'],
+      ['Specialty Clinics', 'Specialized Clinical Framework', 'specialty'],
+      ['Laboratory & Pathology', 'Clinical Pathology & Diagnostic Laboratory', 'laboratory'],
+      ['Radiology & Imaging', 'Diagnostic Radiology & Medical Imaging', 'radiology'],
+      ['Pharmacy & Dispense', 'Outpatient Pharmacy & Drug Dispensing POS', 'pharmacy'],
+      ['Inventory & Batches', 'Hospital Inventory, Batches & Stores', 'inventory'],
+      ['Procurement & POs', 'Hospital Procurement & Purchase Orders', 'procurement'],
+      ['Billing & Invoicing', 'Patient Billing, Cashier POS & Receipts', 'billing'],
+      ['Payment Transactions', 'Payment Transactions & Reconciliation', 'payments'],
+      ['Accounting & General Ledger', 'Accounting & general ledger', 'accounting'],
+      ['Insurance & SHA eClaims', 'Insurance & SHA eClaims', 'sha-eclaims'],
+      ['Private Insurance', 'Private Insurance & Multi-Payer Claims Engine', 'private-insurance'],
+      ['Reports & Analytics', 'Reports & Analytics', 'reports'],
+      ['MOH 705 Surveillance', 'Surveillance & MOH 705', 'surveillance'],
+      ['System Configuration', 'Hospital Configuration Engine', 'settings'],
+      ['Patient Portal Management', 'Patient Portal Management', 'portal-administration'],
+      ['Audit Trail & Security', 'Security Audit Trail', 'audit'],
+    ];
+    const navigate = async ([label, title, slug], mobile = false) => {
+      if (mobile) {
+        const open = await page.$(
+          'button[aria-label="Toggle navigation"], button[aria-label="Expand navigation"]',
+        );
+        check(open, `Navigation toggle missing before ${label}`);
+        await open.click();
+        await page.waitForFunction(
+          () => document.querySelector('aside')?.getBoundingClientRect().left >= 0,
+        );
+      }
+      const selector = `aside button[title="${label}"]`;
+      await page.waitForSelector(selector, { timeout: 10000 });
+      await page.$eval(selector, (button) => button.scrollIntoView({ block: 'center' }));
+      await page.click(selector);
+      try {
+        await page.waitForFunction(
+          (name) =>
+            Array.from(document.querySelectorAll('main h1')).some((node) =>
+              node.textContent.includes(name),
+            ),
+          { timeout: 25000 },
+          title,
+        );
+      } catch {
+        const state = await page.evaluate(() => ({
+          headings: [...document.querySelectorAll('main h1')].map((node) =>
+            node.textContent.trim(),
+          ),
+          alerts: [...document.querySelectorAll('main [role="alert"]')].map((node) =>
+            node.textContent.trim().slice(0, 120),
+          ),
+          active: document.querySelector('aside [aria-current="page"]')?.getAttribute('title'),
+        }));
+        throw new Error(
+          `Could not open ${label} at ${page.viewport().width}px: ${JSON.stringify(state)}; rate-limited requests: ${rateLimited.length}`,
+        );
+      }
+      if (slug === 'radiology') {
+        await page.waitForFunction(
+          () =>
+            document
+              .querySelector('main')
+              ?.textContent.includes('Imaging connection not verified.'),
+          { timeout: 25000 },
+        );
+        await page.waitForFunction(
+          () => document.querySelector('main')?.textContent.includes('Synthetic Patient 01'),
+          { timeout: 25000 },
+        );
+      }
+      if (slug === 'private-insurance') {
+        await page.waitForFunction(
+          () =>
+            !document
+              .querySelector('main')
+              ?.textContent.includes('Loading Private Insurance multi-payer workspace'),
+          { timeout: 25000 },
+        );
+      }
+      await page.evaluate(() => {
+        document.querySelector('main').scrollTop = 0;
+      });
+      const layout = await page.evaluate(() => {
+        const main = document.querySelector('main');
+        return {
+          shells: document.querySelectorAll('.app-shell').length,
+          headers: document.querySelectorAll('.dashboard-header').length,
+          navigation: document.querySelectorAll('nav[aria-label="Main navigation"]').length,
+          breadcrumbs: document.querySelectorAll('nav[aria-label="Breadcrumb"]').length,
+          pageWidth: document.documentElement.scrollWidth,
+          viewport: innerWidth,
+          contentWidth: main.scrollWidth,
+          visibleWidth: main.clientWidth,
+          outside: [...main.querySelectorAll('*')]
+            .filter((element) => {
+              const style = getComputedStyle(element),
+                box = element.getBoundingClientRect();
+              return (
+                style.position !== 'fixed' &&
+                style.display !== 'none' &&
+                box.right > main.getBoundingClientRect().right + 1 &&
+                !element.closest('.ui-table-scroll, [class*="overflow-x-auto"]')
+              );
+            })
+            .slice(0, 8)
+            .map((element) => {
+              const box = element.getBoundingClientRect();
+              return `${element.tagName}.${String(element.className).slice(0, 100)} x=${Math.round(box.x)} right=${Math.round(box.right)} width=${Math.round(box.width)}`;
+            }),
+        };
+      });
+      check(
+        layout.shells === 1 &&
+          layout.headers === 1 &&
+          layout.navigation === 1 &&
+          layout.breadcrumbs === 1,
+        `Duplicated or missing shell on ${label}: ${JSON.stringify(layout)}`,
+      );
+      check(
+        layout.pageWidth <= layout.viewport && layout.contentWidth <= layout.visibleWidth + 1,
+        `Overflow on ${label}: ${JSON.stringify(layout)}`,
+      );
+      if (mobile)
+        check(
+          await page.evaluate(
+            () => document.querySelector('aside').getBoundingClientRect().right <= 1,
+          ),
+          `Mobile drawer did not close on ${label}`,
+        );
+    };
+    check(
+      !(await page.$('aside button[title="Tenant & Facility Management"]')),
+      'Facility user received platform-only navigation.',
+    );
+    for (const screen of screens) {
+      await navigate(screen);
+      if (
+        [
+          'registration',
+          'reception',
+          'maternity',
+          'specialty',
+          'laboratory',
+          'radiology',
+          'inventory',
+          'billing',
+          'sha-eclaims',
+          'private-insurance',
+          'settings',
+          'audit',
+        ].includes(screen[2])
+      ) {
+        await page.screenshot({ path: resolve(uiDir, `${screen[2]}-desktop-synthetic.png`) });
+      }
+    }
+    console.log(
+      `Enterprise desktop navigation and single-shell checks: ${screens.length} modules PASS`,
+    );
+
+    for (const width of [768, 390, 320]) {
+      if (width === 390) {
+        // Respect the production 300 requests/minute limiter during this unusually
+        // rapid platform + multi-module audit; do not weaken it for the browser run.
+        await new Promise((resolveWait) => setTimeout(resolveWait, 61_000));
+      }
+      await page.setViewport({
+        width,
+        height: width === 768 ? 1024 : width === 390 ? 844 : 568,
+        deviceScaleFactor: 1,
+      });
+      await page.waitForSelector('aside nav', { timeout: 25000 });
+      const mobile = width < 768;
+      for (const screen of screens) {
+        await navigate(screen, mobile);
+        if (
+          width === 320 &&
+          [
+            'registration',
+            'reception',
+            'radiology',
+            'inventory',
+            'billing',
+            'sha-eclaims',
+            'settings',
+          ].includes(screen[2])
+        ) {
+          await page.screenshot({
+            path: resolve(uiDir, `${screen[2]}-small-mobile-synthetic.png`),
+          });
+        }
+        if (width === 768 && ['laboratory', 'private-insurance'].includes(screen[2])) {
+          await page.screenshot({ path: resolve(uiDir, `${screen[2]}-tablet-synthetic.png`) });
+        }
+      }
+      console.log(
+        `Enterprise ${width}px navigation, breadcrumbs and overflow: ${screens.length} modules PASS`,
+      );
+    }
+    const registration = screens.find((screen) => screen[2] === 'registration');
+    await navigate(registration, true);
+    await page.waitForSelector('main .ui-table-scroll');
+    check(
+      await page.$eval(
+        'main .ui-table-scroll',
+        (region) => region.scrollWidth > region.clientWidth,
+      ),
+      'Registration table did not provide horizontal scrolling at 320px.',
+    );
+    await page.focus('main .ui-table-scroll');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(
+      () => document.querySelector('main .ui-table-scroll').scrollLeft > 0,
+      { timeout: 5000 },
+    );
+    const sha = screens.find((screen) => screen[2] === 'sha-eclaims');
+    await navigate(sha, true);
+    check(
+      await page.$eval(
+        'main .ui-page-header',
+        (header) => header.getBoundingClientRect().height < 300,
+      ),
+      'Mobile page header contains excessive empty space.',
+    );
+    const specialty = screens.find((screen) => screen[2] === 'specialty');
+    await navigate(specialty, true);
+    check(
+      await page.evaluate(() =>
+        document
+          .querySelector('main')
+          .textContent.includes('former example forms did not persist records'),
+      ),
+      'Specialty limitations were not shown.',
+    );
+    check(
+      !(await page.evaluate(() =>
+        [...document.querySelectorAll('main button')].some((button) =>
+          /Save Dental|Save Optical|Save ENT/.test(button.textContent),
+        ),
+      )),
+      'Specialty exposed a non-persistent save action.',
+    );
+    await page.click('#specialty-tab-Renal');
+    check(
+      await page.evaluate(() =>
+        [...document.querySelectorAll('main button')].some(
+          (button) => button.textContent.trim() === 'Open dialysis',
+        ),
+      ),
+      'Authorized dialysis navigation is missing from specialty care.',
+    );
+    const radiology = screens.find((screen) => screen[2] === 'radiology');
+    await navigate(radiology, true);
+    check(
+      !(await page.evaluate(() =>
+        /DICOM 3\.0 Connected|128 Slices/.test(document.querySelector('main').textContent),
+      )),
+      'Radiology displayed invented PACS metadata.',
+    );
+    await page.evaluate(() =>
+      [...document.querySelectorAll('main button')]
+        .find((button) => button.textContent.includes('New Imaging Request'))
+        .click(),
+    );
+    await page.waitForSelector('[role="dialog"]');
+    const imaging = await page.$eval('[role="dialog"]', (dialog) => {
+      const box = dialog.getBoundingClientRect(),
+        action = dialog
+          .querySelector('button[form="radiology-request-form"]')
+          .getBoundingClientRect();
+      return {
+        bounded:
+          box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+        actionVisible: action.top >= 0 && action.bottom <= innerHeight,
+        patient: dialog.querySelector('#radiology-patient').value,
+        procedure: dialog.querySelector('#radiology-procedure').value,
+        indication: dialog.querySelector('#radiology-indication').value,
+      };
+    });
+    check(
+      imaging.bounded &&
+        imaging.actionVisible &&
+        !imaging.patient &&
+        !imaging.procedure &&
+        !imaging.indication,
+      `Imaging dialog unsafe at 320px: ${JSON.stringify(imaging)}`,
+    );
+    await page.screenshot({ path: resolve(uiDir, 'radiology-modal-small-mobile-synthetic.png') });
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
+    const reception = screens.find((screen) => screen[2] === 'reception');
+    await navigate(reception, true);
+    await page.evaluate(() =>
+      [...document.querySelectorAll('main button')]
+        .find((button) => button.textContent.trim() === 'Book Appointment')
+        .click(),
+    );
+    await page.waitForSelector('[role="dialog"][aria-modal="true"]');
+    let modal = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]');
+      const box = dialog.getBoundingClientRect();
+      return {
+        bounded:
+          box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+        focused: dialog.contains(document.activeElement),
+        actionVisible: (() => {
+          const action = dialog
+            .querySelector('button[form="appointment-form"]')
+            .getBoundingClientRect();
+          return action.top >= 0 && action.bottom <= innerHeight;
+        })(),
+        patient: dialog.querySelector('#appointment-patient')?.value,
+        time: dialog.querySelector('#appointment-time')?.value,
+        reason: dialog.querySelector('#appointment-reason')?.value,
+      };
+    });
+    check(
+      modal.bounded &&
+        modal.focused &&
+        modal.actionVisible &&
+        !modal.patient &&
+        !modal.time &&
+        !modal.reason,
+      `Appointment modal bounds, focus or blank inputs failed: ${JSON.stringify(modal)}`,
+    );
+    await page.screenshot({ path: resolve(uiDir, 'appointment-modal-small-mobile-synthetic.png') });
+    await page.keyboard.press('Escape');
+    check(
+      !(await page.$('[role="dialog"][aria-modal="true"]')),
+      'Appointment dialog did not close on Escape.',
+    );
+    const inventory = screens.find((screen) => screen[2] === 'inventory');
+    await navigate(inventory, true);
+    await page.evaluate(() =>
+      [...document.querySelectorAll('main button')]
+        .find((button) => button.textContent.trim() === 'Add Stock Item')
+        .click(),
+    );
+    await page.waitForSelector('[role="dialog"][aria-modal="true"]');
+    modal = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]');
+      const box = dialog.getBoundingClientRect();
+      return {
+        bounded:
+          box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+        focused: dialog.contains(document.activeElement),
+        actionVisible: (() => {
+          const action = dialog
+            .querySelector('button[form="inventory-item-form"]')
+            .getBoundingClientRect();
+          return action.top >= 0 && action.bottom <= innerHeight;
+        })(),
+        item: dialog.querySelector('#inventory-field-1')?.value,
+      };
+    });
+    check(
+      modal.bounded && modal.focused && modal.actionVisible && !modal.item,
+      `Inventory modal bounds, focus or blank inputs failed: ${JSON.stringify(modal)}`,
+    );
+    await page.screenshot({ path: resolve(uiDir, 'inventory-modal-small-mobile-synthetic.png') });
+    await page.keyboard.press('Escape');
+    check(
+      rateLimited.length === 0,
+      `Synthetic layout run hit the production rate limiter ${rateLimited.length} times: ${JSON.stringify(rateLimited)}.`,
+    );
+    console.log(
+      'Mobile appointment, imaging and inventory modal bounds, visible actions, Escape and blank data: PASS',
+    );
+    console.log('Synthetic screenshots: docs/ui/screenshots/*-synthetic.png');
+  }
+
   check(errors.length === 0, `Browser page errors: ${errors.join(', ')}`);
   console.log(
-    'Production Chromium dashboard, date filter, scoped search, JSON, desktop/tablet/mobile and navigation: PASS',
+    'Production Chromium dashboard, notification filters/read persistence/audit, date filter, scoped search and responsive navigation: PASS',
   );
-  console.log(
-    'Screenshots: docs/dashboard/screenshots/{desktop,tablet,mobile,mobile-lower}-synthetic.png',
-  );
+  console.log('Screenshots: docs/dashboard/screenshots/refinement-*-synthetic.png');
 } finally {
   if (browser) await browser.close();
   if (server) {

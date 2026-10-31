@@ -5,6 +5,7 @@
  *   - `http.ts` — shared session token storage, `ApiError`, and hardened `fetchJson`
  *   - `auth.client.ts` — login, session validation, logout, RBAC, subscriptions
  *   - `dashboard.client.ts` — scoped dashboard overview and search
+ *   - `notifications.client.ts` — scoped persistent notification inbox
  *   - `platform.client.ts` — health, tenants, facilities, public health, analytics, DHA
  *   - `patients-clinical.client.ts` — patients, consent, allergies, encounters, queues, vitals, meds
  *   - `maternity.client.ts` — ANC, labour, partograph, deliveries, postnatal, immunisation
@@ -43,6 +44,7 @@ export {
 
 export { platformClient } from './clients/platform.client.ts';
 export { dashboardClient } from './clients/dashboard.client.ts';
+export { notificationsClient } from './clients/notifications.client.ts';
 
 export {
   patientsClinicalClient,
@@ -90,9 +92,11 @@ import { maternityClient } from './clients/maternity.client.ts';
 import { patientsClinicalClient } from './clients/patients-clinical.client.ts';
 import { platformClient } from './clients/platform.client.ts';
 import { dashboardClient } from './clients/dashboard.client.ts';
+import { notificationsClient } from './clients/notifications.client.ts';
 
 export const api = {
   ...dashboardClient,
+  ...notificationsClient,
   ...authClient,
   ...platformClient,
   ...patientsClinicalClient,

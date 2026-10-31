@@ -1,8 +1,12 @@
+import { PrimaryButton, SecondaryButton } from '../ui/controls.tsx';
+import { DataTable, PageHeader } from '../ui/layout.tsx';
+import { AlertBanner } from '../ui/feedback.tsx';
+import { Modal } from '../ui/overlays.tsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PublicHealthReport } from '../../types/index.ts';
-import { Activity, AlertTriangle, Download, FileWarning, Plus, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Download, FileWarning, Plus } from 'lucide-react';
 
 /*
  * Public health surveillance
@@ -67,11 +71,11 @@ export const PublicHealthModule: React.FC = () => {
 
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
   const [alertForm, setAlertForm] = useState({
-    diseaseCode: 'A00',
-    casesCount: 1,
-    mortalityCount: 0,
-    ageGroup: 'Over 5 Years',
-    epiWeek: currentEpiWeek(),
+    diseaseCode: '',
+    casesCount: '',
+    mortalityCount: '',
+    ageGroup: '',
+    epiWeek: '',
   });
 
   useEffect(() => {
@@ -154,6 +158,13 @@ export const PublicHealthModule: React.FC = () => {
       );
 
       setIsAlertModalOpen(false);
+      setAlertForm({
+        diseaseCode: '',
+        casesCount: '',
+        mortalityCount: '',
+        ageGroup: '',
+        epiWeek: '',
+      });
       triggerRefresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'The case could not be recorded.';
@@ -181,20 +192,18 @@ export const PublicHealthModule: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-4 rounded-card border border-hair bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
+      <PageHeader>
         <div>
           <p className="eyebrow">Public health</p>
-          <h1 className="mt-1 font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Surveillance &amp; MOH 705
-          </h1>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Surveillance &amp; MOH 705</h1>
+          <p className="ui-page-description">
             Notifiable disease reports recorded at this facility, and the MOH 705 outpatient return.
             Nothing on this screen is transmitted automatically.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <SecondaryButton
             type="button"
             onClick={exportSummary}
             disabled={mohSummary === null}
@@ -203,22 +212,20 @@ export const PublicHealthModule: React.FC = () => {
                 ? 'The MOH 705 aggregate is not produced by this build'
                 : 'Download the server payload'
             }
-            className="btn-quiet disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="h-3.5 w-3.5" />
             Export MOH 705 JSON
-          </button>
+          </SecondaryButton>
 
-          <button type="button" onClick={() => setIsAlertModalOpen(true)} className="btn-accent">
+          <PrimaryButton type="button" onClick={() => setIsAlertModalOpen(true)}>
             <Plus className="h-3.5 w-3.5" />
             Record notifiable case
-          </button>
+          </PrimaryButton>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Standing caveat — the screen must not imply a national connection. */}
-      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-        <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+      <AlertBanner tone="warning" className="text-xs">
         <div>
           <p className="font-bold">Local record only — not a national submission</p>
           <p className="mt-0.5 max-w-3xl text-2xs leading-relaxed text-amber-800">
@@ -227,7 +234,7 @@ export const PublicHealthModule: React.FC = () => {
             Immediate notification of a reportable disease remains a manual duty of the facility.
           </p>
         </div>
-      </div>
+      </AlertBanner>
 
       {loading && <p className="text-sm text-slate-500">Loading the surveillance ledger…</p>}
 
@@ -274,14 +281,18 @@ export const PublicHealthModule: React.FC = () => {
             <h2 className="mt-1 text-sm font-bold text-ink">
               Sentinel ledger
               <span className="ml-2 font-mono text-2xs text-muted">
-                {reports.length} record{reports.length === 1 ? '' : 's'}
+                {loading
+                  ? 'Loading…'
+                  : reportsError
+                    ? 'Unavailable'
+                    : `${reports.length} record${reports.length === 1 ? '' : 's'}`}
               </span>
             </h2>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="chip">cases {totals.cases}</span>
-            <span className="chip">deaths {totals.deaths}</span>
+            <span className="chip">cases {loading || reportsError ? '—' : totals.cases}</span>
+            <span className="chip">deaths {loading || reportsError ? '—' : totals.deaths}</span>
           </div>
         </div>
 
@@ -296,7 +307,7 @@ export const PublicHealthModule: React.FC = () => {
         )}
 
         <div className="overflow-x-auto">
-          <table className="table-quiet">
+          <DataTable className="table-quiet">
             <thead>
               <tr>
                 <th>Condition</th>
@@ -309,7 +320,7 @@ export const PublicHealthModule: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {reports.length === 0 && !reportsError && (
+              {reports.length === 0 && !reportsError && !loading && currentFacility?.id && (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-xs text-muted">
                     No notifiable condition has been recorded at this facility.
@@ -337,130 +348,123 @@ export const PublicHealthModule: React.FC = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </section>
 
       {/* Report modal */}
-      {isAlertModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/50 p-3">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-xl border border-hair bg-surface p-5 shadow-lift">
-            <div className="flex items-start gap-3 border-b border-hair pb-3">
-              <Activity className="mt-0.5 h-4 w-4 text-brand-600" />
-              <div>
-                <h3 className="text-sm font-bold text-ink">Record a notifiable case</h3>
-                <p className="mt-0.5 text-2xs text-muted">
-                  Stored at this facility. Not submitted to any national system.
-                </p>
-              </div>
+      <Modal
+        open={isAlertModalOpen}
+        onClose={() => setIsAlertModalOpen(false)}
+        title="Record a notifiable case"
+
+        actions={
+          <>
+            <SecondaryButton onClick={() => setIsAlertModalOpen(false)}>Cancel</SecondaryButton>
+            <PrimaryButton type="submit" form="public-health-form">
+              Record case
+            </PrimaryButton>
+          </>
+        }
+      >
+        <p className="text-xs text-muted">
+          Stored at this facility. Not submitted to any national system.
+        </p>
+        <form id="public-health-form" onSubmit={handleRecordAlert} className="mt-4 space-y-3">
+          <div>
+            <label className="field-label" htmlFor="notifiable-condition">
+              Condition
+            </label>
+            <select
+              id="notifiable-condition"
+              required
+              value={alertForm.diseaseCode}
+              onChange={(e) => setAlertForm({ ...alertForm, diseaseCode: e.target.value })}
+              className="field-input"
+            >
+              <option value="">Select a condition</option>
+              {Object.entries(NOTIFIABLE_CONDITIONS).map(([code, name]) => (
+                <option key={code} value={code}>
+                  {code} — {name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="field-label" htmlFor="cases-count">
+                Cases
+              </label>
+              <input
+                id="cases-count"
+                type="number"
+                min={1}
+                required
+                value={alertForm.casesCount}
+                onChange={(e) => setAlertForm({ ...alertForm, casesCount: e.target.value })}
+                className="field-input font-mono"
+              />
             </div>
 
-            <form onSubmit={handleRecordAlert} className="mt-4 space-y-3">
-              <div>
-                <label className="field-label" htmlFor="notifiable-condition">
-                  Condition
-                </label>
-                <select
-                  id="notifiable-condition"
-                  value={alertForm.diseaseCode}
-                  onChange={(e) => setAlertForm({ ...alertForm, diseaseCode: e.target.value })}
-                  className="field-input"
-                >
-                  {Object.entries(NOTIFIABLE_CONDITIONS).map(([code, name]) => (
-                    <option key={code} value={code}>
-                      {code} — {name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label" htmlFor="cases-count">
-                    Cases
-                  </label>
-                  <input
-                    id="cases-count"
-                    type="number"
-                    min={1}
-                    required
-                    value={alertForm.casesCount}
-                    onChange={(e) =>
-                      setAlertForm({ ...alertForm, casesCount: Number(e.target.value) })
-                    }
-                    className="field-input font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="field-label" htmlFor="deaths-count">
-                    Deaths
-                  </label>
-                  <input
-                    id="deaths-count"
-                    type="number"
-                    min={0}
-                    max={alertForm.casesCount}
-                    value={alertForm.mortalityCount}
-                    onChange={(e) =>
-                      setAlertForm({
-                        ...alertForm,
-                        mortalityCount: Number(e.target.value),
-                      })
-                    }
-                    className="field-input font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label" htmlFor="age-group">
-                    Age group
-                  </label>
-                  <select
-                    id="age-group"
-                    value={alertForm.ageGroup}
-                    onChange={(e) => setAlertForm({ ...alertForm, ageGroup: e.target.value })}
-                    className="field-input"
-                  >
-                    <option value="Under 5 Years">Under 5 years</option>
-                    <option value="Over 5 Years">5 years and over</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="field-label" htmlFor="epi-week">
-                    Epi-week
-                  </label>
-                  <input
-                    id="epi-week"
-                    type="text"
-                    required
-                    pattern="\d{4}-W(0[1-9]|[1-4]\d|5[0-3])"
-                    value={alertForm.epiWeek}
-                    onChange={(e) => setAlertForm({ ...alertForm, epiWeek: e.target.value })}
-                    className="field-input font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 border-t border-hair pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAlertModalOpen(false)}
-                  className="btn-quiet"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-accent">
-                  Record case
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="field-label" htmlFor="deaths-count">
+                Deaths
+              </label>
+              <input
+                id="deaths-count"
+                type="number"
+                min={0}
+                max={alertForm.casesCount || undefined}
+                required
+                value={alertForm.mortalityCount}
+                onChange={(e) =>
+                  setAlertForm({
+                    ...alertForm,
+                    mortalityCount: e.target.value,
+                  })
+                }
+                className="field-input font-mono"
+              />
+            </div>
           </div>
-        </div>
-      )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="field-label" htmlFor="age-group">
+                Age group
+              </label>
+              <select
+                id="age-group"
+                required
+                value={alertForm.ageGroup}
+                onChange={(e) => setAlertForm({ ...alertForm, ageGroup: e.target.value })}
+                className="field-input"
+              >
+                <option value="">Select an age group</option>
+                <option value="Under 5 Years">Under 5 years</option>
+                <option value="Over 5 Years">5 years and over</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="epi-week">
+                Epi-week
+              </label>
+              <input
+                id="epi-week"
+                type="text"
+                placeholder="YYYY-Www"
+                required
+                pattern="\d{4}-W(0[1-9]|[1-4]\d|5[0-3])"
+                value={alertForm.epiWeek}
+                onChange={(e) => setAlertForm({ ...alertForm, epiWeek: e.target.value })}
+                className="field-input font-mono"
+              />
+            </div>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

@@ -1,10 +1,9 @@
 /**
  * Public health and MOH reporting.
  *
- * Moved out of `createApp` unchanged: same paths, same handlers, same
- * permissions, same order. `src/routes/index.ts` mounts this router after the
- * facility-module gates, which is exactly where these routes sat when they
- * were registered inline in `app.ts`.
+ * Existing paths, authorization and facility-module gates remain in place.
+ * Report counts and age must be explicit: missing facts are not zero or a
+ * default patient age group.
  */
 
 import { Router, type Response } from 'express';
@@ -150,11 +149,11 @@ router.post(
         });
       }
 
-      const casesCount = input.casesCount === undefined ? 1 : input.casesCount;
-
-      const mortalityCount = input.mortalityCount === undefined ? 0 : input.mortalityCount;
-
-      const ageGroup = input.ageGroup === undefined ? 'Over 5 Years' : input.ageGroup;
+      // Counts and age are clinical facts, not defaults. Require callers to
+      // provide them explicitly; a recorded zero remains valid for deaths.
+      const casesCount = input.casesCount;
+      const mortalityCount = input.mortalityCount;
+      const ageGroup = input.ageGroup;
 
       if (
         typeof casesCount !== 'number' ||
@@ -171,7 +170,7 @@ router.post(
         return res.status(400).json({
           success: false,
           error: 'INVALID_REPORT_COUNTS',
-          message: 'Report counts and ageGroup are invalid.',
+          message: 'Explicit valid report counts and ageGroup are required.',
         });
       }
 

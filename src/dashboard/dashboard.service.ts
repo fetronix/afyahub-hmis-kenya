@@ -9,6 +9,7 @@ import {
   previousRange,
   type DashboardRange,
 } from './date-range.ts';
+import { validTimezone } from './timezone.ts';
 import { centsToMoney, moneyToCents } from './money.ts';
 import type {
   DashboardOverview,
@@ -266,18 +267,50 @@ async function flow(facility: Facility, range: DashboardRange) {
 }
 
 async function activity(facility: Facility, range: DashboardRange) {
-  const result = await pool.query<{ id: number; action: string; resource: string; at: string }>(
-    `SELECT id, action, resource, to_char(timestamp,'YYYY-MM-DD"T"HH24:MI:SS') AS at FROM audit_logs
-     WHERE tenant_id=$1 AND facility_id=$2 AND timestamp >= $3::date AND timestamp < $4::date + 1
-       AND action ~ '^[A-Za-z0-9_.:-]{1,80}$' AND resource ~ '^[A-Za-z0-9_.:-]{1,80}$'
-     ORDER BY timestamp DESC, id DESC LIMIT 4`,
+  const result = await pool.query<{
+    id: number;
+    action: string;
+    resource: string;
+    module: string | null;
+    reference: string | null;
+    actor: string | null;
+    at: string;
+  }>(
+    `SELECT a.id,a.action,a.resource,
+       CASE lower(a.resource)
+         WHEN 'patient' THEN 'Registration' WHEN 'appointment' THEN 'Reception'
+         WHEN 'admission' THEN 'Inpatient' WHEN 'laborder' THEN 'Laboratory' WHEN 'labresult' THEN 'Laboratory'
+         WHEN 'payment' THEN 'Billing' WHEN 'invoice' THEN 'Billing' WHEN 'billinginvoice' THEN 'Billing'
+         WHEN 'notificationinbox' THEN 'Notifications' WHEN 'notificationalerts' THEN 'Notifications'
+         ELSE NULL END AS module,
+       CASE WHEN a.resource_id ~ '^[A-Za-z0-9_.:-]{1,80}$' THEN a.resource_id ELSE NULL END AS reference,
+       u.full_name AS actor, to_char(a.timestamp,'YYYY-MM-DD"T"HH24:MI:SS') AS at
+     FROM audit_logs a LEFT JOIN LATERAL (SELECT full_name FROM users u WHERE u.tenant_id=a.tenant_id AND (u.id::text=a.user_id OR u.uid=a.user_id) ORDER BY (u.id::text=a.user_id) DESC LIMIT 1) u ON true
+     WHERE a.tenant_id=$1 AND a.facility_id=$2 AND a.timestamp >= $3::date AND a.timestamp < $4::date + 1
+       AND a.action ~ '^[A-Za-z0-9_.:-]{1,80}$' AND a.resource ~ '^[A-Za-z0-9_.:-]{1,80}$'
+     ORDER BY a.timestamp DESC, a.id DESC LIMIT 5`,
     [facility.tenantId, facility.id, range.start, range.end],
   );
-  // Timestamps in this schema are zone-less; return the stored wall time without inventing an offset.
   return result.rows;
 }
 
+async function facilityTimezone(facility: Facility): Promise<string> {
+  const result = await pool.query<{ timezone: string | null }>(
+    'SELECT coalesce(f.timezone,t.timezone) AS timezone FROM facilities f JOIN tenants t ON t.id=f.tenant_id WHERE f.id=$1 AND t.id=$2',
+    [facility.id, facility.tenantId],
+  );
+  const zone = result.rows[0]?.timezone;
+  if (!validTimezone(zone)) throw new Error('Facility timezone is missing or invalid');
+  return zone;
+}
+
+async function countOperation(facility: Facility, query: string) {
+  const result = await pool.query<{ value: number }>(query, [facility.tenantId, facility.id]);
+  return result.rows[0].value;
+}
+
 async function appointments(facility: Facility, range: DashboardRange) {
+  const timezone = await facilityTimezone(facility);
   const result = await pool.query<{
     id: number;
     patientName: string;
@@ -294,10 +327,10 @@ async function appointments(facility: Facility, range: DashboardRange) {
      WHERE a.tenant_id=$1 AND a.facility_id=$2
        AND a.scheduled_time ~ '^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}(:\\d{2})?$'
        AND left(a.scheduled_time,10) >= $3 AND left(a.scheduled_time,10) <= $4
-       AND replace(a.scheduled_time,'T',' ') >= to_char(now() AT TIME ZONE 'Africa/Nairobi','YYYY-MM-DD HH24:MI')
+       AND replace(a.scheduled_time,'T',' ') >= to_char(now() AT TIME ZONE $5,'YYYY-MM-DD HH24:MI')
        AND lower(coalesce(a.status,'')) IN ('scheduled','confirmed','booked')
      ORDER BY replace(a.scheduled_time,'T',' '), a.id LIMIT 5`,
-    [facility.tenantId, facility.id, range.start, range.end],
+    [facility.tenantId, facility.id, range.start, range.end, timezone],
   );
   for (const row of result.rows) {
     const [date, time] = row.scheduledTime.replace('T', ' ').split(' ');
@@ -323,6 +356,10 @@ export async function getDashboardOverview(
     flowPanel,
     activityPanel,
     appointmentPanel,
+    queuePanel,
+    bedsPanel,
+    theatrePanel,
+    laboratoryPanel,
   ] = await Promise.all([
     panel(context, facility, ['patients.read'], ['registration'], 'registrations', () =>
       registrations(facility, range, previous),
@@ -355,6 +392,48 @@ export async function getDashboardOverview(
       'appointments',
       () => appointments(facility, range),
     ),
+    panel(context, facility, ['appointments.read'], ['reception'], 'queues', async () => ({
+      active: await countOperation(
+        facility,
+        `SELECT count(*)::int AS value FROM queues WHERE tenant_id=$1 AND facility_id=$2 AND lower(coalesce(status,'')) IN ('waiting','called','in-progress','in progress','serving')`,
+      ),
+    })),
+    panel(context, facility, ['inpatient.read'], ['inpatient'], 'beds', async () => {
+      const result = await pool.query<{ occupied: number; total: number }>(
+        `SELECT count(*)::int AS total, count(*) FILTER (WHERE lower(coalesce(b.status,''))='occupied')::int AS occupied
+        FROM beds b JOIN wards w ON w.id=b.ward_id JOIN facilities f ON f.id=w.facility_id WHERE f.tenant_id=$1 AND f.id=$2`,
+        [facility.tenantId, facility.id],
+      );
+      return result.rows[0];
+    }),
+    panel(context, facility, ['theatre.read'], ['theatre'], 'theatre', async () => {
+      const result = await pool.query<{ id: number; procedure: string; start: string }>(
+        `SELECT id,procedure_name AS procedure,scheduled_start AS start FROM theatre_cases
+        WHERE tenant_id=$1 AND facility_id=$2 AND lower(coalesce(status,''))='scheduled' ORDER BY scheduled_start,id LIMIT 3`,
+        [facility.tenantId, facility.id],
+      );
+      return {
+        scheduled: await countOperation(
+          facility,
+          `SELECT count(*)::int AS value FROM theatre_cases WHERE tenant_id=$1 AND facility_id=$2 AND lower(coalesce(status,''))='scheduled'`,
+        ),
+        samples: result.rows,
+      };
+    }),
+    panel(context, facility, ['laboratory.read'], ['laboratory'], 'laboratory', async () => {
+      const result = await pool.query<{ id: number; test: string; status: string | null }>(
+        `SELECT id,test_name AS test,status FROM lab_orders
+        WHERE tenant_id=$1 AND facility_id=$2 AND lower(coalesce(status,'ordered')) NOT IN ('completed','cancelled','canceled','reported','rejected') ORDER BY ordered_at DESC,id DESC LIMIT 3`,
+        [facility.tenantId, facility.id],
+      );
+      return {
+        pending: await countOperation(
+          facility,
+          `SELECT count(*)::int AS value FROM lab_orders WHERE tenant_id=$1 AND facility_id=$2 AND lower(coalesce(status,'ordered')) NOT IN ('completed','cancelled','canceled','reported','rejected')`,
+        ),
+        samples: result.rows,
+      };
+    }),
   ]);
   return {
     facilityId: facility.id,
@@ -367,6 +446,12 @@ export async function getDashboardOverview(
     flow: flowPanel,
     activity: activityPanel,
     appointments: appointmentPanel,
+    operations: {
+      queues: queuePanel,
+      beds: bedsPanel,
+      theatre: theatrePanel,
+      laboratory: laboratoryPanel,
+    },
   };
 }
 

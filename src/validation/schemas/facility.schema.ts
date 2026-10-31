@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { validTimezone } from '../../dashboard/timezone.ts';
+
 import { resolveLocation } from '../../constants/kenya-locations.ts';
 import {
   idParamSchema,
@@ -57,6 +59,7 @@ export interface UpdateFacilityValidated {
   email?: string | null;
   enabledModules?: string[];
   hiddenModules?: string[];
+  timezone?: string | null;
   isActive?: boolean;
 }
 
@@ -239,6 +242,19 @@ export const updateFacilitySchema = z
         return z.NEVER;
       }
       updates.hiddenModules = [...new Set(hidden.map((item) => item.trim()))];
+    }
+
+    if ('timezone' in body) {
+      const zone = body.timezone;
+      if (zone !== null && !validTimezone(zone)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['timezone'],
+          message: 'Use a valid IANA timezone, or null to inherit the tenant timezone.',
+        });
+        return z.NEVER;
+      }
+      updates.timezone = zone as string | null;
     }
 
     if ('clinicalProtocols' in body) {

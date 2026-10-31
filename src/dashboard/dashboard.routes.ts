@@ -17,6 +17,7 @@ const anyDashboardAccess = requireAnyPermission(
   'appointments.read',
   'clinical.read',
   'inpatient.read',
+  'theatre.read',
   'laboratory.read',
   'pharmacy.read',
   'inventory.read',

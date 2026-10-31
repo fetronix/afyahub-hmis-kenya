@@ -1,3 +1,5 @@
+import { PrimaryButton } from '../ui/controls.tsx';
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
@@ -340,13 +342,11 @@ export const InsuranceClaimsModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
           <span className="eyebrow text-brand-700">Kenya Digital Health & Payer Revenue</span>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink mt-0.5">
-            Insurance & SHA eClaims
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Insurance & SHA eClaims</h1>
+          <p className="ui-page-description">
             Verify SHA beneficiary eligibility, validate approved service coverage, manage
             preauthorizations, assemble FHIR R4 eClaims, reconcile remittances, or manage manual
             private/portal claims.
@@ -373,16 +373,13 @@ export const InsuranceClaimsModule: React.FC = () => {
             </button>
           )}
           {activeWorkspace === 'manual_ledger' && (
-            <button
-              onClick={openDraftModal}
-              className="btn-accent text-xs flex items-center gap-1.5"
-            >
+            <PrimaryButton onClick={openDraftModal}>
               <Plus className="w-3.5 h-3.5" />
               <span>Draft Manual Claim</span>
-            </button>
+            </PrimaryButton>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       {/* Primary Workspace Navigation */}
       <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-xs">
@@ -578,7 +575,7 @@ export const InsuranceClaimsModule: React.FC = () => {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <DataTable className="w-full text-xs text-left">
                 <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-2.5 font-medium">Claim #</th>
@@ -683,7 +680,7 @@ export const InsuranceClaimsModule: React.FC = () => {
                     );
                   })}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
 

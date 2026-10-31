@@ -1,3 +1,4 @@
+import { PageHeader } from '../ui/layout.tsx';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, CalendarDays, ClipboardList, Plus, RefreshCw } from 'lucide-react';
 import { api } from '../../api/client.ts';
@@ -403,15 +404,13 @@ export const TheatreModule: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <PageHeader>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">
             {currentFacility.name}
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Theatre scheduling</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Facility rooms, bookings and scheduling history
-          </p>
+          <h1 className="ui-page-title">Theatre scheduling</h1>
+          <p className="ui-page-description">Facility rooms, bookings and scheduling history</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -434,7 +433,7 @@ export const TheatreModule: React.FC = () => {
             </button>
           )}
         </div>
-      </header>
+      </PageHeader>
       <div
         role="note"
         className="flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"

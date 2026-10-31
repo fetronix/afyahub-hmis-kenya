@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 
@@ -407,7 +408,7 @@ export const LabourWardSection: React.FC<LabourWardSectionProps> = ({
             {selectedLabour.plot && <PartographChart plot={selectedLabour.plot} />}
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-2xs">
+              <DataTable className="w-full text-left text-2xs">
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
                     <th className="px-2 py-2 font-medium">Time</th>
@@ -448,7 +449,7 @@ export const LabourWardSection: React.FC<LabourWardSectionProps> = ({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
 
             <button

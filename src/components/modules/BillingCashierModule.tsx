@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
@@ -434,12 +435,10 @@ export const BillingCashierModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Patient Billing, Cashier POS & Receipts
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Patient Billing, Cashier POS & Receipts</h1>
+          <p className="ui-page-description">
             Invoice charging, recorded collections and receipts. Provider requests are reviewed
             separately in Payment Transactions.
           </p>
@@ -455,7 +454,7 @@ export const BillingCashierModule: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </PageHeader>
 
       {(pendingPayment || paymentStorageError) && (
         <div className="rounded border border-amber-300 bg-amber-50 p-3 text-xs" role="status">
@@ -713,7 +712,7 @@ export const BillingCashierModule: React.FC = () => {
                   <p role="status">Loading invoice lines...</p>
                 ) : (
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-xs text-left">
+                    <DataTable className="w-full text-xs text-left">
                       <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
                         <tr>
                           <th className="px-4 py-2.5 font-medium">Item Description</th>
@@ -742,7 +741,7 @@ export const BillingCashierModule: React.FC = () => {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </DataTable>
                   </div>
                 )}
               </div>

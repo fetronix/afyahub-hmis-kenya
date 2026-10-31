@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useState } from 'react';
 import {
   CheckCircle2,
@@ -603,7 +604,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
             Configured Insurer Benefit Rules ({rules.length})
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <DataTable className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Insurer</th>
@@ -629,7 +630,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
 
@@ -639,7 +640,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
             Benefit Coverage Validation Log (Estimates — Not Guaranteed Reimbursement)
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <DataTable className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Insurer</th>
@@ -667,7 +668,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       </div>
@@ -842,7 +843,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
 
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <DataTable className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Insurer</th>
@@ -886,7 +887,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       </div>
@@ -1322,7 +1323,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <DataTable className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-3">Preauth #</th>
@@ -1423,7 +1424,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
     </div>

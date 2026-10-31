@@ -1,3 +1,4 @@
+import { DataTable } from '../../ui/layout.tsx';
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 
@@ -156,7 +157,7 @@ export const PostnatalCareSection: React.FC<PostnatalCareSectionProps> = ({
             )}
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <DataTable className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-2xs uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-3 py-2 font-medium">Date</th>
@@ -201,7 +202,7 @@ export const PostnatalCareSection: React.FC<PostnatalCareSectionProps> = ({
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
         )}

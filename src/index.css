@@ -10,7 +10,7 @@
  *
  *   navy    the deep hospital blue — the rail, the login panel, headings
  *   brand   sky/hospital blue — links, active navigation, primary actions
- *   ember   bright orange — one call to action per screen, sparingly
+ *   ember   warm orange — supporting emphasis, sparingly
  *   copper  dark orange — emphasis, selected indicators, warning-adjacent
  *   canvas  light blue-grey — the page behind the cards
  *
@@ -25,6 +25,15 @@
  */
 
 @theme {
+  /* Shared controls, surfaces and semantic states. Responsive layout follows Tailwind's
+     sm 640px, md 768px, lg 1024px and xl 1280px breakpoints. */
+  --radius-control: 0.5rem;
+  --radius-surface: 0.75rem;
+  --color-status-info: #0756d6;
+  --color-status-success: #047857;
+  --color-status-warning: #92400e;
+  --color-status-error: #be123c;
+
   /* Small type, under Tailwind's xs — used throughout the tables. */
   --text-2xs: 0.6875rem; /* 11px */
   --text-2xs--line-height: 1rem;
@@ -33,19 +42,19 @@
 
   /* Type. One family, two weights of voice: UI sans and tabular mono. */
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    'JaliCare Inter', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-display:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    'JaliCare Inter', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* Surfaces */
-  --color-canvas: #f3f7fc;
+  --color-canvas: #f2f5fb;
   --color-surface: #ffffff;
-  --color-ink: #0d2033;
+  --color-ink: #102143;
   --color-ink-soft: #3b4d61;
   --color-muted: #64748b;
-  --color-hair: #dce6f2;
+  --color-hair: #dfe6f0;
 
   /* Deep hospital blue — the frame. Bright enough to read as blue. */
   --color-navy-50: #eef6fb;
@@ -61,17 +70,17 @@
   --color-navy-950: #061d2e;
 
   /* Sky blue — the primary. */
-  --color-brand-50: #f0f9ff;
-  --color-brand-100: #e0f2fe;
-  --color-brand-200: #bae6fd;
-  --color-brand-300: #7dd3fc;
-  --color-brand-400: #38bdf8;
-  --color-brand-500: #0ea5e9;
-  --color-brand-600: #0284c7;
-  --color-brand-700: #0369a1;
-  --color-brand-800: #075985;
-  --color-brand-900: #0c4a6e;
-  --color-brand-950: #082f49;
+  --color-brand-50: #f1f6ff;
+  --color-brand-100: #dfeaff;
+  --color-brand-200: #bdd5ff;
+  --color-brand-300: #90b9ff;
+  --color-brand-400: #5b98ff;
+  --color-brand-500: #2c78f6;
+  --color-brand-600: #075cf1;
+  --color-brand-700: #0756d6;
+  --color-brand-800: #0845ab;
+  --color-brand-900: #103b83;
+  --color-brand-950: #102d5c;
 
   /* Bright orange — the one call to action. */
   --color-ember-50: #fff7ed;
@@ -211,7 +220,7 @@
   }
 
   .btn-accent {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-ember-500 px-4 py-2.5 text-sm font-bold text-navy-950 shadow-sm transition-colors hover:bg-ember-400 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-quiet {
@@ -537,5 +546,234 @@
   }
   .hospital-dashboard .category-chart {
     justify-content: center;
+  }
+}
+
+/* Shared staff workspace primitives. These live in the components layer so
+   a module can still deliberately override them with Tailwind utilities. */
+@layer components {
+  .app-shell {
+    font-family: var(--font-sans);
+  }
+  .ui-page-header {
+    @apply flex min-w-0 flex-col flex-wrap items-start justify-between gap-4 rounded-xl border border-hair bg-surface p-5 shadow-card sm:flex-row sm:items-center;
+  }
+  .ui-page-header > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ui-page-header > .flex {
+    flex-wrap: wrap;
+  }
+  .ui-page-title {
+    @apply text-xl font-bold leading-tight tracking-tight text-ink;
+  }
+  .ui-page-description {
+    @apply mt-1 max-w-3xl text-xs leading-relaxed text-muted;
+  }
+  .ui-breadcrumbs {
+    @apply text-xs font-medium text-slate-500;
+  }
+  .ui-breadcrumbs ol {
+    @apply flex min-w-0 flex-wrap items-center gap-1.5;
+  }
+  .ui-breadcrumbs li {
+    @apply flex min-w-0 items-center gap-1.5;
+  }
+  .ui-breadcrumbs li:last-child {
+    @apply text-ink;
+  }
+  .ui-breadcrumbs button {
+    @apply rounded text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-600;
+  }
+  .ui-summary-card {
+    @apply min-w-0 rounded-xl border border-hair bg-surface p-4 shadow-card;
+  }
+  .ui-stat-card {
+    @apply flex items-start justify-between gap-3;
+  }
+  .ui-stat-label {
+    @apply text-xs font-medium text-muted;
+  }
+  .ui-stat-value {
+    @apply mt-2 text-2xl font-bold leading-none tracking-tight text-ink;
+  }
+  .ui-stat-detail {
+    @apply mt-2 text-xs text-muted;
+  }
+  .ui-stat-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700;
+  }
+  .ui-table-scroll {
+    @apply max-w-full overflow-x-auto overscroll-x-contain;
+  }
+  .ui-table-scroll:focus-visible {
+    @apply rounded outline-2 outline-brand-600;
+  }
+  .ui-data-table {
+    @apply w-full border-collapse text-left text-xs;
+    min-width: 36rem;
+  }
+  .ui-data-table thead th {
+    @apply font-semibold;
+  }
+  .ui-data-table tbody tr {
+    @apply transition-colors;
+  }
+  .ui-data-table tbody tr:hover {
+    @apply bg-brand-50/40;
+  }
+  .ui-filter-toolbar {
+    @apply flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-hair bg-surface p-3 shadow-card;
+  }
+  .ui-button {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .ui-button-primary {
+    @apply bg-brand-700 text-white shadow-sm hover:bg-brand-800;
+  }
+  .ui-button-secondary {
+    @apply border border-hair bg-surface text-ink-soft hover:border-brand-300 hover:bg-brand-50;
+  }
+  .ui-icon-button {
+    @apply h-9 min-h-9 w-9 px-0 text-slate-600 hover:bg-slate-100;
+  }
+  .ui-search {
+    @apply flex min-w-0 items-center gap-2 rounded-lg border border-hair bg-surface px-3 text-slate-400 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100;
+  }
+  .ui-search input {
+    @apply min-h-10 min-w-0 flex-1 border-0 bg-transparent text-xs text-ink outline-none placeholder:text-slate-400;
+  }
+  .ui-form-field {
+    @apply min-w-0;
+  }
+  .ui-form-field > label {
+    @apply mb-1.5 block text-xs font-semibold text-ink-soft;
+  }
+  .ui-field-hint {
+    @apply mt-1 text-xs text-muted;
+  }
+  .ui-field-error {
+    @apply mt-1 text-xs text-rose-700;
+  }
+  .ui-tabs {
+    @apply flex min-w-0 gap-1 overflow-x-auto rounded-xl border border-hair bg-surface p-2 shadow-card;
+  }
+  .ui-tabs [role='tab'] {
+    @apply shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-600 disabled:opacity-50;
+  }
+  .ui-tabs [role='tab'][aria-selected='true'] {
+    @apply bg-brand-700 text-white;
+  }
+  .ui-pagination {
+    @apply flex items-center justify-between gap-3 text-xs text-muted;
+  }
+  .ui-pagination > div {
+    @apply flex items-center gap-1;
+  }
+  .ui-status {
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-semibold;
+  }
+  .ui-tone-neutral {
+    @apply border-slate-200 bg-slate-50 text-slate-700;
+  }
+  .ui-tone-info {
+    @apply border-brand-200 bg-brand-50 text-brand-800;
+  }
+  .ui-tone-success {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-800;
+  }
+  .ui-tone-warning {
+    @apply border-amber-200 bg-amber-50 text-amber-900;
+  }
+  .ui-tone-error {
+    @apply border-rose-200 bg-rose-50 text-rose-800;
+  }
+  .ui-alert {
+    @apply flex items-start gap-3 rounded-xl border p-4 text-sm;
+  }
+  .ui-alert > svg {
+    @apply mt-0.5 shrink-0;
+  }
+  .ui-empty {
+    @apply rounded-xl border border-dashed border-hair bg-surface px-5 py-8 text-center text-xs text-muted;
+  }
+  .ui-empty > p {
+    @apply mb-1 text-sm font-semibold text-ink;
+  }
+  .ui-skeleton {
+    @apply space-y-2;
+  }
+  .ui-skeleton > span:not(.sr-only) {
+    @apply block h-4 animate-pulse rounded bg-slate-100;
+  }
+  .ui-dialog-backdrop {
+    @apply fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-3 sm:p-5;
+  }
+  .ui-dialog {
+    @apply flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-hair bg-surface shadow-lift;
+  }
+  .ui-dialog-header {
+    @apply flex shrink-0 items-center justify-between gap-3 border-b border-hair px-5 py-3;
+  }
+  .ui-dialog-header h2 {
+    @apply text-base font-bold text-ink;
+  }
+  .ui-dialog-body {
+    @apply min-h-0 overflow-y-auto p-5 text-sm text-ink-soft;
+  }
+  .ui-dialog-actions {
+    @apply flex shrink-0 flex-wrap justify-end gap-2 border-t border-hair px-5 py-3;
+  }
+  .ui-drawer-backdrop {
+    @apply justify-end p-0;
+  }
+  .ui-drawer {
+    @apply h-full max-h-none max-w-md rounded-none;
+  }
+  .ui-dropdown {
+    @apply relative inline-block;
+  }
+  .ui-dropdown-menu {
+    @apply absolute right-0 top-full z-50 mt-2 min-w-48 rounded-xl border border-hair bg-surface p-2 shadow-lift;
+  }
+  .ui-dropdown-menu [role='menuitem'] {
+    @apply block w-full rounded-lg px-3 py-2 text-left text-xs text-ink hover:bg-brand-50;
+  }
+  /* Baselines for existing, incrementally migrated workflows. Explicit
+     utility classes and clinical/financial field behavior remain untouched. */
+  .app-workspace
+    :where(
+      input:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='hidden']),
+      select,
+      textarea
+    ) {
+    max-width: 100%;
+    min-width: 0;
+    border-radius: var(--radius-control);
+  }
+  .app-workspace :where(button, input, select, textarea):focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+  }
+}
+
+@media (min-width: 640px) {
+  .ui-page-header > :first-child {
+    flex: 1 1 20rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton > span {
+    animation: none;
+  }
+}
+@media print {
+  .ui-table-scroll {
+    overflow: visible;
+  }
+  .ui-data-table {
+    min-width: 0;
   }
 }

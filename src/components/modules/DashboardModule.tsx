@@ -1,28 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useHmis, type ModuleId } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import {
-  AnalyticsSummary,
-  AuditLog,
-  InpatientBoard,
-  InventoryBatchRow,
-  PublicHealthReport,
-  QueueItem,
-} from '../../types/index.ts';
-import ExpiryCountdown from '../ExpiryCountdown.tsx';
+import { InpatientBoard, PublicHealthReport, QueueItem } from '../../types/index.ts';
+import { useInbox } from '../../context/InboxContext.tsx';
+import type { DashboardOverview } from '../../dashboard/dashboard.types.ts';
 import {
   Users,
   BedDouble,
   Activity,
-  Wallet,
   AlertTriangle,
   ArrowUpRight,
-  CalendarClock,
   Clock,
   HeartPulse,
-  RefreshCw,
-  ShieldCheck,
-  ChevronRight,
   UserPlus,
   Stethoscope,
   FlaskConical,
@@ -55,9 +44,6 @@ import {
 |
 */
 
-/* Days of shelf life that count as "act now" on the overview. */
-const EXPIRY_ALERT_DAYS = 10;
-
 /* ----------------------------------------------------------------
    Small building blocks
    ---------------------------------------------------------------- */
@@ -89,38 +75,6 @@ const SectionHeading: React.FC<SectionProps> = ({ step, title, subtitle, icon: I
   </div>
 );
 
-type KpiCellProps = {
-  label: string;
-  icon: LucideIcon;
-  value: React.ReactNode;
-  unit?: React.ReactNode;
-  footer: React.ReactNode;
-};
-
-/**
- * One figure, one honest footer. The footer carries the caveat, so a
- * card can never look more certain than the data behind it.
- */
-const KpiCell: React.FC<KpiCellProps> = ({ label, icon: Icon, value, unit, footer }) => (
-  <div className="bg-surface px-5 py-4">
-    <div className="flex items-start justify-between gap-3">
-      <span className="eyebrow">{label}</span>
-      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-50">
-        <Icon className="h-3.5 w-3.5 text-brand-600" />
-      </span>
-    </div>
-
-    <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight text-navy-900">
-        {value}
-      </span>
-      {unit && <span className="text-2xs text-muted">{unit}</span>}
-    </div>
-
-    <div className="mt-3 border-t border-hair pt-2 text-2xs text-muted">{footer}</div>
-  </div>
-);
-
 /*
  * Queue stations are named, not numbered. "Triage Counter" reads like a
  * till; the desk the patient actually walks to is the triage desk.
@@ -137,21 +91,6 @@ const queueStationLabel = (queueType: string): string => {
 
   return known[queueType.trim().toLowerCase()] ?? `${queueType} queue`;
 };
-
-const timeGreeting = (): string => {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
-};
-
-const localeDate = (): string =>
-  new Date().toLocaleDateString('en-KE', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
 
 /* ----------------------------------------------------------------
    Quick actions — one entry per real module, gated twice
@@ -172,7 +111,7 @@ type QuickAction = {
 const QUICK_ACTIONS: QuickAction[] = [
   {
     module: 'registration',
-    label: 'Register or find a patient',
+    label: 'Open patient directory',
     hint: 'Patient directory',
     icon: UserPlus,
     permissions: ['patients.read'],
@@ -186,7 +125,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
   {
     module: 'opd',
-    label: 'Start a consultation',
+    label: 'Open outpatient care',
     hint: 'Outpatient & triage',
     icon: Stethoscope,
     permissions: ['clinical.read'],
@@ -200,7 +139,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
   {
     module: 'pharmacy',
-    label: 'Dispense a prescription',
+    label: 'Open pharmacy',
     hint: 'Pharmacy & stock',
     icon: Pill,
     permissions: ['pharmacy.read'],
@@ -231,7 +170,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: 'Theatre list',
     hint: 'Surgical cases',
     icon: Scissors,
-    permissions: ['clinical.read', 'inpatient.read'],
+    permissions: ['theatre.read'],
   },
   {
     module: 'specialty',
@@ -242,7 +181,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
   {
     module: 'finance',
-    label: 'Bill and take payment',
+    label: 'Open billing',
     hint: 'Billing & cashier',
     icon: Receipt,
     permissions: ['billing.read'],
@@ -274,7 +213,10 @@ const QUICK_ACTIONS: QuickAction[] = [
    Dashboard
    ---------------------------------------------------------------- */
 
-export const DashboardModule: React.FC = () => {
+export const DashboardModule: React.FC<{
+  overview?: DashboardOverview;
+  appointments?: React.ReactNode;
+}> = ({ overview, appointments }) => {
   const {
     currentFacility,
     setActiveModule,
@@ -282,36 +224,31 @@ export const DashboardModule: React.FC = () => {
     setIsJourneyModalOpen,
     refreshKey,
     authenticatedUser,
-    currentUser,
   } = useHmis();
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const isSuperAdmin = Boolean(
     authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
-  const can = (permission: string) => isSuperAdmin || permissions.has(permission);
+  const can = (permission: string) => !isSuperAdmin && permissions.has(permission);
   const canAny = (...required: string[]) =>
-    isSuperAdmin || required.some((permission) => permissions.has(permission));
+    !isSuperAdmin && required.some((permission) => permissions.has(permission));
 
   const facilityModules = useMemo(() => {
     const hidden = new Set(currentFacility?.hiddenModules ?? []);
     return new Set((currentFacility?.enabledModules ?? []).filter((module) => !hidden.has(module)));
   }, [currentFacility]);
-  const canReadReports = can('reports.read') && facilityModules.has('analytics');
   const canReadSurveillance = can('reports.read') && facilityModules.has('public_health');
   const canReadQueues = can('appointments.read') && facilityModules.has('reception');
   const canReadInpatient = can('inpatient.read') && facilityModules.has('inpatient');
-  const canReadAudit = can('audit.read') && facilityModules.has('audit');
   const canReadInventory = can('inventory.read') && facilityModules.has('inventory');
-  const canReadFinance = can('billing.read') && facilityModules.has('finance');
-  const canReadTheatre =
-    canAny('clinical.read', 'inpatient.read') && facilityModules.has('theatre');
+  const canReadTheatre = can('theatre.read') && facilityModules.has('theatre');
   const canReadLaboratory = can('laboratory.read') && facilityModules.has('laboratory');
 
   /* The same enablement rule the sidebar uses, for the same reason. */
   const moduleEnabled = (id: ModuleId): boolean => {
     if (id === 'platform_administration') return true;
-    if (isSuperAdmin) return true;
+    if (isSuperAdmin) return false;
     if (!currentFacility) return false;
     if (id === 'claims') {
       return facilityModules.has('insurance') || facilityModules.has('claims');
@@ -319,27 +256,12 @@ export const DashboardModule: React.FC = () => {
     return facilityModules.has(id);
   };
 
-  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [surveillance, setSurveillance] = useState<PublicHealthReport[] | null>(null);
   const [queues, setQueues] = useState<QueueItem[] | null>(null);
   const [inpatientBoard, setInpatientBoard] = useState<InpatientBoard | null>(null);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  /**
-   * Lots inside the ten-day window, per batch rather than per item, so
-   * the overview can name the batch, the quantity and the money at
-   * stake. Ten days is the facility's operating lead time: a lot needs
-   * to be used, transferred or written off before it becomes waste.
-   */
-  const [expiringBatches, setExpiringBatches] = useState<InventoryBatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  /*
-   * A figure the server has not reported is unknown, not zero. Rendering
-   * "0" when the request failed would be an assertion nobody made.
-   */
-  const metric = (value: number | null | undefined): string =>
-    summary && value !== null && value !== undefined ? String(value) : '\u2014';
+  const inbox = useInbox();
 
   useEffect(() => {
     let active = true;
@@ -349,27 +271,6 @@ export const DashboardModule: React.FC = () => {
       setLoadError(null);
 
       const tasks: Promise<void>[] = [];
-
-      if (canReadReports) {
-        tasks.push(
-          api
-            .getAnalyticsSummary(currentFacility?.id)
-            .then((value) => {
-              if (active) setSummary(value);
-            })
-            .catch((err) => {
-              console.error('Failed to load analytics summary:', err);
-              if (active) {
-                setSummary(null);
-                setLoadError((previous) =>
-                  [previous, 'Some figures could not be loaded.'].filter(Boolean).join(' '),
-                );
-              }
-            }),
-        );
-      } else {
-        setSummary(null);
-      }
 
       if (canReadSurveillance) {
         tasks.push(
@@ -395,7 +296,7 @@ export const DashboardModule: React.FC = () => {
       if (canReadQueues) {
         tasks.push(
           api
-            .getQueues(currentFacility?.id)
+            .getQueues(currentFacility?.id, undefined, true)
             .then((value) => {
               if (active) setQueues(value);
             })
@@ -434,69 +335,6 @@ export const DashboardModule: React.FC = () => {
         setInpatientBoard(null);
       }
 
-      /*
-       * Expiry is a stock fact, not a billing one: it is loaded with a
-       * ten-day horizon and shown as its own panel. A missing list
-       * leaves the panel out rather than claiming the store is clean.
-       */
-      if (canReadInventory) {
-        tasks.push(
-          api
-            .getInventoryBatches(currentFacility?.id, { horizonDays: EXPIRY_ALERT_DAYS })
-            .then((value) => {
-              if (!active) return;
-
-              setExpiringBatches(
-                value.filter(
-                  (batch) =>
-                    batch.quantityRemaining > 0 &&
-                    batch.daysToExpiry !== null &&
-                    batch.daysToExpiry <= EXPIRY_ALERT_DAYS,
-                ),
-              );
-            })
-            .catch((err) => {
-              console.error('Failed to load expiring stock:', err);
-              if (active) {
-                setExpiringBatches([]);
-                setLoadError((previous) =>
-                  [previous, 'Expiring stock could not be loaded.'].filter(Boolean).join(' '),
-                );
-              }
-            }),
-        );
-      } else {
-        setExpiringBatches([]);
-      }
-
-      /*
-       * Recent activity is secondary. If the audit module is switched
-       * off for this facility the endpoint answers 403; that is not a
-       * dashboard failure and must not raise the page-level alert.
-       */
-      if (canReadAudit && facilityModules.has('audit')) {
-        tasks.push(
-          api
-            .getAuditLogs(currentFacility?.id)
-            .then((value) => {
-              if (active) setAuditLogs(value.slice(0, 6));
-            })
-            .catch((err) => {
-              console.error('Failed to load recent activity:', err);
-              if (active) {
-                setAuditLogs([]);
-                setLoadError((previous) =>
-                  [previous, 'Recent audit activity could not be loaded.']
-                    .filter(Boolean)
-                    .join(' '),
-                );
-              }
-            }),
-        );
-      } else {
-        setAuditLogs([]);
-      }
-
       try {
         await Promise.all(tasks);
       } finally {
@@ -512,443 +350,106 @@ export const DashboardModule: React.FC = () => {
   }, [
     currentFacility,
     refreshKey,
-    canReadReports,
     canReadSurveillance,
     canReadQueues,
     canReadInpatient,
-    canReadAudit,
-    canReadInventory,
     facilityModules,
   ]);
-
-  /* ----------------------------------------------------------------
-     Derived view data — every number below came from the server
-     ---------------------------------------------------------------- */
-
-  const alerts: Array<{
-    key: string;
-    tone: 'danger' | 'warning' | 'info';
-    label: string;
-    module: ModuleId;
-  }> = [];
-
-  if (inpatientBoard && inpatientBoard.criticalVitalsCount > 0) {
-    alerts.push({
-      key: 'critical-vitals',
-      tone: 'danger',
-      label: `${inpatientBoard.criticalVitalsCount} critical observation${inpatientBoard.criticalVitalsCount === 1 ? '' : 's'} on the ward`,
-      module: 'inpatient',
-    });
-  }
-
-  if (inpatientBoard && inpatientBoard.vitalsOverdueCount > 0) {
-    alerts.push({
-      key: 'vitals-overdue',
-      tone: 'warning',
-      label: `${inpatientBoard.vitalsOverdueCount} patient${inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} with no observation in 8 hours`,
-      module: 'inpatient',
-    });
-  }
-
-  if (canReadLaboratory && summary && summary.pendingLabOrders > 0) {
-    alerts.push({
-      key: 'labs-pending',
-      tone: 'info',
-      label: `${summary.pendingLabOrders} laboratory order${summary.pendingLabOrders === 1 ? '' : 's'} pending`,
-      module: 'laboratory',
-    });
-  }
-
-  if (canReadInventory && summary && summary.lowStockAlerts > 0) {
-    alerts.push({
-      key: 'low-stock',
-      tone: 'warning',
-      label: `${summary.lowStockAlerts} item${summary.lowStockAlerts === 1 ? '' : 's'} at or below reorder level`,
-      module: 'inventory',
-    });
-  }
-
-  const expiredBatchCount = expiringBatches.filter((batch) => (batch.daysToExpiry ?? 0) < 0).length;
-
-  if (expiringBatches.length > 0) {
-    alerts.push({
-      key: 'expiring-stock-10d',
-      tone: expiredBatchCount > 0 ? 'danger' : 'warning',
-      label: `${expiringBatches.length} batch${expiringBatches.length === 1 ? '' : 'es'} ${
-        expiredBatchCount > 0 ? `${expiredBatchCount} already expired · ` : ''
-      }expiring within ${EXPIRY_ALERT_DAYS} days`,
-      module: 'inventory',
-    });
-  }
-
-  if (canReadInventory && summary && summary.expiringStockAlerts > 0) {
-    alerts.push({
-      key: 'expiring-stock',
-      tone: 'warning',
-      label: `${summary.expiringStockAlerts} batch${summary.expiringStockAlerts === 1 ? '' : 'es'} expiring within 30 days`,
-      module: 'inventory',
-    });
-  }
-
-  const expiringUnits = expiringBatches.reduce((sum, batch) => sum + batch.quantityRemaining, 0);
-
-  const expiringValueKes = expiringBatches.reduce(
-    (sum, batch) => sum + Number(batch.costPerUnit || 0) * batch.quantityRemaining,
-    0,
-  );
-
-  /* Earliest expiry first — it is the lot that must move first. */
-  const expiringRows = [...expiringBatches].sort((left, right) =>
-    left.expiryDate < right.expiryDate ? -1 : left.expiryDate > right.expiryDate ? 1 : 0,
-  );
 
   const quickActions = QUICK_ACTIONS.filter(
     (action) => moduleEnabled(action.module) && canAny(...action.permissions),
   ).slice(0, 6);
-
-  const firstName = (authenticatedUser?.fullName || currentUser?.name || '').trim().split(/\s+/)[0];
-
-  const hasAnyKpi =
-    canReadQueues ||
-    canReadInpatient ||
-    canReadFinance ||
-    canReadTheatre ||
-    canReadLaboratory ||
-    canReadInventory;
+  const activeQueues = queues?.filter((queue) =>
+    ['waiting', 'called', 'in-progress', 'in progress', 'serving'].includes(
+      (queue.status ?? '').toLowerCase(),
+    ),
+  );
+  const op = overview?.operations;
+  const number = (value: number | undefined) =>
+    value === undefined ? '—' : value.toLocaleString('en-KE');
+  const stockGroupCount = (...groups: string[]) =>
+    inbox.data && !inbox.error
+      ? inbox.data.alertGroups
+          .filter((group) => groups.includes(group.group))
+          .reduce((total, group) => total + group.count, 0)
+      : undefined;
+  const cells: Array<{ label: string; value: string; note: string }> = [];
+  if (canReadQueues) {
+    cells.push({
+      label: 'Queue tickets',
+      value: number(op?.queues.status === 'ok' ? op.queues.data.active : undefined),
+      note: 'Waiting or in progress',
+    });
+    cells.push({ label: 'Triage wait', value: '—', note: 'Live average not tracked' });
+  }
+  if (canReadInpatient) {
+    cells.push({
+      label: 'Occupied beds',
+      value: number(op?.beds.status === 'ok' ? op.beds.data.occupied : undefined),
+      note:
+        op?.beds.status === 'ok' ? `${op.beds.data.total} beds recorded` : 'Bed board unavailable',
+    });
+    cells.push({
+      label: 'Vitals overdue',
+      value: number(inpatientBoard?.vitalsOverdueCount),
+      note: 'Existing ward-board rule',
+    });
+  }
+  if (canReadTheatre)
+    cells.push({
+      label: 'Theatre scheduled',
+      value: number(op?.theatre.status === 'ok' ? op.theatre.data.scheduled : undefined),
+      note: 'Scheduled case records',
+    });
+  if (canReadLaboratory)
+    cells.push({
+      label: 'Lab pending',
+      value: number(op?.laboratory.status === 'ok' ? op.laboratory.data.pending : undefined),
+      note: 'Open order records',
+    });
+  if (canReadInventory) {
+    cells.push({
+      label: 'Low stock / out',
+      value: number(stockGroupCount('lowStock', 'stockout')),
+      note: 'Active inventory items',
+    });
+    cells.push({
+      label: 'Expiry alerts',
+      value: number(stockGroupCount('expired', 'expiry7', 'expiry30')),
+      note: 'Expired or within 30 days',
+    });
+  }
 
   return (
-    <div className="space-y-7">
-      {/* ---------------------------------------------------------------
-          Welcome
-      --------------------------------------------------------------- */}
-
-      <section className="relative overflow-hidden rounded-card border border-hair bg-surface p-5 shadow-card sm:p-6">
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-brand-600 via-brand-500 to-ember-500"
-        />
-
-        <div className="flex flex-col gap-5 pl-2 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-brand-700">
-              {localeDate()}
-            </p>
-
-            <h1 className="mt-1.5 text-[1.6rem] font-bold leading-tight tracking-tight text-navy-900">
-              {timeGreeting()}
-              {firstName ? `, ${firstName}` : ''}.
-            </h1>
-
-            <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-muted">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 font-semibold text-brand-800">
-                {currentUser?.role || 'Authenticated user'}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                {currentFacility?.name || 'JaliCare Kenya Facility'}
-              </span>
-              <span className="font-mono text-2xs text-slate-400">
-                MFL {currentFacility?.mflCode || 'not configured'}
-              </span>
-              {loading && (
-                <span className="inline-flex items-center gap-1.5 text-2xs text-brand-700">
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                  Refreshing
-                </span>
-              )}
-            </div>
-          </div>
-
-          {isSuperAdmin && (
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <button onClick={() => setActiveModule('interoperability')} className="btn-quiet">
-                <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
-                DHA readiness
-                <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
-
+    <div className="space-y-5">
       {loadError && (
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"
         >
-          {loadError} Figures shown as an em dash are unknown, not zero. Reload the page to try
-          again.
+          {loadError} Unavailable figures are shown as a dash.
         </div>
       )}
-
-      {/* ---------------------------------------------------------------
-          Alerts the server reported, not a notification system
-      --------------------------------------------------------------- */}
-
-      {alerts.length > 0 && (
-        <section aria-label="Alerts" className="flex flex-wrap gap-2">
-          {alerts.map((alert) => {
-            const tone =
-              alert.tone === 'danger'
-                ? 'border-rose-200 bg-rose-50 text-rose-900 hover:border-rose-300'
-                : alert.tone === 'warning'
-                  ? 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300'
-                  : 'border-brand-200 bg-brand-50 text-brand-900 hover:border-brand-300';
-
-            return (
-              <button
-                key={alert.key}
-                onClick={() => setActiveModule(alert.module)}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-2xs font-semibold transition-colors ${tone}`}
-              >
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                {alert.label}
-                <ArrowUpRight className="h-3 w-3 opacity-60" />
-              </button>
-            );
-          })}
-        </section>
-      )}
-
-      {/* ---------------------------------------------------------------
-          The shift in four numbers
-      --------------------------------------------------------------- */}
-
-      {hasAnyKpi && (
-        <section className="panel overflow-hidden">
-          <div className="flex items-center justify-between border-b border-hair px-5 py-3">
-            <span className="eyebrow">The shift in numbers</span>
-            <span className="text-2xs text-slate-400">Live from this facility only</span>
+      {cells.length > 0 && (
+        <section
+          className="overflow-hidden rounded-[10px] border border-[#dfe6f0] bg-white"
+          aria-label="Operational overview"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf1f6] px-4 py-3">
+            <h2 className="text-[15px] font-bold text-[#112344]">Operational overview</h2>
+            <span className="text-[10px] text-slate-500">
+              Current facility snapshot · not date filtered
+            </span>
           </div>
-
-          {!canReadReports && (
-            <p className="px-5 py-2 text-xs text-muted">
-              Operational summary figures require reports access and the analytics module.
-            </p>
-          )}
-          {/* Tracks fit however many metrics this session may read; the
-              1px gap over the hairline colour draws the dividers. */}
-          <div className="grid gap-px bg-hair [grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))]">
-            {canReadQueues && (
-              <KpiCell
-                label="Waiting in queues"
-                icon={Users}
-                value={metric(summary?.activeQueuesCount)}
-                unit="tickets open"
-                footer={
-                  <span className="flex items-center justify-between gap-2">
-                    <span>Average triage wait</span>
-                    <strong className="font-mono font-semibold text-slate-600">not tracked</strong>
-                  </span>
-                }
-              />
-            )}
-
-            {canReadInpatient && (
-              <KpiCell
-                label="Beds occupied"
-                icon={BedDouble}
-                value={summary ? `${summary.bedOccupancyRate ?? 0}%` : '\u2014'}
-                unit={summary ? `${summary.currentAdmissions ?? 0} admitted` : undefined}
-                footer={
-                  <div className="space-y-1.5">
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-1.5 rounded-full bg-brand-600"
-                        style={{
-                          width: `${Math.min(100, summary?.bedOccupancyRate ?? 0)}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>Vitals overdue</span>
-                      <strong
-                        className={`font-mono font-semibold ${
-                          (inpatientBoard?.vitalsOverdueCount ?? 0) > 0
-                            ? 'text-ember-700'
-                            : 'text-emerald-700'
-                        }`}
-                      >
-                        {inpatientBoard ? inpatientBoard.vitalsOverdueCount : '\u2014'}
-                      </strong>
-                    </div>
-                  </div>
-                }
-              />
-            )}
-
-            {(canReadTheatre || canReadLaboratory || canReadInventory) && (
-              <KpiCell
-                label="Theatre, lab & stores"
-                icon={Activity}
-                value={
-                  <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    {canReadTheatre && (
-                      <span>
-                        {metric(summary?.scheduledSurgeries)}
-                        <span className="ml-1 font-sans text-2xs font-medium text-muted">
-                          surgeries
-                        </span>
-                      </span>
-                    )}
-                    {canReadLaboratory && (
-                      <span>
-                        {metric(summary?.pendingLabOrders)}
-                        <span className="ml-1 font-sans text-2xs font-medium text-muted">
-                          labs pending
-                        </span>
-                      </span>
-                    )}
-                  </span>
-                }
-                footer={
-                  canReadInventory ? (
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                      <span>
-                        Low stock{' '}
-                        <strong className="font-mono font-semibold text-rose-600">
-                          {metric(summary?.lowStockAlerts)}
-                        </strong>
-                      </span>
-                      <span>
-                        Expiring ≤30d{' '}
-                        <strong
-                          className={`font-mono font-semibold ${
-                            (summary?.expiringStockAlerts ?? 0) > 0
-                              ? 'text-amber-700'
-                              : 'text-slate-600'
-                          }`}
-                        >
-                          {metric(summary?.expiringStockAlerts)}
-                        </strong>
-                      </span>
-                    </div>
-                  ) : undefined
-                }
-              />
-            )}
-
-            {canReadFinance && (
-              <KpiCell
-                label="Invoice paid amounts · unreconciled"
-                icon={Wallet}
-                value={
-                  summary ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}` : '\u2014'
-                }
-                footer={
-                  <span className="flex items-center justify-between gap-2">
-                    <span>Outstanding</span>
-                    <strong className="font-mono font-semibold text-ember-700">
-                      {summary
-                        ? `KES ${Number(summary.outstandingBillsKes).toLocaleString()}`
-                        : '\u2014'}
-                    </strong>
-                  </span>
-                }
-              />
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ---------------------------------------------------------------
-          Stock about to expire — the record behind the alert
-      --------------------------------------------------------------- */}
-
-      {expiringRows.length > 0 && (
-        <section className="panel overflow-hidden" aria-label="Stock expiring soon">
-          <div className="flex flex-col gap-2 border-b border-hair px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
-                <CalendarClock className="h-4 w-4" />
-              </span>
-              <div>
-                <p className="eyebrow">Stores · next {EXPIRY_ALERT_DAYS} days</p>
-                <h2 className="mt-0.5 text-sm font-semibold tracking-tight text-navy-900">
-                  {expiringRows.length} batch
-                  {expiringRows.length === 1 ? '' : 'es'} to use, move or write off
-                </h2>
+          <div className="grid grid-cols-2 gap-px bg-[#eaf0f6] md:grid-cols-4 xl:grid-cols-8">
+            {cells.map((cell) => (
+              <div key={cell.label} className="min-w-0 bg-white px-3 py-3">
+                <p className="text-[10px] font-semibold text-slate-500">{cell.label}</p>
+                <p className="mt-1 text-lg font-bold text-[#152a49]">{cell.value}</p>
+                <p className="mt-1 text-[10px] leading-snug text-slate-400">{cell.note}</p>
               </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted">
-              <span>
-                <strong className="font-mono font-semibold text-slate-700">
-                  {expiringUnits.toLocaleString()}
-                </strong>{' '}
-                units
-              </span>
-              <span>
-                <strong className="font-mono font-semibold text-slate-700">
-                  KES {expiringValueKes.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </strong>{' '}
-                at cost
-              </span>
-              <button
-                type="button"
-                onClick={() => setActiveModule('inventory')}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Open inventory
-                <ArrowUpRight className="h-3 w-3 opacity-60" />
-              </button>
-            </div>
+            ))}
           </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 text-2xs uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="px-5 py-2 font-medium">Item</th>
-                  <th className="px-4 py-2 font-medium">Batch</th>
-                  <th className="px-4 py-2 text-right font-medium">Quantity</th>
-                  <th className="px-4 py-2 font-medium">Expiry</th>
-                  <th className="px-4 py-2 font-medium">Time left</th>
-                  <th className="px-5 py-2 text-right font-medium">Value at cost</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {expiringRows.map((batch) => {
-                  const expired = (batch.daysToExpiry ?? 0) < 0;
-                  const critical = !expired && (batch.daysToExpiry ?? 99) <= 3;
-
-                  return (
-                    <tr
-                      key={batch.id}
-                      className={expired ? 'bg-rose-50/40' : critical ? 'bg-amber-50/30' : ''}
-                    >
-                      <td className="px-5 py-2.5">
-                        <span className="font-semibold text-slate-900">{batch.itemName}</span>
-                        <span className="ml-1.5 font-mono text-2xs text-slate-400">
-                          {batch.itemCode}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-700">{batch.batchNumber}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-slate-700">
-                        {batch.quantityRemaining}
-                        <span className="ml-1 text-2xs text-slate-400">{batch.unit ?? ''}</span>
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-700">{batch.expiryDate}</td>
-                      <td className="px-4 py-2.5">
-                        <ExpiryCountdown expiryDate={batch.expiryDate} short />
-                      </td>
-                      <td className="px-5 py-2.5 text-right font-mono text-slate-700">
-                        KES{' '}
-                        {(
-                          Number(batch.costPerUnit || 0) * batch.quantityRemaining
-                        ).toLocaleString()}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <p className="border-t border-hair px-5 py-2.5 text-2xs leading-relaxed text-muted">
-            Expired lots are never dispensed and are excluded from available stock. A lot expiring
-            today is still usable until the end of that day.
-          </p>
         </section>
       )}
 
@@ -1023,13 +524,13 @@ export const DashboardModule: React.FC = () => {
                     <th>Ticket</th>
                     <th>Desk</th>
                     <th>Priority</th>
-                    <th>Waiting</th>
+                    <th>Recorded wait</th>
                     <th>Status</th>
                     <th className="text-right">Patient</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {queues?.slice(0, 5).map((q) => (
+                  {activeQueues?.slice(0, 5).map((q) => (
                     <tr key={q.id}>
                       <td className="font-mono font-semibold text-navy-900">{q.tokenNumber}</td>
                       <td className="text-ink-soft">{queueStationLabel(q.queueType)}</td>
@@ -1046,7 +547,11 @@ export const DashboardModule: React.FC = () => {
                           {q.priority}
                         </span>
                       </td>
-                      <td className="font-mono text-ink-soft">{q.waitingTimeMinutes} min</td>
+                      <td className="font-mono text-ink-soft">
+                        {q.waitingTimeMinutes > 0
+                          ? `${q.waitingTimeMinutes} min recorded`
+                          : 'Not tracked'}
+                      </td>
                       <td>
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-2xs font-medium ${
@@ -1094,7 +599,7 @@ export const DashboardModule: React.FC = () => {
                       </td>
                     </tr>
                   )}
-                  {queues?.length === 0 && (
+                  {activeQueues?.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
                         No queue records to display. If activity is expected, verify queue data
@@ -1106,9 +611,9 @@ export const DashboardModule: React.FC = () => {
               </table>
             </div>
 
-            {queues && queues.length > 5 && (
+            {activeQueues && activeQueues.length > 5 && (
               <div className="flex items-center justify-between border-t border-hair bg-slate-50/60 px-5 py-2.5 text-2xs text-muted">
-                <span>Showing the first 5 of {queues.length} open tickets</span>
+                <span>Showing up to 5 recent open tickets</span>
                 <button
                   onClick={() => setActiveModule('reception')}
                   className="font-semibold text-brand-700 hover:text-brand-900"
@@ -1118,6 +623,7 @@ export const DashboardModule: React.FC = () => {
               </div>
             )}
           </div>
+          {appointments && <div className="mt-3">{appointments}</div>}
         </section>
       )}
 
@@ -1144,28 +650,6 @@ export const DashboardModule: React.FC = () => {
             <div className="panel overflow-hidden">
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-hair px-5 py-3 text-2xs text-muted">
                 <span className="chip">{(inpatientBoard.shift || 'Current') + ' shift'}</span>
-                <span>
-                  <strong className="font-mono text-sm text-navy-900">
-                    {inpatientBoard.admissionCount}
-                  </strong>{' '}
-                  admitted
-                </span>
-                <span>
-                  <strong className="font-mono text-sm text-navy-900">
-                    {inpatientBoard.occupancyRate}%
-                  </strong>{' '}
-                  occupancy
-                </span>
-                <span
-                  className={
-                    inpatientBoard.vitalsOverdueCount > 0
-                      ? 'font-semibold text-ember-700'
-                      : 'font-semibold text-emerald-700'
-                  }
-                >
-                  <strong className="font-mono">{inpatientBoard.vitalsOverdueCount}</strong> vitals
-                  overdue
-                </span>
                 {inpatientBoard.criticalVitalsCount > 0 && (
                   <span className="flex items-center gap-1 font-semibold text-rose-700">
                     <AlertTriangle className="h-3.5 w-3.5" />
@@ -1223,8 +707,10 @@ export const DashboardModule: React.FC = () => {
                             )}
                           </td>
                           <td>
-                            {row.lastVitalsFlags.length === 0 ? (
-                              <span className="text-2xs text-emerald-700">Normal</span>
+                            {!row.lastVitalsAt ? (
+                              <span className="text-2xs text-muted">No observations</span>
+                            ) : row.lastVitalsFlags.length === 0 ? (
+                              <span className="text-2xs text-muted">No flags recorded</span>
                             ) : (
                               <div className="flex flex-wrap gap-1">
                                 {row.lastVitalsFlags.slice(0, 3).map((flag) => (
@@ -1260,16 +746,10 @@ export const DashboardModule: React.FC = () => {
                 </div>
               )}
 
-              {inpatientBoard.vitalsOverdueCount > 0 && (
-                <div className="flex items-center gap-2 border-t border-ember-200 bg-ember-50 px-5 py-2.5 text-2xs text-ember-800">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    {inpatientBoard.vitalsOverdueCount} admitted patient
-                    {inpatientBoard.vitalsOverdueCount === 1 ? '' : 's'} have no observation in the
-                    last 8 hours. Record vitals from the ward screen.
-                  </span>
-                </div>
-              )}
+              <p className="border-t border-hair px-5 py-2.5 text-2xs text-muted">
+                The existing board uses an eight-hour overdue rule and adult reference flags. These
+                are not a diagnosis; apply approved facility protocols and clinical judgment.
+              </p>
             </div>
           ) : (
             !loading && (
@@ -1282,6 +762,73 @@ export const DashboardModule: React.FC = () => {
         </section>
       )}
 
+      {(canReadTheatre || canReadLaboratory || canReadInventory) && (
+        <section>
+          <SectionHeading
+            step="03"
+            title="Theatre, laboratory & stores"
+            subtitle="Review the underlying records in their authorized workspaces."
+            icon={Activity}
+          />
+          <div className="grid gap-3 sm:grid-cols-3">
+            {canReadTheatre && (
+              <div className="rounded-lg border border-hair bg-white p-4">
+                <p className="text-xs font-bold text-navy-900">Theatre · scheduled cases</p>
+                {op?.theatre.status === 'ok' ? (
+                  op.theatre.data.samples.length ? (
+                    <ul className="mt-2 space-y-1 text-2xs text-ink-soft">
+                      {op.theatre.data.samples.map((item) => (
+                        <li key={item.id}>
+                          {item.procedure} · {item.start}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-2xs text-muted">No scheduled case records.</p>
+                  )
+                ) : (
+                  <p className="mt-2 text-2xs text-muted">Case summary unavailable.</p>
+                )}
+                <p className="mt-2 text-2xs text-muted">
+                  Readiness, consent and checklists require clinical review.
+                </p>
+              </div>
+            )}
+            {canReadLaboratory && (
+              <div className="rounded-lg border border-hair bg-white p-4">
+                <p className="text-xs font-bold text-navy-900">Laboratory · recent open orders</p>
+                {op?.laboratory.status === 'ok' ? (
+                  op.laboratory.data.samples.length ? (
+                    <ul className="mt-2 space-y-1 text-2xs text-ink-soft">
+                      {op.laboratory.data.samples.map((item) => (
+                        <li key={item.id}>
+                          {item.test} · {item.status || 'Status not recorded'}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-2xs text-muted">No open order records.</p>
+                  )
+                ) : (
+                  <p className="mt-2 text-2xs text-muted">Order summary unavailable.</p>
+                )}
+                <p className="mt-2 text-2xs text-muted">
+                  Critical flags require the facility escalation workflow.
+                </p>
+              </div>
+            )}
+            {canReadInventory && (
+              <div className="rounded-lg border border-hair bg-white p-4">
+                <p className="text-xs font-bold text-navy-900">Stores</p>
+                <p className="mt-1 text-2xs text-muted">
+                  Batch and stock details are available in the notification centre and inventory.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* ---------------------------------------------------------------
           03 — What the county is owed
       --------------------------------------------------------------- */}
@@ -1289,7 +836,7 @@ export const DashboardModule: React.FC = () => {
       {canReadSurveillance && (
         <section>
           <SectionHeading
-            step="03"
+            step="04"
             title="Surveillance & reporting"
             subtitle="Notifiable disease counts this facility reports to the county."
             icon={AlertTriangle}
@@ -1347,56 +894,6 @@ export const DashboardModule: React.FC = () => {
                 ))}
               </div>
             )}
-          </div>
-        </section>
-      )}
-
-      {/* ---------------------------------------------------------------
-          Recent activity — only for accounts allowed to read the trail
-      --------------------------------------------------------------- */}
-
-      {canReadAudit && auditLogs.length > 0 && (
-        <section>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold tracking-tight text-navy-900">
-                Recent activity
-              </h2>
-              <p className="mt-0.5 text-2xs text-muted">
-                The newest entries on this facility's audit trail. Open the audit screen for the
-                full record.
-              </p>
-            </div>
-            <button onClick={() => setActiveModule('audit')} className="btn-quiet self-start">
-              Audit trail
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          <div className="panel divide-y divide-hair">
-            {auditLogs.map((log) => (
-              <div
-                key={log.id}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-2.5 text-xs"
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
-                  <span className="truncate font-medium text-ink-soft">{log.action}</span>
-                  <span className="truncate font-mono text-2xs text-muted">
-                    {log.resource}
-                    {log.resourceId ? ` #${log.resourceId}` : ''}
-                  </span>
-                </div>
-                <span className="font-mono text-2xs text-slate-400">
-                  {new Date(log.timestamp).toLocaleString('en-KE', {
-                    day: '2-digit',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-            ))}
           </div>
         </section>
       )}

@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
@@ -266,12 +267,10 @@ export const LaboratoryModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Clinical Pathology & Diagnostic Laboratory
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Clinical Pathology & Diagnostic Laboratory</h1>
+          <p className="ui-page-description">
             Specimen accessioning, result entry and verification. Review specimen suitability and
             clinical results according to facility policy.
           </p>
@@ -282,7 +281,7 @@ export const LaboratoryModule: React.FC = () => {
             {labOrders.filter((o) => o.status !== 'Published').length} Samples In-Progress
           </span>
         </div>
-      </div>
+      </PageHeader>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Orders Queue (1 col) */}
@@ -486,7 +485,7 @@ export const LaboratoryModule: React.FC = () => {
                     Recorded Test Parameters & Measured Values
                   </h3>
                   <div className="border border-slate-200 rounded-lg overflow-x-auto">
-                    <table className="w-full text-xs text-left min-w-[560px]">
+                    <DataTable className="w-full text-xs text-left min-w-[560px]">
                       <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
                         <tr>
                           <th className="px-3 py-2 font-medium">Parameter</th>
@@ -586,7 +585,7 @@ export const LaboratoryModule: React.FC = () => {
                           ))
                         )}
                       </tbody>
-                    </table>
+                    </DataTable>
                   </div>
                 </div>
               </div>

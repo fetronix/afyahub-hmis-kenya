@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, LogOut, Menu, Search, X } from 'lucide-react';
+import { Building2, ChevronDown, LogOut, Menu, Search, X } from 'lucide-react';
 import { api } from '../api/client.ts';
 import { useHmis, type ModuleId } from '../context/HmisContext.tsx';
 import type { DashboardSearchResult } from '../dashboard/dashboard.types.ts';
+import { NotificationBell } from './NotificationCentre.tsx';
+import { useInbox } from '../context/InboxContext.tsx';
 
 // Preserve the contextual module titles from the existing shell while keeping the dashboard header compact.
-const moduleTitles: Record<ModuleId, string> = {
+export const moduleTitles: Record<ModuleId, string> = {
   dashboard: 'Hospital Dashboard',
   registration: 'Patient Registration & Identity',
   reception: 'Reception, Queue & Appointments',
@@ -31,7 +33,7 @@ const moduleTitles: Record<ModuleId, string> = {
   platform_administration: 'Platform Administration',
   configuration: 'Facility & System Configuration Engine',
   patient_portal: 'Patient Portal Management',
-  audit: 'Immutable Security Audit Trail',
+  audit: 'Security Audit Trail',
 };
 
 type HeaderProps = { collapsed: boolean; onToggleCollapse: () => void };
@@ -65,7 +67,7 @@ const HeaderContent: React.FC<HeaderProps> = ({ collapsed, onToggleCollapse }) =
     logout,
   } = useHmis();
   const [profileOpen, setProfileOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const { open: notificationsOpen, setOpen: setNotificationsOpen } = useInbox();
   const [term, setTerm] = useState('');
   const [focused, setFocused] = useState(false);
   const [searchState, setSearchState] = useState<{
@@ -110,6 +112,10 @@ const HeaderContent: React.FC<HeaderProps> = ({ collapsed, onToggleCollapse }) =
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
   }, [canSearch]);
+
+  useEffect(() => {
+    if (notificationsOpen) setProfileOpen(false);
+  }, [notificationsOpen]);
 
   useEffect(() => {
     if (!profileOpen && !notificationsOpen) return;
@@ -318,39 +324,26 @@ const HeaderContent: React.FC<HeaderProps> = ({ collapsed, onToggleCollapse }) =
           </div>
         )}
       </div>
-      {activeModule && activeModule !== 'dashboard' && (
-        <p
-          className="hidden max-w-[220px] truncate text-xs font-medium text-[#60728e] xl:block"
-          title={moduleTitles[activeModule]}
-        >
-          {moduleTitles[activeModule]}
-        </p>
-      )}
+      <div
+        className="hidden min-w-0 max-w-[210px] items-center gap-2 rounded-lg border border-[#e5eaf2] bg-[#f8faff] px-3 py-1.5 xl:flex"
+        title={`${currentFacility?.name ?? 'No facility selected'} · ${currentTenant?.name ?? 'No organization selected'}`}
+      >
+        <Building2 aria-hidden="true" className="h-4 w-4 shrink-0 text-[#58749c]" />
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-[11px] font-semibold text-[#243856]">
+            {currentFacility?.name ?? 'No facility selected'}
+          </p>
+          <p className="truncate text-[10px] text-[#71819a]">
+            {currentTenant?.name ?? 'No organization selected'}
+          </p>
+        </div>
+      </div>
       <span className="sr-only" aria-live="polite">
         {activeModule ? moduleTitles[activeModule] : ''}
       </span>
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-3">
         <div className="relative" ref={notificationsRef}>
-          <button
-            type="button"
-            onClick={() => {
-              setNotificationsOpen(!notificationsOpen);
-              setProfileOpen(false);
-            }}
-            aria-label="Notifications"
-            aria-expanded={notificationsOpen}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#183053] hover:bg-[#f2f5fa]"
-          >
-            <Bell className="h-[19px] w-[19px]" />
-          </button>
-          {notificationsOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-[#e0e7f0] bg-white p-4 shadow-xl">
-              <p className="text-sm font-bold text-[#132644]">Notifications</p>
-              <p className="mt-2 text-xs leading-relaxed text-[#71819a]">
-                A persistent notification inbox is not configured. No unread count is available.
-              </p>
-            </div>
-          )}
+          <NotificationBell />
         </div>
         <span className="hidden h-8 w-px bg-[#e9edf3] sm:block" />
         <div className="relative" ref={profileRef}>
@@ -445,8 +438,11 @@ const HeaderContent: React.FC<HeaderProps> = ({ collapsed, onToggleCollapse }) =
                   </select>
                 </label>
               )}
+              {currentTenant && tenants.length <= 1 && (
+                <p className="mt-3 text-xs text-[#73839c]">Organization: {currentTenant.name}</p>
+              )}
               {currentFacility && facilities.length <= 1 && (
-                <p className="mt-3 text-xs text-[#73839c]">{currentFacility.name}</p>
+                <p className="mt-1 text-xs text-[#73839c]">Facility: {currentFacility.name}</p>
               )}
               <button
                 type="button"

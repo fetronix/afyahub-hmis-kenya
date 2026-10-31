@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BillingJournalPostingPanel } from './BillingJournalPostingPanel.tsx';
 import { getSessionToken } from '../../api/client.ts';
@@ -160,13 +161,15 @@ export const AccountingModule: React.FC = () => {
   if (!currentFacility) return <p>Select a facility to view accounting.</p>;
   return (
     <div className="space-y-5">
-      <header className="rounded-xl border border-hair bg-surface p-5">
-        <h1 className="font-display text-xl text-ink">Accounting &amp; general ledger</h1>
-        <p className="mt-2 text-xs text-muted">
-          Ledger postings only. Reviewed billing sources can be posted separately; automatic
-          posting, full payer and bank reconciliation, and unrecorded costs are not included.
-        </p>
-      </header>
+      <PageHeader>
+        <div>
+          <h1 className="ui-page-title">Accounting &amp; general ledger</h1>
+          <p className="ui-page-description">
+            Ledger postings only. Reviewed billing sources can be posted separately; automatic
+            posting, full payer and bank reconciliation, and unrecorded costs are not included.
+          </p>
+        </div>
+      </PageHeader>
       {can('accounting.read') && can('billing.read') && (
         <section className="rounded-xl border border-hair bg-surface p-4 space-y-2 text-xs">
           <h2 className="font-semibold">Billing and ledger exception review</h2>
@@ -190,7 +193,7 @@ export const AccountingModule: React.FC = () => {
                 {visibleBillingReport.pageSummary.requiringReview} on this page.
               </p>
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <DataTable className="w-full text-left">
                   <thead>
                     <tr>
                       <th>Invoice</th>
@@ -215,7 +218,7 @@ export const AccountingModule: React.FC = () => {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
               <h3 className="font-semibold">Source-linked journal checks</h3>
               <p>
@@ -224,7 +227,7 @@ export const AccountingModule: React.FC = () => {
                 match does not verify accounting classification.
               </p>
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <DataTable className="w-full text-left">
                   <thead>
                     <tr>
                       <th>Invoice ID</th>
@@ -250,7 +253,7 @@ export const AccountingModule: React.FC = () => {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
               {visibleBillingReport.nextAfterId !== null && (
                 <button
@@ -392,7 +395,7 @@ export const AccountingModule: React.FC = () => {
               and allocations are verified.
             </p>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <DataTable className="w-full text-left text-xs">
                 <thead>
                   <tr>
                     <th>Account</th>
@@ -413,7 +416,7 @@ export const AccountingModule: React.FC = () => {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </>
         )}

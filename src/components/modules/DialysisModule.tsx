@@ -1,3 +1,4 @@
+import { PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import { sprintApi, type DialysisWorkspace } from '../../api/client-sprint.client.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
@@ -146,13 +147,15 @@ export const DialysisModule: React.FC = () => {
     [];
   return (
     <div className="space-y-5">
-      <header className="rounded-xl border border-hair bg-surface p-5">
-        <h1 className="font-display text-xl text-ink">Dialysis unit</h1>
-        <p className="mt-2 text-xs text-muted">
-          A scheduled slot is not a completed treatment. No treatment settings are supplied by the
-          application; approved protocol rules and clinician entries are required.
-        </p>
-      </header>
+      <PageHeader>
+        <div>
+          <h1 className="ui-page-title">Dialysis unit</h1>
+          <p className="ui-page-description">
+            A scheduled slot is not a completed treatment. No treatment settings are supplied by the
+            application; approved protocol rules and clinician entries are required.
+          </p>
+        </div>
+      </PageHeader>
       {error && (
         <p role="alert" className="text-xs text-red-700">
           {error}

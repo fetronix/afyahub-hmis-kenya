@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api/client.ts';
 import type { ServiceTariff } from '../../types/index.ts';
@@ -385,12 +386,10 @@ export const ConfigurationModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-card border border-hair bg-surface p-5 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Hospital Configuration Engine
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Hospital Configuration Engine</h1>
+          <p className="ui-page-description">
             Zero-code administrative controls: Facility details, enabled modular features, RBAC
             matrix, and payment gateways.
           </p>
@@ -401,7 +400,7 @@ export const ConfigurationModule: React.FC = () => {
             Tenant: {currentTenant?.name}
           </span>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Navigation Tabs */}
       <div className="bg-white border border-slate-200 rounded-xl p-2 shadow-xs flex flex-wrap items-center gap-2">
@@ -895,7 +894,7 @@ export const ConfigurationModule: React.FC = () => {
             <p className="p-6 text-center text-slate-500">Loading facility tariffs…</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <DataTable className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-y border-slate-200 text-2xs text-slate-500 uppercase">
                   <tr>
                     <th className="px-4 py-3 font-medium">Service code</th>
@@ -964,7 +963,7 @@ export const ConfigurationModule: React.FC = () => {
                     </tr>
                   )}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )}
         </div>
