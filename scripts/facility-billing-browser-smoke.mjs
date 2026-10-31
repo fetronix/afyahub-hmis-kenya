@@ -116,12 +116,25 @@ try {
       [tenant, facility, `SEL-${suffix}`],
     )
   ).rows[0].id;
-  const tests = (
+  await pool.query(
+    "INSERT INTO lab_tests(facility_id,code,name,specimen_type) VALUES($1,'BROWSER-COUNT','Synthetic browser count','Whole Blood'),($1,'BROWSER-URINE','Synthetic browser urine','Whole Blood')",
+    [facility],
+  );
+  const master = (
     await pool.query(
-      "INSERT INTO lab_tests(facility_id,code,name,specimen_type) VALUES($1,'BROWSER-COUNT','Synthetic browser count','Whole Blood'),($1,'BROWSER-URINE','Synthetic browser urine','Whole Blood') RETURNING id",
-      [facility],
+      'SELECT id FROM master_services WHERE tenant_id IS NULL AND origin_facility_id IS NULL ORDER BY id LIMIT 1',
     )
-  ).rows.map((row) => row.id);
+  ).rows[0]?.id;
+  check(master, 'Synthetic historical master fixture unavailable');
+  const historical = (
+    await pool.query(
+      `INSERT INTO facility_service_tariffs
+        (tenant_id,facility_id,code,description,department,unit,fee,master_service_id,is_active,auto_bill)
+       VALUES($1,$2,$3,'Synthetic historical master price','finance','Service',12.34,$4,false,false)
+       RETURNING id,master_service_id,facility_service_id,fee::text`,
+      [tenant, facility, `JC-HISTORICAL-${suffix}`, master],
+    )
+  ).rows[0];
   phase = 'server';
   server = spawn('node', ['build/server.js'], {
     cwd: root,
@@ -168,6 +181,11 @@ try {
     ),
   });
   page = await browser.newPage();
+  const masterRequests = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (/^\/api\/master(?:-|\/)/.test(path)) masterRequests.push(path);
+  });
   page.on('pageerror', (error) => runtimeErrors.push(error.name));
   await page.setViewport({ width: 1440, height: 900 });
   phase = 'login';
@@ -317,6 +335,28 @@ try {
   await click('System Configuration', 'aside button');
   await click('Facility Services & Tariffs');
   await waitText('No facility services have been created.');
+  await waitText('No facility tariffs are available to manage.');
+  const configurationText = await page.evaluate(() => document.body.innerText);
+  check(
+    !configurationText.includes('Master Tariff Price List') &&
+      !configurationText.includes('Synchronise actual services') &&
+      !configurationText.includes('Synthetic historical master price'),
+    'Retired master price list or master-only tariff was visible',
+  );
+  check(
+    JSON.stringify(
+      (
+        await pool.query(
+          'SELECT id,master_service_id,facility_service_id,fee::text FROM facility_service_tariffs WHERE id=$1',
+          [historical.id],
+        )
+      ).rows[0],
+    ) === JSON.stringify(historical),
+    'Historical master price did not remain unchanged',
+  );
+  console.log(
+    'Browser uses the facility manager, hides the old master list and retains historical prices: PASS',
+  );
   await click('Add service');
   await typeLabel('Service name', 'Synthetic browser consultation');
   await typeLabel('Service code', 'BROWSER-CONS');
@@ -351,7 +391,59 @@ try {
     'Browser created service and edited its facility tariff, with PostgreSQL verification: PASS',
   );
 
-  const labA = await makeService(
+  phase = 'permanent service and tariff deletion';
+  await click('Add service');
+  await typeLabel('Service name', 'Synthetic deletion service');
+  await typeLabel('Service code', 'BROWSER-DELETE');
+  await typeLabel('Description', 'Synthetic deletion service');
+  await typeLabel('Initial price (KES)', '12.00');
+  pending = responseFor('POST', '/api/facility-services');
+  await click('Save service');
+  const disposableResponse = await pending;
+  check(disposableResponse.status() === 201, 'Could not create disposable synthetic service');
+  const disposable = await disposableResponse.json();
+  await page.waitForSelector('button[aria-label="Delete tariff BROWSER-DELETE"]');
+  page.once('dialog', (dialog) => dialog.accept());
+  pending = responseFor('DELETE', `/api/facility-tariffs/${disposable.tariff.id}/permanent`);
+  await page.click('button[aria-label="Delete tariff BROWSER-DELETE"]');
+  const deletedTariff = await pending;
+  check(deletedTariff.status() === 200, 'Tariff deletion failed');
+  await waitText('Tariff BROWSER-DELETE was permanently deleted.');
+  check(
+    (
+      await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+        disposable.tariff.id,
+      ])
+    ).rows[0].n === 0,
+    'Tariff still exists in PostgreSQL',
+  );
+  check(
+    (
+      await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+        disposable.service.id,
+      ])
+    ).rows[0].n === 1,
+    'Tariff deletion removed the service',
+  );
+  page.once('dialog', (dialog) => dialog.accept());
+  pending = responseFor('DELETE', `/api/facility-services/${disposable.service.id}/permanent`);
+  await page.click('button[aria-label="Delete service BROWSER-DELETE"]');
+  const deletedService = await pending;
+  check(deletedService.status() === 200, 'Service deletion failed');
+  await waitText('Service BROWSER-DELETE and its unused tariffs were permanently deleted.');
+  check(
+    (
+      await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+        disposable.service.id,
+      ])
+    ).rows[0].n === 0,
+    'Service still exists in PostgreSQL',
+  );
+  console.log(
+    'Browser permanently deleted a tariff and its service, with PostgreSQL verification: PASS',
+  );
+
+  await makeService(
     'BROWSER-COUNT-FAC',
     'Synthetic browser count',
     'laboratory',
@@ -359,7 +451,7 @@ try {
     'Test',
     '80.00',
   );
-  const labB = await makeService(
+  await makeService(
     'BROWSER-URINE-FAC',
     'Synthetic browser urine',
     'laboratory',
@@ -635,6 +727,7 @@ try {
     'Invoice sources were missing or duplicated',
   );
   check(runtimeErrors.length === 0, `Browser runtime errors: ${runtimeErrors.join(',')}`);
+  check(masterRequests.length === 0, `Retired master API called: ${masterRequests.join(',')}`);
   console.log(
     'Browser completed lab, imaging and consultation: one unpaid KES 575 invoice with four lines; retries protected: PASS',
   );

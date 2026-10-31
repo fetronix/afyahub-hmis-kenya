@@ -8,6 +8,11 @@ import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import * as queries from '../db/queries.ts';
 import { dateVerdict } from '../billing/tariff-resolver.ts';
+import {
+  hasProtectedReferences,
+  hasCodeBasedClinicalHistory,
+  type FacilityDeleteTransaction,
+} from '../billing/facility-delete-safety.ts';
 import { calendarDateInZone, validTimezone } from '../dashboard/timezone.ts';
 import { parseMoneyToCents } from '../billing/settlement.ts';
 import { handleScopeError } from './shared/errors.ts';
@@ -173,6 +178,58 @@ async function audit(
     resourceId: String(resourceId),
     details: JSON.stringify(details),
   });
+}
+
+type FacilityTariffRow = typeof schema.facilityServiceTariffs.$inferSelect;
+
+function tariffAuditSnapshot(row: FacilityTariffRow) {
+  return {
+    code: row.code,
+    description: row.description,
+    serviceId: row.facilityServiceId,
+    fee: row.fee,
+    unit: row.unit,
+    department: row.department,
+    effectiveFrom: row.effectiveFrom,
+    effectiveTo: row.effectiveTo,
+    isActive: row.isActive,
+    autoBill: row.autoBill,
+    archivedAt: row.archivedAt,
+  };
+}
+
+async function assertTariffsDeletable(tx: FacilityDeleteTransaction, tariffs: FacilityTariffRow[]) {
+  if (tariffs.some((row) => row.masterServiceId !== null))
+    throw new FacilityServiceError(
+      'TARIFF_IN_USE',
+      'A historical master-linked tariff must be retained. Archive it instead.',
+      409,
+    );
+  if (
+    await hasProtectedReferences(
+      tx,
+      'facility_service_tariffs',
+      tariffs.map((row) => row.id),
+    )
+  )
+    throw new FacilityServiceError(
+      'TARIFF_IN_USE',
+      'This tariff is linked to billing, payer or other records and must be retained. Archive it instead.',
+      409,
+    );
+}
+
+function deletionFailure(res: Response, error: unknown) {
+  const pgCode =
+    (error as { code?: string; cause?: { code?: string } } | null)?.code ??
+    (error as { cause?: { code?: string } } | null)?.cause?.code;
+  if (pgCode === '23503')
+    return res.status(409).json({
+      error: 'RECORD_IN_USE',
+      message:
+        'This record is in use and cannot be deleted. Deactivate the service or archive the tariff instead.',
+    });
+  return failure(res, error);
 }
 
 /** Active clinical services remain selectable even without a billable tariff.
@@ -499,6 +556,99 @@ router.patch(
   },
 );
 
+/** Permanently remove an unused service and its unused tariffs atomically. */
+router.delete(
+  '/api/facility-services/:id/permanent',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(
+        req,
+        res,
+        req.body?.facilityId ?? req.query.facilityId,
+      );
+      if (!facility || !req.authContext) return;
+      const serviceId = id(req.params.id),
+        actor = req.authContext.userId;
+      const deletedTariffs = await db.transaction(async (tx) => {
+        const [service] = await tx
+          .select()
+          .from(schema.facilityServices)
+          .where(
+            and(
+              eq(schema.facilityServices.id, serviceId),
+              eq(schema.facilityServices.tenantId, facility.tenantId),
+              eq(schema.facilityServices.facilityId, facility.id),
+            ),
+          )
+          .limit(1)
+          .for('update');
+        if (!service)
+          throw new FacilityServiceError(
+            'SERVICE_NOT_FOUND',
+            'Service not found in this facility.',
+            404,
+          );
+        if (
+          (await hasProtectedReferences(tx, 'facility_services', [service.id])) ||
+          (await hasCodeBasedClinicalHistory(tx, service))
+        )
+          throw new FacilityServiceError(
+            'SERVICE_IN_USE',
+            'This service is linked to clinical, billing or other records and must be retained. Deactivate it instead.',
+            409,
+          );
+        // Lock in a stable order. The service lock prevents concurrent tariff
+        // attachment; the tariff locks prevent new billing/payer references.
+        const tariffs = await tx
+          .select()
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.facilityServiceId, service.id),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .orderBy(asc(schema.facilityServiceTariffs.id))
+          .for('update');
+        await assertTariffsDeletable(tx, tariffs);
+        for (const tariff of tariffs) {
+          await tx
+            .delete(schema.facilityServiceTariffs)
+            .where(eq(schema.facilityServiceTariffs.id, tariff.id));
+          await audit(
+            tx,
+            facility,
+            actor,
+            'DELETE',
+            'FACILITY_SERVICE_TARIFF',
+            tariff.id,
+            tariffAuditSnapshot(tariff),
+          );
+        }
+        await tx.delete(schema.facilityServices).where(eq(schema.facilityServices.id, service.id));
+        await audit(tx, facility, actor, 'DELETE', 'FACILITY_SERVICE', service.id, {
+          code: service.code,
+          name: service.name,
+          description: service.description,
+          department: service.department,
+          category: service.category,
+          unit: service.unit,
+          isActive: service.isActive,
+          autoBill: service.autoBill,
+          deletedTariffIds: tariffs.map((row) => row.id),
+        });
+        return tariffs.length;
+      });
+      return res.json({ deleted: true, id: serviceId, deletedTariffs });
+    } catch (error) {
+      return deletionFailure(res, error);
+    }
+  },
+);
+
 router.get(
   '/api/facility-tariffs',
   requirePermission('tariffs.read'),
@@ -787,6 +937,61 @@ router.patch(
     }
   },
 );
+/** An explicit permanent endpoint keeps the existing DELETE-as-archive API compatible. */
+router.delete(
+  '/api/facility-tariffs/:id/permanent',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(
+        req,
+        res,
+        req.body?.facilityId ?? req.query.facilityId,
+      );
+      if (!facility || !req.authContext) return;
+      const tariffId = id(req.params.id),
+        actor = req.authContext.userId;
+      await db.transaction(async (tx) => {
+        const [tariff] = await tx
+          .select()
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .limit(1)
+          .for('update');
+        if (!tariff)
+          throw new FacilityServiceError(
+            'TARIFF_NOT_FOUND',
+            'Facility service tariff not found.',
+            404,
+          );
+        await assertTariffsDeletable(tx, [tariff]);
+        await tx
+          .delete(schema.facilityServiceTariffs)
+          .where(eq(schema.facilityServiceTariffs.id, tariff.id));
+        await audit(
+          tx,
+          facility,
+          actor,
+          'DELETE',
+          'FACILITY_SERVICE_TARIFF',
+          tariff.id,
+          tariffAuditSnapshot(tariff),
+        );
+      });
+      return res.json({ deleted: true, id: tariffId });
+    } catch (error) {
+      return deletionFailure(res, error);
+    }
+  },
+);
+
 router.delete(
   '/api/facility-tariffs/:id',
   requirePermission('tariffs.manage'),

@@ -70,6 +70,7 @@ export const FacilityServicesManager: React.FC<{
   const [tariffs, setTariffs] = useState<ServiceTariff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [serviceEdit, setServiceEdit] = useState<number | null>(null);
@@ -111,14 +112,16 @@ export const FacilityServicesManager: React.FC<{
     };
   }, [load]);
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>, successMessage?: string) {
     if (busy || !canManage) return;
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       await action();
       await load();
       triggerRefresh();
+      if (successMessage) setNotice(successMessage);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The change could not be saved.');
     } finally {
@@ -208,6 +211,12 @@ export const FacilityServicesManager: React.FC<{
       setTariffEdit(null);
     });
   }
+  // Master-only rows remain in PostgreSQL for history but are not a
+  // facility service price list. Do not hide a tariff already attached to
+  // a direct service: it may still be used by billing and must remain visible.
+  const visibleTariffs = tariffs.filter(
+    (row) => row.masterServiceId == null || row.facilityServiceId != null,
+  );
   const fields = 'w-full rounded border border-slate-300 px-2 py-2';
   const button = 'rounded bg-teal-700 px-3 py-2 text-white disabled:opacity-50';
   return (
@@ -247,6 +256,14 @@ export const FacilityServicesManager: React.FC<{
       {error && (
         <p role="alert" className="rounded border border-rose-300 bg-rose-50 p-3 text-rose-800">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p
+          role="status"
+          className="rounded border border-emerald-300 bg-emerald-50 p-3 text-emerald-800"
+        >
+          {notice}
         </p>
       )}
       {loading && <p>Loading facility services and tariffs…</p>}
@@ -502,7 +519,7 @@ export const FacilityServicesManager: React.FC<{
       )}
       <div className="rounded border bg-white p-4">
         <h3 className="font-bold">Services</h3>
-        {!loading && !services.length && <p>No facility services have been created.</p>}
+        {!loading && !error && !services.length && <p>No facility services have been created.</p>}
         {services.map((row) => (
           <div
             key={row.id}
@@ -524,6 +541,30 @@ export const FacilityServicesManager: React.FC<{
               >
                 {row.isActive ? 'Deactivate' : 'Activate'}
               </button>
+              <button
+                type="button"
+                className="text-rose-700 disabled:opacity-50"
+                aria-label={`Delete service ${row.code}`}
+                disabled={!canManage || busy}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Permanently delete service ${row.code} and its associated tariffs from the database? This cannot be undone. Records used by clinical, billing or payer history cannot be deleted.`,
+                    )
+                  )
+                    void run(async () => {
+                      await api.deleteFacilityService(row.id, facilityId);
+                      if (serviceEdit === row.id) {
+                        setServiceOpen(false);
+                        setServiceEdit(null);
+                      }
+                      setTariffOpen(false);
+                      setTariffEdit(null);
+                    }, `Service ${row.code} and its unused tariffs were permanently deleted.`);
+                }}
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))}
@@ -531,11 +572,12 @@ export const FacilityServicesManager: React.FC<{
       <div className="rounded border bg-white p-4">
         <h3 className="font-bold">Tariffs</h3>
         <p className="text-slate-600">
-          Existing tariff history is retained. Older tariffs without a facility service cannot be
-          used automatically until explicitly reviewed.
+          Manage facility prices here. Historical pricing records are retained.
         </p>
-        {!loading && !tariffs.length && <p>No tariffs exist for this facility.</p>}
-        {tariffs.map((row) => (
+        {!loading && !error && !visibleTariffs.length && (
+          <p>No facility tariffs are available to manage.</p>
+        )}
+        {visibleTariffs.map((row) => (
           <div
             key={row.id}
             className="flex flex-wrap items-center justify-between gap-2 border-t py-2"
@@ -545,34 +587,58 @@ export const FacilityServicesManager: React.FC<{
               {row.archivedAt ? 'Archived' : row.isActive ? 'Active' : 'Inactive'}
               {!row.facilityServiceId && ' · service not selected'}
             </div>
-            {!row.archivedAt && (
-              <div className="flex gap-3">
-                <button disabled={!canManage || busy} onClick={() => editTariff(row)}>
-                  Edit
-                </button>
-                <button
-                  disabled={!canManage || busy}
-                  onClick={() =>
-                    void run(() => api.setFacilityTariffStatus(row.id, facilityId, !row.isActive))
-                  }
-                >
-                  {row.isActive ? 'Deactivate' : 'Activate'}
-                </button>
-                <button
-                  disabled={!canManage || busy}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Archive tariff ${row.code}? Existing invoices will be retained.`,
+            <div className="flex gap-3">
+              {!row.archivedAt && (
+                <>
+                  <button disabled={!canManage || busy} onClick={() => editTariff(row)}>
+                    Edit
+                  </button>
+                  <button
+                    disabled={!canManage || busy}
+                    onClick={() =>
+                      void run(() => api.setFacilityTariffStatus(row.id, facilityId, !row.isActive))
+                    }
+                  >
+                    {row.isActive ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button
+                    disabled={!canManage || busy}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Archive tariff ${row.code}? Existing invoices will be retained.`,
+                        )
                       )
+                        void run(() => api.archiveFacilityTariff(row.id, facilityId));
+                    }}
+                  >
+                    Archive
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                className="text-rose-700 disabled:opacity-50"
+                aria-label={`Delete tariff ${row.code}`}
+                disabled={!canManage || busy}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Permanently delete tariff ${row.code} from the database? This cannot be undone and may affect pending billing. Tariffs linked to billing, payer or historical records cannot be deleted.`,
                     )
-                      void run(() => api.archiveFacilityTariff(row.id, facilityId));
-                  }}
-                >
-                  Archive
-                </button>
-              </div>
-            )}
+                  )
+                    void run(async () => {
+                      await api.deleteFacilityTariff(row.id, facilityId);
+                      if (tariffEdit === row.id) {
+                        setTariffOpen(false);
+                        setTariffEdit(null);
+                      }
+                    }, `Tariff ${row.code} was permanently deleted.`);
+                }}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         ))}
       </div>

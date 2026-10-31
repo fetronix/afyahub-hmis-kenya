@@ -168,6 +168,21 @@ describe('every inline domain is still reachable', () => {
     });
   }
 
+  it('keeps master catalogue, synchronisation and approval endpoints unmounted', () => {
+    const retired = [
+      '/api/master-tariffs',
+      '/api/master-tariff-sources',
+      '/api/master-tariff-aliases',
+      '/api/master-services',
+      '/api/master-lab-specimens',
+    ];
+    expect(
+      effectiveRoutes.filter((route) =>
+        retired.some((prefix) => route.split(' ')[1]?.startsWith(prefix)),
+      ),
+    ).toEqual([]);
+  });
+
   it('never doubles the /api mount prefix into /api/api/...', () => {
     const doubled = effectiveRoutes.filter((route) => route.includes('/api/api/'));
 

@@ -133,6 +133,55 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     if (close) await close();
   });
 
+  it('keeps retired master endpoints unavailable without changing historical prices', async () => {
+    const master = (
+      await pool.query(
+        'SELECT id FROM master_services WHERE tenant_id IS NULL AND origin_facility_id IS NULL ORDER BY id LIMIT 1',
+      )
+    ).rows[0].id;
+    const historical = (
+      await pool.query(
+        `INSERT INTO facility_service_tariffs
+          (tenant_id,facility_id,code,description,department,unit,fee,master_service_id,is_active,auto_bill)
+         VALUES($1,$2,$3,'Synthetic historical master tariff','finance','Service',12.34,$4,false,false)
+         RETURNING id,master_service_id,facility_service_id,fee::text,is_active,auto_bill`,
+        [tenant, other, `JC-HISTORY-${suffix}`, master],
+      )
+    ).rows[0];
+    const list = await call(
+      'GET',
+      `/api/facility-tariffs?facilityId=${other}`,
+      undefined,
+      otherToken,
+    );
+    expect(list.status).toBe(200);
+    expect(list.body.find((row: { id: number }) => row.id === historical.id)).toMatchObject({
+      masterServiceId: master,
+      facilityServiceId: null,
+      fee: '12.34',
+    });
+    const paths: Array<[string, string, Record<string, unknown> | undefined]> = [
+      ['GET', `/api/master-tariffs?facilityId=${other}`, undefined],
+      ['GET', `/api/master-tariff-sources?facilityId=${other}`, undefined],
+      ['POST', '/api/master-tariffs/sync', { facilityId: other }],
+      ['PUT', '/api/master-tariffs/batch', { facilityId: other, rows: [] }],
+      ['POST', `/api/master-tariffs/${historical.id}/approve`, { facilityId: other }],
+      ['GET', `/api/master-tariffs/${historical.id}/history?facilityId=${other}`, undefined],
+      ['GET', `/api/master-tariffs/${master}/mappings?facilityId=${other}`, undefined],
+      ['POST', `/api/master-tariffs/${master}/source-mapping`, { facilityId: other }],
+    ];
+    for (const [method, path, body] of paths) {
+      expect((await call(method, path, body, otherToken)).status, `${method} ${path}`).toBe(404);
+    }
+    const retained = (
+      await pool.query(
+        'SELECT id,master_service_id,facility_service_id,fee::text,is_active,auto_bill FROM facility_service_tariffs WHERE id=$1',
+        [historical.id],
+      )
+    ).rows[0];
+    expect(retained).toEqual(historical);
+  });
+
   it('persists direct facility services and tariffs, applies isolation and safely archives', async () => {
     const a = await createService('SHARED-CODE', 'OTHER', 'finance', '25.00', 'Service');
     const b = await createService(
@@ -966,5 +1015,675 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
         )
       ).rows[0].n,
     ).toBe(0);
+  });
+  it('permanently deletes an unused service and all its unused tariffs with scoped audit records', async () => {
+    const created = await createService('DELETE-SERVICE', 'OTHER', 'finance', '15.00', 'Service');
+    const extra = await call('POST', '/api/facility-tariffs', {
+      facilityId: facility,
+      serviceId: created.service.id,
+      code: 'DELETE-SERVICE-ALT',
+      description: 'Synthetic spare tariff',
+      department: 'finance',
+      unit: 'Service',
+      fee: '7.00',
+      isActive: false,
+      autoBill: true,
+    });
+    expect(extra.status, JSON.stringify(extra.body)).toBe(201);
+    const path = `/api/facility-services/${created.service.id}/permanent`;
+    expect((await call('DELETE', `${path}?facilityId=${facility}`, undefined, '')).status).toBe(
+      401,
+    );
+    expect(
+      (await call('DELETE', `${path}?facilityId=${facility}`, undefined, otherToken)).status,
+    ).toBe(403);
+    expect(
+      (await call('DELETE', `${path}?facilityId=${other}`, undefined, otherToken)).status,
+    ).toBe(404);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+          created.service.id,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+    const deleted = await call('DELETE', `${path}?facilityId=${facility}`);
+    expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
+    expect(deleted.body).toEqual({ deleted: true, id: created.service.id, deletedTariffs: 2 });
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+          created.service.id,
+        ])
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int n FROM facility_service_tariffs WHERE id=ANY($1::int[])',
+          [[created.tariff.id, extra.body.id]],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (await call('GET', `/api/facility-services?facilityId=${facility}`)).body.some(
+        (row: { id: number }) => row.id === created.service.id,
+      ),
+    ).toBe(false);
+    const audits = (
+      await pool.query(
+        "SELECT resource,resource_id,user_id,details FROM audit_logs WHERE facility_id=$1 AND action='DELETE' AND ((resource='FACILITY_SERVICE' AND resource_id=$2) OR (resource='FACILITY_SERVICE_TARIFF' AND resource_id=ANY($3::text[]))) ORDER BY id",
+        [facility, String(created.service.id), [String(created.tariff.id), String(extra.body.id)]],
+      )
+    ).rows;
+    expect(audits).toHaveLength(3);
+    expect(audits.every((row: { user_id: string }) => row.user_id === String(actor))).toBe(true);
+    expect(
+      JSON.parse(
+        audits.find((row: { resource: string }) => row.resource === 'FACILITY_SERVICE').details,
+      ),
+    ).toMatchObject({
+      code: 'DELETE-SERVICE',
+      deletedTariffIds: [created.tariff.id, extra.body.id],
+    });
+    const replacement = await createService(
+      'DELETE-SERVICE',
+      'OTHER',
+      'finance',
+      '16.00',
+      'Service',
+    );
+    expect(replacement.service.id).not.toBe(created.service.id);
+    expect((await call('DELETE', `${path}?facilityId=${facility}`)).status).toBe(404);
+  });
+
+  it('permanently deletes an unused tariff without deleting its service, including an archived tariff', async () => {
+    const created = await createService('DELETE-TARIFF', 'OTHER', 'finance', '25.00', 'Service');
+    const path = `/api/facility-tariffs/${created.tariff.id}/permanent`;
+    expect(
+      (await call('DELETE', `${path}?facilityId=${facility}`, undefined, otherToken)).status,
+    ).toBe(403);
+    expect(
+      (await call('DELETE', `${path}?facilityId=${other}`, undefined, otherToken)).status,
+    ).toBe(404);
+    const removed = await call('DELETE', `${path}?facilityId=${facility}`);
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    expect(removed.body).toEqual({ deleted: true, id: created.tariff.id });
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+          created.tariff.id,
+        ])
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+          created.service.id,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+    const available = await call(
+      'GET',
+      `/api/facility-services/available?facilityId=${facility}&department=finance`,
+    );
+    expect(
+      available.body.find((row: { id: number }) => row.id === created.service.id),
+    ).toMatchObject({ unitPrice: null });
+    const replacement = await call('POST', '/api/facility-tariffs', {
+      facilityId: facility,
+      serviceId: created.service.id,
+      code: 'DELETE-TARIFF',
+      description: 'Synthetic replacement',
+      department: 'finance',
+      unit: 'Service',
+      fee: '30.00',
+      isActive: true,
+      autoBill: true,
+    });
+    expect(replacement.status, JSON.stringify(replacement.body)).toBe(201);
+    const archived = await call(
+      'DELETE',
+      `/api/facility-tariffs/${replacement.body.id}?facilityId=${facility}`,
+    );
+    expect(archived.body.archivedAt).toBeTruthy();
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+          replacement.body.id,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+    const removedArchived = await call(
+      'DELETE',
+      `/api/facility-tariffs/${replacement.body.id}/permanent?facilityId=${facility}`,
+    );
+    expect(removedArchived.status, JSON.stringify(removedArchived.body)).toBe(200);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+          replacement.body.id,
+        ])
+      ).rows[0].n,
+    ).toBe(0);
+  });
+
+  it('never deletes invoice-linked services or tariffs and does not partially delete spare tariffs', async () => {
+    const created = await createService('DELETE-BILLED', 'OTHER', 'finance', '21.75', 'Service');
+    const spare = await call('POST', '/api/facility-tariffs', {
+      facilityId: facility,
+      serviceId: created.service.id,
+      code: 'DELETE-BILLED-ALT',
+      description: 'Synthetic spare',
+      department: 'finance',
+      unit: 'Service',
+      fee: '5.00',
+      isActive: false,
+      autoBill: true,
+    });
+    expect(spare.status, JSON.stringify(spare.body)).toBe(201);
+    const invoice = await call('POST', '/api/invoices', {
+      invoice: { facilityId: facility, patientId: patient, invoiceNumber: `SYN-DELETE-${suffix}` },
+      items: [{ tariffId: created.tariff.id, quantity: 2 }],
+    });
+    expect(invoice.status, JSON.stringify(invoice.body)).toBe(201);
+    const before = (
+      await pool.query(
+        'SELECT id,tariff_id,facility_service_id,unit_price::text,total_amount::text FROM billing_items WHERE invoice_id=$1',
+        [invoice.body.id],
+      )
+    ).rows;
+    const deleteTariff = await call(
+      'DELETE',
+      `/api/facility-tariffs/${created.tariff.id}/permanent?facilityId=${facility}`,
+    );
+    expect(deleteTariff.status, JSON.stringify(deleteTariff.body)).toBe(409);
+    expect(deleteTariff.body.error).toBe('TARIFF_IN_USE');
+    const deleteService = await call(
+      'DELETE',
+      `/api/facility-services/${created.service.id}/permanent?facilityId=${facility}`,
+    );
+    expect(deleteService.status, JSON.stringify(deleteService.body)).toBe(409);
+    expect(deleteService.body.error).toBe('SERVICE_IN_USE');
+    expect(
+      (
+        await pool.query(
+          'SELECT id,tariff_id,facility_service_id,unit_price::text,total_amount::text FROM billing_items WHERE invoice_id=$1',
+          [invoice.body.id],
+        )
+      ).rows,
+    ).toEqual(before);
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int n FROM facility_service_tariffs WHERE id=ANY($1::int[])',
+          [[created.tariff.id, spare.body.id]],
+        )
+      ).rows[0].n,
+    ).toBe(2);
+    const archived = await call(
+      'DELETE',
+      `/api/facility-tariffs/${created.tariff.id}?facilityId=${facility}`,
+    );
+    expect(archived.status).toBe(200);
+    expect(
+      (
+        await call(
+          'DELETE',
+          `/api/facility-tariffs/${created.tariff.id}/permanent?facilityId=${facility}`,
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await pool.query('SELECT tariff_id FROM billing_items WHERE invoice_id=$1', [
+          invoice.body.id,
+        ])
+      ).rows[0].tariff_id,
+    ).toBe(created.tariff.id);
+  });
+
+  it('protects payer mappings whose tariff foreign key would otherwise be set to null', async () => {
+    const created = await createService('DELETE-PAYER', 'OTHER', 'finance', '18.00', 'Service');
+    const spare = await call('POST', '/api/facility-tariffs', {
+      facilityId: facility,
+      serviceId: created.service.id,
+      code: 'DELETE-PAYER-ALT',
+      description: 'Synthetic spare',
+      department: 'finance',
+      unit: 'Service',
+      fee: '9.00',
+      isActive: false,
+      autoBill: true,
+    });
+    expect(spare.status, JSON.stringify(spare.body)).toBe(201);
+    const mapping = (
+      await pool.query(
+        `INSERT INTO payer_service_code_mappings (tenant_id,facility_id,tariff_id,local_code,local_description,service_area,payer_service_code,payer_service_name) VALUES($1,$2,$3,$4,'Synthetic','outpatient','TEST','Synthetic') RETURNING id`,
+        [tenant, facility, created.tariff.id, `DELETE-PAYER-${suffix}`],
+      )
+    ).rows[0].id;
+    const tariffResult = await call(
+      'DELETE',
+      `/api/facility-tariffs/${created.tariff.id}/permanent?facilityId=${facility}`,
+    );
+    expect(tariffResult.status, JSON.stringify(tariffResult.body)).toBe(409);
+    const serviceResult = await call(
+      'DELETE',
+      `/api/facility-services/${created.service.id}/permanent?facilityId=${facility}`,
+    );
+    expect(serviceResult.status, JSON.stringify(serviceResult.body)).toBe(409);
+    expect(
+      (await pool.query('SELECT tariff_id FROM payer_service_code_mappings WHERE id=$1', [mapping]))
+        .rows[0].tariff_id,
+    ).toBe(created.tariff.id);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+          created.service.id,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int n FROM facility_service_tariffs WHERE id=ANY($1::int[])',
+          [[created.tariff.id, spare.body.id]],
+        )
+      ).rows[0].n,
+    ).toBe(2);
+  });
+
+  it('protects a service linked to an unbilled clinical order', async () => {
+    const lab = await createService('DELETE-CLINICAL', 'LABORATORY', 'laboratory', '10.00', 'Test');
+    const visit = await call('POST', '/api/encounters', {
+      facilityId: facility,
+      patientId: patient,
+      encounterType: 'Outpatient',
+      status: 'Active',
+    });
+    expect(visit.status, JSON.stringify(visit.body)).toBe(201);
+    const order = await call('POST', '/api/lab-orders/batch', {
+      patientId: patient,
+      encounterId: visit.body.id,
+      facilityServiceId: lab.service.id,
+      specimenType: 'Synthetic swab',
+      clinicalIndication: 'Synthetic indication',
+      priority: 'Routine',
+      idempotencyKey: randomUUID(),
+    });
+    expect(order.status, JSON.stringify(order.body)).toBe(201);
+    const result = await call(
+      'DELETE',
+      `/api/facility-services/${lab.service.id}/permanent?facilityId=${facility}`,
+    );
+    expect(result.status, JSON.stringify(result.body)).toBe(409);
+    expect(result.body.error).toBe('SERVICE_IN_USE');
+    expect(
+      (
+        await pool.query('SELECT facility_service_id FROM lab_orders WHERE id=$1', [
+          order.body.orders[0].id,
+        ])
+      ).rows[0].facility_service_id,
+    ).toBe(lab.service.id);
+  });
+
+  it('serializes a permanent tariff deletion against a concurrent invoice reference', async () => {
+    const created = await createService('DELETE-RACE', 'OTHER', 'finance', '12.00', 'Service');
+    const invoiceId = (
+      await pool.query(
+        'INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number) VALUES($1,$2,$3,$4) RETURNING id',
+        [tenant, facility, patient, `SYN-RACE-${suffix}`],
+      )
+    ).rows[0].id;
+    const connection = await pool.connect();
+    let committed = false;
+    try {
+      await connection.query('BEGIN');
+      await connection.query(
+        "INSERT INTO billing_items(invoice_id,tariff_id,item_type,description,quantity,unit_price,total_amount) VALUES($1,$2,'MANUAL','Synthetic concurrent line',1,12,12)",
+        [invoiceId, created.tariff.id],
+      );
+      let settled = false;
+      const deleting = call(
+        'DELETE',
+        `/api/facility-tariffs/${created.tariff.id}/permanent?facilityId=${facility}`,
+      ).then((response) => {
+        settled = true;
+        return response;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(settled).toBe(false);
+      await connection.query('COMMIT');
+      committed = true;
+      const result = await deleting;
+      expect(result.status, JSON.stringify(result.body)).toBe(409);
+      expect(
+        (await pool.query('SELECT tariff_id FROM billing_items WHERE invoice_id=$1', [invoiceId]))
+          .rows[0].tariff_id,
+      ).toBe(created.tariff.id);
+    } finally {
+      if (!committed) await connection.query('ROLLBACK');
+      connection.release();
+    }
+  });
+  it('requires both tariff management permission and facility-administrator role', async () => {
+    const created = await createService(
+      'DELETE-PERMISSION',
+      'OTHER',
+      'finance',
+      '15.00',
+      'Service',
+    );
+    const users = (
+      await pool.query(
+        "INSERT INTO users(uid,username,email,full_name,password_hash,account_status,tenant_id,facility_id) VALUES($1,$1,$2,'Synthetic limited user','test-only','ACTIVE',$3,$4),($5,$5,$6,'Synthetic non-admin','test-only','ACTIVE',$3,$4) RETURNING id",
+        [
+          `limited-${suffix}`,
+          `limited-${suffix}@example.test`,
+          tenant,
+          facility,
+          `nonadmin-${suffix}`,
+          `nonadmin-${suffix}@example.test`,
+        ],
+      )
+    ).rows.map((row) => row.id);
+    const roles = (
+      await pool.query(
+        'INSERT INTO roles(tenant_id,name,is_active) VALUES($1,$2,true),($1,$3,true) RETURNING id',
+        [tenant, `LIMITED-${suffix}`, `NONADMIN-${suffix}`],
+      )
+    ).rows.map((row) => row.id);
+    await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2),($3,$4)', [
+      users[0],
+      roles[0],
+      users[1],
+      roles[1],
+    ]);
+    await pool.query(
+      "INSERT INTO role_permissions(role_id,permission_id) SELECT $1,id FROM permissions WHERE code='tariffs.read'",
+      [roles[0]],
+    );
+    await pool.query(
+      "INSERT INTO role_permissions(role_id,permission_id) SELECT $1,id FROM permissions WHERE code='tariffs.manage'",
+      [roles[1]],
+    );
+    const limited = (await createSession({ userId: users[0], securityVersion: 1 })).sessionToken;
+    const nonAdmin = (await createSession({ userId: users[1], securityVersion: 1 })).sessionToken;
+    for (const session of [limited, nonAdmin]) {
+      expect(
+        (
+          await call(
+            'DELETE',
+            `/api/facility-services/${created.service.id}/permanent?facilityId=${facility}`,
+            undefined,
+            session,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            'DELETE',
+            `/api/facility-tariffs/${created.tariff.id}/permanent?facilityId=${facility}`,
+            undefined,
+            session,
+          )
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+          created.tariff.id,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('retains historical master-linked tariffs rather than deleting their provenance', async () => {
+    const created = await createService(
+      'DELETE-HISTORICAL',
+      'OTHER',
+      'finance',
+      '11.00',
+      'Service',
+    );
+    const master = (
+      await pool.query(
+        'SELECT id FROM master_services WHERE tenant_id IS NULL AND origin_facility_id IS NULL ORDER BY id LIMIT 1',
+      )
+    ).rows[0].id;
+    await pool.query('UPDATE facility_service_tariffs SET master_service_id=$1 WHERE id=$2', [
+      master,
+      created.tariff.id,
+    ]);
+    const result = await call(
+      'DELETE',
+      `/api/facility-tariffs/${created.tariff.id}/permanent?facilityId=${facility}`,
+    );
+    expect(result.status).toBe(409);
+    expect(result.body.error).toBe('TARIFF_IN_USE');
+    const serviceResult = await call(
+      'DELETE',
+      `/api/facility-services/${created.service.id}/permanent?facilityId=${facility}`,
+    );
+    expect(serviceResult.status).toBe(409);
+    expect(
+      (
+        await pool.query('SELECT master_service_id FROM facility_service_tariffs WHERE id=$1', [
+          created.tariff.id,
+        ])
+      ).rows[0].master_service_id,
+    ).toBe(master);
+  });
+  it('rolls back service and tariff deletion if its audit record cannot be written', async () => {
+    const created = await createService('DELETE-AUDIT', 'OTHER', 'finance', '14.00', 'Service');
+    const name = `synthetic_delete_audit_${suffix}`;
+    // A trigger affecting only this synthetic service simulates an audit
+    // failure; only the synthetic trigger and function created here are dropped.
+    await pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.facility_id = ${facility} AND NEW.action = 'DELETE' AND NEW.resource = 'FACILITY_SERVICE' AND NEW.resource_id = '${created.service.id}' THEN
+          RAISE EXCEPTION 'synthetic audit failure';
+        END IF;
+        RETURN NEW;
+      END $$`);
+    try {
+      await pool.query(
+        `CREATE TRIGGER ${name} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${name}()`,
+      );
+      const result = await call(
+        'DELETE',
+        `/api/facility-services/${created.service.id}/permanent?facilityId=${facility}`,
+      );
+      expect(result.status).toBe(500);
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+            created.service.id,
+          ])
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+            created.tariff.id,
+          ])
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int n FROM audit_logs WHERE facility_id=$1 AND action='DELETE' AND resource='FACILITY_SERVICE_TARIFF' AND resource_id=$2",
+            [facility, String(created.tariff.id)],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${name} ON audit_logs`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${name}()`);
+    }
+  });
+  it('preserves clinical history which refers to a facility service by exact code rather than ID', async () => {
+    const visit = await call('POST', '/api/encounters', {
+      facilityId: facility,
+      patientId: patient,
+      encounterType: 'Outpatient',
+      status: 'Active',
+    });
+    expect(visit.status, JSON.stringify(visit.body)).toBe(201);
+    const proc = await createService('DELETE-CODE-PROC', 'PROCEDURE', 'opd', '18.00', 'Procedure');
+    await pool.query(
+      "INSERT INTO procedures(encounter_id,patient_id,procedure_code,procedure_name,status) VALUES($1,$2,'delete-code-proc','Synthetic pending procedure','Pending')",
+      [visit.body.id, patient],
+    );
+
+    const lab = await createService('DELETE-CODE-LAB', 'LABORATORY', 'laboratory', '19.00', 'Test');
+    const testId = (
+      await pool.query(
+        "INSERT INTO lab_tests(facility_id,code,name) VALUES($1,'delete-code-lab','Synthetic legacy test') RETURNING id",
+        [facility],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO lab_orders(tenant_id,facility_id,patient_id,encounter_id,test_id,test_name) VALUES($1,$2,$3,$4,$5,'Synthetic legacy order')",
+      [tenant, facility, patient, visit.body.id, testId],
+    );
+
+    const drug = await createService(
+      'DELETE-CODE-DRUG',
+      'PHARMACY',
+      'pharmacy',
+      '20.00',
+      'Tablets',
+    );
+    const itemId = (
+      await pool.query(
+        "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,'delete-code-drug','Synthetic product','Tablets') RETURNING id",
+        [facility],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,item_id,quantity_dispensed,dispensed_by) VALUES($1,$2,$3,$4,1,'Synthetic')",
+      [tenant, facility, patient, itemId],
+    );
+
+    const bedDay = await createService('DELETE-CODE-WARD', 'BED_DAY', 'inpatient', '21.00', 'Day');
+    const wardId = (
+      await pool.query(
+        "INSERT INTO wards(facility_id,code,name) VALUES($1,'delete-code-ward','Synthetic ward') RETURNING id",
+        [facility],
+      )
+    ).rows[0].id;
+    const bedId = (
+      await pool.query("INSERT INTO beds(ward_id,bed_number) VALUES($1,'SYN') RETURNING id", [
+        wardId,
+      ])
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO admissions(tenant_id,facility_id,patient_id,ward_id,bed_id,admission_date,status) VALUES($1,$2,$3,$4,$5,'2026-10-20','Discharged')",
+      [tenant, facility, patient, wardId, bedId],
+    );
+
+    for (const entry of [proc, lab, drug, bedDay]) {
+      const result = await call(
+        'DELETE',
+        `/api/facility-services/${entry.service.id}/permanent?facilityId=${facility}`,
+      );
+      expect(result.status, JSON.stringify(result.body)).toBe(409);
+      expect(result.body.error).toBe('SERVICE_IN_USE');
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+            entry.service.id,
+          ])
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+            entry.tariff.id,
+          ])
+        ).rows[0].n,
+      ).toBe(1);
+    }
+  });
+  it('protects new cascade foreign keys without deleting their dependent records', async () => {
+    const created = await createService('DELETE-CASCADE', 'OTHER', 'finance', '13.00', 'Service');
+    const table = `synthetic_delete_dependency_${suffix}`;
+    // This isolated synthetic table models a future relationship not known to
+    // the application. Dropping only this test fixture never touches real data.
+    await pool.query(
+      `CREATE TABLE ${table} (id serial PRIMARY KEY, tariff_id integer NOT NULL REFERENCES facility_service_tariffs(id) ON DELETE CASCADE)`,
+    );
+    try {
+      await pool.query(`INSERT INTO ${table}(tariff_id) VALUES($1)`, [created.tariff.id]);
+      const result = await call(
+        'DELETE',
+        `/api/facility-tariffs/${created.tariff.id}/permanent?facilityId=${facility}`,
+      );
+      expect(result.status, JSON.stringify(result.body)).toBe(409);
+      expect((await pool.query(`SELECT tariff_id FROM ${table}`)).rows[0].tariff_id).toBe(
+        created.tariff.id,
+      );
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1', [
+            created.tariff.id,
+          ])
+        ).rows[0].n,
+      ).toBe(1);
+    } finally {
+      await pool.query(`DROP TABLE ${table}`);
+    }
+  });
+  it('does not treat another facility’s same-code clinical history as a local dependency', async () => {
+    const local = await createService(
+      'DELETE-SCOPE-CODE',
+      'PROCEDURE',
+      'opd',
+      '10.00',
+      'Procedure',
+    );
+    const foreign = await createService(
+      'DELETE-SCOPE-CODE',
+      'PROCEDURE',
+      'opd',
+      '20.00',
+      'Procedure',
+      otherToken,
+      other,
+    );
+    const foreignVisit = await call(
+      'POST',
+      '/api/encounters',
+      { facilityId: other, patientId: patient, encounterType: 'Outpatient', status: 'Active' },
+      otherToken,
+    );
+    expect(foreignVisit.status, JSON.stringify(foreignVisit.body)).toBe(201);
+    await pool.query(
+      "INSERT INTO procedures(encounter_id,patient_id,procedure_code,procedure_name,status) VALUES($1,$2,'DELETE-SCOPE-CODE','Synthetic other-facility procedure','Pending')",
+      [foreignVisit.body.id, patient],
+    );
+    const removed = await call(
+      'DELETE',
+      `/api/facility-services/${local.service.id}/permanent?facilityId=${facility}`,
+    );
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+          local.service.id,
+        ])
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM facility_services WHERE id=$1', [
+          foreign.service.id,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
   });
 });
