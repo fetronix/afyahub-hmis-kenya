@@ -132,23 +132,49 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
       [{ id: 42 }], // locked patient
       [{ id: 10 }], // authorized facility
       [], // no prior source charge
+      [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }],
       [
         {
-          id: 5,
+          id: 89,
+          tenantId: 1,
           facilityId: 10,
-          code: 'CONS-OPD',
-          serviceKey: 'consultation.opd',
-          description: 'OPD Consultation',
-          category: 'Consultation',
+          patientId: 42,
+          itemId: 4,
+          quantityDispensed: 1,
+          dispensedAt: new Date(),
+        },
+      ],
+      [{ id: 4, code: 'ITEM-4', unit: 'Tablet' }],
+      [
+        {
+          master: {
+            id: 5,
+            code: 'JC-ITEM-4',
+            description: 'Synthetic product',
+            department: 'pharmacy',
+            billingFamily: 'PHARMACY',
+            unit: 'Tablet',
+            isActive: true,
+          },
+        },
+      ],
+      [
+        {
+          id: 6,
+          code: 'SYN-PRICE',
           fee: '1500.00',
-          unit: 'visit',
+          unit: 'Tablet',
+          department: 'pharmacy',
           isActive: true,
-          autoBillable: true,
+          autoBill: true,
+          approvalStatus: 'APPROVED',
+          approvedByUserId: 10,
+          approvedAt: new Date(),
+          approvalReference: 'reviewed',
           effectiveFrom: null,
           effectiveTo: null,
         },
-      ], // loadActiveFacilityTariffs
-      [], // no tariff links
+      ],
       [
         {
           id: 900,
@@ -160,11 +186,12 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
           creditBalance: '0.00',
           voidedAt: null,
         },
-      ], // locked existing open invoice
-      [{ total: '0.00', invalid: 0 }], // line total before charging
-      [], // no existing payments
-      [{ total: '1500.00', invalid: 0 }], // totals after insert
-      [{ id: 900, paidAmount: '0.00', status: 'Pending' }], // locked header
+      ],
+      [{ total: '0.00', invalid: 0 }], // existing lines
+      [], // payments
+      [], // refunds
+      [{ total: '1500.00', invalid: 0 }], // total after insert
+      [{ id: 900, paidAmount: '0.00', status: 'Pending' }],
     );
     mockDb.state!.queueInsert([{ id: 701, invoiceId: 900, totalAmount: '1500.00' }]);
     mockDb.state!.queueUpdate([
@@ -181,10 +208,10 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
       tenantId: 1,
       facilityId: 10,
       patientId: 42,
-      sourceType: 'CONSULTATION',
+      sourceType: 'PHARMACY',
       sourceId: 89,
-      itemType: 'Consultation',
-      codes: ['CONS-OPD'],
+      itemType: 'Pharmacy',
+      codes: ['ITEM-4'],
     });
     expect(charged.charged).toBe(true);
     expect(charged.unitPrice).toBe('1500.00');

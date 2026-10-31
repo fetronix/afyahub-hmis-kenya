@@ -24,6 +24,7 @@ const mocked = vi.hoisted(() => ({
     getInvoices: vi.fn(),
     getPatients: vi.fn(),
     getInvoiceItems: vi.fn(),
+    getInvoiceDetail: vi.fn(),
     recordPayment: vi.fn(),
   },
 }));
@@ -63,6 +64,12 @@ describe('Cashier loading and selection', () => {
       { id: 2, firstName: 'Synthetic', lastName: 'Patient', mrn: 'TEST' },
     ]);
     mocked.api.getInvoiceItems.mockResolvedValue([]);
+    mocked.api.getInvoiceDetail.mockImplementation(async (id: number) => ({
+      invoice: invoices.find((invoice) => invoice.id === id),
+      items: [{ totalAmount: invoices.find((invoice) => invoice.id === id)!.totalAmount }],
+      payments: [],
+      refunds: [],
+    }));
   });
   afterEach(cleanup);
   it('reports billing load failures and retries instead of claiming an empty list', async () => {
@@ -92,7 +99,7 @@ describe('Cashier loading and selection', () => {
     view.rerender(<BillingCashierModule />);
     await waitFor(() => expect(screen.getByText('Refund history for 2')).toBeInTheDocument());
     const detail = screen.getByText('Refund history for 2').parentElement!;
-    expect(within(detail).getByText('KES 50')).toBeInTheDocument();
+    expect(within(detail).getByText('KES 50.00')).toBeInTheDocument();
   });
   it('does not turn an invoice line load error into an empty line table', async () => {
     mocked.api.getInvoiceItems.mockRejectedValueOnce(new Error('synthetic outage'));

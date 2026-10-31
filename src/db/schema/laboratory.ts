@@ -25,6 +25,8 @@ import { facilities, tenants } from './tenancy.ts';
 import { patients } from './patients.ts';
 
 import { encounters } from './clinical.ts';
+import { masterServices } from './master-services.ts';
+import { users } from './auth.ts';
 
 export const labTests = pgTable(
   'lab_tests',
@@ -95,6 +97,9 @@ export const labOrders = pgTable('lab_orders', {
 
   clinicalNotes: text('clinical_notes'),
 
+  completedAt: timestamp('completed_at'),
+  completedByUserId: integer('completed_by_user_id').references(() => users.id),
+
   sampleCollectedAt: timestamp('sample_collected_at'),
 
   sampleAccessionNumber: text('sample_accession_number'),
@@ -159,6 +164,8 @@ export const radiologyOrders = pgTable('radiology_orders', {
   encounterId: integer('encounter_id').references(() => encounters.id),
 
   modality: text('modality').notNull(),
+
+  masterServiceId: integer('master_service_id').references(() => masterServices.id),
 
   procedureName: text('procedure_name').notNull(),
 

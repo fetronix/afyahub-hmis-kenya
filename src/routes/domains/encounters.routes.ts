@@ -11,6 +11,7 @@ import { Router, type Response } from 'express';
 import type { AuthRequest } from '../../auth/auth.middleware.ts';
 import { and, count, eq, sql, sum } from 'drizzle-orm';
 import * as billing from '../../billing/billing.service.ts';
+import { consultationChargeRequest } from '../../billing/service-charges.ts';
 import { billingServiceKeys, isValidBillingKey } from '../../billing/tariff-codes.ts';
 import { chargeSafely } from '../../routes/shared/charges.ts';
 import { codesForFamily } from '../../billing/tariff-matching.ts';
@@ -102,55 +103,18 @@ router.post(
         });
       }
 
+      if (
+        typeof req.body?.status === 'string' &&
+        req.body.status.trim().toUpperCase() === 'COMPLETED'
+      )
+        return res.status(400).json({
+          error: 'COMPLETE_ENCOUNTER_EXPLICITLY',
+          message: 'Start the encounter, then explicitly record completion.',
+        });
       const encounter = await queries.createEncounterScoped(req.authContext, req.body);
 
-      /*
-       * Consultation fee.
-       *
-       * Inpatient encounters are billed through the admission and the
-       * daily bed charges instead, so they do not raise a consultation.
-       */
-      let charge: billing.ChargeResult | null = null;
-
-      if (encounter && encounter.encounterType !== 'INPATIENT') {
-        charge = await chargeSafely({
-          tenantId: encounter.tenantId,
-          facilityId: encounter.facilityId,
-          patientId: encounter.patientId,
-          encounterId: encounter.id,
-          codes: codesForFamily({
-            family: 'CONSULTATION',
-            encounterType: encounter.encounterType,
-          }),
-          /*
-           * A facility that numbered its price list (OPD-001) links that
-           * row to CONSULTATION on the tariff screen; without the link
-           * the engine can only guess, and between a 150 consultation and
-           * a 300 follow-up a guess is a wrong charge.
-           */
-          serviceKeys: billingServiceKeys('CONSULTATION', [encounter.encounterType]),
-          /*
-           * Naming the service lets the engine read the facility's own
-           * description when neither a link nor a code matches. It only
-           * accepts a tariff that says it is this service, inside the
-           * OPD family of departments, and only when exactly one does —
-           * OPD-001 (General outpatient consultation, 150) wins while
-           * OPD-002 (Follow-up consultation, 300) does not match at all.
-           */
-          family: 'CONSULTATION',
-          serviceName: null,
-          encounterType: encounter.encounterType,
-          sourceType: 'CONSULTATION',
-          sourceId: encounter.id,
-          itemType: 'Consultation',
-          description: 'Clinical consultation',
-        });
-      }
-
-      return res.status(201).json({
-        ...encounter,
-        billing: charge,
-      });
+      // A started encounter is not proof that a consultation was performed.
+      return res.status(201).json({ ...encounter, billing: null });
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
       if (handleEncounterValidationError(err, res)) return;
@@ -200,7 +164,15 @@ router.put(
         });
       }
 
-      return res.json(encounter);
+      let charge: billing.ChargeResult | null = null;
+      if (
+        typeof req.body.status === 'string' &&
+        req.body.status.trim().toUpperCase() === 'COMPLETED' &&
+        encounter.encounterType.trim().toUpperCase() !== 'INPATIENT'
+      ) {
+        charge = await chargeSafely(consultationChargeRequest(encounter));
+      }
+      return res.json({ ...encounter, billing: charge });
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
       if (handleEncounterValidationError(err, res)) return;

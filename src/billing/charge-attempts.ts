@@ -22,6 +22,7 @@
 import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 
 import * as schema from '../db/schema.ts';
+import { isCatalogueServiceType } from './tariff-resolver.ts';
 import {
   buildIdempotencyKey,
   chargeForService,
@@ -116,6 +117,12 @@ export async function recordChargeAttempt(
     serviceName: request.serviceName ?? null,
     encounterType: request.encounterType ?? null,
     aliases: [...(request.aliases ?? [])],
+    serviceRefType: request.serviceRef?.type ?? null,
+    serviceRefId: request.serviceRef?.id ?? null,
+    serviceRefCode: request.serviceRef?.code ?? null,
+    serviceDate:
+      request.serviceDate ??
+      (request.sourceType === 'BED_DAY' ? (request.idempotencySuffix ?? null) : null),
     quantity,
     fallbackUnitPrice: request.fallbackUnitPrice == null ? null : String(request.fallbackUnitPrice),
     reason: result.reason,
@@ -276,7 +283,7 @@ export async function recordChargeAttempt(
  * case: a pending attempt cannot be inserted between a direct replay's check
  * and its charge. The key is the SAME identity used by billing_items.
  */
-async function lockChargeIdentity(
+export async function lockChargeIdentity(
   executor: Executor,
   facilityId: number,
   sourceType: ChargeRequest['sourceType'],
@@ -398,6 +405,19 @@ export async function chargeAndRecord(
       }
       const pending = attempts.filter((row) => row.status === 'PENDING');
       if (pending.length > 1 || attempts.length !== pending.length) return chargeReviewRequired();
+      if (
+        pending[0] &&
+        request.sourceType === 'BED_DAY' &&
+        (pending[0].serviceRefId !== (request.serviceRef?.id ?? null) ||
+          pending[0].serviceDate !== (request.serviceDate ?? request.idempotencySuffix ?? null))
+      ) {
+        return {
+          charged: false,
+          reason: 'INVALID_INPUT',
+          message:
+            'The recorded bed-day identity differs from the replay. Review the occupancy and pending attempt before billing.',
+        };
+      }
 
       let result: ChargeResult = await chargeForService(tx, request);
       const verifiedDuplicate =
@@ -469,6 +489,10 @@ export interface ChargeAttemptRow {
   /** Bed category and ward at accrual time, for a bed-night. */
   wardType: string | null;
   wardName: string | null;
+  serviceRefType?: string | null;
+  serviceRefId?: number | null;
+  serviceRefCode?: string | null;
+  serviceDate?: string | null;
   quantity: number;
   fallbackUnitPrice: string | null;
   reason: string;
@@ -589,6 +613,16 @@ export function toChargeRequest(row: ChargeAttemptRow, tenantId: number): Charge
     ...(row.idempotencySuffix ? { idempotencySuffix: row.idempotencySuffix } : {}),
     ...(row.wardType ? { wardType: row.wardType } : {}),
     ...(row.wardName ? { wardName: row.wardName } : {}),
+    ...(isCatalogueServiceType(row.serviceRefType)
+      ? {
+          serviceRef: {
+            type: row.serviceRefType,
+            id: row.serviceRefId ?? null,
+            code: row.serviceRefCode ?? null,
+          },
+        }
+      : {}),
+    ...(row.serviceDate ? { serviceDate: row.serviceDate } : {}),
     itemType: row.itemType,
     description: row.description ?? undefined,
     quantity: row.quantity,

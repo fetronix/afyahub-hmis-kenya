@@ -10,10 +10,12 @@ import { requireAnyPermission, requirePermission } from '../auth/authorization.m
 import * as billing from '../billing/billing.service.ts';
 import { radiologyChargeRequest } from '../billing/service-charges.ts';
 import * as queries from '../db/queries.ts';
+import { db } from '../db/index.ts';
+import * as schema from '../db/schema.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
-import { and } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Router, type Response } from 'express';
 import {
   createRadiologyOrderBodySchema,
@@ -60,39 +62,72 @@ router.post(
         body.facilityId ?? req.query.facilityId,
       );
 
-      if (!facility) return;
+      if (!facility || !req.authContext) return;
+      const patient = await queries.requirePatientInTenant(
+        req.authContext,
+        Number(body.patientId),
+        facility.tenantId,
+      );
+      if (!patient) return res.status(404).json({ error: 'PATIENT_NOT_FOUND' });
+      if (body.encounterId != null) {
+        const [encounter] = await db
+          .select({ id: schema.encounters.id })
+          .from(schema.encounters)
+          .where(
+            and(
+              eq(schema.encounters.id, Number(body.encounterId)),
+              eq(schema.encounters.patientId, patient.id),
+              eq(schema.encounters.facilityId, facility.id),
+              eq(schema.encounters.tenantId, facility.tenantId),
+            ),
+          )
+          .limit(1);
+        if (!encounter)
+          return res.status(400).json({
+            error: 'PATIENT_ENCOUNTER_MISMATCH',
+            message: 'The encounter must belong to this patient and facility.',
+          });
+      }
 
+      let examinationName = body.procedureName;
+      if (body.masterServiceId != null) {
+        const [exam] = await db
+          .select({ id: schema.masterServices.id, description: schema.masterServices.description })
+          .from(schema.masterServices)
+          .innerJoin(
+            schema.facilityServiceTariffs,
+            and(
+              eq(schema.facilityServiceTariffs.masterServiceId, schema.masterServices.id),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .where(
+            and(
+              eq(schema.masterServices.id, Number(body.masterServiceId)),
+              eq(schema.masterServices.billingFamily, 'RADIOLOGY'),
+              eq(schema.masterServices.isActive, true),
+            ),
+          )
+          .limit(1);
+        if (!exam)
+          return res.status(400).json({
+            error: 'EXAMINATION_NOT_AVAILABLE',
+            message: 'The examination is not available in this facility catalogue.',
+          });
+        examinationName = exam.description;
+      }
       const payload = {
         ...body,
+        procedureName: examinationName,
         facilityId: facility.id,
         tenantId: facility.tenantId,
       } as Parameters<typeof queries.createRadiologyOrder>[0];
 
       const order = await queries.createRadiologyOrder(payload);
 
-      /*
-       * The table has `procedure_name`, not `test_name`. Reading a field
-       * that does not exist meant no RAD-<study> tariff could ever match:
-       * a chest X-ray priced as RAD-CHEST-X-RAY was recorded and never
-       * billed, while only a generic RADIOLOGY tariff would catch it.
-       */
-      const radiologyOrder = order as {
-        id?: number;
-        tenantId?: number;
-        facilityId?: number;
-        patientId?: number;
-        encounterId?: number | null;
-        procedureName?: string;
-        modality?: string;
-      } | null;
-
-      let charge: billing.ChargeResult | null = null;
-
-      if (radiologyOrder && radiologyOrder.id) {
-        charge = await chargeSafely(radiologyChargeRequest(radiologyOrder as never));
-      }
-
-      res.status(201).json({ ...order, billing: charge });
+      // Requesting a study does not establish that it was performed.
+      res.status(201).json({ ...order, billing: null });
     } catch (err: any) {
       respondInternalError(res, err, 'POST /api/radiology-orders');
     }
@@ -140,9 +175,15 @@ router.put(
 
       const { findings, impression, reportedBy } = body;
 
-      const order = await queries.updateRadiologyReport(orderId, findings, impression, reportedBy);
-
-      res.json(order);
+      const order = await queries.updateRadiologyReport(
+        orderId,
+        findings,
+        impression,
+        reportedBy,
+        req.authContext!.userId,
+      );
+      const charge = order ? await chargeSafely(radiologyChargeRequest(order)) : null;
+      res.json({ ...order, billing: charge });
     } catch (err: any) {
       respondInternalError(res, err, 'PUT /api/radiology-orders/:id/report');
     }

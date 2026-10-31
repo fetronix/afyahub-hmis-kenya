@@ -17,6 +17,7 @@ export * from './schema/laboratory.ts';
 export * from './schema/lab-specimens.ts';
 export * from './schema/inventory.ts';
 export * from './schema/pharmacy-workflow.ts';
+export * from './schema/master-services.ts';
 export * from './schema/billing.ts';
 export * from './schema/public-health.ts';
 export * from './schema/maternity.ts';

@@ -50,6 +50,9 @@ describe('schema barrel: pre-extraction contract', () => {
         'facilityTariffImportBatches',
         'notificationAlertStates',
         'notificationReadReceipts',
+        'masterServices',
+        'masterServiceSources',
+        'masterServiceAliases',
       ].sort(),
     );
   });

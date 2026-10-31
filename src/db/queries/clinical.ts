@@ -245,7 +245,12 @@ export async function recordProcedureScoped(
 
   const [created] = await db
     .insert(schema.clinicalProcedures)
-    .values({ ...data, encounterId: encounter.id, patientId: encounter.patientId })
+    .values({
+      ...data,
+      status: data.status ?? 'Pending',
+      encounterId: encounter.id,
+      patientId: encounter.patientId,
+    })
     .returning();
 
   return created;

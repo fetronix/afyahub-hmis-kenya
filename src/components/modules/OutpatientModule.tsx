@@ -343,37 +343,7 @@ export const OutpatientModule: React.FC = () => {
       });
       setDiagnosisList([]);
       setPrescriptions([]);
-      /*
-       * Say what the invoice says. The consultation is charged by the
-       * server; if the facility has not priced OPD-CONSULT the screen
-       * must not imply a fee was raised.
-       */
-      const consultBilling = (newEncounter as { billing?: ServiceCharge | null }).billing;
-
-      if (consultBilling?.charged) {
-        /*
-         * The unit is what the facility priced against — "Per visit"
-         * rather than a day rate is a different promise, and it comes
-         * from the tariff row, not from this screen.
-         */
-        showToast(
-          `Visit started. Consultation billed KES ${consultBilling.totalAmount}${
-            consultBilling.unit ? ` (${consultBilling.unit})` : ''
-          } on ${consultBilling.invoiceNumber}.`,
-        );
-      } else if (consultBilling?.reason === 'DUPLICATE') {
-        showToast(
-          'Visit started. A consultation charge record already exists; review its invoice.',
-        );
-      } else {
-        // A missing result or queue-write failure is not proof of a queued charge.
-        showToast(
-          `Visit started, but this consultation charge was not confirmed: ${
-            consultBilling?.message ??
-            'the server returned no billing result; manual reconciliation is required'
-          }`,
-        );
-      }
+      showToast('Visit started. Consultation billing is assessed when the visit is completed.');
     } catch (err: any) {
       console.error('Failed to start outpatient visit:', err);
       showToast(
@@ -512,7 +482,8 @@ export const OutpatientModule: React.FC = () => {
     }
 
     try {
-      await api.updateEncounter(activeEncounter.id, { status: 'Completed' });
+      const completed = await api.updateEncounter(activeEncounter.id, { status: 'Completed' });
+      const consultBilling = (completed as { billing?: ServiceCharge | null }).billing;
 
       const openToken = triageQueue.find(
         (token) => token.patientId === activeEncounter.patientId && token.status === 'In-Progress',
@@ -524,7 +495,17 @@ export const OutpatientModule: React.FC = () => {
         });
       }
 
-      showToast('Visit completed. The patient can be seen again as a new visit.');
+      if (consultBilling?.charged) {
+        showToast(
+          `Visit completed. Consultation billed KES ${consultBilling.totalAmount} on ${consultBilling.invoiceNumber}.`,
+        );
+      } else if (consultBilling?.reason === 'DUPLICATE') {
+        showToast('Visit completed. A consultation charge already exists; review its invoice.');
+      } else {
+        showToast(
+          `Visit completed; billing not confirmed: ${consultBilling?.message ?? 'manual reconciliation is required.'}`,
+        );
+      }
       if (version === selectionVersion.current) setActiveEncounter(null);
       triggerRefresh();
     } catch (err: any) {
@@ -866,23 +847,9 @@ export const OutpatientModule: React.FC = () => {
         orderedBy: currentUser.name,
       });
 
-      const charges = result.billing ?? [];
-      const billedTotal = charges
-        .filter((entry) => entry.billing?.charged)
-        .reduce((sum, entry) => sum + Number(entry.billing?.totalAmount ?? 0), 0);
-      const unbilled = charges.filter((entry) => !entry.billing?.charged);
-
-      if (unbilled.length === 0 && billedTotal > 0) {
-        showToast(
-          `Created ${result.orders.length} lab order(s) and billed KES ${billedTotal.toFixed(2)} — routed to the Laboratory queue.`,
-        );
-      } else {
-        showToast(
-          `Created ${result.orders.length} lab order(s) and routed them to the Laboratory queue. Not billed: ${
-            unbilled[0]?.billing?.message ?? 'no laboratory tariff matched'
-          }`,
-        );
-      }
+      showToast(
+        `Created ${result.orders.length} lab order(s) and routed them to the Laboratory queue. Billing is assessed after a result is verified.`,
+      );
       if (version === selectionVersion.current) {
         setSelectedLabTestIds([]);
         setLabInvestigations('');

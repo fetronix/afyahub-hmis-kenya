@@ -28,14 +28,6 @@ function at(hours: number): string {
   return new Date(Date.parse(ADMITTED) + hours * 3_600_000).toISOString();
 }
 
-function deliveringIsOneChargePerDelivery(block: string): boolean {
-  return (
-    block.includes('sourceId: created.delivery.id') &&
-    !block.includes('created.babies.map') &&
-    !block.includes('created.babies.forEach')
-  );
-}
-
 describe('Postnatal care, immunisation, the partograph plot and delivery billing', () => {
   it('1. THE IMMUNISATION SCHEDULE', async () => {
     expect(ANTIGENS.length >= 15, 'the reference schedule carries the KEPI antigens').toBe(true);
@@ -553,25 +545,17 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
 
     expect(deliveryCharge.length > 100, 'the delivery route has a billing block').toBe(true);
 
-    expect(
-      deliveryCharge.includes('chargeSafely({'),
-      'the delivery is billed through the billing engine',
-    ).toBe(true);
-
-    expect(
-      deliveryCharge.includes("sourceType: 'MATERNITY'"),
-      'and attributed to maternity, not to a generic manual line',
-    ).toBe(true);
-
-    expect(
-      deliveryCharge.includes('sourceId: created.delivery.id'),
-      'with the delivery as the source, so a repeat cannot double-charge',
-    ).toBe(true);
-
-    expect(
-      deliveringIsOneChargePerDelivery(deliveryCharge),
-      'twins do not multiply the delivery charge',
-    ).toBe(true);
+    expect(deliveryCharge).toContain('chargeSafely(deliveryChargeRequest(created.delivery))');
+    const requestSource = read('src/billing/service-charges.ts');
+    const request = requestSource.slice(
+      requestSource.indexOf('export function deliveryChargeRequest'),
+    );
+    expect(request).toContain("sourceType: 'MATERNITY'");
+    expect(request).toContain('sourceId: delivery.id');
+    expect(request).not.toContain('babies');
+    const service = read('src/maternity/services/delivery.service.ts');
+    expect(service).toContain('recordChargeAttempt(tx, deliveryChargeRequest(delivery)');
+    expect(service).toContain('deliveryChargeRequest(delivery)');
 
     expect(
       !deliveryCharge.includes('fallbackUnitPrice'),

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { RefundsPanel } from './RefundsPanel.tsx';
+import { InvoiceFinancialSummary } from './InvoiceFinancialSummary.tsx';
 import { FinalizedInvoicePanel } from './FinalizedInvoicePanel.tsx';
 import {
   clearPendingPayment,
@@ -716,8 +717,9 @@ export const BillingCashierModule: React.FC = () => {
                       <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
                         <tr>
                           <th className="px-4 py-2.5 font-medium">Item Description</th>
-                          <th className="px-4 py-2.5 font-medium">Department</th>
-                          <th className="px-4 py-2.5 font-medium text-right">Qty</th>
+                          <th className="px-4 py-2.5 font-medium">Code / department</th>
+                          <th className="px-4 py-2.5 font-medium">Source / time / status</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Qty / unit</th>
                           <th className="px-4 py-2.5 font-medium text-right">Unit Price</th>
                           <th className="px-4 py-2.5 font-medium text-right">Total Amount</th>
                         </tr>
@@ -729,9 +731,30 @@ export const BillingCashierModule: React.FC = () => {
                               {item.description}
                             </td>
                             <td className="px-4 py-2.5 font-sans text-slate-600">
-                              {item.itemType}
+                              {item.serviceCode ?? item.tariffCode ?? 'Code not recorded'}
+                              <br />
+                              {item.serviceDepartment ?? item.itemType}
                             </td>
-                            <td className="px-4 py-2.5 text-right">{item.quantity}</td>
+                            <td className="px-4 py-2.5 font-sans text-slate-600">
+                              {item.sourceType
+                                ? `${item.sourceType}${item.sourceId != null ? ` #${item.sourceId}` : ''}`
+                                : 'Source not recorded'}
+                              <br />
+                              {item.servicePerformedAt
+                                ? `Performed ${new Date(item.servicePerformedAt).toLocaleString('en-KE')}`
+                                : item.serviceDate
+                                  ? `Service date ${item.serviceDate}`
+                                  : 'Service time not recorded'}
+                              <br />
+                              {item.createdAt
+                                ? `Billed ${new Date(item.createdAt).toLocaleString('en-KE')}`
+                                : 'Billing time not recorded'}
+                              <br />
+                              {selectedInvoice.status === 'Void' ? 'Invoice void' : 'Recorded'}
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              {item.quantity} {item.serviceUnit ?? 'unit not recorded'}
+                            </td>
                             <td className="px-4 py-2.5 text-right text-slate-600">
                               {showMoney(item.unitPrice)}
                             </td>
@@ -750,25 +773,7 @@ export const BillingCashierModule: React.FC = () => {
 
               <RefundsPanel invoiceId={selectedInvoice.id} />
 
-              {/* Financial Totals Strip */}
-              <div className="flex justify-end pt-2">
-                <div className="w-64 space-y-1.5 text-xs font-mono">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Subtotal:</span>
-                    <span>{showMoney(selectedInvoice.totalAmount)}</span>
-                  </div>
-                  <div className="flex justify-between text-emerald-700">
-                    <span>Paid to Date:</span>
-                    <span>{showMoney(selectedInvoice.paidAmount)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-slate-200">
-                    <span>Balance Due:</span>
-                    <span className="text-rose-700">
-                      {showMoney(selectedInvoice.balanceAmount)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <InvoiceFinancialSummary invoice={selectedInvoice} />
             </div>
           ) : (
             <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-xs text-slate-400">

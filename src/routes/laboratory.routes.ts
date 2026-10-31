@@ -9,11 +9,7 @@ import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import { LaboratoryDomainError } from '../clinical/laboratory-contracts.ts';
-import * as billing from '../billing/billing.service.ts';
-import { chargeLabOrderBatch } from '../billing/service-charges.ts';
-import { billingServiceKeys } from '../billing/tariff-codes.ts';
-import { codesForFamily } from '../billing/tariff-matching.ts';
-import { db } from '../db/index.ts';
+import { labOrderChargeRequest } from '../billing/service-charges.ts';
 import * as queries from '../db/queries.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
@@ -97,18 +93,8 @@ router.post(
       const body = getValidatedBody<Parameters<typeof queries.createLabOrderBatch>[1]>(req);
       const result = await queries.createLabOrderBatch(req.authContext, body);
 
-      /*
-       * Every order in the batch is priced, not just the first.
-       *
-       * The screen orders investigations through this endpoint and
-       * never through the single-order one, so this is the only place
-       * a laboratory charge can be raised. Before this, a batch of
-       * tests reached the laboratory queue and the patient's invoice
-       * stayed empty.
-       */
-      const billed = await chargeLabOrderBatch(result.orders, db);
-
-      return res.status(201).json({ ...result, billing: billed });
+      // Ordering is not completion of the investigation.
+      return res.status(201).json({ ...result, billing: [] });
     } catch (err: any) {
       const message = err?.message || 'Failed to create laboratory batch.';
       const clientError = [
@@ -145,55 +131,7 @@ router.post(
       const body = getValidatedBody<Parameters<typeof queries.createLabOrder>[1]>(req);
       const order = await queries.createLabOrder(req.authContext, body);
 
-      const labOrder = order as {
-        id?: number;
-        tenantId?: number;
-        facilityId?: number;
-        patientId?: number;
-        encounterId?: number | null;
-        testId?: number | null;
-        testName?: string;
-        testCode?: string | null;
-      } | null;
-
-      const charge =
-        labOrder && labOrder.id
-          ? await chargeSafely({
-              tenantId: labOrder.tenantId ?? req.authContext.tenantId ?? 0,
-              facilityId: labOrder.facilityId ?? req.authContext.facilityId ?? 0,
-              patientId: labOrder.patientId ?? 0,
-              encounterId: labOrder.encounterId ?? null,
-              /*
-               * The catalogue code first (LAB-CBC), then the name-derived
-               * codes, then the generic fallbacks — the same order the batch
-               * route uses, because a single order must price the same way
-               * a batch does.
-               */
-              codes: codesForFamily({
-                family: 'LABORATORY',
-                code: labOrder.testCode ?? null,
-                name: labOrder.testName,
-              }),
-              serviceKeys: billingServiceKeys('LABORATORY', [
-                labOrder.testCode ?? null,
-                labOrder.testName,
-              ]),
-              family: 'LABORATORY',
-              serviceName: labOrder.testName,
-              aliases: labOrder.testCode ? [labOrder.testCode] : [],
-              serviceRef: {
-                type: 'LAB_TEST',
-                id: typeof labOrder.testId === 'number' ? labOrder.testId : null,
-                code: labOrder.testCode ?? null,
-              },
-              sourceType: 'LAB_ORDER',
-              sourceId: labOrder.id,
-              itemType: 'Laboratory',
-              description: labOrder.testName,
-            })
-          : null;
-
-      res.status(201).json({ ...order, billing: charge });
+      res.status(201).json({ ...order, billing: null });
     } catch (err: any) {
       respondInternalError(res, err, 'POST /api/lab-orders');
     }
@@ -302,6 +240,26 @@ router.post(
 
 // =========================================================
 router.post(
+  '/api/lab-orders/:id/complete',
+  requirePermission('laboratory.results.verify'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext) return res.status(401).json({ error: 'Authentication is required.' });
+      const order = await queries.completeLabInvestigation(req.authContext, Number(req.params.id));
+      const charge = await chargeSafely(labOrderChargeRequest(order));
+      return res.json({ ...order, billing: charge });
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] Laboratory completion could not be recorded.');
+      return res.status(500).json({
+        error:
+          'Investigation completion could not be confirmed. Review its status before retrying.',
+      });
+    }
+  },
+);
+
+router.post(
   '/api/lab-results/:id/verify',
   requirePermission('laboratory.results.verify'),
   validateBody(verifyLabResultBodySchema),
@@ -321,7 +279,6 @@ router.post(
       const verifier = req.user.fullName || req.user.username || String(req.user.id);
 
       const result = await queries.verifyLabResult(req.authContext, resultId, verifier);
-
       res.json(result);
     } catch (err: unknown) {
       if (handleLaboratoryError(err, res)) return;

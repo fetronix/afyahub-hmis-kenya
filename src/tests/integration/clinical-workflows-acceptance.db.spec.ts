@@ -6,6 +6,12 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { verifyLabResult } from '../../db/queries/laboratory.ts';
 import { db, pool } from '../../db/index.ts';
 import { retryChargeAttempt } from '../../billing/charge-attempts.ts';
+import {
+  syncMasterCatalogue,
+  listMasterCatalogue,
+  editMasterTariffs,
+  approveMasterTariff,
+} from '../../billing/master-catalogue.service.ts';
 import { dispenseFefoScoped, receiveBatchScoped } from '../../inventory/inventory.service.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
@@ -38,6 +44,33 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         [facility, `ITEM-${suffix}-${++sequence}`, stock],
       )
     ).rows[0].id as number;
+  const configureProduct = async (id: number, fee: string) => {
+    const f = { id: facility, tenantId: tenant, enabledModules: ['finance'] };
+    await syncMasterCatalogue(f, actorId);
+    const mapped = (
+      await pool.query(
+        "SELECT master_service_id FROM master_service_sources WHERE facility_id=$1 AND source_type='PHARMACY' AND source_id=$2 AND is_active",
+        [facility, id],
+      )
+    ).rows[0];
+    const row = (await listMasterCatalogue(f)).find(
+      (r) => r.master.id === mapped.master_service_id,
+    )!;
+    const t = row.tariff!;
+    const [edited] = await editMasterTariffs(f, actorId, [
+      {
+        tariffId: t.id,
+        revision: t.revision,
+        fee,
+        unit: row.master.unit,
+        isActive: true,
+        autoBill: true,
+        effectiveFrom: null,
+        effectiveTo: null,
+      },
+    ]);
+    await approveMasterTariff(f, actorId, t.id, edited.revision, 'Synthetic review');
+  };
   const batch = async (id: number, name: string, expiry: string, quantity: number) =>
     pool.query(
       'INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,$2,$3,$4)',
@@ -671,10 +704,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         )
       ).rows,
     ).toHaveLength(0);
-    await pool.query(
-      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee) VALUES($1,$2,$3,$4,'Pharmacy','Tablet','2.50')",
-      [tenant, facility, pending.codes[0], `Synthetic outbox ${suffix}`],
-    );
+    await configureProduct(stockId, '2.50');
     // A changed clinical source cannot be silently repriced from the queue.
     await pool.query('UPDATE medications SET drug_name=$1 WHERE id=$2', [
       'Synthetic changed label',
@@ -844,10 +874,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
   it('charges a configured synthetic pharmacy tariff, not a client price, exactly once', async () => {
     const id = await prescription(4, 'Priced synthetic'),
       stockId = await item(4);
-    await pool.query(
-      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,billing_key) VALUES($1,$2,$3,'Priced synthetic','Pharmacy','tablet','7.50','PHARMACY:PRICED-SYNTHETIC')",
-      [tenant, facility, `SYNTHETIC-PRICE-${suffix}`],
-    );
+    await configureProduct(stockId, '7.50');
     const body = {
       prescriptionId: id,
       patientId: patient,
@@ -1157,7 +1184,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     });
     expect(order.status).toBe(201);
     expect(order.body.status).toBe('Ordered');
-    expect(order.body.billing).toMatchObject({ charged: false, reason: 'TARIFF_NOT_CONFIGURED' });
+    expect(order.body.billing).toBeNull();
     const collected = await call('PUT', `/api/lab-orders/${order.body.id}/status`, managerToken, {
       status: 'Sample Collected',
       accessionNumber: `SYN-${suffix}`,
@@ -1218,7 +1245,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     });
     expect(visit.status).toBe(201);
     expect(visit.body.patientId).toBe(patientId);
-    expect(visit.body.billing).toMatchObject({ charged: false, reason: 'TARIFF_NOT_CONFIGURED' });
+    expect(visit.body.billing).toBeNull();
     const encounterId = visit.body.id;
 
     const order = await call('POST', '/api/lab-orders', managerToken, {
@@ -1228,7 +1255,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
       specimenType: 'Synthetic specimen',
     });
     expect(order.status).toBe(201);
-    expect(order.body.billing).toMatchObject({ charged: false, reason: 'TARIFF_NOT_CONFIGURED' });
+    expect(order.body.billing).toBeNull();
     expect(
       (
         await call('PUT', `/api/lab-orders/${order.body.id}/status`, managerToken, {
@@ -1252,6 +1279,27 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     );
     expect(verified.status).toBe(200);
     expect(verified.body.status).toBe('Verified');
+    // An explicit completion (not ordering or single-result verification) creates billing work.
+    const complete = await call(
+      'POST',
+      `/api/lab-orders/${order.body.id}/complete`,
+      managerToken,
+      {},
+    );
+    expect(complete.status).toBe(200);
+    expect(complete.body.billing).toMatchObject({
+      charged: false,
+      reason: 'TARIFF_NOT_CONFIGURED',
+      diagnosis: { code: 'CATALOGUE_NOT_FOUND' },
+    });
+    const visitCompleted = await call('PUT', `/api/encounters/${encounterId}`, managerToken, {
+      status: 'Completed',
+    });
+    expect(visitCompleted.status).toBe(200);
+    expect(visitCompleted.body.billing).toMatchObject({
+      charged: false,
+      reason: 'TARIFF_NOT_CONFIGURED',
+    });
 
     const medication = await call('POST', '/api/medications', managerToken, {
       encounterId,
@@ -1266,16 +1314,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     expect(medication.body.status).toBe('Prescribed');
     const itemId = await item(10);
     await batch(itemId, `JOURNEY-${suffix}`, '2099-01-01', 10);
-    const tariff = await pool.query(
-      "SELECT id FROM facility_service_tariffs WHERE facility_id=$1 AND code='PHARMACY'",
-      [facility],
-    );
-    if (tariff.rows.length === 0) {
-      await pool.query(
-        "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,sha_status,is_active) VALUES($1,$2,'PHARMACY','Synthetic tariff only','Pharmacy','Unit','7.50','Unknown',true)",
-        [tenant, facility],
-      );
-    }
+    await configureProduct(itemId, '7.50');
     const dispensed = await call('POST', '/api/pharmacy/dispense', managerToken, {
       facilityId: facility,
       prescriptionId: medication.body.id,

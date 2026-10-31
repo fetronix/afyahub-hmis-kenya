@@ -165,3 +165,68 @@ export function radiologyChargeRequest(order: ChargeableRadiologyOrder): ChargeR
     description: order.procedureName,
   };
 }
+
+/** One consultation per explicitly completed OPD, follow-up or emergency encounter. */
+export function consultationChargeRequest(
+  encounter: Pick<
+    typeof schema.encounters.$inferSelect,
+    'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterType'
+  >,
+): ChargeRequest {
+  return {
+    tenantId: encounter.tenantId,
+    facilityId: encounter.facilityId,
+    patientId: encounter.patientId,
+    encounterId: encounter.id,
+    codes: [],
+    family: 'CONSULTATION',
+    encounterType: encounter.encounterType,
+    sourceType: 'CONSULTATION',
+    sourceId: encounter.id,
+    itemType: 'Consultation',
+    description: 'Clinical consultation',
+  };
+}
+
+/** One admission charge, separate from occupied ward-nights. */
+export function admissionChargeRequest(
+  admission: Pick<
+    typeof schema.admissions.$inferSelect,
+    'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterId'
+  >,
+): ChargeRequest {
+  return {
+    tenantId: admission.tenantId,
+    facilityId: admission.facilityId,
+    patientId: admission.patientId,
+    encounterId: admission.encounterId ?? null,
+    codes: [],
+    family: 'ADMISSION',
+    sourceType: 'ADMISSION',
+    sourceId: admission.id,
+    itemType: 'Admission',
+    description: 'Inpatient admission',
+  };
+}
+
+/** A delivery is one service even when several babies are recorded. */
+export function deliveryChargeRequest(
+  delivery: Pick<
+    typeof schema.deliveries.$inferSelect,
+    'id' | 'tenantId' | 'facilityId' | 'patientId' | 'deliveryMode'
+  >,
+): ChargeRequest {
+  return {
+    tenantId: delivery.tenantId,
+    facilityId: delivery.facilityId,
+    patientId: delivery.patientId,
+    encounterId: null,
+    codes: [],
+    family: 'DELIVERY',
+    serviceName: 'delivery',
+    sourceType: 'MATERNITY',
+    sourceId: delivery.id,
+    itemType: 'Maternity',
+    description: `Delivery — ${delivery.deliveryMode}`,
+  };
+}

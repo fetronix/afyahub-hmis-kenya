@@ -27,9 +27,17 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import {
   bedDaySegments,
   bedDayTariffCodes,
+  buildIdempotencyKey,
+  type ChargeRequest,
   type ChargeResult,
 } from '../../billing/billing.service.ts';
-import { chargeAndRecord } from '../../billing/charge-attempts.ts';
+import {
+  chargeAndRecord,
+  recordChargeAttempt,
+  lockChargeIdentity,
+} from '../../billing/charge-attempts.ts';
+import { calendarDateInZone, validTimezone } from '../../dashboard/timezone.ts';
+import { admissionChargeRequest } from '../../billing/service-charges.ts';
 import { billingServiceKeys } from '../../billing/tariff-codes.ts';
 
 import {
@@ -441,6 +449,12 @@ export async function createAdmissionScoped(
         })
         .where(eq(schema.beds.id, bed.id));
 
+      const attempt = await recordChargeAttempt(tx, admissionChargeRequest(created), {
+        charged: false,
+        reason: 'TARIFF_NOT_CONFIGURED',
+        message: 'Admission recorded; billing evaluation pending.',
+      });
+      if (attempt === null) throw new Error('ADMISSION_BILLING_QUEUE_UNAVAILABLE');
       await auditAdmission(tx, context, created, 'CREATE', 'Admission created.');
       return created;
     });
@@ -527,6 +541,7 @@ export async function dischargeAdmissionScoped(
         );
     }
 
+    await enqueueBedDays(tx, updated);
     await auditAdmission(tx, context, updated, 'UPDATE', 'Admission discharged.');
     return updated;
   });
@@ -766,11 +781,33 @@ export async function accrueBedDaysScoped(
     throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
   }
 
-  /*
-   * Wards of this facility, once. The ward the patient is in today is
-   * not enough: each segment is priced from the ward occupied then.
-   */
-  const wardRows = await db
+  const { segments, requests } = await bedDayWork(db, admission, untilDate);
+  const charges: Array<ChargeResult | null> = [];
+  for (const request of requests) charges.push(await chargeAndRecord(db, request));
+  return { nights: requests.length, charges, segments };
+}
+
+type BedExecutor = typeof db | Transaction;
+/** Build identities from persisted transfers and a facility-local calendar. */
+async function bedDayWork(
+  executor: BedExecutor,
+  admission: typeof schema.admissions.$inferSelect,
+  untilDate?: string | null,
+) {
+  const [facility] = await executor
+    .select({ timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
+    .from(schema.facilities)
+    .innerJoin(schema.tenants, eq(schema.tenants.id, schema.facilities.tenantId))
+    .where(
+      and(
+        eq(schema.facilities.id, admission.facilityId),
+        eq(schema.facilities.tenantId, admission.tenantId),
+      ),
+    )
+    .limit(1);
+  const zone = facility?.timezone ?? facility?.tenantTimezone;
+  if (!validTimezone(zone)) throw new Error('BED_DAY_TIMEZONE_REQUIRED');
+  const wardRows = await executor
     .select({
       id: schema.wards.id,
       code: schema.wards.code,
@@ -780,80 +817,115 @@ export async function accrueBedDaysScoped(
     })
     .from(schema.wards)
     .where(eq(schema.wards.facilityId, admission.facilityId));
-
   const wardsById = new Map(wardRows.map((ward) => [ward.id, ward]));
-
-  const transfers = await db
+  const transfers = await executor
     .select({
       fromWardId: schema.admissionTransfers.fromWardId,
       toWardId: schema.admissionTransfers.toWardId,
       transferredAt: schema.admissionTransfers.transferredAt,
     })
     .from(schema.admissionTransfers)
-    .where(eq(schema.admissionTransfers.admissionId, admission.id))
-    .orderBy(schema.admissionTransfers.transferredAt);
-
+    .where(
+      and(
+        eq(schema.admissionTransfers.admissionId, admission.id),
+        eq(schema.admissionTransfers.tenantId, admission.tenantId),
+        eq(schema.admissionTransfers.facilityId, admission.facilityId),
+      ),
+    )
+    .orderBy(schema.admissionTransfers.transferredAt, schema.admissionTransfers.id);
   const segments = bedDaySegments({
     admissionDate: admission.admissionDate,
     dischargeDate: admission.dischargeDate ?? null,
-    untilDate: untilDate ?? null,
+    untilDate: untilDate ?? calendarDateInZone(zone),
     homeWard: wardsById.get(admission.wardId) ?? null,
     transfers: transfers.map((transfer) => ({
       fromWardId: transfer.fromWardId,
       toWardId: transfer.toWardId,
-      transferredAt: transfer.transferredAt,
+      transferredAt: calendarDateInZone(zone, transfer.transferredAt),
       ward: wardsById.get(transfer.toWardId) ?? null,
       fromWard: transfer.fromWardId ? (wardsById.get(transfer.fromWardId) ?? null) : null,
     })),
   });
-
-  const charges: Array<ChargeResult | null> = [];
-  let nights = 0;
-
-  for (const segment of segments) {
-    const ward = segment.ward;
-
+  const requests: ChargeRequest[] = [];
+  for (const segment of segments)
     for (const date of segment.dates) {
-      nights += 1;
-
-      charges.push(
-        await chargeAndRecord(db, {
-          tenantId: admission.tenantId,
-          facilityId: admission.facilityId,
-          patientId: admission.patientId,
-          encounterId: admission.encounterId ?? null,
-          /*
-           * Ward-specific link keys only: an explicit link to *this*
-           * ward's bed day, never a blanket "any bed" link that would
-           * let a general rate price an ICU night.
-           */
-          serviceKeys: billingServiceKeys('BED_DAY', [ward?.code, ward?.name]),
-          codes: bedDayTariffCodes(ward?.code),
-          family: 'BED_DAY',
-          serviceName: 'bed day',
-          wardType: ward?.wardType ?? null,
-          wardName: ward?.name ?? null,
-          /* A ward-level link, when the facility made one, wins. */
-          ...(ward
-            ? {
-                serviceRef: {
-                  type: 'BED_DAY' as const,
-                  id: ward.id,
-                  code: ward.code,
-                },
-              }
-            : {}),
-          sourceType: 'BED_DAY',
-          sourceId: admission.id,
-          idempotencySuffix: date,
-          itemType: 'Inpatient',
-          description: `${ward?.name ?? 'Ward'} bed — ${date}`,
-        }),
-      );
+      const ward = segment.ward;
+      requests.push({
+        tenantId: admission.tenantId,
+        facilityId: admission.facilityId,
+        patientId: admission.patientId,
+        encounterId: admission.encounterId ?? null,
+        serviceKeys: billingServiceKeys('BED_DAY', [ward?.code, ward?.name]),
+        codes: bedDayTariffCodes(ward?.code),
+        family: 'BED_DAY',
+        serviceName: 'bed day',
+        wardType: ward?.wardType ?? null,
+        wardName: ward?.name ?? null,
+        ...(ward ? { serviceRef: { type: 'BED_DAY' as const, id: ward.id, code: ward.code } } : {}),
+        sourceType: 'BED_DAY',
+        sourceId: admission.id,
+        idempotencySuffix: date,
+        serviceDate: date,
+        itemType: 'Inpatient',
+        description: `${ward?.name ?? 'Ward'} bed — ${date}`,
+      });
     }
-  }
+  return { segments, requests };
+}
 
-  return { nights, charges, segments };
+/** Atomically preserve every accrued date before a transfer/discharge commits. */
+async function enqueueBedDays(tx: Transaction, admission: typeof schema.admissions.$inferSelect) {
+  const { requests } = await bedDayWork(tx, admission);
+  if (!requests.length) {
+    requests.push({
+      tenantId: admission.tenantId,
+      facilityId: admission.facilityId,
+      patientId: admission.patientId,
+      encounterId: admission.encounterId ?? null,
+      codes: [],
+      family: 'BED_DAY',
+      sourceType: 'BED_DAY',
+      sourceId: admission.id,
+      idempotencySuffix: 'REVIEW',
+      itemType: 'Inpatient',
+      description: 'Bed-day dates require review',
+    });
+  }
+  for (const request of requests) {
+    await lockChargeIdentity(
+      tx,
+      request.facilityId,
+      request.sourceType,
+      request.sourceId,
+      request.idempotencySuffix,
+    );
+    const [item] = await tx
+      .select({ id: schema.billingItems.id })
+      .from(schema.billingItems)
+      .where(eq(schema.billingItems.idempotencyKey, buildIdempotencyKey(request)))
+      .limit(1);
+    const attempts = await tx
+      .select({ status: schema.billingChargeAttempts.status })
+      .from(schema.billingChargeAttempts)
+      .where(
+        and(
+          eq(schema.billingChargeAttempts.tenantId, request.tenantId),
+          eq(schema.billingChargeAttempts.facilityId, request.facilityId),
+          eq(schema.billingChargeAttempts.sourceType, 'BED_DAY'),
+          eq(schema.billingChargeAttempts.sourceId, admission.id),
+          eq(schema.billingChargeAttempts.idempotencySuffix, request.idempotencySuffix!),
+        ),
+      );
+    // A billed, voided or pending identity is historical evidence; never
+    // manufacture a second queue record during replay or re-segmentation.
+    if (item || attempts.length) continue;
+    const queued = await recordChargeAttempt(tx, request, {
+      charged: false,
+      reason: 'TARIFF_NOT_CONFIGURED',
+      message: 'Bed-day billing evaluation pending after occupancy change.',
+    });
+    if (queued === null) throw new Error('BED_DAY_BILLING_QUEUE_UNAVAILABLE');
+  }
 }
 
 /* Bed-night tariff code precedence lives in the billing module. */
@@ -1018,6 +1090,7 @@ export async function transferAdmissionScoped(
         })
         .where(eq(schema.beds.id, bed.id));
 
+      await enqueueBedDays(tx, updated);
       await auditAdmission(tx, context, updated, 'UPDATE', 'Admission transferred.');
       return { transfer, admission: updated };
     });

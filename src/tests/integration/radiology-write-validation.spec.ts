@@ -4,11 +4,14 @@ import { httpJson, startTestServer } from './support/http-harness.ts';
 
 const queries = vi.hoisted(() => ({
   createRadiologyOrder: vi.fn(),
+  requirePatientInTenant: vi.fn(),
   getFacilityByIdScoped: vi.fn(),
   getRadiologyOrderScoped: vi.fn(),
   updateRadiologyReport: vi.fn(),
 }));
 vi.mock('../../db/queries.ts', () => queries);
+const charge = vi.hoisted(() => vi.fn().mockResolvedValue({ charged: false }));
+vi.mock('../../routes/shared/charges.ts', () => ({ chargeSafely: charge }));
 vi.mock('../../auth/authorization.middleware.ts', () => ({
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   requireAnyPermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -36,6 +39,7 @@ describe('radiology write body validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queries.getFacilityByIdScoped.mockResolvedValue({ id: 10, tenantId: 1 });
+    queries.requirePatientInTenant.mockResolvedValue({ id: 2 });
   });
 
   it('POST /api/radiology-orders rejects malformed requests before scope or write', async () => {
@@ -79,7 +83,9 @@ describe('radiology write body validation', () => {
       'Actual findings',
       undefined,
       'Clinician',
+      2,
     );
+    expect(charge).toHaveBeenCalledOnce();
   });
 
   it('POST /api/radiology-orders uses validated fields and the resolved facility', async () => {
@@ -95,6 +101,9 @@ describe('radiology write body validation', () => {
       },
     });
     expect(response.status).toBe(201);
+    expect(response.body.billing).toBeNull();
+    expect(charge).not.toHaveBeenCalled();
+    expect(queries.requirePatientInTenant).toHaveBeenCalled();
     expect(queries.createRadiologyOrder).toHaveBeenCalledWith({
       tenantId: 1,
       facilityId: 10,

@@ -134,7 +134,7 @@ router.post(
 
       let charge: billing.ChargeResult | null = null;
 
-      if (proc && req.authContext) {
+      if (proc && req.authContext && proc.status?.trim().toUpperCase() === 'COMPLETED') {
         charge = await chargeSafely({
           tenantId: req.authContext.tenantId ?? 0,
           facilityId: req.authContext.facilityId ?? 0,

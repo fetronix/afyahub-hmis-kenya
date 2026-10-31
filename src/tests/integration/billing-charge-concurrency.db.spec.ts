@@ -39,16 +39,66 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
   let ctx: AuthorizationContext;
   let serial = 0;
   const tariffCode = `SYN-CHARGE-${suffix}`;
-  const request = (patientId = patient): ChargeRequest => ({
-    tenantId: tenant,
-    facilityId: facility,
-    patientId,
-    codes: [tariffCode],
-    sourceType: 'MANUAL',
-    sourceId: patientId,
-    idempotencySuffix: `${suffix}-${++serial}`,
-    itemType: 'Synthetic',
-  });
+  const items = new Map<number, { priced: number; unpriced: number }>();
+  // Use actual synthetic dispensations, not a synthetic MANUAL billing bypass.
+  const request = async (
+    patientId = patient,
+    facilityId = facility,
+    priced = true,
+  ): Promise<ChargeRequest> => {
+    const products = items.get(facilityId)!;
+    const itemId = priced ? products.priced : products.unpriced;
+    const sourceId = (
+      await pool.query(
+        "INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,item_id,quantity_dispensed,dispensed_by) VALUES($1,$2,$3,$4,1,'Synthetic') RETURNING id",
+        [tenant, facilityId, patientId, itemId],
+      )
+    ).rows[0].id as number;
+    return {
+      tenantId: tenant,
+      facilityId,
+      patientId,
+      codes: [tariffCode],
+      family: 'PHARMACY',
+      serviceName: priced ? 'Synthetic priced item' : 'Synthetic unpriced item',
+      sourceType: 'PHARMACY',
+      sourceId,
+      itemType: 'Synthetic',
+    };
+  };
+  const configureFacility = async (facilityId: number) => {
+    const priced = (
+      await pool.query(
+        "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,$2,'Synthetic priced item','Tablet') RETURNING id",
+        [facilityId, `ITEM-${suffix}`],
+      )
+    ).rows[0].id as number;
+    const unpriced = (
+      await pool.query(
+        "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,$2,'Synthetic unpriced item','Tablet') RETURNING id",
+        [facilityId, `NOITEM-${suffix}`],
+      )
+    ).rows[0].id as number;
+    const master = (
+      await pool.query(
+        "INSERT INTO master_services(tenant_id,code,description,department,billing_family,unit,clinical_source,origin_facility_id,origin_source_id) VALUES($1,$2,'Synthetic priced item','pharmacy','PHARMACY','Tablet','PHARMACY',$3,$4) RETURNING id",
+        [tenant, `SYN-${facilityId}-${suffix}`.toUpperCase(), facilityId, priced],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO master_service_sources(tenant_id,facility_id,source_type,source_id,master_service_id,created_by_user_id) VALUES($1,$2,'PHARMACY',$3,$4,$5)",
+      [tenant, facilityId, priced, master, actor],
+    );
+    await pool.query(
+      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,master_service_id,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic charge','pharmacy','Tablet','7.50',$4,true,true)",
+      [tenant, facilityId, tariffCode, master],
+    );
+    await pool.query(
+      "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE facility_id=$2 AND code=$3",
+      [actor, facilityId, tariffCode],
+    );
+    items.set(facilityId, { priced, unpriced });
+  };
   const makeInvoice = async () => {
     const id = (
       await pool.query(
@@ -90,10 +140,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [`charge-${suffix}`, `charge-${suffix}@example.test`, tenant, facility],
       )
     ).rows[0].id;
-    await pool.query(
-      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee) VALUES($1,$2,$3,'Synthetic charge','OPD','Visit','7.50')",
-      [tenant, facility, tariffCode],
-    );
+    await configureFacility(facility);
     ctx = {
       userId: actor,
       tenantId: tenant,
@@ -111,7 +158,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `RETRY-${suffix}`],
       )
     ).rows[0].id;
-    const same = request(another);
+    const same = await request(another);
     const initial = await chargeAndRecord(db, same);
     expect(initial.charged).toBe(true);
     await pool.query(
@@ -139,6 +186,10 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         'UPDATE facility_service_tariffs SET is_active=true WHERE facility_id=$1 AND code=$2',
         [facility, tariffCode],
       );
+      await pool.query(
+        "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE facility_id=$2 AND code=$3",
+        [actor, facility, tariffCode],
+      );
     }
   });
 
@@ -149,14 +200,14 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `UNPRICED-${suffix}`],
       )
     ).rows[0].id;
-    const same = { ...request(another), codes: [`NO-PRICE-${suffix}`] };
+    const same = await request(another, facility, false);
     const fn = `test_queue_race_${suffix.replaceAll('-', '')}`;
     const trigger = `test_queue_race_trigger_${suffix.replaceAll('-', '')}`;
     await pool.query(
       `CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.2); RETURN NEW; END $$`,
     );
     await pool.query(
-      `CREATE TRIGGER "${trigger}" BEFORE INSERT ON billing_charge_attempts FOR EACH ROW WHEN (NEW.facility_id = ${facility} AND NEW.source_id = ${another}) EXECUTE FUNCTION "${fn}"()`,
+      `CREATE TRIGGER "${trigger}" BEFORE INSERT ON billing_charge_attempts FOR EACH ROW WHEN (NEW.facility_id = ${facility} AND NEW.source_id = ${same.sourceId}) EXECUTE FUNCTION "${fn}"()`,
     );
     try {
       const results = await Promise.all([chargeAndRecord(db, same), chargeAndRecord(db, same)]);
@@ -184,7 +235,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `QRACE-${suffix}`],
       )
     ).rows[0].id;
-    const req = request(another);
+    const req = await request(another);
     const attemptId = await recordChargeAttempt(db, req, {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
@@ -239,7 +290,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `DIRECT-${suffix}`],
       )
     ).rows[0].id;
-    const req = request(another);
+    const req = await request(another);
     const attemptId = await recordChargeAttempt(db, req, {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
@@ -291,7 +342,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `VOIDDIRECT-${suffix}`],
       )
     ).rows[0].id;
-    const req = request(another);
+    const req = await request(another);
     const attemptId = await recordChargeAttempt(db, req, {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
@@ -321,7 +372,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `DIRECTAUDIT-${suffix}`],
       )
     ).rows[0].id;
-    const req = request(another);
+    const req = await request(another);
     const attemptId = await recordChargeAttempt(db, req, {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
@@ -365,11 +416,8 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, isolatedFacility, `BATCHPAT-${suffix}`],
       )
     ).rows[0].id;
-    await pool.query(
-      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee) VALUES($1,$2,$3,'Synthetic charge','OPD','Visit','7.50')",
-      [tenant, isolatedFacility, tariffCode],
-    );
-    const req = { ...request(another), facilityId: isolatedFacility };
+    await configureFacility(isolatedFacility);
+    const req = await request(another, isolatedFacility);
     const billed = await chargeAndRecord(db, req);
     expect(billed.charged).toBe(true);
     // Simulate a legacy pending row left behind after a successful charge.
@@ -413,7 +461,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `HISTORY-${suffix}`],
       )
     ).rows[0].id;
-    const req = request(another);
+    const req = await request(another);
     const oldId = await recordChargeAttempt(db, req, {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
@@ -453,7 +501,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `QAUDIT-${suffix}`],
       )
     ).rows[0].id;
-    const req = request(another);
+    const req = await request(another);
     const attemptId = await recordChargeAttempt(db, req, {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
@@ -496,8 +544,8 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [tenant, facility, `CC-${suffix}`],
       )
     ).rows[0].id as number;
-    const one = request(anotherPatient),
-      two = request(anotherPatient);
+    const one = await request(anotherPatient),
+      two = await request(anotherPatient);
     const results = await Promise.all([
       chargeForService(db, one),
       chargeForService(db, two),
@@ -535,7 +583,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
       await holder.query('SELECT id FROM billing_invoices WHERE id=$1 FOR UPDATE', [id]);
       const voiding = voidInvoiceScoped(ctx, id, 'Synthetic race review');
       await waitForBlockedBy(pid);
-      const charging = chargeForService(db, request());
+      const charging = chargeForService(db, await request());
       await waitForBlockedBy(pid, 2);
       await holder.query('COMMIT');
       const [voided, charged] = await Promise.all([voiding, charging]);
@@ -558,7 +606,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
       await holder.query('BEGIN');
       const pid = (await holder.query('SELECT pg_backend_pid() AS id')).rows[0].id;
       await holder.query('SELECT id FROM billing_invoices WHERE id=$1 FOR UPDATE', [id]);
-      const charging = chargeForService(db, request());
+      const charging = chargeForService(db, await request());
       await waitForBlockedBy(pid);
       const paying = recordSettledPayment(
         ctx,
@@ -583,7 +631,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
   it('rejects unknown line/header money and rolls back a failed charge audit', async () => {
     const id = await makeInvoice();
     await pool.query('UPDATE billing_items SET total_amount=NULL WHERE invoice_id=$1', [id]);
-    await expect(chargeForService(db, request())).rejects.toThrow(
+    await expect(chargeForService(db, await request())).rejects.toThrow(
       'INVOICE_RECONCILIATION_REQUIRED',
     );
     expect(
@@ -599,7 +647,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
       await pool.query(
         `CREATE TRIGGER "${trigger}" BEFORE INSERT ON audit_logs FOR EACH ROW WHEN (NEW.facility_id = ${facility} AND NEW.resource = 'BillingItem') EXECUTE FUNCTION "${fn}"()`,
       );
-      await expect(chargeForService(db, request())).rejects.toThrow();
+      await expect(chargeForService(db, await request())).rejects.toThrow();
       expect(
         (
           await pool.query('SELECT total_amount,balance_amount FROM billing_invoices WHERE id=$1', [

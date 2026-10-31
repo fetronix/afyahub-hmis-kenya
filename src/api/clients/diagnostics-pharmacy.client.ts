@@ -103,9 +103,24 @@ export const diagnosticsPharmacyClient = {
       body: JSON.stringify(res),
     }),
 
+  completeLabInvestigation: (id: number) =>
+    fetchJson<
+      LabOrder & {
+        billing?: {
+          charged: boolean;
+          reason?: string;
+          message?: string;
+          invoiceNumber?: string;
+        } | null;
+      }
+    >(`${API_BASE}/lab-orders/${id}/complete`, { method: 'POST' }),
   verifyLabResult: (id: number) =>
     fetchJson<LabResult>(`${API_BASE}/lab-results/${id}/verify`, { method: 'POST' }),
 
+  getRadiologyMasterServices: (facilityId: number) =>
+    fetchJson<Array<{ id: number; code: string; description: string; unit: string }>>(
+      `${API_BASE}/master-services?facilityId=${encodeURIComponent(facilityId)}&family=RADIOLOGY`,
+    ),
   getRadiologyOrders: (facilityId?: number, patientId?: number) => {
     const params = new URLSearchParams();
 
