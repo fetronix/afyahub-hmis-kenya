@@ -72,6 +72,7 @@ export const shaEclaims = pgTable(
     claimType: text('claim_type').default('institutional').notNull(),
     subType: text('sub_type').default('op').notNull(),
     status: text('status').default('DRAFT').notNull(),
+    dispatchRevision: integer('dispatch_revision').default(0).notNull(),
     environmentMode: text('environment_mode').default('mock').notNull(),
     isSimulated: boolean('is_simulated').default(false).notNull(),
     billableStart: date('billable_start').notNull(),

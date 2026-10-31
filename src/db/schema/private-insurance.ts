@@ -87,6 +87,7 @@ export const privateInsuranceClaims = pgTable(
       .notNull(),
     paidAmount: numeric('paid_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
     status: text('status').default('DRAFT').notNull(),
+    dispatchRevision: integer('dispatch_revision').default(0).notNull(),
     submissionChannel: text('submission_channel').default('NONE').notNull(),
     diagnosesSnapshot: jsonb('diagnoses_snapshot')
       .$type<Array<{ code: string; display: string; system: string; type: string }>>()

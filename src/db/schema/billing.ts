@@ -18,8 +18,10 @@ import {
   boolean,
   numeric,
   date,
+  jsonb,
   uniqueIndex,
   index,
+  check,
 } from 'drizzle-orm/pg-core';
 
 import { sql } from 'drizzle-orm';
@@ -29,6 +31,7 @@ import { facilities, tenants } from './tenancy.ts';
 import { patients } from './patients.ts';
 
 import { encounters } from './clinical.ts';
+import { users } from './auth.ts';
 
 export const facilityServiceTariffs = pgTable(
   'facility_service_tariffs',
@@ -139,6 +142,9 @@ export const billingInvoices = pgTable('billing_invoices', {
   payerName: text('payer_name'),
 
   memberNumber: text('member_number'),
+
+  /** Once set, charge lines and invoice identity cannot be changed. */
+  finalizedAt: timestamp('finalized_at'),
 
   voidedAt: timestamp('voided_at'),
 
@@ -404,6 +410,170 @@ export const billingPayments = pgTable('billing_payments', {
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+/** Immutable snapshot of one existing invoice; it is not a separate invoice. */
+export const billingInvoiceFinalizations = pgTable('billing_invoice_finalizations', {
+  invoiceId: integer('invoice_id')
+    .primaryKey()
+    .references(() => billingInvoices.id),
+  tenantId: integer('tenant_id')
+    .notNull()
+    .references(() => tenants.id),
+  facilityId: integer('facility_id')
+    .notNull()
+    .references(() => facilities.id),
+  finalizedByUserId: integer('finalized_by_user_id')
+    .notNull()
+    .references(() => users.id),
+  finalizedAt: timestamp('finalized_at').notNull().defaultNow(),
+  patientResponsibility: numeric('patient_responsibility', { precision: 10, scale: 2 }).notNull(),
+  insurerResponsibility: numeric('insurer_responsibility', { precision: 10, scale: 2 }).notNull(),
+  copayment: numeric('copayment', { precision: 10, scale: 2 }).notNull(),
+  allocationBasis: text('allocation_basis').notNull(),
+  snapshot: jsonb('snapshot')
+    .$type<import('../../billing/finalized-invoice.types.ts').InvoiceSnapshot>()
+    .notNull(),
+});
+
+/** An explicit, auditable attribution of an existing immutable receipt. */
+export const billingPaymentAttributions = pgTable(
+  'billing_payment_attributions',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => billingInvoices.id),
+    paymentId: integer('payment_id')
+      .notNull()
+      .unique()
+      .references(() => billingPayments.id),
+    party: text('party').$type<'PATIENT' | 'INSURER'>().notNull(),
+    reason: text('reason').notNull(),
+    actorUserId: integer('actor_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('billing_payment_attributions_invoice_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.invoiceId,
+    ),
+  ],
+);
+
+/** A retry identity for an existing receipt, not an additional payment. */
+export const billingPaymentRequests = pgTable(
+  'billing_payment_requests',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => billingInvoices.id),
+    paymentId: integer('payment_id')
+      .notNull()
+      .unique()
+      .references(() => billingPayments.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    actorUserId: integer('actor_user_id')
+      .notNull()
+      .references(() => users.id),
+    resultSnapshot: jsonb('result_snapshot')
+      .$type<import('../../billing/finalized-invoice.types.ts').PaymentReplaySnapshot>()
+      .notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('billing_payment_requests_facility_id_idempotency_key_key').on(
+      table.facilityId,
+      table.idempotencyKey,
+    ),
+  ],
+);
+
+/** Terminal cancellation of a receipt request, not a provider cancellation. */
+export const billingPaymentRequestCancellations = pgTable(
+  'billing_payment_request_cancellations',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => billingInvoices.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    actorUserId: integer('actor_user_id')
+      .notNull()
+      .references(() => users.id),
+    reason: text('reason').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('billing_payment_request_cancellations_facility_id_idempotency_key_key').on(
+      table.facilityId,
+      table.idempotencyKey,
+    ),
+  ],
+);
+
+/** Immutable, additive manual refund receipts; original payments are retained. */
+export const billingRefunds = pgTable(
+  'billing_refunds',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    invoiceId: integer('invoice_id')
+      .references(() => billingInvoices.id)
+      .notNull(),
+    paymentId: integer('payment_id')
+      .references(() => billingPayments.id)
+      .notNull(),
+    refundNumber: text('refund_number').notNull().unique(),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    refundMethod: text('refund_method').notNull(),
+    externalReference: text('external_reference'),
+    reason: text('reason').notNull(),
+    manualConfirmation: boolean('manual_confirmation').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    actorUserId: integer('actor_user_id')
+      .references(() => users.id)
+      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('billing_refunds_facility_key_idx').on(table.facilityId, table.idempotencyKey),
+    index('billing_refunds_invoice_idx').on(table.invoiceId, table.id),
+    index('billing_refunds_payment_idx').on(table.paymentId, table.id),
+    check(
+      'billing_refund_amount_chk',
+      sql`${table.amount} > 0 AND ${table.amount}::text NOT IN ('NaN','Infinity','-Infinity')`,
+    ),
+  ],
+);
 
 /* ============================================================
    42. INSURANCE / SHA CLAIMS

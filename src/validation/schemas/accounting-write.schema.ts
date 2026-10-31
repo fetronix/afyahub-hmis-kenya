@@ -73,6 +73,21 @@ export const createExpenseRequestBodySchema = z
     message: 'Expense and payable accounts must be distinct.',
   });
 
+export const postBillingSourceBodySchema = z
+  .object({
+    facilityId,
+    entryDate: isoDateStringSchema(),
+    description: text(500),
+    idempotencyKey: text(128).optional(),
+    patientReceivableAccountId: facilityId,
+    insurerReceivableAccountId: facilityId,
+    revenueAccountId: facilityId,
+    settlementAccountId: facilityId,
+    liabilityAccountId: facilityId,
+    receivableRefundKes: z.union([z.string(), z.number()]).optional(),
+  })
+  .strict();
+
 export const reverseJournalBodySchema = z.object({
   facilityId,
   entryDate: isoDateStringSchema(),

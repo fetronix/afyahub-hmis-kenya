@@ -6,7 +6,7 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
@@ -15,7 +15,8 @@ import { InpatientDomainError } from '../inpatient-contracts.ts';
 import { requireTenantScope, requireFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
-import { toCentsPositive } from './shared.ts';
+import { parseMoneyToCents } from '../../billing/settlement.ts';
+import { readInvoicePaymentLedger } from '../../billing/payment-ledger.ts';
 
 import { moduleLogger } from '../../logging/logger.ts';
 
@@ -79,6 +80,11 @@ export async function getInvoiceItems(invoiceId: number) {
   }
 }
 
+/**
+ * Legacy unscoped helper: no authenticated actor is available for an audit.
+ * HTTP callers must use recordSettledPayment instead. Retained for existing
+ * internal compatibility until a reviewed migration can remove it.
+ */
 export async function recordPayment(paymentData: typeof schema.billingPayments.$inferInsert) {
   try {
     return await db.transaction(async (tx) => {
@@ -93,15 +99,36 @@ export async function recordPayment(paymentData: typeof schema.billingPayments.$
       if (!invoice) {
         throw new Error('INVOICE_NOT_FOUND');
       }
+      if (invoice.status === 'Void' || invoice.voidedAt) {
+        throw new Error('INVOICE_VOIDED');
+      }
 
-      const amountCents = Math.round(Number(paymentData.amount) * 100);
-      const balanceCents = Math.round(Number(invoice.balanceAmount ?? 0) * 100);
-      const totalCents = Math.round(Number(invoice.totalAmount ?? 0) * 100);
-      const paidCents = Math.round(Number(invoice.paidAmount ?? 0) * 100);
+      const amountCents = parseMoneyToCents(paymentData.amount);
+      const balanceCents = parseMoneyToCents(invoice.balanceAmount);
+      const totalCents = parseMoneyToCents(invoice.totalAmount);
+      const paidCents = parseMoneyToCents(invoice.paidAmount);
+      const creditCents = parseMoneyToCents(invoice.creditBalance);
 
-      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      if (amountCents === null || amountCents <= 0) {
         throw new Error('INVALID_PAYMENT_AMOUNT');
       }
+      if (
+        balanceCents === null ||
+        totalCents === null ||
+        paidCents === null ||
+        creditCents === null ||
+        balanceCents < 0 ||
+        totalCents < 0 ||
+        paidCents < 0 ||
+        creditCents < 0 ||
+        balanceCents !== Math.max(0, totalCents - paidCents) ||
+        creditCents !== Math.max(0, paidCents - totalCents)
+      ) {
+        throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+      }
+      const ledger = await readInvoicePaymentLedger(tx, invoice.id);
+      if (!ledger || ledger.netCents !== paidCents)
+        throw new Error('INVOICE_RECONCILIATION_REQUIRED');
 
       if (amountCents > balanceCents) {
         throw new Error('PAYMENT_EXCEEDS_BALANCE');
@@ -132,7 +159,9 @@ export async function recordPayment(paymentData: typeof schema.billingPayments.$
       return payment;
     });
   } catch (error) {
-    log.error({ err: error }, 'payment.record_failed');
+    // Database error text may include payment parameters; retain the cause
+    // for local handling without writing it or its values to application logs.
+    log.error('payment.record_failed');
     throw new Error('Failed to record patient payment', { cause: error });
   }
 }
@@ -221,7 +250,24 @@ export async function getInvoiceDetailScoped(context: AuthorizationContext, invo
     .where(eq(schema.billingPayments.invoiceId, invoice.id))
     .orderBy(desc(schema.billingPayments.createdAt));
 
-  return { invoice, items, payments };
+  const refunds = await db
+    .select({
+      id: schema.billingRefunds.id,
+      invoiceId: schema.billingRefunds.invoiceId,
+      paymentId: schema.billingRefunds.paymentId,
+      refundNumber: schema.billingRefunds.refundNumber,
+      amount: schema.billingRefunds.amount,
+      refundMethod: schema.billingRefunds.refundMethod,
+      externalReference: schema.billingRefunds.externalReference,
+      reason: schema.billingRefunds.reason,
+      actorUserId: schema.billingRefunds.actorUserId,
+      createdAt: schema.billingRefunds.createdAt,
+    })
+    .from(schema.billingRefunds)
+    .where(eq(schema.billingRefunds.invoiceId, invoice.id))
+    .orderBy(desc(schema.billingRefunds.createdAt));
+
+  return { invoice, items, payments, refunds };
 }
 
 /**
@@ -236,38 +282,97 @@ export async function voidInvoiceScoped(
   invoiceId: number,
   reason: string,
 ) {
-  const detail = await getInvoiceDetailScoped(context, invoiceId);
-
-  if (!detail) {
-    throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Invoice not found.', 404);
+  const id = Number(invoiceId);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid invoice ID is required.', 400);
+  }
+  const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+  if (normalizedReason.length < 3 || normalizedReason.length > 500) {
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid void reason is required.', 400);
   }
 
-  if (detail.invoice.voidedAt) {
-    throw new InpatientDomainError(
-      'ADMISSION_ALREADY_CLOSED',
-      'This invoice has already been voided.',
-      409,
-    );
-  }
+  return db.transaction(async (tx) => {
+    // The payment service locks this same row, so a concurrent payment and
+    // void cannot both succeed based on an old unpaid snapshot.
+    const [invoice] = await tx
+      .select()
+      .from(schema.billingInvoices)
+      .where(eq(schema.billingInvoices.id, id))
+      .limit(1)
+      .for('update');
+    if (!invoice) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Invoice not found.', 404);
+    requireTenantScope(context, invoice.tenantId);
+    requireFacilityScope(context, invoice.tenantId, invoice.facilityId);
+    if (invoice.voidedAt || invoice.status === 'Void')
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'This invoice has already been voided.',
+        409,
+      );
 
-  if (toCentsPositive(detail.invoice.paidAmount) > 0) {
-    throw new InpatientDomainError(
-      'ADMISSION_ALREADY_CLOSED',
-      'A paid invoice cannot be voided. Reverse the payment first.',
-      409,
-    );
-  }
+    const paid = parseMoneyToCents(invoice.paidAmount);
+    const credit = parseMoneyToCents(invoice.creditBalance);
+    const total = parseMoneyToCents(invoice.totalAmount);
+    const balance = parseMoneyToCents(invoice.balanceAmount);
+    if (
+      paid === null ||
+      credit === null ||
+      total === null ||
+      balance === null ||
+      total < 0 ||
+      balance !== total ||
+      paid !== 0 ||
+      credit !== 0 ||
+      ['Paid', 'Partially Paid', 'Overpaid'].includes(invoice.status ?? '')
+    )
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'The invoice has a payment, credit, or inconsistent balance and requires authorized review before voiding.',
+        409,
+      );
+    // Be conservative if a legacy payment exists even when the stored total is wrong.
+    const [payment] = await tx
+      .select({ id: schema.billingPayments.id })
+      .from(schema.billingPayments)
+      .where(eq(schema.billingPayments.invoiceId, invoice.id))
+      .limit(1);
+    if (payment)
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'The invoice has a recorded payment and requires authorized review before voiding.',
+        409,
+      );
 
-  const [updated] = await db
-    .update(schema.billingInvoices)
-    .set({
-      status: 'Void',
-      voidedAt: new Date(),
-      voidReason: reason.trim().slice(0, 500),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.billingInvoices.id, detail.invoice.id))
-    .returning();
-
-  return updated;
+    const activeJournals =
+      await tx.execute(sql`SELECT p.journal_id FROM accounting_billing_postings p
+      WHERE p.invoice_id=${invoice.id} AND p.tenant_id=${invoice.tenantId} AND p.facility_id=${invoice.facilityId}
+        AND NOT EXISTS (SELECT 1 FROM journal_entries r WHERE r.reversal_of_journal_id=p.journal_id AND r.status='POSTED')
+      LIMIT 1`);
+    if (activeJournals.rows.length)
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'Reverse the active billing journals through accounting before voiding this invoice.',
+        409,
+      );
+    const [updated] = await tx
+      .update(schema.billingInvoices)
+      .set({
+        status: 'Void',
+        voidedAt: new Date(),
+        voidReason: normalizedReason,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.billingInvoices.id, invoice.id))
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId: invoice.tenantId,
+      facilityId: invoice.facilityId,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'Invoice',
+      resourceId: String(invoice.id),
+      details: 'Invoice voided; reason retained on invoice.',
+    });
+    return updated;
+  });
 }

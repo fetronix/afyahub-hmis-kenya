@@ -46,7 +46,8 @@ describe('LoginScreen — JaliCare HMIS Login Portal', () => {
     expect(screen.getByText('Better Systems.')).toBeInTheDocument();
     expect(screen.getByText('Healthier Communities.')).toBeInTheDocument();
     expect(screen.getByText('Secure')).toBeInTheDocument();
-    expect(screen.getByText('Compliant')).toBeInTheDocument();
+    expect(screen.getByText('Privacy-aware')).toBeInTheDocument();
+    expect(screen.queryByText('Compliant')).not.toBeInTheDocument();
     expect(screen.getByText('Reliable')).toBeInTheDocument();
     expect(screen.getByText("Built for Kenya's Healthcare Facilities")).toBeInTheDocument();
 

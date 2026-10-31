@@ -2,7 +2,10 @@ import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
-const queries = vi.hoisted(() => ({ createInventoryItem: vi.fn() }));
+const queries = vi.hoisted(() => ({
+  createInventoryItem: vi.fn(),
+  getFacilityByIdScoped: vi.fn(),
+}));
 vi.mock('../../db/queries.ts', () => queries);
 vi.mock('../../auth/authorization.middleware.ts', () => ({
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -16,6 +19,19 @@ describe('POST /api/inventory body validation', () => {
   beforeAll(async () => {
     const app = express();
     app.use(express.json());
+    app.use((req, _res, next) => {
+      Object.assign(req, {
+        authContext: {
+          tenantId: 1,
+          facilityId: 10,
+          userId: 2,
+          roles: [],
+          permissions: [],
+          isSuperAdmin: false,
+        },
+      });
+      next();
+    });
     app.use(pharmacyRoutes);
     ({ baseUrl, close } = await startTestServer(app));
   });
@@ -24,6 +40,7 @@ describe('POST /api/inventory body validation', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    queries.getFacilityByIdScoped.mockResolvedValue({ id: 10, tenantId: 1 });
   });
 
   it('rejects missing, negative or malformed catalogue values before a write', async () => {

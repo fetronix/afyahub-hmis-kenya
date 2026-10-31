@@ -585,7 +585,7 @@ export const PatientJourneyModal: React.FC = () => {
               {activeTab === 'fhir' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-slate-600">
-                    <span>HL7 FHIR R4 JSON Representation (Digital Health Agency Compatible)</span>
+                    <span>FHIR R4 JSON preview (DHA validation not established)</span>
                     <button
                       onClick={downloadFhir}
                       className="px-2.5 py-1 bg-teal-700 text-white rounded text-2xs font-medium hover:bg-teal-800 transition-colors"

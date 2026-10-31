@@ -317,6 +317,52 @@ describe('patient registration compatibility', () => {
     );
   });
 
+  it('reports a saved patient separately when triage routing cannot be confirmed', async () => {
+    mocks.createQueueItem.mockRejectedValueOnce(new Error('synthetic response loss'));
+    openRegistration();
+    fireEvent.change(input(), { target: { value: '1985-03-14' } });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Complete Registration & Route to Triage' }),
+    );
+    await waitFor(() =>
+      expect(mocks.showToast).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Patient registered (MRN: TEST-42), but triage routing could not be confirmed',
+        ),
+      ),
+    );
+    expect(mocks.createPatient).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: 'Complete Registration & Route to Triage' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('warns against blind resubmission when the registration response is lost', async () => {
+    mocks.createPatient.mockRejectedValueOnce(new Error('synthetic response loss'));
+    openRegistration();
+    fireEvent.change(input(), { target: { value: '1985-03-14' } });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Complete Registration & Route to Triage' }),
+    );
+    await waitFor(() =>
+      expect(mocks.showToast).toHaveBeenCalledWith(expect.stringContaining('may have been saved')),
+    );
+    expect(mocks.createQueueItem).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Complete Registration & Route to Triage' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a directory outage instead of an empty patient list and supports retry', async () => {
+    mocks.getPatients.mockRejectedValueOnce(new Error('synthetic outage'));
+    render(<PatientRegistrationModule />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Do not assume no patients exist');
+    expect(screen.queryByText(/No patients found matching/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry patient directory' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(mocks.getPatients).toHaveBeenCalledTimes(2);
+  });
+
   it('does not submit a manually entered future birth date', () => {
     openRegistration();
     fireEvent.change(input(), { target: { value: '2026-10-30' } });

@@ -11,6 +11,7 @@
 import { and, desc, eq, inArray, like, sql } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
+import { lockMutableClaim } from '../claims/claim-dispatch-guard.ts';
 import { matchRecordedPayerPayment, RecordedPaymentError } from '../hub/recorded-payment.ts';
 import {
   defaultShaGatewayAdapter,
@@ -343,6 +344,18 @@ export async function reconcileRemittance(
         );
       }
 
+      await lockMutableClaim(
+        tx,
+        {
+          workflow: 'SHA',
+          tenantId: scope.tenantId,
+          facilityId: scope.facilityId,
+          claimId: claim.id,
+          status: claim.status,
+          revision: claim.dispatchRevision,
+        },
+        (code, message, status) => new InsuranceDomainError(code, message, status),
+      );
       if (
         claim.status !== 'ACKNOWLEDGED' &&
         claim.status !== 'ADJUDICATED' &&

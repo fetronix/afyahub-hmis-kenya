@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.ts';
+import { TariffValidationPanel } from './TariffValidationPanel.tsx';
 import type {
   BillingChargeAttempt,
   BillingChargeAttemptList,
@@ -12,10 +13,7 @@ import type {
 import {
   BILLING_FAMILIES as BILLING_LINK_FAMILIES,
   buildBillingKey,
-  labTariffCodeCandidates,
-  type BillingFamily,
 } from '../../billing/tariff-codes.ts';
-import { codesForFamily, consultationPhrases, matchTariff } from '../../billing/tariff-matching.ts';
 
 interface FacilityServiceTariffsPanelProps {
   facilityId: number;
@@ -44,58 +42,6 @@ const SHA_STATUSES = [
   'Pre-Authorization Required',
   'Conditional',
 ];
-
-/*
- * The families the automatic billing prices, and the codes it tries for
- * each. Kept beside the screen the codes are typed on, because the only
- * way to answer "will my visit bill?" is to compare the two.
- */
-type BillingFamilyRow = {
-  key: BillingFamily;
-  label: string;
-  encounterType?: string;
-  /** Generic descriptions a family-wide tariff may legitimately carry. */
-  phrases: string[];
-  /** Code families that indicate a *specific* price, not a fallback. */
-  prefixes: string[];
-  codes: string[];
-};
-
-const BILLING_FAMILIES: BillingFamilyRow[] = (
-  [
-    {
-      key: 'CONSULTATION',
-      label: 'Consultation',
-      encounterType: 'OUTPATIENT',
-      phrases: consultationPhrases('OUTPATIENT'),
-      prefixes: ['CONSULT-'],
-      codes: [],
-    },
-    { key: 'LABORATORY', label: 'Laboratory', phrases: [], prefixes: ['LAB-'], codes: [] },
-    { key: 'RADIOLOGY', label: 'Radiology', phrases: [], prefixes: ['RAD-'], codes: [] },
-    { key: 'PROCEDURE', label: 'Procedure', phrases: [], prefixes: ['PROC-'], codes: [] },
-    { key: 'PHARMACY', label: 'Pharmacy', phrases: [], prefixes: ['DRUG-'], codes: [] },
-    { key: 'ADMISSION', label: 'Admission', phrases: [], prefixes: ['ADMIT-'], codes: [] },
-    { key: 'BED_DAY', label: 'Bed-day', phrases: [], prefixes: ['BED-'], codes: [] },
-    {
-      key: 'DELIVERY',
-      label: 'Maternity delivery',
-      phrases: [],
-      prefixes: ['DELIVERY-'],
-      codes: [],
-    },
-  ] satisfies BillingFamilyRow[]
-).map((family) => ({
-  ...family,
-  /*
-   * The exact list the engine tries, not a copy maintained by hand. A
-   * copy is how this screen once promised codes the engine never used.
-   */
-  codes: codesForFamily({
-    family: family.key,
-    encounterType: family.encounterType ?? null,
-  }),
-}));
 
 const EMPTY_FORM = {
   code: '',
@@ -190,72 +136,6 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
 
   const departments = DEPARTMENTS.filter(({ id }) => enabledModules.includes(id));
   const financeEnabled = enabledModules.includes('finance');
-
-  /*
-   * Which families this facility can actually bill.
-   *
-   * The same function the billing engine runs, over the same rows, so
-   * "Consultation — OPD-001 · 150" here means the next OPD visit really
-   * produces a 150 line. A family a tariff only covers per service
-   * (LAB-CBC prices CBC, not every test) is shown as such rather than
-   * being counted as full coverage.
-   */
-  const coverage = BILLING_FAMILIES.map((family) => {
-    const outcome = matchTariff({
-      rows: tariffs.map((tariff) => ({
-        id: tariff.id,
-        code: tariff.code,
-        description: tariff.description,
-        fee: tariff.fee,
-        unit: tariff.unit,
-        department: tariff.department,
-        billingKey: tariff.billingKey ?? null,
-        isActive: tariff.isActive,
-      })),
-      codes: family.codes,
-      serviceKeys: [family.key],
-      family: family.key,
-      phrases: family.phrases,
-    });
-
-    const specific = tariffs.filter(
-      (tariff) =>
-        tariff.isActive &&
-        ((tariff.billingKey ?? '').split(':')[0] === family.key ||
-          family.prefixes.some((prefix) => tariff.code.toUpperCase().startsWith(prefix))),
-    );
-
-    return {
-      ...family,
-      match: outcome.tariff,
-      rule: outcome.rule,
-      ambiguity: outcome.ambiguity,
-      specific,
-    };
-  });
-
-  const unpriced = coverage.filter((entry) => !entry.match && entry.specific.length === 0);
-
-  /*
-   * The same question, one level down: which tests in this facility's own
-   * laboratory catalogue would bill nothing today? A generic LAB-GENERAL
-   * tariff prices all of them, so the check runs the engine's own
-   * candidate list rather than comparing one code.
-   */
-  const activeTariffCodes = new Set(
-    tariffs.filter((tariff) => tariff.isActive).map((tariff) => tariff.code.trim().toUpperCase()),
-  );
-
-  const unpricedLabTests = labTests
-    .filter((test) => test.isActive !== false)
-    .filter((test) => {
-      const candidates = labTariffCodeCandidates({
-        code: test.code,
-        name: test.name,
-      });
-
-      return !candidates.some((candidate) => activeTariffCodes.has(candidate.toUpperCase()));
-    });
 
   const loadLinks = useCallback(async () => {
     try {
@@ -437,7 +317,7 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
       const summary = await api.retryChargeAttempts(facilityId);
 
       setAttemptNotice(
-        `${summary.tried} retried · ${summary.billed} billed · ${summary.stillPending} still waiting for a tariff.`,
+        `${summary.tried} reviewed · ${summary.billed} newly billed · ${summary.duplicates} already had a verified charge · ${summary.stillPending} still pending · ${summary.skipped} skipped.`,
       );
 
       await loadAttempts();
@@ -454,7 +334,14 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
     setAttemptNotice('');
 
     try {
-      await api.voidChargeAttempt(attempt.id, facilityId, 'Written off from the tariff screen.');
+      const reason = window
+        .prompt('Enter the authorized reason for writing off this charge:')
+        ?.trim();
+      if (!reason) {
+        setAttemptNotice('Write-off cancelled: a reason is required.');
+        return;
+      }
+      await api.voidChargeAttempt(attempt.id, facilityId, reason);
       setAttemptNotice('Written off. The record is kept.');
       await loadAttempts();
     } catch (err) {
@@ -749,134 +636,14 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
           Codes the automatic billing looks for
         </summary>
         <p className="mt-2 text-xs text-slate-500">
-          The first active tariff whose code matches wins. A service with no matching code is
-          recorded on the clinical record and <strong>not</strong> billed.
+          The resolver also checks explicit links, dates, units and automatic-billing settings. A
+          service without a valid match is not automatically billed.
         </p>
 
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-semibold text-slate-800">
-            This facility right now:{' '}
-            {unpriced.length === 0 ? (
-              <span className="text-emerald-700">every family below is priced</span>
-            ) : (
-              <span className="text-amber-700">
-                {unpriced.length} of {coverage.length} families have no matching tariff
-              </span>
-            )}
-          </p>
-
-          <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
-            {coverage.map((entry) => (
-              <li key={entry.label} className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="text-slate-600">{entry.label}</span>
-                {entry.match ? (
-                  <span className="text-right">
-                    <span className="font-mono text-emerald-700">
-                      {entry.match.code} · {entry.match.fee}
-                      {entry.match.unit ? ` / ${entry.match.unit}` : ''}
-                    </span>
-                    <span className="ml-1 text-2xs text-slate-400">
-                      {entry.rule === 'LINK'
-                        ? 'linked'
-                        : entry.rule === 'CODE'
-                          ? 'by code'
-                          : 'by description'}
-                    </span>
-                  </span>
-                ) : entry.ambiguity ? (
-                  <span
-                    className="text-amber-700"
-                    title={`${entry.ambiguity.codes.join(' and ')} both describe this service`}
-                  >
-                    two tariffs claim it
-                  </span>
-                ) : entry.specific.length > 0 ? (
-                  <span className="text-slate-600">
-                    {entry.specific.length} specific price
-                    {entry.specific.length === 1 ? '' : 's'} only
-                  </span>
-                ) : (
-                  <span className="text-amber-700">not priced</span>
-                )}
-              </li>
-            ))}
-          </ul>
-
-          {unpriced.length > 0 && (
-            <p className="mt-2 text-2xs leading-relaxed text-slate-500">
-              An unpriced service is recorded, and appears on the invoice only when a price is
-              found. Either add a fallback code such as{' '}
-              <span className="font-mono">OPD-CONSULT</span>, or edit a tariff you already have and
-              set <strong>Used for automatic billing</strong> — that links{' '}
-              <span className="font-mono">OPD-001</span> to the consultation without renaming
-              anything.
-            </p>
-          )}
-        </div>
-
-        {labTests.length > 0 && (
-          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold text-slate-800">
-              Laboratory tests in this catalogue:{' '}
-              {unpricedLabTests.length === 0 ? (
-                <span className="text-emerald-700">all priced</span>
-              ) : (
-                <span className="text-amber-700">
-                  {unpricedLabTests.length} of {labTests.length} would bill nothing
-                </span>
-              )}
-            </p>
-
-            {unpricedLabTests.length > 0 && (
-              <>
-                <p className="mt-1 text-2xs leading-relaxed text-slate-500">
-                  Selecting the test prices it from the tariff screen, not from the price held in
-                  the laboratory catalogue. Choosing one below fills the code the engine will look
-                  for; you still set the fee.
-                </p>
-
-                <ul className="mt-2 space-y-1">
-                  {unpricedLabTests.slice(0, 12).map((test) => (
-                    <li
-                      key={test.id}
-                      className="flex flex-wrap items-baseline justify-between gap-2 text-xs"
-                    >
-                      <span className="text-slate-600">
-                        {test.name}{' '}
-                        <span className="font-mono text-2xs text-slate-400">{test.code}</span>
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setError('');
-                          setNotice('');
-                          setEditingId(null);
-                          setForm({
-                            ...EMPTY_FORM,
-                            department: 'laboratory',
-                            code: test.code.toUpperCase(),
-                            description: test.name,
-                          });
-                          setFormOpen(true);
-                        }}
-                        className="rounded-md border border-blue-200 bg-white px-2 py-1 text-2xs font-semibold text-blue-700 hover:bg-blue-50"
-                      >
-                        Set a price
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-
-                {unpricedLabTests.length > 12 && (
-                  <p className="mt-1 text-2xs text-slate-400">
-                    and {unpricedLabTests.length - 12} more.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        <p className="mt-2 text-xs text-amber-800">
+          These are candidate codes, not evidence of a valid or approved tariff. Use the
+          configuration validation below for current resolver checks.
+        </p>
         <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
           <div>
             <dt className="font-semibold text-slate-700">Consultation</dt>
@@ -934,6 +701,8 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
         </p>
       </details>
 
+      {financeEnabled && <TariffValidationPanel key={facilityId} facilityId={facilityId} />}
+
       {/*
         Catalogue service → tariff links.
 
@@ -949,7 +718,7 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
           Automatic billing finds a price by matching a code. When your codes are numbered —{' '}
           <span className="font-mono">LAB-001</span>, <span className="font-mono">OPD-001</span> —
           nothing can match, and the service is recorded without a charge. Link the catalogue row
-          here and the price is certain, whatever the code is called.
+          here, then validate its price, dates and unit before use.
         </p>
 
         {linksUnavailable !== '' ? (
@@ -1271,11 +1040,12 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">
-              Charges that could not be priced
+              Charges awaiting billing or pricing review
             </h3>
             <p className="mt-1 text-xs text-slate-500">
-              Recorded on the clinical record, but no invoice line exists, so nothing has been
-              claimed for them. Fix the price list, then retry.
+              Pending work includes charges not yet attempted and charges that could not be priced.
+              Review the source and any existing invoice before retrying; this list does not
+              establish claim or payment status.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1311,7 +1081,8 @@ export const FacilityServiceTariffsPanel: React.FC<FacilityServiceTariffsPanelPr
 
         {attempts !== null && attempts.attempts.length === 0 && (
           <p className="mt-3 text-xs text-slate-500">
-            Nothing is waiting. Every charge this facility attempted has an invoice line.
+            No charge attempts were returned. This does not prove that every clinical event was
+            billed.
           </p>
         )}
 

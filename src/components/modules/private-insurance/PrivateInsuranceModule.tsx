@@ -332,7 +332,11 @@ export const PrivateInsuranceModule: React.FC = () => {
               remittances={remittances}
               reconciliation={reconciliation}
               diagnostics={diagnostics}
-              canPrepareClaims={can('insurance.private.claims.prepare')}
+              canPrepareClaims={
+                can('insurance.private.claims.prepare') &&
+                can('clinical.read') &&
+                can('billing.read')
+              }
               canSubmitClaims={can('insurance.private.claims.submit')}
               canReconcileRemittances={can('insurance.private.remittance.reconcile')}
               onRefresh={loadAll}

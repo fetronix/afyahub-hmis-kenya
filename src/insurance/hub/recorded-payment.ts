@@ -36,6 +36,13 @@ export async function matchRecordedPayerPayment(
       'INVALID_PAYMENT_ID',
       'Select a valid existing billing receipt.',
     );
+  // Use the same invoice -> payment lock order as refunds and attribution.
+  const [invoice] = await tx
+    .select({ id: schema.billingInvoices.id })
+    .from(schema.billingInvoices)
+    .where(eq(schema.billingInvoices.id, input.invoiceId))
+    .for('update');
+  if (!invoice) throw new RecordedPaymentError('INVOICE_NOT_FOUND', 'Invoice was not found.');
   const [payment] = await tx
     .select()
     .from(schema.billingPayments)
@@ -48,6 +55,28 @@ export async function matchRecordedPayerPayment(
     .for('update');
   if (!payment)
     throw new RecordedPaymentError('PAYMENT_NOT_FOUND', 'Receipt was not found for this invoice.');
+  // Refunds and payer matching share the payment row lock. A receipt that
+  // has been reversed, even partially, cannot be allocated as fully paid.
+  const [refund] = await tx
+    .select({ id: schema.billingRefunds.id })
+    .from(schema.billingRefunds)
+    .where(eq(schema.billingRefunds.paymentId, payment.id))
+    .limit(1);
+  const [attribution] = await tx
+    .select({ party: schema.billingPaymentAttributions.party })
+    .from(schema.billingPaymentAttributions)
+    .where(eq(schema.billingPaymentAttributions.paymentId, payment.id))
+    .limit(1);
+  if (attribution?.party === 'PATIENT')
+    throw new RecordedPaymentError(
+      'PAYMENT_PARTY_MISMATCH',
+      'A patient-attributed receipt cannot be matched as insurer remittance.',
+    );
+  if (refund)
+    throw new RecordedPaymentError(
+      'PAYMENT_REFUNDED',
+      'A refunded receipt cannot be allocated to a payer claim.',
+    );
   if (parseMoneyToCents(payment.amount) !== input.amountCents)
     throw new RecordedPaymentError(
       'PAYMENT_AMOUNT_MISMATCH',
@@ -88,7 +117,17 @@ export async function matchRecordedPayerPayment(
     .from(schema.insuranceClaims)
     .where(eq(schema.insuranceClaims.settledPaymentId, payment.id))
     .limit(1);
-  if (privateUse || shaUse || legacyUse)
+  const [shaClaimUse] = await tx
+    .select({ id: schema.shaEclaims.id })
+    .from(schema.shaEclaims)
+    .where(eq(schema.shaEclaims.settledPaymentId, payment.id))
+    .limit(1);
+  const [privateClaimUse] = await tx
+    .select({ id: schema.privateInsuranceClaims.id })
+    .from(schema.privateInsuranceClaims)
+    .where(eq(schema.privateInsuranceClaims.settledPaymentId, payment.id))
+    .limit(1);
+  if (privateUse || shaUse || legacyUse || shaClaimUse || privateClaimUse)
     throw new RecordedPaymentError(
       'PAYMENT_ALREADY_ALLOCATED',
       'This receipt is already allocated to an insurance claim.',

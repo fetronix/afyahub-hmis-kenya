@@ -12,7 +12,7 @@ import {
   shaEclaimsApi,
   type ShaBenefitRuleRecord,
   type ShaConnectionStatusResponse,
-  type ShaEclaimRecord,
+  type ShaEclaimSummary,
   type ShaRemittanceRecord,
   type ShaServiceMappingRecord,
 } from '../../../api/sha-eclaims.client.ts';
@@ -34,7 +34,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
 }) => {
   const [connData, setConnData] = useState<ShaConnectionStatusResponse | null>(null);
   const [remittances, setRemittances] = useState<ShaRemittanceRecord[]>([]);
-  const [eligibleClaims, setEligibleClaims] = useState<ShaEclaimRecord[]>([]);
+  const [eligibleClaims, setEligibleClaims] = useState<ShaEclaimSummary[]>([]);
   const [mappings, setMappings] = useState<ShaServiceMappingRecord[]>([]);
   const [facilityTariffs, setFacilityTariffs] = useState<
     Array<{ id: number; code: string; description: string; department: string; fee: string }>

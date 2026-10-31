@@ -8,6 +8,7 @@
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { checkMedicationAllergies } from '../clinical/allergy.service.ts';
+import { MedicationWorkflowError } from '../clinical/medication-workflow-contracts.ts';
 import * as queries from '../db/queries.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
@@ -24,19 +25,25 @@ const router = Router();
 // MEDICATIONS & PRESCRIPTIONS
 // =========================================================
 
-router.get('/api/medications', requirePermission('pharmacy.read'), async (req, res) => {
-  try {
-    const encounterId = req.query.encounterId ? Number(req.query.encounterId) : undefined;
-
-    const patientId = req.query.patientId ? Number(req.query.patientId) : undefined;
-
-    const list = await queries.getMedications(encounterId, patientId);
-
-    res.json(list);
-  } catch (err: any) {
-    respondInternalError(res, err, 'GET /api/medications');
-  }
-});
+router.get(
+  '/api/medications',
+  requirePermission('pharmacy.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.authContext) return res.status(401).json({ error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const list = await queries.getMedicationsScoped(req.authContext, {
+        encounterId:
+          req.query.encounterId !== undefined ? Number(req.query.encounterId) : undefined,
+        patientId: req.query.patientId !== undefined ? Number(req.query.patientId) : undefined,
+        facilityId: req.query.facilityId !== undefined ? Number(req.query.facilityId) : undefined,
+      });
+      return res.json(list);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      respondInternalError(res, err, 'GET /api/medications');
+    }
+  },
+);
 
 router.post(
   '/api/medications',
@@ -103,8 +110,9 @@ router.post(
 
       const { allergyAcknowledged: _acknowledged, ...payload } = body;
 
-      const med = await queries.createMedication(
-        payload as Parameters<typeof queries.createMedication>[0],
+      const med = await queries.createMedicationScoped(
+        req.authContext,
+        payload as Parameters<typeof queries.createMedicationScoped>[1],
       );
 
       res.status(201).json(med);
@@ -118,17 +126,32 @@ router.post(
 
 router.put(
   '/api/medications/:id/status',
-  requirePermission('pharmacy.dispense'),
+  requirePermission('clinical.update'),
   validateBody(medicationStatusBodySchema),
-  async (req, res) => {
+  async (req: AuthRequest, res) => {
+    if (!req.authContext) return res.status(401).json({ error: 'AUTHORIZATION_CONTEXT_MISSING' });
+    const { status, reason } = getValidatedBody<{ status: string; reason?: string }>(req);
+    if (!['On Hold', 'Resume', 'Cancelled', 'Discontinued'].includes(status)) {
+      return res.status(409).json({
+        error: 'MEDICATION_STATUS_WORKFLOW_REQUIRED',
+        message: 'Use the authorized dispensing or clinical workflow.',
+      });
+    }
     try {
-      const { status } = getValidatedBody<{ status: string }>(req);
-
-      const med = await queries.updateMedicationStatus(Number(req.params.id), status);
-
-      res.json(med);
-    } catch (err: any) {
-      respondInternalError(res, err, 'PUT /api/medications/:id/status');
+      return res.json(
+        await queries.updateMedicationStatusScoped(
+          req.authContext,
+          Number(req.params.id),
+          status,
+          reason ?? '',
+        ),
+      );
+    } catch (error: unknown) {
+      if (handleScopeError(error, res)) return;
+      if (error instanceof MedicationWorkflowError)
+        return res.status(error.status).json({ error: error.code, message: error.message });
+      console.error('Medication status change failed.');
+      return res.status(500).json({ error: 'Medication status could not be updated.' });
     }
   },
 );

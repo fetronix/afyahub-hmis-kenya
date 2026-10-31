@@ -1,6 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
+import { RefundsPanel } from './RefundsPanel.tsx';
+import { FinalizedInvoicePanel } from './FinalizedInvoicePanel.tsx';
+import {
+  clearPendingPayment,
+  readPendingPayment,
+  savePendingPayment,
+  type PendingPayment,
+} from '../../billing/payment-retry-storage.ts';
 import { BillingInvoice, BillingItem, Patient } from '../../types/index.ts';
 import {
   classifySettlement,
@@ -27,6 +35,7 @@ export const BillingCashierModule: React.FC = () => {
     currentTenant,
     currentFacility,
     currentUser,
+    authenticatedUser,
     setSelectedPatient,
     setIsJourneyModalOpen,
     showToast,
@@ -38,6 +47,54 @@ export const BillingCashierModule: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<BillingInvoice | null>(null);
   const [invoiceItems, setInvoiceItems] = useState<BillingItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [itemsError, setItemsError] = useState('');
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const selectionVersion = useRef(0);
+  const selectedInvoiceId = useRef<number | null>(null);
+  const scope =
+    currentTenant?.id && currentFacility?.id && authenticatedUser?.id
+      ? `${authenticatedUser.id}:${currentTenant.id}:${currentFacility.id}`
+      : null;
+  const canRecordPayment = Boolean(
+    !authenticatedUser?.isSuperAdmin &&
+    authenticatedUser?.permissions?.includes('billing.payments.record'),
+  );
+
+  const paymentStorageKey =
+    canRecordPayment && currentFacility?.id && authenticatedUser?.id
+      ? `jalicare:payment:pending:${authenticatedUser.id}:${currentFacility.id}`
+      : null;
+  const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
+  const [paymentStorageError, setPaymentStorageError] = useState('');
+  const [paymentKey, setPaymentKey] = useState('');
+  const [payerParty, setPayerParty] = useState<'' | 'PATIENT' | 'INSURER'>('');
+  const [confirmPartyOverpay, setConfirmPartyOverpay] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [paymentRecoveryBusy, setPaymentRecoveryBusy] = useState(false);
+
+  useEffect(() => {
+    if (!paymentStorageKey) {
+      setPendingPayment(null);
+      setPaymentStorageError('');
+      return;
+    }
+    const read = () => {
+      try {
+        setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+        setPaymentStorageError('');
+      } catch {
+        setPaymentStorageError(
+          'The saved payment retry identity cannot be read. Review receipts before continuing.',
+        );
+      }
+    };
+    read();
+    window.addEventListener('storage', read);
+    return () => window.removeEventListener('storage', read);
+  }, [paymentStorageKey]);
 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -49,50 +106,211 @@ export const BillingCashierModule: React.FC = () => {
   const [transactionCode, setTransactionCode] = useState('');
   const [confirmOverpay, setConfirmOverpay] = useState<number | null>(null);
   const [isPostingPayment, setIsPostingPayment] = useState(false);
+  const paymentScopeVersion = useRef(0);
+  useLayoutEffect(() => {
+    paymentScopeVersion.current += 1;
+    setPaymentRecoveryBusy(false);
+    setIsPostingPayment(false);
+    setCancelReason('');
+    return () => {
+      paymentScopeVersion.current += 1;
+    };
+  }, [scope]);
 
   useEffect(() => {
+    let cancelled = false;
     async function loadBilling() {
       setLoading(true);
+      setLoadError('');
+      setLoadedScope(null);
+      setInvoices([]);
+      setPatients([]);
+      setInvoiceItems([]);
+      setItemsError('');
+      setIsPaymentModalOpen(false);
+      if (!scope || !currentTenant?.id || !currentFacility?.id) {
+        setLoadError('A signed-in user and facility are required to load billing.');
+        setLoading(false);
+        return;
+      }
       try {
         const [inv, pList] = await Promise.all([
-          api.getInvoices(currentFacility?.id),
-          api.getPatients(currentTenant?.id, currentFacility?.id),
+          api.getInvoices(currentFacility.id),
+          api.getPatients(currentTenant.id, currentFacility.id),
         ]);
+        if (cancelled) return;
+        if (!Array.isArray(inv) || !Array.isArray(pList))
+          throw new Error('Invalid billing response');
         setInvoices(inv);
         setPatients(pList);
-        if (inv.length > 0 && !selectedInvoice) {
-          selectInvoice(inv[0]);
+        const next = inv.find((row) => row.id === selectedInvoiceId.current) ?? inv[0] ?? null;
+        selectedInvoiceId.current = next?.id ?? null;
+        setSelectedInvoice(next);
+        setLoadedScope(scope);
+        if (next) {
+          const version = ++selectionVersion.current;
+          setItemsLoading(true);
+          try {
+            const items = await api.getInvoiceItems(next.id);
+            if (!cancelled && version === selectionVersion.current) setInvoiceItems(items);
+          } catch {
+            if (!cancelled && version === selectionVersion.current)
+              setItemsError('Invoice lines could not be loaded.');
+          } finally {
+            if (!cancelled && version === selectionVersion.current) setItemsLoading(false);
+          }
+        } else {
+          setItemsLoading(false);
         }
-      } catch (err) {
-        console.error('Failed to load invoices:', err);
+      } catch {
+        if (!cancelled)
+          setLoadError('Billing data could not be loaded. Do not assume there are no invoices.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    loadBilling();
-  }, [currentTenant, currentFacility, refreshKey]);
+    void loadBilling();
+    return () => {
+      cancelled = true;
+      selectionVersion.current += 1;
+    };
+  }, [scope, currentTenant?.id, currentFacility?.id, refreshKey, reload]);
 
   const selectInvoice = async (inv: BillingInvoice) => {
+    const version = ++selectionVersion.current;
+    selectedInvoiceId.current = inv.id;
     setSelectedInvoice(inv);
+    setInvoiceItems([]);
+    setItemsError('');
+    setItemsLoading(true);
     try {
       const items = await api.getInvoiceItems(inv.id);
-      setInvoiceItems(items);
-    } catch (err) {
-      console.error('Failed to load line items:', err);
+      if (version === selectionVersion.current) setInvoiceItems(items);
+    } catch {
+      if (version === selectionVersion.current) setItemsError('Invoice lines could not be loaded.');
+    } finally {
+      if (version === selectionVersion.current) setItemsLoading(false);
     }
   };
 
   const openPaymentModal = (inv: BillingInvoice) => {
-    setSelectedInvoice(inv);
-    setPaymentAmount(inv.balanceAmount || inv.totalAmount || '0');
+    if (
+      !paymentStorageKey ||
+      paymentStorageError ||
+      (pendingPayment && pendingPayment.invoiceId !== inv.id)
+    ) {
+      showToast('Resolve the unconfirmed payment request before starting another.');
+      return;
+    }
+    void selectInvoice(inv);
+    setPaymentAmount(inv.balanceAmount ?? '');
     setTransactionCode('');
+    setPayerParty('');
+    setPaymentKey(pendingPayment?.key ?? crypto.randomUUID());
     setConfirmOverpay(null);
+    setConfirmPartyOverpay(null);
     setIsPaymentModalOpen(true);
   };
 
-  const handleRecordPayment = async () => {
-    if (!selectedInvoice) return;
+  const checkPendingPayment = async () => {
+    if (!pendingPayment || !paymentStorageKey || !currentFacility?.id || paymentRecoveryBusy)
+      return;
+    const version = paymentScopeVersion.current;
+    setPaymentRecoveryBusy(true);
+    try {
+      const result = await api.checkPaymentRequestStatus({
+        facilityId: currentFacility.id,
+        idempotencyKey: pendingPayment.key,
+      });
+      if (version !== paymentScopeVersion.current) return;
+      if (result.status === 'NOT_FOUND') {
+        showToast(
+          'No receipt found yet. A delayed request can still arrive. Retry exactly the original details or cancel the pending request after review.',
+        );
+        return;
+      }
+      if (result.invoiceId !== pendingPayment.invoiceId) {
+        showToast('The saved request does not match this invoice; review is required.');
+        return;
+      }
+      clearPendingPayment(window.localStorage, paymentStorageKey, pendingPayment.key);
+      setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+      setIsPaymentModalOpen(false);
+      showToast(
+        result.status === 'RECORDED'
+          ? `Receipt ${result.receiptNumber} was recorded.`
+          : 'The receipt request was cancelled; no provider request was cancelled.',
+      );
+      triggerRefresh();
+    } catch {
+      if (version !== paymentScopeVersion.current) return;
+      showToast('Payment status could not be confirmed. Retain the retry identity.');
+    } finally {
+      if (version === paymentScopeVersion.current) setPaymentRecoveryBusy(false);
+    }
+  };
 
+  const cancelPendingPayment = async () => {
+    if (
+      !pendingPayment ||
+      !paymentStorageKey ||
+      !currentFacility?.id ||
+      paymentRecoveryBusy ||
+      cancelReason.trim().length < 3
+    )
+      return;
+    const version = paymentScopeVersion.current;
+    setPaymentRecoveryBusy(true);
+    try {
+      const result = await api.cancelPendingPaymentRequest({
+        facilityId: currentFacility.id,
+        invoiceId: pendingPayment.invoiceId,
+        idempotencyKey: pendingPayment.key,
+        reason: cancelReason.trim(),
+      });
+      if (version !== paymentScopeVersion.current) return;
+      if (result.invoiceId !== pendingPayment.invoiceId) throw new Error('Invoice mismatch');
+      clearPendingPayment(window.localStorage, paymentStorageKey, pendingPayment.key);
+      setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+      setCancelReason('');
+      setIsPaymentModalOpen(false);
+      showToast(
+        result.status === 'RECORDED'
+          ? `Receipt ${result.receiptNumber} already committed; no cancellation occurred.`
+          : 'The unrecorded receipt request is cancelled and cannot arrive later. This does not cancel a provider transaction or return funds.',
+      );
+      triggerRefresh();
+    } catch {
+      if (version !== paymentScopeVersion.current) return;
+      showToast('Cancellation could not be confirmed. Retain the retry identity.');
+    } finally {
+      if (version === paymentScopeVersion.current) setPaymentRecoveryBusy(false);
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!selectedInvoice || !paymentStorageKey || !paymentKey || paymentStorageError) return;
+    if (selectedInvoice.finalizedAt && !payerParty) {
+      showToast('Select the party paying this finalized invoice.');
+      return;
+    }
+    const version = paymentScopeVersion.current;
+    let key = paymentKey;
+    try {
+      const saved = readPendingPayment(window.localStorage, paymentStorageKey);
+      if (saved && saved.invoiceId !== selectedInvoice.id) {
+        setPendingPayment(saved);
+        showToast('Resolve the unconfirmed payment first.');
+        return;
+      }
+      key = saved?.key ?? key;
+      const next = { key, invoiceId: selectedInvoice.id };
+      if (!saved) savePendingPayment(window.localStorage, paymentStorageKey, next);
+      setPendingPayment(next);
+    } catch {
+      setPaymentStorageError('The payment retry identity could not be saved. No request was sent.');
+      return;
+    }
     setIsPostingPayment(true);
 
     try {
@@ -102,26 +320,51 @@ export const BillingCashierModule: React.FC = () => {
         amount: paymentAmount,
         transactionCode: isMobileMoney(paymentMethod) ? transactionCode.trim() : undefined,
         allowOverpayment: confirmOverpay !== null,
+        allowPartyOverpayment: confirmPartyOverpay !== null,
+        payerParty: payerParty || undefined,
+        idempotencyKey: key,
       });
-
-      showToast(`${result.settlement.summary} Receipt ${result.payment.receiptNumber}.`);
+      if (version !== paymentScopeVersion.current) return;
+      try {
+        clearPendingPayment(window.localStorage, paymentStorageKey, key);
+        setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+      } catch {
+        setPaymentStorageError('The recorded receipt needs a browser retry-identity review.');
+      }
+      showToast(
+        `${result.idempotentReplay ? 'Previous receipt retrieved. ' : ''}${result.settlement.summary} Receipt ${result.payment.receiptNumber}.`,
+      );
       setIsPaymentModalOpen(false);
       setConfirmOverpay(null);
+      setConfirmPartyOverpay(null);
       triggerRefresh();
     } catch (err: any) {
+      if (version !== paymentScopeVersion.current) return;
       /*
        * The server refuses an overpayment unless it is confirmed. Ask
        * once, then resend with the flag set.
        */
+      if (err?.code === 'PAYMENT_EXCEEDS_PARTY_BALANCE') {
+        const excess = Number(err?.detail?.excessCents);
+        if (Number.isSafeInteger(excess) && excess > 0) setConfirmPartyOverpay(excess);
+        else showToast('Party overpayment could not be verified; review the receipt.');
+        return;
+      }
       if (err?.code === 'PAYMENT_EXCEEDS_BALANCE') {
-        const excess = Number(err?.detail?.excessCents ?? 0);
-        setConfirmOverpay(excess);
+        const excess = Number(err?.detail?.excessCents);
+        if (Number.isSafeInteger(excess) && excess > 0) setConfirmOverpay(excess);
+        else
+          showToast(
+            'Overpayment amount could not be verified. Review the receipt before retrying.',
+          );
         return;
       }
 
-      showToast(`Payment failed: ${err.message}`);
+      showToast(
+        `Payment could not be confirmed: ${err.message}. Retain the retry identity and review the receipt.`,
+      );
     } finally {
-      setIsPostingPayment(false);
+      if (version === paymentScopeVersion.current) setIsPostingPayment(false);
     }
   };
 
@@ -137,11 +380,13 @@ export const BillingCashierModule: React.FC = () => {
     const amountCents = parseMoneyToCents(paymentAmount);
     const totalCents = parseMoneyToCents(selectedInvoice.totalAmount);
 
-    if (amountCents === null || amountCents <= 0 || totalCents === null) return null;
+    const paidCents = parseMoneyToCents(selectedInvoice.paidAmount);
+    if (amountCents === null || amountCents <= 0 || totalCents === null || paidCents === null)
+      return null;
 
     return classifySettlement({
       invoiceTotalCents: totalCents,
-      paidBeforeCents: parseMoneyToCents(selectedInvoice.paidAmount) ?? 0,
+      paidBeforeCents: paidCents,
       amountCents,
     });
   })();
@@ -150,8 +395,41 @@ export const BillingCashierModule: React.FC = () => {
     return patients.find((p) => p.id === patientId);
   };
 
-  const totalOutstanding = invoices.reduce((acc, i) => acc + Number(i.balanceAmount || 0), 0);
-  const totalCollections = invoices.reduce((acc, i) => acc + Number(i.paidAmount || 0), 0);
+  const totalCents = (field: 'balanceAmount' | 'paidAmount') => {
+    let sum = 0;
+    for (const invoice of invoices) {
+      const value = parseMoneyToCents(invoice[field]);
+      if (value === null || value < 0 || !Number.isSafeInteger(sum + value)) return null;
+      sum += value;
+    }
+    return sum;
+  };
+  const totalOutstanding = totalCents('balanceAmount');
+  const totalCollections = totalCents('paidAmount');
+  const showAmount = (value: number | null) =>
+    value === null ? 'Unavailable' : `KES ${(value / 100).toLocaleString()}`;
+  const showMoney = (value: string | number | null | undefined) =>
+    showAmount(parseMoneyToCents(value));
+  if (loading || loadedScope !== scope || loadError) {
+    return (
+      <div className="rounded border border-slate-200 bg-white p-5 text-xs">
+        {loadError ? (
+          <div role="alert">
+            <p>{loadError}</p>
+            <button
+              type="button"
+              onClick={() => setReload((n) => n + 1)}
+              className="mt-2 underline"
+            >
+              Retry billing data
+            </button>
+          </div>
+        ) : (
+          <p role="status">Loading billing data...</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -170,14 +448,58 @@ export const BillingCashierModule: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="text-right">
             <div className="text-2xs text-slate-400 uppercase font-semibold">
-              Today's Collections
+              Recorded net payments (displayed invoices)
             </div>
             <div className="font-mono font-bold text-base text-teal-800">
-              KES {totalCollections.toLocaleString()}
+              {showAmount(totalCollections)}
             </div>
           </div>
         </div>
       </div>
+
+      {(pendingPayment || paymentStorageError) && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-xs" role="status">
+          {paymentStorageError ||
+            `Unconfirmed receipt request for invoice #${pendingPayment?.invoiceId}. Only its retry identity is stored here.`}
+          {pendingPayment && !paymentStorageError && (
+            <div className="mt-2 space-y-2">
+              <p>
+                Check status or retry exactly the original details. Not found does not prove a
+                delayed request cannot arrive.
+              </p>
+              <button
+                type="button"
+                className="underline"
+                disabled={paymentRecoveryBusy}
+                onClick={() => void checkPendingPayment()}
+              >
+                Check receipt status
+              </button>
+              <label className="block">
+                Review reason to cancel this receipt request{' '}
+                <input
+                  className="ml-2 rounded border border-slate-300 px-2 py-1"
+                  value={cancelReason}
+                  maxLength={500}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="underline"
+                disabled={paymentRecoveryBusy || cancelReason.trim().length < 3}
+                onClick={() => void cancelPendingPayment()}
+              >
+                Cancel unrecorded receipt request
+              </button>
+              <p>
+                Cancellation does not cancel an M-Pesa request, return cash, or reverse a posted
+                receipt.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -191,10 +513,10 @@ export const BillingCashierModule: React.FC = () => {
 
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs">
           <span className="text-2xs uppercase text-rose-700 font-semibold tracking-wider">
-            Outstanding Patient Balances
+            Outstanding Invoice Balances
           </span>
           <div className="text-2xl font-bold font-mono text-rose-700 mt-1">
-            KES {totalOutstanding.toLocaleString()}
+            {showAmount(totalOutstanding)}
           </div>
           <div className="text-2xs text-slate-500 mt-1">Unsettled or pending clearance</div>
         </div>
@@ -204,7 +526,7 @@ export const BillingCashierModule: React.FC = () => {
             Active Cashier Workstation
           </span>
           <div className="text-sm font-bold text-slate-900 mt-1">{currentUser.name}</div>
-          <div className="text-2xs text-slate-500 mt-1">{currentUser.role} · Shift Open</div>
+          <div className="text-2xs text-slate-500 mt-1">{currentUser.role} · Signed in</div>
         </div>
       </div>
 
@@ -223,7 +545,8 @@ export const BillingCashierModule: React.FC = () => {
             {invoices.map((inv) => {
               const patient = getPatient(inv.patientId);
               const isSelected = selectedInvoice?.id === inv.id;
-              const hasBalance = Number(inv.balanceAmount || 0) > 0;
+              const balance = parseMoneyToCents(inv.balanceAmount);
+              const hasBalance = balance !== null && balance > 0;
 
               return (
                 <div
@@ -261,19 +584,17 @@ export const BillingCashierModule: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 text-xs font-mono">
-                    <span className="text-slate-500">
-                      Total: KES {Number(inv.totalAmount).toLocaleString()}
-                    </span>
+                    <span className="text-slate-500">Total: {showMoney(inv.totalAmount)}</span>
                     <span
                       className={
                         hasBalance ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'
                       }
                     >
-                      Bal: KES {Number(inv.balanceAmount).toLocaleString()}
+                      Bal: {showMoney(inv.balanceAmount)}
                     </span>
                   </div>
 
-                  {hasBalance && (
+                  {hasBalance && canRecordPayment && (
                     <div className="mt-2 pt-1">
                       <button
                         onClick={(e) => {
@@ -321,14 +642,15 @@ export const BillingCashierModule: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {Number(selectedInvoice.balanceAmount || 0) > 0 && (
-                    <button
-                      onClick={() => openPaymentModal(selectedInvoice)}
-                      className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
-                    >
-                      Receive Payment
-                    </button>
-                  )}
+                  {canRecordPayment &&
+                    (parseMoneyToCents(selectedInvoice.balanceAmount) ?? -1) > 0 && (
+                      <button
+                        onClick={() => openPaymentModal(selectedInvoice)}
+                        className="px-4 py-2 bg-teal-700 text-white rounded-lg font-semibold hover:bg-teal-800 transition-colors shadow-xs"
+                      >
+                        Receive Payment
+                      </button>
+                    )}
                 </div>
               </div>
 
@@ -376,53 +698,74 @@ export const BillingCashierModule: React.FC = () => {
                 <h3 className="text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                   Itemized Tariff & Service Charges
                 </h3>
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
-                      <tr>
-                        <th className="px-4 py-2.5 font-medium">Item Description</th>
-                        <th className="px-4 py-2.5 font-medium">Department</th>
-                        <th className="px-4 py-2.5 font-medium text-right">Qty</th>
-                        <th className="px-4 py-2.5 font-medium text-right">Unit Price</th>
-                        <th className="px-4 py-2.5 font-medium text-right">Total Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {invoiceItems.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50/70">
-                          <td className="px-4 py-2.5 font-sans font-medium text-slate-900">
-                            {item.description}
-                          </td>
-                          <td className="px-4 py-2.5 font-sans text-slate-600">{item.itemType}</td>
-                          <td className="px-4 py-2.5 text-right">{item.quantity}</td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">
-                            KES {Number(item.unitPrice).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-bold text-slate-900">
-                            KES {Number(item.totalAmount).toLocaleString()}
-                          </td>
+                {itemsError ? (
+                  <div role="alert" className="text-rose-800">
+                    {itemsError}{' '}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => selectInvoice(selectedInvoice)}
+                    >
+                      Retry invoice lines
+                    </button>
+                  </div>
+                ) : itemsLoading ? (
+                  <p role="status">Loading invoice lines...</p>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-2xs text-slate-500 uppercase">
+                        <tr>
+                          <th className="px-4 py-2.5 font-medium">Item Description</th>
+                          <th className="px-4 py-2.5 font-medium">Department</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Qty</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Unit Price</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Total Amount</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        {invoiceItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50/70">
+                            <td className="px-4 py-2.5 font-sans font-medium text-slate-900">
+                              {item.description}
+                            </td>
+                            <td className="px-4 py-2.5 font-sans text-slate-600">
+                              {item.itemType}
+                            </td>
+                            <td className="px-4 py-2.5 text-right">{item.quantity}</td>
+                            <td className="px-4 py-2.5 text-right text-slate-600">
+                              {showMoney(item.unitPrice)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-bold text-slate-900">
+                              {showMoney(item.totalAmount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
+
+              <FinalizedInvoicePanel invoiceId={selectedInvoice.id} />
+
+              <RefundsPanel invoiceId={selectedInvoice.id} />
 
               {/* Financial Totals Strip */}
               <div className="flex justify-end pt-2">
                 <div className="w-64 space-y-1.5 text-xs font-mono">
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal:</span>
-                    <span>KES {Number(selectedInvoice.totalAmount).toLocaleString()}</span>
+                    <span>{showMoney(selectedInvoice.totalAmount)}</span>
                   </div>
                   <div className="flex justify-between text-emerald-700">
                     <span>Paid to Date:</span>
-                    <span>KES {Number(selectedInvoice.paidAmount || 0).toLocaleString()}</span>
+                    <span>{showMoney(selectedInvoice.paidAmount)}</span>
                   </div>
                   <div className="flex justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-slate-200">
                     <span>Balance Due:</span>
                     <span className="text-rose-700">
-                      KES {Number(selectedInvoice.balanceAmount || 0).toLocaleString()}
+                      {showMoney(selectedInvoice.balanceAmount)}
                     </span>
                   </div>
                 </div>
@@ -448,7 +791,7 @@ export const BillingCashierModule: React.FC = () => {
                 <p className="text-2xs text-slate-500">Invoice: {selectedInvoice.invoiceNumber}</p>
               </div>
               <span className="font-mono font-bold text-sm text-teal-800">
-                KES {Number(selectedInvoice.balanceAmount).toLocaleString()} Due
+                {showMoney(selectedInvoice.balanceAmount)} Due
               </span>
             </div>
 
@@ -491,11 +834,28 @@ export const BillingCashierModule: React.FC = () => {
                   onChange={(e) => {
                     setPaymentAmount(e.target.value);
                     setConfirmOverpay(null);
+                    setConfirmPartyOverpay(null);
                   }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold text-base text-slate-900"
                 />
               </div>
 
+              <label className="block font-medium text-slate-700">
+                Payer party{' '}
+                {selectedInvoice.finalizedAt ? '(required)' : '(optional until finalization)'}
+                <select
+                  className="w-full rounded border border-slate-300 px-3 py-2"
+                  value={payerParty}
+                  onChange={(e) => {
+                    setPayerParty(e.target.value as '' | 'PATIENT' | 'INSURER');
+                    setConfirmPartyOverpay(null);
+                  }}
+                >
+                  <option value="">Not selected</option>
+                  <option value="PATIENT">Patient</option>
+                  <option value="INSURER">Insurer</option>
+                </select>
+              </label>
               {isMobileMoney(paymentMethod) && (
                 <div className="space-y-2">
                   <div>
@@ -575,11 +935,20 @@ export const BillingCashierModule: React.FC = () => {
                     <div className="text-2xs text-amber-900 flex items-start gap-1">
                       <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
                       <span>
-                        The excess is held as patient credit, not a negative balance. Confirm below
-                        to record it.
+                        The excess is held as invoice credit, not a negative balance. Review the
+                        selected payer attribution before recording it.
                       </span>
                     </div>
                   )}
+                </div>
+              )}
+
+              {confirmPartyOverpay !== null && (
+                <div className="rounded border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                  This exceeds the selected party balance by KES{' '}
+                  {(confirmPartyOverpay / 100).toLocaleString()}. Press confirm again only after
+                  reviewing the allocation; it does not automatically transfer credit to the other
+                  party.
                 </div>
               )}
 
@@ -589,7 +958,7 @@ export const BillingCashierModule: React.FC = () => {
                   <span>
                     This payment is <strong>KES {(confirmOverpay / 100).toLocaleString()}</strong>{' '}
                     more than the outstanding balance. Press <strong>Record overpayment</strong> to
-                    post it as patient credit, or correct the amount.
+                    record invoice credit for the selected party, or correct the amount.
                   </span>
                 </div>
               )}
@@ -627,7 +996,9 @@ export const BillingCashierModule: React.FC = () => {
                 disabled={
                   isPostingPayment ||
                   (isMobileMoney(paymentMethod) && !codeCheck.valid) ||
-                  !settlementPreview
+                  !settlementPreview ||
+                  Boolean(selectedInvoice.finalizedAt && !payerParty) ||
+                  Boolean(paymentStorageError)
                 }
                 className={`px-4 py-1.5 rounded-md font-semibold transition-colors shadow-xs ${
                   confirmOverpay !== null

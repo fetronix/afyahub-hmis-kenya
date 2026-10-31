@@ -118,8 +118,8 @@ export async function chargeLabOrderBatch(
         testName: order.testName,
         billing: await chargeAndRecord(executor, labOrderChargeRequest(order)),
       });
-    } catch (error) {
-      console.error('Laboratory charge failed:', error);
+    } catch {
+      console.error('Laboratory charge failed; manual reconciliation is required.');
 
       results.push({
         orderId: order.id,

@@ -69,4 +69,5 @@ export const verifyLabResultBodySchema = z.object({
 export const updateLabOrderStatusBodySchema = z.object({
   status: z.enum(['Ordered', 'Sample Collected']),
   accessionNumber: z.string().trim().max(200).optional(),
+  sharedOrderId: positiveIntField('A valid specimen order ID is required.').optional(),
 });

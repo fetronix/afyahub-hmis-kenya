@@ -88,6 +88,89 @@ import {
 const router = Router();
 router.use(shaPolicyGuard);
 
+/** Keep stored bearer-like tokens and full FHIR bundles server-side. */
+function preauthorizationForBrowser<T extends { consentToken: string | null; fhirBundle: unknown }>(
+  preauthorization: T,
+) {
+  const { consentToken, fhirBundle: _bundle, ...safe } = preauthorization;
+  return { ...safe, hasConsentToken: Boolean(consentToken) };
+}
+
+function authorizationForBrowser<
+  T extends { consentToken: string | null; authCode: string | null },
+>(authorization: T) {
+  const { consentToken, authCode, ...safe } = authorization;
+  return { ...safe, hasConsentToken: Boolean(consentToken), hasAuthCode: Boolean(authCode) };
+}
+
+/** Raw provider JSON and error arrays may contain undisclosed patient data or credentials. */
+function claimForBrowser<
+  T extends {
+    consentToken: string | null;
+    fhirBundle: unknown;
+    adjudicationSummary: unknown;
+    submissions?: Array<{ errors: unknown }>;
+    statusHistory?: Array<{ metadata: unknown }>;
+  },
+>(claim: T) {
+  const {
+    consentToken,
+    fhirBundle: _fhirBundle,
+    adjudicationSummary: _rawAdjudication,
+    submissions,
+    statusHistory,
+    ...safe
+  } = claim;
+  return {
+    ...safe,
+    hasConsentToken: Boolean(consentToken),
+    ...(submissions && {
+      submissions: submissions.map(({ errors: _rawErrors, ...submission }) => submission),
+    }),
+    ...(statusHistory && {
+      statusHistory: statusHistory.map(({ metadata: _rawMetadata, ...history }) => history),
+    }),
+  };
+}
+
+async function auditPreauthorizationViews(
+  scope: InsuranceActorScope,
+  records: Array<{ id: number; patientId: number }>,
+  recordType: 'ShaPreauthorizationSummary' | 'ShaPreauthorization',
+) {
+  if (records.length)
+    await db.insert(schema.patientRecordAccessLogs).values(
+      records.map((record) => ({
+        patientId: record.patientId,
+        userId: scope.userId,
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        action: 'VIEW',
+        accessChannel: 'STAFF_PORTAL',
+        recordType,
+        recordId: record.id,
+        purpose: 'BILLING',
+      })),
+    );
+}
+
+function claimSummaryForBrowser<
+  T extends {
+    consentToken: string | null;
+    fhirBundle: unknown;
+    adjudicationSummary: unknown;
+    diagnosesSnapshot: unknown;
+    supportingSummary: unknown;
+  },
+>(claim: T) {
+  const {
+    diagnosesSnapshot: _diagnoses,
+    supportingSummary: _support,
+    ...safe
+  } = claimForBrowser(claim);
+  return safe;
+}
+
 function parsePositiveInt(value: unknown, field: string): number {
   const num = typeof value === 'number' ? value : Number(String(value ?? '').trim());
   if (!Number.isSafeInteger(num) || num <= 0) {
@@ -689,7 +772,11 @@ router.get(
           ? parsePositiveInt(req.query.patientId, 'patientId')
           : undefined;
       const authorizations = await listPatientVisitAuthorizations(scope, patientId);
-      return res.json({ success: true, authorizations });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({
+        success: true,
+        authorizations: authorizations.map(authorizationForBrowser),
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to list SHA visit consent authorizations.');
     }
@@ -739,10 +826,24 @@ router.post(
             : null,
       });
 
-      return res.status(201).json({ success: true, authorization });
+      res.setHeader('Cache-Control', 'no-store');
+      return res
+        .status(201)
+        .json({ success: true, authorization: authorizationForBrowser(authorization) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to authorize SHA beneficiary visit consent.');
     }
+  },
+);
+
+// These responses contain diagnosis, clinical indication and financial amounts.
+// Insurance permission alone must not disclose them.
+router.use(
+  '/preauthorizations',
+  requirePermission('clinical.read', 'billing.read'),
+  (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
   },
 );
 
@@ -763,7 +864,11 @@ router.get(
       const status = typeof req.query.status === 'string' ? req.query.status : undefined;
 
       const preauthorizations = await listPreauthorizations(scope, { patientId, status });
-      return res.json({ success: true, preauthorizations });
+      await auditPreauthorizationViews(scope, preauthorizations, 'ShaPreauthorizationSummary');
+      return res.json({
+        success: true,
+        preauthorizations: preauthorizations.map(preauthorizationForBrowser),
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to list SHA preauthorizations.');
     }
@@ -802,7 +907,8 @@ router.post(
         clinicalIndication: String(b.clinicalIndication ?? ''),
         primaryDiagnosisCode: String(b.primaryDiagnosisCode ?? ''),
         primaryDiagnosisDisplay: String(b.primaryDiagnosisDisplay ?? ''),
-        codingSystem: b.codingSystem === 'ICD-10' ? 'ICD-10' : 'ICD-11',
+        codingSystem:
+          b.codingSystem === 'ICD-10' || b.codingSystem === 'ICD-11' ? b.codingSystem : undefined,
         requestedServiceCode: String(b.requestedServiceCode ?? ''),
         requestedServiceName: String(b.requestedServiceName ?? ''),
         quantity: b.quantity !== undefined ? parsePositiveInt(b.quantity, 'quantity') : 1,
@@ -810,7 +916,9 @@ router.post(
         supportingNotes: typeof b.supportingNotes === 'string' ? b.supportingNotes : null,
       });
 
-      return res.status(201).json({ success: true, preauthorization: created });
+      return res
+        .status(201)
+        .json({ success: true, preauthorization: preauthorizationForBrowser(created) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to create SHA preauthorization request.');
     }
@@ -829,7 +937,11 @@ router.get(
       const scope = await resolveActorScope(req);
       const preauthId = parsePositiveInt(req.params.id, 'id');
       const preauthorization = await getPreauthorizationById(scope, preauthId);
-      return res.json({ success: true, preauthorization });
+      await auditPreauthorizationViews(scope, [preauthorization], 'ShaPreauthorization');
+      return res.json({
+        success: true,
+        preauthorization: preauthorizationForBrowser(preauthorization),
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to load SHA preauthorization.');
     }
@@ -875,7 +987,7 @@ router.patch(
           b.rejectionReason !== undefined ? String(b.rejectionReason ?? '') : undefined,
       });
 
-      return res.json({ success: true, preauthorization: updated });
+      return res.json({ success: true, preauthorization: preauthorizationForBrowser(updated) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to update SHA preauthorization.');
     }
@@ -899,7 +1011,11 @@ router.post(
         subType: b.subType === 'op' || b.subType === 'ip' ? b.subType : undefined,
         schemeCode: typeof b.schemeCode === 'string' ? b.schemeCode : undefined,
       });
-      return res.json({ success: true, ...result });
+      return res.json({
+        success: true,
+        ...result,
+        preauthorization: preauthorizationForBrowser(result.preauthorization),
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to submit SHA preauthorization.');
     }
@@ -914,7 +1030,10 @@ router.get(
       const scope = await resolveActorScope(req);
       const preauthId = parsePositiveInt(req.params.id, 'id');
       const result = await refreshPreauthorizationStatus(scope, preauthId);
-      return res.json({ success: true, ...result });
+      return res.json({
+        success: true,
+        preauthorization: preauthorizationForBrowser(result.preauthorization),
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to refresh SHA preauthorization status.');
     }
@@ -930,7 +1049,11 @@ router.post(
       const preauthId = parsePositiveInt(req.params.id, 'id');
       const b = bodyObject(req);
       const result = await cancelPreauthorization(scope, preauthId, String(b.reason ?? ''));
-      return res.json({ success: true, ...result });
+      return res.json({
+        success: true,
+        ...result,
+        preauthorization: preauthorizationForBrowser(result.preauthorization),
+      });
     } catch (err) {
       return respondShaError(res, err, 'Failed to cancel SHA preauthorization.');
     }
@@ -954,7 +1077,22 @@ router.get(
           : undefined;
 
       const claims = await listShaClaims(scope, { status, patientId });
-      return res.json({ success: true, claims });
+      if (claims.length)
+        await db.insert(schema.patientRecordAccessLogs).values(
+          claims.map((claim) => ({
+            patientId: claim.patientId,
+            userId: scope.userId,
+            tenantId: scope.tenantId,
+            facilityId: scope.facilityId,
+            action: 'VIEW',
+            accessChannel: 'STAFF_PORTAL',
+            recordType: 'ShaClaimSummary',
+            recordId: claim.id,
+            purpose: 'BILLING',
+          })),
+        );
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ success: true, claims: claims.map(claimSummaryForBrowser) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to list SHA eClaims.');
     }
@@ -963,7 +1101,7 @@ router.get(
 
 router.post(
   '/claims/prepare',
-  requirePermission('insurance.sha.claims.prepare'),
+  requirePermission('insurance.sha.claims.prepare', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
@@ -976,10 +1114,9 @@ router.post(
             .map((d) => ({
               code: String(d.code ?? ''),
               display: String(d.display ?? ''),
-              system: typeof d.system === 'string' ? d.system : 'ICD-11',
+              system: typeof d.system === 'string' ? d.system : '',
               type: typeof d.type === 'string' ? d.type : undefined,
             }))
-            .filter((d) => d.code.length > 0 && d.display.length > 0)
         : undefined;
 
       const claim = await prepareShaClaim(scope, {
@@ -1019,7 +1156,7 @@ router.post(
         diagnosesOverride,
       });
 
-      return res.status(201).json({ success: true, claim });
+      return res.status(201).json({ success: true, claim: claimForBrowser(claim) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to prepare SHA eClaim package.');
     }
@@ -1029,12 +1166,25 @@ router.post(
 router.get(
   '/claims/:claimId',
   requireAnyPermission('insurance.sha.claims.read', 'insurance.sha.read'),
+  requirePermission('clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
       const claimId = parsePositiveInt(req.params.claimId, 'claimId');
       const claim = await getShaClaimDetail(scope, claimId);
-      return res.json({ success: true, claim });
+      await db.insert(schema.patientRecordAccessLogs).values({
+        patientId: claim.patientId,
+        userId: scope.userId,
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        action: 'VIEW',
+        accessChannel: 'STAFF_PORTAL',
+        recordType: 'ShaClaim',
+        recordId: claim.id,
+        purpose: 'BILLING',
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ success: true, claim: claimForBrowser(claim) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to load SHA eClaim detail.');
     }
@@ -1043,14 +1193,14 @@ router.get(
 
 router.post(
   '/claims/:claimId/validate',
-  requirePermission('insurance.sha.claims.prepare'),
+  requirePermission('insurance.sha.claims.prepare', 'clinical.read', 'billing.read'),
   validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
       const claimId = parsePositiveInt(req.params.claimId, 'claimId');
       const claim = await validateShaClaim(scope, claimId);
-      return res.json({ success: true, claim });
+      return res.json({ success: true, claim: claimForBrowser(claim) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to validate SHA eClaim.');
     }
@@ -1059,14 +1209,14 @@ router.post(
 
 router.post(
   '/claims/:claimId/submit',
-  requirePermission('insurance.sha.claims.submit'),
+  requirePermission('insurance.sha.claims.submit', 'clinical.read', 'billing.read'),
   validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
       const claimId = parsePositiveInt(req.params.claimId, 'claimId');
       const claim = await submitShaClaim(scope, claimId);
-      return res.json({ success: true, claim });
+      return res.json({ success: true, claim: claimForBrowser(claim) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to submit SHA eClaim.');
     }
@@ -1075,7 +1225,7 @@ router.post(
 
 router.post(
   '/claims/:claimId/resubmit',
-  requirePermission('insurance.sha.claims.resubmit'),
+  requirePermission('insurance.sha.claims.resubmit', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
@@ -1088,10 +1238,9 @@ router.post(
             .map((d) => ({
               code: String(d.code ?? ''),
               display: String(d.display ?? ''),
-              system: typeof d.system === 'string' ? d.system : 'ICD-11',
+              system: typeof d.system === 'string' ? d.system : '',
               type: typeof d.type === 'string' ? d.type : undefined,
             }))
-            .filter((d) => d.code.length > 0 && d.display.length > 0)
         : undefined;
 
       const itemCorrections = Array.isArray(b.itemCorrections)
@@ -1121,7 +1270,7 @@ router.post(
         itemCorrections,
       });
 
-      return res.json({ success: true, claim });
+      return res.json({ success: true, claim: claimForBrowser(claim) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to resubmit corrected SHA eClaim.');
     }
@@ -1131,12 +1280,13 @@ router.post(
 router.get(
   '/claims/:claimId/status',
   requireAnyPermission('insurance.sha.claims.read', 'insurance.sha.read'),
+  requirePermission('clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
       const claimId = parsePositiveInt(req.params.claimId, 'claimId');
       const result = await refreshShaClaimStatus(scope, claimId);
-      return res.json({ success: true, ...result });
+      return res.json({ success: true, ...result, claim: claimForBrowser(result.claim) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to query SHA eClaim status.');
     }
@@ -1145,7 +1295,7 @@ router.get(
 
 router.post(
   '/claims/:claimId/adjudicate',
-  requirePermission('insurance.sha.reconciliation.manage'),
+  requirePermission('insurance.sha.reconciliation.manage', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
@@ -1175,7 +1325,7 @@ router.post(
         reason: String(b.reason ?? ''),
       });
 
-      return res.json({ success: true, claim });
+      return res.json({ success: true, claim: claimForBrowser(claim) });
     } catch (err) {
       return respondShaError(res, err, 'Failed to record SHA claim adjudication outcome.');
     }

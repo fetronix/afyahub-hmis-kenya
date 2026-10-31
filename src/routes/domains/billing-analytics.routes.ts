@@ -11,6 +11,7 @@ import { Router, type Response } from 'express';
 import type { AuthRequest } from '../../auth/auth.middleware.ts';
 import { and, count, eq, sql, sum } from 'drizzle-orm';
 import * as billing from '../../billing/billing.service.ts';
+import { inspectTariffConfiguration } from '../../billing/tariff-validation.service.ts';
 import { billingServiceKeys, isValidBillingKey } from '../../billing/tariff-codes.ts';
 import { codesForFamily } from '../../billing/tariff-matching.ts';
 import { db } from '../../db/index.ts';
@@ -45,6 +46,37 @@ import { ScopeAccessError, resolveFacilityScope } from '../../auth/scope.service
 import * as schema from '../../db/schema.ts';
 
 const router = Router();
+
+router.get(
+  '/api/billing/tariff-validation',
+  requirePermission('tariffs.read'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.query.facilityId);
+      if (!facility) return;
+      const offset = req.query.offset === undefined ? 0 : Number(req.query.offset);
+      const limit = req.query.limit === undefined ? 100 : Number(req.query.limit);
+      if (
+        !Number.isSafeInteger(offset) ||
+        offset < 0 ||
+        !Number.isSafeInteger(limit) ||
+        limit < 1 ||
+        limit > 200
+      )
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_PAGINATION',
+          message: 'Use a valid offset and page size between 1 and 200.',
+        });
+      return res.json(
+        await inspectTariffConfiguration(facility.tenantId, facility.id, offset, limit),
+      );
+    } catch (error: unknown) {
+      return respondInternalError(res, error, 'tariff validation');
+    }
+  },
+);
 
 /**
  * Every active laboratory test in this facility, with what it would

@@ -447,16 +447,6 @@ router.post(
     try {
       const admission = await queries.createAdmissionScoped(context, req.body ?? {});
 
-      await queries.logAuditEvent(
-        admission.tenantId,
-        admission.facilityId,
-        String(context.userId),
-        'CREATE',
-        'Admission',
-        String(admission.id),
-        `Admitted patient ${admission.patientId} to ward ${admission.wardId}, bed ${admission.bedId}`,
-      );
-
       /*
        * One-off admission fee, when the facility has configured one.
        * Daily bed charges are accrued separately on discharge so each
@@ -524,16 +514,6 @@ router.post(
         req.body ?? {},
       );
 
-      await queries.logAuditEvent(
-        admission.tenantId,
-        admission.facilityId,
-        String(context.userId),
-        'UPDATE',
-        'Admission',
-        String(admission.id),
-        `Discharged patient ${admission.patientId} from bed ${admission.bedId}`,
-      );
-
       /*
        * Bill the stay through the one bed-day engine.
        *
@@ -592,16 +572,6 @@ router.post(
               ? req.body.transferredBy
               : (req.user?.fullName ?? 'Unknown'),
         },
-      );
-
-      await queries.logAuditEvent(
-        admission.tenantId,
-        admission.facilityId,
-        String(context.userId),
-        'UPDATE',
-        'Admission',
-        String(admission.id),
-        `Transferred patient ${admission.patientId} from bed ${transfer.fromBedId} to ${transfer.toBedId}`,
       );
 
       /*

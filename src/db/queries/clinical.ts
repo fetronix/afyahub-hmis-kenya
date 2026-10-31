@@ -6,18 +6,20 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
-import { ScopeAccessError } from '../../auth/scope.service.ts';
+import { ScopeAccessError, resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
+import { MedicationWorkflowError } from '../../clinical/medication-workflow-contracts.ts';
 import {
   normalizeNewDiagnosisCoding,
   presentPersistedDiagnosis,
 } from '../../clinical/icd11/icd11.service.ts';
 
 import { loadEncounterInScope, loadPatientInScope } from './shared.ts';
+import { getFacilityByIdScoped } from './tenancy.ts';
 
 import { moduleLogger } from '../../logging/logger.ts';
 
@@ -297,6 +299,64 @@ export async function getMedications(encounterId?: number, patientId?: number) {
   }
 }
 
+/** Facility-scoped worklist. Medication ownership follows the encounter,
+ * including older records which have no facility column of their own. */
+export async function getMedicationsScoped(
+  context: AuthorizationContext,
+  input: { encounterId?: number; patientId?: number; facilityId?: number } = {},
+) {
+  const facilityId = resolveFacilityScope(context, input.facilityId);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+  if (!facility) throw new ScopeAccessError('Facility not found.', 'FACILITY_ACCESS_DENIED');
+  for (const id of [input.encounterId, input.patientId]) {
+    if (id !== undefined && (!Number.isSafeInteger(id) || id <= 0))
+      throw new ScopeAccessError('Invalid clinical record filter.', 'INVALID_SCOPE_ID');
+  }
+  const rows = await db
+    .select({
+      medication: schema.medications,
+      quantityDispensed: sql<number>`COALESCE((SELECT SUM(d.quantity_dispensed) FROM pharmacy_dispensations d WHERE d.prescription_id = ${schema.medications.id}), 0)::int`,
+    })
+    .from(schema.medications)
+    .innerJoin(
+      schema.encounters,
+      and(
+        eq(schema.medications.encounterId, schema.encounters.id),
+        eq(schema.medications.patientId, schema.encounters.patientId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.encounters.tenantId, facility.tenantId),
+        eq(schema.encounters.facilityId, facility.id),
+        ...(input.encounterId !== undefined ? [eq(schema.encounters.id, input.encounterId)] : []),
+        ...(input.patientId !== undefined
+          ? [eq(schema.encounters.patientId, input.patientId)]
+          : []),
+      ),
+    )
+    .orderBy(desc(schema.medications.prescribedAt));
+  return rows.map((row) => ({ ...row.medication, quantityDispensed: row.quantityDispensed }));
+}
+
+/** A prescription cannot be attached to another facility's encounter or patient. */
+export async function createMedicationScoped(
+  context: AuthorizationContext,
+  data: typeof schema.medications.$inferInsert,
+) {
+  const encounter = await loadEncounterInScope(context, Number(data.encounterId));
+  if (encounter.patientId !== Number(data.patientId))
+    throw new ScopeAccessError(
+      'The patient does not match the encounter.',
+      'PATIENT_ENCOUNTER_MISMATCH',
+    );
+  const [created] = await db
+    .insert(schema.medications)
+    .values({ ...data, encounterId: encounter.id, patientId: encounter.patientId })
+    .returning();
+  return created;
+}
+
 export async function createMedication(data: typeof schema.medications.$inferInsert) {
   try {
     const res = await db.insert(schema.medications).values(data).returning();
@@ -305,6 +365,131 @@ export async function createMedication(data: typeof schema.medications.$inferIns
     log.error({ err: error }, 'medication.prescribe_failed');
     throw new Error('Failed to prescribe medication', { cause: error });
   }
+}
+
+/** Clinician-directed changes do not dispense, administer or reverse medication. */
+export async function updateMedicationStatusScoped(
+  context: AuthorizationContext,
+  id: number,
+  action: string,
+  reason: string,
+) {
+  if (
+    !Number.isSafeInteger(id) ||
+    id <= 0 ||
+    !['On Hold', 'Resume', 'Cancelled', 'Discontinued'].includes(action)
+  ) {
+    throw new MedicationWorkflowError(
+      'MEDICATION_STATUS_WORKFLOW_REQUIRED',
+      'Use the appropriate clinical or dispensing workflow.',
+      409,
+    );
+  }
+  if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 1000) {
+    throw new MedicationWorkflowError(
+      'MEDICATION_REASON_REQUIRED',
+      'A reason is required for a medication status change.',
+      400,
+    );
+  }
+  const [found] = await db
+    .select()
+    .from(schema.medications)
+    .where(eq(schema.medications.id, id))
+    .limit(1);
+  if (!found)
+    throw new MedicationWorkflowError('MEDICATION_NOT_FOUND', 'Medication not found.', 404);
+  const encounter = await loadEncounterInScope(context, found.encounterId);
+  if (encounter.patientId !== found.patientId) {
+    throw new MedicationWorkflowError(
+      'MEDICATION_REVIEW_REQUIRED',
+      'Medication and encounter require review.',
+      409,
+    );
+  }
+  return db.transaction(async (tx) => {
+    const [med] = await tx
+      .select()
+      .from(schema.medications)
+      .where(eq(schema.medications.id, id))
+      .limit(1)
+      .for('update');
+    if (!med || med.encounterId !== encounter.id || med.patientId !== encounter.patientId) {
+      throw new MedicationWorkflowError('MEDICATION_NOT_FOUND', 'Medication not found.', 404);
+    }
+    const rows = await tx
+      .select({
+        patientId: schema.pharmacyDispensations.patientId,
+        tenantId: schema.pharmacyDispensations.tenantId,
+        facilityId: schema.pharmacyDispensations.facilityId,
+        quantity: schema.pharmacyDispensations.quantityDispensed,
+      })
+      .from(schema.pharmacyDispensations)
+      .where(eq(schema.pharmacyDispensations.prescriptionId, id));
+    const total = rows.reduce((sum, row) => sum + row.quantity, 0);
+    if (
+      !med.quantity ||
+      med.quantity <= 0 ||
+      !Number.isSafeInteger(total) ||
+      total > med.quantity ||
+      rows.some(
+        (r) =>
+          r.patientId !== med.patientId ||
+          r.tenantId !== encounter.tenantId ||
+          r.facilityId !== encounter.facilityId ||
+          !Number.isSafeInteger(r.quantity) ||
+          r.quantity <= 0,
+      )
+    ) {
+      throw new MedicationWorkflowError(
+        'MEDICATION_REVIEW_REQUIRED',
+        'Prescription and dispensing history require reconciliation.',
+        409,
+      );
+    }
+    const consistentActive =
+      (med.status === 'Prescribed' && total === 0) ||
+      (med.status === 'Partially Dispensed' && total > 0 && total < med.quantity);
+    const held = med.status === 'On Hold' && total < med.quantity;
+    if (med.status === action && (held || ['Cancelled', 'Discontinued'].includes(action)))
+      return med;
+    if (action === 'Resume' && consistentActive) return med;
+    let target: string | null = null;
+    if (action === 'On Hold' && consistentActive) target = 'On Hold';
+    if (action === 'Resume' && held) target = total === 0 ? 'Prescribed' : 'Partially Dispensed';
+    if (action === 'Cancelled' && (consistentActive || held) && total === 0) target = 'Cancelled';
+    if (action === 'Discontinued' && (consistentActive || held)) target = 'Discontinued';
+    if (!target)
+      throw new MedicationWorkflowError(
+        'MEDICATION_STATE_CONFLICT',
+        'This status change is not valid for the current prescription and dispensing history.',
+        409,
+      );
+    const [updated] = await tx
+      .update(schema.medications)
+      .set({ status: target })
+      .where(eq(schema.medications.id, id))
+      .returning();
+    await tx.insert(schema.medicationStatusEvents).values({
+      tenantId: encounter.tenantId,
+      facilityId: encounter.facilityId,
+      medicationId: id,
+      fromStatus: med.status!,
+      toStatus: target,
+      reason: reason.trim(),
+      actorUserId: context.userId,
+    });
+    await tx.insert(schema.auditLogs).values({
+      tenantId: encounter.tenantId,
+      facilityId: encounter.facilityId,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'Medication',
+      resourceId: String(id),
+      details: `Prescription status changed from ${med.status} to ${target}.`,
+    });
+    return updated;
+  });
 }
 
 export async function updateMedicationStatus(id: number, status: string) {

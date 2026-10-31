@@ -9,9 +9,11 @@ import {
   Send,
 } from 'lucide-react';
 import type { BillingInvoice, Patient } from '../../../types/index.ts';
+import { ClaimEvidencePreview } from '../ClaimEvidencePreview.tsx';
 import {
   shaEclaimsApi,
   type ShaEclaimRecord,
+  type ShaEclaimSummary,
   type ShaPreauthRecord,
 } from '../../../api/sha-eclaims.client.ts';
 
@@ -56,7 +58,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
   showToast,
 }) => {
   const [subTab, setSubTab] = useState<'prepare' | 'tracking' | 'rejected'>('tracking');
-  const [claims, setClaims] = useState<ShaEclaimRecord[]>([]);
+  const [claims, setClaims] = useState<ShaEclaimSummary[]>([]);
   const [preauths, setPreauths] = useState<ShaPreauthRecord[]>([]);
   const [selectedClaim, setSelectedClaim] = useState<ShaEclaimRecord | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,12 +74,12 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
   const [dischargeReason, setDischargeReason] = useState<
     '' | 'RECOVERED' | 'REFERRED' | 'ABSCONDED' | 'DECEASED' | 'OTHER'
   >('');
-  const [consentToken, setConsentToken] = useState('');
   const [practitionerRegNumber, setPractitionerRegNumber] = useState('');
   const [practitionerRegulator, setPractitionerRegulator] = useState('KMPDC');
   const [preauthId, setPreauthId] = useState<number | ''>('');
   const [diagCode, setDiagCode] = useState('');
   const [diagDisplay, setDiagDisplay] = useState('');
+  const [diagSystem, setDiagSystem] = useState<'ICD-10' | 'ICD-11' | ''>('');
   const [preparing, setPreparing] = useState(false);
 
   // Adjudication recording form
@@ -89,6 +91,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
   const [correctionNotes, setCorrectionNotes] = useState('');
   const [corrDiagCode, setCorrDiagCode] = useState('');
   const [corrDiagDisplay, setCorrDiagDisplay] = useState('');
+  const [corrDiagSystem, setCorrDiagSystem] = useState<'ICD-10' | 'ICD-11' | ''>('');
   const [itemCodeEdits, setItemCodeEdits] = useState<Record<number, string>>({});
   const [itemNameEdits, setItemNameEdits] = useState<Record<number, string>>({});
   const [itemPreauthEdits, setItemPreauthEdits] = useState<Record<number, string>>({});
@@ -120,10 +123,12 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
       const res = await shaEclaimsApi.getClaimDetail(id, facilityId);
       setSelectedClaim(res.claim);
       setAdjAmount(res.claim.totalClaimedAmount);
-      if (res.claim.diagnosesSnapshot[0]) {
-        setCorrDiagCode(res.claim.diagnosesSnapshot[0].code);
-        setCorrDiagDisplay(res.claim.diagnosesSnapshot[0].display);
-      }
+      const principal = res.claim.diagnosesSnapshot.find((d) => d.type === 'principal');
+      setCorrDiagCode(principal?.code ?? '');
+      setCorrDiagDisplay(principal?.display ?? '');
+      setCorrDiagSystem(
+        principal?.system === 'ICD-10' || principal?.system === 'ICD-11' ? principal.system : '',
+      );
       const codeMap: Record<number, string> = {};
       const nameMap: Record<number, string> = {};
       const paMap: Record<number, string> = {};
@@ -151,6 +156,13 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
       showToast('Select a JaliCare invoice first.', 'warning');
       return;
     }
+    if (
+      (diagCode.trim() || diagDisplay.trim() || diagSystem) &&
+      (!diagCode.trim() || !diagDisplay.trim() || !diagSystem)
+    ) {
+      showToast('Enter the code, description and recorded coding system together.', 'warning');
+      return;
+    }
     setPreparing(true);
     try {
       const res = await shaEclaimsApi.prepareClaim(facilityId, {
@@ -159,14 +171,20 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
         subType,
         submissionProtocol,
         dischargeReason: dischargeReason || null,
-        consentToken: consentToken.trim() || null,
         practitionerRegNumber: practitionerRegNumber.trim() || null,
         practitionerRegulator: practitionerRegNumber.trim() ? practitionerRegulator : null,
         isPhcClaim: schemeCode === 'PHC',
         preauthorizationId: preauthId ? Number(preauthId) : null,
         diagnosesOverride:
           diagCode.trim() && diagDisplay.trim()
-            ? [{ code: diagCode.trim(), display: diagDisplay.trim(), system: 'ICD-11' }]
+            ? [
+                {
+                  code: diagCode.trim(),
+                  display: diagDisplay.trim(),
+                  system: diagSystem,
+                  type: 'principal',
+                },
+              ]
             : undefined,
       });
       showToast(
@@ -248,6 +266,16 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
   const handleResubmitRejected = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClaim) return;
+    if (
+      (corrDiagCode.trim() || corrDiagDisplay.trim() || corrDiagSystem) &&
+      (!corrDiagCode.trim() || !corrDiagDisplay.trim() || !corrDiagSystem)
+    ) {
+      showToast(
+        'Enter the correction code, description and recorded coding system together.',
+        'warning',
+      );
+      return;
+    }
     setResubmitting(true);
     try {
       const itemCorrections = (selectedClaim.items ?? []).map((it) => ({
@@ -257,12 +285,22 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
         preauthReference: itemPreauthEdits[it.id] || null,
       }));
 
+      let diagnosesSnapshot: typeof selectedClaim.diagnosesSnapshot | undefined;
+      if (corrDiagCode.trim() && corrDiagDisplay.trim() && corrDiagSystem) {
+        diagnosesSnapshot = [...selectedClaim.diagnosesSnapshot];
+        const index = diagnosesSnapshot.findIndex((d) => d.type === 'principal');
+        const corrected = {
+          code: corrDiagCode.trim(),
+          display: corrDiagDisplay.trim(),
+          system: corrDiagSystem,
+          type: 'principal',
+        };
+        if (index < 0) diagnosesSnapshot.push(corrected);
+        else diagnosesSnapshot[index] = corrected;
+      }
       const res = await shaEclaimsApi.resubmitClaim(selectedClaim.id, facilityId, {
         correctionNotes,
-        diagnosesSnapshot:
-          corrDiagCode.trim() && corrDiagDisplay.trim()
-            ? [{ code: corrDiagCode.trim(), display: corrDiagDisplay.trim(), system: 'ICD-11' }]
-            : undefined,
+        diagnosesSnapshot,
         itemCorrections,
       });
       setSelectedClaim(res.claim);
@@ -441,16 +479,6 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                 <option value="OTHER">OTHER</option>
               </select>
             </div>
-            <div>
-              <label className="field-label">HIE Visit Consent Token (Optional)</label>
-              <input
-                type="text"
-                value={consentToken}
-                onChange={(e) => setConsentToken(e.target.value)}
-                placeholder="Required for HIE Virtual Claim"
-                className="field-input font-mono text-xs"
-              />
-            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -482,7 +510,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label className="field-label">
-                Principal ICD-11 Code (Optional if already coded on Encounter)
+                Principal diagnosis code (optional if already coded on encounter)
               </label>
               <input
                 type="text"
@@ -504,6 +532,25 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
             </div>
           </div>
 
+          <label className="field-label">
+            Recorded diagnosis system (required for an override)
+            <select
+              value={diagSystem}
+              onChange={(e) => setDiagSystem(e.target.value as 'ICD-10' | 'ICD-11' | '')}
+              className="field-input"
+            >
+              <option value="">— Select recorded system —</option>
+              <option value="ICD-10">ICD-10</option>
+              <option value="ICD-11">ICD-11</option>
+            </select>
+          </label>
+          {selectedInvoiceId && canPrepare && (
+            <ClaimEvidencePreview
+              invoiceId={Number(selectedInvoiceId)}
+              payerKind="SHA"
+              payerCode="SHA"
+            />
+          )}
           <button
             type="submit"
             disabled={!canPrepare || preparing || !selectedInvoiceId}
@@ -626,6 +673,13 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
               </div>
             ) : (
               <>
+                {selectedClaim.dispatchReview && (
+                  <p role="alert" className="rounded bg-amber-50 p-3 text-xs text-amber-900">
+                    A prior dispatch is in progress or uncertain. Review the payer record and
+                    contact an authorized administrator; do not re-dispatch. This flag does not
+                    establish acceptance or payment.
+                  </p>
+                )}
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -653,7 +707,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                       {selectedClaim.dischargeReason
                         ? ` · Outcome: ${selectedClaim.dischargeReason}`
                         : ''}
-                      {selectedClaim.consentToken ? ' · Consent Token Attached' : ''}
+                      {selectedClaim.hasConsentToken ? ' · Consent Token Attached' : ''}
                     </div>
                   </div>
 
@@ -665,6 +719,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                         <button
                           type="button"
                           onClick={() => void handleValidate(selectedClaim.id)}
+                          disabled={Boolean(selectedClaim.dispatchReview)}
                           className="btn-quiet text-xs"
                         >
                           Re-Validate
@@ -812,7 +867,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                     </div>
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className="field-label">Principal ICD-11 Code</label>
+                        <label className="field-label">Principal diagnosis code</label>
                         <input
                           type="text"
                           value={corrDiagCode}
@@ -831,6 +886,20 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
                       </div>
                     </div>
 
+                    <label className="field-label">
+                      Recorded diagnosis system
+                      <select
+                        value={corrDiagSystem}
+                        onChange={(e) =>
+                          setCorrDiagSystem(e.target.value as 'ICD-10' | 'ICD-11' | '')
+                        }
+                        className="field-input"
+                      >
+                        <option value="">— Select recorded system —</option>
+                        <option value="ICD-10">ICD-10</option>
+                        <option value="ICD-11">ICD-11</option>
+                      </select>
+                    </label>
                     {(selectedClaim.items ?? []).map((it) => (
                       <div key={it.id} className="grid grid-cols-3 gap-2 text-xs">
                         <input

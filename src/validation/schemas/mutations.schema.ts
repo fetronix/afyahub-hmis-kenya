@@ -75,6 +75,36 @@ export const recordPaymentBodySchema = z
   })
   .passthrough();
 
+export const refundBodySchema = z.object({
+  facilityId: optionalPositiveIntField('Invalid facilityId.'),
+  invoiceId: positiveIntField('A valid invoiceId is required.'),
+  paymentId: positiveIntField('A valid paymentId is required.'),
+  amount: z.union([
+    z.number().positive(),
+    z
+      .string()
+      .trim()
+      .regex(/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/),
+  ]),
+  refundMethod: z.enum(['CASH', 'MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'CHEQUE']),
+  externalReference: z.string().trim().max(100).nullable().optional(),
+  reason: z.string().trim().min(3).max(500),
+  manualConfirmation: z.literal(true),
+  idempotencyKey: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9._:-]{8,128}$/)
+    .optional(),
+});
+
+export const refundStatusBodySchema = z.object({
+  facilityId: optionalPositiveIntField('Invalid facilityId.'),
+  idempotencyKey: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9._:-]{8,128}$/),
+});
+
 export const draftClaimBodySchema = z
   .object({
     invoiceId: positiveIntField('A valid invoiceId is required.'),

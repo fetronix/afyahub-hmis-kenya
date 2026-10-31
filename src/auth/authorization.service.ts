@@ -26,6 +26,7 @@ import {
 } from '../db/schema';
 
 import type { AuthorizationContext } from './authorization.types';
+import { isFacilityFinancialPermission } from './permission-boundaries.ts';
 
 /* ============================================================
    LOAD AUTHORIZATION CONTEXT
@@ -181,7 +182,9 @@ export async function loadAuthorizationContext(
 
     roles: rolesList,
 
-    permissions: permissionsList,
+    permissions: isSuperAdmin
+      ? permissionsList.filter((code) => !isFacilityFinancialPermission(code))
+      : permissionsList,
 
     isSuperAdmin,
   };
@@ -196,6 +199,7 @@ export function hasPermission(context: AuthorizationContext, permission: string)
     return false;
   }
 
+  if (context.isSuperAdmin && isFacilityFinancialPermission(permission)) return false;
   return context.permissions.includes(permission);
 }
 

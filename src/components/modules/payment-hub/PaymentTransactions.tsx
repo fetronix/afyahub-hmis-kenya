@@ -40,6 +40,7 @@ export const PaymentTransactions: React.FC = () => {
   });
   const [key, setKey] = useState(() => crypto.randomUUID());
   const [submitted, setSubmitted] = useState(false);
+  const [separateReviewed, setSeparateReviewed] = useState(false);
   const load = useCallback(async () => {
     if (!activeFacilityId || !canRead) return;
     const version = ++requestVersion.current;
@@ -65,6 +66,7 @@ export const PaymentTransactions: React.FC = () => {
     });
     setKey(crypto.randomUUID());
     setSubmitted(false);
+    setSeparateReviewed(false);
     void load();
     return () => {
       requestVersion.current += 1;
@@ -126,7 +128,10 @@ export const PaymentTransactions: React.FC = () => {
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
-                const result = await paymentHubApi.collect({ ...form, facilityId }, key);
+                const result = await paymentHubApi.collect(
+                  { ...form, facilityId, confirmSeparateRequest: separateReviewed },
+                  key,
+                );
                 setSubmitted(true);
                 setForm((f) => ({ ...f, phone: '' }));
                 setNotice(result.notice);
@@ -182,6 +187,14 @@ export const PaymentTransactions: React.FC = () => {
               />
               Explicitly allow overpayment
             </label>
+            <label className="flex items-center gap-1 text-xs">
+              <input
+                type="checkbox"
+                checked={separateReviewed}
+                onChange={(e) => setSeparateReviewed(e.target.checked)}
+              />
+              I reviewed any earlier request and intend a separate request
+            </label>
             <button className={button} disabled={busy || submitted}>
               Request sandbox STK
             </button>
@@ -196,6 +209,7 @@ export const PaymentTransactions: React.FC = () => {
                     )
                   ) {
                     setSubmitted(false);
+                    setSeparateReviewed(true);
                     setKey(crypto.randomUUID());
                   }
                 }}

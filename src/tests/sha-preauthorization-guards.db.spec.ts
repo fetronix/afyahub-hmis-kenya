@@ -30,6 +30,7 @@ describeDb('SHA preauthorization local guards', () => {
     clinicalIndication: 'Synthetic test indication',
     primaryDiagnosisCode: 'TEST-DIAGNOSIS',
     primaryDiagnosisDisplay: 'Synthetic test diagnosis',
+    codingSystem: 'ICD-10' as const,
     requestedServiceCode: 'SHA-TEST-ONLY',
     requestedServiceName: 'Synthetic test service',
     estimatedAmount: '100.00',
@@ -89,6 +90,7 @@ describeDb('SHA preauthorization local guards', () => {
   it('validates required information, quantity, code syntax, regulator and amount before creating drafts', async () => {
     const cases: Array<[Record<string, unknown>, string]> = [
       [{ clinicalIndication: ' ' }, 'INVALID_PREAUTH_INPUT'],
+      [{ codingSystem: undefined }, 'INVALID_DIAGNOSIS_SYSTEM'],
       [{ primaryDiagnosisCode: '' }, 'INVALID_PREAUTH_INPUT'],
       [{ requestedServiceName: '' }, 'INVALID_PREAUTH_INPUT'],
       [{ quantity: 0 }, 'INVALID_QUANTITY'],

@@ -243,9 +243,14 @@ describe('The outpatient journey — contract tests', () => {
     ).toBe(true);
 
     const panel = source('src/components/modules/FacilityServiceTariffsPanel.tsx');
+    const validationPanel = source('src/components/modules/TariffValidationPanel.tsx');
+    const validationService = source('src/billing/tariff-validation.service.ts');
     expect(
-      panel.includes('BILLING_FAMILIES') && panel.includes('not priced'),
-      'the tariff screen shows which services will not bill',
+      panel.includes('TariffValidationPanel') &&
+        validationPanel.includes('getFacilityTariffValidation') &&
+        validationService.includes('resolveFromRows') &&
+        validationService.includes("'NO_TARIFF'"),
+      'the tariff screen exposes resolver-based missing and invalid configuration review',
     ).toBe(true);
 
     /*
@@ -285,12 +290,12 @@ describe('The outpatient journey — contract tests', () => {
     ).toBe(true);
 
     expect(
-      panel.includes('unpricedLabTests'),
-      'the tariff screen names the laboratory tests that would bill nothing',
+      validationService.includes('input.labs') && validationPanel.includes('check.name'),
+      'the tariff screen names the assessed laboratory tests',
     ).toBe(true);
     expect(
-      panel.includes('labTariffCodeCandidates'),
-      'the screen and the engine share one rule for laboratory codes',
+      validationService.includes('codesForFamily') && validationService.includes('resolveFromRows'),
+      'the screen and the engine share the charging candidate and resolver rules',
     ).toBe(true);
 
     expect(
@@ -484,7 +489,7 @@ describe('The outpatient journey — contract tests', () => {
     expect(pharmacy.includes("'Pharmacy'"), 'dispensing closes the pharmacy token').toBe(true);
 
     expect(
-      opd.includes("api.getQueues(currentFacility?.id, 'Triage')"),
+      opd.includes("api.getQueues(currentFacility.id, 'Triage')"),
       'the clinician sees the triage queue',
     ).toBe(true);
     expect(opd.includes("'In-Progress'"), 'starting a visit moves the token').toBe(true);
@@ -499,7 +504,7 @@ describe('The outpatient journey — contract tests', () => {
     }
 
     expect(
-      panel.includes('not</strong> billed'),
+      panel.includes('service without a valid match is not automatically billed'),
       'it says that an unmatched service is not billed',
     ).toBe(true);
   });

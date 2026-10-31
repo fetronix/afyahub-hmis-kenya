@@ -193,6 +193,8 @@ export interface Medication {
   route: string;
   instructions?: string;
   quantity: number;
+  /** Sum of actual dispensing records; may be absent in older clients. */
+  quantityDispensed?: number;
   unitPrice: string;
   status: string;
   prescribedBy?: string;
@@ -388,6 +390,8 @@ export interface LabOrder {
   status: string;
   clinicalIndication?: string | null;
   specimenType?: string | null;
+  /** Present only where a specimen has been explicitly linked. */
+  specimenId?: number | null;
   priority?: string | null;
   clinicalNotes?: string | null;
   sampleCollectedAt?: string;
@@ -524,6 +528,7 @@ export interface BillingInvoice {
   /** Money received beyond the total, held as patient credit. */
   creditBalance?: string;
   status: string;
+  finalizedAt?: string | null;
   payerType: string;
   payerName?: string;
   memberNumber?: string;
@@ -635,7 +640,9 @@ export interface BillingChargeAttemptOutcome {
 export interface BillingChargeRetrySummary {
   tried: number;
   billed: number;
+  duplicates: number;
   stillPending: number;
+  skipped: number;
 }
 
 export interface TariffMatchRow {
@@ -738,6 +745,25 @@ export interface LabServiceDiagnostics {
   tests: LabServiceDiagnostic[];
 }
 
+export interface FacilityTariffValidation {
+  facilityId: number;
+  asOfDate: string;
+  summary: { examined: number; review: number; invalid: number; manualOnly: number };
+  checks: Array<{
+    key: string;
+    kind: 'CATALOGUE' | 'FAMILY_SCENARIO' | 'TARIFF' | 'LINK' | 'BILLED_SERVICE';
+    serviceType: string | null;
+    name: string;
+    code: string | null;
+    result: 'RESOLVED' | 'REVIEW' | 'INVALID' | 'MANUAL_ONLY';
+    reasons: string[];
+    tariffId: number | null;
+    tariffCode: string | null;
+  }>;
+  nextOffset: number | null;
+  limitations: string[];
+}
+
 export interface BillingPayment {
   id: number;
   invoiceId: number;
@@ -751,6 +777,29 @@ export interface BillingPayment {
   cashierName: string;
   paymentDate: string;
 }
+
+export interface BillingRefund {
+  id: number;
+  invoiceId: number;
+  paymentId: number;
+  refundNumber: string;
+  amount: string;
+  refundMethod: string;
+  externalReference: string | null;
+  reason: string;
+  actorUserId: number;
+  createdAt: string;
+  status?: 'MANUALLY_RECORDED';
+}
+
+export interface RecordRefundResult {
+  refund: BillingRefund;
+  replayed: boolean;
+  accounting: 'NOT_POSTED';
+}
+
+export type RefundStatusResult =
+  { status: 'NOT_FOUND' } | { status: 'RECORDED'; refund: BillingRefund; accounting: 'NOT_POSTED' };
 
 export type SettlementOutcome = 'FULLY_PAID' | 'BALANCE_REMAINING' | 'OVERPAID';
 
@@ -768,6 +817,7 @@ export interface PaymentSettlement {
 }
 
 export interface RecordPaymentResult {
+  idempotentReplay?: boolean;
   payment: BillingPayment;
   settlement: PaymentSettlement;
   invoice: {

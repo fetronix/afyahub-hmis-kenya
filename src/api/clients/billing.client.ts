@@ -1,3 +1,4 @@
+import type { FinalizedInvoiceView, PaymentParty } from '../../billing/finalized-invoice.types.ts';
 import type {
   BillingChargeAttemptList,
   BillingChargeAttemptOutcome,
@@ -5,11 +6,15 @@ import type {
   BillingInvoice,
   BillingItem,
   BillingPayment,
+  BillingRefund,
+  RecordRefundResult,
+  RefundStatusResult,
   ClaimSettlementResult,
   ClaimableLinesResponse,
   DraftClaimResult,
   InsuranceClaim,
   LabServiceDiagnostics,
+  FacilityTariffValidation,
   OccupancyTrendResponse,
   OperationsReport,
   PaymentLedgerRow,
@@ -27,7 +32,74 @@ export const billingClient = {
       invoice: BillingInvoice;
       items: BillingItem[];
       payments: BillingPayment[];
+      refunds: BillingRefund[];
     }>(`${API_BASE}/invoices/${id}`),
+
+  getInvoiceFinalization: (id: number) =>
+    fetchJson<FinalizedInvoiceView | { finalized: false }>(
+      `${API_BASE}/invoices/${id}/finalization`,
+    ),
+  finalizeInvoice: (
+    id: number,
+    input: { insurerResponsibility: string; copayment: string; allocationBasis: string },
+  ) =>
+    fetchJson<{ invoiceId: number; finalizedAt: string; idempotentReplay: boolean }>(
+      `${API_BASE}/invoices/${id}/finalize`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  recordInvoicePrintAccess: (id: number) =>
+    fetchJson<{ authorized: true }>(`${API_BASE}/invoices/${id}/print-access`, { method: 'POST' }),
+  attributeInvoicePayment: (
+    invoiceId: number,
+    paymentId: number,
+    input: { party: PaymentParty; reason: string },
+  ) =>
+    fetchJson<{ id: number; idempotentReplay: boolean }>(
+      `${API_BASE}/invoices/${invoiceId}/payments/${paymentId}/attribution`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  checkPaymentRequestStatus: (input: { facilityId: number; idempotencyKey: string }) =>
+    fetchJson<
+      | { status: 'NOT_FOUND' }
+      | { status: 'CANCELLED'; invoiceId: number }
+      | { status: 'RECORDED'; invoiceId: number; paymentId: number; receiptNumber: string }
+    >(`${API_BASE}/billing/payments/status`, { method: 'POST', body: JSON.stringify(input) }),
+
+  cancelPendingPaymentRequest: (input: {
+    facilityId: number;
+    invoiceId: number;
+    idempotencyKey: string;
+    reason: string;
+  }) =>
+    fetchJson<
+      | { status: 'CANCELLED'; invoiceId: number; idempotentReplay: boolean }
+      | { status: 'RECORDED'; invoiceId: number; paymentId: number; receiptNumber: string }
+    >(`${API_BASE}/billing/payments/cancel-pending`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  recordManualRefund: (input: {
+    facilityId: number;
+    invoiceId: number;
+    paymentId: number;
+    amount: string;
+    refundMethod: 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER' | 'CHEQUE';
+    externalReference?: string;
+    reason: string;
+    manualConfirmation: true;
+    idempotencyKey: string;
+  }) =>
+    fetchJson<RecordRefundResult>(`${API_BASE}/billing/refunds`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  checkRefundStatus: (input: { facilityId: number; idempotencyKey: string }) =>
+    fetchJson<RefundStatusResult>(`${API_BASE}/billing/refunds/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   voidInvoice: (id: number, reason: string) =>
     fetchJson<BillingInvoice>(`${API_BASE}/invoices/${id}/void`, {
@@ -178,6 +250,11 @@ export const billingClient = {
       { method: 'PATCH', body: JSON.stringify({ facilityId }) },
     ),
 
+  getFacilityTariffValidation: (facilityId: number, offset = 0) =>
+    fetchJson<FacilityTariffValidation>(
+      `${API_BASE}/billing/tariff-validation?facilityId=${encodeURIComponent(String(facilityId))}&offset=${encodeURIComponent(String(offset))}&limit=100`,
+    ),
+
   getLabServiceDiagnostics: (facilityId: number) =>
     fetchJson<LabServiceDiagnostics>(
       `${API_BASE}/billing/lab-service-diagnostics?facilityId=${encodeURIComponent(
@@ -189,6 +266,9 @@ export const billingClient = {
     payment: Partial<BillingPayment> & {
       transactionCode?: string;
       allowOverpayment?: boolean;
+      allowPartyOverpayment?: boolean;
+      payerParty?: PaymentParty;
+      idempotencyKey?: string;
     },
   ) =>
     fetchJson<RecordPaymentResult>(`${API_BASE}/billing/payments`, {

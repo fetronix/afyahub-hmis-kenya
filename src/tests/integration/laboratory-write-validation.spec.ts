@@ -183,6 +183,7 @@ describe('laboratory write body validation', () => {
       1,
       'Sample Collected',
       'A-1',
+      undefined,
     );
   });
 });

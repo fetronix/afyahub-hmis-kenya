@@ -521,6 +521,33 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
         }
       : null;
 
+  // The database normally enforces these unique links. If an imported or
+  // historical configuration violates that invariant, never pick the first
+  // row arbitrarily. A specific link has priority over the family link.
+  const specificLinks =
+    typeof input.serviceId === 'number'
+      ? input.links.filter(
+          (link) =>
+            link.isActive &&
+            link.serviceType === input.serviceType &&
+            link.serviceId === input.serviceId,
+        )
+      : [];
+  const familyLinks = input.links.filter(
+    (link) => link.isActive && link.serviceType === input.serviceType && link.serviceId === null,
+  );
+  const considered = specificLinks.length ? specificLinks : skippedFamilyLink ? [] : familyLinks;
+  if (considered.length > 1) {
+    return finish(null, null, null, {
+      code: 'AMBIGUOUS',
+      message:
+        'Multiple active links claim this service. Review the facility configuration before charging.',
+      candidates: considered.map(
+        (link) => byId.get(link.tariffId)?.code ?? `tariff #${link.tariffId}`,
+      ),
+    });
+  }
+
   for (const step of linkSteps) {
     if (!step.link) continue;
 

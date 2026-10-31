@@ -1010,16 +1010,30 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
       'Use a positive whole-KES amount for the sandbox request.',
     );
   const allowOverpayment = input.allowOverpayment === true;
+  const confirmSeparateRequest = input.confirmSeparateRequest === true;
   const hash = privateDigest(
+    JSON.stringify({
+      integrationId,
+      invoiceId,
+      phone,
+      cents,
+      allowOverpayment,
+      confirmSeparateRequest,
+    }),
+  );
+  // Preserve retries created before the explicit separate-request flag existed.
+  const legacyHash = privateDigest(
     JSON.stringify({ integrationId, invoiceId, phone, cents, allowOverpayment }),
   );
+  const matchesRequest = (stored: string) =>
+    stored === hash || (!confirmSeparateRequest && stored === legacyHash);
   const prepared = await tx(async (c) => {
     const existing = await c.query(
       'SELECT id,status,request_hash FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
       [scope.facilityId, scope.tenantId, key],
     );
     if (existing.rows.length) {
-      if (existing.rows[0].request_hash !== hash)
+      if (!matchesRequest(existing.rows[0].request_hash))
         throw new PaymentHubError(
           'IDEMPOTENCY_CONFLICT',
           'This idempotency key was used for a different request.',
@@ -1058,7 +1072,39 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
     if (!inv.rows.length) throw new PaymentHubError('INVOICE_NOT_FOUND', 'Invoice not found.', 404);
     if (inv.rows[0].voided_at || inv.rows[0].status === 'Void')
       throw new PaymentHubError('INVOICE_VOIDED', 'This invoice cannot accept payments.', 409);
-    const balance = parseMoneyToCents(inv.rows[0].balance_amount) ?? 0;
+    // Another same-key request may have committed while this caller waited
+    // for the invoice lock. Replay it before checking other active requests.
+    const lockedReplay = await c.query(
+      'SELECT id,status,request_hash FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
+      [scope.facilityId, scope.tenantId, key],
+    );
+    if (lockedReplay.rows.length) {
+      if (!matchesRequest(lockedReplay.rows[0].request_hash))
+        throw new PaymentHubError(
+          'IDEMPOTENCY_CONFLICT',
+          'This idempotency key was used for a different request.',
+          409,
+        );
+      return { replay: true, id: lockedReplay.rows[0].id, status: lockedReplay.rows[0].status };
+    }
+    const balance = parseMoneyToCents(inv.rows[0].balance_amount);
+    if (balance === null || balance < 0)
+      throw new PaymentHubError(
+        'INVOICE_REVIEW_REQUIRED',
+        'Invoice balance is unavailable or inconsistent; review it before collection.',
+        409,
+      );
+    const priorActive = await c.query(
+      `SELECT id FROM payment_hub_transactions WHERE tenant_id=$1 AND facility_id=$2 AND invoice_id=$3
+       AND status IN ('INITIATING','PENDING','UNKNOWN','PROVIDER_CONFIRMED','REVIEW_REQUIRED') LIMIT 1`,
+      [scope.tenantId, scope.facilityId, invoiceId],
+    );
+    if (priorActive.rows.length && !confirmSeparateRequest)
+      throw new PaymentHubError(
+        'PENDING_COLLECTION_REVIEW_REQUIRED',
+        'Review the existing provider request before explicitly starting a separate one.',
+        409,
+      );
     if (cents > balance && !allowOverpayment)
       throw new PaymentHubError(
         'OVERPAYMENT_CONFIRMATION_REQUIRED',
@@ -1093,7 +1139,7 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
         'SELECT id,status,request_hash FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
         [scope.facilityId, scope.tenantId, key],
       );
-      if (!retry.rows.length || retry.rows[0].request_hash !== hash)
+      if (!retry.rows.length || !matchesRequest(retry.rows[0].request_hash))
         throw new PaymentHubError(
           'IDEMPOTENCY_CONFLICT',
           'This idempotency key was used for a different request.',

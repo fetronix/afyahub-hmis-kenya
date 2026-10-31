@@ -37,6 +37,34 @@ export interface AccountingOverview {
   };
   limitations: { notice: string; billingReconciliation: string; serviceLineProfitability: string };
 }
+export interface BillingConsistencyReport {
+  invoices: Array<{
+    id: number;
+    invoiceNumber: string;
+    status: string | null;
+    total: string | null;
+    paid: string | null;
+    lineTotal: string | null;
+    paymentTotal: string | null;
+    issues: string[];
+  }>;
+  pageSummary: { examined: number; requiringReview: number };
+  nextAfterId: number | null;
+  limitations: { ledgerReconciliation: string; notice: string };
+}
+export interface BillingLedgerReview extends BillingConsistencyReport {
+  sourceEvents: Array<{
+    sourceType: string;
+    sourceId: number;
+    invoiceId: number;
+    amount: string | null;
+    payerLinked: boolean;
+    journalIds: number[];
+    issues: string[];
+    assessment: string;
+  }>;
+  ledgerPageSummary: { examined: number; unposted: number; requiringReview: number };
+}
 export interface DialysisWorkspace {
   protocol: {
     version: string;
@@ -95,6 +123,62 @@ export const sprintApi = {
   accountingOverview: (facilityId: number, startDate: string, endDate: string) =>
     fetchJson<AccountingOverview>(
       `/api/accounting/overview?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate })}`,
+    ),
+  billingConsistency: (facilityId: number, startDate: string, endDate: string, afterId = 0) =>
+    fetchJson<BillingConsistencyReport>(
+      `/api/accounting/billing-consistency?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterId: String(afterId) })}`,
+    ),
+  billingLedgerReview: (facilityId: number, startDate: string, endDate: string, afterId = 0) =>
+    fetchJson<BillingLedgerReview>(
+      `/api/accounting/billing-ledger-review?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterId: String(afterId) })}`,
+    ),
+  billingJournalExceptions: (
+    facilityId: number,
+    startDate: string,
+    endDate: string,
+    afterJournalId = 0,
+  ) =>
+    fetchJson<{
+      journals: Array<{
+        id: number;
+        sourceType: string;
+        sourceId: string | null;
+        entryDate: string;
+        issues: string[];
+      }>;
+      pageSummary: { examined: number; requiringReview: number };
+      nextAfterJournalId: number | null;
+      limitations: string;
+    }>(
+      `/api/accounting/billing-journal-exceptions?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterJournalId: String(afterJournalId) })}`,
+    ),
+  postBillingSource: (sourceType: string, sourceId: number, body: unknown, key: string) =>
+    post<{
+      journal: { id: number; journalNumber: string };
+      idempotentReplay: boolean;
+      reversed: boolean;
+      allocation: {
+        party: string | null;
+        amountKes: string;
+        receivableKes: string;
+        liabilityKes: string;
+      };
+    }>(`/api/accounting/billing-postings/${encodeURIComponent(sourceType)}/${sourceId}`, body, key),
+  billingSourceStatus: (facilityId: number, sourceType: string, sourceId: number) =>
+    fetchJson<
+      | { status: 'NOT_FOUND' }
+      | {
+          status: 'RECORDED';
+          journalId: number;
+          journalNumber: string;
+          entryDate: string;
+          reversed: boolean;
+          amountKes: string;
+          receivableKes: string;
+          liabilityKes: string;
+        }
+    >(
+      `/api/accounting/billing-postings/${encodeURIComponent(sourceType)}/${sourceId}?${new URLSearchParams({ facilityId: String(facilityId) })}`,
     ),
   createAccount: (body: unknown) =>
     post<{ account: { id: number } }>('/api/accounting/accounts', body),

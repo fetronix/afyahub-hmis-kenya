@@ -54,7 +54,7 @@ export const validateTariffInput = (input: any) => {
   const code = typeof input?.code === 'string' ? input.code.trim().toUpperCase() : '';
   const description = typeof input?.description === 'string' ? input.description.trim() : '';
   const department = typeof input?.department === 'string' ? input.department.trim() : '';
-  const unit = typeof input?.unit === 'string' ? input.unit.trim() : 'Service';
+  const unit = typeof input?.unit === 'string' ? input.unit.trim() : '';
   const feeText =
     typeof input?.fee === 'string' || typeof input?.fee === 'number'
       ? String(input.fee).trim()
@@ -97,7 +97,9 @@ export const validateTariffInput = (input: any) => {
 
     const parsed = new Date(`${value.trim()}T00:00:00Z`);
 
-    return Number.isNaN(parsed.getTime()) ? undefined : value.trim();
+    return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value.trim()
+      ? undefined
+      : value.trim();
   };
 
   const effectiveFrom = parseDate(input?.effectiveFrom);
