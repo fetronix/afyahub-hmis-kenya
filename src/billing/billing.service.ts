@@ -42,7 +42,7 @@ import {
   type PaymentChannel,
 } from './settlement.ts';
 import type { BillingFamily } from './tariff-codes.ts';
-import { resolveMasterCharge } from './master-charge-resolver.ts';
+import { resolveFacilityCharge } from './facility-charge-resolver.ts';
 import { readInvoicePaymentLedger } from './payment-ledger.ts';
 import {
   failureLabel,
@@ -1026,7 +1026,7 @@ async function chargeForServiceInTransaction(
   }
 
   /* Resolve persisted clinical identity first; never price a text guess. */
-  const resolution = await resolveMasterCharge(executor, request);
+  const resolution = await resolveFacilityCharge(executor, request);
   if ('failure' in resolution) {
     return {
       charged: false,
@@ -1040,10 +1040,10 @@ async function chargeForServiceInTransaction(
       message: `${resolution.failure.message} The service was not billed; review the unresolved billing queue.`,
     };
   }
-  const { master, tariff } = resolution;
+  const { service, tariff } = resolution;
   const unitPriceCents = parseMoneyToCents(tariff.fee);
-  if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('APPROVED_TARIFF_INVALID');
-  const description = master.description;
+  if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('FACILITY_TARIFF_INVALID');
+  const description = service.name;
 
   const invoice = await findOrCreateOpenInvoice(executor, request);
 
@@ -1072,9 +1072,9 @@ async function chargeForServiceInTransaction(
       invoiceId: invoice.id,
       tariffId: tariff.id,
       tariffCode: tariff.code,
-      masterServiceId: master.id,
-      serviceCode: master.code,
-      serviceDepartment: master.department,
+      facilityServiceId: service.id,
+      serviceCode: service.code,
+      serviceDepartment: service.department,
       serviceUnit: tariff.unit,
       serviceDate: resolution.serviceDate,
       servicePerformedAt: resolution.performedAt,
@@ -1128,8 +1128,8 @@ async function chargeForServiceInTransaction(
     unitPrice: fromCents(unitPriceCents),
     totalAmount: fromCents(totalCents),
     matchRule: resolution.rule,
-    matchExplanation: `Exact master service ${master.code}, with approved facility tariff ${tariff.code}.`,
-    codesTried: [master.code],
+    matchExplanation: `Facility service ${service.code}, tariff ${tariff.code}.`,
+    codesTried: [service.code],
   };
 }
 

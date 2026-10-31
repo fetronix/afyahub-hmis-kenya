@@ -182,12 +182,12 @@ export const patientsClinicalClient = {
       },
     ),
 
-  selectEncounterConsultation: (id: number, masterServiceId: number, reviewReason: string) =>
+  selectEncounterConsultation: (id: number, facilityServiceId: number, reviewReason: string) =>
     fetchJson<Encounter & { billing?: ServiceCharge | null }>(
       `${API_BASE}/encounters/${id}/consultation-selection`,
       {
         method: 'POST',
-        body: JSON.stringify({ masterServiceId, reviewReason }),
+        body: JSON.stringify({ facilityServiceId, reviewReason }),
       },
     ),
   updateEncounter: (id: number, encounter: Partial<Encounter>) =>

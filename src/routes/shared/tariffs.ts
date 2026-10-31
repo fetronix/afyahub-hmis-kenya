@@ -16,34 +16,8 @@ import { isValidBillingKey } from '../../billing/tariff-codes.ts';
 import * as queries from '../../db/queries.ts';
 import { handleScopeError } from './errors.ts';
 
-export const tariffModuleForDepartment = (department: string): string | null => {
-  const value = department
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, '_');
-  const aliases: Record<string, string> = {
-    opd: 'opd',
-    outpatient: 'opd',
-    inpatient: 'inpatient',
-    ward: 'inpatient',
-    theatre: 'theatre',
-    operating_theatre: 'theatre',
-    specialty: 'specialty',
-    specialist: 'specialty',
-    laboratory: 'laboratory',
-    lab: 'laboratory',
-    radiology: 'radiology',
-    imaging: 'radiology',
-    pharmacy: 'pharmacy',
-    registration: 'registration',
-    reception: 'reception',
-    insurance: 'insurance',
-    sha: 'insurance',
-    finance: 'finance',
-    general: 'finance',
-  };
-  return aliases[value] ?? null;
-};
+import { tariffModuleForDepartment } from '../../billing/tariff-departments.ts';
+export { tariffModuleForDepartment } from '../../billing/tariff-departments.ts';
 
 export const validateTariffInput = (input: any) => {
   /*

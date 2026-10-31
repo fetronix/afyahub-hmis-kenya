@@ -112,6 +112,30 @@ export async function createLabOrder(
         canonicalName = test.name;
         testCode = test.code;
       }
+      if (data.facilityServiceId != null) {
+        const [selected] = await tx
+          .select({ service: schema.facilityServices })
+          .from(schema.facilityServices)
+          .where(
+            and(
+              eq(schema.facilityServices.id, data.facilityServiceId),
+              eq(schema.facilityServices.tenantId, scope.tenantId),
+              eq(schema.facilityServices.facilityId, scope.facilityId),
+              eq(schema.facilityServices.category, 'LABORATORY'),
+              eq(schema.facilityServices.isActive, true),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (!selected || (testCode && testCode.trim().toUpperCase() !== selected.service.code))
+          throw new LaboratoryDomainError(
+            'TEST_NOT_AVAILABLE',
+            'The facility investigation is unavailable or does not match the selected test.',
+            400,
+          );
+        canonicalName = selected.service.name;
+        testCode = selected.service.code;
+      }
       if (specimenOptionId !== undefined) {
         if (!Number.isSafeInteger(specimenOptionId) || specimenOptionId <= 0 || !data.testId)
           throw new LaboratoryDomainError(
@@ -145,10 +169,12 @@ export async function createLabOrder(
           );
         reviewedSpecimen = option.specimenType;
       }
-      // Legacy requests remain clinically available, but neither a test ID nor
-      // free text is proof that the specimen was clinically reviewed.
+      // A clinician can specify the original specimen text. Free-text
+      // investigations remain unpriced until their identity is selected.
       const clinicalException =
-        !data.testId || !reviewedSpecimen || data.clinicalException === true;
+        (!data.testId && !data.facilityServiceId) ||
+        !(reviewedSpecimen ?? data.specimenType)?.trim() ||
+        data.clinicalException === true;
       const [order] = await tx
         .insert(schema.labOrders)
         .values({
@@ -759,14 +785,38 @@ export async function getRadiologyOrderScoped(id: number, facilityId: number) {
   return row ?? null;
 }
 
+async function radiologySelection(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  data: typeof schema.radiologyOrders.$inferInsert,
+) {
+  if (!data.facilityServiceId) return data;
+  const [service] = await tx
+    .select({ id: schema.facilityServices.id, name: schema.facilityServices.name })
+    .from(schema.facilityServices)
+    .where(
+      and(
+        eq(schema.facilityServices.id, data.facilityServiceId),
+        eq(schema.facilityServices.tenantId, data.tenantId),
+        eq(schema.facilityServices.facilityId, data.facilityId),
+        eq(schema.facilityServices.category, 'RADIOLOGY'),
+        eq(schema.facilityServices.isActive, true),
+      ),
+    )
+    .for('share');
+  if (!service)
+    throw new LaboratoryDomainError(
+      'EXAMINATION_NOT_AVAILABLE',
+      'The facility examination is not active or unavailable.',
+      400,
+    );
+  return { ...data, procedureName: service.name };
+}
 export async function createRadiologyOrder(data: typeof schema.radiologyOrders.$inferInsert) {
-  try {
-    const res = await db.insert(schema.radiologyOrders).values(data).returning();
-    return res[0];
-  } catch (error) {
-    log.error({ err: error }, 'radiology_order.create_failed');
-    throw new Error('Failed to create radiology order', { cause: error });
-  }
+  return db.transaction(async (tx) => {
+    const selected = await radiologySelection(tx, data);
+    const [row] = await tx.insert(schema.radiologyOrders).values(selected).returning();
+    return row;
+  });
 }
 
 /** Retry-safe creation. A request key cannot be reused for a different actor or clinical payload. */
@@ -782,9 +832,10 @@ export async function createRadiologyOrderIdempotent(
         facilityId: data.facilityId,
         patientId: data.patientId,
         encounterId: data.encounterId ?? null,
-        masterServiceId: data.masterServiceId ?? null,
+        facilityServiceId: data.facilityServiceId ?? null,
         modality: data.modality,
-        procedureName: data.procedureName,
+        // The service ID is authoritative when selected, not a caller-supplied title.
+        procedureName: data.facilityServiceId ? null : data.procedureName,
         clinicalIndication: data.clinicalIndication ?? null,
         orderedBy: data.orderedBy ?? null,
       }),
@@ -840,7 +891,8 @@ export async function createRadiologyOrderIdempotent(
         );
       return { order, idempotentReplay: true };
     }
-    const [order] = await tx.insert(schema.radiologyOrders).values(data).returning();
+    const selected = await radiologySelection(tx, data);
+    const [order] = await tx.insert(schema.radiologyOrders).values(selected).returning();
     await tx
       .update(schema.radiologyOrderRequests)
       .set({ orderId: order.id })
@@ -919,6 +971,12 @@ export async function createLabOrderBatch(
     investigations?: string[];
     clinicalException?: boolean;
     testIds?: number[];
+    facilityServiceId?: number;
+    orderLines?: Array<{
+      facilityServiceId?: number;
+      investigation?: string;
+      specimenType: string;
+    }>;
     testSelections?: Array<{ testId: number; specimenOptionId: number }>;
     idempotencyKey?: string;
     clinicalIndication: string;
@@ -937,7 +995,7 @@ export async function createLabOrderBatch(
   if (!data.clinicalIndication?.trim()) {
     throw new Error('Clinical indication is required.');
   }
-  if (!data.testSelections && !data.specimenType?.trim()) {
+  if (!data.testSelections && !data.orderLines && !data.specimenType?.trim()) {
     throw new Error('Specimen type is required.');
   }
   if (
@@ -977,6 +1035,43 @@ export async function createLabOrderBatch(
   }
 
   const selected = data.testSelections;
+  const orderLines = data.orderLines;
+  if (
+    orderLines &&
+    (data.testSelections ||
+      data.testIds ||
+      data.investigations ||
+      data.facilityServiceId ||
+      data.clinicalException ||
+      data.specimenType ||
+      !data.encounterId ||
+      !data.idempotencyKey ||
+      data.idempotencyKey.length < 16 ||
+      data.idempotencyKey.length > 128 ||
+      !orderLines.length ||
+      orderLines.length > 100 ||
+      orderLines.some(
+        (line) =>
+          Boolean(line.facilityServiceId) === Boolean(line.investigation?.trim()) ||
+          !line.specimenType?.trim() ||
+          line.specimenType.trim().length > 120 ||
+          (line.investigation?.trim().length ?? 0) > 200 ||
+          (line.facilityServiceId != null &&
+            (!Number.isSafeInteger(line.facilityServiceId) || line.facilityServiceId <= 0)),
+      ) ||
+      new Set(
+        orderLines.map((line) =>
+          line.facilityServiceId
+            ? `id:${line.facilityServiceId}`
+            : `name:${line.investigation?.trim().toLowerCase()}`,
+        ),
+      ).size !== orderLines.length)
+  )
+    throw new LaboratoryDomainError(
+      'INVALID_SELECTION',
+      'Provide distinct investigations and an individual specimen for each.',
+      400,
+    );
   if (
     data.clinicalException &&
     (!freeTextProvided ||
@@ -1018,7 +1113,7 @@ export async function createLabOrderBatch(
       400,
     );
   const testIds = data.testIds ?? [];
-  if (!freeTextProvided && !selected) {
+  if (!freeTextProvided && !selected && !data.facilityServiceId && !orderLines) {
     if (!Array.isArray(testIds) || testIds.length === 0) {
       throw new Error('Enter at least one laboratory investigation.');
     }
@@ -1033,7 +1128,19 @@ export async function createLabOrderBatch(
   }
 
   if (
+    data.facilityServiceId &&
+    (freeTextProvided || data.testIds || selected || !data.encounterId || !data.idempotencyKey)
+  )
+    throw new LaboratoryDomainError(
+      'INVALID_SELECTION',
+      'Choose one facility investigation and its specimen.',
+      400,
+    );
+
+  if (
     !selected &&
+    !data.facilityServiceId &&
+    !orderLines &&
     ((freeTextProvided && data.testIds) ||
       (freeTextProvided ? investigations.length : testIds.length) > 1)
   )
@@ -1051,15 +1158,26 @@ export async function createLabOrderBatch(
   try {
     return await db.transaction(async (tx) => {
       let batchId: number | null = null;
-      if ((selected || data.clinicalException) && data.idempotencyKey) {
+      if (
+        (selected || data.clinicalException || data.facilityServiceId || orderLines) &&
+        data.idempotencyKey
+      ) {
         const payloadHash = createHash('sha256')
           .update(
             JSON.stringify({
               scope,
               selections: selected ? [...selected].sort((a, b) => a.testId - b.testId) : null,
               clinicalException: data.clinicalException === true,
+              facilityServiceId: data.facilityServiceId ?? null,
+              orderLines:
+                orderLines?.map((line) => ({
+                  facilityServiceId: line.facilityServiceId ?? null,
+                  investigation: line.investigation?.trim() ?? null,
+                  specimenType: line.specimenType.trim(),
+                })) ?? null,
               investigations: data.clinicalException ? investigations : null,
-              specimenType: data.clinicalException ? data.specimenType?.trim() : null,
+              specimenType:
+                data.clinicalException || data.facilityServiceId ? data.specimenType?.trim() : null,
               clinicalIndication: data.clinicalIndication.trim(),
               priority,
               clinicalNotes: data.clinicalNotes?.trim() || null,
@@ -1122,7 +1240,7 @@ export async function createLabOrderBatch(
                   ),
                 )
             : [];
-          if (!queue || orders.length !== (selected?.length ?? 1))
+          if (!queue || orders.length !== (selected?.length ?? orderLines?.length ?? 1))
             throw new LaboratoryDomainError(
               'BATCH_REVIEW_REQUIRED',
               'The existing batch requires review before retrying.',
@@ -1133,13 +1251,16 @@ export async function createLabOrderBatch(
               ...order,
               testCode,
               catalogueMatch:
-                order.testId && !order.clinicalException
+                (order.testId || order.facilityServiceId) && !order.clinicalException
                   ? ('FOUND' as const)
                   : ('REVIEW_REQUIRED' as const),
             })),
             queue,
             unresolved: orders
-              .filter(({ order }) => !order.testId || order.clinicalException)
+              .filter(
+                ({ order }) =>
+                  (!order.testId && !order.facilityServiceId) || order.clinicalException,
+              )
               .map(({ order }) => order.testName),
             ambiguous: [],
             idempotentReplay: true,
@@ -1153,10 +1274,52 @@ export async function createLabOrderBatch(
         code: string | null;
         specimenType?: string;
         reviewedSpecimenOptionId?: number;
+        facilityServiceId?: number;
         match?: 'FOUND' | 'REVIEW_REQUIRED' | 'AMBIGUOUS';
       }> = [];
 
-      if (selected) {
+      if (orderLines) {
+        for (const line of orderLines) {
+          if (line.facilityServiceId) {
+            const [service] = await tx
+              .select()
+              .from(schema.facilityServices)
+              .where(
+                and(
+                  eq(schema.facilityServices.id, line.facilityServiceId),
+                  eq(schema.facilityServices.tenantId, scope.tenantId),
+                  eq(schema.facilityServices.facilityId, scope.facilityId),
+                  eq(schema.facilityServices.category, 'LABORATORY'),
+                  eq(schema.facilityServices.isActive, true),
+                ),
+              )
+              .limit(1)
+              .for('share');
+            if (!service)
+              throw new LaboratoryDomainError(
+                'TEST_NOT_AVAILABLE',
+                'The facility investigation is inactive or unavailable.',
+                400,
+              );
+            tests.push({
+              id: null,
+              facilityServiceId: service.id,
+              name: service.name,
+              code: service.code,
+              specimenType: line.specimenType.trim(),
+              match: 'FOUND',
+            });
+          } else {
+            tests.push({
+              id: null,
+              name: line.investigation!.trim(),
+              code: null,
+              specimenType: line.specimenType.trim(),
+              match: 'REVIEW_REQUIRED',
+            });
+          }
+        }
+      } else if (selected) {
         for (const choice of selected) {
           const [row] = await tx
             .select({
@@ -1198,6 +1361,35 @@ export async function createLabOrderBatch(
             match: 'FOUND',
           });
         }
+      } else if (data.facilityServiceId) {
+        const [selectedService] = await tx
+          .select({ service: schema.facilityServices })
+          .from(schema.facilityServices)
+          .where(
+            and(
+              eq(schema.facilityServices.id, data.facilityServiceId),
+              eq(schema.facilityServices.tenantId, scope.tenantId),
+              eq(schema.facilityServices.facilityId, scope.facilityId),
+              eq(schema.facilityServices.category, 'LABORATORY'),
+              eq(schema.facilityServices.isActive, true),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (!selectedService)
+          throw new LaboratoryDomainError(
+            'TEST_NOT_AVAILABLE',
+            'The facility investigation is inactive or unavailable.',
+            400,
+          );
+        tests.push({
+          id: null,
+          facilityServiceId: selectedService.service.id,
+          name: selectedService.service.name,
+          code: selectedService.service.code,
+          specimenType: data.specimenType!.trim(),
+          match: 'FOUND',
+        });
       } else if (freeTextProvided) {
         // Legacy text remains available for care, but even an exact-looking
         // name is not proof of the selected investigation. It requires a
@@ -1222,13 +1414,11 @@ export async function createLabOrderBatch(
           if (!test) {
             throw new Error('A selected test is unavailable at this facility.');
           }
-          // A legacy test ID does not prove the specimen was reviewed. Keep
-          // the clinical request, but queue completed work for explicit review.
           tests.push({
             id: test.id,
             name: test.name,
             code: test.code ?? null,
-            match: 'REVIEW_REQUIRED',
+            match: 'FOUND',
           });
         }
       }
@@ -1256,6 +1446,7 @@ export async function createLabOrderBatch(
           .values({
             ...scope,
             testId: test.id,
+            facilityServiceId: test.facilityServiceId ?? null,
             testName: test.name,
             status: 'Ordered',
             orderedBy: data.orderedBy?.trim() || null,
@@ -1263,7 +1454,8 @@ export async function createLabOrderBatch(
             specimenType: test.specimenType ?? data.specimenType!.trim(),
             reviewedSpecimenOptionId: test.reviewedSpecimenOptionId ?? null,
             batchId,
-            clinicalException: !selected || data.clinicalException === true,
+            clinicalException:
+              (!test.id && !test.facilityServiceId) || data.clinicalException === true,
             priority,
             clinicalNotes: data.clinicalNotes?.trim() || null,
           })
@@ -1315,7 +1507,7 @@ export async function createLabOrderBatch(
           resourceId: String(batchId),
           details: data.clinicalException
             ? 'Created one unmatched clinical exception; specimen requires laboratory review.'
-            : `Created ${orders.length} catalogue orders with individually reviewed specimens.`,
+            : `Created ${orders.length} orders with individually recorded specimens.`,
         });
       }
       return { orders, queue, unresolved, ambiguous, idempotentReplay: false };

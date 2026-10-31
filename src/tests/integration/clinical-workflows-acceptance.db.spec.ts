@@ -6,12 +6,6 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { verifyLabResult } from '../../db/queries/laboratory.ts';
 import { db, pool } from '../../db/index.ts';
 import { retryChargeAttempt } from '../../billing/charge-attempts.ts';
-import {
-  syncMasterCatalogue,
-  listMasterCatalogue,
-  editMasterTariffs,
-  approveMasterTariff,
-} from '../../billing/master-catalogue.service.ts';
 import { dispenseFefoScoped, receiveBatchScoped } from '../../inventory/inventory.service.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
@@ -45,31 +39,22 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
       )
     ).rows[0].id as number;
   const configureProduct = async (id: number, fee: string) => {
-    const f = { id: facility, tenantId: tenant, enabledModules: ['finance'] };
-    await syncMasterCatalogue(f, actorId);
-    const mapped = (
+    const item = (
       await pool.query(
-        "SELECT master_service_id FROM master_service_sources WHERE facility_id=$1 AND source_type='PHARMACY' AND source_id=$2 AND is_active",
-        [facility, id],
+        'SELECT item_code, unit FROM inventory_items WHERE id=$1 AND facility_id=$2',
+        [id, facility],
       )
     ).rows[0];
-    const row = (await listMasterCatalogue(f)).find(
-      (r) => r.master.id === mapped.master_service_id,
-    )!;
-    const t = row.tariff!;
-    const [edited] = await editMasterTariffs(f, actorId, [
-      {
-        tariffId: t.id,
-        revision: t.revision,
-        fee,
-        unit: row.master.unit,
-        isActive: true,
-        autoBill: true,
-        effectiveFrom: null,
-        effectiveTo: null,
-      },
-    ]);
-    await approveMasterTariff(f, actorId, t.id, edited.revision, 'Synthetic review');
+    const service = (
+      await pool.query(
+        "INSERT INTO facility_services(tenant_id,facility_id,code,name,description,department,category,unit,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic product','Synthetic product','pharmacy','PHARMACY',$4,true,true) RETURNING id",
+        [tenant, facility, String(item.item_code).toUpperCase(), item.unit],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,facility_service_id,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic product','pharmacy',$4,$5,$6,true,true)",
+      [tenant, facility, String(item.item_code).toUpperCase(), item.unit, fee, service],
+    );
   };
   const batch = async (id: number, name: string, expiry: string, quantity: number) =>
     pool.query(
@@ -1290,7 +1275,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     expect(complete.body.billing).toMatchObject({
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
-      diagnosis: { code: 'CATALOGUE_NOT_FOUND' },
+      diagnosis: { code: 'SERVICE_NOT_SELECTED' },
     });
     const visitCompleted = await call('PUT', `/api/encounters/${encounterId}`, managerToken, {
       status: 'Completed',

@@ -42,7 +42,6 @@ import {
 import { ScopeAccessError, resolveFacilityScope } from '../../auth/scope.service.ts';
 import * as schema from '../../db/schema.ts';
 import { calendarDateInZone, validTimezone } from '../../dashboard/timezone.ts';
-import { masterDepartmentMatches } from '../../billing/master-charge-resolver.ts';
 import {
   dateVerdict,
   unitVerdict,
@@ -161,7 +160,7 @@ router.post(
         totalAmount: string;
         tariffId?: number | null;
         tariffCode?: string | null;
-        masterServiceId?: number | null;
+        facilityServiceId?: number | null;
         serviceCode?: string | null;
         serviceDepartment?: string | null;
         serviceUnit?: string | null;
@@ -202,14 +201,14 @@ router.post(
           const [mapped] = await db
             .select({
               tariff: schema.facilityServiceTariffs,
-              master: schema.masterServices,
+              service: schema.facilityServices,
               timezone: schema.facilities.timezone,
               tenantTimezone: schema.tenants.timezone,
             })
             .from(schema.facilityServiceTariffs)
             .innerJoin(
-              schema.masterServices,
-              eq(schema.masterServices.id, schema.facilityServiceTariffs.masterServiceId),
+              schema.facilityServices,
+              eq(schema.facilityServices.id, schema.facilityServiceTariffs.facilityServiceId),
             )
             .innerJoin(
               schema.facilities,
@@ -228,34 +227,34 @@ router.post(
             )
             .limit(1);
           const tariff = mapped?.tariff,
-            master = mapped?.master;
+            service = mapped?.service;
           const zone = mapped?.timezone ?? mapped?.tenantTimezone;
           const family = (
-            master?.billingFamily === 'LABORATORY' ? 'LAB_TEST' : master?.billingFamily
+            service?.category === 'LABORATORY' ? 'LAB_TEST' : service?.category
           ) as CatalogueServiceType;
           if (
             !mapped ||
             !tariff ||
-            !master ||
+            !service ||
+            service.tenantId !== facility.tenantId ||
+            service.facilityId !== facility.id ||
             !validTimezone(zone) ||
-            !master.isActive ||
+            !service.isActive ||
             !tariff.isActive ||
-            !masterDepartmentMatches(tariff.department, master.department) ||
-            tariff.approvalStatus !== 'APPROVED' ||
-            !tariff.approvedByUserId ||
-            !tariff.approvedAt ||
-            !tariff.approvalReference ||
+            Boolean(tariff.archivedAt) ||
+            tariffModuleForDepartment(tariff.department) !==
+              tariffModuleForDepartment(service.department) ||
             Number(tariff.fee) <= 0 ||
             dateVerdict(tariff.effectiveFrom, tariff.effectiveTo, calendarDateInZone(zone)) !==
               'OK' ||
-            tariff.unit.trim().toLowerCase() !== master.unit.trim().toLowerCase() ||
+            tariff.unit.trim().toLowerCase() !== service.unit.trim().toLowerCase() ||
             unitVerdict(family, tariff.unit) !== 'OK'
           ) {
             return res.status(400).json({
               success: false,
               error: 'INVALID_OR_INACTIVE_TARIFF',
               message:
-                'The selected tariff must be mapped, active, approved, positive and effective with a compatible master unit.',
+                'The selected facility service and tariff must be active, positive and effective with a compatible unit.',
             });
           }
 
@@ -300,15 +299,15 @@ router.post(
 
           safeItems.push({
             itemType: tariff.department,
-            description: master.description,
+            description: service.name,
             quantity,
             unitPrice: (unitCents / 100).toFixed(2),
             totalAmount: (lineCents / 100).toFixed(2),
             tariffId: tariff.id,
             tariffCode: tariff.code,
-            masterServiceId: master.id,
-            serviceCode: master.code,
-            serviceDepartment: master.department,
+            facilityServiceId: service.id,
+            serviceCode: service.code,
+            serviceDepartment: service.department,
             serviceUnit: tariff.unit,
           });
 

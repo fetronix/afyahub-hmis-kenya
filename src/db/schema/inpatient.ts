@@ -29,6 +29,7 @@ import { users } from './auth.ts';
 import { patients } from './patients.ts';
 
 import { encounters } from './clinical.ts';
+import { facilityServices } from './facility-services.ts';
 
 export const medications = pgTable('medications', {
   id: serial('id').primaryKey(),
@@ -161,6 +162,8 @@ export const admissions = pgTable('admissions', {
     .notNull(),
 
   encounterId: integer('encounter_id').references(() => encounters.id),
+
+  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
 
   wardId: integer('ward_id')
     .references(() => wards.id)

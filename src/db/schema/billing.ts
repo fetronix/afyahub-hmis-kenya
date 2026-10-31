@@ -33,6 +33,7 @@ import { patients } from './patients.ts';
 import { encounters } from './clinical.ts';
 import { users } from './auth.ts';
 import { masterServices } from './master-services.ts';
+import { facilityServices } from './facility-services.ts';
 
 export const facilityServiceTariffs = pgTable(
   'facility_service_tariffs',
@@ -82,6 +83,9 @@ export const facilityServiceTariffs = pgTable(
     autoBill: boolean('auto_bill').notNull().default(true),
 
     isActive: boolean('is_active').notNull().default(true),
+    facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
+    archivedAt: timestamp('archived_at'),
+    archivedByUserId: integer('archived_by_user_id').references(() => users.id),
     masterServiceId: integer('master_service_id').references(() => masterServices.id),
     approvalStatus: text('approval_status').notNull().default('DRAFT'),
     approvedByUserId: integer('approved_by_user_id').references(() => users.id),
@@ -182,7 +186,8 @@ export const billingItems = pgTable('billing_items', {
 
   tariffCode: text('tariff_code'),
 
-  // Immutable snapshots on new catalogue-based charges; historical rows remain null.
+  // Historical master references remain intact; new lines record a facility service.
+  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
   masterServiceId: integer('master_service_id').references(() => masterServices.id),
   serviceCode: text('service_code'),
   serviceDepartment: text('service_department'),

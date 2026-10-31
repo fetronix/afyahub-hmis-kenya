@@ -521,7 +521,7 @@ describe("Tariff matching — the facility's own price list", () => {
     );
     const journal = readFileSync(resolve(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8');
     const panel = readFileSync(
-      resolve(process.cwd(), 'src/components/modules/FacilityServiceTariffsPanel.tsx'),
+      resolve(process.cwd(), 'src/components/modules/FacilityBillingReview.tsx'),
       'utf8',
     );
 
@@ -545,10 +545,18 @@ describe("Tariff matching — the facility's own price list", () => {
       charges.includes('chargeAttempts.chargeAndRecord(db, request)'),
       'every charge site records what it could not price',
     ).toBe(true);
+    const direct = readFileSync(
+      resolve(process.cwd(), 'src/billing/facility-charge-resolver.ts'),
+      'utf8',
+    );
+    expect(
+      direct.includes('TARIFF_NOT_CONFIGURED') && panel.includes('attempt.detail'),
+      'the direct resolver records a reason which the review screen displays',
+    ).toBe(true);
     expect(
       app.includes("'/api/billing/tariff-match'"),
-      'the screen can ask why a service was not priced',
-    ).toBe(true);
+      'legacy guessed matching is not mounted',
+    ).toBe(false);
     expect(
       migration.includes('CREATE TABLE IF NOT EXISTS "billing_charge_attempts"'),
       'migration 0020 creates the queue',

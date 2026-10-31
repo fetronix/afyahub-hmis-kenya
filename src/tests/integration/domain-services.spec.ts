@@ -293,7 +293,7 @@ describe('Domain Services: Extracted Maternity & Staff-Roles Modules + Portal Cl
       }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
 
-    mockDb.state!.queueSelect([activePregnancy], [openLabourRow]);
+    mockDb.state!.queueSelect([activePregnancy], [openLabourRow], [activePregnancy]); // locked recheck inside transaction
     mockDb.state!.queueInsert(
       [{ id: 501, pregnancyId: 100, deliveryMode: 'Spontaneous Vertex' }],
       [{ id: 601, deliveryId: 501, babyNumber: 1, outcome: 'Live Birth' }],

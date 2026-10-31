@@ -79,23 +79,15 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         [facilityId, `NOITEM-${suffix}`],
       )
     ).rows[0].id as number;
-    const master = (
+    const service = (
       await pool.query(
-        "INSERT INTO master_services(tenant_id,code,description,department,billing_family,unit,clinical_source,origin_facility_id,origin_source_id) VALUES($1,$2,'Synthetic priced item','pharmacy','PHARMACY','Tablet','PHARMACY',$3,$4) RETURNING id",
-        [tenant, `SYN-${facilityId}-${suffix}`.toUpperCase(), facilityId, priced],
+        "INSERT INTO facility_services(tenant_id,facility_id,code,name,description,department,category,unit,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic priced item','Synthetic priced item','pharmacy','PHARMACY','Tablet',true,true) RETURNING id",
+        [tenant, facilityId, `ITEM-${suffix}`.toUpperCase()],
       )
     ).rows[0].id;
     await pool.query(
-      "INSERT INTO master_service_sources(tenant_id,facility_id,source_type,source_id,master_service_id,created_by_user_id) VALUES($1,$2,'PHARMACY',$3,$4,$5)",
-      [tenant, facilityId, priced, master, actor],
-    );
-    await pool.query(
-      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,master_service_id,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic charge','pharmacy','Tablet','7.50',$4,true,true)",
-      [tenant, facilityId, tariffCode, master],
-    );
-    await pool.query(
-      "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE facility_id=$2 AND code=$3",
-      [actor, facilityId, tariffCode],
+      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,facility_service_id,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic charge','pharmacy','Tablet','7.50',$4,true,true)",
+      [tenant, facilityId, tariffCode, service],
     );
     items.set(facilityId, { priced, unpriced });
   };
@@ -185,10 +177,6 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
       await pool.query(
         'UPDATE facility_service_tariffs SET is_active=true WHERE facility_id=$1 AND code=$2',
         [facility, tariffCode],
-      );
-      await pool.query(
-        "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE facility_id=$2 AND code=$3",
-        [actor, facility, tariffCode],
       );
     }
   });

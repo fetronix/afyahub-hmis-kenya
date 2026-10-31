@@ -19,7 +19,7 @@ export const createRadiologyOrderBodySchema = z.object({
   facilityId: optionalId('facilityId'),
   patientId: positiveIntField('A valid patient ID is required.'),
   encounterId: optionalId('encounterId'),
-  masterServiceId: optionalId('masterServiceId'),
+  facilityServiceId: optionalId('facilityServiceId'),
   idempotencyKey: z.string().trim().min(16).max(128).optional(),
   modality: z.string().trim().min(1, 'A modality is required.').max(120),
   procedureName: z.string().trim().min(1, 'A procedure name is required.').max(500),

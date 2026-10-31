@@ -153,7 +153,7 @@ describe('every inline domain is still reachable', () => {
     // Money.
     ['billing', 'POST /api/invoices'],
     ['claims', 'POST /api/claims'],
-    ['tariffs', 'GET /api/service-tariffs'],
+    ['facility tariffs', 'GET /api/facility-tariffs'],
     // Reporting, interoperability and audit.
     ['reporting', 'GET /api/reporting/operations'],
     ['analytics', 'GET /api/analytics/revenue'],

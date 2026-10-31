@@ -12,6 +12,25 @@ export const createLabOrderBatchBodySchema = z
     investigations: z.array(z.string().trim().max(200)).max(100).optional(),
     clinicalException: z.boolean().optional(),
     testIds: z.array(positiveIntField('Each test ID must be positive.')).max(100).optional(),
+    facilityServiceId: positiveIntField('A valid facility investigation is required.').optional(),
+    orderLines: z
+      .array(
+        z
+          .object({
+            facilityServiceId: positiveIntField(
+              'A valid facility investigation is required.',
+            ).optional(),
+            investigation: z.string().trim().min(1).max(200).optional(),
+            specimenType: z.string().trim().min(1).max(120),
+          })
+          .refine(
+            (line) => Boolean(line.facilityServiceId) !== Boolean(line.investigation),
+            'Choose a facility service or enter a free-text investigation.',
+          ),
+      )
+      .min(1)
+      .max(100)
+      .optional(),
     testSelections: z
       .array(
         z.object({
@@ -36,7 +55,12 @@ export const createLabOrderBatchBodySchema = z
     (body) =>
       body.investigations !== undefined
         ? body.investigations.some((name) => name.length > 0)
-        : Boolean(body.testSelections?.length || body.testIds?.length),
+        : Boolean(
+            body.testSelections?.length ||
+            body.testIds?.length ||
+            body.facilityServiceId ||
+            body.orderLines?.length,
+          ),
     { message: 'Enter at least one laboratory investigation.' },
   )
   .refine((body) => !body.testIds || new Set(body.testIds).size === body.testIds.length, {
@@ -53,9 +77,24 @@ export const createLabOrderBatchBodySchema = z
   )
   .refine(
     (body) =>
-      body.testSelections
-        ? !body.testIds && !body.investigations && Boolean(body.idempotencyKey && body.encounterId)
-        : Boolean(body.specimenType),
+      body.orderLines
+        ? !body.testSelections &&
+          !body.testIds &&
+          !body.investigations &&
+          !body.facilityServiceId &&
+          !body.clinicalException &&
+          !body.specimenType &&
+          Boolean(body.idempotencyKey && body.encounterId)
+        : body.testSelections
+          ? !body.testIds &&
+            !body.investigations &&
+            !body.facilityServiceId &&
+            Boolean(body.idempotencyKey && body.encounterId)
+          : body.facilityServiceId
+            ? !body.testIds &&
+              !body.investigations &&
+              Boolean(body.specimenType && body.idempotencyKey && body.encounterId)
+            : Boolean(body.specimenType),
     {
       message:
         'Selected tests require an encounter and idempotency key; legacy orders require a specimen.',
@@ -63,13 +102,25 @@ export const createLabOrderBatchBodySchema = z
   )
   .refine(
     (body) =>
-      Boolean(body.testSelections) ||
+      Boolean(body.testSelections || body.orderLines) ||
       ((!body.investigations || !body.testIds) &&
         (body.investigations?.length ?? body.testIds?.length ?? 0) <= 1),
     {
       message:
         'Submit one legacy request per specimen, or select an individually reviewed specimen for each test.',
     },
+  )
+  .refine(
+    (body) =>
+      !body.orderLines ||
+      new Set(
+        body.orderLines.map((line) =>
+          line.facilityServiceId
+            ? `id:${line.facilityServiceId}`
+            : `name:${line.investigation?.toLowerCase()}`,
+        ),
+      ).size === body.orderLines.length,
+    { message: 'Duplicate investigations are not allowed in one submission.' },
   )
   .refine(
     (body) =>
@@ -94,6 +145,7 @@ export const createLabOrderBodySchema = z
     patientId: optionalId('patientId'),
     encounterId: optionalId('encounterId'),
     testId: optionalId('testId'),
+    facilityServiceId: optionalId('facilityServiceId'),
     specimenOptionId: positiveIntField('A valid reviewed specimen is required.').optional(),
     testName: z.string().trim().min(1, 'A test name is required.').max(200),
     status: z.literal('Ordered').optional(),

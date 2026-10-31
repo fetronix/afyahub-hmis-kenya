@@ -15,6 +15,7 @@ import type {
   InsuranceClaim,
   LabServiceDiagnostics,
   FacilityTariffValidation,
+  FacilityService,
   OccupancyTrendResponse,
   OperationsReport,
   PaymentLedgerRow,
@@ -63,7 +64,90 @@ export interface MasterTariffEdit {
   autoBill: boolean;
 }
 
+export interface FacilityServiceInput {
+  facilityId: number;
+  code: string;
+  name: string;
+  description: string;
+  department: string;
+  category: string;
+  unit: string;
+  isActive: boolean;
+  autoBill: boolean;
+}
+export interface FacilityTariffInput {
+  facilityId: number;
+  serviceId: number;
+  code: string;
+  description: string;
+  department: string;
+  unit: string;
+  fee: string;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  isActive: boolean;
+  autoBill: boolean;
+}
+
 export const billingClient = {
+  getFacilityServices: (facilityId: number) =>
+    fetchJson<FacilityService[]>(
+      `${API_BASE}/facility-services?facilityId=${encodeURIComponent(facilityId)}`,
+    ),
+  getAvailableFacilityServices: (
+    facilityId: number,
+    filter: { department?: string; category?: string },
+  ) => {
+    const query = new URLSearchParams({ facilityId: String(facilityId) });
+    if (filter.department) query.set('department', filter.department);
+    if (filter.category) query.set('category', filter.category);
+    return fetchJson<FacilityService[]>(`${API_BASE}/facility-services/available?${query}`);
+  },
+  createFacilityService: (
+    input: FacilityServiceInput & { initialPrice: string; initialTariffCode?: string },
+  ) =>
+    fetchJson<{ service: FacilityService; tariff: ServiceTariff }>(
+      `${API_BASE}/facility-services`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  updateFacilityService: (id: number, input: FacilityServiceInput) =>
+    fetchJson<FacilityService>(`${API_BASE}/facility-services/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  setFacilityServiceStatus: (id: number, facilityId: number, isActive: boolean) =>
+    fetchJson<FacilityService>(`${API_BASE}/facility-services/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ facilityId, isActive }),
+    }),
+  getFacilityTariffs: (facilityId: number) =>
+    fetchJson<ServiceTariff[]>(
+      `${API_BASE}/facility-tariffs?facilityId=${encodeURIComponent(facilityId)}`,
+    ),
+  createFacilityTariff: (input: FacilityTariffInput) =>
+    fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateFacilityTariff: (id: number, input: FacilityTariffInput) =>
+    fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  setFacilityTariffStatus: (id: number, facilityId: number, isActive: boolean) =>
+    fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ facilityId, isActive }),
+    }),
+  archiveFacilityTariff: (id: number, facilityId: number) =>
+    fetchJson<ServiceTariff>(
+      `${API_BASE}/facility-tariffs/${id}?facilityId=${encodeURIComponent(facilityId)}`,
+      { method: 'DELETE' },
+    ),
+  getFacilityTariffByServiceCode: (facilityId: number, code: string) =>
+    fetchJson<{ service: FacilityService; tariff: ServiceTariff }>(
+      `${API_BASE}/facility-tariffs/by-service-code/${encodeURIComponent(code)}?facilityId=${encodeURIComponent(facilityId)}`,
+    ),
   getReviewedLabSpecimens: (facilityId: number) =>
     fetchJson<
       Array<{

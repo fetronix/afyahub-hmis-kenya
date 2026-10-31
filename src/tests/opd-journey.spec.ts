@@ -111,8 +111,8 @@ describe('The outpatient journey — contract tests', () => {
     const report = routeBody(routes, 'router.put', '/api/radiology-orders/:id/report')!;
     expect(order).not.toContain('chargeSafely');
     expect(report).toContain('chargeSafely(radiologyChargeRequest(order))');
-    const resolver = source('src/billing/master-charge-resolver.ts');
-    expect(resolver).toContain('row.masterServiceId');
+    const resolver = source('src/billing/facility-charge-resolver.ts');
+    expect(resolver).toContain('row.facilityServiceId');
     expect(resolver).toContain("row.status !== 'Reported'");
     expect(resolver).not.toContain('row.modality');
   });
@@ -122,27 +122,28 @@ describe('The outpatient journey — contract tests', () => {
     const radiologyQueries = source('src/db/queries/laboratory.ts');
     const inventory = source('src/inventory/inventory.service.ts');
     const inpatient = source('src/db/queries/inpatient.ts');
-    const resolver = source('src/billing/master-charge-resolver.ts');
+    const resolver = source('src/billing/facility-charge-resolver.ts');
     const billing = source('src/billing/billing.service.ts');
     expect(encounterQueries).toContain('recordChargeAttempt(tx, consultationChargeRequest');
     expect(radiologyQueries).toContain('recordChargeAttempt(tx, radiologyChargeRequest');
     expect(inventory).toContain("sourceType: 'PHARMACY'");
     expect(inpatient).toContain('recordChargeAttempt(tx, admissionChargeRequest');
-    expect(resolver).toContain('schema.masterServiceSources');
-    expect(resolver).toContain('schema.masterServiceAliases');
+    expect(resolver).toContain('schema.facilityServices');
+    expect(resolver).toContain('schema.facilityServiceTariffs');
+    expect(resolver).not.toContain('schema.masterServiceSources');
+    expect(resolver).not.toContain('schema.masterServiceAliases');
     expect(resolver).toContain('CONSULTATION_SELECTION_REQUIRED');
     expect(resolver).not.toContain(
       'upper(trim(${schema.masterServices.code})) = upper(trim(${sourceCode}))',
     );
-    expect(resolver).toContain("tariff.approvalStatus !== 'APPROVED'");
+    expect(resolver).toContain('tariff.autoBill');
     expect(resolver).toContain('cents <= 0');
     expect(resolver).toContain('dateVerdict(');
     expect(resolver).not.toContain('resolveFromRows');
-    expect(billing).toContain('resolveMasterCharge(');
+    expect(billing).toContain('resolveFacilityCharge(');
     expect(billing).toContain('idempotencyKey');
-    expect(billing).toContain('masterServiceId: master.id');
-    const panel = source('src/components/modules/MasterTariffPriceList.tsx');
-    expect(panel).toContain('retryChargeAttempt');
+    expect(billing).toContain('facilityServiceId: service.id');
+    expect(source('src/routes/index.ts')).not.toContain('masterTariffsRoutes');
   });
 
   it('5. A VISIT CAN END', async () => {

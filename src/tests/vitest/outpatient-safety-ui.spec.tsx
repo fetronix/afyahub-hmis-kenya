@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     getPatients: vi.fn(),
     getLabTests: vi.fn(),
     getClinicalCatalogue: vi.fn(),
+    getAvailableFacilityServices: vi.fn(),
     createEncounter: vi.fn(),
     createLabOrderBatch: vi.fn(),
     getQueues: vi.fn(),
@@ -53,6 +54,7 @@ describe('Outpatient worklist and patient isolation', () => {
     mocks.api.getPatients.mockResolvedValue(patients);
     mocks.api.getLabTests.mockResolvedValue([]);
     mocks.api.getClinicalCatalogue.mockResolvedValue([]);
+    mocks.api.getAvailableFacilityServices.mockResolvedValue([]);
     mocks.api.createEncounter.mockResolvedValue({
       id: 111,
       patientId: 11,
@@ -213,32 +215,37 @@ describe('Outpatient worklist and patient isolation', () => {
     await waitFor(() => expect(mocks.api.createQueueItem).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('Synthetic drug')).not.toBeInTheDocument();
   });
-  it('selects the actual consultation and previews its approved facility price before creating a visit', async () => {
+  it('allows optional consultation selection and shows facility prices without a compulsory modal', async () => {
     mocks.api.getEncounters.mockResolvedValue([]);
-    mocks.api.getClinicalCatalogue.mockImplementation(async (_facility: number, family: string) =>
-      family === 'CONSULTATION'
-        ? [
-            {
-              id: 7,
-              code: 'SYN-FOLLOW',
-              description: 'Synthetic follow-up',
-              family,
-              department: 'opd',
-              unit: 'Visit',
-              unitPrice: '150.00',
-              priceStatus: 'AVAILABLE',
-              priceMessage: null,
-              clinicalSource: 'ENCOUNTER:FOLLOW_UP',
-            },
-          ]
-        : [],
+    mocks.api.getAvailableFacilityServices.mockImplementation(
+      async (_facility: number, filter: { category: string }) =>
+        filter.category === 'CONSULTATION'
+          ? [
+              {
+                id: 7,
+                code: 'SYN-FOLLOW',
+                name: 'Synthetic follow-up',
+                department: 'opd',
+                unit: 'Visit',
+                unitPrice: '150.00',
+              },
+              {
+                id: 8,
+                code: 'SYN-CONS',
+                name: 'Synthetic consultation',
+                department: 'opd',
+                unit: 'Visit',
+                unitPrice: '100.00',
+              },
+            ]
+          : [],
     );
     const user = userEvent.setup();
     render(<OutpatientModule />);
     await user.click(await screen.findByRole('button', { name: /Synthetic One/ }));
     const select = await screen.findByLabelText('Consultation service');
     expect(select).toHaveTextContent('Synthetic follow-up · KES 150.00');
-    expect(screen.getByRole('button', { name: 'Start outpatient visit' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Start outpatient visit' })).toBeEnabled();
     await user.selectOptions(select, '7');
     await user.click(screen.getByRole('button', { name: 'Start outpatient visit' }));
     await waitFor(() =>
@@ -246,68 +253,57 @@ describe('Outpatient worklist and patient isolation', () => {
         expect.objectContaining({
           patientId: 11,
           facilityId: 2,
-          consultationMasterServiceId: 7,
+          consultationFacilityServiceId: 7,
           idempotencyKey: expect.any(String),
         }),
       ),
     );
   });
 
-  it('submits two exact tests with different reviewed specimens and no shared specimen string', async () => {
+  it('submits multiple exact investigations with an individually entered specimen for each', async () => {
     const tests = [
       {
         id: 41,
-        testId: 41,
         code: 'COUNT',
-        description: 'Synthetic count',
-        family: 'LABORATORY',
+        name: 'Synthetic count',
         department: 'laboratory',
         unit: 'Test',
         unitPrice: '80.00',
-        priceStatus: 'AVAILABLE',
-        priceMessage: null,
-        specimenOptions: [{ id: 101, specimenType: 'Synthetic blood' }],
       },
       {
         id: 42,
-        testId: 42,
         code: 'URINE',
-        description: 'Synthetic urine',
-        family: 'LABORATORY',
+        name: 'Synthetic urine',
         department: 'laboratory',
         unit: 'Test',
         unitPrice: '45.00',
-        priceStatus: 'AVAILABLE',
-        priceMessage: null,
-        specimenOptions: [{ id: 102, specimenType: 'Synthetic urine specimen' }],
       },
       {
         id: 43,
-        testId: 43,
-        code: 'UNREVIEWED',
-        description: 'Synthetic unreviewed',
-        family: 'LABORATORY',
+        code: 'UNPRICED',
+        name: 'Synthetic unpriced',
         department: 'laboratory',
         unit: 'Test',
         unitPrice: null,
-        priceStatus: 'ZERO_PRICE',
-        priceMessage: 'The facility price is unconfigured.',
-        specimenOptions: [],
       },
     ];
-    mocks.api.getClinicalCatalogue.mockImplementation(async (_facility: number, family: string) =>
-      family === 'LABORATORY' ? tests : [],
+    mocks.api.getAvailableFacilityServices.mockImplementation(
+      async (_facility: number, filter: { category: string }) =>
+        filter.category === 'LABORATORY' ? tests : [],
     );
     const user = userEvent.setup();
     render(<OutpatientModule />);
     await user.click(await screen.findByRole('button', { name: /Synthetic One/ }));
-    expect(await screen.findByText('Synthetic count')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: /Synthetic unreviewed/ })).toBeDisabled();
+    expect(
+      await screen.findByText(/Synthetic unpriced · UNPRICED · price unavailable/),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: /Synthetic count/ }));
-    await user.selectOptions(screen.getByLabelText('Specimen for Synthetic count'), '101');
     await user.click(screen.getByRole('checkbox', { name: /Synthetic urine · URINE/ }));
-    await user.selectOptions(screen.getByLabelText('Specimen for Synthetic urine'), '102');
-    expect(screen.getByText(/Indicative total KES 125.00/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Specimen for Synthetic count'), 'Synthetic blood');
+    await user.type(
+      screen.getByLabelText('Specimen for Synthetic urine'),
+      'Synthetic urine specimen',
+    );
     await user.type(
       screen.getByPlaceholderText('Why are these investigations required?'),
       'Synthetic reason',
@@ -318,16 +314,14 @@ describe('Outpatient worklist and patient isolation', () => {
         expect.objectContaining({
           encounterId: 111,
           patientId: 11,
-          testSelections: [
-            { testId: 41, specimenOptionId: 101 },
-            { testId: 42, specimenOptionId: 102 },
+          orderLines: [
+            { facilityServiceId: 41, specimenType: 'Synthetic blood' },
+            { facilityServiceId: 42, specimenType: 'Synthetic urine specimen' },
           ],
           idempotencyKey: expect.any(String),
         }),
       ),
     );
-    const sent = mocks.api.createLabOrderBatch.mock.calls[0][0];
-    expect(sent).not.toHaveProperty('specimenType');
-    expect(sent).not.toHaveProperty('investigations');
+    expect(mocks.api.createLabOrderBatch.mock.calls[0][0]).not.toHaveProperty('specimenType');
   });
 });

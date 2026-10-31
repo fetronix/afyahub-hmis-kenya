@@ -57,6 +57,7 @@ describe('schema barrel: pre-extraction contract', () => {
         'labOrderBatches',
         'radiologyOrderRequests',
         'encounterCreationRequests',
+        'facilityServices',
       ].sort(),
     );
   });

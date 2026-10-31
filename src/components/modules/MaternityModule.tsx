@@ -346,6 +346,7 @@ export const MaternityModule: React.FC = () => {
 
       {tab === 'deliveries' && (
         <DeliveryRegisterSection
+          facilityId={facilityId}
           activePregnancies={activePregnancies}
           inLabour={inLabour}
           labours={labours}

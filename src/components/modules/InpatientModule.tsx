@@ -3,7 +3,14 @@ import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { Ward, Bed, Admission, Patient, InpatientBoard } from '../../types/index.ts';
+import {
+  Ward,
+  Bed,
+  Admission,
+  Patient,
+  InpatientBoard,
+  FacilityService,
+} from '../../types/index.ts';
 import { NursingPanel } from './NursingPanel.tsx';
 
 /*
@@ -97,6 +104,7 @@ export const InpatientModule: React.FC = () => {
     bedId: '',
     admissionDate: new Date().toISOString().slice(0, 16).replace('T', ' '),
     admissionType: 'Emergency',
+    facilityServiceId: '',
     /*
      * Empty on purpose. These were pre-filled with a diagnosis and a
      * treatment plan that no clinician had entered, so an admission
@@ -105,6 +113,28 @@ export const InpatientModule: React.FC = () => {
     provisionalDiagnosis: '',
     nursingNotes: '',
   });
+
+  const [admissionServices, setAdmissionServices] = useState<FacilityService[]>([]);
+  const [admissionServiceError, setAdmissionServiceError] = useState(false);
+  useEffect(() => {
+    let current = true;
+    setAdmissionServices([]);
+    setAdmissionServiceError(false);
+    setAdmitForm((previous) => ({ ...previous, facilityServiceId: '' }));
+    if (isAdmitModalOpen && currentFacility?.id) {
+      api
+        .getAvailableFacilityServices(currentFacility.id, { category: 'ADMISSION' })
+        .then((rows) => {
+          if (current) setAdmissionServices(rows);
+        })
+        .catch(() => {
+          if (current) setAdmissionServiceError(true);
+        });
+    }
+    return () => {
+      current = false;
+    };
+  }, [isAdmitModalOpen, currentFacility?.id, refreshKey]);
 
   /* ---------------- ward and bed set-up ---------------- */
   const [wardFormOpen, setWardFormOpen] = useState(false);
@@ -199,6 +229,9 @@ export const InpatientModule: React.FC = () => {
         bedId: Number(admitForm.bedId),
         admissionDate: admitForm.admissionDate,
         admissionType: admitForm.admissionType,
+        ...(admitForm.facilityServiceId
+          ? { facilityServiceId: Number(admitForm.facilityServiceId) }
+          : {}),
         admittingDoctor: currentUser.name,
         provisionalDiagnosis: admitForm.provisionalDiagnosis,
         nursingNotes: admitForm.nursingNotes,
@@ -1026,6 +1059,37 @@ export const InpatientModule: React.FC = () => {
                     <option value="Transfer">Inter-Facility Transfer</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="admission-facility-service"
+                  className="block font-medium text-slate-700 mb-1"
+                >
+                  Admission service (optional)
+                </label>
+                <select
+                  id="admission-facility-service"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                  value={admitForm.facilityServiceId}
+                  onChange={(event) =>
+                    setAdmitForm({ ...admitForm, facilityServiceId: event.target.value })
+                  }
+                >
+                  <option value="">Use sole configured service, otherwise billing review</option>
+                  {admissionServices.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name} ({service.code}) —{' '}
+                      {service.unitPrice == null ? 'price unavailable' : `KES ${service.unitPrice}`}
+                    </option>
+                  ))}
+                </select>
+                {admissionServiceError && (
+                  <p role="alert" className="text-amber-700">
+                    Admission services could not be loaded; care may continue and billing may
+                    require review.
+                  </p>
+                )}
               </div>
 
               <div>

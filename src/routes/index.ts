@@ -50,8 +50,7 @@ import laboratoryRoutes from './laboratory.routes.ts';
 import radiologyRoutes from './radiology.routes.ts';
 import pharmacyRoutes from './pharmacy.routes.ts';
 import procurementRoutes from './procurement.routes.ts';
-import serviceTariffsRoutes from './service-tariffs.routes.ts';
-import masterTariffsRoutes from './master-tariffs.routes.ts';
+import facilityServicesRoutes from './facility-services.routes.ts';
 import billingRoutes from './billing.routes.ts';
 import dhaRoutes from './dha.routes.ts';
 import shaEclaimsRoutes from './sha-eclaims.routes.ts';
@@ -75,7 +74,6 @@ import interopRoutes from './domains/interop.routes.ts';
 import invoicesRoutes from './domains/invoices.routes.ts';
 import patientsRoutes from './domains/patients.routes.ts';
 import publicHealthRoutes from './domains/public-health.routes.ts';
-import serviceTariffLinksRoutes from './domains/service-tariff-links.routes.ts';
 import tenancyRoutes from './domains/tenancy.routes.ts';
 
 export function createApiRoutes(): Router {
@@ -192,8 +190,7 @@ export function createDomainRoutes(): Router {
 
   domains.use(dhaRoutes);
   domains.use(billingRoutes);
-  domains.use(masterTariffsRoutes);
-  domains.use(serviceTariffsRoutes);
+  domains.use(facilityServicesRoutes);
   domains.use(procurementRoutes);
   domains.use(pharmacyRoutes);
   domains.use(radiologyRoutes);
@@ -210,7 +207,6 @@ export function createDomainRoutes(): Router {
   domains.use(patientsRoutes);
   domains.use(encountersRoutes);
   domains.use(billingChargesRoutes);
-  domains.use(serviceTariffLinksRoutes);
   domains.use(billingAnalyticsRoutes);
   domains.use(claimsRoutes);
   domains.use(invoicesRoutes);

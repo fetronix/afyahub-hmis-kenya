@@ -27,6 +27,7 @@ import { patients } from './patients.ts';
 import { encounters, queues } from './clinical.ts';
 import { sql } from 'drizzle-orm';
 import { masterServices } from './master-services.ts';
+import { facilityServices } from './facility-services.ts';
 import { users } from './auth.ts';
 
 export const labTests = pgTable(
@@ -149,6 +150,8 @@ export const labOrders = pgTable('lab_orders', {
 
   testId: integer('test_id').references(() => labTests.id),
 
+  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
+
   reviewedSpecimenOptionId: integer('reviewed_specimen_option_id').references(
     () => labTestSpecimenOptions.id,
   ),
@@ -238,6 +241,7 @@ export const radiologyOrders = pgTable('radiology_orders', {
   modality: text('modality').notNull(),
 
   masterServiceId: integer('master_service_id').references(() => masterServices.id),
+  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
 
   procedureName: text('procedure_name').notNull(),
 

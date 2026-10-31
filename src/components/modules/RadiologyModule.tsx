@@ -5,7 +5,7 @@ import { PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { RadiologyOrder, Patient, Encounter, ClinicalCatalogueService } from '../../types/index.ts';
+import { RadiologyOrder, Patient, Encounter, FacilityService } from '../../types/index.ts';
 import { Scan, CheckCircle2, Clock, UserCheck, Plus, FileText } from 'lucide-react';
 
 export const RadiologyModule: React.FC = () => {
@@ -21,7 +21,7 @@ export const RadiologyModule: React.FC = () => {
   } = useHmis();
   const [orders, setOrders] = useState<RadiologyOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [examinations, setExaminations] = useState<ClinicalCatalogueService[]>([]);
+  const [examinations, setExaminations] = useState<FacilityService[]>([]);
   const [examSearch, setExamSearch] = useState('');
   const [patientEncounters, setPatientEncounters] = useState<Encounter[]>([]);
   const [encountersError, setEncountersError] = useState(false);
@@ -46,7 +46,7 @@ export const RadiologyModule: React.FC = () => {
     patientId: '',
     encounterId: '',
     modality: 'X-Ray',
-    masterServiceId: '',
+    facilityServiceId: '',
     procedureName: '',
     clinicalIndication: '',
   });
@@ -68,7 +68,7 @@ export const RadiologyModule: React.FC = () => {
     setCatalogueError(false);
     if (currentFacility?.id) {
       Promise.resolve()
-        .then(() => api.getRadiologyMasterServices(currentFacility.id))
+        .then(() => api.getAvailableFacilityServices(currentFacility.id, { category: 'RADIOLOGY' }))
         .then((rows) => {
           if (active) setExaminations(rows);
         })
@@ -187,7 +187,9 @@ export const RadiologyModule: React.FC = () => {
       patientId: Number(reqForm.patientId),
       ...(reqForm.encounterId ? { encounterId: Number(reqForm.encounterId) } : {}),
       modality: reqForm.modality,
-      ...(reqForm.masterServiceId ? { masterServiceId: Number(reqForm.masterServiceId) } : {}),
+      ...(reqForm.facilityServiceId
+        ? { facilityServiceId: Number(reqForm.facilityServiceId) }
+        : {}),
       procedureName: reqForm.procedureName,
       clinicalIndication: reqForm.clinicalIndication,
       status: 'Requested',
@@ -214,7 +216,7 @@ export const RadiologyModule: React.FC = () => {
         patientId: '',
         encounterId: '',
         modality: 'X-Ray',
-        masterServiceId: '',
+        facilityServiceId: '',
         procedureName: '',
         clinicalIndication: '',
       });
@@ -532,32 +534,30 @@ export const RadiologyModule: React.FC = () => {
               placeholder="Search code or examination"
             />
           </FormField>
-          <FormField label="Specific catalogue examination" htmlFor="radiology-master-exam">
+          <FormField label="Facility examination" htmlFor="radiology-facility-exam">
             <select
-              id="radiology-master-exam"
-              value={reqForm.masterServiceId}
+              id="radiology-facility-exam"
+              value={reqForm.facilityServiceId}
               className="field-input"
               onChange={(event) => {
                 const exam = examinations.find((item) => String(item.id) === event.target.value);
                 setReqForm({
                   ...reqForm,
-                  masterServiceId: event.target.value,
-                  procedureName: exam?.description ?? '',
+                  facilityServiceId: event.target.value,
+                  procedureName: exam?.name ?? '',
                 });
               }}
             >
-              <option value="">Not mapped — clinical request only</option>
+              <option value="">Free-text clinical request only</option>
               {examinations
                 .filter(
                   (exam) =>
-                    `${exam.code} ${exam.description}`
-                      .toLowerCase()
-                      .includes(examSearch.toLowerCase()) ||
-                    String(exam.id) === reqForm.masterServiceId,
+                    `${exam.code} ${exam.name}`.toLowerCase().includes(examSearch.toLowerCase()) ||
+                    String(exam.id) === reqForm.facilityServiceId,
                 )
                 .map((exam) => (
                   <option key={exam.id} value={exam.id}>
-                    {exam.code} — {exam.description} ·{' '}
+                    {exam.code} — {exam.name} ·{' '}
                     {exam.unitPrice === null
                       ? 'Price not configured'
                       : `KES ${exam.unitPrice} / ${exam.unit}`}
@@ -567,8 +567,8 @@ export const RadiologyModule: React.FC = () => {
           </FormField>
           <p className="text-xs text-muted">
             {catalogueError
-              ? 'Examination catalogue unavailable; unmapped requests require billing review.'
-              : 'Prices shown are indicative and rechecked when the examination is reported. Unmapped or unpriced requests remain available for care and require billing review.'}
+              ? 'Facility examinations unavailable; free-text requests require billing review.'
+              : 'Prices shown are indicative and rechecked when the examination is reported. Free-text or unpriced requests remain available for care and require billing review.'}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField label="Imaging modality" htmlFor="radiology-modality">
@@ -589,7 +589,7 @@ export const RadiologyModule: React.FC = () => {
                 id="radiology-procedure"
                 required
                 value={reqForm.procedureName}
-                readOnly={Boolean(reqForm.masterServiceId)}
+                readOnly={Boolean(reqForm.facilityServiceId)}
                 onChange={(event) => setReqForm({ ...reqForm, procedureName: event.target.value })}
                 placeholder="Enter procedure title"
                 className="field-input"

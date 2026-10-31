@@ -87,6 +87,7 @@ export interface Encounter {
   practitionerId?: number;
   encounterType: string;
   consultationMasterServiceId?: number | null;
+  consultationFacilityServiceId?: number | null;
   consultationSelectionReviewRequired?: boolean;
   departmentId?: number;
   status: string;
@@ -236,6 +237,7 @@ export interface Admission {
   facilityId: number;
   patientId: number;
   encounterId?: number;
+  facilityServiceId?: number | null;
   wardId: number;
   bedId: number;
   admissionDate: string;
@@ -370,6 +372,26 @@ export interface TheatreCase {
   createdAt: string;
 }
 
+export interface FacilityService {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  code: string;
+  name: string;
+  description: string;
+  department: string;
+  category: string;
+  unit: string;
+  isActive: boolean;
+  autoBill: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tariffId?: number;
+  tariffCode?: string;
+  unitPrice?: string | null;
+  priceStatus?: string;
+}
+
 export interface ClinicalCatalogueService {
   id: number;
   code: string;
@@ -410,6 +432,7 @@ export interface LabOrder {
   patientId: number;
   encounterId?: number;
   testId?: number;
+  facilityServiceId?: number | null;
   testName: string;
   status: string;
   clinicalIndication?: string | null;
@@ -448,6 +471,7 @@ export interface RadiologyOrder {
   patientId: number;
   encounterId?: number;
   masterServiceId?: number | null;
+  facilityServiceId?: number | null;
   modality: string;
   procedureName: string;
   clinicalIndication?: string;
@@ -610,6 +634,8 @@ export interface ServiceTariff {
   /** Whether automatic billing may use this tariff. */
   autoBill: boolean;
   isActive: boolean;
+  facilityServiceId?: number | null;
+  archivedAt?: string | null;
   masterServiceId?: number | null;
   approvalStatus?: 'DRAFT' | 'APPROVED';
   revision?: number;

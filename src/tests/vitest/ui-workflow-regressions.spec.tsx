@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   getPatient: vi.fn(),
   getEncounters: vi.fn(),
   getInvoices: vi.fn(),
-  getServiceTariffs: vi.fn(),
+  getFacilityTariffs: vi.fn(),
   createAppointment: vi.fn(),
   getInventory: vi.fn(),
   getInventoryBatches: vi.fn(),
@@ -98,7 +98,7 @@ beforeEach(() => {
   privateMocks.getDiagnostics.mockResolvedValue({ diagnostics: [], auditEvents: [] });
   mocks.getEncounters.mockResolvedValue([]);
   mocks.getInvoices.mockResolvedValue([]);
-  mocks.getServiceTariffs.mockResolvedValue([]);
+  mocks.getFacilityTariffs.mockResolvedValue([]);
   mocks.getPatient.mockResolvedValue({
     id: 99,
     firstName: 'Synthetic',

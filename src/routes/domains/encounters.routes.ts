@@ -140,7 +140,7 @@ router.post(
       const encounter = await queries.selectEncounterConsultation(
         req.authContext,
         Number(req.params.id),
-        req.body?.masterServiceId,
+        req.body?.facilityServiceId,
         req.body?.reviewReason,
       );
       const charge =

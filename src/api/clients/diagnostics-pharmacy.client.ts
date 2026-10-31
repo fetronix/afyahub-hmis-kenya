@@ -41,6 +41,12 @@ export const diagnosticsPharmacyClient = {
     encounterId: number;
     patientId: number;
     testIds?: number[];
+    facilityServiceId?: number;
+    orderLines?: Array<{
+      facilityServiceId?: number;
+      investigation?: string;
+      specimenType: string;
+    }>;
     investigations?: string[];
     clinicalException?: boolean;
     testSelections?: Array<{ testId: number; specimenOptionId: number }>;

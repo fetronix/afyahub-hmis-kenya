@@ -255,6 +255,7 @@ export interface CreateAdmissionInput {
   wardId: number;
   bedId: number;
   encounterId?: number | null;
+  facilityServiceId?: number | null;
   admissionDate?: string;
   admissionType?: string;
   admittingDoctor?: string | null;
@@ -418,6 +419,47 @@ export async function createAdmissionScoped(
         );
       }
 
+      /* ---- Persist the admission service identity at creation ------- */
+      let admissionServiceId: number | null = null;
+      if (input.facilityServiceId !== undefined && input.facilityServiceId !== null) {
+        const selectedId = requirePositiveId(input.facilityServiceId, 'admission service ID');
+        const [selected] = await tx
+          .select({ id: schema.facilityServices.id })
+          .from(schema.facilityServices)
+          .where(
+            and(
+              eq(schema.facilityServices.id, selectedId),
+              eq(schema.facilityServices.tenantId, facility.tenantId),
+              eq(schema.facilityServices.facilityId, facility.id),
+              eq(schema.facilityServices.category, 'ADMISSION'),
+              eq(schema.facilityServices.isActive, true),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (!selected)
+          throw new InpatientDomainError(
+            'INVALID_ADMISSION_SERVICE',
+            'The selected admission service is unavailable in this facility.',
+            400,
+          );
+        admissionServiceId = selected.id;
+      } else {
+        const choices = await tx
+          .select({ id: schema.facilityServices.id })
+          .from(schema.facilityServices)
+          .where(
+            and(
+              eq(schema.facilityServices.tenantId, facility.tenantId),
+              eq(schema.facilityServices.facilityId, facility.id),
+              eq(schema.facilityServices.category, 'ADMISSION'),
+              eq(schema.facilityServices.isActive, true),
+            ),
+          )
+          .limit(2)
+          .for('share');
+        if (choices.length === 1) admissionServiceId = choices[0].id;
+      }
       /* ---- Insert admission ---------------------------------- */
 
       const [created] = await tx
@@ -427,6 +469,7 @@ export async function createAdmissionScoped(
           facilityId: facility.id,
           patientId: patient.id,
           encounterId,
+          facilityServiceId: admissionServiceId,
           wardId: ward.id,
           bedId: bed.id,
           admissionDate,

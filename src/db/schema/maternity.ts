@@ -29,6 +29,7 @@ import { facilities, tenants } from './tenancy.ts';
 import { patients } from './patients.ts';
 
 import { encounters } from './clinical.ts';
+import { facilityServices } from './facility-services.ts';
 
 export const maternityPregnancies = pgTable(
   'maternity_pregnancies',
@@ -326,6 +327,10 @@ export const deliveries = pgTable(
     patientId: integer('patient_id')
       .references(() => patients.id)
       .notNull(),
+
+    // The selected facility-owned service is optional for clinical care.
+    // Historical deliveries are never implicitly recoded.
+    facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
 
     deliveredAt: text('delivered_at').notNull(),
 

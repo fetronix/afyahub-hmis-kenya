@@ -145,21 +145,8 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
         },
       ],
       [{ id: 4, code: 'ITEM-4', unit: 'Tablet' }],
-      [
-        {
-          master: {
-            id: 5,
-            code: 'JC-ITEM-4',
-            description: 'Synthetic product',
-            department: 'pharmacy',
-            billingFamily: 'PHARMACY',
-            unit: 'Tablet',
-            isActive: true,
-            tenantId: 1,
-            originFacilityId: 10,
-          },
-        },
-      ],
+      [{ id: 4 }], // exact inventory code is unique in this facility
+      [{ id: 5, code: 'ITEM-4', name: 'Synthetic product', description: 'Synthetic product', department: 'pharmacy', category: 'PHARMACY', unit: 'Tablet', isActive: true, autoBill: true, tenantId: 1, facilityId: 10 }],
       [
         {
           id: 6,

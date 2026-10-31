@@ -29,6 +29,7 @@ import { users } from './auth.ts';
 
 import { patients, practitioners } from './patients.ts';
 import { masterServices } from './master-services.ts';
+import { facilityServices } from './facility-services.ts';
 
 export const encounters = pgTable(
   'encounters',
@@ -65,6 +66,9 @@ export const encounters = pgTable(
 
     consultationMasterServiceId: integer('consultation_master_service_id').references(
       () => masterServices.id,
+    ),
+    consultationFacilityServiceId: integer('consultation_facility_service_id').references(
+      () => facilityServices.id,
     ),
     consultationSelectionReviewRequired: boolean('consultation_selection_review_required')
       .notNull()
@@ -355,6 +359,7 @@ export const encounterCreationRequests = pgTable(
       .references(() => facilities.id),
     idempotencyKey: text('idempotency_key').notNull(),
     payloadHash: text('payload_hash').notNull(),
+    payloadVersion: integer('payload_version').notNull().default(1),
     encounterId: integer('encounter_id').references(() => encounters.id),
     createdByUserId: integer('created_by_user_id')
       .notNull()

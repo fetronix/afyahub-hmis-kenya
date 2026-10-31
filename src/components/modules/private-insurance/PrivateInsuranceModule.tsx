@@ -173,7 +173,7 @@ export const PrivateInsuranceModule: React.FC = () => {
       api.getPatients(tenantId, facilityId),
       api.getEncounters(undefined, facilityId),
       api.getInvoices(facilityId),
-      api.getServiceTariffs(facilityId),
+      api.getFacilityTariffs(facilityId),
     ] as const);
     if (generation !== requestGeneration.current) return;
     const [
