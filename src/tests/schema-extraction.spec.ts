@@ -53,6 +53,10 @@ describe('schema barrel: pre-extraction contract', () => {
         'masterServices',
         'masterServiceSources',
         'masterServiceAliases',
+        'labTestSpecimenOptions',
+        'labOrderBatches',
+        'radiologyOrderRequests',
+        'encounterCreationRequests',
       ].sort(),
     );
   });

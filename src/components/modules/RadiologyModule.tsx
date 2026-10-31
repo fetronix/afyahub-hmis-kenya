@@ -5,7 +5,7 @@ import { PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
-import { RadiologyOrder, Patient } from '../../types/index.ts';
+import { RadiologyOrder, Patient, Encounter, ClinicalCatalogueService } from '../../types/index.ts';
 import { Scan, CheckCircle2, Clock, UserCheck, Plus, FileText } from 'lucide-react';
 
 export const RadiologyModule: React.FC = () => {
@@ -21,9 +21,13 @@ export const RadiologyModule: React.FC = () => {
   } = useHmis();
   const [orders, setOrders] = useState<RadiologyOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [examinations, setExaminations] = useState<
-    Array<{ id: number; code: string; description: string; unit: string }>
-  >([]);
+  const [examinations, setExaminations] = useState<ClinicalCatalogueService[]>([]);
+  const [examSearch, setExamSearch] = useState('');
+  const [patientEncounters, setPatientEncounters] = useState<Encounter[]>([]);
+  const [encountersError, setEncountersError] = useState(false);
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const submittingRequestRef = useRef(false);
+  const requestKey = useRef<{ fingerprint: string; key: string } | null>(null);
   const [catalogueError, setCatalogueError] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RadiologyOrder | null>(null);
   const selectedOrderRef = useRef<RadiologyOrder | null>(null);
@@ -40,6 +44,7 @@ export const RadiologyModule: React.FC = () => {
   const [isNewReqModalOpen, setIsNewReqModalOpen] = useState(false);
   const [reqForm, setReqForm] = useState({
     patientId: '',
+    encounterId: '',
     modality: 'X-Ray',
     masterServiceId: '',
     procedureName: '',
@@ -147,32 +152,67 @@ export const RadiologyModule: React.FC = () => {
     };
   }, [selectedOrder?.patientId, patients]);
 
+  useEffect(() => {
+    let current = true;
+    setPatientEncounters([]);
+    setEncountersError(false);
+    if (isNewReqModalOpen && reqForm.patientId && currentFacility?.id) {
+      Promise.resolve()
+        .then(() => api.getEncounters(Number(reqForm.patientId), currentFacility.id))
+        .then((rows) => {
+          if (current)
+            setPatientEncounters(rows.filter((row) => row.status?.toLowerCase() !== 'cancelled'));
+        })
+        .catch(() => {
+          if (current) setEncountersError(true);
+        });
+    }
+    return () => {
+      current = false;
+    };
+  }, [isNewReqModalOpen, reqForm.patientId, currentFacility?.id]);
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reqForm.patientId) return;
+    if (!reqForm.patientId || submittingRequestRef.current) return;
 
     if (!currentFacility?.id) {
       showToast('Select a facility before saving this record.', { tone: 'warning' });
       return;
     }
 
+    const payload = {
+      tenantId: currentFacility.tenantId,
+      facilityId: currentFacility.id,
+      patientId: Number(reqForm.patientId),
+      ...(reqForm.encounterId ? { encounterId: Number(reqForm.encounterId) } : {}),
+      modality: reqForm.modality,
+      ...(reqForm.masterServiceId ? { masterServiceId: Number(reqForm.masterServiceId) } : {}),
+      procedureName: reqForm.procedureName,
+      clinicalIndication: reqForm.clinicalIndication,
+      status: 'Requested',
+      orderedBy: currentUser.name,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (requestKey.current?.fingerprint !== fingerprint)
+      requestKey.current = { fingerprint, key: crypto.randomUUID() };
+    submittingRequestRef.current = true;
+    setSubmittingRequest(true);
     try {
-      await api.createRadiologyOrder({
-        tenantId: currentFacility?.tenantId,
-        facilityId: currentFacility.id,
-        patientId: Number(reqForm.patientId),
-        modality: reqForm.modality,
-        ...(reqForm.masterServiceId ? { masterServiceId: Number(reqForm.masterServiceId) } : {}),
-        procedureName: reqForm.procedureName,
-        clinicalIndication: reqForm.clinicalIndication,
-        status: 'Requested',
-        orderedBy: currentUser.name,
+      const result = await api.createRadiologyOrder({
+        ...payload,
+        idempotencyKey: requestKey.current.key,
       });
-
-      showToast('Radiology imaging request created!');
+      showToast(
+        result.idempotentReplay
+          ? 'Existing imaging request recovered. No second order was created.'
+          : 'Radiology imaging request created. Billing is assessed when reported.',
+      );
+      requestKey.current = null;
       setIsNewReqModalOpen(false);
       setReqForm({
         patientId: '',
+        encounterId: '',
         modality: 'X-Ray',
         masterServiceId: '',
         procedureName: '',
@@ -181,6 +221,9 @@ export const RadiologyModule: React.FC = () => {
       triggerRefresh();
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
+    } finally {
+      submittingRequestRef.current = false;
+      setSubmittingRequest(false);
     }
   };
 
@@ -193,7 +236,16 @@ export const RadiologyModule: React.FC = () => {
         reportedBy: currentUser.name,
       });
 
-      showToast('Radiology report published to patient longitudinal record.');
+      if (reported.billing?.charged)
+        showToast(
+          `Report saved; ${reported.billing.invoiceNumber} billed KES ${reported.billing.totalAmount}.`,
+        );
+      else if (reported.billing?.reason === 'DUPLICATE')
+        showToast('Report saved; an imaging charge already exists.');
+      else
+        showToast(
+          `Report saved; billing not confirmed: ${reported.billing?.message ?? 'review the unresolved queue.'}`,
+        );
       triggerRefresh();
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
@@ -422,8 +474,8 @@ export const RadiologyModule: React.FC = () => {
         actions={
           <>
             <SecondaryButton onClick={() => setIsNewReqModalOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton type="submit" form="radiology-request-form">
-              Send Imaging Request
+            <PrimaryButton type="submit" form="radiology-request-form" disabled={submittingRequest}>
+              {submittingRequest ? 'Submitting…' : 'Send Imaging Request'}
             </PrimaryButton>
           </>
         }
@@ -437,7 +489,9 @@ export const RadiologyModule: React.FC = () => {
               id="radiology-patient"
               required
               value={reqForm.patientId}
-              onChange={(event) => setReqForm({ ...reqForm, patientId: event.target.value })}
+              onChange={(event) =>
+                setReqForm({ ...reqForm, patientId: event.target.value, encounterId: '' })
+              }
               className="field-input"
             >
               <option value="">Select a patient</option>
@@ -447,6 +501,36 @@ export const RadiologyModule: React.FC = () => {
                 </option>
               ))}
             </select>
+          </FormField>
+          <FormField label="Link an encounter" htmlFor="radiology-encounter">
+            <select
+              id="radiology-encounter"
+              value={reqForm.encounterId}
+              onChange={(event) => setReqForm({ ...reqForm, encounterId: event.target.value })}
+              className="field-input"
+            >
+              <option value="">Standalone request — no encounter linked</option>
+              {patientEncounters.map((encounter) => (
+                <option key={encounter.id} value={encounter.id}>
+                  #{encounter.id} · {encounter.encounterType} · {encounter.status}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          {encountersError && (
+            <p className="text-xs text-rose-700">
+              Encounters could not be loaded. A standalone request will not be combined with an
+              encounter invoice.
+            </p>
+          )}
+          <FormField label="Search examinations" htmlFor="radiology-exam-search">
+            <input
+              id="radiology-exam-search"
+              value={examSearch}
+              onChange={(event) => setExamSearch(event.target.value)}
+              className="field-input"
+              placeholder="Search code or examination"
+            />
           </FormField>
           <FormField label="Specific catalogue examination" htmlFor="radiology-master-exam">
             <select
@@ -463,17 +547,28 @@ export const RadiologyModule: React.FC = () => {
               }}
             >
               <option value="">Not mapped — clinical request only</option>
-              {examinations.map((exam) => (
-                <option key={exam.id} value={exam.id}>
-                  {exam.code} — {exam.description}
-                </option>
-              ))}
+              {examinations
+                .filter(
+                  (exam) =>
+                    `${exam.code} ${exam.description}`
+                      .toLowerCase()
+                      .includes(examSearch.toLowerCase()) ||
+                    String(exam.id) === reqForm.masterServiceId,
+                )
+                .map((exam) => (
+                  <option key={exam.id} value={exam.id}>
+                    {exam.code} — {exam.description} ·{' '}
+                    {exam.unitPrice === null
+                      ? 'Price not configured'
+                      : `KES ${exam.unitPrice} / ${exam.unit}`}
+                  </option>
+                ))}
             </select>
           </FormField>
           <p className="text-xs text-muted">
             {catalogueError
               ? 'Examination catalogue unavailable; unmapped requests require billing review.'
-              : 'A specific mapped examination is required for automatic billing. Unmapped requests remain available for care and require billing review.'}
+              : 'Prices shown are indicative and rechecked when the examination is reported. Unmapped or unpriced requests remain available for care and require billing review.'}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField label="Imaging modality" htmlFor="radiology-modality">

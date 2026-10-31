@@ -64,6 +64,33 @@ export interface MasterTariffEdit {
 }
 
 export const billingClient = {
+  getReviewedLabSpecimens: (facilityId: number) =>
+    fetchJson<
+      Array<{
+        id: number;
+        testId: number;
+        specimenType: string;
+        reviewReference: string;
+        retiredAt: string | null;
+        retirementReference: string | null;
+      }>
+    >(`${API_BASE}/master-lab-specimens?facilityId=${encodeURIComponent(facilityId)}`),
+  addReviewedLabSpecimen: (
+    facilityId: number,
+    testId: number,
+    specimenType: string,
+    reviewReference: string,
+  ) =>
+    fetchJson(`${API_BASE}/master-lab-specimens`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, testId, specimenType, reviewReference }),
+    }),
+  retireReviewedLabSpecimen: (facilityId: number, id: number, reviewReference: string) =>
+    fetchJson(`${API_BASE}/master-lab-specimens/${id}/retire`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, reviewReference }),
+    }),
+
   getInvoiceDetail: (id: number) =>
     fetchJson<{
       invoice: BillingInvoice;

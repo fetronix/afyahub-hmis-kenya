@@ -155,6 +155,8 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
             billingFamily: 'PHARMACY',
             unit: 'Tablet',
             isActive: true,
+            tenantId: 1,
+            originFacilityId: 10,
           },
         },
       ],

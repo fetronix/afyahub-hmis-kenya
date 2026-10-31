@@ -130,7 +130,10 @@ describe('The outpatient journey — contract tests', () => {
     expect(inpatient).toContain('recordChargeAttempt(tx, admissionChargeRequest');
     expect(resolver).toContain('schema.masterServiceSources');
     expect(resolver).toContain('schema.masterServiceAliases');
-    expect(resolver).toContain('MASTER_CODE_AMBIGUOUS');
+    expect(resolver).toContain('CONSULTATION_SELECTION_REQUIRED');
+    expect(resolver).not.toContain(
+      'upper(trim(${schema.masterServices.code})) = upper(trim(${sourceCode}))',
+    );
     expect(resolver).toContain("tariff.approvalStatus !== 'APPROVED'");
     expect(resolver).toContain('cents <= 0');
     expect(resolver).toContain('dateVerdict(');

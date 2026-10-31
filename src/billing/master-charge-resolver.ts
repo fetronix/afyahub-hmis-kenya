@@ -22,11 +22,6 @@ const fail = (code: string, message: string): MasterChargeResolution => ({
   failure: { code, message },
 });
 const norm = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
-const encounterCodes: Record<string, string> = {
-  OUTPATIENT: 'JC-OPD-CONSULT',
-  FOLLOW_UP: 'JC-OPD-FOLLOWUP',
-  EMERGENCY: 'JC-EMERGENCY-CONSULT',
-};
 const deliveryCodes: Record<string, string> = {
   'Spontaneous Vertex': 'JC-DELIVERY-VERTEX',
   'Assisted Vaginal': 'JC-DELIVERY-ASSISTED',
@@ -152,8 +147,14 @@ export async function resolveMasterCharge(
           'SOURCE_NOT_COMPLETED',
           'The consultation is not a completed encounter in this facility.',
         );
-      masterCode =
-        encounterCodes[row.encounterType.trim().toUpperCase().replaceAll(/[ -]+/g, '_')] ?? null;
+      if (!row.consultationMasterServiceId)
+        return fail(
+          'CONSULTATION_SELECTION_REQUIRED',
+          'The consultation service requires explicit review before billing.',
+        );
+      // Older encounters may have no review flag. Their type alone is not a
+      // reviewed selection, so they must follow the same safe review path.
+      masterId = row.consultationMasterServiceId;
       performedAt = row.endedAt;
       eventDate = dateOf(performedAt);
       break;
@@ -194,6 +195,30 @@ export async function resolveMasterCharge(
         return fail(
           'CATALOGUE_NOT_FOUND',
           'The investigation has no exact laboratory catalogue identity; a specimen or free-text name cannot price it.',
+        );
+      if (row.clinicalException || !row.reviewedSpecimenOptionId)
+        return fail(
+          'SOURCE_REVIEW_REQUIRED',
+          'This investigation requires controlled specimen and identity review before billing; an unreviewed test ID or specimen is not sufficient.',
+        );
+      const [specimen] = await executor
+        .select({ type: schema.labTestSpecimenOptions.specimenType })
+        .from(schema.labTestSpecimenOptions)
+        .where(
+          and(
+            eq(schema.labTestSpecimenOptions.id, row.reviewedSpecimenOptionId),
+            eq(schema.labTestSpecimenOptions.testId, row.testId),
+            eq(schema.labTestSpecimenOptions.tenantId, request.tenantId),
+            eq(schema.labTestSpecimenOptions.facilityId, request.facilityId),
+            isNull(schema.labTestSpecimenOptions.retiredAt),
+          ),
+        )
+        .limit(1)
+        .for('share');
+      if (!specimen || !row.specimenType?.trim() || norm(specimen.type) !== norm(row.specimenType))
+        return fail(
+          'SOURCE_REVIEW_REQUIRED',
+          'The recorded specimen no longer matches its reviewed investigation option.',
         );
       const [test] = await executor
         .select({ id: schema.labTests.id, code: schema.labTests.code })
@@ -381,6 +406,45 @@ export async function resolveMasterCharge(
       'SERVICE_DATE_CONFLICT',
       'The source date and queued date differ; review before billing.',
     );
+  return resolveConfiguredService(executor, {
+    tenantId: request.tenantId,
+    facilityId: request.facilityId,
+    sourceType: request.sourceType,
+    sourceKind,
+    sourceId,
+    sourceCode,
+    sourceUnit,
+    masterId,
+    masterCode,
+    eventDate,
+    performedAt,
+  });
+}
+
+/**
+ * The same exact identity and tariff checks power clinical price previews and
+ * completed-service billing. This function does not establish that a service
+ * occurred; only resolveMasterCharge's source-specific checks can do that.
+ */
+export async function resolveConfiguredService(
+  executor: Executor,
+  input: {
+    tenantId: number;
+    facilityId: number;
+    sourceType: ChargeRequest['sourceType'];
+    sourceKind?: 'LAB_TEST' | 'PHARMACY' | 'BED_DAY' | null;
+    sourceId?: number | null;
+    sourceCode?: string | null;
+    sourceUnit?: string | null;
+    masterId?: number | null;
+    masterCode?: string | null;
+    eventDate: string;
+    performedAt?: Date | null;
+  },
+): Promise<MasterChargeResolution> {
+  const request = input;
+  const { sourceKind, sourceId, sourceCode, sourceUnit, masterId, masterCode, eventDate } = input;
+  const performedAt = input.performedAt ?? null;
   let master: Master | undefined;
   let rule: 'LINK' | 'CODE' = 'CODE';
   if (sourceKind && sourceId) {
@@ -474,38 +538,9 @@ export async function resolveMasterCharge(
         );
       master = aliases[0]?.master;
     }
-    if (!master && sourceCode?.trim()) {
-      // Only an exact structured source code, never a derived code or a name.
-      const exact = await executor
-        .select({ master: schema.masterServices })
-        .from(schema.masterServices)
-        .innerJoin(
-          schema.facilityServiceTariffs,
-          and(
-            eq(schema.facilityServiceTariffs.masterServiceId, schema.masterServices.id),
-            eq(schema.facilityServiceTariffs.tenantId, request.tenantId),
-            eq(schema.facilityServiceTariffs.facilityId, request.facilityId),
-          ),
-        )
-        .where(
-          and(
-            sql`upper(trim(${schema.masterServices.code})) = upper(trim(${sourceCode}))`,
-            or(
-              isNull(schema.masterServices.tenantId),
-              eq(schema.masterServices.tenantId, request.tenantId),
-            ),
-          ),
-        )
-        .limit(2)
-        .for('share');
-      if (exact.length > 1)
-        return fail(
-          'MASTER_CODE_AMBIGUOUS',
-          'Multiple facility master services match this source code; an explicit mapping is required.',
-        );
-      master = exact[0]?.master;
-      rule = 'CODE';
-    }
+    // Identical codes alone do not establish an approved relationship, and
+    // must not resurrect a retired source mapping. A reviewed source link or
+    // approved structured alias is required even for an unambiguous match.
   } else if (masterId) {
     // Joining the facility tariff also proves that this master is available here.
     const [row] = await executor
@@ -543,10 +578,15 @@ export async function resolveMasterCharge(
       .for('share');
     master = row;
   }
-  if (!master || !master.isActive)
+  if (
+    !master ||
+    !master.isActive ||
+    (master.tenantId !== null && master.tenantId !== request.tenantId) ||
+    (master.originFacilityId !== null && master.originFacilityId !== request.facilityId)
+  )
     return fail(
       'MASTER_MAPPING_MISSING',
-      'No active exact master service is mapped to this clinical source.',
+      'No active reviewed master service is mapped to this clinical source in this facility.',
     );
   if (sourceKind && (!sourceUnit || norm(sourceUnit) !== norm(master.unit)))
     return fail(
@@ -581,6 +621,8 @@ export async function resolveMasterCharge(
   const cents = parseMoneyToCents(tariff.fee);
   if (cents === null || cents <= 0)
     return fail('ZERO_PRICE', 'The facility price is unconfigured; KES 0.00 is not a free charge.');
+  if (!tariff.isActive || !tariff.autoBill)
+    return fail('TARIFF_INACTIVE', 'The service or automatic billing is disabled.');
   if (
     tariff.approvalStatus !== 'APPROVED' ||
     !tariff.approvedByUserId ||
@@ -588,8 +630,6 @@ export async function resolveMasterCharge(
     !tariff.approvalReference
   )
     return fail('TARIFF_UNAPPROVED', 'The facility tariff requires explicit approval.');
-  if (!tariff.isActive || !tariff.autoBill)
-    return fail('TARIFF_INACTIVE', 'The service or automatic billing is disabled.');
   const validity = dateVerdict(tariff.effectiveFrom, tariff.effectiveTo, eventDate);
   if (validity !== 'OK')
     return fail(

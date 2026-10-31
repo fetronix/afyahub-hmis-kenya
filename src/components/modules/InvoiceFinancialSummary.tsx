@@ -105,7 +105,7 @@ export const InvoiceFinancialSummary: React.FC<{ invoice: BillingInvoice }> = ({
           </>
         )}
         <div className="flex justify-between">
-          <span>Item adjustments</span>
+          <span>Item adjustments/reversals</span>
           <span>Not available</span>
         </div>
         <div className="flex justify-between font-bold border-t pt-1">

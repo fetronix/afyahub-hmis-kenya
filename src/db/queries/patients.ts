@@ -129,11 +129,15 @@ export async function nextPatientMrn(): Promise<string> {
    */
   const [row] = await db
     .select({
-      highest: sql<number | null>`MAX((substring(${schema.patients.mrn} from '([0-9]+)$'))::int)`,
+      // A valid historical identifier may exceed both PostgreSQL int32 and
+      // JavaScript's exact integer range. Preserve its full numeric suffix.
+      highest: sql<
+        string | null
+      >`MAX((substring(${schema.patients.mrn} from '([0-9]+)$'))::numeric)`,
     })
     .from(schema.patients);
 
-  const next = Number(row?.highest ?? 0) + 1;
+  const next = BigInt(row?.highest ?? '0') + 1n;
   const year = new Date().getFullYear();
 
   return `MRN-${year}-${String(next).padStart(6, '0')}`;

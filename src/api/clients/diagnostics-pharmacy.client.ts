@@ -1,4 +1,5 @@
 import type {
+  ClinicalCatalogueService,
   DispenseAllocation,
   ExpirySummary,
   InventoryBatchRow,
@@ -41,8 +42,11 @@ export const diagnosticsPharmacyClient = {
     patientId: number;
     testIds?: number[];
     investigations?: string[];
+    clinicalException?: boolean;
+    testSelections?: Array<{ testId: number; specimenOptionId: number }>;
+    idempotencyKey?: string;
     clinicalIndication: string;
-    specimenType: string;
+    specimenType?: string;
     priority: string;
     clinicalNotes?: string;
     orderedBy?: string;
@@ -50,6 +54,7 @@ export const diagnosticsPharmacyClient = {
     fetchJson<{
       orders: LabOrder[];
       queue: QueueItem;
+      idempotentReplay?: boolean;
       billing?: Array<{
         orderId: number;
         testName: string;
@@ -60,7 +65,7 @@ export const diagnosticsPharmacyClient = {
       body: JSON.stringify(data),
     }),
 
-  createLabOrder: (order: Partial<LabOrder>) =>
+  createLabOrder: (order: Partial<LabOrder> & { specimenOptionId?: number }) =>
     fetchJson<LabOrder>(`${API_BASE}/lab-orders`, {
       method: 'POST',
       body: JSON.stringify(order),
@@ -117,8 +122,12 @@ export const diagnosticsPharmacyClient = {
   verifyLabResult: (id: number) =>
     fetchJson<LabResult>(`${API_BASE}/lab-results/${id}/verify`, { method: 'POST' }),
 
+  getClinicalCatalogue: (facilityId: number, family: 'CONSULTATION' | 'LABORATORY' | 'RADIOLOGY') =>
+    fetchJson<ClinicalCatalogueService[]>(
+      `${API_BASE}/master-services?facilityId=${encodeURIComponent(facilityId)}&family=${family}`,
+    ),
   getRadiologyMasterServices: (facilityId: number) =>
-    fetchJson<Array<{ id: number; code: string; description: string; unit: string }>>(
+    fetchJson<ClinicalCatalogueService[]>(
       `${API_BASE}/master-services?facilityId=${encodeURIComponent(facilityId)}&family=RADIOLOGY`,
     ),
   getRadiologyOrders: (facilityId?: number, patientId?: number) => {
@@ -137,8 +146,8 @@ export const diagnosticsPharmacyClient = {
     return fetchJson<RadiologyOrder[]>(`${API_BASE}/radiology-orders${query ? `?${query}` : ''}`);
   },
 
-  createRadiologyOrder: (order: Partial<RadiologyOrder>) =>
-    fetchJson<RadiologyOrder>(`${API_BASE}/radiology-orders`, {
+  createRadiologyOrder: (order: Partial<RadiologyOrder> & { idempotencyKey?: string }) =>
+    fetchJson<RadiologyOrder & { idempotentReplay?: boolean }>(`${API_BASE}/radiology-orders`, {
       method: 'POST',
       body: JSON.stringify(order),
     }),
@@ -151,10 +160,13 @@ export const diagnosticsPharmacyClient = {
       reportedBy: string;
     },
   ) =>
-    fetchJson<RadiologyOrder>(`${API_BASE}/radiology-orders/${id}/report`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+    fetchJson<RadiologyOrder & { billing?: ServiceCharge | null }>(
+      `${API_BASE}/radiology-orders/${id}/report`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      },
+    ),
 
   getInventoryBatches: (
     facilityId?: number,

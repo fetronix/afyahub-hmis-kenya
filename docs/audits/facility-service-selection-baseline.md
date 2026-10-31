@@ -1,0 +1,41 @@
+# Facility catalogue and service selection — pre-change discrepancy audit
+
+**Baseline:** repository `main` at `5e1734881904e26acc27766d95d5012781c7c652`, 31 October 2026. This is a source-code audit, not a facility-data audit. No facility database connection or authorized extract is present in this workspace. No tariff, mapping, clinical record, invoice, payment, or audit record has been corrected or changed.
+
+## Reported facility discrepancies — not yet verified
+
+| Reported discrepancy | What can be established now | What must be reviewed with authorized, facility-scoped access |
+| --- | --- | --- |
+| `OPD-CONSULT` versus `JC-OPD-CONSULT` | The first can be a legacy facility-tariff code; the second is an internal global master consultation identity. They are not automatically equivalent, and existing prices are not proof of a reviewed mapping. | IDs, tenant/facility, active and approval state, effective dates, units, mapping history and invoice snapshots. Preserve both historical amounts. |
+| `LAB-BLOOD`, `LAB-BLOODWORK` and `lab-blood` | Code or description similarity does not prove that these represent the same investigation, specimen, master identity or tariff. No local facility records were available. | Clinical test IDs, source mappings, aliases, department, unit, actual test definitions, prices and prior invoice items. |
+| `lab-blood` reportedly classified as radiology | The master stores department and billing family independently; code-level guards compare family, department and unit at billing. The reported record and its history are inaccessible. | Determine the actual owning service and approval history; any correction must be explicit and audited, with historic invoice snapshots preserved. |
+| Legacy laboratory tariffs reportedly inactive | Inactive tariffs are ineligible for automatic billing. Whether these specific records are inactive, superseded or still clinically relevant is unknown. | Read the actual records, their approval/effective dates and mapping history. Do not reactivate or merge by name. |
+| Radiology tariffs and prices | Imaging selection uses a master ID, but the clinical endpoint currently returns no prices and does not filter tariff approval, activity or effective dates. It does not prove the reported records are correct or wrong. | Inspect examination identities, descriptions, individual tariff prices and approvals; do not price by modality. |
+| Zero-priced master entries | Synchronisation intentionally creates inactive, draft, zero-price facility placeholders; zero is unconfigured, not free. | Review which services are actually offered and authorize their facility prices. Do not overwrite existing configured rows. |
+| Unresolved clinical orders | Charge-attempts persist facility/source identity and a reason where a completed service cannot be priced. There is no evidence here about any particular facility order. | Inspect only authorized scoped source events, queue rows and invoice history. Retry or correct using reviewed mappings and authorized financial procedures. |
+
+**No real prices or misclassifications have been validated.** User-reported examples are leads, not a correction plan. Authorized staff must examine the actual scoped data and approve any mapping or correction; no patient data or credentials should be placed in this repository.
+
+## Root causes visible in the code
+
+1. `src/components/modules/OutpatientModule.tsx` loads active `labTests` and keeps `selectedLabTestIds`, but its rendered form is a free-text textarea; the loaded tests never become selectable options. It submits `investigations` rather than IDs and one shared `specimenType` for every order.
+2. `src/db/queries/laboratory.ts#createLabOrderBatch` supports a test-ID branch, but its API accepts a single shared specimen. The free-text branch resolves by facility catalogue name where uniquely possible; unresolved or ambiguous names are stored without a test ID. The strict billing resolver cannot price an investigation whose actual test ID is missing and never treats a specimen as the test.
+3. `lab_tests.specimen_type` is a single text field with a `Whole Blood` database default. That default is not clinical evidence that every test uses blood. A comma-separated value does not establish whether components are alternatives or a combined requirement; it must not be copied or automatically split into clinical rules without review.
+4. `GET /api/master-services` is restricted to `RADIOLOGY`, returns identity only, and joins any facility tariff regardless of approval, price or dates. `RadiologyModule` consequently shows a specific master examination dropdown but no facility price; it permits a clinical free-text request without a mapped examination. The stored selected ID, rather than modality or name, is used at the later reporting/billing boundary.
+5. OPD starts a generic `Outpatient` encounter without choosing a master service. The strict resolver currently maps encounter type to one of three global consultation codes at explicit completion. There is no user-selected consultation identity or safe correction workflow for a completed unbilled encounter.
+6. Facility tariff administration, legacy rows and explicit reviewed source maps/aliases coexist in the existing schema. Synchronisation creates unconfigured placeholders and intentionally does not reset existing prices. Existing tariffs default to draft on the earlier migration, so valid prices may still be unavailable until reviewed and approved.
+7. Consultation completion, verified full-investigation completion, first imaging report, actual dispensing, admission and delivery have different billing triggers. An order or a selected service alone is not evidence that care was performed. The requested demonstration should check invoice lines **after** the applicable explicit completion/dispense action unless a separately authorized facility policy establishes a different trigger.
+8. The cashier already uses existing invoice items, receipt and refund records and shows provenance. Item-level adjustments/reversals are not implemented; paid or posted financial records cannot be silently altered. A universal direct-charge button would risk billing unperformed work or duplicating an automatic clinical charge unless it is tied to a real source and an explicit permitted event.
+9. Procedure completion currently remains unresolved under the strict master resolver; theatre and dialysis do not have demonstrated complete automatic billing. No examination, drug, service, specimen rule or price should be fabricated to fill those gaps.
+
+## Evidence inspected
+
+- `src/db/schema/{master-services,billing,laboratory,clinical,inpatient,maternity,inventory}.ts`; `drizzle/0044_master_service_catalogue.sql`–`0046_billing_service_occurrence.sql`.
+- `src/billing/{master-catalogue.service,master-charge-resolver,billing.service,service-charges,charge-attempts,payment-ledger}.ts`.
+- `src/routes/{master-tariffs,laboratory,radiology,pharmacy,inpatient,maternal-health,diagnoses}.routes.ts` and `src/routes/domains/{encounters,invoices,billing-charges}.routes.ts`.
+- `src/db/queries/{laboratory,encounters,inpatient,billing}.ts`; the OPD, laboratory, radiology, pharmacy, cashier and tariff UI modules and their API clients.
+- Existing source-discovery register and traces in `docs/audits/hospital-service-discovery/` and the preceding `docs/billing/master-tariff-implementation-report.md`. The older discovery audit describes pre-PR-31 code and must be read alongside the later implementation report.
+
+## Authorized investigation and safe correction plan
+
+A facility administrator/billing officer should supply an approved, de-identified export or run read-only scoped inspection on the authorized environment: tariff IDs/codes, description, department, unit, price, active/approval/effective dates; master IDs and families; clinical test IDs/specimen configuration; source mappings and aliases; and aggregated or access-controlled invoice/attempt provenance. Compare exact identities, not names. Any confirmed mapping/classification change needs named clinical and financial approval, before/after audit and a migration/rollback plan; historical invoices and posted transactions remain immutable. No production migration or data modification is authorized by this source audit.

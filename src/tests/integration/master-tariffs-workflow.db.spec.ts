@@ -13,8 +13,10 @@ import {
   createImagingService,
   approveMasterAlias,
   retireMasterAlias,
+  setMasterSourceMapping,
 } from '../../billing/master-catalogue.service.ts';
 import { chargeAndRecord } from '../../billing/charge-attempts.ts';
+import { addReviewedSpecimen } from '../../billing/lab-specimen-config.service.ts';
 import {
   consultationChargeRequest,
   labOrderChargeRequest,
@@ -52,6 +54,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     actor: number,
     patient: number,
     testId: number,
+    testOption: number,
     itemId: number,
     wardId: number,
     bedId: number,
@@ -138,6 +141,13 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
         [facility],
       )
     ).rows[0].id;
+    testOption = (
+      await addReviewedSpecimen(facilityRow, actor, {
+        testId,
+        specimenType: 'Synthetic reviewed specimen',
+        reviewReference: 'synthetic clinical review',
+      })
+    ).id;
     itemId = (
       await pool.query(
         "INSERT INTO inventory_items(facility_id,item_code,name,unit,current_stock) VALUES($1,'MED-A','Synthetic actual product','Tablets',20) RETURNING id",
@@ -271,11 +281,15 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
   });
 
   it('bills exactly one completed consultation, with immutable source and tariff snapshots', async () => {
+    const opd = (await listMasterCatalogue(facilityRow)).find(
+      (row) => row.master.code === 'JC-OPD-CONSULT',
+    )!.master;
     const encounter = await createEncounterScoped(ctx, {
       tenantId: tenant,
       facilityId: facility,
       patientId: patient,
       encounterType: 'OUTPATIENT',
+      consultationMasterServiceId: opd.id,
     });
     encounterId = encounter.id;
     expect(
@@ -333,6 +347,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       patientId: patient,
       encounterId,
       testId,
+      specimenOptionId: testOption,
       testName: 'Synthetic exact count',
     });
     expect(order).toBeTruthy();
@@ -490,6 +505,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       facilityId: facility,
       patientId: patient,
       encounterType: 'EMERGENCY',
+      consultationMasterServiceId: row.master.id,
     });
     const done = await updateEncounterScoped(ctx, emergency.id, { status: 'Completed' });
     const blocked = await chargeAndRecord(db, consultationChargeRequest(done!));
@@ -559,6 +575,11 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     await syncMasterCatalogue(facilityRow, actor);
     const x = await sourceMaster('LAB_TEST', ids[0]),
       y = await sourceMaster('LAB_TEST', ids[1]);
+    const option = await addReviewedSpecimen(facilityRow, actor, {
+      testId: ids[0],
+      specimenType: 'Synthetic reviewed specimen X',
+      reviewReference: 'synthetic clinical review',
+    });
     await configure(facilityRow, x, '11.00');
     await configure(facilityRow, y, '22.00');
     const alias = await approveMasterAlias(facilityRow, actor, y, {
@@ -573,6 +594,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
         patientId: patient,
         encounterId,
         testId: ids[0],
+        specimenOptionId: option.id,
         testName: 'Synthetic X',
       });
       await updateLabOrderStatus(ctx, order!.id, 'Sample Collected');
@@ -636,7 +658,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     ).toBe('11.00');
   });
 
-  it('uses only an exact unambiguous source code when no mapping or alias exists', async () => {
+  it('requires a reviewed mapping even when source and master codes are identical', async () => {
     const code = `EXACT-${suffix.toUpperCase()}`;
     const [source] = (
       await pool.query(
@@ -657,12 +679,26 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       )
     ).rows;
     await approveMasterTariff(facilityRow, actor, tariff.id, tariff.revision, 'synthetic review');
+    const preview = await call(
+      'GET',
+      `/api/master-services?facilityId=${facility}&family=LABORATORY`,
+    );
+    expect(preview.body.find((entry: { id: number }) => entry.id === source.id)).toMatchObject({
+      unitPrice: null,
+      priceStatus: 'MASTER_MAPPING_MISSING',
+    });
+    const option = await addReviewedSpecimen(facilityRow, actor, {
+      testId: source.id,
+      specimenType: 'Synthetic reviewed exact specimen',
+      reviewReference: 'synthetic clinical review',
+    });
     const order = await createLabOrder(ctx, {
       tenantId: tenant,
       facilityId: facility,
       patientId: patient,
       encounterId,
       testId: source.id,
+      specimenOptionId: option.id,
       testName: 'Synthetic exact match',
     });
     await updateLabOrderStatus(ctx, order!.id, 'Sample Collected');
@@ -675,8 +711,37 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     await verifyLabResult(ctx, result.id, 'Synthetic verifier');
     const completed = await completeLabInvestigation(ctx, order!.id);
     expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'MASTER_MAPPING_MISSING' },
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order!.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    const mapping = await setMasterSourceMapping(facilityRow, actor, master.id, {
+      sourceType: 'LAB_TEST',
+      sourceId: source.id,
+      reviewReference: 'synthetic explicit source review',
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM audit_logs WHERE resource='MASTER_SERVICE_SOURCE' AND resource_id=$1",
+          [String(mapping.id)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
       charged: true,
       totalAmount: '44.00',
+    });
+    expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
+      charged: false,
+      reason: 'DUPLICATE',
     });
     expect(
       (
@@ -686,6 +751,16 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
         )
       ).rows[0],
     ).toMatchObject({ master_service_id: master.id, service_performed_at: expect.any(Date) });
+    // Synthetic retirement simulation: matching codes must not resurrect a retired link.
+    await pool.query('UPDATE master_service_sources SET is_active=false WHERE id=$1', [mapping.id]);
+    const retired = await call(
+      'GET',
+      `/api/master-services?facilityId=${facility}&family=LABORATORY`,
+    );
+    expect(retired.body.find((entry: { id: number }) => entry.id === source.id)).toMatchObject({
+      unitPrice: null,
+      priceStatus: 'MASTER_MAPPING_MISSING',
+    });
   });
 
   it('blocks future, expired and subsequently edited unapproved tariffs', async () => {
@@ -715,6 +790,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       facilityId: facility,
       patientId: patient,
       encounterType: 'FOLLOW_UP',
+      consultationMasterServiceId: row.master.id,
     });
     const done = await updateEncounterScoped(ctx, encounter.id, { status: 'Completed' });
     await edit('2099-01-01', null);
@@ -798,10 +874,14 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     });
     expect(created.status).toBe(201);
     const pid = created.body.id;
+    const opd = (await listMasterCatalogue(facilityRow)).find(
+      (row) => row.master.code === 'JC-OPD-CONSULT',
+    )!.master;
     const visit = await call('POST', '/api/encounters', {
       facilityId: facility,
       patientId: pid,
       encounterType: 'OUTPATIENT',
+      consultationMasterServiceId: opd.id,
     });
     expect(visit.status).toBe(201);
     expect(visit.body.billing).toBeNull();
@@ -815,6 +895,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       patientId: pid,
       encounterId: eid,
       testId,
+      specimenOptionId: testOption,
       testName: 'Synthetic exact count',
     });
     expect(lab.status).toBe(201);
@@ -958,11 +1039,15 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
 
   it('uses facility-specific prices and blocks cross-facility mappings and null approvals', async () => {
     const otherCtx = { ...ctx, facilityId: other };
+    const opd = (await listMasterCatalogue(otherRow)).find(
+      (row) => row.master.code === 'JC-OPD-CONSULT',
+    )!.master;
     const enc = await createEncounterScoped(otherCtx, {
       tenantId: tenant,
       facilityId: other,
       patientId: patient,
       encounterType: 'OUTPATIENT',
+      consultationMasterServiceId: opd.id,
     });
     const done = await updateEncounterScoped(otherCtx, enc.id, { status: 'Completed' });
     const billed = await chargeAndRecord(db, consultationChargeRequest(done!));

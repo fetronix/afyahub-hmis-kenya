@@ -10,9 +10,21 @@ export const createLabOrderBatchBodySchema = z
     patientId: optionalId('patientId'),
     encounterId: optionalId('encounterId'),
     investigations: z.array(z.string().trim().max(200)).max(100).optional(),
+    clinicalException: z.boolean().optional(),
     testIds: z.array(positiveIntField('Each test ID must be positive.')).max(100).optional(),
+    testSelections: z
+      .array(
+        z.object({
+          testId: positiveIntField('Each test ID must be positive.'),
+          specimenOptionId: positiveIntField('Select a reviewed specimen.'),
+        }),
+      )
+      .min(1)
+      .max(100)
+      .optional(),
+    idempotencyKey: z.string().trim().min(16).max(128).optional(),
     clinicalIndication: z.string().trim().min(1).max(2000),
-    specimenType: z.string().trim().min(1).max(120),
+    specimenType: z.string().trim().min(1).max(120).optional(),
     priority: z.enum(['Routine', 'Urgent', 'STAT']),
     clinicalNotes: z.string().trim().max(5000).optional(),
     orderedBy: z.string().trim().max(200).optional(),
@@ -24,12 +36,56 @@ export const createLabOrderBatchBodySchema = z
     (body) =>
       body.investigations !== undefined
         ? body.investigations.some((name) => name.length > 0)
-        : Boolean(body.testIds?.length),
+        : Boolean(body.testSelections?.length || body.testIds?.length),
     { message: 'Enter at least one laboratory investigation.' },
   )
   .refine((body) => !body.testIds || new Set(body.testIds).size === body.testIds.length, {
     message: 'Duplicate tests are not allowed in one submission.',
-  });
+  })
+  .refine(
+    (body) =>
+      !body.testSelections ||
+      new Set(body.testSelections.map((selection) => selection.testId)).size ===
+        body.testSelections.length,
+    {
+      message: 'Duplicate tests are not allowed in one submission.',
+    },
+  )
+  .refine(
+    (body) =>
+      body.testSelections
+        ? !body.testIds && !body.investigations && Boolean(body.idempotencyKey && body.encounterId)
+        : Boolean(body.specimenType),
+    {
+      message:
+        'Selected tests require an encounter and idempotency key; legacy orders require a specimen.',
+    },
+  )
+  .refine(
+    (body) =>
+      Boolean(body.testSelections) ||
+      ((!body.investigations || !body.testIds) &&
+        (body.investigations?.length ?? body.testIds?.length ?? 0) <= 1),
+    {
+      message:
+        'Submit one legacy request per specimen, or select an individually reviewed specimen for each test.',
+    },
+  )
+  .refine(
+    (body) =>
+      !body.clinicalException ||
+      Boolean(
+        body.investigations?.length === 1 &&
+        !body.testIds &&
+        !body.testSelections &&
+        body.idempotencyKey &&
+        body.encounterId,
+      ),
+    {
+      message:
+        'A clinical exception requires one investigation, its own specimen, an encounter and a request key.',
+    },
+  );
 
 export const createLabOrderBodySchema = z
   .object({
@@ -38,6 +94,7 @@ export const createLabOrderBodySchema = z
     patientId: optionalId('patientId'),
     encounterId: optionalId('encounterId'),
     testId: optionalId('testId'),
+    specimenOptionId: positiveIntField('A valid reviewed specimen is required.').optional(),
     testName: z.string().trim().min(1, 'A test name is required.').max(200),
     status: z.literal('Ordered').optional(),
     clinicalIndication: z.string().trim().max(2000).nullable().optional(),

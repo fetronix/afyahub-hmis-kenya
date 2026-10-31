@@ -24,7 +24,8 @@ import { facilities, tenants } from './tenancy.ts';
 
 import { patients } from './patients.ts';
 
-import { encounters } from './clinical.ts';
+import { encounters, queues } from './clinical.ts';
+import { sql } from 'drizzle-orm';
 import { masterServices } from './master-services.ts';
 import { users } from './auth.ts';
 
@@ -63,6 +64,68 @@ export const labTests = pgTable(
   }),
 );
 
+/** Explicit, facility-reviewed choices; the legacy specimen default is not a clinical rule. */
+export const labTestSpecimenOptions = pgTable(
+  'lab_test_specimen_options',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    testId: integer('test_id')
+      .notNull()
+      .references(() => labTests.id),
+    specimenType: text('specimen_type').notNull(),
+    reviewReference: text('review_reference').notNull(),
+    createdByUserId: integer('created_by_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    retiredByUserId: integer('retired_by_user_id').references(() => users.id),
+    retiredAt: timestamp('retired_at'),
+    retirementReference: text('retirement_reference'),
+  },
+  (table) => [
+    uniqueIndex('lab_test_specimen_options_active_unique')
+      .on(table.tenantId, table.facilityId, table.testId, sql`lower(trim(${table.specimenType}))`)
+      .where(sql`${table.retiredAt} IS NULL`),
+  ],
+);
+
+export const labOrderBatches = pgTable(
+  'lab_order_batches',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id),
+    encounterId: integer('encounter_id').references(() => encounters.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    queueId: integer('queue_id').references(() => queues.id),
+    createdByUserId: integer('created_by_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('lab_order_batches_scope_key_unique').on(
+      table.tenantId,
+      table.facilityId,
+      table.idempotencyKey,
+    ),
+  ],
+);
+
 /* ============================================================
    31. LABORATORY ORDERS
    ============================================================ */
@@ -85,6 +148,15 @@ export const labOrders = pgTable('lab_orders', {
   encounterId: integer('encounter_id').references(() => encounters.id),
 
   testId: integer('test_id').references(() => labTests.id),
+
+  reviewedSpecimenOptionId: integer('reviewed_specimen_option_id').references(
+    () => labTestSpecimenOptions.id,
+  ),
+
+  batchId: integer('batch_id').references(() => labOrderBatches.id),
+
+  // Explicit exceptions remain non-billable until a future controlled identity/specimen review.
+  clinicalException: boolean('clinical_exception').notNull().default(false),
 
   testName: text('test_name').notNull(),
 
@@ -189,3 +261,31 @@ export const radiologyOrders = pgTable('radiology_orders', {
 
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+/** Optional request identity for safely retrying imaging orders. */
+export const radiologyOrderRequests = pgTable(
+  'radiology_order_requests',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    orderId: integer('order_id').references(() => radiologyOrders.id),
+    createdByUserId: integer('created_by_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('radiology_order_requests_scope_key_unique').on(
+      table.tenantId,
+      table.facilityId,
+      table.idempotencyKey,
+    ),
+  ],
+);

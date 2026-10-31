@@ -685,25 +685,19 @@ describe('Service → tariff resolution — the laboratory billing reconstructio
     );
   });
 
-  it('9. THE ORDER CARRIES ITS CATALOGUE ID', async () => {
+  it('9. EXPLICIT LABORATORY IDENTITIES ARE REQUIRED FOR BILLING', async () => {
     const queries = queriesSource();
+    const laboratory = readFileSync(resolve(process.cwd(), 'src/db/queries/laboratory.ts'), 'utf8');
 
     expect(
-      queries.includes('resolveCatalogueTestByName'),
-      'free-text investigations are resolved against the catalogue',
-    ).toBe(true);
+      laboratory.includes('testId: resolution.test.id'),
+      'a free-text name is not silently attached to an order',
+    ).toBe(false);
     expect(
-      queries.includes("'AMBIGUOUS'"),
-      'an ambiguous catalogue name is reported, not guessed',
+      laboratory.includes("catalogueMatch: clinicalException ? ('REVIEW_REQUIRED' as const)"),
+      'unreviewed investigation or specimen requires review',
     ).toBe(true);
-    expect(
-      queries.includes('testId: resolution.test.id'),
-      'a resolved name attaches the catalogue id to the order',
-    ).toBe(true);
-    expect(
-      queries.includes('unresolved') && queries.includes('ambiguous'),
-      'what could not be resolved is reported back to the caller',
-    ).toBe(true);
+    expect(queries.includes('unresolved'), 'unmatched orders remain visible to callers').toBe(true);
 
     const charges = readFileSync(resolve(process.cwd(), 'src/billing/service-charges.ts'), 'utf8');
 
