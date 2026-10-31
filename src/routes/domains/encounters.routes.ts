@@ -114,15 +114,46 @@ router.post(
       const encounter = await queries.createEncounterScoped(req.authContext, req.body);
 
       // A started encounter is not proof that a consultation was performed.
-      return res.status(201).json({ ...encounter, billing: null });
+      return res
+        .status(encounter.idempotentReplay ? 200 : 201)
+        .json({ ...encounter, billing: null });
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
+      if (err instanceof queries.ConsultationSelectionError)
+        return res.status(err.status).json({ error: err.code, message: err.message });
       if (handleEncounterValidationError(err, res)) return;
       console.error('Encounter creation error:', err);
       return res.status(500).json({
         success: false,
         error: 'ENCOUNTER_CREATION_FAILED',
       });
+    }
+  },
+);
+
+router.post(
+  '/api/encounters/:id/consultation-selection',
+  requirePermission('clinical.update'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext) return res.status(401).json({ error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const encounter = await queries.selectEncounterConsultation(
+        req.authContext,
+        Number(req.params.id),
+        req.body?.masterServiceId,
+        req.body?.reviewReason,
+      );
+      const charge =
+        encounter.status.trim().toUpperCase() === 'COMPLETED'
+          ? await chargeSafely(consultationChargeRequest(encounter))
+          : null;
+      return res.json({ ...encounter, billing: charge });
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      if (err instanceof queries.ConsultationSelectionError)
+        return res.status(err.status).json({ error: err.code, message: err.message });
+      console.error('Consultation selection failed.');
+      return res.status(500).json({ error: 'CONSULTATION_SELECTION_FAILED' });
     }
   },
 );

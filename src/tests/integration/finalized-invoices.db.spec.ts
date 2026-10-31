@@ -5,6 +5,11 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { createSession } from '../../auth/session.service.ts';
 import { chargeForService } from '../../billing/billing.service.ts';
 import {
+  approveMasterTariff,
+  createImagingService,
+  editMasterTariffs,
+} from '../../billing/master-catalogue.service.ts';
+import {
   attributeInvoicePayment,
   finalizeInvoice,
   getFinalizedInvoice,
@@ -276,30 +281,44 @@ describeDb('Finalized invoices and explicit receipt allocation', () => {
     await expect(
       finalizeInvoice(ctx, id, { ...allocation, insurerResponsibility: '50.00' }),
     ).rejects.toMatchObject({ code: 'ALREADY_FINALIZED' });
-    // Configure this synthetic consultation explicitly and record completion.
-    await pool.query(
-      "UPDATE facility_service_tariffs SET master_service_id=(SELECT id FROM master_services WHERE code='JC-OPD-CONSULT') WHERE id=$1",
-      [tariff],
-    );
-    await pool.query(
-      "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE id=$2",
-      [actor, tariff],
-    );
-    await pool.query("UPDATE encounters SET status='Completed',ended_at=now() WHERE id=$1", [
-      encounter,
+    // A different, completed service must create a separate open invoice, not
+    // mutate the finalized one or duplicate its historical consultation line.
+    const target = { id: facility, tenantId: tenant, enabledModules: ['finance', 'radiology'] };
+    const imaging = await createImagingService(target, actor, {
+      description: 'Synthetic reported examination',
+    });
+    const [edited] = await editMasterTariffs(target, actor, [
+      {
+        tariffId: imaging.tariff.id,
+        revision: imaging.tariff.revision,
+        fee: '50.00',
+        unit: 'Study',
+        isActive: true,
+        autoBill: true,
+        effectiveFrom: null,
+        effectiveTo: null,
+      },
     ]);
+    await approveMasterTariff(target, actor, edited.id, edited.revision, 'synthetic review');
+    const [order] = (
+      await pool.query(
+        "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,encounter_id,modality,master_service_id,procedure_name,status,reported_at) VALUES($1,$2,$3,$4,'X-Ray',$5,'Synthetic reported examination','Reported',now()) RETURNING id",
+        [tenant, facility, patient, encounter, imaging.master.id],
+      )
+    ).rows;
     const charge = await chargeForService(db, {
       tenantId: tenant,
       facilityId: facility,
       patientId: patient,
       encounterId: encounter,
-      codes: [`SYN-${suffix}`],
-      sourceType: 'CONSULTATION',
-      sourceId: encounter,
-      itemType: 'Consultation',
+      codes: [imaging.master.code],
+      sourceType: 'RADIOLOGY',
+      sourceId: order.id,
+      itemType: 'Radiology',
     });
     expect(charge.charged).toBe(true);
     expect(charge.invoiceId).not.toBe(id);
+    expect((await getFinalizedInvoice(ctx, id)).finalized).toBe(true);
   });
 
   it('records idempotent partial payments by party and carries refunds back to the original party', async () => {

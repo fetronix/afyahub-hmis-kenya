@@ -330,6 +330,48 @@
             "when": 1792900000034,
             "tag": "0046_billing_service_occurrence",
             "breakpoints": true
+        },
+        {
+            "idx": 47,
+            "version": "7",
+            "when": 1792900000035,
+            "tag": "0047_clinical_service_selection",
+            "breakpoints": true
+        },
+        {
+            "idx": 48,
+            "version": "7",
+            "when": 1792900000036,
+            "tag": "0048_consultation_review_state",
+            "breakpoints": true
+        },
+        {
+            "idx": 49,
+            "version": "7",
+            "when": 1792900000037,
+            "tag": "0049_radiology_request_idempotency",
+            "breakpoints": true
+        },
+        {
+            "idx": 50,
+            "version": "7",
+            "when": 1792900000038,
+            "tag": "0050_encounter_request_idempotency",
+            "breakpoints": true
+        },
+        {
+            "idx": 51,
+            "version": "7",
+            "when": 1792900000039,
+            "tag": "0051_lab_clinical_exception",
+            "breakpoints": true
+        },
+        {
+            "idx": 52,
+            "version": "7",
+            "when": 1792900000040,
+            "tag": "0052_lab_order_specimen_provenance",
+            "breakpoints": true
         }
     ]
 }

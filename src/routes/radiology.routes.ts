@@ -15,7 +15,8 @@ import * as schema from '../db/schema.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
+import { LaboratoryDomainError } from '../clinical/laboratory-contracts.ts';
 import { Router, type Response } from 'express';
 import {
   createRadiologyOrderBodySchema,
@@ -107,6 +108,14 @@ router.post(
               eq(schema.masterServices.id, Number(body.masterServiceId)),
               eq(schema.masterServices.billingFamily, 'RADIOLOGY'),
               eq(schema.masterServices.isActive, true),
+              or(
+                isNull(schema.masterServices.tenantId),
+                eq(schema.masterServices.tenantId, facility.tenantId),
+              ),
+              or(
+                isNull(schema.masterServices.originFacilityId),
+                eq(schema.masterServices.originFacilityId, facility.id),
+              ),
             ),
           )
           .limit(1);
@@ -117,18 +126,30 @@ router.post(
           });
         examinationName = exam.description;
       }
+      const { idempotencyKey, ...orderBody } = body;
       const payload = {
-        ...body,
+        ...orderBody,
         procedureName: examinationName,
         facilityId: facility.id,
         tenantId: facility.tenantId,
       } as Parameters<typeof queries.createRadiologyOrder>[0];
 
-      const order = await queries.createRadiologyOrder(payload);
+      const result =
+        typeof idempotencyKey === 'string'
+          ? await queries.createRadiologyOrderIdempotent(
+              payload,
+              idempotencyKey,
+              req.authContext.userId,
+            )
+          : { order: await queries.createRadiologyOrder(payload), idempotentReplay: false };
 
       // Requesting a study does not establish that it was performed.
-      res.status(201).json({ ...order, billing: null });
+      res
+        .status(result.idempotentReplay ? 200 : 201)
+        .json({ ...result.order, idempotentReplay: result.idempotentReplay, billing: null });
     } catch (err: any) {
+      if (err instanceof LaboratoryDomainError)
+        return res.status(err.status).json({ error: err.code, message: err.message });
       respondInternalError(res, err, 'POST /api/radiology-orders');
     }
   },

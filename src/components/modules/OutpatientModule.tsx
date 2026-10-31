@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api, ApiError } from '../../api/client.ts';
 import type { ServiceCharge } from '../../api/client.ts';
+import { parseMoneyToCents } from '../../billing/settlement.ts';
+import { AddClinicalService } from './AddClinicalService.tsx';
+import { EncounterBillingView } from './EncounterBillingView.tsx';
 import {
   Patient,
   Encounter,
@@ -9,7 +12,7 @@ import {
   Diagnosis,
   Procedure,
   Medication,
-  LabTest,
+  ClinicalCatalogueService,
   QueueItem,
 } from '../../types/index.ts';
 import {
@@ -46,6 +49,7 @@ export const OutpatientModule: React.FC = () => {
     currentTenant,
     currentFacility,
     currentUser,
+    authenticatedUser,
     setSelectedPatient,
     setIsJourneyModalOpen,
     showToast,
@@ -136,13 +140,24 @@ export const OutpatientModule: React.FC = () => {
   const [changingMedication, setChangingMedication] = useState(false);
 
   // Laboratory batch-order form
-  const [labTests, setLabTests] = useState<LabTest[]>([]);
-  const [selectedLabTestIds, setSelectedLabTestIds] = useState<string[]>([]);
+  const [labCatalogue, setLabCatalogue] = useState<ClinicalCatalogueService[]>([]);
+  const [consultationCatalogue, setConsultationCatalogue] = useState<ClinicalCatalogueService[]>(
+    [],
+  );
+  const [labCatalogueUnavailable, setLabCatalogueUnavailable] = useState(false);
+  const [consultationCatalogueUnavailable, setConsultationCatalogueUnavailable] = useState(false);
+  const [consultationChoice, setConsultationChoice] = useState('');
+  const [consultationReview, setConsultationReview] = useState('');
+  const [savingConsultation, setSavingConsultation] = useState(false);
+  const [startingVisit, setStartingVisit] = useState(false);
+  const startingVisitRef = useRef(false);
+  const visitRequest = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [labSelections, setLabSelections] = useState<Record<number, string>>({});
   const [labInvestigations, setLabInvestigations] = useState('');
   const [labSearch, setLabSearch] = useState('');
-  const [labCategory, setLabCategory] = useState('All');
   const [labIndication, setLabIndication] = useState('');
-  const [labSpecimenType, setLabSpecimenType] = useState('Blood');
+  const [labSpecimenType, setLabSpecimenType] = useState('');
+  const labRequest = useRef<{ fingerprint: string; key: string } | null>(null);
   const [labPriority, setLabPriority] = useState<'Routine' | 'Urgent' | 'STAT'>('Routine');
   const [labClinicalNotes, setLabClinicalNotes] = useState('');
   const [submittingLabOrder, setSubmittingLabOrder] = useState(false);
@@ -160,16 +175,16 @@ export const OutpatientModule: React.FC = () => {
         return;
       }
       try {
-        const [pList, tests, queue] = await Promise.all([
+        // The reviewed clinical catalogue loads separately. An unused legacy
+        // lab-list request must not make OPD depend on laboratory.read.
+        const [pList, queue] = await Promise.all([
           api.getPatients(currentTenant.id, currentFacility.id),
-          api.getLabTests(currentFacility.id),
           api.getQueues(currentFacility.id, 'Triage'),
         ]);
         if (cancelled) return;
-        if (!Array.isArray(pList) || !Array.isArray(tests) || !Array.isArray(queue))
+        if (!Array.isArray(pList) || !Array.isArray(queue))
           throw new Error('Invalid outpatient response');
         setPatients(pList);
-        setLabTests(tests);
         setTriageQueue(queue);
       } catch {
         if (!cancelled) {
@@ -188,6 +203,37 @@ export const OutpatientModule: React.FC = () => {
       cancelled = true;
     };
   }, [currentTenant?.id, currentFacility?.id, refreshKey, reloadData]);
+
+  useEffect(() => {
+    let current = true;
+    setLabCatalogue([]);
+    setConsultationCatalogue([]);
+    setLabCatalogueUnavailable(false);
+    setConsultationCatalogueUnavailable(false);
+    if (currentFacility?.id) {
+      const facilityId = currentFacility.id;
+      Promise.allSettled([
+        Promise.resolve().then(() => api.getClinicalCatalogue(facilityId, 'LABORATORY')),
+        Promise.resolve().then(() => api.getClinicalCatalogue(facilityId, 'CONSULTATION')),
+      ]).then(([labs, consults]) => {
+        if (!current) return;
+        if (labs.status === 'fulfilled' && Array.isArray(labs.value)) setLabCatalogue(labs.value);
+        else setLabCatalogueUnavailable(true);
+        if (consults.status === 'fulfilled' && Array.isArray(consults.value))
+          setConsultationCatalogue(
+            consults.value.filter((item) =>
+              ['ENCOUNTER:OUTPATIENT', 'ENCOUNTER:FOLLOW_UP', 'ENCOUNTER:EMERGENCY'].includes(
+                item.clinicalSource ?? '',
+              ),
+            ),
+          );
+        else setConsultationCatalogueUnavailable(true);
+      });
+    }
+    return () => {
+      current = false;
+    };
+  }, [currentFacility?.id, refreshKey]);
 
   const selectPatient = async (p: Patient) => {
     const version = ++selectionVersion.current;
@@ -228,11 +274,14 @@ export const OutpatientModule: React.FC = () => {
       unitPrice: '',
     });
     setMedicationChange(null);
-    setSelectedLabTestIds([]);
+    setLabSelections({});
+    setConsultationChoice('');
+    setConsultationReview('');
+    labRequest.current = null;
     setLabInvestigations('');
     setLabSearch('');
     setLabIndication('');
-    setLabSpecimenType('Blood');
+    setLabSpecimenType('');
     setLabPriority('Routine');
     setLabClinicalNotes('');
 
@@ -293,21 +342,40 @@ export const OutpatientModule: React.FC = () => {
   };
 
   const startVisit = async () => {
+    if (startingVisitRef.current) return;
     if (!activePatient || !currentFacility || selectionLoading || selectionError) {
       showToast('Select a patient and facility before starting a visit.');
       return;
     }
 
+    if (!consultationChoice) {
+      showToast('Choose a consultation or explicitly request billing review before starting.');
+      return;
+    }
     const version = selectionVersion.current;
+    const fingerprint = JSON.stringify({
+      patientId: activePatient.id,
+      facilityId: currentFacility.id,
+      consultationChoice,
+    });
+    if (visitRequest.current?.fingerprint !== fingerprint)
+      visitRequest.current = { fingerprint, key: crypto.randomUUID() };
+    startingVisitRef.current = true;
+    setStartingVisit(true);
     try {
       const newEncounter = await api.createEncounter({
         tenantId: activePatient.tenantId,
         facilityId: currentFacility.id,
         patientId: activePatient.id,
         encounterType: 'Outpatient',
+        ...(consultationChoice === 'review'
+          ? { consultationSelectionReviewRequired: true }
+          : { consultationMasterServiceId: Number(consultationChoice) }),
         status: 'Active',
         triageCategory: '',
+        idempotencyKey: visitRequest.current.key,
       });
+      visitRequest.current = null;
 
       if (version !== selectionVersion.current) {
         showToast(
@@ -349,6 +417,9 @@ export const OutpatientModule: React.FC = () => {
       showToast(
         `Visit creation could not be confirmed. Review the patient’s encounters before trying again. ${err.message}`,
       );
+    } finally {
+      startingVisitRef.current = false;
+      setStartingVisit(false);
     }
   };
 
@@ -801,61 +872,149 @@ export const OutpatientModule: React.FC = () => {
     }
   };
 
+  const handleConsultationSelection = async () => {
+    if (
+      !activeEncounter ||
+      !consultationChoice ||
+      consultationChoice === 'review' ||
+      consultationReview.trim().length < 3
+    ) {
+      showToast('Choose a consultation and provide a review reason.');
+      return;
+    }
+    const version = selectionVersion.current;
+    setSavingConsultation(true);
+    try {
+      const result = await api.selectEncounterConsultation(
+        activeEncounter.id,
+        Number(consultationChoice),
+        consultationReview.trim(),
+      );
+      if (version === selectionVersion.current) setActiveEncounter(result);
+      showToast(
+        'Consultation selection recorded. Billing is assessed when the visit is completed.',
+      );
+      triggerRefresh();
+    } catch (error) {
+      showToast(
+        `Consultation selection failed: ${error instanceof Error ? error.message : 'Please review the visit.'}`,
+      );
+    } finally {
+      setSavingConsultation(false);
+    }
+  };
+
+  const selectedLabRows = labCatalogue.filter((test) => Object.hasOwn(labSelections, test.id));
+  let labTotalCents: number | null = 0;
+  for (const row of selectedLabRows) {
+    const cents = parseMoneyToCents(row.unitPrice);
+    if (cents === null || cents <= 0 || !Number.isSafeInteger(labTotalCents + cents)) {
+      labTotalCents = null;
+      break;
+    }
+    labTotalCents += cents;
+  }
+  const labPrice = (item: ClinicalCatalogueService) =>
+    item.unitPrice === null
+      ? `${item.priceStatus === 'ZERO_PRICE' ? 'Price not configured' : 'Price unavailable'} (${item.priceMessage ?? item.priceStatus})`
+      : `KES ${item.unitPrice} / ${item.unit}`;
+
   const handleOrderLab = async () => {
     if (submittingLabOrder) return;
     if (!activeEncounter || !activePatient) {
       showToast('Select a patient with an active encounter first.');
       return;
     }
-
-    const seen = new Set<string>();
-    const investigations = labInvestigations
-      .split(/\r?\n/)
-      .map((name) => name.trim())
-      .filter((name) => {
-        if (!name) return false;
-        const key = name.toLocaleLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-    if (investigations.length === 0) {
-      showToast('Enter at least one laboratory investigation.');
+    const testSelections = selectedLabRows.map((test) => ({
+      testId: test.testId ?? test.id,
+      specimenOptionId: Number(labSelections[test.id]),
+    }));
+    if (
+      !testSelections.length ||
+      testSelections.some(
+        (item) => !Number.isSafeInteger(item.specimenOptionId) || item.specimenOptionId <= 0,
+      )
+    ) {
+      showToast('Select at least one investigation and one reviewed specimen for each.');
       return;
     }
-    if (investigations.length > 100 || investigations.some((name) => name.length > 200)) {
-      showToast('Enter no more than 100 investigations, with each name up to 200 characters.');
+    if (!labIndication.trim()) {
+      showToast('Enter the clinical indication.');
       return;
     }
-    if (!labIndication.trim() || !labSpecimenType.trim()) {
-      showToast('Enter the clinical indication and specimen type.');
-      return;
-    }
-
     const version = selectionVersion.current;
+    const payload = {
+      encounterId: activeEncounter.id,
+      patientId: activePatient.id,
+      testSelections,
+      clinicalIndication: labIndication.trim(),
+      priority: labPriority,
+      clinicalNotes: labClinicalNotes.trim() || undefined,
+      orderedBy: currentUser.name,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (labRequest.current?.fingerprint !== fingerprint)
+      labRequest.current = { fingerprint, key: crypto.randomUUID() };
     setSubmittingLabOrder(true);
     try {
       const result = await api.createLabOrderBatch({
-        encounterId: activeEncounter.id,
-        patientId: activePatient.id,
-        investigations,
-        clinicalIndication: labIndication.trim(),
-        specimenType: labSpecimenType.trim(),
-        priority: labPriority,
-        clinicalNotes: labClinicalNotes.trim() || undefined,
-        orderedBy: currentUser.name,
+        ...payload,
+        idempotencyKey: labRequest.current.key,
       });
-
       showToast(
-        `Created ${result.orders.length} lab order(s) and routed them to the Laboratory queue. Billing is assessed after a result is verified.`,
+        `${result.idempotentReplay ? 'Existing' : 'Created'} ${result.orders.length} lab order(s). Billing is assessed after the investigation is explicitly completed.`,
       );
       if (version === selectionVersion.current) {
-        setSelectedLabTestIds([]);
-        setLabInvestigations('');
+        setLabSelections({});
         setLabSearch('');
         setLabIndication('');
         setLabClinicalNotes('');
+        labRequest.current = null;
+      }
+      triggerRefresh();
+    } catch (err: any) {
+      showToast(`Laboratory order failed: ${err.message}`);
+    } finally {
+      setSubmittingLabOrder(false);
+    }
+  };
+
+  // Preserve the existing clinical exception path, one investigation and its own
+  // specimen at a time. It does not invent a reviewed catalogue specimen rule.
+  const handleUncataloguedLab = async () => {
+    if (submittingLabOrder || !activeEncounter || !activePatient) return;
+    if (!labInvestigations.trim() || !labSpecimenType.trim() || !labIndication.trim()) {
+      showToast('Enter one investigation, its specimen and the clinical indication.');
+      return;
+    }
+    const version = selectionVersion.current;
+    const payload = {
+      encounterId: activeEncounter.id,
+      patientId: activePatient.id,
+      investigations: [labInvestigations.trim()],
+      clinicalException: true,
+      specimenType: labSpecimenType.trim(),
+      clinicalIndication: labIndication.trim(),
+      priority: labPriority,
+      clinicalNotes: labClinicalNotes.trim() || undefined,
+      orderedBy: currentUser.name,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (labRequest.current?.fingerprint !== fingerprint)
+      labRequest.current = { fingerprint, key: crypto.randomUUID() };
+    setSubmittingLabOrder(true);
+    try {
+      const result = await api.createLabOrderBatch({
+        ...payload,
+        idempotencyKey: labRequest.current.key,
+      });
+      showToast(
+        `Created ${result.orders.length} clinical exception request. Confirm billing and specimen requirements with the laboratory.`,
+      );
+      if (version === selectionVersion.current) {
+        setLabInvestigations('');
+        setLabSpecimenType('');
+        labRequest.current = null;
       }
       triggerRefresh();
     } catch (err: any) {
@@ -990,6 +1149,88 @@ export const OutpatientModule: React.FC = () => {
         </div>
       ) : activePatient && activeEncounter ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-3 rounded-xl border border-slate-200 bg-white p-4 text-xs space-y-2">
+            <strong>Consultation service</strong>
+            {activeEncounter.consultationMasterServiceId ? (
+              (() => {
+                const item = consultationCatalogue.find(
+                  (row) => row.id === activeEncounter.consultationMasterServiceId,
+                );
+                return (
+                  <p>
+                    {item
+                      ? `${item.description} · ${labPrice(item)}`
+                      : 'Selected service; current catalogue details unavailable.'}
+                  </p>
+                );
+              })()
+            ) : (
+              <>
+                <p className="text-amber-800">
+                  No explicit consultation is recorded for this existing visit. Review before
+                  completion; existing billed visits require financial review.
+                </p>
+                <select
+                  aria-label="Consultation for existing visit"
+                  value={consultationChoice}
+                  onChange={(event) => setConsultationChoice(event.target.value)}
+                  className="rounded border p-2"
+                >
+                  <option value="">Select consultation</option>
+                  {consultationCatalogue.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.description} · {labPrice(item)}
+                    </option>
+                  ))}
+                </select>{' '}
+                <input
+                  aria-label="Consultation review reason"
+                  value={consultationReview}
+                  onChange={(event) => setConsultationReview(event.target.value)}
+                  placeholder="Reason for review"
+                  className="rounded border p-2"
+                />{' '}
+                <button
+                  type="button"
+                  disabled={
+                    savingConsultation ||
+                    !consultationChoice ||
+                    consultationReview.trim().length < 3
+                  }
+                  onClick={handleConsultationSelection}
+                  className="rounded border border-teal-700 px-3 py-2 disabled:opacity-50"
+                >
+                  Save consultation selection
+                </button>
+              </>
+            )}
+          </div>
+          <div className="lg:col-span-3">
+            <AddClinicalService
+              key={activeEncounter.id}
+              facilityId={activeEncounter.facilityId}
+              patientId={activeEncounter.patientId}
+              encounterId={activeEncounter.id}
+              orderedBy={currentUser.name}
+              canOrderLab={Boolean(
+                authenticatedUser?.permissions?.includes('laboratory.orders.create'),
+              )}
+              canOrderImaging={Boolean(authenticatedUser?.permissions?.includes('clinical.create'))}
+              onCreated={triggerRefresh}
+            />
+          </div>
+          {authenticatedUser &&
+            !authenticatedUser.isSuperAdmin &&
+            authenticatedUser.permissions?.includes('billing.read') && (
+              <div className="lg:col-span-3">
+                <EncounterBillingView
+                  key={activeEncounter.id}
+                  facilityId={activeEncounter.facilityId}
+                  patientId={activeEncounter.patientId}
+                  encounterId={activeEncounter.id}
+                />
+              </div>
+            )}
           {/* Left Column: Triage Vital Signs & Clinical Alerts (1 col) */}
           <div className="space-y-6">
             {/* Clinical Alerts Card */}
@@ -1440,26 +1681,95 @@ export const OutpatientModule: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="block font-semibold text-slate-700">
-                    Investigations required * (one per line)
-                  </label>
-                  <textarea
-                    value={labInvestigations}
-                    onChange={(e) => setLabInvestigations(e.target.value)}
-                    maxLength={20099}
-                    rows={5}
-                    placeholder={
-                      'Complete blood count (CBC)\nMalaria rapid diagnostic test\nUrinalysis'
-                    }
-                    aria-label="Laboratory investigations, one per line"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                  />
-                  <p className="text-slate-500">
-                    Type the investigation names directly. Blank lines and duplicate names are
-                    ignored. Maximum 100 investigations; each name may contain up to 200 characters.
+                <label
+                  className="block font-semibold text-slate-700"
+                  htmlFor="lab-catalogue-search"
+                >
+                  Search investigations
+                </label>
+                <input
+                  id="lab-catalogue-search"
+                  value={labSearch}
+                  onChange={(event) => setLabSearch(event.target.value)}
+                  placeholder="Search test name or code"
+                  className="w-full rounded-md border border-slate-200 px-3 py-2"
+                />
+                {labCatalogueUnavailable && (
+                  <p className="text-rose-700">
+                    The facility catalogue is unavailable. Do not assume there are no tests or
+                    prices.
                   </p>
+                )}
+                <div className="max-h-64 space-y-2 overflow-auto rounded border border-slate-200 p-2">
+                  {labCatalogue
+                    .filter((test) =>
+                      `${test.code} ${test.description} ${test.category ?? ''}`
+                        .toLocaleLowerCase()
+                        .includes(labSearch.toLocaleLowerCase()),
+                    )
+                    .map((test) => (
+                      <div key={test.id} className="rounded border border-slate-100 p-2">
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={Object.hasOwn(labSelections, test.id)}
+                            disabled={!test.specimenOptions?.length}
+                            onChange={(event) =>
+                              setLabSelections((prior) => {
+                                const next = { ...prior };
+                                if (event.target.checked) next[test.id] = '';
+                                else delete next[test.id];
+                                return next;
+                              })
+                            }
+                          />
+                          <span>
+                            <strong>{test.description}</strong> · {test.code}
+                            <br />
+                            {labPrice(test)}
+                          </span>
+                        </label>
+                        {!test.specimenOptions?.length && (
+                          <p className="pl-5 text-amber-800">
+                            Reviewed specimen not configured. Contact the laboratory or use a
+                            clinical exception.
+                          </p>
+                        )}
+                        {Object.hasOwn(labSelections, test.id) && (
+                          <select
+                            aria-label={`Specimen for ${test.description}`}
+                            value={labSelections[test.id]}
+                            onChange={(event) =>
+                              setLabSelections((prior) => ({
+                                ...prior,
+                                [test.id]: event.target.value,
+                              }))
+                            }
+                            className="ml-5 mt-2 rounded border p-1"
+                          >
+                            <option value="">Choose a reviewed specimen</option>
+                            {test.specimenOptions?.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.specimenType}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    ))}
+                  {!labCatalogue.length && !labCatalogueUnavailable && (
+                    <p>No active tests returned. Use a clinical exception if required.</p>
+                  )}
                 </div>
+                <p className="text-slate-600">
+                  {selectedLabRows.length} selected ·{' '}
+                  {!selectedLabRows.length
+                    ? 'No investigations selected'
+                    : labTotalCents === null
+                      ? 'Total unavailable until all prices are configured'
+                      : `Indicative total KES ${(labTotalCents / 100).toFixed(2)}`}
+                  . Prices are rechecked on completion; ordering alone does not charge.
+                </p>
                 <label className="block font-semibold text-slate-700">
                   Clinical indication / reason *
                 </label>
@@ -1469,15 +1779,6 @@ export const OutpatientModule: React.FC = () => {
                   maxLength={2000}
                   rows={2}
                   placeholder="Why are these investigations required?"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                />
-
-                <label className="block font-semibold text-slate-700">Specimen type *</label>
-                <input
-                  value={labSpecimenType}
-                  onChange={(e) => setLabSpecimenType(e.target.value)}
-                  maxLength={120}
-                  placeholder="e.g. Blood, Urine"
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 />
 
@@ -1504,22 +1805,52 @@ export const OutpatientModule: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 />
 
-                <div className="text-slate-600">
-                  {labInvestigations.split(/\r?\n/).filter((name) => name.trim()).length} line(s)
-                  entered
-                </div>
                 <button
                   onClick={handleOrderLab}
                   disabled={
                     submittingLabOrder ||
                     !activePatient ||
                     !activeEncounter ||
-                    !labInvestigations.split(/\r?\n/).some((name) => name.trim())
+                    !selectedLabRows.length ||
+                    selectedLabRows.some((test) => !labSelections[test.id])
                   }
                   className="w-full py-2 bg-teal-700 text-white rounded-md font-medium hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {submittingLabOrder ? 'Submitting orders...' : 'Submit Orders to Laboratory'}
                 </button>
+                <details className="rounded border border-amber-200 p-2">
+                  <summary className="cursor-pointer font-semibold text-amber-900">
+                    Clinical exception: investigation not configured
+                  </summary>
+                  <p className="my-2">
+                    Request one investigation and its specimen at a time. Confirm requirements with
+                    the laboratory; unmatched names need billing review.
+                  </p>
+                  <input
+                    aria-label="Exception investigation"
+                    value={labInvestigations}
+                    onChange={(event) => setLabInvestigations(event.target.value)}
+                    maxLength={200}
+                    placeholder="One investigation"
+                    className="mb-2 w-full rounded border p-2"
+                  />
+                  <input
+                    aria-label="Exception specimen"
+                    value={labSpecimenType}
+                    onChange={(event) => setLabSpecimenType(event.target.value)}
+                    maxLength={120}
+                    placeholder="Specimen confirmed with laboratory"
+                    className="mb-2 w-full rounded border p-2"
+                  />
+                  <button
+                    type="button"
+                    disabled={submittingLabOrder}
+                    onClick={handleUncataloguedLab}
+                    className="rounded border border-amber-700 px-3 py-2 disabled:opacity-50"
+                  >
+                    Submit exception request
+                  </button>
+                </details>
               </div>
 
               {/* Prescribe Medication */}
@@ -1680,8 +2011,35 @@ export const OutpatientModule: React.FC = () => {
           <p className="text-xs text-slate-500">
             Start a visit to record triage, observations, consultation notes, and orders.
           </p>
+          <label className="block text-xs font-semibold" htmlFor="opd-consultation">
+            Consultation service
+          </label>
+          <select
+            id="opd-consultation"
+            value={consultationChoice}
+            onChange={(event) => setConsultationChoice(event.target.value)}
+            className="rounded border p-2 text-xs"
+          >
+            <option value="">Choose a consultation</option>
+            {consultationCatalogue.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.description} · {labPrice(item)}
+              </option>
+            ))}
+            <option value="review">Start without a selection — billing review required</option>
+          </select>
+          {consultationCatalogueUnavailable && (
+            <p className="text-xs text-rose-700">
+              Consultation catalogue unavailable. Start with billing review if care cannot wait.
+            </p>
+          )}
+          <p className="text-xs text-slate-500">
+            Current approved price is indicative. The consultation is assessed for billing only on
+            visit completion.
+          </p>
           <button
             type="button"
+            disabled={!consultationChoice || startingVisit}
             onClick={startVisit}
             className="px-4 py-2 bg-teal-700 text-white rounded-lg text-xs font-semibold hover:bg-teal-800"
           >

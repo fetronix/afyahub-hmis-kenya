@@ -173,12 +173,23 @@ export const patientsClinicalClient = {
     return fetchJson<Encounter[]>(`${API_BASE}/encounters${query ? `?${query}` : ''}`);
   },
 
-  createEncounter: (encounter: Partial<Encounter>) =>
-    fetchJson<Encounter & { billing?: ServiceCharge | null }>(`${API_BASE}/encounters`, {
-      method: 'POST',
-      body: JSON.stringify(encounter),
-    }),
+  createEncounter: (encounter: Partial<Encounter> & { idempotencyKey?: string }) =>
+    fetchJson<Encounter & { billing?: ServiceCharge | null; idempotentReplay?: boolean }>(
+      `${API_BASE}/encounters`,
+      {
+        method: 'POST',
+        body: JSON.stringify(encounter),
+      },
+    ),
 
+  selectEncounterConsultation: (id: number, masterServiceId: number, reviewReason: string) =>
+    fetchJson<Encounter & { billing?: ServiceCharge | null }>(
+      `${API_BASE}/encounters/${id}/consultation-selection`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ masterServiceId, reviewReason }),
+      },
+    ),
   updateEncounter: (id: number, encounter: Partial<Encounter>) =>
     fetchJson<Encounter>(`${API_BASE}/encounters/${id}`, {
       method: 'PUT',

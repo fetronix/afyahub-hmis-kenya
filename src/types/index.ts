@@ -86,6 +86,8 @@ export interface Encounter {
   patientId: number;
   practitionerId?: number;
   encounterType: string;
+  consultationMasterServiceId?: number | null;
+  consultationSelectionReviewRequired?: boolean;
   departmentId?: number;
   status: string;
   triageCategory: string;
@@ -368,6 +370,26 @@ export interface TheatreCase {
   createdAt: string;
 }
 
+export interface ClinicalCatalogueService {
+  id: number;
+  code: string;
+  description: string;
+  department: string;
+  family: 'CONSULTATION' | 'LABORATORY' | 'RADIOLOGY';
+  unit: string;
+  unitPrice: string | null;
+  priceStatus: string;
+  priceMessage: string | null;
+  tariffCode?: string;
+  approvedAt?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  clinicalSource?: string;
+  testId?: number;
+  category?: string | null;
+  specimenOptions?: Array<{ id: number; specimenType: string }>;
+}
+
 export interface LabTest {
   id: number;
   facilityId: number;
@@ -392,6 +414,8 @@ export interface LabOrder {
   status: string;
   clinicalIndication?: string | null;
   specimenType?: string | null;
+  /** The reviewed option selected at ordering, if recorded for this order. */
+  reviewedSpecimenOptionId?: number | null;
   /** Present only where a specimen has been explicitly linked. */
   specimenId?: number | null;
   priority?: string | null;

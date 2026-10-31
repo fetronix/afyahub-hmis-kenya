@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.ts';
+import { ReviewedLabSpecimens } from './ReviewedLabSpecimens.tsx';
 import type { MasterTariffEdit, MasterTariffRow } from '../../api/clients/billing.client.ts';
 import type { BillingChargeAttemptList, ServiceTariff } from '../../types/index.ts';
 
@@ -134,6 +135,7 @@ export const MasterTariffPriceList: React.FC<{ facilityId: number; canManage: bo
   const [importRows, setImportRows] = useState<MasterTariffEdit[] | null>(null);
   const [queue, setQueue] = useState<BillingChargeAttemptList | null>(null);
   const [queueError, setQueueError] = useState('');
+  const [specimenPanelOpen, setSpecimenPanelOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -784,6 +786,21 @@ export const MasterTariffPriceList: React.FC<{ facilityId: number; canManage: bo
           <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap">{history}</pre>
         </div>
       )}
+      <details
+        className="rounded border border-slate-200 p-3"
+        onToggle={(event) => setSpecimenPanelOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer font-semibold">
+          Reviewed laboratory specimen choices
+        </summary>
+        {specimenPanelOpen && (
+          <ReviewedLabSpecimens
+            facilityId={facilityId}
+            sources={sources.LAB_TEST ?? []}
+            canManage={canManage}
+          />
+        )}
+      </details>
       <details className="rounded border border-slate-200 p-3">
         <summary className="cursor-pointer font-semibold">
           Unresolved billing queue {queue ? `(${queue.pending})` : '(unavailable)'}

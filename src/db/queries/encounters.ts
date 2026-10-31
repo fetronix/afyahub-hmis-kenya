@@ -6,7 +6,8 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull, notInArray, or } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
@@ -16,7 +17,7 @@ import {
   resolveFacilityScope,
 } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
-import { recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { lockChargeIdentity, recordChargeAttempt } from '../../billing/charge-attempts.ts';
 import { consultationChargeRequest } from '../../billing/service-charges.ts';
 
 import { pickEncounterWritableFields, validateEncounterReferences } from './shared.ts';
@@ -140,9 +141,66 @@ export async function getEncountersScoped(
     .limit(50);
 }
 
+export class ConsultationSelectionError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status = 400,
+  ) {
+    super(message);
+  }
+}
+
+const CONSULTATION_SOURCES: Record<string, string> = {
+  'ENCOUNTER:OUTPATIENT': 'Outpatient',
+  'ENCOUNTER:FOLLOW_UP': 'Follow Up',
+  'ENCOUNTER:EMERGENCY': 'Emergency',
+};
+
+async function consultationInFacility(facility: { id: number; tenantId: number }, id: unknown) {
+  if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)
+    throw new ConsultationSelectionError(
+      'INVALID_CONSULTATION',
+      'Choose a valid consultation service.',
+    );
+  const [row] = await db
+    .select({ id: schema.masterServices.id, clinicalSource: schema.masterServices.clinicalSource })
+    .from(schema.masterServices)
+    .innerJoin(
+      schema.facilityServiceTariffs,
+      and(
+        eq(schema.facilityServiceTariffs.masterServiceId, schema.masterServices.id),
+        eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+        eq(schema.facilityServiceTariffs.facilityId, facility.id),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.masterServices.id, id),
+        eq(schema.masterServices.billingFamily, 'CONSULTATION'),
+        eq(schema.masterServices.isActive, true),
+        or(
+          isNull(schema.masterServices.tenantId),
+          eq(schema.masterServices.tenantId, facility.tenantId),
+        ),
+        or(
+          isNull(schema.masterServices.originFacilityId),
+          eq(schema.masterServices.originFacilityId, facility.id),
+        ),
+      ),
+    )
+    .limit(1);
+  if (!row || !CONSULTATION_SOURCES[row.clinicalSource])
+    throw new ConsultationSelectionError(
+      'CONSULTATION_UNAVAILABLE',
+      'The consultation is not available for this facility.',
+    );
+  return { id: row.id, encounterType: CONSULTATION_SOURCES[row.clinicalSource] };
+}
+
 export async function createEncounterScoped(
   context: AuthorizationContext,
-  data: typeof schema.encounters.$inferInsert,
+  data: typeof schema.encounters.$inferInsert & { idempotencyKey?: string },
 ) {
   const facilityId = resolveFacilityScope(context, data.facilityId);
   const facility = await getFacilityByIdScoped(context, facilityId);
@@ -161,17 +219,262 @@ export async function createEncounterScoped(
 
   await validateEncounterReferences(facility.id, facility.tenantId, safeData);
 
-  const [created] = await db
-    .insert(schema.encounters)
-    .values({
-      ...safeData,
+  const selection =
+    data.consultationMasterServiceId == null
+      ? null
+      : await consultationInFacility(facility, data.consultationMasterServiceId);
+  if (selection && data.consultationSelectionReviewRequired)
+    throw new ConsultationSelectionError(
+      'INVALID_CONSULTATION',
+      'Select a consultation or request review, not both.',
+    );
+  if (
+    data.consultationSelectionReviewRequired != null &&
+    typeof data.consultationSelectionReviewRequired !== 'boolean'
+  )
+    throw new ConsultationSelectionError(
+      'INVALID_CONSULTATION',
+      'Invalid consultation review state.',
+    );
+
+  // Older API clients may omit the selection. Keep clinical care available,
+  // but never interpret that omission (or an explicit false) as approval.
+  const reviewRequired = !selection;
+
+  const key = data.idempotencyKey;
+  if (
+    key !== undefined &&
+    (typeof key !== 'string' || key.trim() !== key || key.length < 16 || key.length > 128)
+  )
+    throw new ConsultationSelectionError(
+      'INVALID_IDEMPOTENCY_KEY',
+      'Invalid encounter request key.',
+    );
+  const payloadHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        patientId: patient.id,
+        safeData,
+        consultationMasterServiceId: selection?.id ?? null,
+        consultationSelectionReviewRequired: reviewRequired,
+      }),
+    )
+    .digest('hex');
+  return db.transaction(async (tx) => {
+    let requestId: number | null = null;
+    if (key) {
+      const [request] = await tx
+        .insert(schema.encounterCreationRequests)
+        .values({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          idempotencyKey: key,
+          payloadHash,
+          createdByUserId: context.userId,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!request) {
+        const [prior] = await tx
+          .select()
+          .from(schema.encounterCreationRequests)
+          .where(
+            and(
+              eq(schema.encounterCreationRequests.tenantId, facility.tenantId),
+              eq(schema.encounterCreationRequests.facilityId, facility.id),
+              eq(schema.encounterCreationRequests.idempotencyKey, key),
+            ),
+          )
+          .for('update');
+        if (!prior || prior.payloadHash !== payloadHash || prior.createdByUserId !== context.userId)
+          throw new ConsultationSelectionError(
+            'IDEMPOTENCY_CONFLICT',
+            'This request key was already used for a different encounter.',
+            409,
+          );
+        const [encounter] = prior.encounterId
+          ? await tx
+              .select()
+              .from(schema.encounters)
+              .where(
+                and(
+                  eq(schema.encounters.id, prior.encounterId),
+                  eq(schema.encounters.tenantId, facility.tenantId),
+                  eq(schema.encounters.facilityId, facility.id),
+                ),
+              )
+          : [];
+        if (!encounter)
+          throw new ConsultationSelectionError(
+            'REQUEST_REVIEW_REQUIRED',
+            'The existing encounter request requires review.',
+            409,
+          );
+        return { ...encounter, idempotentReplay: true };
+      }
+      requestId = request.id;
+    }
+    const [created] = await tx
+      .insert(schema.encounters)
+      .values({
+        ...safeData,
+        ...(selection ? { encounterType: selection.encounterType } : {}),
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        patientId: patient.id,
+        consultationMasterServiceId: selection?.id ?? null,
+        consultationSelectionReviewRequired: reviewRequired,
+      } as typeof schema.encounters.$inferInsert)
+      .returning();
+    if (selection || reviewRequired) {
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        userId: String(context.userId),
+        action: 'CREATE',
+        resource: 'CONSULTATION_SELECTION',
+        resourceId: String(created.id),
+        details: selection
+          ? `Selected master service ${selection.id}.`
+          : 'Consultation selection requires review.',
+      });
+    }
+    if (requestId)
+      await tx
+        .update(schema.encounterCreationRequests)
+        .set({ encounterId: created.id })
+        .where(eq(schema.encounterCreationRequests.id, requestId));
+    return { ...created, idempotentReplay: false };
+  });
+}
+
+/** Select a service for an existing uncharged encounter without rewriting invoices. */
+export async function selectEncounterConsultation(
+  context: AuthorizationContext,
+  encounterId: number,
+  masterId: unknown,
+  reason: unknown,
+) {
+  if (!Number.isSafeInteger(encounterId) || encounterId <= 0)
+    throw new ConsultationSelectionError('INVALID_ENCOUNTER_ID', 'Invalid encounter ID.');
+  const reference = typeof reason === 'string' ? reason.trim() : '';
+  if (reference.length < 3 || reference.length > 500)
+    throw new ConsultationSelectionError(
+      'REVIEW_REASON_REQUIRED',
+      'Enter a review reason (3–500 characters).',
+    );
+  const [current] = await db
+    .select()
+    .from(schema.encounters)
+    .where(eq(schema.encounters.id, encounterId))
+    .limit(1);
+  if (!current)
+    throw new ConsultationSelectionError('ENCOUNTER_NOT_FOUND', 'Encounter not found.', 404);
+  const facility = await getFacilityByIdScoped(context, current.facilityId);
+  if (!facility || facility.tenantId !== current.tenantId)
+    throw new ScopeAccessError(
+      'Encounter is outside the authorized facility.',
+      'FACILITY_ACCESS_DENIED',
+    );
+  const selection = await consultationInFacility(facility, masterId);
+  return db.transaction(async (tx) => {
+    await lockChargeIdentity(tx, facility.id, 'CONSULTATION', encounterId);
+    const [locked] = await tx
+      .select()
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.id, encounterId),
+          eq(schema.encounters.tenantId, facility.tenantId),
+          eq(schema.encounters.facilityId, facility.id),
+        ),
+      )
+      .for('update');
+    if (!locked)
+      throw new ConsultationSelectionError('ENCOUNTER_NOT_FOUND', 'Encounter not found.', 404);
+    if (!['ACTIVE', 'IN PROGRESS', 'COMPLETED'].includes(locked.status.trim().toUpperCase()))
+      throw new ConsultationSelectionError(
+        'ENCOUNTER_NOT_ELIGIBLE',
+        'Only an active or completed encounter can be reviewed.',
+        409,
+      );
+    if (locked.consultationMasterServiceId) {
+      if (locked.consultationMasterServiceId === selection.id) return locked;
+      throw new ConsultationSelectionError(
+        'SELECTION_ALREADY_RECORDED',
+        'A consultation selection already exists; use an authorized correction process.',
+        409,
+      );
+    }
+    // Any historical consultation item, including one on a voided invoice,
+    // needs financial review. An encounter item without complete provenance
+    // could also be the consultation (even if its old item type was "OPD");
+    // do not guess that it is a different service and create a second charge.
+    const [item] = await tx
+      .select({ id: schema.billingItems.id })
+      .from(schema.billingItems)
+      .innerJoin(
+        schema.billingInvoices,
+        eq(schema.billingInvoices.id, schema.billingItems.invoiceId),
+      )
+      .where(
+        and(
+          eq(schema.billingInvoices.tenantId, facility.tenantId),
+          eq(schema.billingInvoices.facilityId, facility.id),
+          or(
+            and(
+              eq(schema.billingItems.sourceType, 'CONSULTATION'),
+              eq(schema.billingItems.sourceId, encounterId),
+            ),
+            and(
+              eq(schema.billingInvoices.encounterId, encounterId),
+              or(
+                isNull(schema.billingItems.sourceType),
+                isNull(schema.billingItems.sourceId),
+                notInArray(schema.billingItems.sourceType, [
+                  'LAB_ORDER',
+                  'RADIOLOGY',
+                  'PHARMACY',
+                  'PROCEDURE',
+                  'ADMISSION',
+                  'BED_DAY',
+                  'MATERNITY',
+                ]),
+              ),
+            ),
+          ),
+        ),
+      )
+      .limit(1);
+    if (item)
+      throw new ConsultationSelectionError(
+        'CONSULTATION_ALREADY_BILLED',
+        'A historical consultation item exists; financial review is required.',
+        409,
+      );
+    const [updated] = await tx
+      .update(schema.encounters)
+      .set({
+        consultationMasterServiceId: selection.id,
+        consultationSelectionReviewRequired: false,
+        updatedByUserId: context.userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.encounters.id, encounterId))
+      .returning();
+    await tx.insert(schema.auditLogs).values({
       tenantId: facility.tenantId,
       facilityId: facility.id,
-      patientId: patient.id,
-    } as typeof schema.encounters.$inferInsert)
-    .returning();
-
-  return created;
+      userId: String(context.userId),
+      action: 'REVIEW',
+      resource: 'CONSULTATION_SELECTION',
+      resourceId: String(encounterId),
+      details: `Selected master service ${selection.id}; review: ${reference}`,
+    });
+    return updated;
+  });
 }
 
 export async function updateEncounterScoped(

@@ -6,7 +6,7 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, getTableColumns, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
@@ -17,7 +17,7 @@ import { LaboratoryDomainError } from '../../clinical/laboratory-contracts.ts';
 import { recordChargeAttempt } from '../../billing/charge-attempts.ts';
 import { labOrderChargeRequest, radiologyChargeRequest } from '../../billing/service-charges.ts';
 
-import { resolveCatalogueTestByName, resolveQueueOrLabScope } from './shared.ts';
+import { resolveQueueOrLabScope } from './shared.ts';
 
 import { getFacilityByIdScoped } from './tenancy.ts';
 
@@ -81,72 +81,107 @@ export async function getLabOrders(
 
 export async function createLabOrder(
   context: AuthorizationContext,
-  data: typeof schema.labOrders.$inferInsert,
+  data: typeof schema.labOrders.$inferInsert & { specimenOptionId?: number },
 ) {
   const scope = await resolveQueueOrLabScope(context, data);
-
+  const { specimenOptionId, ...orderData } = data;
   try {
-    const res = await db
-      .insert(schema.labOrders)
-      .values({ ...data, ...scope })
-      .returning();
-
-    const order = res[0];
-
-    if (!order) return order;
-
-    /*
-     * The catalogue code is not a column on `lab_orders`; read it from the
-     * test the order points at so the caller can bill against `LAB-CBC`
-     * rather than only against the long name.
-     */
-    let testCode: string | null = null;
-
-    /*
-     * A single order may also arrive as free text. Resolve it the same
-     * way the batch does, so both routes produce a billable identity.
-     */
-    if (
-      (!Number.isSafeInteger(order.testId) || (order.testId ?? 0) <= 0) &&
-      typeof order.testName === 'string'
-    ) {
-      const resolution = await resolveCatalogueTestByName(db, order.facilityId, order.testName);
-
-      if (resolution.test) {
-        const [updated] = await db
-          .update(schema.labOrders)
-          .set({ testId: resolution.test.id, testName: resolution.test.name })
-          .where(eq(schema.labOrders.id, order.id))
-          .returning();
-
-        if (updated) {
-          return {
-            ...updated,
-            testCode: resolution.test.code,
-            catalogueMatch: 'FOUND' as const,
-          };
-        }
+    return await db.transaction(async (tx) => {
+      let canonicalName = data.testName;
+      let testCode: string | null = null;
+      let reviewedSpecimen: string | null = null;
+      if (data.testId != null) {
+        const [test] = await tx
+          .select({ name: schema.labTests.name, code: schema.labTests.code })
+          .from(schema.labTests)
+          .where(
+            and(
+              eq(schema.labTests.id, data.testId),
+              eq(schema.labTests.facilityId, scope.facilityId),
+              eq(schema.labTests.isActive, true),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (!test)
+          throw new LaboratoryDomainError(
+            'TEST_NOT_AVAILABLE',
+            'The selected investigation is not available in this facility.',
+            400,
+          );
+        canonicalName = test.name;
+        testCode = test.code;
       }
-    }
-
-    if (Number.isSafeInteger(order.testId) && (order.testId ?? 0) > 0) {
-      const [test] = await db
-        .select({ code: schema.labTests.code })
-        .from(schema.labTests)
-        .where(
-          and(
-            eq(schema.labTests.id, order.testId as number),
-            eq(schema.labTests.facilityId, order.facilityId),
-          ),
+      if (specimenOptionId !== undefined) {
+        if (!Number.isSafeInteger(specimenOptionId) || specimenOptionId <= 0 || !data.testId)
+          throw new LaboratoryDomainError(
+            'SPECIMEN_NOT_REVIEWED',
+            'Select a reviewed specimen for an available test.',
+            400,
+          );
+        const [option] = await tx
+          .select({ specimenType: schema.labTestSpecimenOptions.specimenType })
+          .from(schema.labTestSpecimenOptions)
+          .where(
+            and(
+              eq(schema.labTestSpecimenOptions.id, specimenOptionId),
+              eq(schema.labTestSpecimenOptions.testId, data.testId),
+              eq(schema.labTestSpecimenOptions.tenantId, scope.tenantId),
+              eq(schema.labTestSpecimenOptions.facilityId, scope.facilityId),
+              isNull(schema.labTestSpecimenOptions.retiredAt),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (
+          !option ||
+          (data.specimenType?.trim() &&
+            data.specimenType.trim().toLowerCase() !== option.specimenType.trim().toLowerCase())
         )
-        .limit(1);
-
-      testCode = test?.code ?? null;
-    }
-
-    return { ...order, testCode };
+          throw new LaboratoryDomainError(
+            'SPECIMEN_NOT_REVIEWED',
+            'The specimen is unavailable, mismatched or not reviewed for this test.',
+            400,
+          );
+        reviewedSpecimen = option.specimenType;
+      }
+      // Legacy requests remain clinically available, but neither a test ID nor
+      // free text is proof that the specimen was clinically reviewed.
+      const clinicalException =
+        !data.testId || !reviewedSpecimen || data.clinicalException === true;
+      const [order] = await tx
+        .insert(schema.labOrders)
+        .values({
+          ...orderData,
+          ...scope,
+          testName: canonicalName,
+          specimenType: reviewedSpecimen ?? data.specimenType ?? null,
+          reviewedSpecimenOptionId: reviewedSpecimen ? specimenOptionId : null,
+          clinicalException,
+        })
+        .returning();
+      await tx.insert(schema.auditLogs).values({
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        userId: String(context.userId),
+        action: 'CREATE',
+        resource: 'LAB_ORDER_REQUEST',
+        resourceId: String(order.id),
+        details: JSON.stringify({
+          testId: order.testId,
+          reviewedSpecimenOptionId: order.reviewedSpecimenOptionId,
+          clinicalException,
+        }),
+      });
+      return {
+        ...order,
+        testCode,
+        catalogueMatch: clinicalException ? ('REVIEW_REQUIRED' as const) : ('FOUND' as const),
+      };
+    });
   } catch (error) {
-    log.error({ err: error }, 'lab_order.create_failed');
+    if (error instanceof LaboratoryDomainError) throw error;
+    log.error('lab_order.create_failed');
     throw new Error('Failed to order lab test', { cause: error });
   }
 }
@@ -734,6 +769,95 @@ export async function createRadiologyOrder(data: typeof schema.radiologyOrders.$
   }
 }
 
+/** Retry-safe creation. A request key cannot be reused for a different actor or clinical payload. */
+export async function createRadiologyOrderIdempotent(
+  data: typeof schema.radiologyOrders.$inferInsert,
+  idempotencyKey: string,
+  actor: number,
+) {
+  const payloadHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        tenantId: data.tenantId,
+        facilityId: data.facilityId,
+        patientId: data.patientId,
+        encounterId: data.encounterId ?? null,
+        masterServiceId: data.masterServiceId ?? null,
+        modality: data.modality,
+        procedureName: data.procedureName,
+        clinicalIndication: data.clinicalIndication ?? null,
+        orderedBy: data.orderedBy ?? null,
+      }),
+    )
+    .digest('hex');
+  return db.transaction(async (tx) => {
+    const [request] = await tx
+      .insert(schema.radiologyOrderRequests)
+      .values({
+        tenantId: data.tenantId,
+        facilityId: data.facilityId,
+        idempotencyKey,
+        payloadHash,
+        createdByUserId: actor,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (!request) {
+      const [prior] = await tx
+        .select()
+        .from(schema.radiologyOrderRequests)
+        .where(
+          and(
+            eq(schema.radiologyOrderRequests.tenantId, data.tenantId),
+            eq(schema.radiologyOrderRequests.facilityId, data.facilityId),
+            eq(schema.radiologyOrderRequests.idempotencyKey, idempotencyKey),
+          ),
+        )
+        .for('update');
+      if (!prior || prior.payloadHash !== payloadHash || prior.createdByUserId !== actor)
+        throw new LaboratoryDomainError(
+          'IDEMPOTENCY_CONFLICT',
+          'This request key was already used for a different request.',
+          409,
+        );
+      const [order] = prior.orderId
+        ? await tx
+            .select()
+            .from(schema.radiologyOrders)
+            .where(
+              and(
+                eq(schema.radiologyOrders.id, prior.orderId),
+                eq(schema.radiologyOrders.tenantId, data.tenantId),
+                eq(schema.radiologyOrders.facilityId, data.facilityId),
+              ),
+            )
+        : [];
+      if (!order)
+        throw new LaboratoryDomainError(
+          'REQUEST_REVIEW_REQUIRED',
+          'The existing imaging request requires review.',
+          409,
+        );
+      return { order, idempotentReplay: true };
+    }
+    const [order] = await tx.insert(schema.radiologyOrders).values(data).returning();
+    await tx
+      .update(schema.radiologyOrderRequests)
+      .set({ orderId: order.id })
+      .where(eq(schema.radiologyOrderRequests.id, request.id));
+    await tx.insert(schema.auditLogs).values({
+      tenantId: data.tenantId,
+      facilityId: data.facilityId,
+      userId: String(actor),
+      action: 'CREATE',
+      resource: 'RADIOLOGY_ORDER',
+      resourceId: String(order.id),
+      details: 'Imaging request recorded; no performance or billing inferred.',
+    });
+    return { order, idempotentReplay: false };
+  });
+}
+
 export async function updateRadiologyReport(
   id: number,
   findings: string | undefined,
@@ -793,9 +917,12 @@ export async function createLabOrderBatch(
     encounterId: number;
     patientId: number;
     investigations?: string[];
+    clinicalException?: boolean;
     testIds?: number[];
+    testSelections?: Array<{ testId: number; specimenOptionId: number }>;
+    idempotencyKey?: string;
     clinicalIndication: string;
-    specimenType: string;
+    specimenType?: string;
     priority: string;
     clinicalNotes?: string;
     orderedBy?: string;
@@ -810,12 +937,12 @@ export async function createLabOrderBatch(
   if (!data.clinicalIndication?.trim()) {
     throw new Error('Clinical indication is required.');
   }
-  if (!data.specimenType?.trim()) {
+  if (!data.testSelections && !data.specimenType?.trim()) {
     throw new Error('Specimen type is required.');
   }
   if (
     data.clinicalIndication.length > 2000 ||
-    data.specimenType.length > 120 ||
+    (data.specimenType?.length ?? 0) > 120 ||
     (data.clinicalNotes?.length ?? 0) > 5000
   ) {
     throw new Error('Clinical text exceeds the permitted length.');
@@ -849,8 +976,49 @@ export async function createLabOrderBatch(
     }
   }
 
+  const selected = data.testSelections;
+  if (
+    data.clinicalException &&
+    (!freeTextProvided ||
+      investigations.length !== 1 ||
+      data.testIds ||
+      selected ||
+      !data.encounterId ||
+      !data.idempotencyKey ||
+      data.idempotencyKey.length < 16 ||
+      data.idempotencyKey.length > 128)
+  )
+    throw new LaboratoryDomainError(
+      'INVALID_EXCEPTION',
+      'A clinical exception requires one investigation and its own specimen.',
+      400,
+    );
+  if (
+    selected &&
+    (freeTextProvided ||
+      data.testIds ||
+      !data.encounterId ||
+      !data.idempotencyKey ||
+      data.idempotencyKey.length < 16 ||
+      data.idempotencyKey.length > 128 ||
+      !selected.length ||
+      selected.length > 100 ||
+      selected.some(
+        (item) =>
+          !Number.isSafeInteger(item.testId) ||
+          item.testId <= 0 ||
+          !Number.isSafeInteger(item.specimenOptionId) ||
+          item.specimenOptionId <= 0,
+      ) ||
+      new Set(selected.map((item) => item.testId)).size !== selected.length)
+  )
+    throw new LaboratoryDomainError(
+      'INVALID_SELECTION',
+      'Select distinct tests and one reviewed specimen for each.',
+      400,
+    );
   const testIds = data.testIds ?? [];
-  if (!freeTextProvided) {
+  if (!freeTextProvided && !selected) {
     if (!Array.isArray(testIds) || testIds.length === 0) {
       throw new Error('Enter at least one laboratory investigation.');
     }
@@ -860,9 +1028,20 @@ export async function createLabOrderBatch(
     if (new Set(testIds).size !== testIds.length) {
       throw new Error('Duplicate tests are not allowed in one submission.');
     }
-  } else if (investigations.length === 0) {
+  } else if (freeTextProvided && investigations.length === 0) {
     throw new Error('Enter at least one laboratory investigation.');
   }
+
+  if (
+    !selected &&
+    ((freeTextProvided && data.testIds) ||
+      (freeTextProvided ? investigations.length : testIds.length) > 1)
+  )
+    throw new LaboratoryDomainError(
+      'INDIVIDUAL_SPECIMEN_REQUIRED',
+      'Submit one legacy request per specimen, or select an individually reviewed specimen for each test.',
+      400,
+    );
 
   const scope = await resolveQueueOrLabScope(context, {
     encounterId: data.encounterId,
@@ -871,34 +1050,160 @@ export async function createLabOrderBatch(
 
   try {
     return await db.transaction(async (tx) => {
+      let batchId: number | null = null;
+      if ((selected || data.clinicalException) && data.idempotencyKey) {
+        const payloadHash = createHash('sha256')
+          .update(
+            JSON.stringify({
+              scope,
+              selections: selected ? [...selected].sort((a, b) => a.testId - b.testId) : null,
+              clinicalException: data.clinicalException === true,
+              investigations: data.clinicalException ? investigations : null,
+              specimenType: data.clinicalException ? data.specimenType?.trim() : null,
+              clinicalIndication: data.clinicalIndication.trim(),
+              priority,
+              clinicalNotes: data.clinicalNotes?.trim() || null,
+              orderedBy: data.orderedBy?.trim() || null,
+            }),
+          )
+          .digest('hex');
+        const [batch] = await tx
+          .insert(schema.labOrderBatches)
+          .values({
+            ...scope,
+            idempotencyKey: data.idempotencyKey,
+            payloadHash,
+            createdByUserId: context.userId,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (!batch) {
+          const [existing] = await tx
+            .select()
+            .from(schema.labOrderBatches)
+            .where(
+              and(
+                eq(schema.labOrderBatches.tenantId, scope.tenantId),
+                eq(schema.labOrderBatches.facilityId, scope.facilityId),
+                eq(schema.labOrderBatches.idempotencyKey, data.idempotencyKey),
+              ),
+            )
+            .for('update');
+          if (
+            !existing ||
+            existing.payloadHash !== payloadHash ||
+            existing.createdByUserId !== context.userId
+          )
+            throw new LaboratoryDomainError(
+              'IDEMPOTENCY_CONFLICT',
+              'This request key was already used for a different request.',
+              409,
+            );
+          const orders = await tx
+            .select({ order: schema.labOrders, testCode: schema.labTests.code })
+            .from(schema.labOrders)
+            .leftJoin(schema.labTests, eq(schema.labOrders.testId, schema.labTests.id))
+            .where(
+              and(
+                eq(schema.labOrders.batchId, existing.id),
+                eq(schema.labOrders.tenantId, scope.tenantId),
+                eq(schema.labOrders.facilityId, scope.facilityId),
+              ),
+            );
+          const [queue] = existing.queueId
+            ? await tx
+                .select()
+                .from(schema.queues)
+                .where(
+                  and(
+                    eq(schema.queues.id, existing.queueId),
+                    eq(schema.queues.tenantId, scope.tenantId),
+                    eq(schema.queues.facilityId, scope.facilityId),
+                  ),
+                )
+            : [];
+          if (!queue || orders.length !== (selected?.length ?? 1))
+            throw new LaboratoryDomainError(
+              'BATCH_REVIEW_REQUIRED',
+              'The existing batch requires review before retrying.',
+              409,
+            );
+          return {
+            orders: orders.map(({ order, testCode }) => ({
+              ...order,
+              testCode,
+              catalogueMatch:
+                order.testId && !order.clinicalException
+                  ? ('FOUND' as const)
+                  : ('REVIEW_REQUIRED' as const),
+            })),
+            queue,
+            unresolved: orders
+              .filter(({ order }) => !order.testId || order.clinicalException)
+              .map(({ order }) => order.testName),
+            ambiguous: [],
+            idempotentReplay: true,
+          };
+        }
+        batchId = batch.id;
+      }
       const tests: Array<{
         id: number | null;
         name: string;
         code: string | null;
-        match?: 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS';
+        specimenType?: string;
+        reviewedSpecimenOptionId?: number;
+        match?: 'FOUND' | 'REVIEW_REQUIRED' | 'AMBIGUOUS';
       }> = [];
 
-      if (freeTextProvided) {
-        /*
-         * Free text is what the outpatient screen sends. Resolve each
-         * name against this facility's own laboratory catalogue so the
-         * order carries a stable `test_id` — without it a tariff link
-         * has nothing to point at, which is why these orders billed
-         * nothing even after the catalogue was priced.
-         *
-         * Unresolved names still create the order: a clinician's request
-         * is never held up because a catalogue entry is missing. They
-         * are reported back so the requirement is visible.
-         */
-        for (const name of investigations) {
-          const resolution = await resolveCatalogueTestByName(tx, scope.facilityId, name);
-
+      if (selected) {
+        for (const choice of selected) {
+          const [row] = await tx
+            .select({
+              test: schema.labTests,
+              specimenType: schema.labTestSpecimenOptions.specimenType,
+            })
+            .from(schema.labTests)
+            .innerJoin(
+              schema.labTestSpecimenOptions,
+              and(
+                eq(schema.labTestSpecimenOptions.testId, schema.labTests.id),
+                eq(schema.labTestSpecimenOptions.id, choice.specimenOptionId),
+                eq(schema.labTestSpecimenOptions.tenantId, scope.tenantId),
+                eq(schema.labTestSpecimenOptions.facilityId, scope.facilityId),
+                isNull(schema.labTestSpecimenOptions.retiredAt),
+              ),
+            )
+            .where(
+              and(
+                eq(schema.labTests.id, choice.testId),
+                eq(schema.labTests.facilityId, scope.facilityId),
+                eq(schema.labTests.isActive, true),
+              ),
+            )
+            .limit(1)
+            .for('share');
+          if (!row)
+            throw new LaboratoryDomainError(
+              'SPECIMEN_NOT_REVIEWED',
+              'A selected test or specimen is unavailable or has not been reviewed for this facility.',
+              400,
+            );
           tests.push({
-            id: resolution.test?.id ?? null,
-            name: resolution.test?.name ?? name,
-            code: resolution.test?.code ?? null,
-            match: resolution.reason,
+            id: row.test.id,
+            name: row.test.name,
+            code: row.test.code,
+            specimenType: row.specimenType,
+            reviewedSpecimenOptionId: choice.specimenOptionId,
+            match: 'FOUND',
           });
+        }
+      } else if (freeTextProvided) {
+        // Legacy text remains available for care, but even an exact-looking
+        // name is not proof of the selected investigation. It requires a
+        // controlled identity review rather than an inferred test ID.
+        for (const name of investigations) {
+          tests.push({ id: null, name, code: null, match: 'REVIEW_REQUIRED' });
         }
       } else {
         for (const testId of testIds) {
@@ -917,13 +1222,14 @@ export async function createLabOrderBatch(
           if (!test) {
             throw new Error('A selected test is unavailable at this facility.');
           }
-          /*
-           * Carry the catalogue code. The billing engine tries it first:
-           * `LAB-CBC` is what the laboratory screen shows and what a
-           * facility prices, and before this only the long test name was
-           * used, so a priced catalogue still billed nothing.
-           */
-          tests.push({ id: test.id, name: test.name, code: test.code ?? null, match: 'FOUND' });
+          // A legacy test ID does not prove the specimen was reviewed. Keep
+          // the clinical request, but queue completed work for explicit review.
+          tests.push({
+            id: test.id,
+            name: test.name,
+            code: test.code ?? null,
+            match: 'REVIEW_REQUIRED',
+          });
         }
       }
 
@@ -954,7 +1260,10 @@ export async function createLabOrderBatch(
             status: 'Ordered',
             orderedBy: data.orderedBy?.trim() || null,
             clinicalIndication: data.clinicalIndication.trim(),
-            specimenType: data.specimenType.trim(),
+            specimenType: test.specimenType ?? data.specimenType!.trim(),
+            reviewedSpecimenOptionId: test.reviewedSpecimenOptionId ?? null,
+            batchId,
+            clinicalException: !selected || data.clinicalException === true,
             priority,
             clinicalNotes: data.clinicalNotes?.trim() || null,
           })
@@ -963,6 +1272,19 @@ export async function createLabOrderBatch(
         if (!order) {
           throw new Error('A laboratory order could not be created.');
         }
+        await tx.insert(schema.auditLogs).values({
+          tenantId: scope.tenantId,
+          facilityId: scope.facilityId,
+          userId: String(context.userId),
+          action: 'CREATE',
+          resource: 'LAB_ORDER_REQUEST',
+          resourceId: String(order.id),
+          details: JSON.stringify({
+            testId: order.testId,
+            reviewedSpecimenOptionId: order.reviewedSpecimenOptionId,
+            clinicalException: order.clinicalException,
+          }),
+        });
 
         orders.push({
           ...order,
@@ -971,22 +1293,35 @@ export async function createLabOrderBatch(
         });
       }
 
-      /*
-       * What the catalogue could not resolve, by name. The order exists
-       * and is routed; the charge for it will be recorded as unpriced
-       * with this reason, so an administrator can add the catalogue
-       * entry rather than guess which order was missed.
-       */
+      // Legacy requests remain clinically available, but cannot bill without
+      // a controlled identity/specimen review workflow.
       const unresolved = tests
-        .filter((test) => test.id === null && test.match !== undefined)
+        .filter((test) => test.match === 'REVIEW_REQUIRED')
         .map((test) => test.name);
 
       const ambiguous = tests.filter((test) => test.match === 'AMBIGUOUS').map((test) => test.name);
 
-      return { orders, queue, unresolved, ambiguous };
+      if (batchId) {
+        await tx
+          .update(schema.labOrderBatches)
+          .set({ queueId: queue.id })
+          .where(eq(schema.labOrderBatches.id, batchId));
+        await tx.insert(schema.auditLogs).values({
+          tenantId: scope.tenantId,
+          facilityId: scope.facilityId,
+          userId: String(context.userId),
+          action: 'CREATE',
+          resource: 'LAB_ORDER_BATCH',
+          resourceId: String(batchId),
+          details: data.clinicalException
+            ? 'Created one unmatched clinical exception; specimen requires laboratory review.'
+            : `Created ${orders.length} catalogue orders with individually reviewed specimens.`,
+        });
+      }
+      return { orders, queue, unresolved, ambiguous, idempotentReplay: false };
     });
   } catch (error) {
-    log.error({ err: error }, 'lab.batch_transaction_failed');
+    if (!(error instanceof LaboratoryDomainError)) log.error('lab.batch_transaction_failed');
     throw error;
   }
 }

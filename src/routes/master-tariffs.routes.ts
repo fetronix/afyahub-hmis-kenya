@@ -7,6 +7,12 @@ import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import * as queries from '../db/queries.ts';
 import { handleScopeError } from './shared/errors.ts';
+import { listClinicalCatalogue } from '../billing/clinical-catalogue.service.ts';
+import {
+  addReviewedSpecimen,
+  listReviewedSpecimens,
+  retireReviewedSpecimen,
+} from '../billing/lab-specimen-config.service.ts';
 import { requireFacilityAdminTariffRole, resolveTariffFacility } from './shared/tariffs.ts';
 import {
   approveMasterTariff,
@@ -257,10 +263,63 @@ router.get(
   },
 );
 
-/** Clinical users see only service identities in their facility, never prices. */
+// Specimen choices are recorded only with an external clinical review reference.
+router.get(
+  '/api/master-lab-specimens',
+  requirePermission('tariffs.read'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.query.facilityId);
+      if (!facility) return;
+      return res.json(await listReviewedSpecimens(facility));
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+router.post(
+  '/api/master-lab-specimens',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility || !req.authContext) return;
+      return res
+        .status(201)
+        .json(await addReviewedSpecimen(facility, req.authContext.userId, req.body));
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+router.post(
+  '/api/master-lab-specimens/:id/retire',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility || !req.authContext) return;
+      return res.json(
+        await retireReviewedSpecimen(
+          facility,
+          req.authContext.userId,
+          Number(req.params.id),
+          req.body?.reviewReference,
+        ),
+      );
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+
+/** Facility-scoped indicative prices; completion always revalidates the tariff. */
 router.get(
   '/api/master-services',
-  requireAnyPermission('clinical.read', 'laboratory.read', 'tariffs.read'),
+  requireAnyPermission('clinical.read', 'laboratory.read', 'billing.read', 'tariffs.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) return res.status(401).json({ error: 'AUTHORIZATION_CONTEXT_MISSING' });
@@ -271,30 +330,9 @@ router.get(
       const facility = await queries.getFacilityByIdScoped(req.authContext, id);
       if (!facility) return res.status(404).json({ error: 'FACILITY_NOT_FOUND' });
       const family = typeof req.query.family === 'string' ? req.query.family.toUpperCase() : '';
-      if (family !== 'RADIOLOGY') return res.status(400).json({ error: 'INVALID_SERVICE_FAMILY' });
-      const rows = await db
-        .select({
-          id: schema.masterServices.id,
-          code: schema.masterServices.code,
-          description: schema.masterServices.description,
-          unit: schema.masterServices.unit,
-        })
-        .from(schema.masterServices)
-        .innerJoin(
-          schema.facilityServiceTariffs,
-          and(
-            eq(schema.facilityServiceTariffs.masterServiceId, schema.masterServices.id),
-            eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
-            eq(schema.facilityServiceTariffs.facilityId, facility.id),
-          ),
-        )
-        .where(
-          and(
-            eq(schema.masterServices.billingFamily, family),
-            eq(schema.masterServices.isActive, true),
-          ),
-        );
-      return res.json(rows);
+      if (family !== 'RADIOLOGY' && family !== 'LABORATORY' && family !== 'CONSULTATION')
+        return res.status(400).json({ error: 'INVALID_SERVICE_FAMILY' });
+      return res.json(await listClinicalCatalogue(facility, family));
     } catch (error) {
       return failure(res, error);
     }

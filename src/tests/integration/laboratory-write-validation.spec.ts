@@ -83,6 +83,27 @@ describe('laboratory write body validation', () => {
     );
   });
 
+  it('does not expose internal database or clinical text when a batch fails unexpectedly', async () => {
+    queries.createLabOrderBatch.mockRejectedValueOnce(
+      new Error('internal sensitive database text'),
+    );
+    const response = await httpJson(baseUrl, 'POST', '/api/lab-orders/batch', {
+      body: {
+        patientId: 2,
+        encounterId: 3,
+        investigations: ['Requested test'],
+        clinicalIndication: 'Clinical indication',
+        specimenType: 'Specimen',
+        priority: 'Routine',
+      },
+    });
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe(
+      'Laboratory request could not be confirmed. Review existing orders before retrying.',
+    );
+    expect(JSON.stringify(response.body)).not.toContain('internal sensitive database text');
+  });
+
   it('POST /api/lab-orders rejects invalid and pre-completed orders before the service', async () => {
     for (const body of [
       {},

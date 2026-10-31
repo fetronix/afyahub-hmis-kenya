@@ -19,6 +19,8 @@ import {
   jsonb,
   date,
   index,
+  boolean,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 import { departments, facilities, tenants } from './tenancy.ts';
@@ -26,6 +28,7 @@ import { departments, facilities, tenants } from './tenancy.ts';
 import { users } from './auth.ts';
 
 import { patients, practitioners } from './patients.ts';
+import { masterServices } from './master-services.ts';
 
 export const encounters = pgTable(
   'encounters',
@@ -59,6 +62,13 @@ export const encounters = pgTable(
       FOLLOW_UP
     */
     encounterType: text('encounter_type').default('OUTPATIENT').notNull(),
+
+    consultationMasterServiceId: integer('consultation_master_service_id').references(
+      () => masterServices.id,
+    ),
+    consultationSelectionReviewRequired: boolean('consultation_selection_review_required')
+      .notNull()
+      .default(false),
 
     /*
       PLANNED
@@ -331,3 +341,31 @@ export const clinicalProcedures = pgTable('procedures', {
 
   performedAt: timestamp('performed_at').defaultNow().notNull(),
 });
+
+/** Optional retry identity, scoped to a facility and actor; not a clinical completion. */
+export const encounterCreationRequests = pgTable(
+  'encounter_creation_requests',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    encounterId: integer('encounter_id').references(() => encounters.id),
+    createdByUserId: integer('created_by_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('encounter_creation_requests_scope_key_unique').on(
+      table.tenantId,
+      table.facilityId,
+      table.idempotencyKey,
+    ),
+  ],
+);

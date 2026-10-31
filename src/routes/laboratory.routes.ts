@@ -96,6 +96,7 @@ router.post(
       // Ordering is not completion of the investigation.
       return res.status(201).json({ ...result, billing: [] });
     } catch (err: any) {
+      if (handleLaboratoryError(err, res)) return;
       const message = err?.message || 'Failed to create laboratory batch.';
       const clientError = [
         'Select at least one laboratory test.',
@@ -114,7 +115,11 @@ router.post(
         'A selected test is unavailable at this facility.',
       ].includes(message);
 
-      return res.status(clientError ? 400 : 500).json({ error: message });
+      if (clientError) return res.status(400).json({ error: message });
+      console.error('[api] Laboratory batch could not be recorded.');
+      return res.status(500).json({
+        error: 'Laboratory request could not be confirmed. Review existing orders before retrying.',
+      });
     }
   },
 );
@@ -133,6 +138,7 @@ router.post(
 
       res.status(201).json({ ...order, billing: null });
     } catch (err: any) {
+      if (handleLaboratoryError(err, res)) return;
       respondInternalError(res, err, 'POST /api/lab-orders');
     }
   },
