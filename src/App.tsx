@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { HmisProvider, useHmis } from './context/HmisContext.tsx';
 
 import { Header } from './components/Header.tsx';
@@ -12,6 +12,7 @@ import { NotificationDialog } from './components/NotificationDialog.tsx';
 import { PatientPortalApp } from './components/portal/PortalApp.tsx';
 
 import { DashboardModule } from './components/modules/DashboardModule.tsx';
+import { HospitalDashboard } from './components/modules/HospitalDashboard.tsx';
 import { SuperAdminDashboardModule } from './components/modules/SuperAdminDashboardModule.tsx';
 import { PatientRegistrationModule } from './components/modules/PatientRegistrationModule.tsx';
 import { ReceptionQueueModule } from './components/modules/ReceptionQueueModule.tsx';
@@ -53,6 +54,21 @@ const AppContent: React.FC = () => {
     contextError,
     retryContextInitialization,
   } = useHmis();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('jalicare.sidebar.collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('jalicare.sidebar.collapsed', sidebarCollapsed ? '1' : '0');
+    } catch {
+      /* A blocked storage preference must not prevent navigation. */
+    }
+  }, [sidebarCollapsed]);
+  const toggleSidebar = () => setSidebarCollapsed((current) => !current);
 
   /*
    * ---------------------------------------------------------
@@ -139,7 +155,7 @@ const AppContent: React.FC = () => {
           authenticatedUser?.roles?.includes('SUPER_ADMIN') ? (
           <SuperAdminDashboardModule onNavigate={(module) => setActiveModule(module as any)} />
         ) : (
-          <DashboardModule />
+          <HospitalDashboard />
         );
 
       case 'registration':
@@ -261,7 +277,7 @@ const AppContent: React.FC = () => {
         return <AuditLogModule />;
 
       default:
-        return <DashboardModule />;
+        return <HospitalDashboard />;
     }
   };
 
@@ -271,17 +287,11 @@ const AppContent: React.FC = () => {
    * ---------------------------------------------------------
    */
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas font-sans text-ink antialiased">
-      {/* Top Header */}
-      <Header />
-
-      {/* Main Container */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Navigation Sidebar */}
-        <Sidebar />
-
-        {/* Viewport Content */}
-        <main className="flex-1 overflow-y-auto bg-canvas px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
+    <div className="flex h-screen h-[100dvh] w-screen overflow-hidden bg-[#f2f5fb] font-sans text-ink antialiased">
+      <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Header collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+        <main className="min-w-0 flex-1 overflow-y-auto bg-[#f2f5fb] px-3 py-4 sm:px-5 sm:py-5 lg:px-7">
           <div className="mx-auto w-full max-w-[1400px] space-y-5">
             {contextError && (
               <div

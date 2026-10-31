@@ -55,6 +55,8 @@ export const PatientRegistrationModule: React.FC = () => {
     currentTenant,
     currentFacility,
     authenticatedUser,
+    directorySearch,
+    setDirectorySearch,
     setSelectedPatient,
     setIsJourneyModalOpen,
     showToast,
@@ -123,6 +125,13 @@ export const PatientRegistrationModule: React.FC = () => {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const patientAge = calculatePatientAge(formData.dateOfBirth);
   const isMinor = patientAge !== null && patientAge < 18;
+
+  useEffect(() => {
+    if (directorySearch) {
+      setSearch(directorySearch);
+      setDirectorySearch('');
+    }
+  }, [directorySearch, setDirectorySearch]);
 
   useEffect(() => {
     let cancelled = false;

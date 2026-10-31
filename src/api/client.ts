@@ -4,6 +4,7 @@
  * Domain clients live under `src/api/clients/`:
  *   - `http.ts` — shared session token storage, `ApiError`, and hardened `fetchJson`
  *   - `auth.client.ts` — login, session validation, logout, RBAC, subscriptions
+ *   - `dashboard.client.ts` — scoped dashboard overview and search
  *   - `platform.client.ts` — health, tenants, facilities, public health, analytics, DHA
  *   - `patients-clinical.client.ts` — patients, consent, allergies, encounters, queues, vitals, meds
  *   - `maternity.client.ts` — ANC, labour, partograph, deliveries, postnatal, immunisation
@@ -41,6 +42,7 @@ export {
 } from './clients/auth.client.ts';
 
 export { platformClient } from './clients/platform.client.ts';
+export { dashboardClient } from './clients/dashboard.client.ts';
 
 export {
   patientsClinicalClient,
@@ -87,8 +89,10 @@ import { theatreClient } from './clients/theatre.client.ts';
 import { maternityClient } from './clients/maternity.client.ts';
 import { patientsClinicalClient } from './clients/patients-clinical.client.ts';
 import { platformClient } from './clients/platform.client.ts';
+import { dashboardClient } from './clients/dashboard.client.ts';
 
 export const api = {
+  ...dashboardClient,
   ...authClient,
   ...platformClient,
   ...patientsClinicalClient,

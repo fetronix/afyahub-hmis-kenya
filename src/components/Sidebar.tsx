@@ -1,5 +1,6 @@
-import { Baby, Building2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Baby, Building2, ChevronLeft, ChevronRight, Cross, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { api } from '../api/client.ts';
 import { useHmis, ModuleId } from '../context/HmisContext.tsx';
 import {
   LayoutDashboard,
@@ -74,11 +75,11 @@ export const navSections: NavSection[] = [
   {
     title: 'CLINICAL CARE',
     items: [
-      { id: 'dashboard', label: 'Overview & KPIs', icon: LayoutDashboard },
-      { id: 'registration', label: 'Patient Directory', icon: UserPlus },
-      { id: 'reception', label: 'Reception & Queue', icon: Users },
-      { id: 'opd', label: 'Outpatient & Triage', icon: Stethoscope },
-      { id: 'inpatient', label: 'Inpatient & Wards', icon: BedDouble },
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'registration', label: 'Patient Management', icon: UserPlus },
+      { id: 'reception', label: 'Appointments & Queue', icon: Users },
+      { id: 'opd', label: 'Outpatient Services', icon: Stethoscope },
+      { id: 'inpatient', label: 'Inpatient Management', icon: BedDouble },
       { id: 'maternity', label: 'Maternity & MCH', icon: Baby },
       { id: 'theatre', label: 'Operating Theatre', icon: Scissors },
       { id: 'dialysis', label: 'Dialysis Unit', icon: Activity },
@@ -103,7 +104,7 @@ export const navSections: NavSection[] = [
   {
     title: 'REVENUE & PAYERS',
     items: [
-      { id: 'finance', label: 'Billing & Cashier POS', icon: Receipt },
+      { id: 'finance', label: 'Billing & Invoicing', icon: Receipt },
       { id: 'payment_transactions', label: 'Payment Transactions', icon: Receipt },
       { id: 'accounting', label: 'Accounting & General Ledger', icon: BarChart3 },
       { id: 'claims', label: 'Insurance & SHA eClaims', icon: FileCheck2 },
@@ -120,7 +121,7 @@ export const navSections: NavSection[] = [
      */
     title: 'INTELLIGENCE & REPORTING',
     items: [
-      { id: 'analytics', label: 'Reports & Revenue', icon: BarChart3 },
+      { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
       { id: 'public_health', label: 'MOH 705 Surveillance', icon: Activity },
     ],
   },
@@ -135,39 +136,39 @@ export const navSections: NavSection[] = [
   },
 ];
 
-const COLLAPSE_KEY = 'jalicare.sidebar.collapsed';
-
-export const Sidebar: React.FC = () => {
+export const Sidebar: React.FC<{ collapsed: boolean; onToggleCollapse: () => void }> = ({
+  collapsed,
+  onToggleCollapse,
+}) => {
   const {
     activeModule,
     setActiveModule,
-    currentTenant,
-    setCurrentTenant,
-    tenants,
     currentFacility,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
-    showToast,
     authenticatedUser,
   } = useHmis();
-
-  /*
-   * The rail remembers whether the user folded it away. This is a
-   * preference, not a permission: it changes nothing about what the
-   * session may open.
-   */
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(COLLAPSE_KEY) === '1';
-  });
+  const [health, setHealth] = useState<'checking' | 'online' | 'unavailable'>('checking');
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
-    } catch {
-      /* A browser that blocks storage should still get a rail. */
-    }
-  }, [collapsed]);
+    let live = true;
+    const check = () => {
+      api
+        .getHealth()
+        .then((result) => {
+          if (live) setHealth(result.status === 'healthy' ? 'online' : 'unavailable');
+        })
+        .catch(() => {
+          if (live) setHealth('unavailable');
+        });
+    };
+    check();
+    const timer = window.setInterval(check, 60_000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const isSuperAdmin = Boolean(
@@ -342,165 +343,71 @@ export const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Mobile Backdrop Overlay */}
       {isMobileMenuOpen && (
-        <div
+        <button
+          type="button"
           onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 z-30 bg-navy-950/60 backdrop-blur-[2px] md:hidden animate-in fade-in duration-200"
-          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-[#07142b]/55 md:hidden"
+          aria-label="Close navigation backdrop"
         />
       )}
-
-      {/* Sidebar Container */}
       <aside
-        className={`flex shrink-0 select-none flex-col overflow-y-auto bg-navy-900 transition-[width,transform] duration-200 ease-in-out z-40
-          fixed inset-y-0 left-0 top-16 w-[17rem] md:static md:translate-x-0 ${
-            isMobileMenuOpen ? 'translate-x-0 shadow-lift' : '-translate-x-full md:translate-x-0'
-          } ${collapsed ? 'md:w-[4.75rem]' : 'md:w-[17rem]'}`}
+        className={`dashboard-sidebar fixed inset-y-0 left-0 z-50 flex w-[248px] shrink-0 flex-col bg-[#10203d] text-white transition-[width,transform] duration-200 md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} ${collapsed ? 'md:w-[76px]' : 'md:w-[248px]'}`}
       >
-        {/* Mobile Header Close */}
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 md:hidden">
-          <span className="text-sm font-semibold tracking-tight text-white">JaliCare HMIS</span>
+        <div
+          className={`flex h-[76px] shrink-0 items-center ${collapsed ? 'md:justify-center md:px-2' : ''} gap-3 px-6`}
+        >
+          <span className="brand-mark flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] text-white">
+            <Cross className="h-7 w-7" strokeWidth={3} />
+          </span>
+          <div className={`min-w-0 leading-tight ${collapsed ? 'md:hidden' : ''}`}>
+            <div className="text-[19px] font-bold tracking-[-.03em]">JaliCare</div>
+            <div className="mt-0.5 text-[12px] font-medium text-[#c9d7ef]">HMIS Kenya</div>
+          </div>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
-            className="rounded-lg p-1.5 text-navy-200 transition-colors hover:bg-white/10 hover:text-white"
+            className="ml-auto rounded-lg p-2 text-white/75 hover:bg-white/10 md:hidden"
             aria-label="Close menu"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
-
-        {/* Mobile Tenant Selector (Visible on small screens) */}
-        <div className="border-b border-white/10 px-4 py-3 md:hidden">
-          <div className="mb-1.5 text-3xs font-semibold uppercase tracking-[0.16em] text-brand-300">
-            Organization (Tenant)
-          </div>
-          <select
-            value={currentTenant?.id}
-            onChange={(e) => {
-              const t = tenants.find((item) => item.id === Number(e.target.value));
-              if (t) {
-                setCurrentTenant(t);
-                showToast(`Switched tenant to: ${t.name}`);
-              }
-            }}
-            className="w-full rounded-lg border border-white/15 bg-navy-800 px-2.5 py-2 text-xs font-medium text-white outline-none focus:border-brand-400"
-          >
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Read-only facility identity; hidden for superadmin */}
-        {!isSuperAdmin && (
-          <div className={`border-b border-white/10 ${collapsed ? 'px-3 py-4' : 'px-4 py-4'}`}>
-            {collapsed ? (
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.06] text-brand-300"
-                title={currentFacility?.name || 'Facility not assigned'}
-              >
-                <Building2 className="h-4 w-4" />
-              </div>
-            ) : (
-              <>
-                <div className="mb-2 text-3xs font-semibold uppercase tracking-[0.16em] text-brand-300/80">
-                  Your facility
-                </div>
-
-                <div className="flex items-start gap-2.5">
-                  <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-ember-400" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold leading-snug text-white break-words">
-                      {currentFacility?.name || 'Facility not assigned'}
-                    </p>
-
-                    <p className="mt-1.5 font-mono text-2xs text-navy-200">
-                      MFL {currentFacility?.mflCode || '—'}
-                    </p>
-
-                    <p className="mt-0.5 text-2xs text-navy-300">
-                      {currentFacility?.level || 'Level not configured'}
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Navigation Sections */}
-        <nav className={`flex-1 space-y-5 py-4 ${collapsed ? 'px-2' : 'px-3'}`}>
+        <nav
+          aria-label="Main navigation"
+          className="dashboard-nav min-h-0 flex-1 overflow-y-auto px-[14px] pb-3 pt-3"
+        >
           {sections
-            .filter((sec) => sec.items.some((item) => isModuleVisible(item.id)))
-            .map((sec, secIdx) => (
-              <div key={secIdx}>
-                {!collapsed ? (
-                  <div className="mb-1.5 px-2.5 text-3xs font-semibold uppercase tracking-[0.16em] text-brand-300/70">
-                    {sec.title}
-                  </div>
-                ) : (
-                  secIdx > 0 && <div className="mx-2 mb-3 h-px bg-white/10" />
+            .filter((section) => section.items.some((item) => isModuleVisible(item.id)))
+            .map((section, sectionIndex) => (
+              <div key={section.title} className={sectionIndex ? 'mt-2' : ''}>
+                {sectionIndex > 0 && (
+                  <div
+                    aria-hidden="true"
+                    className={`mx-3 my-2 h-px bg-white/[.08] ${collapsed ? 'md:mx-1' : ''}`}
+                  />
                 )}
-
-                <div className="space-y-0.5">
-                  {sec.items
+                <div className="space-y-[3px]">
+                  {section.items
                     .filter((item) => isModuleVisible(item.id))
                     .map((item) => {
                       const Icon = item.icon;
-                      const isActive = activeModule === item.id;
+                      const active = activeModule === item.id;
                       return (
                         <button
                           key={item.id}
+                          type="button"
                           onClick={() => handleSelectModule(item.id)}
-                          aria-current={isActive ? 'page' : undefined}
-                          title={collapsed ? item.label : undefined}
-                          className={`relative flex min-h-[40px] w-full items-center rounded-lg text-left text-xs transition-colors md:min-h-0 ${
-                            collapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-2.5 py-2'
-                          } ${
-                            isActive
-                              ? 'bg-brand-600/30 font-semibold text-white'
-                              : 'font-medium text-navy-100/85 hover:bg-white/[0.06] hover:text-white'
-                          }`}
+                          aria-current={active ? 'page' : undefined}
+                          title={item.label}
+                          className={`sidebar-link flex min-h-[39px] w-full items-center gap-3 rounded-[9px] px-3 text-left text-[12.5px] font-medium transition-colors ${collapsed ? 'md:justify-center md:px-0' : ''} ${active ? 'bg-[#075cf1] font-semibold text-white shadow-[0_4px_14px_rgba(0,78,220,.3)]' : 'text-[#cdd7e7] hover:bg-white/[.08] hover:text-white'}`}
                         >
-                          {isActive && (
-                            <span
-                              aria-hidden="true"
-                              className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-ember-500"
-                            />
-                          )}
-
-                          {collapsed ? (
-                            <Icon
-                              className={`h-[18px] w-[18px] shrink-0 ${
-                                isActive ? 'text-white' : 'text-brand-300/80'
-                              }`}
-                            />
-                          ) : (
-                            <>
-                              <span className="flex min-w-0 items-center gap-2.5 truncate">
-                                <Icon
-                                  className={`h-4 w-4 shrink-0 ${
-                                    isActive ? 'text-ember-300' : 'text-brand-300/80'
-                                  }`}
-                                />
-                                <span className="truncate">{item.label}</span>
-                              </span>
-                              {item.badge && (
-                                <span
-                                  className={`rounded px-1.5 font-mono text-2xs font-semibold ${
-                                    isActive
-                                      ? 'bg-ember-500 text-white'
-                                      : 'bg-white/10 text-navy-100'
-                                  }`}
-                                >
-                                  {item.badge}
-                                </span>
-                              )}
-                            </>
-                          )}
+                          <Icon
+                            className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-white' : 'text-[#b6c5da]'}`}
+                            strokeWidth={2.2}
+                          />
+                          <span className={`truncate ${collapsed ? 'md:hidden' : ''}`}>
+                            {item.label}
+                          </span>
                         </button>
                       );
                     })}
@@ -508,15 +415,31 @@ export const Sidebar: React.FC = () => {
               </div>
             ))}
         </nav>
-
-        {/* Collapse control (desktop) */}
-        <div className="hidden border-t border-white/10 px-3 py-2.5 md:block">
+        <div className={`shrink-0 px-[14px] pb-5 pt-2 ${collapsed ? 'md:px-2' : ''}`}>
+          <div
+            className={`rounded-[10px] border border-white/10 bg-white/[.025] px-3 py-3 ${collapsed ? 'md:flex md:justify-center md:px-1' : ''}`}
+            title="This indicator checks the application process only; it does not verify external systems."
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={`h-2.5 w-2.5 shrink-0 rounded-full ${health === 'online' ? 'bg-[#15bf77]' : health === 'checking' ? 'bg-amber-400' : 'bg-rose-400'}`}
+              />
+              <div className={collapsed ? 'md:hidden' : ''}>
+                <p className="text-[11px] font-semibold text-white">System status</p>
+                <p className="mt-0.5 text-[10px] text-[#a9bedb]">
+                  {health === 'online'
+                    ? 'Application responding'
+                    : health === 'checking'
+                      ? 'Checking application…'
+                      : 'Status unavailable'}
+                </p>
+              </div>
+            </div>
+          </div>
           <button
             type="button"
-            onClick={() => setCollapsed((current) => !current)}
-            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-2xs font-medium text-navy-200 transition-colors hover:bg-white/[0.06] hover:text-white ${
-              collapsed ? 'justify-center' : ''
-            }`}
+            onClick={onToggleCollapse}
+            className={`mt-2 hidden w-full items-center gap-2 rounded-lg px-2 py-2 text-[11px] text-[#9db0cc] hover:bg-white/5 hover:text-white md:flex ${collapsed ? 'justify-center' : ''}`}
             aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
             aria-expanded={!collapsed}
           >
@@ -525,29 +448,13 @@ export const Sidebar: React.FC = () => {
             ) : (
               <>
                 <ChevronLeft className="h-4 w-4" />
-                <span>Collapse menu</span>
+                <span>Collapse navigation</span>
               </>
             )}
           </button>
-        </div>
-
-        {/* Footer Info */}
-        <div
-          className={`border-t border-white/10 text-3xs text-navy-300 ${collapsed ? 'px-2 py-3' : 'px-4 py-3'}`}
-        >
-          {collapsed ? (
-            <div className="flex justify-center">
-              <span className="h-1.5 w-1.5 rounded-full bg-ember-500" title="Kenya MOH ready" />
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-white">JaliCare HMIS</span>
-                <span className="font-semibold text-ember-400">Kenya MOH Ready</span>
-              </div>
-              <div className="mt-1 text-navy-300">DHA Architecture &amp; FHIR R4</div>
-            </>
-          )}
+          <div className={`px-2 pt-2 text-[10px] text-[#7387a7] ${collapsed ? 'md:hidden' : ''}`}>
+            JaliCare HMIS · v0.1.0
+          </div>
         </div>
       </aside>
     </>

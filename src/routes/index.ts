@@ -31,6 +31,7 @@
 import { Router } from 'express';
 
 import complianceRoutes from '../compliance/compliance.routes.ts';
+import dashboardRoutes from '../dashboard/dashboard.routes.ts';
 import facilityModuleRoutes from '../config/facility-modules.routes.ts';
 import clinicalRecordsRoutes from '../clinical/clinical-records.routes.ts';
 import staffInvitationRoutes from '../auth/staff-invitation.routes.ts';
@@ -78,6 +79,8 @@ import tenancyRoutes from './domains/tenancy.routes.ts';
 export function createApiRoutes(): Router {
   const api = Router();
 
+  // Dashboard sections enforce their own module and permission boundaries.
+  api.use('/dashboard', dashboardRoutes);
   api.use('/payment-hub', paymentHubRoutes);
   api.use('/payer-hub', payerHubRoutes);
   api.use('/platform', platformRoutes);

@@ -293,16 +293,20 @@ export const DashboardModule: React.FC = () => {
   const canAny = (...required: string[]) =>
     isSuperAdmin || required.some((permission) => permissions.has(permission));
 
-  const canReadReports = can('reports.read');
-  const canReadQueues = can('appointments.read');
-  const canReadInpatient = can('inpatient.read');
-  const canReadAudit = can('audit.read');
-  const canReadInventory = can('inventory.read');
-
-  const facilityModules = useMemo(
-    () => new Set(currentFacility?.enabledModules ?? []),
-    [currentFacility],
-  );
+  const facilityModules = useMemo(() => {
+    const hidden = new Set(currentFacility?.hiddenModules ?? []);
+    return new Set((currentFacility?.enabledModules ?? []).filter((module) => !hidden.has(module)));
+  }, [currentFacility]);
+  const canReadReports = can('reports.read') && facilityModules.has('analytics');
+  const canReadSurveillance = can('reports.read') && facilityModules.has('public_health');
+  const canReadQueues = can('appointments.read') && facilityModules.has('reception');
+  const canReadInpatient = can('inpatient.read') && facilityModules.has('inpatient');
+  const canReadAudit = can('audit.read') && facilityModules.has('audit');
+  const canReadInventory = can('inventory.read') && facilityModules.has('inventory');
+  const canReadFinance = can('billing.read') && facilityModules.has('finance');
+  const canReadTheatre =
+    canAny('clinical.read', 'inpatient.read') && facilityModules.has('theatre');
+  const canReadLaboratory = can('laboratory.read') && facilityModules.has('laboratory');
 
   /* The same enablement rule the sidebar uses, for the same reason. */
   const moduleEnabled = (id: ModuleId): boolean => {
@@ -316,8 +320,8 @@ export const DashboardModule: React.FC = () => {
   };
 
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
-  const [surveillance, setSurveillance] = useState<PublicHealthReport[]>([]);
-  const [queues, setQueues] = useState<QueueItem[]>([]);
+  const [surveillance, setSurveillance] = useState<PublicHealthReport[] | null>(null);
+  const [queues, setQueues] = useState<QueueItem[] | null>(null);
   const [inpatientBoard, setInpatientBoard] = useState<InpatientBoard | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   /**
@@ -335,7 +339,7 @@ export const DashboardModule: React.FC = () => {
    * "0" when the request failed would be an assertion nobody made.
    */
   const metric = (value: number | null | undefined): string =>
-    summary ? String(value ?? 0) : '\u2014';
+    summary && value !== null && value !== undefined ? String(value) : '\u2014';
 
   useEffect(() => {
     let active = true;
@@ -357,11 +361,17 @@ export const DashboardModule: React.FC = () => {
               console.error('Failed to load analytics summary:', err);
               if (active) {
                 setSummary(null);
-                setLoadError('Some figures could not be loaded.');
+                setLoadError((previous) =>
+                  [previous, 'Some figures could not be loaded.'].filter(Boolean).join(' '),
+                );
               }
             }),
         );
+      } else {
+        setSummary(null);
+      }
 
+      if (canReadSurveillance) {
         tasks.push(
           api
             .getPublicHealthReports(currentFacility?.id)
@@ -370,12 +380,16 @@ export const DashboardModule: React.FC = () => {
             })
             .catch((err) => {
               console.error('Failed to load surveillance reports:', err);
-              if (active) setSurveillance([]);
+              if (active) {
+                setSurveillance(null);
+                setLoadError((previous) =>
+                  [previous, 'Surveillance reports could not be loaded.'].filter(Boolean).join(' '),
+                );
+              }
             }),
         );
       } else {
-        setSummary(null);
-        setSurveillance([]);
+        setSurveillance(null);
       }
 
       if (canReadQueues) {
@@ -388,13 +402,15 @@ export const DashboardModule: React.FC = () => {
             .catch((err) => {
               console.error('Failed to load queues:', err);
               if (active) {
-                setQueues([]);
-                setLoadError('The patient queue could not be loaded.');
+                setQueues(null);
+                setLoadError((previous) =>
+                  [previous, 'The patient queue could not be loaded.'].filter(Boolean).join(' '),
+                );
               }
             }),
         );
       } else {
-        setQueues([]);
+        setQueues(null);
       }
 
       if (canReadInpatient) {
@@ -408,7 +424,9 @@ export const DashboardModule: React.FC = () => {
               console.error('Failed to load inpatient board:', err);
               if (active) {
                 setInpatientBoard(null);
-                setLoadError('The ward board could not be loaded.');
+                setLoadError((previous) =>
+                  [previous, 'The ward board could not be loaded.'].filter(Boolean).join(' '),
+                );
               }
             }),
         );
@@ -439,7 +457,12 @@ export const DashboardModule: React.FC = () => {
             })
             .catch((err) => {
               console.error('Failed to load expiring stock:', err);
-              if (active) setExpiringBatches([]);
+              if (active) {
+                setExpiringBatches([]);
+                setLoadError((previous) =>
+                  [previous, 'Expiring stock could not be loaded.'].filter(Boolean).join(' '),
+                );
+              }
             }),
         );
       } else {
@@ -460,7 +483,14 @@ export const DashboardModule: React.FC = () => {
             })
             .catch((err) => {
               console.error('Failed to load recent activity:', err);
-              if (active) setAuditLogs([]);
+              if (active) {
+                setAuditLogs([]);
+                setLoadError((previous) =>
+                  [previous, 'Recent audit activity could not be loaded.']
+                    .filter(Boolean)
+                    .join(' '),
+                );
+              }
             }),
         );
       } else {
@@ -483,6 +513,7 @@ export const DashboardModule: React.FC = () => {
     currentFacility,
     refreshKey,
     canReadReports,
+    canReadSurveillance,
     canReadQueues,
     canReadInpatient,
     canReadAudit,
@@ -519,7 +550,7 @@ export const DashboardModule: React.FC = () => {
     });
   }
 
-  if (summary && summary.pendingLabOrders > 0) {
+  if (canReadLaboratory && summary && summary.pendingLabOrders > 0) {
     alerts.push({
       key: 'labs-pending',
       tone: 'info',
@@ -528,7 +559,7 @@ export const DashboardModule: React.FC = () => {
     });
   }
 
-  if (summary && summary.lowStockAlerts > 0) {
+  if (canReadInventory && summary && summary.lowStockAlerts > 0) {
     alerts.push({
       key: 'low-stock',
       tone: 'warning',
@@ -550,7 +581,7 @@ export const DashboardModule: React.FC = () => {
     });
   }
 
-  if (summary && summary.expiringStockAlerts > 0) {
+  if (canReadInventory && summary && summary.expiringStockAlerts > 0) {
     alerts.push({
       key: 'expiring-stock',
       tone: 'warning',
@@ -578,10 +609,12 @@ export const DashboardModule: React.FC = () => {
   const firstName = (authenticatedUser?.fullName || currentUser?.name || '').trim().split(/\s+/)[0];
 
   const hasAnyKpi =
-    can('appointments.read') ||
-    can('inpatient.read') ||
-    can('billing.read') ||
-    canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read');
+    canReadQueues ||
+    canReadInpatient ||
+    canReadFinance ||
+    canReadTheatre ||
+    canReadLaboratory ||
+    canReadInventory;
 
   return (
     <div className="space-y-7">
@@ -626,13 +659,15 @@ export const DashboardModule: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <button onClick={() => setActiveModule('interoperability')} className="btn-quiet">
-              <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
-              DHA readiness
-              <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-            </button>
-          </div>
+          {isSuperAdmin && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button onClick={() => setActiveModule('interoperability')} className="btn-quiet">
+                <ShieldCheck className="h-3.5 w-3.5 text-brand-600" />
+                DHA readiness
+                <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -686,10 +721,15 @@ export const DashboardModule: React.FC = () => {
             <span className="text-2xs text-slate-400">Live from this facility only</span>
           </div>
 
+          {!canReadReports && (
+            <p className="px-5 py-2 text-xs text-muted">
+              Operational summary figures require reports access and the analytics module.
+            </p>
+          )}
           {/* Tracks fit however many metrics this session may read; the
               1px gap over the hairline colour draws the dividers. */}
           <div className="grid gap-px bg-hair [grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))]">
-            {can('appointments.read') && (
+            {canReadQueues && (
               <KpiCell
                 label="Waiting in queues"
                 icon={Users}
@@ -704,7 +744,7 @@ export const DashboardModule: React.FC = () => {
               />
             )}
 
-            {can('inpatient.read') && (
+            {canReadInpatient && (
               <KpiCell
                 label="Beds occupied"
                 icon={BedDouble}
@@ -737,54 +777,60 @@ export const DashboardModule: React.FC = () => {
               />
             )}
 
-            {canAny('clinical.read', 'inpatient.read', 'laboratory.read', 'pharmacy.read') && (
+            {(canReadTheatre || canReadLaboratory || canReadInventory) && (
               <KpiCell
                 label="Theatre, lab & stores"
                 icon={Activity}
                 value={
                   <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span>
-                      {metric(summary?.scheduledSurgeries)}
-                      <span className="ml-1 font-sans text-2xs font-medium text-muted">
-                        surgeries
+                    {canReadTheatre && (
+                      <span>
+                        {metric(summary?.scheduledSurgeries)}
+                        <span className="ml-1 font-sans text-2xs font-medium text-muted">
+                          surgeries
+                        </span>
                       </span>
-                    </span>
-                    <span>
-                      {metric(summary?.pendingLabOrders)}
-                      <span className="ml-1 font-sans text-2xs font-medium text-muted">
-                        labs pending
+                    )}
+                    {canReadLaboratory && (
+                      <span>
+                        {metric(summary?.pendingLabOrders)}
+                        <span className="ml-1 font-sans text-2xs font-medium text-muted">
+                          labs pending
+                        </span>
                       </span>
-                    </span>
+                    )}
                   </span>
                 }
                 footer={
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <span>
-                      Low stock{' '}
-                      <strong className="font-mono font-semibold text-rose-600">
-                        {metric(summary?.lowStockAlerts)}
-                      </strong>
-                    </span>
-                    <span>
-                      Expiring ≤30d{' '}
-                      <strong
-                        className={`font-mono font-semibold ${
-                          (summary?.expiringStockAlerts ?? 0) > 0
-                            ? 'text-amber-700'
-                            : 'text-slate-600'
-                        }`}
-                      >
-                        {metric(summary?.expiringStockAlerts)}
-                      </strong>
-                    </span>
-                  </div>
+                  canReadInventory ? (
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <span>
+                        Low stock{' '}
+                        <strong className="font-mono font-semibold text-rose-600">
+                          {metric(summary?.lowStockAlerts)}
+                        </strong>
+                      </span>
+                      <span>
+                        Expiring ≤30d{' '}
+                        <strong
+                          className={`font-mono font-semibold ${
+                            (summary?.expiringStockAlerts ?? 0) > 0
+                              ? 'text-amber-700'
+                              : 'text-slate-600'
+                          }`}
+                        >
+                          {metric(summary?.expiringStockAlerts)}
+                        </strong>
+                      </span>
+                    </div>
+                  ) : undefined
                 }
               />
             )}
 
-            {can('billing.read') && (
+            {canReadFinance && (
               <KpiCell
-                label="Paid to date"
+                label="Invoice paid amounts · unreconciled"
                 icon={Wallet}
                 value={
                   summary ? `KES ${Number(summary.totalRevenueKes).toLocaleString()}` : '\u2014'
@@ -983,7 +1029,7 @@ export const DashboardModule: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {queues.slice(0, 5).map((q) => (
+                  {queues?.slice(0, 5).map((q) => (
                     <tr key={q.id}>
                       <td className="font-mono font-semibold text-navy-900">{q.tokenNumber}</td>
                       <td className="text-ink-soft">{queueStationLabel(q.queueType)}</td>
@@ -1016,10 +1062,20 @@ export const DashboardModule: React.FC = () => {
                         {can('patients.read') && (
                           <button
                             onClick={() => {
-                              api.getPatient(q.patientId).then((p) => {
-                                setSelectedPatient(p);
-                                setIsJourneyModalOpen(true);
-                              });
+                              api
+                                .getPatient(q.patientId)
+                                .then((p) => {
+                                  setSelectedPatient(p);
+                                  setIsJourneyModalOpen(true);
+                                })
+                                .catch((err) => {
+                                  console.error('Failed to load patient journey:', err);
+                                  setLoadError((previous) =>
+                                    [previous, 'Patient journey could not be loaded.']
+                                      .filter(Boolean)
+                                      .join(' '),
+                                  );
+                                });
                             }}
                             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs font-semibold text-brand-700 transition-colors hover:bg-brand-50"
                           >
@@ -1031,7 +1087,14 @@ export const DashboardModule: React.FC = () => {
                     </tr>
                   ))}
 
-                  {queues.length === 0 && (
+                  {!queues && !loading && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                        Queue records are unavailable.
+                      </td>
+                    </tr>
+                  )}
+                  {queues?.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
                         No queue records to display. If activity is expected, verify queue data
@@ -1043,7 +1106,7 @@ export const DashboardModule: React.FC = () => {
               </table>
             </div>
 
-            {queues.length > 5 && (
+            {queues && queues.length > 5 && (
               <div className="flex items-center justify-between border-t border-hair bg-slate-50/60 px-5 py-2.5 text-2xs text-muted">
                 <span>Showing the first 5 of {queues.length} open tickets</span>
                 <button
@@ -1223,7 +1286,7 @@ export const DashboardModule: React.FC = () => {
           03 — What the county is owed
       --------------------------------------------------------------- */}
 
-      {canReadReports && (
+      {canReadSurveillance && (
         <section>
           <SectionHeading
             step="03"
@@ -1245,12 +1308,18 @@ export const DashboardModule: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hair px-5 py-3">
               <span className="text-2xs text-muted">
                 Reports loaded:{' '}
-                <strong className="font-mono text-navy-900">{surveillance.length}</strong>
+                <strong className="font-mono text-navy-900">
+                  {surveillance ? surveillance.length : '—'}
+                </strong>
               </span>
               <span className="text-2xs font-medium text-ember-700">Not assessed</span>
             </div>
 
-            {surveillance.length === 0 ? (
+            {!surveillance ? (
+              <p className="px-5 py-8 text-center text-xs text-slate-500">
+                Surveillance reports are unavailable.
+              </p>
+            ) : surveillance.length === 0 ? (
               <p className="px-5 py-8 text-center text-xs text-slate-500">
                 No surveillance reports are available for this facility.
               </p>
