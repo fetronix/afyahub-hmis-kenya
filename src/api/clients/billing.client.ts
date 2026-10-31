@@ -1,3 +1,4 @@
+import type { FinalizedInvoiceView, PaymentParty } from '../../billing/finalized-invoice.types.ts';
 import type {
   BillingChargeAttemptList,
   BillingChargeAttemptOutcome,
@@ -33,6 +34,50 @@ export const billingClient = {
       payments: BillingPayment[];
       refunds: BillingRefund[];
     }>(`${API_BASE}/invoices/${id}`),
+
+  getInvoiceFinalization: (id: number) =>
+    fetchJson<FinalizedInvoiceView | { finalized: false }>(
+      `${API_BASE}/invoices/${id}/finalization`,
+    ),
+  finalizeInvoice: (
+    id: number,
+    input: { insurerResponsibility: string; copayment: string; allocationBasis: string },
+  ) =>
+    fetchJson<{ invoiceId: number; finalizedAt: string; idempotentReplay: boolean }>(
+      `${API_BASE}/invoices/${id}/finalize`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  recordInvoicePrintAccess: (id: number) =>
+    fetchJson<{ authorized: true }>(`${API_BASE}/invoices/${id}/print-access`, { method: 'POST' }),
+  attributeInvoicePayment: (
+    invoiceId: number,
+    paymentId: number,
+    input: { party: PaymentParty; reason: string },
+  ) =>
+    fetchJson<{ id: number; idempotentReplay: boolean }>(
+      `${API_BASE}/invoices/${invoiceId}/payments/${paymentId}/attribution`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  checkPaymentRequestStatus: (input: { facilityId: number; idempotencyKey: string }) =>
+    fetchJson<
+      | { status: 'NOT_FOUND' }
+      | { status: 'CANCELLED'; invoiceId: number }
+      | { status: 'RECORDED'; invoiceId: number; paymentId: number; receiptNumber: string }
+    >(`${API_BASE}/billing/payments/status`, { method: 'POST', body: JSON.stringify(input) }),
+
+  cancelPendingPaymentRequest: (input: {
+    facilityId: number;
+    invoiceId: number;
+    idempotencyKey: string;
+    reason: string;
+  }) =>
+    fetchJson<
+      | { status: 'CANCELLED'; invoiceId: number; idempotentReplay: boolean }
+      | { status: 'RECORDED'; invoiceId: number; paymentId: number; receiptNumber: string }
+    >(`${API_BASE}/billing/payments/cancel-pending`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   recordManualRefund: (input: {
     facilityId: number;
@@ -221,6 +266,9 @@ export const billingClient = {
     payment: Partial<BillingPayment> & {
       transactionCode?: string;
       allowOverpayment?: boolean;
+      allowPartyOverpayment?: boolean;
+      payerParty?: PaymentParty;
+      idempotencyKey?: string;
     },
   ) =>
     fetchJson<RecordPaymentResult>(`${API_BASE}/billing/payments`, {

@@ -6,7 +6,7 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
@@ -343,6 +343,17 @@ export async function voidInvoiceScoped(
         409,
       );
 
+    const activeJournals =
+      await tx.execute(sql`SELECT p.journal_id FROM accounting_billing_postings p
+      WHERE p.invoice_id=${invoice.id} AND p.tenant_id=${invoice.tenantId} AND p.facility_id=${invoice.facilityId}
+        AND NOT EXISTS (SELECT 1 FROM journal_entries r WHERE r.reversal_of_journal_id=p.journal_id AND r.status='POSTED')
+      LIMIT 1`);
+    if (activeJournals.rows.length)
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'Reverse the active billing journals through accounting before voiding this invoice.',
+        409,
+      );
     const [updated] = await tx
       .update(schema.billingInvoices)
       .set({

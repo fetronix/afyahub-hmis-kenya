@@ -292,6 +292,7 @@ export interface PrivateClaimSummary {
 }
 
 export interface PrivateClaimDetail extends PrivateClaimSummary {
+  dispatchReview?: { state: string; createdAt: string } | null;
   memberPolicy: PrivateMemberPolicy;
   originalInvoice: {
     id: number;

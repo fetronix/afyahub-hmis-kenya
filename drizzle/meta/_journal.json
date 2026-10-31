@@ -260,6 +260,48 @@
             "when": 1792900000024,
             "tag": "0036_refund_receipt_safety",
             "breakpoints": true
+        },
+        {
+            "idx": 37,
+            "version": "7",
+            "when": 1792900000025,
+            "tag": "0037_finalized_invoices",
+            "breakpoints": true
+        },
+        {
+            "idx": 38,
+            "version": "7",
+            "when": 1792900000026,
+            "tag": "0038_payment_request_identity",
+            "breakpoints": true
+        },
+        {
+            "idx": 39,
+            "version": "7",
+            "when": 1792900000027,
+            "tag": "0039_payment_request_cancellation",
+            "breakpoints": true
+        },
+        {
+            "idx": 40,
+            "version": "7",
+            "when": 1792900000028,
+            "tag": "0040_claim_dispatch_safety",
+            "breakpoints": true
+        },
+        {
+            "idx": 41,
+            "version": "7",
+            "when": 1792900000029,
+            "tag": "0041_billing_ledger_postings",
+            "breakpoints": true
+        },
+        {
+            "idx": 42,
+            "version": "7",
+            "when": 1792900000030,
+            "tag": "0042_facility_tariff_imports",
+            "breakpoints": true
         }
     ]
 }

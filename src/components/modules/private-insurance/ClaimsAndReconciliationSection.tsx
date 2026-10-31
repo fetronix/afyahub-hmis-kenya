@@ -10,6 +10,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { BillingInvoice, Encounter } from '../../../types/index.ts';
+import { ClaimEvidencePreview } from '../ClaimEvidencePreview.tsx';
 import {
   privateInsuranceApi,
   type PrivateClaimDetail,
@@ -678,6 +679,18 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 Document references must point to existing securely stored evidence; this form does
                 not upload files.
               </p>
+              {prepForm.invoiceId && prepForm.payerCode && (
+                <ClaimEvidencePreview
+                  invoiceId={Number(prepForm.invoiceId)}
+                  payerKind="PRIVATE"
+                  payerCode={prepForm.payerCode}
+                />
+              )}
+              <p className="text-xs text-amber-800">
+                Free-text document references are not verified as belonging to this patient and are
+                not automatically uploaded or attached by this preview. Review them through approved
+                secure processes.
+              </p>
               <div className="flex justify-end">
                 <button
                   type="submit"
@@ -713,22 +726,32 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => handleValidateClaim(selectedClaim.id)}
+                  disabled={Boolean(selectedClaim.dispatchReview)}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-200 text-brand-700"
                 >
                   Re-Validate
                 </button>
-                {canSubmitClaims && selectedClaim.status === 'READY' && (
-                  <button
-                    type="button"
-                    onClick={() => openManualDispatch(selectedClaim, false)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white"
-                  >
-                    Submit Claim
-                  </button>
-                )}
+                {canSubmitClaims &&
+                  !selectedClaim.dispatchReview &&
+                  selectedClaim.status === 'READY' && (
+                    <button
+                      type="button"
+                      onClick={() => openManualDispatch(selectedClaim, false)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white"
+                    >
+                      Submit Claim
+                    </button>
+                  )}
               </div>
             </div>
 
+            {selectedClaim.dispatchReview && (
+              <p role="alert" className="rounded bg-amber-50 p-3 text-xs text-amber-900">
+                A prior dispatch is in progress or uncertain. Review the insurer record and contact
+                an authorized administrator; do not re-dispatch. This flag does not establish
+                acceptance or payment.
+              </p>
+            )}
             {selectedClaim.validationIssues.length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1 text-xs">
                 <div className="font-bold text-amber-900">Pre-Submission Validation Checks:</div>
@@ -1075,15 +1098,17 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              {canSubmitClaims && selectedClaim.status === 'READY' && (
-                <button
-                  type="button"
-                  onClick={() => openManualDispatch(selectedClaim, true)}
-                  className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-brand-600 text-white"
-                >
-                  Resubmit Corrected Claim
-                </button>
-              )}
+              {canSubmitClaims &&
+                !selectedClaim.dispatchReview &&
+                selectedClaim.status === 'READY' && (
+                  <button
+                    type="button"
+                    onClick={() => openManualDispatch(selectedClaim, true)}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-brand-600 text-white"
+                  >
+                    Resubmit Corrected Claim
+                  </button>
+                )}
               <button
                 type="submit"
                 disabled={busy}

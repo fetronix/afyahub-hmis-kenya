@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import * as queries from '../db/queries.ts';
 import {
@@ -12,6 +13,7 @@ import {
   decideExpenseRequestBodySchema,
   facilityActionBodySchema,
   postJournalBodySchema,
+  postBillingSourceBodySchema,
   reverseJournalBodySchema,
 } from '../validation/schemas/index.ts';
 import { validateBody } from '../validation/validate.ts';
@@ -40,8 +42,13 @@ import {
   saveBankReconciliationScoped,
 } from '../accounting/bank-integration.service.ts';
 
+import {
+  getBillingSourcePostingScoped,
+  postBillingSourceScoped,
+} from '../accounting/billing-posting.service.ts';
 import { inspectBillingConsistencyScoped } from '../accounting/billing-diagnostics.service.ts';
 import { inspectBillingLedgerScoped } from '../accounting/billing-ledger-diagnostics.service.ts';
+import { inspectBillingJournalExceptionsScoped } from '../accounting/billing-journal-exceptions.service.ts';
 
 const router = Router();
 
@@ -140,6 +147,24 @@ router.get('/overview', requirePermission('accounting.read'), async (req: AuthRe
   }
 });
 
+router.get(
+  '/billing-journal-exceptions',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectBillingJournalExceptionsScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        afterJournalId: req.query.afterJournalId,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
 router.post(
   '/accounts',
   requirePermission('accounting.coa.manage'),
@@ -209,6 +234,47 @@ router.post(
   },
 );
 
+router.get(
+  '/billing-postings/:sourceType/:sourceId',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await getBillingSourcePostingScoped(
+          await scoped(req),
+          req.params.sourceType,
+          req.params.sourceId,
+        )),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/billing-postings/:sourceType/:sourceId',
+  requirePermission('accounting.journals.post', 'billing.read'),
+  validateBody(postBillingSourceBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await postBillingSourceScoped(
+        await scoped(req),
+        req.params.sourceType,
+        req.params.sourceId,
+        {
+          ...req.body,
+          idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
+        },
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
 router.post(
   '/journals/:id/reverse',
   requirePermission('accounting.journals.post'),
@@ -218,6 +284,8 @@ router.post(
       const result = await reverseJournalScoped(await scoped(req), Number(req.params.id), {
         ...req.body,
         idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
+        billingSourceAuthorized:
+          !!req.authContext && hasAllPermissions(req.authContext, ['billing.read']),
       });
       res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
     } catch (error) {

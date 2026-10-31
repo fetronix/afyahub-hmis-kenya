@@ -171,6 +171,17 @@ export async function recordManualRefund(context: AuthorizationContext, input: R
         409,
       );
     }
+    const [attribution] = await tx
+      .select({ party: schema.billingPaymentAttributions.party })
+      .from(schema.billingPaymentAttributions)
+      .where(eq(schema.billingPaymentAttributions.paymentId, payment.id));
+    if (attribution?.party === 'INSURER') {
+      throw new PaymentDomainError(
+        'PAYER_REFUND_REVIEW_REQUIRED',
+        'An insurer-attributed receipt requires authorized payer reversal review.',
+        409,
+      );
+    }
     // Matching uses this same payment lock. A refund and a claim allocation
     // cannot both succeed based on an earlier unallocated snapshot.
     const linked = await tx.execute(sql`SELECT (

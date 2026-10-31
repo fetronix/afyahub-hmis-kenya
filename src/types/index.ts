@@ -528,6 +528,7 @@ export interface BillingInvoice {
   /** Money received beyond the total, held as patient credit. */
   creditBalance?: string;
   status: string;
+  finalizedAt?: string | null;
   payerType: string;
   payerName?: string;
   memberNumber?: string;
@@ -750,7 +751,7 @@ export interface FacilityTariffValidation {
   summary: { examined: number; review: number; invalid: number; manualOnly: number };
   checks: Array<{
     key: string;
-    kind: 'CATALOGUE' | 'FAMILY_SCENARIO' | 'TARIFF' | 'LINK';
+    kind: 'CATALOGUE' | 'FAMILY_SCENARIO' | 'TARIFF' | 'LINK' | 'BILLED_SERVICE';
     serviceType: string | null;
     name: string;
     code: string | null;
@@ -816,6 +817,7 @@ export interface PaymentSettlement {
 }
 
 export interface RecordPaymentResult {
+  idempotentReplay?: boolean;
   payment: BillingPayment;
   settlement: PaymentSettlement;
   invoice: {

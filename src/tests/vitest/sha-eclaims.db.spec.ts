@@ -18,7 +18,8 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, expect, it } from 'vitest';
 
 import { describeDb } from './support/db.ts';
-import { db } from '../../db/index.ts';
+import { db, pool } from '../../db/index.ts';
+import { defaultShaGatewayAdapter } from '../../integrations/sha/sha.adapter.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
 import * as schema from '../../db/schema.ts';
 import type { InsuranceActorScope } from '../../insurance/eclaims/contracts.ts';
@@ -47,6 +48,7 @@ import {
   prepareShaClaim,
   processIncomingShaWebhookEvent,
   recordClaimAdjudicationDecision,
+  refreshShaClaimStatus,
   resubmitShaClaim,
   submitShaClaim,
 } from '../../insurance/eclaims/claims-workflow.service.ts';
@@ -59,6 +61,18 @@ import {
 } from '../../insurance/eclaims/remittance.service.ts';
 
 const ROOT = resolve(import.meta.dirname, '..', '..', '..');
+
+async function waitForInvoiceLock(blocker: number) {
+  for (let i = 0; i < 300; i++) {
+    const waiting = await pool.query(
+      `SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)) LIMIT 1`,
+      [blocker],
+    );
+    if (waiting.rowCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('Timed out waiting for the synthetic claim transaction to block on its invoice.');
+}
 
 describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () => {
   let scopeA: InsuranceActorScope;
@@ -368,6 +382,7 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       clinicalIndication: 'Focal neurological deficit',
       primaryDiagnosisCode: '8B20',
       primaryDiagnosisDisplay: 'Acute stroke evaluation',
+      codingSystem: 'ICD-11',
       requestedServiceCode: 'SHA-IMG-010',
       requestedServiceName: 'CT Scan Head & Neck',
       quantity: 1,
@@ -432,8 +447,245 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(prepared.totalBilledAmount).toBe('8500.00');
     expect(prepared.totalClaimedAmount).toBe('7000.00');
 
-    const dispatched = await submitShaClaim(scopeA, prepared.id);
+    // Force an invoice change after the initial read but before the claim lock.
+    const [changedInvoice] = await db
+      .insert(schema.billingInvoices)
+      .values({
+        tenantId: scopeA.tenantId,
+        facilityId: scopeA.facilityId,
+        patientId: patientAId,
+        encounterId: encounterAId,
+        invoiceNumber: `INV-CHANGED-${randomUUID()}`,
+        totalAmount: '8500.00',
+        paidAmount: '0.00',
+        balanceAmount: '8500.00',
+        status: 'Unpaid',
+        payerType: 'SHA',
+      })
+      .returning();
+    const [changeTariff] = await db
+      .select()
+      .from(schema.facilityServiceTariffs)
+      .where(eq(schema.facilityServiceTariffs.id, tariffAId));
+    await db.insert(schema.billingItems).values({
+      invoiceId: changedInvoice.id,
+      tariffId: tariffAId,
+      tariffCode: changeTariff.code,
+      sourceType: 'RADIOLOGY',
+      itemType: 'Radiology',
+      description: 'CT Brain Scan',
+      quantity: 1,
+      unitPrice: '8500.00',
+      totalAmount: '8500.00',
+    });
+    const lockClient = await pool.connect();
+    try {
+      await lockClient.query('BEGIN');
+      const pid = (await lockClient.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      await lockClient.query('SELECT id FROM billing_invoices WHERE id=$1 FOR UPDATE', [
+        changedInvoice.id,
+      ]);
+      const pending = prepareShaClaim(scopeA, {
+        invoiceId: changedInvoice.id,
+        encounterId: encounterAId,
+        preauthorizationId: preauth.id,
+        schemeCode: 'SHIF',
+        subType: 'op',
+      }).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      await waitForInvoiceLock(pid);
+      await lockClient.query(
+        `UPDATE billing_items SET description='Synthetic changed item' WHERE invoice_id=$1`,
+        [changedInvoice.id],
+      );
+      await lockClient.query('COMMIT');
+      expect(await pending).toMatchObject({ code: 'INVOICE_CHANGED' });
+    } finally {
+      await lockClient.query('ROLLBACK');
+      lockClient.release();
+    }
+
+    // A separate synthetic invoice exercises claim creation races and a lost transport outcome.
+    const [retryInvoice] = await db
+      .insert(schema.billingInvoices)
+      .values({
+        tenantId: scopeA.tenantId,
+        facilityId: scopeA.facilityId,
+        patientId: patientAId,
+        encounterId: encounterAId,
+        invoiceNumber: `INV-SHA-RACE-${randomUUID()}`,
+        totalAmount: '8500.00',
+        paidAmount: '0.00',
+        balanceAmount: '8500.00',
+        status: 'Unpaid',
+        payerType: 'SHA',
+      })
+      .returning();
+    const [tariff] = await db
+      .select()
+      .from(schema.facilityServiceTariffs)
+      .where(eq(schema.facilityServiceTariffs.id, tariffAId));
+    await db.insert(schema.billingItems).values({
+      invoiceId: retryInvoice.id,
+      tariffId: tariffAId,
+      tariffCode: tariff.code,
+      sourceType: 'RADIOLOGY',
+      itemType: 'Radiology',
+      description: 'CT Brain Scan',
+      quantity: 1,
+      unitPrice: '8500.00',
+      totalAmount: '8500.00',
+    });
+    const [otherPatient] = await db
+      .insert(schema.patients)
+      .values({
+        tenantId: scopeA.tenantId,
+        registrationFacilityId: scopeA.facilityId,
+        mrn: `OTHER-${randomUUID()}`,
+        firstName: 'Synthetic',
+        lastName: 'Other',
+        dateOfBirth: '1990-01-01',
+        gender: 'Female',
+      })
+      .returning();
+    await db.insert(schema.diagnoses).values({
+      patientId: otherPatient.id,
+      encounterId: encounterAId,
+      icd10Code: 'SECRET',
+      icd10Description: 'Other patient diagnosis',
+    });
+    await db.insert(schema.labOrders).values({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      patientId: otherPatient.id,
+      encounterId: encounterAId,
+      testName: 'Other patient laboratory order',
+    });
+    const prepareRetry = () =>
+      prepareShaClaim(scopeA, {
+        invoiceId: retryInvoice.id,
+        encounterId: encounterAId,
+        preauthorizationId: preauth.id,
+        schemeCode: 'SHIF',
+        subType: 'op',
+      });
+    const claimRaces = await Promise.allSettled([prepareRetry(), prepareRetry()]);
+    expect(claimRaces.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(claimRaces.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    const retryClaim = claimRaces.find(
+      (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof prepareShaClaim>>> =>
+        r.status === 'fulfilled',
+    )!.value;
+    expect(JSON.stringify(retryClaim.diagnosesSnapshot)).not.toContain('Other patient diagnosis');
+    expect(retryClaim.supportingSummary.labOrdersCount).toBe(0);
+    let attempted = 0;
+    const offlineAdapter = new Proxy(defaultShaGatewayAdapter, {
+      get(target, property, receiver) {
+        if (property === 'submitBundle')
+          return async () => {
+            attempted += 1;
+            throw new Error('synthetic lost response');
+          };
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await expect(submitShaClaim(scopeA, retryClaim.id, offlineAdapter)).rejects.toMatchObject({
+      code: 'CLAIM_DISPATCH_REVIEW_REQUIRED',
+    });
+    await expect(submitShaClaim(scopeA, retryClaim.id, offlineAdapter)).rejects.toMatchObject({
+      code: 'CLAIM_DISPATCH_REVIEW_REQUIRED',
+    });
+    expect(attempted).toBe(1);
+    expect(
+      (
+        await db
+          .select()
+          .from(schema.insuranceClaimDispatchGuards)
+          .where(eq(schema.insuranceClaimDispatchGuards.claimId, retryClaim.id))
+      )[0].state,
+    ).toBe('UNCERTAIN');
+    await expect(refreshShaClaimStatus(scopeA, retryClaim.id)).rejects.toMatchObject({
+      code: 'CLAIM_DISPATCH_REVIEW_REQUIRED',
+    });
+
+    // Synthetic in-flight reservation on an acknowledged fixture: a delayed
+    // callback must be retained for review, not overwrite or release the guard.
+    const [callbackFixture] = await db
+      .insert(schema.shaEclaims)
+      .values({
+        tenantId: scopeA.tenantId,
+        facilityId: scopeA.facilityId,
+        patientId: patientAId,
+        invoiceId: retryInvoice.id,
+        encounterId: encounterAId,
+        claimNumber: `SYN-CALLBACK-${randomUUID()}`,
+        claimUuid: randomUUID(),
+        billableStart: '2026-01-01',
+        billableEnd: '2026-01-01',
+        totalBilledAmount: '100.00',
+        totalClaimedAmount: '100.00',
+        status: 'ACKNOWLEDGED',
+        submissionCount: 1,
+      })
+      .returning();
+    await db.insert(schema.insuranceClaimDispatchGuards).values({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      workflow: 'SHA',
+      claimId: callbackFixture.id,
+      claimRevision: callbackFixture.dispatchRevision,
+      attemptNumber: 2,
+      correlationId: randomUUID(),
+      actorUserId: scopeA.userId,
+    });
+    const deferred = await processIncomingShaWebhookEvent({
+      entityType: 'claim',
+      externalEntityId: callbackFixture.claimUuid,
+      externalEventId: randomUUID(),
+      upstreamStatus: 'REJECTED',
+      signatureVerified: true,
+    });
+    expect(deferred.event.processingOutcome).toBe('DEFERRED_CLAIM_DISPATCH_REVIEW_REQUIRED');
+    const [unchanged] = await db
+      .select()
+      .from(schema.shaEclaims)
+      .where(eq(schema.shaEclaims.id, callbackFixture.id));
+    expect(unchanged.status).toBe('ACKNOWLEDGED');
+    expect(
+      await db
+        .select()
+        .from(schema.insuranceClaimDispatchGuards)
+        .where(eq(schema.insuranceClaimDispatchGuards.claimId, callbackFixture.id)),
+    ).toHaveLength(1);
+
+    const guardedAdvice = await recordRemittanceAdvice(scopeA, {
+      payerRemittanceRef: `SYN-GUARD-${randomUUID()}`,
+      paymentChannel: 'EFT',
+      paymentDate: '2026-10-28',
+      totalRemittedAmount: '10.00',
+    });
+    await expect(
+      reconcileRemittance(scopeA, guardedAdvice.id, {
+        allocations: [{ eclaimId: callbackFixture.id, remittedAmount: '10.00' }],
+      }),
+    ).rejects.toMatchObject({ code: 'CLAIM_DISPATCH_REVIEW_REQUIRED' });
+
+    const simultaneous = await Promise.allSettled([
+      submitShaClaim(scopeA, prepared.id),
+      submitShaClaim(scopeA, prepared.id),
+    ]);
+    const dispatched = simultaneous.find(
+      (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof submitShaClaim>>> =>
+        r.status === 'fulfilled',
+    )?.value;
+    expect(simultaneous.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(simultaneous.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    if (!dispatched) throw new Error('Expected one synthetic dispatch');
     expect(dispatched.status).toBe('ACKNOWLEDGED');
+    expect(dispatched.submissions).toHaveLength(1);
     expect(dispatched.submissionCount).toBe(1);
 
     // Adjudicate as REJECTED -> correct & resubmit preserving submission history
@@ -446,7 +698,12 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     const resubmitted = await resubmitShaClaim(scopeA, prepared.id, {
       correctionNotes: 'Updated ICD-11 code to 8B11.0 cerebral ischaemic stroke',
       diagnosesSnapshot: [
-        { code: '8B11.0', display: 'Cerebral ischaemic stroke', system: 'ICD-11' },
+        {
+          code: '8B11.0',
+          display: 'Cerebral ischaemic stroke',
+          system: 'ICD-11',
+          type: 'principal',
+        },
       ],
     });
     expect(resubmitted.status).toBe('ACKNOWLEDGED');

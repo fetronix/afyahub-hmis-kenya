@@ -134,8 +134,8 @@ export interface ShaAuthorizationRecord {
   serviceType: string;
   consentMethod: string;
   authorizationGuid: string | null;
-  consentToken: string | null;
-  authCode: string | null;
+  hasConsentToken: boolean;
+  hasAuthCode: boolean;
   authStatus: string;
   isElective: boolean;
   interventions: string[];
@@ -155,7 +155,7 @@ export interface ShaPreauthRecord {
   patientMrn?: string;
   encounterId: number | null;
   authorizationId?: number | null;
-  consentToken?: string | null;
+  hasConsentToken: boolean;
   hiePreauthGuid?: string | null;
   isElective?: boolean;
   needsDoctorAuthorization?: boolean;
@@ -231,7 +231,6 @@ export interface ShaEclaimSubmissionRecord {
   payerClaimId: string | null;
   upstreamState: string | null;
   rejectionReason: string | null;
-  errors: string[];
   submittedAt: string;
 }
 
@@ -245,6 +244,7 @@ export interface ShaEclaimHistoryRecord {
 }
 
 export interface ShaEclaimRecord {
+  dispatchReview?: { state: string; createdAt: string } | null;
   id: number;
   patientId: number;
   patientName?: string;
@@ -256,7 +256,7 @@ export interface ShaEclaimRecord {
   eligibilityVerificationId: number | null;
   preauthorizationId: number | null;
   authorizationId?: number | null;
-  consentToken?: string | null;
+  hasConsentToken?: boolean;
   submissionProtocol?: 'FHIR_BUNDLE' | 'HIE_VIRTUAL_CLAIM';
   hieVirtualClaimId?: string | null;
   dischargeReason?: string | null;
@@ -303,7 +303,6 @@ export interface ShaEclaimRecord {
   rejectionReason: string | null;
   submissionCount: number;
   previousSubmissionRef: string | null;
-  fhirBundle?: Record<string, unknown> | null;
   submittedAt: string | null;
   acknowledgedAt: string | null;
   adjudicatedAt: string | null;
@@ -314,6 +313,8 @@ export interface ShaEclaimRecord {
   submissions?: ShaEclaimSubmissionRecord[];
   statusHistory?: ShaEclaimHistoryRecord[];
 }
+
+export type ShaEclaimSummary = Omit<ShaEclaimRecord, 'diagnosesSnapshot' | 'supportingSummary'>;
 
 export interface ShaRemittanceRecord {
   id: number;
@@ -618,7 +619,7 @@ export const shaEclaimsApi = {
   submitPreauthorization: (
     id: number,
     facilityId?: number | null,
-    options?: { protocol?: 'FHIR_BUNDLE' | 'HIE_PREAUTH'; consentToken?: string | null },
+    options?: { protocol?: 'FHIR_BUNDLE' | 'HIE_PREAUTH' },
   ) =>
     shaRequest<{
       success: boolean;
@@ -643,7 +644,7 @@ export const shaEclaimsApi = {
     ),
 
   listClaims: (facilityId?: number | null, status?: string) =>
-    shaRequest<{ success: boolean; claims: ShaEclaimRecord[] }>(
+    shaRequest<{ success: boolean; claims: ShaEclaimSummary[] }>(
       status ? `/claims?status=${encodeURIComponent(status)}` : '/claims',
       facilityId,
     ),

@@ -65,6 +65,28 @@ export function tableContract(table: PgTable) {
   };
 }
 
+/** Exact metadata changes introduced by reviewed additive migrations. The original
+ * extraction fixture remains unchanged; all other columns and indexes still match it. */
+export function contractWithReviewedAdditions(name: string, original: unknown) {
+  if (name !== 'shaEclaims' && name !== 'privateInsuranceClaims') return original;
+  const expected = structuredClone(original) as {
+    columns: Array<{ name: string } & Record<string, unknown>>;
+  };
+  const statusIndex = expected.columns.findIndex((column) => column.name === 'status');
+  if (statusIndex < 0) throw new Error('Expected historical status column not found');
+  expected.columns.splice(statusIndex + 1, 0, {
+    name: 'dispatch_revision',
+    type: 'integer',
+    notNull: true,
+    primary: false,
+    hasDefault: true,
+    default: 0,
+    unique: false,
+    uniqueName: null,
+  });
+  return expected;
+}
+
 /** Join targets, cardinality and explicit field mappings of a relation. */
 export function relationContract(relation: Relations) {
   const definitions = relation.config(createTableRelationsHelpers(relation.table));

@@ -469,7 +469,11 @@ export const InsuranceClaimsModule: React.FC = () => {
           facilityId={currentFacility?.id ?? null}
           invoices={invoices}
           patients={patients}
-          canPrepare={hasPerm('insurance.sha.claims.prepare')}
+          canPrepare={
+            hasPerm('insurance.sha.claims.prepare') &&
+            hasPerm('clinical.read') &&
+            hasPerm('billing.read')
+          }
           canSubmit={hasPerm('insurance.sha.claims.submit')}
           canResubmit={hasPerm('insurance.sha.claims.resubmit')}
           canAdjudicate={hasPerm('insurance.sha.reconciliation.manage')}

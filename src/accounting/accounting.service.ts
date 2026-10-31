@@ -34,7 +34,7 @@ export interface JournalLineInput {
   serviceLine?: string | null;
 }
 
-interface JournalLine {
+export interface JournalLine {
   accountId: number;
   debitCents: bigint;
   creditCents: bigint;
@@ -42,7 +42,7 @@ interface JournalLine {
   serviceLine: string | null;
 }
 
-function requiredText(value: unknown, name: string, max: number): string {
+export function requiredText(value: unknown, name: string, max: number): string {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) {
     throw new AccountingIntegrityError(
       'INVALID_INPUT',
@@ -157,7 +157,7 @@ export function validateBalancedJournalLines(input: unknown): {
   return { lines, totalCents: debit };
 }
 
-async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -308,13 +308,19 @@ export async function closeFinancialPeriodScoped(
   });
 }
 
-interface JournalRequest {
+export interface JournalRequest {
   entryDate: string;
   description: string;
   idempotencyKey: string;
   lines: JournalLine[];
   totalCents: bigint;
-  sourceType: 'MANUAL' | 'REVERSAL' | 'EXPENSE_REQUEST';
+  sourceType:
+    | 'MANUAL'
+    | 'REVERSAL'
+    | 'EXPENSE_REQUEST'
+    | 'BILLING_INVOICE'
+    | 'BILLING_PAYMENT'
+    | 'BILLING_REFUND';
   sourceId?: string;
   reversalOf?: number;
   reversalReason?: string;
@@ -337,7 +343,7 @@ function requestHash(request: JournalRequest): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-async function postInsideTransaction(
+export async function postInsideTransaction(
   client: PoolClient,
   scope: AccountingScope,
   request: JournalRequest,
@@ -480,7 +486,7 @@ export async function reverseJournalScoped(
   const key = requiredText(input.idempotencyKey, 'Idempotency key', 128);
   return transaction(async (client) => {
     const original = await client.query(
-      `SELECT id, total_debit_cents FROM journal_entries WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 AND status='POSTED' AND reversal_of_journal_id IS NULL`,
+      `SELECT id, total_debit_cents, source_type FROM journal_entries WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 AND status='POSTED' AND reversal_of_journal_id IS NULL`,
       [journalId, scope.tenantId, scope.facilityId],
     );
     if (!original.rows.length)
@@ -489,6 +495,48 @@ export async function reverseJournalScoped(
         'Original posted journal not found.',
         404,
       );
+    // Source postings and their reversals share the invoice lock. Reversing a
+    // parent while an active child exists would leave unexplained GL balances.
+    if (
+      ['BILLING_INVOICE', 'BILLING_PAYMENT', 'BILLING_REFUND'].includes(
+        original.rows[0].source_type,
+      )
+    ) {
+      if (input.billingSourceAuthorized !== true)
+        throw new AccountingIntegrityError(
+          'BILLING_READ_REQUIRED',
+          'Billing read permission is required to reverse a billing source journal.',
+          403,
+        );
+      const bridge = await client.query(
+        `SELECT invoice_id, payment_id, source_type FROM accounting_billing_postings
+         WHERE journal_id=$1 AND tenant_id=$2 AND facility_id=$3`,
+        [journalId, scope.tenantId, scope.facilityId],
+      );
+      if (bridge.rows.length) {
+        const link = bridge.rows[0];
+        await client.query('SELECT id FROM billing_invoices WHERE id=$1 FOR UPDATE', [
+          link.invoice_id,
+        ]);
+        if (link.source_type !== 'BILLING_REFUND') {
+          const dependent = await client.query(
+            `SELECT p.journal_id FROM accounting_billing_postings p
+             WHERE p.tenant_id=$1 AND p.facility_id=$2 AND p.invoice_id=$3
+               AND (($4='BILLING_INVOICE' AND p.source_type IN ('BILLING_PAYMENT','BILLING_REFUND'))
+                 OR ($4='BILLING_PAYMENT' AND p.source_type='BILLING_REFUND' AND p.payment_id=$5))
+               AND NOT EXISTS (SELECT 1 FROM journal_entries r WHERE r.reversal_of_journal_id=p.journal_id AND r.status='POSTED')
+             LIMIT 1`,
+            [scope.tenantId, scope.facilityId, link.invoice_id, link.source_type, link.payment_id],
+          );
+          if (dependent.rows.length)
+            throw new AccountingIntegrityError(
+              'ACTIVE_DEPENDENT_POSTING',
+              'Reverse the dependent billing journals first; source records remain unchanged.',
+              409,
+            );
+        }
+      }
+    }
     const existingLines = await client.query(
       `SELECT account_id, debit_cents, credit_cents, description, service_line FROM journal_lines WHERE journal_entry_id=$1 ORDER BY id`,
       [journalId],

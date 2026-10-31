@@ -36,6 +36,13 @@ export async function matchRecordedPayerPayment(
       'INVALID_PAYMENT_ID',
       'Select a valid existing billing receipt.',
     );
+  // Use the same invoice -> payment lock order as refunds and attribution.
+  const [invoice] = await tx
+    .select({ id: schema.billingInvoices.id })
+    .from(schema.billingInvoices)
+    .where(eq(schema.billingInvoices.id, input.invoiceId))
+    .for('update');
+  if (!invoice) throw new RecordedPaymentError('INVOICE_NOT_FOUND', 'Invoice was not found.');
   const [payment] = await tx
     .select()
     .from(schema.billingPayments)
@@ -55,6 +62,16 @@ export async function matchRecordedPayerPayment(
     .from(schema.billingRefunds)
     .where(eq(schema.billingRefunds.paymentId, payment.id))
     .limit(1);
+  const [attribution] = await tx
+    .select({ party: schema.billingPaymentAttributions.party })
+    .from(schema.billingPaymentAttributions)
+    .where(eq(schema.billingPaymentAttributions.paymentId, payment.id))
+    .limit(1);
+  if (attribution?.party === 'PATIENT')
+    throw new RecordedPaymentError(
+      'PAYMENT_PARTY_MISMATCH',
+      'A patient-attributed receipt cannot be matched as insurer remittance.',
+    );
   if (refund)
     throw new RecordedPaymentError(
       'PAYMENT_REFUNDED',

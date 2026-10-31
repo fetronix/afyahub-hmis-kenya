@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, expect, it } from 'vitest';
 
 import { describeDb } from './support/db.ts';
-import { db } from '../../db/index.ts';
+import { db, pool } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
 import {
   listPrivatePayers,
@@ -24,6 +24,9 @@ import {
 import { checkPrivateInsuranceEligibility } from '../../insurance/eligibility/eligibility.service.ts';
 import { assignPayer, setActivation } from '../../insurance/hub/service.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
+import { attributeInvoicePayment } from '../../billing/finalized-invoice.service.ts';
+import { matchRecordedPayerPayment } from '../../insurance/hub/recorded-payment.ts';
+import { getPayerAdapter, registerPayerAdapter } from '../../insurance/core/adapter-registry.ts';
 import { createPayerServiceMapping } from '../../insurance/mappings/mappings.service.ts';
 import {
   createOrApprovePayerBenefitRule,
@@ -50,6 +53,18 @@ import {
 } from '../../insurance/remittance/remittance-reconciliation.service.ts';
 
 const ROOT = resolve(import.meta.dirname, '..', '..', '..');
+
+async function waitForInvoiceLock(blocker: number) {
+  for (let i = 0; i < 300; i++) {
+    const waiting = await pool.query(
+      `SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)) LIMIT 1`,
+      [blocker],
+    );
+    if (waiting.rowCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('Timed out waiting for the synthetic claim transaction to block on its invoice.');
+}
 
 interface TestActor {
   tenantId: number;
@@ -548,6 +563,161 @@ describeDb(
       expect(approvedPreauth.status).toBe('APPROVED');
       expect(approvedPreauth.payerAuthReference).toBe('PACIS-AUTH-2026-9911');
 
+      // An unrelated invoice demonstrates that patient-paid totals use explicit receipt provenance.
+      const [splitInvoice] = await db
+        .insert(schema.billingInvoices)
+        .values({
+          tenantId: actorA.tenantId,
+          facilityId: actorA.facilityId,
+          patientId: patientAId,
+          encounterId: encounterAId,
+          invoiceNumber: `INV-SPLIT-${randomUUID()}`,
+          totalAmount: '3000.00',
+          paidAmount: '0.00',
+          balanceAmount: '3000.00',
+          status: 'Unpaid',
+          payerType: 'Insurance',
+        })
+        .returning();
+      const [splitTariff] = await db
+        .select()
+        .from(schema.facilityServiceTariffs)
+        .where(eq(schema.facilityServiceTariffs.id, tariffConsultId));
+      await db.insert(schema.billingItems).values({
+        invoiceId: splitInvoice.id,
+        tariffId: tariffConsultId,
+        tariffCode: splitTariff.code,
+        sourceType: 'OPD',
+        itemType: 'Consultation',
+        description: 'Specialist Consultation',
+        quantity: 1,
+        unitPrice: '3000.00',
+        totalAmount: '3000.00',
+      });
+      const paymentCtx = {
+        userId: actorA.actorUserId,
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        roles: ['BILLING_CLERK'],
+        permissions: ['billing.read', 'billing.payments.record'],
+        isSuperAdmin: false,
+      };
+      const unattributed = await recordSettledPayment(
+        paymentCtx,
+        { invoiceId: splitInvoice.id, amount: '100.00', paymentMethod: 'Cash' },
+        'Synthetic cashier',
+      );
+      const splitInput = {
+        ...actorA,
+        input: {
+          invoiceId: splitInvoice.id,
+          payerCode: 'BRITAM',
+          memberPolicyId: britamPolicy.id,
+          encounterId: encounterAId,
+          attachmentsManifest: [
+            {
+              documentType: 'ITEMIZED_INVOICE',
+              fileName: 'synthetic.pdf',
+              storageReference: 'synthetic://invoice',
+            },
+            {
+              documentType: 'SIGNED_CLAIM_FORM',
+              fileName: 'synthetic.pdf',
+              storageReference: 'synthetic://form',
+            },
+          ],
+        },
+      };
+      await expect(preparePrivateInsuranceClaim(splitInput)).rejects.toMatchObject({
+        code: 'PAYMENT_ATTRIBUTION_REQUIRED',
+      });
+      await attributeInvoicePayment(
+        paymentCtx,
+        splitInvoice.id,
+        unattributed.payment.id,
+        'PATIENT',
+        'Synthetic source review',
+      );
+      await recordSettledPayment(
+        paymentCtx,
+        {
+          invoiceId: splitInvoice.id,
+          amount: '200.00',
+          paymentMethod: 'Insurance - BRITAM',
+          payerParty: 'INSURER',
+        },
+        'Synthetic cashier',
+      );
+      const lockClient = await pool.connect();
+      try {
+        await lockClient.query('BEGIN');
+        const pid = (await lockClient.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+        await lockClient.query('SELECT id FROM billing_invoices WHERE id=$1 FOR UPDATE', [
+          splitInvoice.id,
+        ]);
+        const pending = preparePrivateInsuranceClaim(splitInput).then(
+          () => null,
+          (err: unknown) => err,
+        );
+        await waitForInvoiceLock(pid);
+        await lockClient.query(
+          `UPDATE billing_items SET description='Synthetic changed consultation' WHERE invoice_id=$1`,
+          [splitInvoice.id],
+        );
+        await lockClient.query('COMMIT');
+        expect(await pending).toMatchObject({ code: 'INVOICE_CHANGED' });
+      } finally {
+        await lockClient.query('ROLLBACK');
+        lockClient.release();
+      }
+      const concurrentPrep = await Promise.allSettled([
+        preparePrivateInsuranceClaim(splitInput),
+        preparePrivateInsuranceClaim(splitInput),
+      ]);
+      expect(concurrentPrep.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(concurrentPrep.filter((r) => r.status === 'rejected')).toHaveLength(1);
+      const splitClaim = concurrentPrep.find(
+        (
+          r,
+        ): r is PromiseFulfilledResult<Awaited<ReturnType<typeof preparePrivateInsuranceClaim>>> =>
+          r.status === 'fulfilled',
+      )!.value;
+      expect(splitClaim.patientPaidAmount).toBe('100.00');
+      const originalAdapter = getPayerAdapter(splitClaim.adapterKey);
+      if (!originalAdapter) throw new Error('Synthetic payer adapter not registered');
+      let sends = 0;
+      const brokenAdapter = new Proxy(originalAdapter, {
+        get(target, property, receiver) {
+          if (property === 'submitClaim')
+            return async () => {
+              sends += 1;
+              throw new Error('synthetic lost response');
+            };
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      registerPayerAdapter(brokenAdapter);
+      try {
+        const uncertain = () =>
+          submitPrivateInsuranceClaim({
+            ...actorA,
+            claimId: splitClaim.id,
+            input: { submissionMode: 'ADAPTER' },
+          });
+        await expect(uncertain()).rejects.toMatchObject({ code: 'CLAIM_DISPATCH_REVIEW_REQUIRED' });
+        await expect(uncertain()).rejects.toMatchObject({ code: 'CLAIM_DISPATCH_REVIEW_REQUIRED' });
+        expect(sends).toBe(1);
+        const uncertainClaim = await getPrivateInsuranceClaimById({
+          tenantId: actorA.tenantId,
+          facilityId: actorA.facilityId,
+          claimId: splitClaim.id,
+        });
+        expect(uncertainClaim.dispatchReview?.state).toBe('UNCERTAIN');
+      } finally {
+        registerPayerAdapter(originalAdapter);
+      }
+
       // 6. Prepare Britam Claim from JaliCare invoice WITHOUT mutating original invoice
       const britamClaim = await preparePrivateInsuranceClaim({
         ...actorA,
@@ -592,15 +762,27 @@ describeDb(
       expect(invBeforeSubmit.paidAmount).toBe('0.00');
 
       // Submit claim & verify duplicate-submission prevention
-      const submittedClaim = await submitPrivateInsuranceClaim({
+      const submitInput = {
         ...actorA,
         claimId: britamClaim.id,
         input: {
           submissionMode: 'MANUAL',
           dispatchReference: `BRITAM-PORTAL-SUB-101-${actorA.facilityId}`,
         },
-      });
+      };
+      const simultaneous = await Promise.allSettled([
+        submitPrivateInsuranceClaim(submitInput),
+        submitPrivateInsuranceClaim(submitInput),
+      ]);
+      const submittedClaim = simultaneous.find(
+        (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof submitPrivateInsuranceClaim>>> =>
+          r.status === 'fulfilled',
+      )?.value;
+      expect(simultaneous.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(simultaneous.filter((r) => r.status === 'rejected')).toHaveLength(1);
+      if (!submittedClaim) throw new Error('Expected one manually recorded dispatch');
       expect(submittedClaim.status).toBe('SUBMITTED');
+      expect(submittedClaim.submissions).toHaveLength(1);
 
       const [invAfterSubmit] = await db
         .select()
@@ -679,6 +861,25 @@ describeDb(
       });
       expect(resubmittedClaim.status).toBe('SUBMITTED');
       expect(resubmittedClaim.submissionCount).toBe(2);
+
+      // A separate uncertain claim cannot be altered by remittance matching.
+      const guardedAdvice = await importPrivateRemittance({
+        ...actorA,
+        input: {
+          payerCode: 'BRITAM',
+          payerRemittanceRef: `SYN-GUARD-${randomUUID()}`,
+          paymentChannel: 'EFT',
+          paymentDate: '2026-10-28',
+          totalRemittedAmount: '10.00',
+        },
+      });
+      await expect(
+        reconcilePrivateRemittance({
+          ...actorA,
+          remittanceId: guardedAdvice.id,
+          input: { allocations: [{ claimId: splitClaim.id, remittedAmount: '10.00' }] },
+        }),
+      ).rejects.toMatchObject({ code: 'CLAIM_DISPATCH_REVIEW_REQUIRED' });
 
       // 8. Remittance Import & Transactional Additive Reconciliation
       const remittance = await importPrivateRemittance({
@@ -767,6 +968,29 @@ describeDb(
         },
         'Synthetic cashier',
       );
+      const patientReceipt = await recordSettledPayment(
+        paymentCtx,
+        {
+          invoiceId: invoiceBritamId,
+          amount: '100.00',
+          paymentMethod: 'Insurance - BRITAM',
+          referenceCode: `PATIENT-${actorA.facilityId}`,
+          payerParty: 'PATIENT',
+        },
+        'Synthetic cashier',
+      );
+      await expect(
+        db.transaction((tx) =>
+          matchRecordedPayerPayment(tx, {
+            paymentId: patientReceipt.payment.id,
+            invoiceId: invoiceBritamId,
+            payerCode: 'BRITAM',
+            remittanceReference: `PATIENT-${actorA.facilityId}`,
+            bankReference: null,
+            amountCents: 10000,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'PAYMENT_PARTY_MISMATCH' });
       const secondAdvice = await importPrivateRemittance({
         ...actorA,
         input: {
@@ -801,7 +1025,7 @@ describeDb(
       });
       expect(matchedClaim.status).toBe('PAID');
       expect(matchedClaim.paidAmount).toBe('2500.00');
-      expect(matchedClaim.originalInvoice.balanceAmount).toBe('500.00');
+      expect(matchedClaim.originalInvoice.balanceAmount).toBe('400.00');
 
       // 9. Cross-tenant & cross-facility isolation check: Tenant B cannot see or load Tenant A records
       const membersB = await listInsuranceMembers({

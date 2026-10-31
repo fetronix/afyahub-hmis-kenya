@@ -743,6 +743,7 @@ async function findOrCreateOpenInvoice(executor: Executor, request: ChargeReques
     eq(schema.billingInvoices.facilityId, request.facilityId),
     eq(schema.billingInvoices.patientId, request.patientId),
     isNull(schema.billingInvoices.voidedAt),
+    isNull(schema.billingInvoices.finalizedAt),
     inArray(schema.billingInvoices.status, OPEN_INVOICE_STATUSES),
     request.encounterId
       ? eq(schema.billingInvoices.encounterId, request.encounterId)

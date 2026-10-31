@@ -132,6 +132,54 @@ export const sprintApi = {
     fetchJson<BillingLedgerReview>(
       `/api/accounting/billing-ledger-review?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterId: String(afterId) })}`,
     ),
+  billingJournalExceptions: (
+    facilityId: number,
+    startDate: string,
+    endDate: string,
+    afterJournalId = 0,
+  ) =>
+    fetchJson<{
+      journals: Array<{
+        id: number;
+        sourceType: string;
+        sourceId: string | null;
+        entryDate: string;
+        issues: string[];
+      }>;
+      pageSummary: { examined: number; requiringReview: number };
+      nextAfterJournalId: number | null;
+      limitations: string;
+    }>(
+      `/api/accounting/billing-journal-exceptions?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, afterJournalId: String(afterJournalId) })}`,
+    ),
+  postBillingSource: (sourceType: string, sourceId: number, body: unknown, key: string) =>
+    post<{
+      journal: { id: number; journalNumber: string };
+      idempotentReplay: boolean;
+      reversed: boolean;
+      allocation: {
+        party: string | null;
+        amountKes: string;
+        receivableKes: string;
+        liabilityKes: string;
+      };
+    }>(`/api/accounting/billing-postings/${encodeURIComponent(sourceType)}/${sourceId}`, body, key),
+  billingSourceStatus: (facilityId: number, sourceType: string, sourceId: number) =>
+    fetchJson<
+      | { status: 'NOT_FOUND' }
+      | {
+          status: 'RECORDED';
+          journalId: number;
+          journalNumber: string;
+          entryDate: string;
+          reversed: boolean;
+          amountKes: string;
+          receivableKes: string;
+          liabilityKes: string;
+        }
+    >(
+      `/api/accounting/billing-postings/${encodeURIComponent(sourceType)}/${sourceId}?${new URLSearchParams({ facilityId: String(facilityId) })}`,
+    ),
   createAccount: (body: unknown) =>
     post<{ account: { id: number } }>('/api/accounting/accounts', body),
   createPeriod: (body: unknown) =>

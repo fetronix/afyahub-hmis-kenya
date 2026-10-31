@@ -359,13 +359,17 @@ router.post(
         });
       }
 
+      const headerKey = req.get('Idempotency-Key');
+      if (headerKey && req.body.idempotencyKey && headerKey !== req.body.idempotencyKey) {
+        return res.status(400).json({ success: false, error: 'PAYMENT_IDEMPOTENCY_MISMATCH' });
+      }
       const result = await billingPayments.recordSettledPayment(
         req.authContext,
-        req.body,
+        { ...req.body, idempotencyKey: headerKey ?? req.body.idempotencyKey },
         req.user.fullName,
       );
 
-      return res.status(201).json(result);
+      return res.status(result.idempotentReplay ? 200 : 201).json(result);
     } catch (err: unknown) {
       if (handlePaymentError(err, res)) return;
       if (handleScopeError(err, res)) return;
@@ -375,6 +379,50 @@ router.post(
         success: false,
         error: 'PAYMENT_RECORD_FAILED',
         message: 'Failed to record payment.',
+      });
+    }
+  },
+);
+
+router.post(
+  '/api/billing/payments/status',
+  requirePermission('billing.read', 'billing.payments.record'),
+  async (req: AuthRequest, res: Response) => {
+    if (!req.authContext)
+      return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      return res.json(
+        await billingPayments.checkPaymentRequestStatus(req.authContext, req.body ?? {}),
+      );
+    } catch (error) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      return res.status(500).json({
+        success: false,
+        error: 'PAYMENT_STATUS_FAILED',
+        message: 'Payment status could not be checked.',
+      });
+    }
+  },
+);
+
+router.post(
+  '/api/billing/payments/cancel-pending',
+  requirePermission('billing.read', 'billing.payments.record'),
+  async (req: AuthRequest, res: Response) => {
+    if (!req.authContext)
+      return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      return res.json(
+        await billingPayments.cancelPendingPaymentRequest(req.authContext, req.body ?? {}),
+      );
+    } catch (error) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      return res.status(500).json({
+        success: false,
+        error: 'PAYMENT_CANCELLATION_FAILED',
+        message: 'The receipt request could not be cancelled.',
       });
     }
   },

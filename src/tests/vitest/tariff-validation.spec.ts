@@ -45,18 +45,19 @@ const run = (overrides: Partial<Parameters<typeof evaluateTariffConfiguration>[0
   });
 describe('Facility tariff configuration assessment', () => {
   it('fails closed when the tariff schema is missing', async () => {
-    const query = vi
-      .spyOn(pool, 'query')
-      .mockImplementation((() =>
-        Promise.reject(
-          Object.assign(new Error('synthetic missing relation'), { code: '42P01' }),
-        )) as typeof pool.query);
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'BEGIN' || sql === 'ROLLBACK' || sql.startsWith('SET TRANSACTION')) return {};
+      throw Object.assign(new Error('synthetic missing relation'), { code: '42P01' });
+    });
+    const connection = vi
+      .spyOn(pool, 'connect')
+      .mockResolvedValue({ query, release: vi.fn() } as never);
     try {
       await expect(inspectTariffConfiguration(1, 2, 0, 20)).rejects.toMatchObject({
         code: '42P01',
       });
     } finally {
-      query.mockRestore();
+      connection.mockRestore();
     }
   });
   it('runs the charge resolver for every lab, ward and inventory proxy', () => {
@@ -114,6 +115,23 @@ describe('Facility tariff configuration assessment', () => {
       'MISSING_OR_INACTIVE_LAB_TEST',
     );
     expect(checks.find((c) => c.key === 'LINK:1')?.reasons).toContain('UNIT_INCOMPATIBLE');
+  });
+  it('reports inactive tariffs, duplicate codes and conflicting links and never arbitrarily resolves them', () => {
+    const checks = run({
+      tariffs: [tariff(1, { code: 'DUP' }), tariff(2, { code: 'dup', isActive: false })],
+      links: [link(1, 42, 1), link(2, 42, 2), link(3, 43, 1, { isActive: false })],
+      labs: [{ id: 42, code: 'LAB-X', name: 'Synthetic lab' }],
+    });
+    expect(checks.find((c) => c.key === 'TARIFF:2')?.reasons).toEqual(
+      expect.arrayContaining(['INACTIVE_TARIFF', 'DUPLICATE_TARIFF_CODE']),
+    );
+    expect(checks.find((c) => c.key === 'LINK:1')?.reasons).toContain('CONFLICTING_ACTIVE_LINKS');
+    expect(checks.find((c) => c.key === 'LINK:3')?.reasons).toContain('INACTIVE_LINK');
+    expect(checks.find((c) => c.key === 'LAB_TEST:42')).toMatchObject({
+      result: 'REVIEW',
+      reasons: ['AMBIGUOUS'],
+      tariffId: null,
+    });
   });
   it('does not assume a specific non-catalogue link is used by a charge path', () => {
     const checks = run({

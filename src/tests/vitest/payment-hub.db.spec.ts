@@ -7,7 +7,7 @@ import { describeDb } from './support/db.ts';
 import { pool } from '../../db/index.ts';
 import { createSession } from '../../auth/session.service.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
-import { decryptFacilitySecret } from '../../payment-hub/secrets.ts';
+import { decryptFacilitySecret, privateDigest } from '../../payment-hub/secrets.ts';
 
 const codes = [
   'payment_hub.global.read',
@@ -534,6 +534,39 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     expect(repeat.status).toBe(200);
     expect(repeat.data.idempotentReplay).toBe(true);
     expect(pushCount).toBe(1);
+    // A request stored before the separate-review field was introduced is still replayable.
+    const oldHash = privateDigest(
+      JSON.stringify({
+        integrationId,
+        invoiceId,
+        phone: body.phone,
+        cents: 2000,
+        allowOverpayment: false,
+      }),
+    );
+    await pool.query('UPDATE payment_hub_transactions SET request_hash=$1 WHERE id=$2', [
+      oldHash,
+      transactionId,
+    ]);
+    const legacyRetry = await call(
+      aToken,
+      'POST',
+      '/api/payment-hub/facility/collections',
+      body,
+      'synthetic-request-1',
+    );
+    expect(legacyRetry.status).toBe(200);
+    expect(legacyRetry.data.idempotentReplay).toBe(true);
+    expect(pushCount).toBe(1);
+    const changedLegacyRetry = await call(
+      aToken,
+      'POST',
+      '/api/payment-hub/facility/collections',
+      { ...body, confirmSeparateRequest: true },
+      'synthetic-request-1',
+    );
+    expect(changedLegacyRetry.status).toBe(409);
+    expect(pushCount).toBe(1);
     expect(
       (
         await call(
@@ -545,6 +578,16 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
         )
       ).status,
     ).toBe(409);
+    const secondWithoutReview = await call(
+      aToken,
+      'POST',
+      '/api/payment-hub/facility/collections',
+      body,
+      'synthetic-request-distinct',
+    );
+    expect(secondWithoutReview.status).toBe(409);
+    expect(secondWithoutReview.data.error).toBe('PENDING_COLLECTION_REVIEW_REQUIRED');
+    expect(pushCount).toBe(1);
     const invoice = await pool.query(
       'SELECT paid_amount,status FROM billing_invoices WHERE id=$1',
       [invoiceId],
@@ -690,6 +733,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       invoiceId,
       amountKes: '10',
       phone: '254700000002',
+      confirmSeparateRequest: true,
     };
     const before = pushCount;
     const r = await call(
@@ -946,6 +990,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       invoiceId,
       amountKes: '5',
       phone: '254700000003',
+      confirmSeparateRequest: true,
     };
     const before = pushCount;
     const calls = await Promise.all([

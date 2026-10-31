@@ -1,3 +1,10 @@
+import { readInvoicePaymentLedger } from '../../billing/payment-ledger.ts';
+import {
+  lockMutableClaim,
+  reserveClaimDispatch,
+  releaseClaimDispatch,
+  markClaimDispatchUncertain,
+} from './claim-dispatch-guard.ts';
 /**
  * JaliCare HMIS — Private Insurance Claim Generation, Validation, Submission & Lifecycle
  *
@@ -422,14 +429,23 @@ export async function listPrivateInsuranceClaims(params: {
     .limit(limit)
     .offset(offset);
 
-  return rows.map((r) => ({
-    ...r.claim,
-    patientName: `${r.patientFirstName} ${r.patientLastName}`.trim(),
-    memberNumber: r.memberNumber,
-    policyNumber: r.policyNumber,
-    invoiceNumber: r.invoiceNumber,
-    originalInvoiceStatus: r.invoiceStatus,
-  }));
+  return rows.map((r) => {
+    const {
+      diagnosesSnapshot: _diagnoses,
+      clinicalSummary: _clinical,
+      attachmentsManifest: _attachments,
+      idempotencyKey: _key,
+      ...summary
+    } = r.claim;
+    return {
+      ...summary,
+      patientName: `${r.patientFirstName} ${r.patientLastName}`.trim(),
+      memberNumber: r.memberNumber,
+      policyNumber: r.policyNumber,
+      invoiceNumber: r.invoiceNumber,
+      originalInvoiceStatus: r.invoiceStatus,
+    };
+  });
 }
 
 export async function getPrivateInsuranceClaimById(params: {
@@ -468,7 +484,7 @@ export async function getPrivateInsuranceClaimById(params: {
     throw new PrivateInsuranceError('CLAIM_NOT_FOUND', 'Private insurance claim not found.', 404);
   }
 
-  const [lines, submissions, statusHistory] = await Promise.all([
+  const [lines, submissions, statusHistory, guards] = await Promise.all([
     db
       .select()
       .from(schema.privateInsuranceClaimLines)
@@ -484,6 +500,21 @@ export async function getPrivateInsuranceClaimById(params: {
       .from(schema.privateInsuranceClaimStatusHistory)
       .where(eq(schema.privateInsuranceClaimStatusHistory.claimId, row.claim.id))
       .orderBy(desc(schema.privateInsuranceClaimStatusHistory.createdAt)),
+    db
+      .select({
+        state: schema.insuranceClaimDispatchGuards.state,
+        createdAt: schema.insuranceClaimDispatchGuards.createdAt,
+      })
+      .from(schema.insuranceClaimDispatchGuards)
+      .where(
+        and(
+          eq(schema.insuranceClaimDispatchGuards.workflow, 'PRIVATE'),
+          eq(schema.insuranceClaimDispatchGuards.claimId, row.claim.id),
+          eq(schema.insuranceClaimDispatchGuards.tenantId, params.tenantId),
+          eq(schema.insuranceClaimDispatchGuards.facilityId, params.facilityId),
+        ),
+      )
+      .limit(1),
   ]);
 
   return {
@@ -501,6 +532,25 @@ export async function getPrivateInsuranceClaimById(params: {
     lines,
     submissions,
     statusHistory,
+    dispatchReview: guards[0] ?? null,
+  };
+}
+
+const privateGuardError = (code: string, message: string, status: number) =>
+  new PrivateInsuranceError(code, message, status);
+function privateGuardScope(
+  params: { tenantId: number; facilityId: number; actorUserId: number; actorUserUid: string },
+  claim: { id: number; status: string; dispatchRevision: number },
+) {
+  return {
+    workflow: 'PRIVATE' as const,
+    tenantId: params.tenantId,
+    facilityId: params.facilityId,
+    actorUserId: params.actorUserId,
+    actorUserUid: params.actorUserUid,
+    claimId: claim.id,
+    revision: claim.dispatchRevision,
+    status: claim.status,
   };
 }
 
@@ -629,6 +679,7 @@ export async function preparePrivateInsuranceClaim(params: {
       .where(
         and(
           eq(schema.encounters.id, effectiveEncounterId),
+          eq(schema.encounters.tenantId, params.tenantId),
           eq(schema.encounters.facilityId, params.facilityId),
           eq(schema.encounters.patientId, invoice.patientId),
         ),
@@ -682,7 +733,12 @@ export async function preparePrivateInsuranceClaim(params: {
     const encDiags = await db
       .select()
       .from(schema.diagnoses)
-      .where(eq(schema.diagnoses.encounterId, encounter.id));
+      .where(
+        and(
+          eq(schema.diagnoses.encounterId, encounter.id),
+          eq(schema.diagnoses.patientId, invoice.patientId),
+        ),
+      );
     diagnosesSnapshot = encDiags.map((d, idx) => {
       // Historical records remain ICD-10 as recorded; a code's shape is not
       // evidence that it belongs to ICD-11. No automatic crosswalk is applied.
@@ -702,11 +758,23 @@ export async function preparePrivateInsuranceClaim(params: {
         db
           .select({ id: schema.labOrders.id, testName: schema.labOrders.testName })
           .from(schema.labOrders)
-          .where(eq(schema.labOrders.encounterId, encounter.id)),
+          .where(
+            and(
+              eq(schema.labOrders.encounterId, encounter.id),
+              eq(schema.labOrders.patientId, invoice.patientId),
+              eq(schema.labOrders.tenantId, params.tenantId),
+              eq(schema.labOrders.facilityId, params.facilityId),
+            ),
+          ),
         db
           .select({ id: schema.medications.id })
           .from(schema.medications)
-          .where(eq(schema.medications.encounterId, encounter.id)),
+          .where(
+            and(
+              eq(schema.medications.encounterId, encounter.id),
+              eq(schema.medications.patientId, invoice.patientId),
+            ),
+          ),
       ])
     : [[], []];
 
@@ -739,7 +807,12 @@ export async function preparePrivateInsuranceClaim(params: {
         ),
       )
       .limit(1);
-    if (!pa || (pa.memberPolicyId && pa.memberPolicyId !== memberPolicy.id))
+    if (
+      !pa ||
+      (pa.memberPolicyId && pa.memberPolicyId !== memberPolicy.id) ||
+      (pa.invoiceId && pa.invoiceId !== invoice.id) ||
+      (pa.encounterId && pa.encounterId !== encounter?.id)
+    )
       throw new PrivateInsuranceError(
         'PREAUTH_NOT_FOUND',
         'Preauthorization does not belong to the patient, payer and facility.',
@@ -900,10 +973,111 @@ export async function preparePrivateInsuranceClaim(params: {
     };
   });
 
-  const patientPaidCents = parseMoneyToCents(invoice.paidAmount) ?? 0;
   const claimNumber = await nextPrivateClaimNumber(payerRow.payerCode);
 
   const createdId = await db.transaction(async (tx) => {
+    // All claim creators lock the invoice before rechecking duplicates. This
+    // covers both independent payer workflows without merging their adapters.
+    const [lockedInvoice] = await tx
+      .select()
+      .from(schema.billingInvoices)
+      .where(
+        and(
+          eq(schema.billingInvoices.id, invoice.id),
+          eq(schema.billingInvoices.tenantId, params.tenantId),
+          eq(schema.billingInvoices.facilityId, params.facilityId),
+        ),
+      )
+      .for('update');
+    if (!lockedInvoice || lockedInvoice.voidedAt || lockedInvoice.status === 'Void')
+      throw new PrivateInsuranceError(
+        'INVOICE_NOT_FOUND',
+        'Invoice is unavailable for claim preparation.',
+        409,
+      );
+    const currentItems = await tx
+      .select()
+      .from(schema.billingItems)
+      .where(eq(schema.billingItems.invoiceId, invoice.id))
+      .orderBy(asc(schema.billingItems.id));
+    if (
+      lockedInvoice.updatedAt.getTime() !== invoice.updatedAt.getTime() ||
+      JSON.stringify(currentItems) !== JSON.stringify(invoiceItems)
+    )
+      throw new PrivateInsuranceError(
+        'INVOICE_CHANGED',
+        'The invoice changed during claim preparation. Review and prepare again.',
+        409,
+      );
+    // Gross invoice paid_amount contains patient AND insurer receipts. Do not
+    // present it as a patient payment without explicit receipt attribution.
+    const ledger = await readInvoicePaymentLedger(tx, invoice.id);
+    const recordedPaid = parseMoneyToCents(lockedInvoice.paidAmount);
+    if (!ledger || recordedPaid === null || ledger.netCents !== recordedPaid)
+      throw new PrivateInsuranceError(
+        'PAYMENT_LEDGER_REVIEW_REQUIRED',
+        'Review the invoice receipt ledger before preparing a claim.',
+        409,
+      );
+    const attributions = await tx
+      .select({
+        paymentId: schema.billingPaymentAttributions.paymentId,
+        party: schema.billingPaymentAttributions.party,
+      })
+      .from(schema.billingPaymentAttributions)
+      .where(eq(schema.billingPaymentAttributions.invoiceId, invoice.id));
+    const parties = new Map(attributions.map((a) => [a.paymentId, a.party]));
+    let patientPaidCents = 0;
+    for (const [paymentId, receipt] of ledger.byPayment) {
+      const net = receipt.grossCents - receipt.refundedCents;
+      const party = parties.get(paymentId);
+      if (net > 0 && party !== 'PATIENT' && party !== 'INSURER')
+        throw new PrivateInsuranceError(
+          'PAYMENT_ATTRIBUTION_REQUIRED',
+          'Attribute each outstanding receipt to patient or insurer before preparing a claim.',
+          409,
+        );
+      if (party === 'PATIENT') patientPaidCents += net;
+      if (!Number.isSafeInteger(patientPaidCents))
+        throw new PrivateInsuranceError(
+          'PAYMENT_LEDGER_REVIEW_REQUIRED',
+          'Review the patient receipt total before preparing a claim.',
+          409,
+        );
+    }
+    const normalizedPayer = payerRow.payerCode.trim().toUpperCase();
+    const [existingPrivate] = await tx
+      .select({ id: schema.privateInsuranceClaims.id })
+      .from(schema.privateInsuranceClaims)
+      .where(
+        and(
+          eq(schema.privateInsuranceClaims.tenantId, params.tenantId),
+          eq(schema.privateInsuranceClaims.facilityId, params.facilityId),
+          eq(schema.privateInsuranceClaims.invoiceId, invoice.id),
+          sql`upper(trim(${schema.privateInsuranceClaims.payerCode})) = ${normalizedPayer}`,
+          ne(schema.privateInsuranceClaims.status, 'CANCELLED'),
+        ),
+      )
+      .limit(1);
+    const [existingSha] = await tx
+      .select({ id: schema.shaEclaims.id })
+      .from(schema.shaEclaims)
+      .where(
+        and(
+          eq(schema.shaEclaims.tenantId, params.tenantId),
+          eq(schema.shaEclaims.facilityId, params.facilityId),
+          eq(schema.shaEclaims.invoiceId, invoice.id),
+          sql`upper(trim(${schema.shaEclaims.payerCode})) = ${normalizedPayer}`,
+          ne(schema.shaEclaims.status, 'CANCELLED'),
+        ),
+      )
+      .limit(1);
+    if (existingPrivate || existingSha)
+      throw new PrivateInsuranceError(
+        'DUPLICATE_INVOICE_CLAIM',
+        'An active claim for this invoice and payer already exists.',
+        409,
+      );
     const [claim] = await tx
       .insert(schema.privateInsuranceClaims)
       .values({
@@ -980,6 +1154,17 @@ export async function preparePrivateInsuranceClaim(params: {
       metadata: { invoiceId: invoice.id, payerCode: payerRow.payerCode },
     });
 
+    await tx.insert(schema.patientRecordAccessLogs).values({
+      patientId: invoice.patientId,
+      userId: params.actorUserId,
+      tenantId: params.tenantId,
+      facilityId: params.facilityId,
+      action: 'VIEW',
+      accessChannel: 'STAFF_PORTAL',
+      recordType: 'PrivateClaimPreparation',
+      recordId: claim.id,
+      purpose: 'BILLING',
+    });
     return claim.id;
   });
 
@@ -1046,6 +1231,12 @@ export async function validatePrivateInsuranceClaimById(params: {
       ),
     );
 
+  const pendingMappings: Array<{
+    lineId: number;
+    mappingId: number;
+    payerServiceCode: string;
+    payerServiceName: string;
+  }> = [];
   for (const line of claim.lines) {
     if (line.mappingStatus !== 'MAPPED') {
       const m = mappings.find(
@@ -1056,15 +1247,12 @@ export async function validatePrivateInsuranceClaimById(params: {
             (line.itemCode && cand.localCode.toUpperCase() === line.itemCode.toUpperCase())),
       );
       if (m) {
-        await db
-          .update(schema.privateInsuranceClaimLines)
-          .set({
-            mappingId: m.id,
-            payerServiceCode: m.payerServiceCode,
-            payerServiceName: m.payerServiceName,
-            mappingStatus: 'MAPPED',
-          })
-          .where(eq(schema.privateInsuranceClaimLines.id, line.id));
+        pendingMappings.push({
+          lineId: line.id,
+          mappingId: m.id,
+          payerServiceCode: m.payerServiceCode,
+          payerServiceName: m.payerServiceName,
+        });
         line.mappingId = m.id;
         line.payerServiceCode = m.payerServiceCode;
         line.payerServiceName = m.payerServiceName;
@@ -1074,6 +1262,7 @@ export async function validatePrivateInsuranceClaimById(params: {
   }
 
   let eligOutcome: string | null = null;
+  let newEligibilityId: number | null = null;
   if (claim.eligibilityVerificationId) {
     const [el] = await db
       .select()
@@ -1096,10 +1285,7 @@ export async function validatePrivateInsuranceClaimById(params: {
       .limit(1);
     if (latestEl) {
       eligOutcome = latestEl.outcome;
-      await db
-        .update(schema.privateInsuranceClaims)
-        .set({ eligibilityVerificationId: latestEl.id })
-        .where(eq(schema.privateInsuranceClaims.id, claim.id));
+      newEligibilityId = latestEl.id;
     }
   }
 
@@ -1181,9 +1367,26 @@ export async function validatePrivateInsuranceClaimById(params: {
   const nextStatus: PrivateClaimStatus = hasErrors ? 'VALIDATION_FAILED' : 'READY';
 
   await db.transaction(async (tx) => {
+    await lockMutableClaim(tx, privateGuardScope(params, claim), privateGuardError);
+    for (const mapping of pendingMappings)
+      await tx
+        .update(schema.privateInsuranceClaimLines)
+        .set({
+          mappingId: mapping.mappingId,
+          payerServiceCode: mapping.payerServiceCode,
+          payerServiceName: mapping.payerServiceName,
+          mappingStatus: 'MAPPED',
+        })
+        .where(
+          and(
+            eq(schema.privateInsuranceClaimLines.id, mapping.lineId),
+            eq(schema.privateInsuranceClaimLines.claimId, claim.id),
+          ),
+        );
     await tx
       .update(schema.privateInsuranceClaims)
       .set({
+        ...(newEligibilityId ? { eligibilityVerificationId: newEligibilityId } : {}),
         status: nextStatus,
         validationIssues: issues,
         updatedAt: new Date(),
@@ -1303,7 +1506,12 @@ export async function updateOrCorrectPrivateClaim(params: {
           ),
         )
         .limit(1);
-      if (!preauth || (preauth.memberPolicyId && preauth.memberPolicyId !== claim.memberPolicyId))
+      if (
+        !preauth ||
+        (preauth.memberPolicyId && preauth.memberPolicyId !== claim.memberPolicyId) ||
+        (preauth.invoiceId && preauth.invoiceId !== claim.invoiceId) ||
+        (preauth.encounterId && preauth.encounterId !== claim.encounterId)
+      )
         throw new PrivateInsuranceError(
           'PREAUTH_NOT_FOUND',
           'Preauthorization does not belong to this patient, payer and facility.',
@@ -1314,6 +1522,7 @@ export async function updateOrCorrectPrivateClaim(params: {
   }
 
   await db.transaction(async (tx) => {
+    await lockMutableClaim(tx, privateGuardScope(params, claim), privateGuardError);
     await tx
       .update(schema.privateInsuranceClaims)
       .set(updates)
@@ -1443,6 +1652,11 @@ export async function submitPrivateInsuranceClaim(params: {
     }
 
     const channel = submissionMode === 'FILE_EXPORT' ? 'FILE_EXPORT' : 'MANUAL_DISPATCH';
+    const guardScope = privateGuardScope(params, claim);
+    const guardId = await reserveClaimDispatch(
+      { ...guardScope, attemptNumber, correlationId },
+      privateGuardError,
+    );
 
     await db.transaction(async (tx) => {
       await tx.insert(schema.privateInsuranceClaimSubmissions).values({
@@ -1480,6 +1694,7 @@ export async function submitPrivateInsuranceClaim(params: {
         reason: `Dispatched via ${channel} (Ref: ${dispatchRef}).`,
         metadata: { attemptNumber, dispatchRef },
       });
+      await releaseClaimDispatch(tx, guardId, guardScope, 'OUTCOME_RECORDED');
     });
 
     await recordPrivateInsuranceAudit({
@@ -1526,39 +1741,56 @@ export async function submitPrivateInsuranceClaim(params: {
     preauthRef = pa?.payerAuthReference ?? null;
   }
 
-  const adapterRes = await adapter.submitClaim(
-    {
-      correlationId,
-      payer: runtime,
-      claimNumber: claim.claimNumber,
-      idempotencyKey: claim.idempotencyKey,
-      memberNumber: claim.memberPolicy.memberNumber,
-      policyNumber: claim.memberPolicy.policyNumber,
-      encounterType: claim.encounterType as 'OPD' | 'IPD',
-      serviceDateStart: claim.serviceDateStart,
-      serviceDateEnd: claim.serviceDateEnd,
-      currency: claim.currency,
-      grossAmount: claim.grossInvoiceAmount,
-      discountAmount: claim.discountAmount,
-      copayAmount: claim.confirmedCopayAmount,
-      proposedClaimAmount: claim.proposedClaimAmount,
-      preauthReference: preauthRef,
-      visitSessionRef: claim.visitSessionRef,
-      diagnoses: claim.diagnosesSnapshot,
-      lines: claim.lines.map((l) => ({
-        lineNumber: l.lineNumber,
-        payerServiceCode: l.payerServiceCode ?? 'UNMAPPED',
-        description: l.itemDescription,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice,
-        grossAmount: l.grossAmount,
-        copayAmount: l.copayAmount,
-        proposedClaimAmount: l.proposedClaimAmount,
-        serviceDate: l.serviceDate,
-      })),
-    },
-    secrets,
+  const guardScope = privateGuardScope(params, claim);
+  const guardId = await reserveClaimDispatch(
+    { ...guardScope, attemptNumber, correlationId },
+    privateGuardError,
   );
+  let adapterRes;
+  try {
+    adapterRes = await adapter.submitClaim(
+      {
+        correlationId,
+        payer: runtime,
+        claimNumber: claim.claimNumber,
+        idempotencyKey: claim.idempotencyKey,
+        memberNumber: claim.memberPolicy.memberNumber,
+        policyNumber: claim.memberPolicy.policyNumber,
+        encounterType: claim.encounterType as 'OPD' | 'IPD',
+        serviceDateStart: claim.serviceDateStart,
+        serviceDateEnd: claim.serviceDateEnd,
+        currency: claim.currency,
+        grossAmount: claim.grossInvoiceAmount,
+        discountAmount: claim.discountAmount,
+        copayAmount: claim.confirmedCopayAmount,
+        proposedClaimAmount: claim.proposedClaimAmount,
+        preauthReference: preauthRef,
+        visitSessionRef: claim.visitSessionRef,
+        diagnoses: claim.diagnosesSnapshot,
+        lines: claim.lines.map((l) => ({
+          lineNumber: l.lineNumber,
+          payerServiceCode: l.payerServiceCode ?? 'UNMAPPED',
+          description: l.itemDescription,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          grossAmount: l.grossAmount,
+          copayAmount: l.copayAmount,
+          proposedClaimAmount: l.proposedClaimAmount,
+          serviceDate: l.serviceDate,
+        })),
+      },
+      secrets,
+    );
+  } catch {
+    await db.transaction(async (tx) => {
+      await markClaimDispatchUncertain(tx, guardId, guardScope);
+    });
+    throw new PrivateInsuranceError(
+      'CLAIM_DISPATCH_REVIEW_REQUIRED',
+      'The insurer dispatch outcome is uncertain. Check the payer record; do not blindly retry.',
+      409,
+    );
+  }
 
   if (!adapterRes.supported) {
     await recordIntegrationDiagnostic({
@@ -1574,32 +1806,41 @@ export async function submitPrivateInsuranceClaim(params: {
       actorUserId: params.actorUserId,
     });
 
+    // supported:false guarantees that the adapter performed no dispatch.
+    await db.transaction(async (tx) => {
+      await releaseClaimDispatch(tx, guardId, guardScope, 'NOT_SENT');
+    });
     throw new PrivateInsuranceError(adapterRes.code, adapterRes.message, 422, {
       requiredFromInsurer: adapterRes.requiredFromInsurer,
     });
   }
 
   if (adapterRes.outcome === 'FAILED_TRANSPORT') {
-    await db.insert(schema.privateInsuranceClaimSubmissions).values({
-      claimId: claim.id,
-      attemptNumber,
-      adapterKey: runtime.adapterKey,
-      submissionChannel: adapterRes.submissionChannel,
-      operation: params.isResubmission ? 'CLAIM_RESUBMIT' : 'CLAIM_SUBMIT',
-      correlationId,
-      httpStatus: adapterRes.httpStatus ?? null,
-      outcome: 'FAILED_TRANSPORT',
-      errorCode: adapterRes.errorCode ?? 'TRANSPORT_ERROR',
-      responseSummary: adapterRes.responseSummary,
-      submittedByUserId: params.actorUserId,
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.privateInsuranceClaimSubmissions).values({
+        claimId: claim.id,
+        attemptNumber,
+        adapterKey: runtime.adapterKey,
+        submissionChannel: adapterRes.submissionChannel,
+        operation: params.isResubmission ? 'CLAIM_RESUBMIT' : 'CLAIM_SUBMIT',
+        correlationId,
+        httpStatus: adapterRes.httpStatus ?? null,
+        outcome: 'FAILED_TRANSPORT',
+        errorCode: adapterRes.errorCode ?? 'TRANSPORT_ERROR',
+        responseSummary: adapterRes.responseSummary,
+        submittedByUserId: params.actorUserId,
+      });
+      await tx
+        .update(schema.privateInsuranceClaims)
+        .set({ submissionCount: attemptNumber, updatedAt: new Date() })
+        .where(eq(schema.privateInsuranceClaims.id, claim.id));
+      await markClaimDispatchUncertain(tx, guardId, guardScope);
     });
-
-    await db
-      .update(schema.privateInsuranceClaims)
-      .set({ submissionCount: attemptNumber, updatedAt: new Date() })
-      .where(eq(schema.privateInsuranceClaims.id, claim.id));
-
-    throw new PrivateInsuranceError('ADAPTER_SUBMISSION_FAILED', adapterRes.responseSummary, 502);
+    throw new PrivateInsuranceError(
+      'CLAIM_DISPATCH_REVIEW_REQUIRED',
+      'The insurer dispatch outcome is uncertain. Check the payer record; do not blindly retry.',
+      409,
+    );
   }
 
   const nextStatus: PrivateClaimStatus =
@@ -1617,7 +1858,7 @@ export async function submitPrivateInsuranceClaim(params: {
       submissionChannel: adapterRes.submissionChannel,
       operation: params.isResubmission ? 'CLAIM_RESUBMIT' : 'CLAIM_SUBMIT',
       correlationId,
-      httpStatus: adapterRes.httpStatus ?? 200,
+      httpStatus: adapterRes.httpStatus ?? null,
       outcome: adapterRes.outcome,
       externalReference: adapterRes.externalReference,
       responseSummary: adapterRes.responseSummary,
@@ -1653,6 +1894,7 @@ export async function submitPrivateInsuranceClaim(params: {
         correlationId,
       },
     });
+    await releaseClaimDispatch(tx, guardId, guardScope, 'OUTCOME_RECORDED');
   });
 
   await recordIntegrationDiagnostic({
@@ -1663,7 +1905,7 @@ export async function submitPrivateInsuranceClaim(params: {
     environment: runtime.environment,
     operation: 'CLAIM_SUBMIT',
     outcome: adapterRes.outcome,
-    httpStatus: adapterRes.httpStatus ?? 200,
+    httpStatus: adapterRes.httpStatus ?? null,
     durationMs: adapterRes.durationMs,
     correlationId,
     summary: adapterRes.responseSummary,
@@ -1760,6 +2002,7 @@ export async function recordPrivateClaimDecision(params: {
   }
 
   await db.transaction(async (tx) => {
+    await lockMutableClaim(tx, privateGuardScope(params, claim), privateGuardError);
     await tx
       .update(schema.privateInsuranceClaims)
       .set({

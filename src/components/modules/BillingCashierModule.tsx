@@ -1,7 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { RefundsPanel } from './RefundsPanel.tsx';
+import { FinalizedInvoicePanel } from './FinalizedInvoicePanel.tsx';
+import {
+  clearPendingPayment,
+  readPendingPayment,
+  savePendingPayment,
+  type PendingPayment,
+} from '../../billing/payment-retry-storage.ts';
 import { BillingInvoice, BillingItem, Patient } from '../../types/index.ts';
 import {
   classifySettlement,
@@ -56,6 +63,39 @@ export const BillingCashierModule: React.FC = () => {
     authenticatedUser?.permissions?.includes('billing.payments.record'),
   );
 
+  const paymentStorageKey =
+    canRecordPayment && currentFacility?.id && authenticatedUser?.id
+      ? `jalicare:payment:pending:${authenticatedUser.id}:${currentFacility.id}`
+      : null;
+  const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
+  const [paymentStorageError, setPaymentStorageError] = useState('');
+  const [paymentKey, setPaymentKey] = useState('');
+  const [payerParty, setPayerParty] = useState<'' | 'PATIENT' | 'INSURER'>('');
+  const [confirmPartyOverpay, setConfirmPartyOverpay] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [paymentRecoveryBusy, setPaymentRecoveryBusy] = useState(false);
+
+  useEffect(() => {
+    if (!paymentStorageKey) {
+      setPendingPayment(null);
+      setPaymentStorageError('');
+      return;
+    }
+    const read = () => {
+      try {
+        setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+        setPaymentStorageError('');
+      } catch {
+        setPaymentStorageError(
+          'The saved payment retry identity cannot be read. Review receipts before continuing.',
+        );
+      }
+    };
+    read();
+    window.addEventListener('storage', read);
+    return () => window.removeEventListener('storage', read);
+  }, [paymentStorageKey]);
+
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'M-Pesa' | 'Airtel Money' | 'Cash' | 'Card'>(
@@ -66,6 +106,16 @@ export const BillingCashierModule: React.FC = () => {
   const [transactionCode, setTransactionCode] = useState('');
   const [confirmOverpay, setConfirmOverpay] = useState<number | null>(null);
   const [isPostingPayment, setIsPostingPayment] = useState(false);
+  const paymentScopeVersion = useRef(0);
+  useLayoutEffect(() => {
+    paymentScopeVersion.current += 1;
+    setPaymentRecoveryBusy(false);
+    setIsPostingPayment(false);
+    setCancelReason('');
+    return () => {
+      paymentScopeVersion.current += 1;
+    };
+  }, [scope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,16 +194,123 @@ export const BillingCashierModule: React.FC = () => {
   };
 
   const openPaymentModal = (inv: BillingInvoice) => {
+    if (
+      !paymentStorageKey ||
+      paymentStorageError ||
+      (pendingPayment && pendingPayment.invoiceId !== inv.id)
+    ) {
+      showToast('Resolve the unconfirmed payment request before starting another.');
+      return;
+    }
     void selectInvoice(inv);
     setPaymentAmount(inv.balanceAmount ?? '');
     setTransactionCode('');
+    setPayerParty('');
+    setPaymentKey(pendingPayment?.key ?? crypto.randomUUID());
     setConfirmOverpay(null);
+    setConfirmPartyOverpay(null);
     setIsPaymentModalOpen(true);
   };
 
-  const handleRecordPayment = async () => {
-    if (!selectedInvoice) return;
+  const checkPendingPayment = async () => {
+    if (!pendingPayment || !paymentStorageKey || !currentFacility?.id || paymentRecoveryBusy)
+      return;
+    const version = paymentScopeVersion.current;
+    setPaymentRecoveryBusy(true);
+    try {
+      const result = await api.checkPaymentRequestStatus({
+        facilityId: currentFacility.id,
+        idempotencyKey: pendingPayment.key,
+      });
+      if (version !== paymentScopeVersion.current) return;
+      if (result.status === 'NOT_FOUND') {
+        showToast(
+          'No receipt found yet. A delayed request can still arrive. Retry exactly the original details or cancel the pending request after review.',
+        );
+        return;
+      }
+      if (result.invoiceId !== pendingPayment.invoiceId) {
+        showToast('The saved request does not match this invoice; review is required.');
+        return;
+      }
+      clearPendingPayment(window.localStorage, paymentStorageKey, pendingPayment.key);
+      setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+      setIsPaymentModalOpen(false);
+      showToast(
+        result.status === 'RECORDED'
+          ? `Receipt ${result.receiptNumber} was recorded.`
+          : 'The receipt request was cancelled; no provider request was cancelled.',
+      );
+      triggerRefresh();
+    } catch {
+      if (version !== paymentScopeVersion.current) return;
+      showToast('Payment status could not be confirmed. Retain the retry identity.');
+    } finally {
+      if (version === paymentScopeVersion.current) setPaymentRecoveryBusy(false);
+    }
+  };
 
+  const cancelPendingPayment = async () => {
+    if (
+      !pendingPayment ||
+      !paymentStorageKey ||
+      !currentFacility?.id ||
+      paymentRecoveryBusy ||
+      cancelReason.trim().length < 3
+    )
+      return;
+    const version = paymentScopeVersion.current;
+    setPaymentRecoveryBusy(true);
+    try {
+      const result = await api.cancelPendingPaymentRequest({
+        facilityId: currentFacility.id,
+        invoiceId: pendingPayment.invoiceId,
+        idempotencyKey: pendingPayment.key,
+        reason: cancelReason.trim(),
+      });
+      if (version !== paymentScopeVersion.current) return;
+      if (result.invoiceId !== pendingPayment.invoiceId) throw new Error('Invoice mismatch');
+      clearPendingPayment(window.localStorage, paymentStorageKey, pendingPayment.key);
+      setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+      setCancelReason('');
+      setIsPaymentModalOpen(false);
+      showToast(
+        result.status === 'RECORDED'
+          ? `Receipt ${result.receiptNumber} already committed; no cancellation occurred.`
+          : 'The unrecorded receipt request is cancelled and cannot arrive later. This does not cancel a provider transaction or return funds.',
+      );
+      triggerRefresh();
+    } catch {
+      if (version !== paymentScopeVersion.current) return;
+      showToast('Cancellation could not be confirmed. Retain the retry identity.');
+    } finally {
+      if (version === paymentScopeVersion.current) setPaymentRecoveryBusy(false);
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!selectedInvoice || !paymentStorageKey || !paymentKey || paymentStorageError) return;
+    if (selectedInvoice.finalizedAt && !payerParty) {
+      showToast('Select the party paying this finalized invoice.');
+      return;
+    }
+    const version = paymentScopeVersion.current;
+    let key = paymentKey;
+    try {
+      const saved = readPendingPayment(window.localStorage, paymentStorageKey);
+      if (saved && saved.invoiceId !== selectedInvoice.id) {
+        setPendingPayment(saved);
+        showToast('Resolve the unconfirmed payment first.');
+        return;
+      }
+      key = saved?.key ?? key;
+      const next = { key, invoiceId: selectedInvoice.id };
+      if (!saved) savePendingPayment(window.localStorage, paymentStorageKey, next);
+      setPendingPayment(next);
+    } catch {
+      setPaymentStorageError('The payment retry identity could not be saved. No request was sent.');
+      return;
+    }
     setIsPostingPayment(true);
 
     try {
@@ -163,17 +320,36 @@ export const BillingCashierModule: React.FC = () => {
         amount: paymentAmount,
         transactionCode: isMobileMoney(paymentMethod) ? transactionCode.trim() : undefined,
         allowOverpayment: confirmOverpay !== null,
+        allowPartyOverpayment: confirmPartyOverpay !== null,
+        payerParty: payerParty || undefined,
+        idempotencyKey: key,
       });
-
-      showToast(`${result.settlement.summary} Receipt ${result.payment.receiptNumber}.`);
+      if (version !== paymentScopeVersion.current) return;
+      try {
+        clearPendingPayment(window.localStorage, paymentStorageKey, key);
+        setPendingPayment(readPendingPayment(window.localStorage, paymentStorageKey));
+      } catch {
+        setPaymentStorageError('The recorded receipt needs a browser retry-identity review.');
+      }
+      showToast(
+        `${result.idempotentReplay ? 'Previous receipt retrieved. ' : ''}${result.settlement.summary} Receipt ${result.payment.receiptNumber}.`,
+      );
       setIsPaymentModalOpen(false);
       setConfirmOverpay(null);
+      setConfirmPartyOverpay(null);
       triggerRefresh();
     } catch (err: any) {
+      if (version !== paymentScopeVersion.current) return;
       /*
        * The server refuses an overpayment unless it is confirmed. Ask
        * once, then resend with the flag set.
        */
+      if (err?.code === 'PAYMENT_EXCEEDS_PARTY_BALANCE') {
+        const excess = Number(err?.detail?.excessCents);
+        if (Number.isSafeInteger(excess) && excess > 0) setConfirmPartyOverpay(excess);
+        else showToast('Party overpayment could not be verified; review the receipt.');
+        return;
+      }
       if (err?.code === 'PAYMENT_EXCEEDS_BALANCE') {
         const excess = Number(err?.detail?.excessCents);
         if (Number.isSafeInteger(excess) && excess > 0) setConfirmOverpay(excess);
@@ -184,9 +360,11 @@ export const BillingCashierModule: React.FC = () => {
         return;
       }
 
-      showToast(`Payment failed: ${err.message}`);
+      showToast(
+        `Payment could not be confirmed: ${err.message}. Retain the retry identity and review the receipt.`,
+      );
     } finally {
-      setIsPostingPayment(false);
+      if (version === paymentScopeVersion.current) setIsPostingPayment(false);
     }
   };
 
@@ -279,6 +457,50 @@ export const BillingCashierModule: React.FC = () => {
         </div>
       </div>
 
+      {(pendingPayment || paymentStorageError) && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-xs" role="status">
+          {paymentStorageError ||
+            `Unconfirmed receipt request for invoice #${pendingPayment?.invoiceId}. Only its retry identity is stored here.`}
+          {pendingPayment && !paymentStorageError && (
+            <div className="mt-2 space-y-2">
+              <p>
+                Check status or retry exactly the original details. Not found does not prove a
+                delayed request cannot arrive.
+              </p>
+              <button
+                type="button"
+                className="underline"
+                disabled={paymentRecoveryBusy}
+                onClick={() => void checkPendingPayment()}
+              >
+                Check receipt status
+              </button>
+              <label className="block">
+                Review reason to cancel this receipt request{' '}
+                <input
+                  className="ml-2 rounded border border-slate-300 px-2 py-1"
+                  value={cancelReason}
+                  maxLength={500}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="underline"
+                disabled={paymentRecoveryBusy || cancelReason.trim().length < 3}
+                onClick={() => void cancelPendingPayment()}
+              >
+                Cancel unrecorded receipt request
+              </button>
+              <p>
+                Cancellation does not cancel an M-Pesa request, return cash, or reverse a posted
+                receipt.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs">
@@ -291,7 +513,7 @@ export const BillingCashierModule: React.FC = () => {
 
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs">
           <span className="text-2xs uppercase text-rose-700 font-semibold tracking-wider">
-            Outstanding Patient Balances
+            Outstanding Invoice Balances
           </span>
           <div className="text-2xl font-bold font-mono text-rose-700 mt-1">
             {showAmount(totalOutstanding)}
@@ -525,6 +747,8 @@ export const BillingCashierModule: React.FC = () => {
                 )}
               </div>
 
+              <FinalizedInvoicePanel invoiceId={selectedInvoice.id} />
+
               <RefundsPanel invoiceId={selectedInvoice.id} />
 
               {/* Financial Totals Strip */}
@@ -610,11 +834,28 @@ export const BillingCashierModule: React.FC = () => {
                   onChange={(e) => {
                     setPaymentAmount(e.target.value);
                     setConfirmOverpay(null);
+                    setConfirmPartyOverpay(null);
                   }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold text-base text-slate-900"
                 />
               </div>
 
+              <label className="block font-medium text-slate-700">
+                Payer party{' '}
+                {selectedInvoice.finalizedAt ? '(required)' : '(optional until finalization)'}
+                <select
+                  className="w-full rounded border border-slate-300 px-3 py-2"
+                  value={payerParty}
+                  onChange={(e) => {
+                    setPayerParty(e.target.value as '' | 'PATIENT' | 'INSURER');
+                    setConfirmPartyOverpay(null);
+                  }}
+                >
+                  <option value="">Not selected</option>
+                  <option value="PATIENT">Patient</option>
+                  <option value="INSURER">Insurer</option>
+                </select>
+              </label>
               {isMobileMoney(paymentMethod) && (
                 <div className="space-y-2">
                   <div>
@@ -694,11 +935,20 @@ export const BillingCashierModule: React.FC = () => {
                     <div className="text-2xs text-amber-900 flex items-start gap-1">
                       <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
                       <span>
-                        The excess is held as patient credit, not a negative balance. Confirm below
-                        to record it.
+                        The excess is held as invoice credit, not a negative balance. Review the
+                        selected payer attribution before recording it.
                       </span>
                     </div>
                   )}
+                </div>
+              )}
+
+              {confirmPartyOverpay !== null && (
+                <div className="rounded border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                  This exceeds the selected party balance by KES{' '}
+                  {(confirmPartyOverpay / 100).toLocaleString()}. Press confirm again only after
+                  reviewing the allocation; it does not automatically transfer credit to the other
+                  party.
                 </div>
               )}
 
@@ -708,7 +958,7 @@ export const BillingCashierModule: React.FC = () => {
                   <span>
                     This payment is <strong>KES {(confirmOverpay / 100).toLocaleString()}</strong>{' '}
                     more than the outstanding balance. Press <strong>Record overpayment</strong> to
-                    post it as patient credit, or correct the amount.
+                    record invoice credit for the selected party, or correct the amount.
                   </span>
                 </div>
               )}
@@ -746,7 +996,9 @@ export const BillingCashierModule: React.FC = () => {
                 disabled={
                   isPostingPayment ||
                   (isMobileMoney(paymentMethod) && !codeCheck.valid) ||
-                  !settlementPreview
+                  !settlementPreview ||
+                  Boolean(selectedInvoice.finalizedAt && !payerParty) ||
+                  Boolean(paymentStorageError)
                 }
                 className={`px-4 py-1.5 rounded-md font-semibold transition-colors shadow-xs ${
                   confirmOverpay !== null

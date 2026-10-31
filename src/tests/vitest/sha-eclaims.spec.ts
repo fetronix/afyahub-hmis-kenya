@@ -1197,7 +1197,9 @@ describe('4. Pre-Submission Validation Engine, State Machines & Decimal-Safe Mon
     hasAdmissionRecord: false,
     hasDischargeDate: false,
     diagnosesCount: 1,
-    diagnoses: [{ code: '8B20', system: 'ICD-11' }],
+    diagnoses: [
+      { code: '8B20', display: 'Synthetic diagnosis', system: 'ICD-11', type: 'principal' },
+    ],
     isPhcClaim: false,
     totalClaimedCents: 350000,
     hasDuplicateActiveInvoiceClaim: false,
@@ -1221,6 +1223,19 @@ describe('4. Pre-Submission Validation Engine, State Machines & Decimal-Safe Mon
   it('passes clean claim packages with zero ERROR issues', () => {
     const issues = evaluateClaimValidationRules(validBase);
     expect(issues.filter((i) => i.severity === 'ERROR')).toHaveLength(0);
+  });
+
+  it('rejects missing or unknown diagnosis coding instead of guessing an ICD system', () => {
+    const issues = evaluateClaimValidationRules({
+      ...validBase,
+      diagnoses: [{ code: 'Z00', display: 'Synthetic', type: 'principal' }],
+    });
+    expect(issues.map((i) => i.code)).toContain('INCOMPLETE_DIAGNOSIS_CODING');
+    const unknown = evaluateClaimValidationRules({
+      ...validBase,
+      diagnoses: [{ code: 'Z00', display: 'Synthetic', system: 'OTHER', type: 'principal' }],
+    });
+    expect(unknown.map((i) => i.code)).toContain('INCOMPLETE_DIAGNOSIS_CODING');
   });
 
   it('catches deceased beneficiary, SNOMED CT diagnosis, standalone intervention conflicts, unmapped codes, and total mismatch', () => {

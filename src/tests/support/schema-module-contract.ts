@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 import type { Relations } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import * as publicSchema from '../../db/schema.ts';
-import { relationContract, tableContract } from './schema-contract.ts';
+import {
+  contractWithReviewedAdditions,
+  relationContract,
+  tableContract,
+} from './schema-contract.ts';
 
 const baseline = JSON.parse(
   readFileSync(
@@ -32,7 +36,11 @@ export function schemaModuleContract(
         kind === 'tables'
           ? tableContract(module[key] as PgTable)
           : relationContract(module[key] as Relations);
-      expect(actual).toEqual(baseline[kind][key]);
+      expect(actual).toEqual(
+        kind === 'tables'
+          ? contractWithReviewedAdditions(key, baseline[kind][key])
+          : baseline[kind][key],
+      );
     });
   });
 }

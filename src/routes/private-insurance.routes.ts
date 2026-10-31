@@ -797,6 +797,21 @@ router.get(
         limit: req.query.limit ? Number(req.query.limit) : 50,
         offset: req.query.offset ? Number(req.query.offset) : 0,
       });
+      if (claims.length)
+        await db.insert(schema.patientRecordAccessLogs).values(
+          claims.map((claim) => ({
+            patientId: claim.patientId,
+            userId: actor.actorUserId,
+            tenantId: actor.tenantId,
+            facilityId: actor.facilityId,
+            action: 'VIEW',
+            accessChannel: 'STAFF_PORTAL',
+            recordType: 'PrivateClaimSummary',
+            recordId: claim.id,
+            purpose: 'BILLING',
+          })),
+        );
+      res.setHeader('Cache-Control', 'no-store');
       res.json({ claims });
     } catch (err) {
       respondError(res, err, 'Failed to list private insurance claims.');
@@ -806,7 +821,7 @@ router.get(
 
 router.post(
   '/claims/prepare',
-  requirePermission('insurance.private.claims.prepare'),
+  requirePermission('insurance.private.claims.prepare', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -828,6 +843,7 @@ router.get(
     'insurance.private.claims.submit',
     'insurance.read',
   ),
+  requirePermission('clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -837,6 +853,18 @@ router.get(
         facilityId: actor.facilityId,
         claimId,
       });
+      await db.insert(schema.patientRecordAccessLogs).values({
+        patientId: claim.patientId,
+        userId: actor.actorUserId,
+        tenantId: actor.tenantId,
+        facilityId: actor.facilityId,
+        action: 'VIEW',
+        accessChannel: 'STAFF_PORTAL',
+        recordType: 'PrivateClaim',
+        recordId: claim.id,
+        purpose: 'BILLING',
+      });
+      res.setHeader('Cache-Control', 'no-store');
       res.json(claim);
     } catch (err) {
       respondError(res, err, 'Failed to load private insurance claim.');
@@ -846,7 +874,7 @@ router.get(
 
 router.patch(
   '/claims/:claimId',
-  requirePermission('insurance.private.claims.prepare'),
+  requirePermission('insurance.private.claims.prepare', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -865,7 +893,7 @@ router.patch(
 
 router.post(
   '/claims/:claimId/validate',
-  requirePermission('insurance.private.claims.prepare'),
+  requirePermission('insurance.private.claims.prepare', 'clinical.read', 'billing.read'),
   validateBody(facilityActionBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
@@ -884,7 +912,7 @@ router.post(
 
 router.post(
   '/claims/:claimId/submit',
-  requirePermission('insurance.private.claims.submit'),
+  requirePermission('insurance.private.claims.submit', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -904,7 +932,7 @@ router.post(
 
 router.post(
   '/claims/:claimId/resubmit',
-  requirePermission('insurance.private.claims.submit'),
+  requirePermission('insurance.private.claims.submit', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -924,7 +952,7 @@ router.post(
 
 router.post(
   '/claims/:claimId/decision',
-  requirePermission('insurance.private.claims.submit'),
+  requirePermission('insurance.private.claims.submit', 'clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -948,6 +976,7 @@ router.get(
     'insurance.private.claims.submit',
     'insurance.read',
   ),
+  requirePermission('clinical.read', 'billing.read'),
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);

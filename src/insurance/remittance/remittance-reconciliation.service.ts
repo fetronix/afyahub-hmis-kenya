@@ -12,6 +12,7 @@
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
+import { lockMutableClaim } from '../claims/claim-dispatch-guard.ts';
 import { formatCents, parseMoneyToCents } from '../../billing/settlement.ts';
 import { matchRecordedPayerPayment, RecordedPaymentError } from '../hub/recorded-payment.ts';
 import { moneyToCentsStrict, PrivateInsuranceError } from '../core/types.ts';
@@ -307,6 +308,18 @@ export async function reconcilePrivateRemittance(params: {
         );
       }
 
+      await lockMutableClaim(
+        tx,
+        {
+          workflow: 'PRIVATE',
+          tenantId: params.tenantId,
+          facilityId: params.facilityId,
+          claimId: claim.id,
+          status: claim.status,
+          revision: claim.dispatchRevision,
+        },
+        (code, message, status) => new PrivateInsuranceError(code, message, status),
+      );
       if (
         !['SUBMITTED', 'ACKNOWLEDGED', 'PARTIALLY_ADJUDICATED', 'ADJUDICATED', 'DISPUTED'].includes(
           claim.status,

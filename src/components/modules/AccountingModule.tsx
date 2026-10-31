@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { BillingJournalPostingPanel } from './BillingJournalPostingPanel.tsx';
 import { getSessionToken } from '../../api/client.ts';
 import {
   sprintApi,
@@ -19,8 +20,26 @@ export const AccountingModule: React.FC = () => {
   const [data, setData] = useState<AccountingOverview | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
+  const [dataScope, setDataScope] = useState('');
+  const facilityId = currentFacility?.id;
+  const currentScope = `${facilityId ?? ''}:${start}:${end}`;
+  const scopeRef = useRef(currentScope);
+  useLayoutEffect(() => {
+    scopeRef.current = currentScope;
+  }, [currentScope]);
+  const visibleData = dataScope === currentScope ? data : null;
   const [billingReport, setBillingReport] = useState<BillingLedgerReview | null>(null);
   const [billingReportError, setBillingReportError] = useState('');
+  const [billingErrorScope, setBillingErrorScope] = useState('');
+  const [billingReportScope, setBillingReportScope] = useState('');
+  const visibleBillingReport = billingReportScope === currentScope ? billingReport : null;
+  const [journalReport, setJournalReport] = useState<Awaited<
+    ReturnType<typeof sprintApi.billingJournalExceptions>
+  > | null>(null);
+  const [journalReportError, setJournalReportError] = useState('');
+  const [journalErrorScope, setJournalErrorScope] = useState('');
+  const [journalReportScope, setJournalReportScope] = useState('');
+  const visibleJournalReport = journalReportScope === currentScope ? journalReport : null;
   const [account, setAccount] = useState({
     accountCode: '',
     accountName: '',
@@ -44,21 +63,22 @@ export const AccountingModule: React.FC = () => {
   const can = (permission: string) =>
     Boolean(authenticatedUser?.isSuperAdmin || perms.has(permission));
   const load = useCallback(async () => {
-    if (!currentFacility?.id || !end) return;
+    if (!facilityId || !end) return;
+    const requestedScope = `${facilityId}:${start}:${end}`;
     try {
       setError('');
-      setData(await sprintApi.accountingOverview(currentFacility.id, start, end));
+      const overview = await sprintApi.accountingOverview(facilityId, start, end);
+      if (scopeRef.current !== requestedScope) return;
+      setData(overview);
+      setDataScope(requestedScope);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not load accounting.');
+      if (scopeRef.current === requestedScope)
+        setError(e instanceof Error ? e.message : 'Could not load accounting.');
     }
-  }, [currentFacility?.id, start, end]);
+  }, [facilityId, start, end]);
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    setBillingReport(null);
-    setBillingReportError('');
-  }, [currentFacility?.id, start, end]);
   const run = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);
     try {
@@ -75,15 +95,43 @@ export const AccountingModule: React.FC = () => {
   };
   const loadBillingReport = async (afterId = 0) => {
     if (!currentFacility) return;
+    const requestedScope = `${currentFacility.id}:${start}:${end}`;
     try {
       setBillingReportError('');
-      setBillingReport(
-        await sprintApi.billingLedgerReview(currentFacility.id, start, end, afterId),
-      );
+      setBillingErrorScope(requestedScope);
+      const report = await sprintApi.billingLedgerReview(currentFacility.id, start, end, afterId);
+      if (scopeRef.current === requestedScope) {
+        setBillingReport(report);
+        setBillingReportScope(requestedScope);
+      }
     } catch (error: unknown) {
-      setBillingReportError(
-        error instanceof Error ? error.message : 'Billing consistency review failed.',
+      if (scopeRef.current === requestedScope)
+        setBillingReportError(
+          error instanceof Error ? error.message : 'Billing consistency review failed.',
+        );
+    }
+  };
+  const loadJournalReport = async (afterId = 0) => {
+    if (!currentFacility) return;
+    const requestedScope = `${currentFacility.id}:${start}:${end}`;
+    try {
+      setJournalReportError('');
+      setJournalErrorScope(requestedScope);
+      const report = await sprintApi.billingJournalExceptions(
+        currentFacility.id,
+        start,
+        end,
+        afterId,
       );
+      if (scopeRef.current === requestedScope) {
+        setJournalReport(report);
+        setJournalReportScope(requestedScope);
+      }
+    } catch (error: unknown) {
+      if (scopeRef.current === requestedScope)
+        setJournalReportError(
+          error instanceof Error ? error.message : 'Journal exception review failed.',
+        );
     }
   };
   const exportCsv = async () => {
@@ -115,8 +163,8 @@ export const AccountingModule: React.FC = () => {
       <header className="rounded-xl border border-hair bg-surface p-5">
         <h1 className="font-display text-xl text-ink">Accounting &amp; general ledger</h1>
         <p className="mt-2 text-xs text-muted">
-          Ledger postings only. Billing, receipts and claims are not automatically reconciled to
-          this ledger; unrecorded costs are not included.
+          Ledger postings only. Reviewed billing sources can be posted separately; automatic
+          posting, full payer and bank reconciliation, and unrecorded costs are not included.
         </p>
       </header>
       {can('accounting.read') && can('billing.read') && (
@@ -130,16 +178,16 @@ export const AccountingModule: React.FC = () => {
           <button className={buttonClass} onClick={() => void loadBillingReport()}>
             Review first page
           </button>
-          {billingReportError && (
+          {billingErrorScope === currentScope && billingReportError && (
             <p role="alert" className="text-red-700">
               {billingReportError}
             </p>
           )}
-          {billingReport && (
+          {visibleBillingReport && (
             <>
               <p>
-                Examined {billingReport.pageSummary.examined}; requiring review{' '}
-                {billingReport.pageSummary.requiringReview} on this page.
+                Examined {visibleBillingReport.pageSummary.examined}; requiring review{' '}
+                {visibleBillingReport.pageSummary.requiringReview} on this page.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -155,7 +203,7 @@ export const AccountingModule: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {billingReport.invoices.map((row) => (
+                    {visibleBillingReport.invoices.map((row) => (
                       <tr key={row.id}>
                         <td>{row.invoiceNumber}</td>
                         <td>{row.status ?? 'Unknown'}</td>
@@ -171,9 +219,9 @@ export const AccountingModule: React.FC = () => {
               </div>
               <h3 className="font-semibold">Source-linked journal checks</h3>
               <p>
-                Examined {billingReport.ledgerPageSummary.examined} source events;{' '}
-                {billingReport.ledgerPageSummary.unposted} have no linked journal. An amount match
-                does not verify accounting classification.
+                Examined {visibleBillingReport.ledgerPageSummary.examined} source events;{' '}
+                {visibleBillingReport.ledgerPageSummary.unposted} have no linked journal. An amount
+                match does not verify accounting classification.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -187,7 +235,7 @@ export const AccountingModule: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {billingReport.sourceEvents.map((event) => (
+                    {visibleBillingReport.sourceEvents.map((event) => (
                       <tr key={`${event.sourceType}:${event.sourceId}`}>
                         <td>{event.invoiceId}</td>
                         <td>
@@ -204,19 +252,76 @@ export const AccountingModule: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-              {billingReport.nextAfterId !== null && (
+              {visibleBillingReport.nextAfterId !== null && (
                 <button
                   className={buttonClass}
-                  onClick={() => void loadBillingReport(billingReport.nextAfterId!)}
+                  onClick={() => void loadBillingReport(visibleBillingReport.nextAfterId!)}
                 >
                   Next page
                 </button>
               )}
-              <p>{billingReport.limitations.notice}</p>
+              <p>{visibleBillingReport.limitations.notice}</p>
             </>
           )}
         </section>
       )}
+      {can('accounting.read') && can('billing.read') && (
+        <section className="rounded-xl border border-hair bg-surface p-4 space-y-2 text-xs">
+          <h2 className="font-semibold">Journal-side billing exceptions</h2>
+          <p>
+            Checks known source-linked journals by journal date, separately from the invoice-date
+            review.
+          </p>
+          <button className={buttonClass} onClick={() => void loadJournalReport()}>
+            Review journal sources
+          </button>
+          {journalErrorScope === currentScope && journalReportError && (
+            <p role="alert" className="text-red-700">
+              {journalReportError}
+            </p>
+          )}
+          {visibleJournalReport && (
+            <>
+              <p>
+                Examined {visibleJournalReport.pageSummary.examined}; requiring review{' '}
+                {visibleJournalReport.pageSummary.requiringReview} on this page.
+              </p>
+              <ul>
+                {visibleJournalReport.journals
+                  .filter((j) => j.issues.length)
+                  .map((j) => (
+                    <li key={j.id}>
+                      Journal #{j.id} · {j.sourceType} #{j.sourceId ?? 'missing'}:{' '}
+                      {j.issues.join(', ')}
+                    </li>
+                  ))}
+              </ul>
+              {visibleJournalReport.nextAfterJournalId !== null && (
+                <button
+                  className={buttonClass}
+                  onClick={() => void loadJournalReport(visibleJournalReport.nextAfterJournalId!)}
+                >
+                  Next journal page
+                </button>
+              )}
+              <p>{visibleJournalReport.limitations}</p>
+            </>
+          )}
+        </section>
+      )}
+      {authenticatedUser &&
+        !authenticatedUser.isSuperAdmin &&
+        can('accounting.read') &&
+        can('billing.read') &&
+        can('accounting.journals.post') && (
+          <BillingJournalPostingPanel
+            key={`${currentFacility.id}:${authenticatedUser.id}`}
+            facilityId={currentFacility.id}
+            userId={authenticatedUser.id}
+            accounts={visibleData?.accounts ?? []}
+            onPosted={() => void load()}
+          />
+        )}
       <section className="rounded-xl border border-hair bg-surface p-4 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs">
@@ -251,36 +356,40 @@ export const AccountingModule: React.FC = () => {
             {error}
           </p>
         )}
-        {data && (
+        {visibleData && (
           <>
             <div className="grid gap-3 sm:grid-cols-3 text-xs">
               <div className="rounded-lg bg-slate-50 p-3">
                 <strong>Trial balance</strong>
                 <p>
-                  Debits KES {data.trialBalance.debitKes} · Credits KES{' '}
-                  {data.trialBalance.creditKes}
+                  Debits KES {visibleData.trialBalance.debitKes} · Credits KES{' '}
+                  {visibleData.trialBalance.creditKes}
                 </p>
-                <p>{data.trialBalance.balanced ? 'Balanced' : 'Difference requires review'}</p>
+                <p>
+                  {visibleData.trialBalance.balanced ? 'Balanced' : 'Difference requires review'}
+                </p>
               </div>
               <div className="rounded-lg bg-slate-50 p-3">
                 <strong>Posted income statement</strong>
-                <p>Revenue KES {data.profitAndLoss.postedRevenueKes}</p>
-                <p>Expenses KES {data.profitAndLoss.postedExpensesKes}</p>
-                <p>Ledger result KES {data.profitAndLoss.ledgerResultKes}</p>
+                <p>Revenue KES {visibleData.profitAndLoss.postedRevenueKes}</p>
+                <p>Expenses KES {visibleData.profitAndLoss.postedExpensesKes}</p>
+                <p>Ledger result KES {visibleData.profitAndLoss.ledgerResultKes}</p>
               </div>
               <div className="rounded-lg bg-slate-50 p-3">
-                <strong>Balance sheet as of {data.balanceSheet.asOf}</strong>
-                <p>Assets KES {data.balanceSheet.assetsKes}</p>
+                <strong>Balance sheet as of {visibleData.balanceSheet.asOf}</strong>
+                <p>Assets KES {visibleData.balanceSheet.assetsKes}</p>
                 <p>
-                  Liabilities + equity KES {data.balanceSheet.liabilitiesKes} +{' '}
-                  {data.balanceSheet.equityIncludingAccumulatedResultKes}
+                  Liabilities + equity KES {visibleData.balanceSheet.liabilitiesKes} +{' '}
+                  {visibleData.balanceSheet.equityIncludingAccumulatedResultKes}
                 </p>
-                <p>{data.balanceSheet.balanced ? 'Balanced' : 'Difference requires review'}</p>
+                <p>
+                  {visibleData.balanceSheet.balanced ? 'Balanced' : 'Difference requires review'}
+                </p>
               </div>
             </div>
             <p className="text-xs text-amber-800">
-              {data.limitations.notice} Service-line profitability is unavailable until costs and
-              allocations are verified.
+              {visibleData.limitations.notice} Service-line profitability is unavailable until costs
+              and allocations are verified.
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
@@ -293,7 +402,7 @@ export const AccountingModule: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.accounts.map((a) => (
+                  {visibleData.accounts.map((a) => (
                     <tr key={a.accountId} className="border-t border-hair">
                       <td className="py-2">
                         {a.accountCode} · {a.accountName}
@@ -490,7 +599,7 @@ export const AccountingModule: React.FC = () => {
               onChange={(e) => setJournal({ ...journal, debitAccount: e.target.value })}
             >
               <option value="">Select debit account</option>
-              {data?.accounts.map((a) => (
+              {visibleData?.accounts.map((a) => (
                 <option key={a.accountId} value={a.accountId}>
                   {a.accountCode} · {a.accountName}
                 </option>
@@ -504,7 +613,7 @@ export const AccountingModule: React.FC = () => {
               onChange={(e) => setJournal({ ...journal, creditAccount: e.target.value })}
             >
               <option value="">Select credit account</option>
-              {data?.accounts.map((a) => (
+              {visibleData?.accounts.map((a) => (
                 <option key={a.accountId} value={a.accountId}>
                   {a.accountCode} · {a.accountName}
                 </option>
@@ -560,7 +669,7 @@ export const AccountingModule: React.FC = () => {
               onChange={(e) => setReversal({ ...reversal, journalId: e.target.value })}
             >
               <option value="">Select posted journal</option>
-              {data?.journals
+              {visibleData?.journals
                 .filter((j) => !j.reversalOfJournalId)
                 .map((j) => (
                   <option key={j.id} value={j.id}>
@@ -592,11 +701,11 @@ export const AccountingModule: React.FC = () => {
           </form>
         </div>
       )}
-      {data && (
+      {visibleData && (
         <section className="rounded-xl border border-hair bg-surface p-4">
           <h2 className="font-semibold text-ink">Financial periods</h2>
           <ul className="mt-2 space-y-2 text-xs">
-            {data.periods.map((p) => (
+            {visibleData.periods.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-3">
                 <span>
                   {p.periodCode} · {p.startDate}–{p.endDate} · {p.status}

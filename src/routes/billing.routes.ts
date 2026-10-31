@@ -9,6 +9,7 @@ import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import * as billing from '../billing/billing.service.ts';
+import * as finalized from '../billing/finalized-invoice.service.ts';
 import { db } from '../db/index.ts';
 import * as queries from '../db/queries.ts';
 import * as schema from '../db/schema.ts';
@@ -199,6 +200,126 @@ router.get(
       return res.status(500).json({
         success: false,
         error: 'INVOICE_DETAIL_FETCH_FAILED',
+      });
+    }
+  },
+);
+
+/**
+ * Finalized statements contain diagnosis information, so billing and clinical
+ * read permission are both required. The service commits an access log before
+ * returning the statement. No provider request settles an invoice here.
+ */
+router.get(
+  '/api/invoices/:id/finalization',
+  requirePermission('billing.read', 'clinical.read'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await finalized.getFinalizedInvoice(context, Number(req.params.id)));
+    } catch (error) {
+      if (error instanceof finalized.InvoiceFinalizationError) {
+        return res.status(error.status).json({
+          success: false,
+          error: error.code,
+          message: error.message,
+          detail: { issues: error.issues },
+        });
+      }
+      if (handleScopeError(error, res)) return;
+      res.status(500).json({
+        success: false,
+        error: 'INVOICE_STATEMENT_FAILED',
+        message: 'The finalized invoice could not be loaded.',
+      });
+    }
+  },
+);
+router.post(
+  '/api/invoices/:id/finalize',
+  requirePermission('billing.read', 'billing.update', 'clinical.read'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await finalized.finalizeInvoice(
+        context,
+        Number(req.params.id),
+        req.body ?? {},
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json(result);
+    } catch (error) {
+      if (error instanceof finalized.InvoiceFinalizationError) {
+        return res.status(error.status).json({
+          success: false,
+          error: error.code,
+          message: error.message,
+          detail: { issues: error.issues },
+        });
+      }
+      if (handleScopeError(error, res)) return;
+      res.status(500).json({
+        success: false,
+        error: 'INVOICE_FINALIZATION_FAILED',
+        message: 'The invoice could not be finalized.',
+      });
+    }
+  },
+);
+router.post(
+  '/api/invoices/:id/print-access',
+  requirePermission('billing.read', 'clinical.read'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      await finalized.recordInvoicePrintAccess(context, Number(req.params.id));
+      res.json({ authorized: true });
+    } catch (error) {
+      if (error instanceof finalized.InvoiceFinalizationError)
+        return res
+          .status(error.status)
+          .json({ success: false, error: error.code, message: error.message });
+      if (handleScopeError(error, res)) return;
+      res.status(500).json({
+        success: false,
+        error: 'INVOICE_PRINT_AUDIT_FAILED',
+        message: 'Printing could not be authorized and audited.',
+      });
+    }
+  },
+);
+router.post(
+  '/api/invoices/:id/payments/:paymentId/attribution',
+  requirePermission('billing.read', 'billing.payments.record'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await finalized.attributeInvoicePayment(
+        context,
+        Number(req.params.id),
+        Number(req.params.paymentId),
+        req.body?.party,
+        req.body?.reason,
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json(result);
+    } catch (error) {
+      if (error instanceof finalized.InvoiceFinalizationError) {
+        return res
+          .status(error.status)
+          .json({ success: false, error: error.code, message: error.message });
+      }
+      if (handleScopeError(error, res)) return;
+      res.status(500).json({
+        success: false,
+        error: 'PAYMENT_ATTRIBUTION_FAILED',
+        message: 'The receipt could not be attributed.',
       });
     }
   },

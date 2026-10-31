@@ -142,9 +142,11 @@ try {
     'pharmacy.dispense',
     'inventory.read',
     'billing.read',
+    'billing.update',
     'billing.payments.record',
     'billing.refunds.record',
     'accounting.read',
+    'accounting.journals.post',
     'portal.accounts.manage',
   ];
   for (const code of permissions) {
@@ -638,6 +640,182 @@ try {
   check(refundDb.n === 1, 'Duplicate refund recorded');
   console.log('Manual refund lost-response recovery and net receipt balance: PASS');
 
+  // Explicitly synthetic, facility-recorded invoice facts and tariffs; this is not
+  // evidence that any real facility price, payer benefit or provider is approved.
+  phase = 'synthetic finalized invoice fixture';
+  await pool.query(
+    "UPDATE facilities SET mfl_code=$1,address='Synthetic Road',county='Nyeri',phone='0000000000' WHERE id=$2",
+    [`SYN-MFL-${suffix}`, facility],
+  );
+  const department = (
+    await pool.query(
+      "INSERT INTO departments(facility_id,name,code) VALUES($1,'Synthetic OPD',$2) RETURNING id",
+      [facility, `SYN-OPD-${suffix}`],
+    )
+  ).rows[0].id;
+  const practitioner = (
+    await pool.query(
+      "INSERT INTO practitioners(tenant_id,facility_id,full_name) VALUES($1,$2,'Synthetic Browser Clinician') RETURNING id",
+      [tenant, facility],
+    )
+  ).rows[0].id;
+  await pool.query('UPDATE encounters SET department_id=$1,practitioner_id=$2 WHERE id=$3', [
+    department,
+    practitioner,
+    encounter,
+  ]);
+  await pool.query(
+    "INSERT INTO diagnoses(encounter_id,patient_id,coding_system,icd10_code,icd10_description,diagnosis_type) VALUES($1,$2,'ICD-10','Z00.0','Synthetic browser diagnosis','Primary')",
+    [encounter, patient],
+  );
+  const tariff = (
+    await pool.query(
+      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee) VALUES($1,$2,$3,'Synthetic consultation','OPD','Visit','50.00') RETURNING id",
+      [tenant, facility, `SYN-TEST-${suffix}`],
+    )
+  ).rows[0].id;
+  const splitInvoice = (
+    await pool.query(
+      "INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,encounter_id,invoice_number,total_amount,paid_amount,balance_amount,credit_balance,status,payer_type,payer_name,member_number) VALUES($1,$2,$3,$4,$5,'100.00','0.00','100.00','0.00','Pending','Insurance','Synthetic payer','SYN-MEMBER') RETURNING id",
+      [tenant, facility, patient, encounter, `INV-SPLIT-${suffix}`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO billing_items(invoice_id,tariff_id,tariff_code,item_type,description,quantity,unit_price,total_amount) VALUES($1,$2,$3,'Consultation','Synthetic consultation',2,'50.00','100.00')",
+    [splitInvoice, tariff, `SYN-TEST-${suffix}`],
+  );
+  await clickText('Inventory & Batches', 'aside button');
+  await waitText('Hospital Inventory, Batches & Stores');
+  await clickText('Billing & Cashier POS', 'aside button');
+  await waitText(`INV-SPLIT-${suffix}`);
+  await page.evaluate(
+    (number) =>
+      [...document.querySelectorAll('main span')]
+        .find((x) => x.textContent.trim() === number)
+        ?.closest('div.cursor-pointer')
+        ?.click(),
+    `INV-SPLIT-${suffix}`,
+  );
+  await waitText('Allocation basis or evidence reference');
+  await page.evaluate(() => {
+    for (const [prefix, value] of [
+      ['Insurer responsibility', '60.00'],
+      ['Copayment within', '10.00'],
+      ['Allocation basis', 'Synthetic documented estimate'],
+    ]) {
+      const input = [...document.querySelectorAll('label')]
+        .find((x) => x.innerText.trim().startsWith(prefix))
+        ?.querySelector('input');
+      if (!input) throw new Error('Missing finalization input');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    [...document.querySelectorAll('label')]
+      .find((x) => x.innerText.includes('I reviewed the recorded allocation'))
+      ?.querySelector('input')
+      ?.click();
+  });
+  await clickText('Finalize invoice');
+  await waitText(`Invoice INV-SPLIT-${suffix}`);
+  await waitText('Patient balance: KES 40.00');
+  await waitText('Insurer balance: KES 60.00');
+  const finalized = (
+    await pool.query(
+      'SELECT snapshot,patient_responsibility::text,insurer_responsibility::text FROM billing_invoice_finalizations WHERE invoice_id=$1',
+      [splitInvoice],
+    )
+  ).rows[0];
+  check(
+    finalized?.snapshot.facility.registryCode === `SYN-MFL-${suffix}` &&
+      finalized.patient_responsibility === '40.00' &&
+      finalized.insurer_responsibility === '60.00',
+    'Finalized invoice snapshot or split was not persisted',
+  );
+  await page.evaluate(() => {
+    window.__syntheticPrintCount = 0;
+    window.print = () => {
+      window.__syntheticPrintCount++;
+    };
+  });
+  await clickText('Print finalized invoice');
+  await page.waitForFunction(() => window.__syntheticPrintCount === 1, { timeout: 15000 });
+  const prints = (
+    await pool.query(
+      "SELECT count(*)::int n FROM patient_record_access_logs WHERE record_type='FinalizedInvoice' AND record_id=$1 AND action='PRINT'",
+      [splitInvoice],
+    )
+  ).rows[0].n;
+  check(prints === 1, 'Finalized invoice print was not audited');
+  console.log('Finalized snapshot, facility identity, split and audited print: PASS');
+
+  phase = 'split payment lost response';
+  await clickText('Receive Payment');
+  await clickText('Cash');
+  await page.evaluate(() => {
+    const amount = [...document.querySelectorAll('label')]
+      .find((x) => x.innerText.includes('Amount Paid (KES)'))
+      ?.parentElement.querySelector('input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(amount, '40.00');
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const payerSelect = await page.$('div.fixed label select');
+  check(payerSelect, 'Payer selector not found');
+  await payerSelect.select('PATIENT');
+  let paymentDropped = false,
+    paymentStatus = null;
+  await cdp.send('Fetch.enable', {
+    patterns: [{ urlPattern: '*/api/billing/payments', requestStage: 'Response' }],
+  });
+  const dropPayment = async (e) => {
+    paymentDropped = true;
+    paymentStatus = e.responseStatusCode;
+    await cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'Failed' });
+  };
+  cdp.on('Fetch.requestPaused', dropPayment);
+  await clickText('Confirm Payment & Issue Receipt');
+  await waitText('Payment could not be confirmed');
+  check(
+    paymentDropped && paymentStatus === 201,
+    `Receipt response interruption failed (${paymentStatus})`,
+  );
+  await cdp.send('Fetch.disable');
+  cdp.off('Fetch.requestPaused', dropPayment);
+  const pending = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((x) => x.startsWith('jalicare:payment:pending:'));
+    if (!key) return null;
+    const value = JSON.parse(localStorage.getItem(key));
+    return { fields: Object.keys(value).sort(), invoiceId: value.invoiceId };
+  });
+  check(
+    JSON.stringify(pending?.fields) === '["invoiceId","key"]' && pending.invoiceId === splitInvoice,
+    'Receipt retry identity stored extra data or wrong invoice',
+  );
+  await page.reload({ waitUntil: 'networkidle2' });
+  await page.waitForFunction(
+    () => document.querySelector('aside')?.innerText.includes('Billing & Cashier POS'),
+    { timeout: 18000 },
+  );
+  await clickText('Billing & Cashier POS', 'aside button');
+  await waitText('Unconfirmed receipt request');
+  await clickText('Check receipt status');
+  await page.waitForFunction(
+    () => !document.body.innerText.includes('Unconfirmed receipt request'),
+    { timeout: 30000 },
+  );
+  const receipt = (
+    await pool.query(
+      'SELECT p.id,p.amount::text,a.party FROM billing_payments p JOIN billing_payment_attributions a ON a.payment_id=p.id WHERE p.invoice_id=$1',
+      [splitInvoice],
+    )
+  ).rows;
+  check(
+    receipt.length === 1 && receipt[0].amount === '40.00' && receipt[0].party === 'PATIENT',
+    'Receipt was duplicated or misattributed',
+  );
+  console.log('Patient split payment and dropped-response recovery without duplicate: PASS');
+
   phase = 'navigation';
   await clickText('Inventory & Batches', 'aside button');
   await waitText('Hospital Inventory, Batches & Stores');
@@ -699,7 +877,151 @@ try {
     'Synthetic admission/bed state not persisted',
   );
   console.log('Inpatient admission and occupied bed persistence: PASS');
+  phase = 'reviewed billing journals';
+  const postingDate = (await pool.query('SELECT current_date::text AS value')).rows[0].value;
+  await pool.query(
+    `INSERT INTO financial_periods(tenant_id,facility_id,period_code,name,start_date,end_date,status)
+    VALUES($1,$2,'BROWSER','Synthetic browser accounting period','2000-01-01','2099-12-31','OPEN')`,
+    [tenant, facility],
+  );
+  const glAccounts = (
+    await pool.query(
+      `INSERT INTO chart_of_accounts(tenant_id,facility_id,account_code,account_name,account_type,sub_type,normal_balance)
+    VALUES($1,$2,'AR-PATIENT','Synthetic patient AR','ASSET','RECEIVABLE','DEBIT'),
+      ($1,$2,'AR-INSURER','Synthetic insurer AR','ASSET','RECEIVABLE','DEBIT'),
+      ($1,$2,'CASH','Synthetic settlement','ASSET','CASH','DEBIT'),
+      ($1,$2,'REVENUE','Synthetic revenue','REVENUE','REVENUE','CREDIT') RETURNING id,account_code`,
+      [tenant, facility],
+    )
+  ).rows;
+  const account = (code) => glAccounts.find((row) => row.account_code === code).id;
   await clickText('Accounting & General Ledger', 'aside button');
+  await waitText('Reviewed billing journal');
+  await page.waitForFunction(
+    () => document.querySelector('select[aria-label="Revenue account"]')?.options.length > 1,
+    { timeout: 15000 },
+  );
+  await page.type('input[aria-label="Billing source ID"]', String(splitInvoice));
+  await page.evaluate((date) => {
+    const input = document.querySelector('input[aria-label="Billing journal date"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, date);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, postingDate);
+  await page.type(
+    'input[aria-label="Billing journal description"]',
+    'Synthetic reviewed invoice recognition',
+  );
+  await page.select(
+    'select[aria-label="Patient receivable (if applicable)"]',
+    String(account('AR-PATIENT')),
+  );
+  await page.select(
+    'select[aria-label="Insurer receivable (if applicable)"]',
+    String(account('AR-INSURER')),
+  );
+  await page.select('select[aria-label="Revenue account"]', String(account('REVENUE')));
+  let ledgerDropped = false,
+    ledgerStatus = null;
+  await cdp.send('Fetch.enable', {
+    patterns: [
+      {
+        urlPattern: '*/api/accounting/billing-postings/BILLING_INVOICE/*',
+        requestStage: 'Response',
+      },
+    ],
+  });
+  const dropLedger = async (event) => {
+    ledgerDropped = true;
+    ledgerStatus = event.responseStatusCode;
+    await cdp.send('Fetch.failRequest', { requestId: event.requestId, errorReason: 'Failed' });
+  };
+  cdp.on('Fetch.requestPaused', dropLedger);
+  await clickText('Post reviewed source');
+  await waitText('Posting was not confirmed');
+  check(
+    ledgerDropped && ledgerStatus === 201,
+    `Journal response interruption failed (${ledgerStatus})`,
+  );
+  await cdp.send('Fetch.disable');
+  cdp.off('Fetch.requestPaused', dropLedger);
+  const ledgerPending = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((x) =>
+      x.startsWith('jalicare:billing-journal:pending:'),
+    );
+    if (!key) return null;
+    const value = JSON.parse(localStorage.getItem(key));
+    return {
+      fields: Object.keys(value).sort(),
+      sourceId: value.sourceId,
+      sourceType: value.sourceType,
+    };
+  });
+  check(
+    JSON.stringify(ledgerPending?.fields) === '["key","sourceId","sourceType"]' &&
+      ledgerPending.sourceId === splitInvoice,
+    'Journal recovery identity contained unexpected data',
+  );
+  await page.reload({ waitUntil: 'networkidle2' });
+  await page.waitForFunction(
+    () => document.querySelector('aside')?.innerText.includes('Accounting & General Ledger'),
+    { timeout: 18000 },
+  );
+  await clickText('Accounting & General Ledger', 'aside button');
+  await waitText('Unconfirmed BILLING_INVOICE');
+  await clickText('Check recorded journal');
+  await page.waitForFunction(
+    () => !document.body.innerText.includes('Unconfirmed BILLING_INVOICE'),
+    { timeout: 30000 },
+  );
+  const invoicePostings = (
+    await pool.query(
+      `SELECT p.journal_id,j.total_debit_cents::text AS debit,j.total_credit_cents::text AS credit
+    FROM accounting_billing_postings p JOIN journal_entries j ON j.id=p.journal_id
+    WHERE p.facility_id=$1 AND p.source_type='BILLING_INVOICE' AND p.source_id=$2`,
+      [facility, splitInvoice],
+    )
+  ).rows;
+  check(
+    invoicePostings.length === 1 &&
+      invoicePostings[0].debit === '10000' &&
+      invoicePostings[0].credit === '10000',
+    'Invoice journal was duplicated or unbalanced',
+  );
+  await page.select('select[aria-label="Billing source type"]', 'BILLING_PAYMENT');
+  await page.evaluate(
+    (id, date) => {
+      for (const [label, value] of [
+        ['Billing source ID', String(id)],
+        ['Billing journal date', date],
+        ['Billing journal description', 'Synthetic reviewed receipt'],
+      ]) {
+        const input = document.querySelector(`input[aria-label="${label}"]`);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    },
+    receipt[0].id,
+    postingDate,
+  );
+  await page.select('select[aria-label="Settlement or clearing account"]', String(account('CASH')));
+  await clickText('Post reviewed source');
+  await waitText('Receivable KES 40.00');
+  const receiptPostings = (
+    await pool.query(
+      `SELECT amount_cents::text,receivable_cents::text,liability_cents::text,party
+    FROM accounting_billing_postings WHERE facility_id=$1 AND source_type='BILLING_PAYMENT' AND source_id=$2`,
+      [facility, receipt[0].id],
+    )
+  ).rows;
+  check(
+    receiptPostings.length === 1 &&
+      receiptPostings[0].party === 'PATIENT' &&
+      receiptPostings[0].receivable_cents === '4000',
+    'Receipt journal was not posted correctly',
+  );
+  console.log('Reviewed invoice/receipt journals and lost-response recovery: PASS');
   await waitText('Billing and ledger exception review');
   await clickText('Review first page');
   await waitText('Source-linked journal checks');

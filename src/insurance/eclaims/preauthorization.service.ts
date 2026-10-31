@@ -328,6 +328,13 @@ export async function createPreauthorization(
       400,
     );
   }
+  if (input.codingSystem !== 'ICD-10' && input.codingSystem !== 'ICD-11') {
+    throw new InsuranceDomainError(
+      'INVALID_DIAGNOSIS_SYSTEM',
+      'Select the recorded ICD-10 or ICD-11 coding system.',
+      400,
+    );
+  }
   if (!Number.isSafeInteger(quantity) || quantity <= 0) {
     throw new InsuranceDomainError('INVALID_QUANTITY', 'quantity must be a positive integer.', 400);
   }
@@ -484,7 +491,7 @@ export async function createPreauthorization(
       clinicalIndication,
       primaryDiagnosisCode,
       primaryDiagnosisDisplay,
-      codingSystem: input.codingSystem ?? 'ICD-11',
+      codingSystem: input.codingSystem,
       requestedServiceCode,
       requestedServiceName,
       quantity,

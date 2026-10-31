@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { pool } from '../db/index.ts';
 import {
   AccountingIntegrityError,
@@ -41,6 +42,7 @@ function cents(value: string | null): bigint | null {
 export async function inspectBillingConsistencyScoped(
   scope: AccountingScope,
   input: { startDate: unknown; endDate: unknown; afterId?: unknown; limit?: unknown },
+  client: PoolClient | typeof pool = pool,
 ) {
   const startDate = requireIsoDate(input.startDate);
   const endDate = requireIsoDate(input.endDate);
@@ -60,7 +62,7 @@ export async function inspectBillingConsistencyScoped(
       'Use a valid cursor and page size between 1 and 200.',
     );
   }
-  const { rows } = await pool.query<DiagnosticRow>(
+  const { rows } = await client.query<DiagnosticRow>(
     `SELECT i.id, i.invoice_number AS "invoiceNumber", i.status,
        i.total_amount::text AS total, i.paid_amount::text AS paid,
        i.balance_amount::text AS balance, i.credit_balance::text AS credit,

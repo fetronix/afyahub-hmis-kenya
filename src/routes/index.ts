@@ -53,6 +53,7 @@ import billingRoutes from './billing.routes.ts';
 import dhaRoutes from './dha.routes.ts';
 import shaEclaimsRoutes from './sha-eclaims.routes.ts';
 import privateInsuranceRoutes from './private-insurance.routes.ts';
+import claimEvidenceRoutes from '../insurance/claims/claim-evidence.routes.ts';
 import accountingRoutes from './accounting.routes.ts';
 import paymentHubRoutes from '../payment-hub/routes.ts';
 import payerHubRoutes from '../insurance/hub/routes.ts';
@@ -149,6 +150,7 @@ export function createApiRoutes(): Router {
   api.use('/purchase-orders', requireFacilityModule('procurement'));
 
   api.use('/claims', requireFacilityModule('insurance'));
+  api.use('/insurance/evidence', requireFacilityModule('insurance'), claimEvidenceRoutes);
   api.use('/insurance/sha', requireFacilityModule('insurance'), shaEclaimsRoutes);
   api.use('/insurance', requireFacilityModule('insurance'), privateInsuranceRoutes);
   api.use('/accounting', requireFacilityModule('accounting'), accountingRoutes);

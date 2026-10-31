@@ -49,6 +49,7 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
   const [requestedServiceName, setRequestedServiceName] = useState('');
   const [primaryDiagnosisCode, setPrimaryDiagnosisCode] = useState('');
   const [primaryDiagnosisDisplay, setPrimaryDiagnosisDisplay] = useState('');
+  const [codingSystem, setCodingSystem] = useState<'ICD-10' | 'ICD-11' | ''>('');
   const [clinicalIndication, setClinicalIndication] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [estimatedAmount, setEstimatedAmount] = useState('');
@@ -104,6 +105,7 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
         requestedServiceName,
         primaryDiagnosisCode,
         primaryDiagnosisDisplay,
+        codingSystem,
         clinicalIndication,
         quantity,
         estimatedAmount,
@@ -127,8 +129,7 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
   const handleSubmitGateway = async (pa: ShaPreauthRecord) => {
     try {
       const res = await shaEclaimsApi.submitPreauthorization(pa.id, facilityId, {
-        protocol: pa.consentToken ? 'HIE_PREAUTH' : 'FHIR_BUNDLE',
-        consentToken: pa.consentToken,
+        protocol: pa.hasConsentToken ? 'HIE_PREAUTH' : 'FHIR_BUNDLE',
       });
       showToast(
         `Submitted ${res.preauthorization.preauthNumber} (${
@@ -284,9 +285,22 @@ export const PreauthorizationWorkspace: React.FC<Props> = ({
           </div>
         </div>
 
+        <label className="field-label">
+          Recorded diagnosis system
+          <select
+            value={codingSystem}
+            onChange={(e) => setCodingSystem(e.target.value as 'ICD-10' | 'ICD-11' | '')}
+            className="field-input"
+            required
+          >
+            <option value="">— Select recorded system —</option>
+            <option value="ICD-10">ICD-10</option>
+            <option value="ICD-11">ICD-11</option>
+          </select>
+        </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="field-label">Primary ICD-11 Code</label>
+            <label className="field-label">Primary diagnosis code</label>
             <input
               type="text"
               value={primaryDiagnosisCode}
