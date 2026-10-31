@@ -41,6 +41,13 @@ import {
 } from '../../auth/authorization.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../../auth/scope.service.ts';
 import * as schema from '../../db/schema.ts';
+import { calendarDateInZone, validTimezone } from '../../dashboard/timezone.ts';
+import { masterDepartmentMatches } from '../../billing/master-charge-resolver.ts';
+import {
+  dateVerdict,
+  unitVerdict,
+  type CatalogueServiceType,
+} from '../../billing/tariff-resolver.ts';
 import {
   createInvoiceBodySchema,
   paymentLedgerQuerySchema,
@@ -154,6 +161,10 @@ router.post(
         totalAmount: string;
         tariffId?: number | null;
         tariffCode?: string | null;
+        masterServiceId?: number | null;
+        serviceCode?: string | null;
+        serviceDepartment?: string | null;
+        serviceUnit?: string | null;
       }> = [];
 
       for (const item of itemsInput) {
@@ -188,24 +199,63 @@ router.post(
             });
           }
 
-          const [tariff] = await db
-            .select()
+          const [mapped] = await db
+            .select({
+              tariff: schema.facilityServiceTariffs,
+              master: schema.masterServices,
+              timezone: schema.facilities.timezone,
+              tenantTimezone: schema.tenants.timezone,
+            })
             .from(schema.facilityServiceTariffs)
+            .innerJoin(
+              schema.masterServices,
+              eq(schema.masterServices.id, schema.facilityServiceTariffs.masterServiceId),
+            )
+            .innerJoin(
+              schema.facilities,
+              eq(schema.facilities.id, schema.facilityServiceTariffs.facilityId),
+            )
+            .innerJoin(
+              schema.tenants,
+              eq(schema.tenants.id, schema.facilityServiceTariffs.tenantId),
+            )
             .where(
               and(
                 eq(schema.facilityServiceTariffs.id, tariffId),
                 eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
                 eq(schema.facilityServiceTariffs.facilityId, facility.id),
-                eq(schema.facilityServiceTariffs.isActive, true),
               ),
             )
             .limit(1);
-
-          if (!tariff) {
+          const tariff = mapped?.tariff,
+            master = mapped?.master;
+          const zone = mapped?.timezone ?? mapped?.tenantTimezone;
+          const family = (
+            master?.billingFamily === 'LABORATORY' ? 'LAB_TEST' : master?.billingFamily
+          ) as CatalogueServiceType;
+          if (
+            !mapped ||
+            !tariff ||
+            !master ||
+            !validTimezone(zone) ||
+            !master.isActive ||
+            !tariff.isActive ||
+            !masterDepartmentMatches(tariff.department, master.department) ||
+            tariff.approvalStatus !== 'APPROVED' ||
+            !tariff.approvedByUserId ||
+            !tariff.approvedAt ||
+            !tariff.approvalReference ||
+            Number(tariff.fee) <= 0 ||
+            dateVerdict(tariff.effectiveFrom, tariff.effectiveTo, calendarDateInZone(zone)) !==
+              'OK' ||
+            tariff.unit.trim().toLowerCase() !== master.unit.trim().toLowerCase() ||
+            unitVerdict(family, tariff.unit) !== 'OK'
+          ) {
             return res.status(400).json({
               success: false,
               error: 'INVALID_OR_INACTIVE_TARIFF',
-              message: 'The selected tariff is unavailable for this facility.',
+              message:
+                'The selected tariff must be mapped, active, approved, positive and effective with a compatible master unit.',
             });
           }
 
@@ -250,12 +300,16 @@ router.post(
 
           safeItems.push({
             itemType: tariff.department,
-            description: tariff.description,
+            description: master.description,
             quantity,
             unitPrice: (unitCents / 100).toFixed(2),
             totalAmount: (lineCents / 100).toFixed(2),
             tariffId: tariff.id,
             tariffCode: tariff.code,
+            masterServiceId: master.id,
+            serviceCode: master.code,
+            serviceDepartment: master.department,
+            serviceUnit: tariff.unit,
           });
 
           continue;
@@ -272,7 +326,7 @@ router.post(
           !description ||
           description.length > 500 ||
           !Number.isFinite(unitPrice) ||
-          unitPrice < 0 ||
+          unitPrice <= 0 ||
           !/^\d+(\.\d{1,2})?$/.test(String(item.unitPrice))
         ) {
           return res.status(400).json({

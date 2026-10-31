@@ -2,6 +2,8 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { db } from '../../db/index.ts';
+import { recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { deliveryChargeRequest } from '../../billing/service-charges.ts';
 import { getFacilityByIdScoped } from '../../db/queries.ts';
 import * as schema from '../../db/schema.ts';
 import {
@@ -246,6 +248,12 @@ export async function recordDelivery(context: AuthorizationContext, input: Recor
         .where(eq(schema.labourRecords.id, labour.id));
     }
 
+    const attempt = await recordChargeAttempt(tx, deliveryChargeRequest(delivery), {
+      charged: false,
+      reason: 'TARIFF_NOT_CONFIGURED',
+      message: 'Delivery recorded; billing evaluation pending.',
+    });
+    if (attempt === null) throw new Error('DELIVERY_BILLING_QUEUE_UNAVAILABLE');
     return { delivery, babies, pregnancy: closed };
   });
 

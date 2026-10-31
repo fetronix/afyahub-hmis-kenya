@@ -14,6 +14,8 @@ import * as schema from '../schema.ts';
 import { resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { LaboratoryDomainError } from '../../clinical/laboratory-contracts.ts';
+import { recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { labOrderChargeRequest, radiologyChargeRequest } from '../../billing/service-charges.ts';
 
 import { resolveCatalogueTestByName, resolveQueueOrLabScope } from './shared.ts';
 
@@ -604,6 +606,90 @@ export async function verifyLabResult(
   });
 }
 
+/** Explicit staff confirmation that the complete investigation/panel was performed.
+ * Result verification alone is deliberately not treated as panel completion. */
+export async function completeLabInvestigation(context: AuthorizationContext, id: number) {
+  if (!Number.isSafeInteger(id) || id <= 0)
+    throw new LaboratoryDomainError(
+      'LAB_INVALID_INPUT',
+      'A valid investigation ID is required.',
+      400,
+    );
+  const [found] = await db
+    .select()
+    .from(schema.labOrders)
+    .where(eq(schema.labOrders.id, id))
+    .limit(1);
+  if (!found)
+    throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
+  const facility = await getFacilityByIdScoped(context, found.facilityId);
+  if (!facility || facility.tenantId !== found.tenantId)
+    throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
+  return db.transaction(async (tx) => {
+    const [order] = await tx
+      .select()
+      .from(schema.labOrders)
+      .where(
+        and(
+          eq(schema.labOrders.id, id),
+          eq(schema.labOrders.tenantId, facility.tenantId),
+          eq(schema.labOrders.facilityId, facility.id),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    if (!order)
+      throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
+    if (order.status === 'Completed' && order.completedAt && order.completedByUserId) return order;
+    if (order.status !== 'Sample Collected')
+      throw new LaboratoryDomainError(
+        'LAB_SPECIMEN_NOT_COLLECTED',
+        'A collected specimen and verified results are required.',
+        409,
+      );
+    const results = await tx
+      .select()
+      .from(schema.labResults)
+      .where(eq(schema.labResults.orderId, id));
+    if (
+      !results.length ||
+      results.some(
+        (result) =>
+          result.patientId !== order.patientId ||
+          result.status !== 'Verified' ||
+          !result.verifiedAt,
+      )
+    )
+      throw new LaboratoryDomainError(
+        'LAB_RESULTS_INCOMPLETE',
+        'At least one result is required and all recorded results must be verified before confirming the complete investigation.',
+        409,
+      );
+    const [completed] = await tx
+      .update(schema.labOrders)
+      .set({ status: 'Completed', completedAt: new Date(), completedByUserId: context.userId })
+      .where(eq(schema.labOrders.id, id))
+      .returning();
+    const attempt = await recordChargeAttempt(tx, labOrderChargeRequest(completed), {
+      charged: false,
+      reason: 'TARIFF_NOT_CONFIGURED',
+      message: 'Investigation completed; billing evaluation pending.',
+    });
+    if (attempt === null) throw new Error('LAB_BILLING_QUEUE_UNAVAILABLE');
+    await tx.insert(schema.auditLogs).values({
+      tenantId: facility.tenantId,
+      facilityId: facility.id,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'LabOrder',
+      resourceId: String(id),
+      details:
+        'Investigation explicitly confirmed complete after review of verified results; billing work recorded.',
+    });
+    return completed;
+  });
+}
+
 // Radiology
 export async function getRadiologyOrders(facilityId?: number, patientId?: number) {
   try {
@@ -653,24 +739,48 @@ export async function updateRadiologyReport(
   findings: string | undefined,
   impression: string | undefined,
   reportedBy: string,
+  actorId: number,
 ) {
-  try {
-    const res = await db
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(schema.radiologyOrders)
+      .where(eq(schema.radiologyOrders.id, id))
+      .for('update');
+    if (!existing) return null;
+    const [updated] = await tx
       .update(schema.radiologyOrders)
       .set({
         status: 'Reported',
         radiologistFindings: findings,
         impression,
         reportedBy,
-        reportedAt: new Date(),
+        reportedAt: existing.reportedAt ?? new Date(),
       })
       .where(eq(schema.radiologyOrders.id, id))
       .returning();
-    return res[0];
-  } catch (error) {
-    log.error({ err: error }, 'radiology_report.save_failed');
-    throw new Error('Failed to save radiology findings', { cause: error });
-  }
+    if (existing.status !== 'Reported') {
+      const attempt = await recordChargeAttempt(tx, radiologyChargeRequest(updated), {
+        charged: false,
+        reason: 'TARIFF_NOT_CONFIGURED',
+        message: 'Imaging report recorded; billing evaluation pending.',
+      });
+      if (attempt === null) throw new Error('IMAGING_BILLING_QUEUE_UNAVAILABLE');
+    }
+    await tx.insert(schema.auditLogs).values({
+      tenantId: updated.tenantId,
+      facilityId: updated.facilityId,
+      userId: String(actorId),
+      action: 'UPDATE',
+      resource: 'RadiologyOrder',
+      resourceId: String(id),
+      details:
+        existing.status === 'Reported'
+          ? 'Radiology report updated; the original billing occurrence is unchanged.'
+          : 'Radiology report recorded; billing work recorded.',
+    });
+    return updated;
+  });
 }
 
 /**

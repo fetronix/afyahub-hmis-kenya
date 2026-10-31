@@ -309,6 +309,27 @@
             "when": 1792900000031,
             "tag": "0043_notification_centre",
             "breakpoints": true
+        },
+        {
+            "idx": 44,
+            "version": "7",
+            "when": 1792900000032,
+            "tag": "0044_master_service_catalogue",
+            "breakpoints": true
+        },
+        {
+            "idx": 45,
+            "version": "7",
+            "when": 1792900000033,
+            "tag": "0045_catalogue_scope_and_completion",
+            "breakpoints": true
+        },
+        {
+            "idx": 46,
+            "version": "7",
+            "when": 1792900000034,
+            "tag": "0046_billing_service_occurrence",
+            "breakpoints": true
         }
     ]
 }

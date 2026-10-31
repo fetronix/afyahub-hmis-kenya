@@ -17,6 +17,13 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
 import { parseMoneyToCents } from '../../billing/settlement.ts';
 import { readInvoicePaymentLedger } from '../../billing/payment-ledger.ts';
+import { calendarDateInZone, validTimezone } from '../../dashboard/timezone.ts';
+import { masterDepartmentMatches } from '../../billing/master-charge-resolver.ts';
+import {
+  dateVerdict,
+  unitVerdict,
+  type CatalogueServiceType,
+} from '../../billing/tariff-resolver.ts';
 
 import { moduleLogger } from '../../logging/logger.ts';
 
@@ -46,6 +53,71 @@ export async function createInvoice(
 ) {
   try {
     return await db.transaction(async (tx) => {
+      // Lock and revalidate selected tariffs inside the invoice transaction.
+      // A concurrent price/approval edit must not create a stale charge.
+      const selected = items
+        .filter((item) => item.tariffId != null)
+        .sort((a, b) => Number(a.tariffId) - Number(b.tariffId));
+      if (selected.length) {
+        const [scope] = await tx
+          .select({ timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
+          .from(schema.facilities)
+          .innerJoin(schema.tenants, eq(schema.tenants.id, schema.facilities.tenantId))
+          .where(
+            and(
+              eq(schema.facilities.id, invoiceData.facilityId),
+              eq(schema.facilities.tenantId, invoiceData.tenantId),
+            ),
+          )
+          .limit(1);
+        const zone = scope?.timezone ?? scope?.tenantTimezone;
+        if (!validTimezone(zone)) throw new Error('TARIFF_TIMEZONE_REQUIRED');
+        for (const item of selected) {
+          const [row] = await tx
+            .select({ tariff: schema.facilityServiceTariffs, master: schema.masterServices })
+            .from(schema.facilityServiceTariffs)
+            .innerJoin(
+              schema.masterServices,
+              eq(schema.masterServices.id, schema.facilityServiceTariffs.masterServiceId),
+            )
+            .where(
+              and(
+                eq(schema.facilityServiceTariffs.id, item.tariffId!),
+                eq(schema.facilityServiceTariffs.facilityId, invoiceData.facilityId),
+                eq(schema.facilityServiceTariffs.tenantId, invoiceData.tenantId),
+              ),
+            )
+            .for('share');
+          const t = row?.tariff,
+            m = row?.master;
+          const family = (
+            m?.billingFamily === 'LABORATORY' ? 'LAB_TEST' : m?.billingFamily
+          ) as CatalogueServiceType;
+          if (
+            !t ||
+            !m ||
+            !t.isActive ||
+            !m.isActive ||
+            !masterDepartmentMatches(t.department, m.department) ||
+            t.approvalStatus !== 'APPROVED' ||
+            !t.approvedByUserId ||
+            !t.approvedAt ||
+            !t.approvalReference ||
+            Number(t.fee) <= 0 ||
+            dateVerdict(t.effectiveFrom, t.effectiveTo, calendarDateInZone(zone)) !== 'OK' ||
+            t.unit.trim().toLowerCase() !== m.unit.trim().toLowerCase() ||
+            unitVerdict(family, t.unit) !== 'OK' ||
+            item.masterServiceId !== m.id ||
+            item.serviceCode !== m.code ||
+            item.serviceDepartment !== m.department ||
+            item.serviceUnit !== t.unit ||
+            item.description !== m.description ||
+            item.tariffCode !== t.code ||
+            parseMoneyToCents(item.unitPrice) !== parseMoneyToCents(t.fee)
+          )
+            throw new Error('TARIFF_CHANGED_REVIEW_REQUIRED');
+        }
+      }
       const [invoice] = await tx.insert(schema.billingInvoices).values(invoiceData).returning();
 
       if (!invoice) {

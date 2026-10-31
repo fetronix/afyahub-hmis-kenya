@@ -21,6 +21,10 @@ export const RadiologyModule: React.FC = () => {
   } = useHmis();
   const [orders, setOrders] = useState<RadiologyOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [examinations, setExaminations] = useState<
+    Array<{ id: number; code: string; description: string; unit: string }>
+  >([]);
+  const [catalogueError, setCatalogueError] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RadiologyOrder | null>(null);
   const selectedOrderRef = useRef<RadiologyOrder | null>(null);
   const [patientLookup, setPatientLookup] = useState<{
@@ -37,6 +41,7 @@ export const RadiologyModule: React.FC = () => {
   const [reqForm, setReqForm] = useState({
     patientId: '',
     modality: 'X-Ray',
+    masterServiceId: '',
     procedureName: '',
     clinicalIndication: '',
   });
@@ -51,6 +56,25 @@ export const RadiologyModule: React.FC = () => {
     setReportFindings(order.radiologistFindings || '');
     setReportImpression(order.impression || '');
   };
+
+  useEffect(() => {
+    let active = true;
+    setExaminations([]);
+    setCatalogueError(false);
+    if (currentFacility?.id) {
+      Promise.resolve()
+        .then(() => api.getRadiologyMasterServices(currentFacility.id))
+        .then((rows) => {
+          if (active) setExaminations(rows);
+        })
+        .catch(() => {
+          if (active) setCatalogueError(true);
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [currentFacility?.id, refreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -138,6 +162,7 @@ export const RadiologyModule: React.FC = () => {
         facilityId: currentFacility.id,
         patientId: Number(reqForm.patientId),
         modality: reqForm.modality,
+        ...(reqForm.masterServiceId ? { masterServiceId: Number(reqForm.masterServiceId) } : {}),
         procedureName: reqForm.procedureName,
         clinicalIndication: reqForm.clinicalIndication,
         status: 'Requested',
@@ -146,7 +171,13 @@ export const RadiologyModule: React.FC = () => {
 
       showToast('Radiology imaging request created!');
       setIsNewReqModalOpen(false);
-      setReqForm({ patientId: '', modality: 'X-Ray', procedureName: '', clinicalIndication: '' });
+      setReqForm({
+        patientId: '',
+        modality: 'X-Ray',
+        masterServiceId: '',
+        procedureName: '',
+        clinicalIndication: '',
+      });
       triggerRefresh();
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
@@ -156,7 +187,7 @@ export const RadiologyModule: React.FC = () => {
   const handleSaveReport = async () => {
     if (!selectedOrder) return;
     try {
-      await api.updateRadiologyReport(selectedOrder.id, {
+      const reported = await api.updateRadiologyReport(selectedOrder.id, {
         findings: reportFindings,
         impression: reportImpression,
         reportedBy: currentUser.name,
@@ -417,6 +448,33 @@ export const RadiologyModule: React.FC = () => {
               ))}
             </select>
           </FormField>
+          <FormField label="Specific catalogue examination" htmlFor="radiology-master-exam">
+            <select
+              id="radiology-master-exam"
+              value={reqForm.masterServiceId}
+              className="field-input"
+              onChange={(event) => {
+                const exam = examinations.find((item) => String(item.id) === event.target.value);
+                setReqForm({
+                  ...reqForm,
+                  masterServiceId: event.target.value,
+                  procedureName: exam?.description ?? '',
+                });
+              }}
+            >
+              <option value="">Not mapped — clinical request only</option>
+              {examinations.map((exam) => (
+                <option key={exam.id} value={exam.id}>
+                  {exam.code} — {exam.description}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <p className="text-xs text-muted">
+            {catalogueError
+              ? 'Examination catalogue unavailable; unmapped requests require billing review.'
+              : 'A specific mapped examination is required for automatic billing. Unmapped requests remain available for care and require billing review.'}
+          </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField label="Imaging modality" htmlFor="radiology-modality">
               <select
@@ -436,6 +494,7 @@ export const RadiologyModule: React.FC = () => {
                 id="radiology-procedure"
                 required
                 value={reqForm.procedureName}
+                readOnly={Boolean(reqForm.masterServiceId)}
                 onChange={(event) => setReqForm({ ...reqForm, procedureName: event.target.value })}
                 placeholder="Enter procedure title"
                 className="field-input"

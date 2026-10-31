@@ -276,6 +276,18 @@ describeDb('Finalized invoices and explicit receipt allocation', () => {
     await expect(
       finalizeInvoice(ctx, id, { ...allocation, insurerResponsibility: '50.00' }),
     ).rejects.toMatchObject({ code: 'ALREADY_FINALIZED' });
+    // Configure this synthetic consultation explicitly and record completion.
+    await pool.query(
+      "UPDATE facility_service_tariffs SET master_service_id=(SELECT id FROM master_services WHERE code='JC-OPD-CONSULT') WHERE id=$1",
+      [tariff],
+    );
+    await pool.query(
+      "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE id=$2",
+      [actor, tariff],
+    );
+    await pool.query("UPDATE encounters SET status='Completed',ended_at=now() WHERE id=$1", [
+      encounter,
+    ]);
     const charge = await chargeForService(db, {
       tenantId: tenant,
       facilityId: facility,
@@ -283,7 +295,7 @@ describeDb('Finalized invoices and explicit receipt allocation', () => {
       encounterId: encounter,
       codes: [`SYN-${suffix}`],
       sourceType: 'CONSULTATION',
-      sourceId: `later-${suffix}`,
+      sourceId: encounter,
       itemType: 'Consultation',
     });
     expect(charge.charged).toBe(true);

@@ -45,6 +45,7 @@ export const LaboratoryModule: React.FC = () => {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [resultsError, setResultsError] = useState('');
   const [resultSaving, setResultSaving] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [verifyingResult, setVerifyingResult] = useState<number | null>(null);
   const resultVersion = useRef(0);
   const selectedOrderId = useRef<number | null>(null);
@@ -215,6 +216,38 @@ export const LaboratoryModule: React.FC = () => {
     }
   };
 
+  const handleCompleteInvestigation = async () => {
+    if (!selectedOrder || completing) return;
+    if (
+      !window.confirm(
+        'Confirm that this entire investigation, including all required panel components, has been performed and its recorded results verified?',
+      )
+    )
+      return;
+    setCompleting(true);
+    try {
+      const completed = await api.completeLabInvestigation(selectedOrder.id);
+      setSelectedOrder(completed);
+      setLabOrders((rows) => rows.map((row) => (row.id === completed.id ? completed : row)));
+      const billing = completed.billing;
+      showToast(
+        billing?.charged
+          ? `Investigation completed and billed on ${billing.invoiceNumber}.`
+          : billing?.reason === 'DUPLICATE'
+            ? 'Investigation completed; a charge already exists.'
+            : `Investigation completed; billing not confirmed: ${billing?.message ?? 'manual reconciliation is required.'}`,
+      );
+      triggerRefresh();
+    } catch {
+      showToast(
+        'Completion could not be confirmed. Review the investigation and its billing queue before retrying.',
+      );
+      triggerRefresh();
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   const handleVerifyLabResult = async (result: LabResult) => {
     if (!selectedOrder || result.status === 'Verified' || verifyingResult !== null) return;
     const orderId = selectedOrder.id;
@@ -225,7 +258,9 @@ export const LaboratoryModule: React.FC = () => {
       try {
         const refreshedResults = await api.getLabResults(orderId);
         if (version === resultVersion.current) setOrderResults(refreshedResults);
-        showToast('Laboratory result verified successfully.');
+        showToast(
+          'Result verified. Confirm the complete investigation only after all results have been reviewed.',
+        );
       } catch {
         if (version === resultVersion.current)
           setResultsError('Verification was recorded, but results could not be refreshed.');
@@ -394,6 +429,28 @@ export const LaboratoryModule: React.FC = () => {
                   </div>
                 </div>
 
+                {selectedOrder.status === 'Sample Collected' && canVerifyLabResults && (
+                  <div className="rounded border border-slate-200 p-3 space-y-2">
+                    <p>
+                      Confirm completion only after the entire investigation or panel is performed
+                      and all recorded results are verified.
+                    </p>
+                    <button
+                      type="button"
+                      className="rounded bg-teal-700 px-3 py-2 text-white disabled:opacity-50"
+                      disabled={
+                        completing ||
+                        resultsLoading ||
+                        Boolean(resultsError) ||
+                        !orderResults.length ||
+                        orderResults.some((result) => result.status !== 'Verified')
+                      }
+                      onClick={() => void handleCompleteInvestigation()}
+                    >
+                      {completing ? 'Confirming…' : 'Confirm investigation complete'}
+                    </button>
+                  </div>
+                )}
                 {selectedOrder.status === 'Ordered' &&
                   selectedOrder.specimenType &&
                   can('laboratory.results.enter') &&

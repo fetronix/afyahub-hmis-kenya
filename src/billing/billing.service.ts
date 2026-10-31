@@ -42,6 +42,8 @@ import {
   type PaymentChannel,
 } from './settlement.ts';
 import type { BillingFamily } from './tariff-codes.ts';
+import { resolveMasterCharge } from './master-charge-resolver.ts';
+import { readInvoicePaymentLedger } from './payment-ledger.ts';
 import {
   failureLabel,
   resolveServiceTariff,
@@ -137,6 +139,8 @@ export interface ChargeRequest {
     code?: string | null;
   };
 
+  /** Explicit calendar date of the performed event, when known. */
+  serviceDate?: string | null;
   quantity?: number;
 
   sourceType: BillingSourceType;
@@ -821,19 +825,10 @@ async function assertInvoiceCanAcceptCharge(
   if (!lineSummary || lineSummary.invalid !== 0 || parseMoneyToCents(lineSummary.total) !== total) {
     throw new Error('INVOICE_RECONCILIATION_REQUIRED');
   }
-  const rows = await executor
-    .select({ amount: schema.billingPayments.amount })
-    .from(schema.billingPayments)
-    .where(eq(schema.billingPayments.invoiceId, invoice.id));
-  let ledger = 0;
-  for (const row of rows) {
-    const cents = parseMoneyToCents(row.amount);
-    if (cents === null || cents <= 0 || !Number.isSafeInteger(ledger + cents)) {
-      throw new Error('INVOICE_RECONCILIATION_REQUIRED');
-    }
-    ledger += cents;
-  }
-  if (ledger !== paid) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  // A refund is an immutable reversal of a receipt. Compare the header
+  // against net receipts, not gross payments, before adding a new charge.
+  const ledger = await readInvoicePaymentLedger(executor, invoice.id);
+  if (!ledger || ledger.netCents !== paid) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
 }
 
 /**
@@ -952,8 +947,6 @@ async function chargeForServiceInTransaction(
       ? Number(request.quantity)
       : 1;
 
-  const quantityLabel = quantity === 1 ? '' : ` × ${quantity}`;
-
   const idempotencyKey = buildIdempotencyKey(request);
 
   /* ---- 2. Serialize invoice creation and lock the selected header ---- */
@@ -1032,70 +1025,25 @@ async function chargeForServiceInTransaction(
     };
   }
 
-  /* ---- 1. Price it from the facility tariff ---------------------- */
-
-  /*
-   * LINK → CODE → CATALOGUE.
-   *
-   * The link is the facility's own statement and wins outright. Code
-   * matching is unchanged, so anything that billed before still bills.
-   * The catalogue rule only runs when the caller says which service
-   * this is (`family`), and only accepts a tariff whose own description
-   * names that service inside the right department — and only when
-   * exactly one does. Two candidates is an ambiguity to report, not a
-   * coin to flip.
-   */
-  const match = await resolveTariffForCharge(executor, {
-    facilityId: request.facilityId,
-    codes: request.codes,
-    serviceKeys: request.serviceKeys,
-    family: request.family,
-    serviceName: request.serviceName,
-    encounterType: request.encounterType,
-    aliases: request.aliases,
-    wardType: request.wardType,
-    wardName: request.wardName,
-    ...(request.serviceRef
-      ? { serviceType: request.serviceRef.type, serviceId: request.serviceRef.id }
-      : {}),
-  });
-
-  const tariff = match.tariff;
-
-  const unitPriceCents = parseMoneyToCents(tariff ? tariff.fee : request.fallbackUnitPrice);
-
-  if (unitPriceCents === null || unitPriceCents <= 0) {
+  /* Resolve persisted clinical identity first; never price a text guess. */
+  const resolution = await resolveMasterCharge(executor, request);
+  if ('failure' in resolution) {
     return {
       charged: false,
       reason: 'TARIFF_NOT_CONFIGURED',
-      codesTried: match.codesTried,
-      matchExplanation: match.explanation,
-      ...(match.failure
-        ? {
-            diagnosis: {
-              code: match.failure.code,
-              label: match.failure.label,
-              ...(match.failure.candidates ? { candidates: match.failure.candidates } : {}),
-            },
-          }
-        : {}),
-      /*
-       * The resolver's own sentence. It names the row that was found and
-       * why it was refused — inactive, expired, another facility's,
-       * excluded from automatic billing, wrong unit, ambiguous — instead
-       * of the single "no active tariff matched" that made all six
-       * indistinguishable.
-       */
-      message: `${
-        match.failure?.message ??
-        `No active tariff matched ${summariseCodes(request.codes)} for this facility.`
-      } The service was recorded but not billed, and it is listed under Configuration → Services & Tariffs → “Charges awaiting billing or pricing review” so it can be billed once the price is set.`,
+      diagnosis: {
+        code: resolution.failure.code,
+        label: resolution.failure.code.replaceAll('_', ' '),
+      },
+      codesTried: [],
+      matchExplanation: resolution.failure.message,
+      message: `${resolution.failure.message} The service was not billed; review the unresolved billing queue.`,
     };
   }
-
-  const description = tariff
-    ? `${tariff.description}${quantityLabel}`
-    : `${request.description ?? request.fallbackDescription ?? request.itemType}${quantityLabel}`;
+  const { master, tariff } = resolution;
+  const unitPriceCents = parseMoneyToCents(tariff.fee);
+  if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('APPROVED_TARIFF_INVALID');
+  const description = master.description;
 
   const invoice = await findOrCreateOpenInvoice(executor, request);
 
@@ -1122,8 +1070,14 @@ async function chargeForServiceInTransaction(
     .insert(schema.billingItems)
     .values({
       invoiceId: invoice.id,
-      tariffId: tariff?.id ?? null,
-      tariffCode: tariff?.code ?? request.codes[0] ?? null,
+      tariffId: tariff.id,
+      tariffCode: tariff.code,
+      masterServiceId: master.id,
+      serviceCode: master.code,
+      serviceDepartment: master.department,
+      serviceUnit: tariff.unit,
+      serviceDate: resolution.serviceDate,
+      servicePerformedAt: resolution.performedAt,
       sourceType: request.sourceType,
       sourceId: typeof request.sourceId === 'number' ? request.sourceId : null,
       idempotencyKey,
@@ -1167,15 +1121,15 @@ async function chargeForServiceInTransaction(
     invoiceId: invoice.id,
     invoiceNumber: updatedInvoice?.invoiceNumber ?? invoice.invoiceNumber,
     itemId: inserted[0].id,
-    tariffCode: tariff?.code ?? request.codes[0],
+    tariffCode: tariff.code,
     description,
     quantity,
-    unit: tariff?.unit ?? null,
+    unit: tariff.unit,
     unitPrice: fromCents(unitPriceCents),
     totalAmount: fromCents(totalCents),
-    matchRule: match.rule ?? undefined,
-    matchExplanation: match.explanation,
-    codesTried: match.codesTried,
+    matchRule: resolution.rule,
+    matchExplanation: `Exact master service ${master.code}, with approved facility tariff ${tariff.code}.`,
+    codesTried: [master.code],
   };
 }
 

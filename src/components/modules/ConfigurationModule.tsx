@@ -5,6 +5,7 @@ import type { ServiceTariff } from '../../types/index.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import { StaffRolesPanel } from './StaffRolesPanel.tsx';
+import { MasterTariffPriceList } from './MasterTariffPriceList.tsx';
 import { FacilityPaymentIntegrations } from './payment-hub/FacilityPaymentIntegrations.tsx';
 import { FacilityPayerIntegrations } from './payer-hub/FacilityPayerIntegrations.tsx';
 import {
@@ -702,271 +703,290 @@ export const ConfigurationModule: React.FC = () => {
 
       {/* SERVICE PRICING TAB */}
       {isFacilityAdmin && activeTab === 'tariffs' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs text-xs">
-          <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-bold text-slate-900 uppercase">
-                Facility Tariff & Pricing Schedule
-              </h2>
-              <p className="text-slate-500 mt-1">
-                Manage prices for services offered by this facility.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                resetTariffForm();
-                setTariffForm((previous) => ({
-                  ...previous,
-                  department: availableTariffDepartments[0]?.id || 'opd',
-                }));
-                setTariffFormOpen(true);
-              }}
-              disabled={availableTariffDepartments.length === 0}
-              className="px-3 py-2 rounded-lg bg-teal-700 text-white font-semibold disabled:opacity-50"
-            >
-              + Add Service Tariff
-            </button>
-          </div>
-
-          {!facilityModules.includes('finance') && (
-            <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
-              The Finance module must be enabled before this facility can manage tariffs.
-            </div>
+        <>
+          {currentFacility?.id && (
+            <MasterTariffPriceList
+              key={currentFacility.id}
+              facilityId={currentFacility.id}
+              canManage={permissions.has('tariffs.manage')}
+            />
           )}
-
-          {availableTariffDepartments.length === 0 && (
-            <div className="m-4 p-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
-              No tariff departments are enabled for this facility. Enable the relevant modules
-              first.
-            </div>
-          )}
-
-          {tariffFormOpen && (
-            <form
-              onSubmit={saveTariff}
-              className="m-4 p-4 border border-teal-200 rounded-xl bg-teal-50/30 space-y-4"
-            >
-              <h3 className="font-bold text-slate-900">
-                {editingTariffId === null ? 'Create tariff' : 'Edit tariff'}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                <label className="block">
-                  <span className="block mb-1 font-medium text-slate-700">Service code</span>
-                  <input
-                    required
-                    maxLength={50}
-                    value={tariffForm.code}
-                    onChange={(event) => setTariffForm({ ...tariffForm, code: event.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    placeholder="e.g. SRV-OPD-01"
-                  />
-                </label>
-                <label className="block md:col-span-1 lg:col-span-2">
-                  <span className="block mb-1 font-medium text-slate-700">Description</span>
-                  <input
-                    required
-                    maxLength={500}
-                    value={tariffForm.description}
-                    onChange={(event) =>
-                      setTariffForm({ ...tariffForm, description: event.target.value })
-                    }
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    placeholder="Service description"
-                  />
-                </label>
-                <label className="block">
-                  <span className="block mb-1 font-medium text-slate-700">Department</span>
-                  <select
-                    required
-                    value={tariffForm.department}
-                    onChange={(event) =>
-                      setTariffForm({ ...tariffForm, department: event.target.value })
-                    }
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  >
-                    {availableTariffDepartments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="block mb-1 font-medium text-slate-700">Unit</span>
-                  <input
-                    required
-                    maxLength={50}
-                    value={tariffForm.unit}
-                    onChange={(event) => setTariffForm({ ...tariffForm, unit: event.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    placeholder="Service, day, session..."
-                  />
-                </label>
-                <label className="block">
-                  <span className="block mb-1 font-medium text-slate-700">Fee (KES)</span>
-                  <input
-                    required
-                    inputMode="decimal"
-                    pattern="^\d+(\.\d{1,2})?$"
-                    value={tariffForm.fee}
-                    onChange={(event) => setTariffForm({ ...tariffForm, fee: event.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    placeholder="0.00"
-                  />
-                </label>
-                <label className="block">
-                  <span className="block mb-1 font-medium text-slate-700">SHA status</span>
-                  <select
-                    value={tariffForm.shaStatus}
-                    onChange={(event) =>
-                      setTariffForm({ ...tariffForm, shaStatus: event.target.value })
-                    }
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  >
-                    <option>Not Assessed</option>
-                    <option>Covered</option>
-                    <option>Not Covered</option>
-                    <option>Pre-Authorization Required</option>
-                    <option>Conditional</option>
-                  </select>
-                </label>
-                <label className="block md:col-span-2 lg:col-span-2">
-                  <span className="block mb-1 font-medium text-slate-700">
-                    SHA notes (optional)
-                  </span>
-                  <input
-                    maxLength={1000}
-                    value={tariffForm.shaNotes}
-                    onChange={(event) =>
-                      setTariffForm({ ...tariffForm, shaNotes: event.target.value })
-                    }
-                    className="w-full rounded-md border border-slate-300 px-3 py-2"
-                    placeholder="Coverage conditions or notes"
-                  />
-                </label>
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs text-xs">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-slate-900 uppercase">
+                  Facility Tariff & Pricing Schedule
+                </h2>
+                <p className="text-slate-500 mt-1">
+                  Legacy tariffs and SHA notes. Changes to mapped prices invalidate their approval;
+                  review them in the master price list.
+                </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  disabled={
-                    tariffSaving ||
-                    !facilityModules.includes('finance') ||
-                    availableTariffDepartments.length === 0
-                  }
-                  type="submit"
-                  className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50"
-                >
-                  {tariffSaving
-                    ? 'Saving…'
-                    : editingTariffId === null
-                      ? 'Create tariff'
-                      : 'Save changes'}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetTariffForm}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
-
-          {tariffError && (
-            <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
-              <p>{tariffError}</p>
-              <p className="mt-1">
-                Confirm the database migration and tariff permissions have been reviewed and applied
-                before retrying.
-              </p>
               <button
                 type="button"
-                onClick={() => void loadTariffs()}
-                className="mt-2 underline font-semibold"
+                onClick={() => {
+                  resetTariffForm();
+                  setTariffForm((previous) => ({
+                    ...previous,
+                    department: availableTariffDepartments[0]?.id || 'opd',
+                  }));
+                  setTariffFormOpen(true);
+                }}
+                disabled={availableTariffDepartments.length === 0}
+                className="px-3 py-2 rounded-lg bg-teal-700 text-white font-semibold disabled:opacity-50"
               >
-                Retry loading
+                + Add Service Tariff
               </button>
             </div>
-          )}
 
-          {tariffsLoading ? (
-            <p className="p-6 text-center text-slate-500">Loading facility tariffs…</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <DataTable className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-y border-slate-200 text-2xs text-slate-500 uppercase">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Service code</th>
-                    <th className="px-4 py-3 font-medium">Description</th>
-                    <th className="px-4 py-3 font-medium">Department / unit</th>
-                    <th className="px-4 py-3 font-medium text-right">Fee (KES)</th>
-                    <th className="px-4 py-3 font-medium">SHA status</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {tariffs.map((tariff) => (
-                    <tr key={tariff.id} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-3 font-mono font-bold text-teal-800">{tariff.code}</td>
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        {tariff.description}
-                        {tariff.shaNotes && (
-                          <p className="mt-1 text-slate-500 font-normal">{tariff.shaNotes}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {tariffDepartments.find((department) => department.id === tariff.department)
-                          ?.label || tariff.department}
-                        <p className="mt-1 text-slate-400">{tariff.unit}</p>
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
-                        {Number(tariff.fee).toLocaleString('en-KE', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{tariff.shaStatus}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`rounded-full px-2 py-1 font-semibold ${tariff.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
-                        >
-                          {tariff.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => startTariffEdit(tariff)}
-                          className="mr-3 font-semibold text-teal-800 hover:underline"
-                        >
-                          Edit
-                        </button>
-                        {tariff.isActive && (
+            {!facilityModules.includes('finance') && (
+              <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
+                The Finance module must be enabled before this facility can manage tariffs.
+              </div>
+            )}
+
+            {availableTariffDepartments.length === 0 && (
+              <div className="m-4 p-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
+                No tariff departments are enabled for this facility. Enable the relevant modules
+                first.
+              </div>
+            )}
+
+            {tariffFormOpen && (
+              <form
+                onSubmit={saveTariff}
+                className="m-4 p-4 border border-teal-200 rounded-xl bg-teal-50/30 space-y-4"
+              >
+                <h3 className="font-bold text-slate-900">
+                  {editingTariffId === null ? 'Create tariff' : 'Edit tariff'}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <label className="block">
+                    <span className="block mb-1 font-medium text-slate-700">Service code</span>
+                    <input
+                      required
+                      maxLength={50}
+                      value={tariffForm.code}
+                      onChange={(event) =>
+                        setTariffForm({ ...tariffForm, code: event.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-2"
+                      placeholder="e.g. SRV-OPD-01"
+                    />
+                  </label>
+                  <label className="block md:col-span-1 lg:col-span-2">
+                    <span className="block mb-1 font-medium text-slate-700">Description</span>
+                    <input
+                      required
+                      maxLength={500}
+                      value={tariffForm.description}
+                      onChange={(event) =>
+                        setTariffForm({ ...tariffForm, description: event.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-2"
+                      placeholder="Service description"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block mb-1 font-medium text-slate-700">Department</span>
+                    <select
+                      required
+                      value={tariffForm.department}
+                      onChange={(event) =>
+                        setTariffForm({ ...tariffForm, department: event.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    >
+                      {availableTariffDepartments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block mb-1 font-medium text-slate-700">Unit</span>
+                    <input
+                      required
+                      maxLength={50}
+                      value={tariffForm.unit}
+                      onChange={(event) =>
+                        setTariffForm({ ...tariffForm, unit: event.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-2"
+                      placeholder="Service, day, session..."
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block mb-1 font-medium text-slate-700">Fee (KES)</span>
+                    <input
+                      required
+                      inputMode="decimal"
+                      pattern="^\d+(\.\d{1,2})?$"
+                      value={tariffForm.fee}
+                      onChange={(event) =>
+                        setTariffForm({ ...tariffForm, fee: event.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-2"
+                      placeholder="0.00"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block mb-1 font-medium text-slate-700">SHA status</span>
+                    <select
+                      value={tariffForm.shaStatus}
+                      onChange={(event) =>
+                        setTariffForm({ ...tariffForm, shaStatus: event.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    >
+                      <option>Not Assessed</option>
+                      <option>Covered</option>
+                      <option>Not Covered</option>
+                      <option>Pre-Authorization Required</option>
+                      <option>Conditional</option>
+                    </select>
+                  </label>
+                  <label className="block md:col-span-2 lg:col-span-2">
+                    <span className="block mb-1 font-medium text-slate-700">
+                      SHA notes (optional)
+                    </span>
+                    <input
+                      maxLength={1000}
+                      value={tariffForm.shaNotes}
+                      onChange={(event) =>
+                        setTariffForm({ ...tariffForm, shaNotes: event.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-2"
+                      placeholder="Coverage conditions or notes"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    disabled={
+                      tariffSaving ||
+                      !facilityModules.includes('finance') ||
+                      availableTariffDepartments.length === 0
+                    }
+                    type="submit"
+                    className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50"
+                  >
+                    {tariffSaving
+                      ? 'Saving…'
+                      : editingTariffId === null
+                        ? 'Create tariff'
+                        : 'Save changes'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetTariffForm}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {tariffError && (
+              <div className="m-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
+                <p>{tariffError}</p>
+                <p className="mt-1">
+                  Confirm the database migration and tariff permissions have been reviewed and
+                  applied before retrying.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadTariffs()}
+                  className="mt-2 underline font-semibold"
+                >
+                  Retry loading
+                </button>
+              </div>
+            )}
+
+            {tariffsLoading ? (
+              <p className="p-6 text-center text-slate-500">Loading facility tariffs…</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <DataTable className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-y border-slate-200 text-2xs text-slate-500 uppercase">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Service code</th>
+                      <th className="px-4 py-3 font-medium">Description</th>
+                      <th className="px-4 py-3 font-medium">Department / unit</th>
+                      <th className="px-4 py-3 font-medium text-right">Fee (KES)</th>
+                      <th className="px-4 py-3 font-medium">SHA status</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {tariffs.map((tariff) => (
+                      <tr key={tariff.id} className="hover:bg-slate-50/70">
+                        <td className="px-4 py-3 font-mono font-bold text-teal-800">
+                          {tariff.code}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {tariff.description}
+                          {tariff.shaNotes && (
+                            <p className="mt-1 text-slate-500 font-normal">{tariff.shaNotes}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {tariffDepartments.find(
+                            (department) => department.id === tariff.department,
+                          )?.label || tariff.department}
+                          <p className="mt-1 text-slate-400">{tariff.unit}</p>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
+                          {Number(tariff.fee).toLocaleString('en-KE', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{tariff.shaStatus}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2 py-1 font-semibold ${tariff.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+                          >
+                            {tariff.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
                           <button
                             type="button"
-                            onClick={() => void deactivateTariff(tariff)}
-                            className="font-semibold text-rose-700 hover:underline"
+                            onClick={() => startTariffEdit(tariff)}
+                            className="mr-3 font-semibold text-teal-800 hover:underline"
                           >
-                            Deactivate
+                            Edit
                           </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {tariffs.length === 0 && !tariffError && (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
-                        No tariffs have been configured for this facility yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </DataTable>
-            </div>
-          )}
-        </div>
+                          {tariff.isActive && (
+                            <button
+                              type="button"
+                              onClick={() => void deactivateTariff(tariff)}
+                              className="font-semibold text-rose-700 hover:underline"
+                            >
+                              Deactivate
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {tariffs.length === 0 && !tariffError && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                          No tariffs have been configured for this facility yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </DataTable>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

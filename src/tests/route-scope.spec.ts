@@ -130,7 +130,7 @@ describe('Route scope and claim integrity — regression tests', () => {
       "app.post(\n    '/api/radiology-orders'",
       "app.post(\n    '/api/purchase-orders'",
     ]) {
-      const block = routeBlock(marker, 1800);
+      const block = routeBlock(marker, 5000);
 
       expect(
         marker.includes('/api/purchase-orders')

@@ -423,6 +423,7 @@ export interface RadiologyOrder {
   facilityId: number;
   patientId: number;
   encounterId?: number;
+  masterServiceId?: number | null;
   modality: string;
   procedureName: string;
   clinicalIndication?: string;
@@ -547,6 +548,15 @@ export interface BillingItem {
   totalAmount: string;
   tariffId?: number | null;
   tariffCode?: string | null;
+  masterServiceId?: number | null;
+  serviceCode?: string | null;
+  serviceDepartment?: string | null;
+  serviceUnit?: string | null;
+  serviceDate?: string | null;
+  servicePerformedAt?: string | null;
+  sourceType?: string | null;
+  sourceId?: number | null;
+  createdAt?: string;
 }
 
 export interface ServiceTariff {
@@ -576,6 +586,9 @@ export interface ServiceTariff {
   /** Whether automatic billing may use this tariff. */
   autoBill: boolean;
   isActive: boolean;
+  masterServiceId?: number | null;
+  approvalStatus?: 'DRAFT' | 'APPROVED';
+  revision?: number;
   createdAt: string;
   updatedAt: string;
 }

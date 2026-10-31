@@ -38,6 +38,7 @@ import * as schema from '../db/schema.ts';
 import * as wardBed from '../inpatient/ward-bed.service.ts';
 import * as nursing from '../nursing/nursing.service.ts';
 import { chargeSafely } from './shared/charges.ts';
+import { admissionChargeRequest } from '../billing/service-charges.ts';
 import { handleInpatientError } from './shared/errors.ts';
 import { parseOptionalPositiveId, requireAuthContext } from './shared/request.ts';
 
@@ -447,44 +448,7 @@ router.post(
     try {
       const admission = await queries.createAdmissionScoped(context, req.body ?? {});
 
-      /*
-       * One-off admission fee, when the facility has configured one.
-       * Daily bed charges are accrued separately on discharge so each
-       * night is billed once, keyed by date.
-       */
-      const [ward] = await db
-        .select({
-          code: schema.wards.code,
-          name: schema.wards.name,
-          dailyRate: schema.wards.dailyRate,
-        })
-        .from(schema.wards)
-        .where(eq(schema.wards.id, admission.wardId))
-        .limit(1);
-
-      const charge = await chargeSafely({
-        tenantId: admission.tenantId,
-        facilityId: admission.facilityId,
-        patientId: admission.patientId,
-        encounterId: admission.encounterId ?? null,
-        codes: codesForFamily({
-          family: 'ADMISSION',
-          wardCode: ward?.code,
-        }),
-        serviceKeys: billingServiceKeys('ADMISSION'),
-        family: 'ADMISSION',
-        serviceName: 'admission',
-        /*
-         * No ward-name alias here. "General Ward" is a two-word phrase
-         * that also describes "General ward bed charge" (IP-002), so
-         * asking for it would let the nightly rate price the one-off
-         * admission fee. The admission fee is found by its own words.
-         */
-        sourceType: 'ADMISSION',
-        sourceId: admission.id,
-        itemType: 'Admission',
-        description: `Admission — ${ward?.name ?? 'Inpatient ward'}`,
-      });
+      const charge = await chargeSafely(admissionChargeRequest(admission));
 
       res.status(201).json({ ...admission, billing: charge });
     } catch (err: unknown) {

@@ -16,6 +16,8 @@ import {
   resolveFacilityScope,
 } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
+import { recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { consultationChargeRequest } from '../../billing/service-charges.ts';
 
 import { pickEncounterWritableFields, validateEncounterReferences } from './shared.ts';
 
@@ -211,26 +213,49 @@ export async function updateEncounterScoped(
    * browser-supplied `endedAt` arrived as a string and Drizzle's
    * timestamp mapping cannot take one, so the server stamps it.
    */
-  if (safeData.status === 'Completed' || safeData.status === 'Cancelled') {
-    safeData.endedAt = safeData.endedAt ?? new Date();
+  if (typeof safeData.status === 'string') {
+    const status = safeData.status.trim().toUpperCase();
+    if (status === 'COMPLETED') safeData.status = 'Completed';
+    if (status === 'CANCELLED') safeData.status = 'Cancelled';
   }
 
   await validateEncounterReferences(facility.id, facility.tenantId, safeData);
 
-  const [updated] = await db
-    .update(schema.encounters)
-    .set({
-      ...safeData,
-      updatedAt: new Date(),
-    } as Partial<typeof schema.encounters.$inferInsert>)
-    .where(
-      and(
-        eq(schema.encounters.id, encounterId),
-        eq(schema.encounters.tenantId, facility.tenantId),
-        eq(schema.encounters.facilityId, facility.id),
-      ),
-    )
-    .returning();
-
-  return updated ?? null;
+  return db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select()
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.id, encounterId),
+          eq(schema.encounters.tenantId, facility.tenantId),
+          eq(schema.encounters.facilityId, facility.id),
+        ),
+      )
+      .for('update');
+    if (!locked) return null;
+    if (safeData.status === 'Completed' || safeData.status === 'Cancelled') {
+      // A replay must not silently change the source date used for pricing.
+      safeData.endedAt = locked.endedAt ?? new Date();
+    }
+    const [updated] = await tx
+      .update(schema.encounters)
+      .set({ ...safeData, updatedAt: new Date() } as Partial<typeof schema.encounters.$inferInsert>)
+      .where(eq(schema.encounters.id, encounterId))
+      .returning();
+    if (
+      updated &&
+      locked.status.trim().toUpperCase() !== 'COMPLETED' &&
+      updated.status === 'Completed' &&
+      updated.encounterType.trim().toUpperCase() !== 'INPATIENT'
+    ) {
+      const attempt = await recordChargeAttempt(tx, consultationChargeRequest(updated), {
+        charged: false,
+        reason: 'TARIFF_NOT_CONFIGURED',
+        message: 'Consultation completed; billing evaluation pending.',
+      });
+      if (attempt === null) throw new Error('CONSULTATION_BILLING_QUEUE_UNAVAILABLE');
+    }
+    return updated ?? null;
+  });
 }

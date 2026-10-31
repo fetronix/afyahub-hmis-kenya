@@ -32,6 +32,7 @@ import { patients } from './patients.ts';
 
 import { encounters } from './clinical.ts';
 import { users } from './auth.ts';
+import { masterServices } from './master-services.ts';
 
 export const facilityServiceTariffs = pgTable(
   'facility_service_tariffs',
@@ -81,10 +82,19 @@ export const facilityServiceTariffs = pgTable(
     autoBill: boolean('auto_bill').notNull().default(true),
 
     isActive: boolean('is_active').notNull().default(true),
+    masterServiceId: integer('master_service_id').references(() => masterServices.id),
+    approvalStatus: text('approval_status').notNull().default('DRAFT'),
+    approvedByUserId: integer('approved_by_user_id').references(() => users.id),
+    approvedAt: timestamp('approved_at'),
+    approvalReference: text('approval_reference'),
+    revision: integer('revision').notNull().default(1),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('facility_tariff_master_unique')
+      .on(table.facilityId, table.masterServiceId)
+      .where(sql`${table.masterServiceId} is not null`),
     uniqueIndex('facility_service_tariffs_facility_code_unique').on(table.facilityId, table.code),
     index('facility_service_tariffs_tenant_facility_idx').on(table.tenantId, table.facilityId),
     index('facility_service_tariffs_active_idx').on(table.facilityId, table.isActive),
@@ -171,6 +181,14 @@ export const billingItems = pgTable('billing_items', {
   }),
 
   tariffCode: text('tariff_code'),
+
+  // Immutable snapshots on new catalogue-based charges; historical rows remain null.
+  masterServiceId: integer('master_service_id').references(() => masterServices.id),
+  serviceCode: text('service_code'),
+  serviceDepartment: text('service_department'),
+  serviceUnit: text('service_unit'),
+  serviceDate: date('service_date'),
+  servicePerformedAt: timestamp('service_performed_at'),
 
   /*
    * Provenance: which clinical event produced this line item.
@@ -332,6 +350,10 @@ export const billingChargeAttempts = pgTable(
     /** Bed category at accrual time, so a replay prices the same bed. */
     wardType: text('ward_type'),
     wardName: text('ward_name'),
+    serviceRefType: text('service_ref_type'),
+    serviceRefId: integer('service_ref_id'),
+    serviceRefCode: text('service_ref_code'),
+    serviceDate: date('service_date'),
 
     quantity: integer('quantity').notNull().default(1),
     fallbackUnitPrice: numeric('fallback_unit_price', { precision: 10, scale: 2 }),

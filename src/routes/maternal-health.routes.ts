@@ -25,6 +25,7 @@ import { handleImmunisationError, handleMaternityError } from './shared/errors.t
 import { billingServiceKeys } from '../billing/tariff-codes.ts';
 import { codesForFamily } from '../billing/tariff-matching.ts';
 import { chargeSafely } from './shared/charges.ts';
+import { deliveryChargeRequest } from '../billing/service-charges.ts';
 import { parseOptionalPositiveId, requireAuthContext } from './shared/request.ts';
 
 const router = Router();
@@ -400,35 +401,7 @@ router.post(
     try {
       const created = await maternity.recordDelivery(context, req.body ?? {});
 
-      /*
-       * A delivery is a billable event, and until now it raised nothing.
-       *
-       * The price comes from `facility_service_tariffs` and nowhere else.
-       * No fallback price is passed, so a facility with no delivery tariff
-       * gets `charged: false, reason: 'TARIFF_NOT_CONFIGURED'` and the UI
-       * says so. It does not invent a number to fill the invoice.
-       *
-       * One charge per delivery, not per baby: twins are one delivery with
-       * two babies, and the tariff is for the delivery.
-       */
-      const charge = await chargeSafely({
-        tenantId: created.delivery.tenantId,
-        facilityId: created.delivery.facilityId,
-        patientId: created.delivery.patientId,
-        encounterId: null,
-        codes: codesForFamily({
-          family: 'DELIVERY',
-          name: created.delivery.deliveryMode,
-        }),
-        serviceKeys: billingServiceKeys('DELIVERY', [created.delivery.deliveryMode]),
-        family: 'DELIVERY',
-        serviceName: 'delivery',
-        aliases: [created.delivery.deliveryMode],
-        sourceType: 'MATERNITY',
-        sourceId: created.delivery.id,
-        itemType: 'Maternity',
-        description: `Delivery — ${created.delivery.deliveryMode}`,
-      });
+      const charge = await chargeSafely(deliveryChargeRequest(created.delivery));
 
       res.status(201).json({ ...created, billing: charge });
     } catch (err: unknown) {
