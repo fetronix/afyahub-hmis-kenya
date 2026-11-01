@@ -364,6 +364,8 @@ export const billingChargeAttempts = pgTable(
     fallbackUnitPrice: numeric('fallback_unit_price', { precision: 10, scale: 2 }),
 
     reason: text('reason').notNull(),
+    // Optional specific resolver diagnosis; legacy reason semantics are unchanged.
+    diagnosisCode: text('diagnosis_code'),
     detail: text('detail'),
     codesTried: text('codes_tried').array().notNull().default([]),
 

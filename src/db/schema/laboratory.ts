@@ -18,6 +18,7 @@ import {
   boolean,
   numeric,
   uniqueIndex,
+  foreignKey,
 } from 'drizzle-orm/pg-core';
 
 import { facilities, tenants } from './tenancy.ts';
@@ -131,58 +132,72 @@ export const labOrderBatches = pgTable(
    31. LABORATORY ORDERS
    ============================================================ */
 
-export const labOrders = pgTable('lab_orders', {
-  id: serial('id').primaryKey(),
+export const labOrders = pgTable(
+  'lab_orders',
+  {
+    id: serial('id').primaryKey(),
 
-  tenantId: integer('tenant_id')
-    .references(() => tenants.id)
-    .notNull(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
 
-  facilityId: integer('facility_id')
-    .references(() => facilities.id)
-    .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
 
-  patientId: integer('patient_id')
-    .references(() => patients.id)
-    .notNull(),
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
 
-  encounterId: integer('encounter_id').references(() => encounters.id),
+    encounterId: integer('encounter_id').references(() => encounters.id),
 
-  testId: integer('test_id').references(() => labTests.id),
+    testId: integer('test_id').references(() => labTests.id),
 
-  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
+    facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
 
-  reviewedSpecimenOptionId: integer('reviewed_specimen_option_id').references(
-    () => labTestSpecimenOptions.id,
-  ),
+    // Order-time snapshot for display/audit; never a replacement for the ID.
+    serviceCode: text('service_code'),
 
-  batchId: integer('batch_id').references(() => labOrderBatches.id),
+    reviewedSpecimenOptionId: integer('reviewed_specimen_option_id').references(
+      () => labTestSpecimenOptions.id,
+    ),
 
-  // Explicit exceptions remain non-billable until a future controlled identity/specimen review.
-  clinicalException: boolean('clinical_exception').notNull().default(false),
+    batchId: integer('batch_id').references(() => labOrderBatches.id),
 
-  testName: text('test_name').notNull(),
+    // Explicit exceptions remain non-billable until a future controlled identity/specimen review.
+    clinicalException: boolean('clinical_exception').notNull().default(false),
 
-  status: text('status').default('Ordered'),
-  clinicalIndication: text('clinical_indication'),
+    testName: text('test_name').notNull(),
 
-  specimenType: text('specimen_type'),
+    status: text('status').default('Ordered'),
+    clinicalIndication: text('clinical_indication'),
 
-  priority: text('priority').default('Routine'),
+    specimenType: text('specimen_type'),
 
-  clinicalNotes: text('clinical_notes'),
+    priority: text('priority').default('Routine'),
 
-  completedAt: timestamp('completed_at'),
-  completedByUserId: integer('completed_by_user_id').references(() => users.id),
+    clinicalNotes: text('clinical_notes'),
 
-  sampleCollectedAt: timestamp('sample_collected_at'),
+    completedAt: timestamp('completed_at'),
+    completedByUserId: integer('completed_by_user_id').references(() => users.id),
 
-  sampleAccessionNumber: text('sample_accession_number'),
+    sampleCollectedAt: timestamp('sample_collected_at'),
 
-  orderedBy: text('ordered_by'),
+    sampleAccessionNumber: text('sample_accession_number'),
 
-  orderedAt: timestamp('ordered_at').defaultNow().notNull(),
-});
+    orderedBy: text('ordered_by'),
+
+    orderedAt: timestamp('ordered_at').defaultNow().notNull(),
+  },
+  (table) => [
+    // Migration 0057 creates this NOT VALID; old conflicts require review.
+    foreignKey({
+      name: 'lab_orders_facility_service_scope_fk',
+      columns: [table.facilityServiceId, table.facilityId, table.tenantId],
+      foreignColumns: [facilityServices.id, facilityServices.facilityId, facilityServices.tenantId],
+    }),
+  ],
+);
 
 /* ============================================================
    32. LABORATORY RESULTS

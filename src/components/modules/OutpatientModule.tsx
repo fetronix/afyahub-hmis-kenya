@@ -144,7 +144,14 @@ export const OutpatientModule: React.FC = () => {
   const [consultationChoice, setConsultationChoice] = useState('');
   const [consultationReason, setConsultationReason] = useState('');
   const [savingConsultation, setSavingConsultation] = useState(false);
-  const [labSelections, setLabSelections] = useState<Record<number, string>>({});
+  // Keep the actual selected service identity independently of the catalogue
+  // response: a refresh must not silently remove a selected order line.
+  const [labSelections, setLabSelections] = useState<
+    Record<
+      number,
+      { service: FacilityService; specimenType: string; facilityId: number; tenantId: number }
+    >
+  >({});
   const [freeSpecimens, setFreeSpecimens] = useState<Record<string, string>>({});
   const [startingVisit, setStartingVisit] = useState(false);
   const startingVisitRef = useRef(false);
@@ -155,6 +162,28 @@ export const OutpatientModule: React.FC = () => {
   const [labPriority, setLabPriority] = useState<'Routine' | 'Urgent' | 'STAT'>('Routine');
   const [labClinicalNotes, setLabClinicalNotes] = useState('');
   const [submittingLabOrder, setSubmittingLabOrder] = useState(false);
+  const labDraftScope = useRef({ tenantId: currentTenant?.id, facilityId: currentFacility?.id });
+
+  useEffect(() => {
+    if (
+      labDraftScope.current.tenantId === currentTenant?.id &&
+      labDraftScope.current.facilityId === currentFacility?.id
+    )
+      return;
+    labDraftScope.current = { tenantId: currentTenant?.id, facilityId: currentFacility?.id };
+    // Never carry an unsent draft into a different authenticated facility.
+    selectionVersion.current += 1;
+    labRequest.current = null;
+    setLabSelections({});
+    setFreeSpecimens({});
+    setLabInvestigations('');
+    setLabIndication('');
+    setLabClinicalNotes('');
+    setLabPriority('Routine');
+    showToast(
+      'Facility changed; the unsent laboratory draft was cleared. Review the patient and investigations.',
+    );
+  }, [currentTenant?.id, currentFacility?.id, showToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -890,6 +919,22 @@ export const OutpatientModule: React.FC = () => {
         .map((name) => [name.toLowerCase(), name]),
     ).values(),
   );
+  const scopedLabServices = labServices.filter(
+    (service) =>
+      service.facilityId === currentFacility?.id && service.tenantId === currentTenant?.id,
+  );
+  const visibleLabServices = [
+    ...scopedLabServices,
+    ...Object.values(labSelections)
+      .filter(
+        ({ service, facilityId, tenantId }) =>
+          facilityId === currentFacility?.id &&
+          tenantId === currentTenant?.id &&
+          !scopedLabServices.some((row) => row.id === service.id),
+      )
+      .map(({ service }) => service),
+  ];
+  const currentLabServiceIds = new Set(scopedLabServices.map((service) => service.id));
   const handleOrderLab = async () => {
     if (submittingLabOrder) return;
     if (!activeEncounter || !activePatient) {
@@ -897,12 +942,25 @@ export const OutpatientModule: React.FC = () => {
       return;
     }
 
-    const selectedLines = labServices
-      .filter((service) => Object.hasOwn(labSelections, service.id))
-      .map((service) => ({
-        facilityServiceId: service.id,
-        specimenType: labSelections[service.id].trim(),
-      }));
+    const selections = Object.values(labSelections);
+    if (
+      !currentFacility?.id ||
+      !currentTenant?.id ||
+      activeEncounter.facilityId !== currentFacility.id ||
+      activeEncounter.tenantId !== currentTenant.id ||
+      activeEncounter.patientId !== activePatient.id ||
+      selections.some(
+        (selection) =>
+          selection.facilityId !== currentFacility.id || selection.tenantId !== currentTenant.id,
+      )
+    ) {
+      showToast('Select a patient and investigations for the current facility before ordering.');
+      return;
+    }
+    const selectedLines = selections.map(({ service, specimenType }) => ({
+      facilityServiceId: service.id,
+      specimenType: specimenType.trim(),
+    }));
     const freeLines = freeInvestigations.map((investigation) => ({
       investigation,
       specimenType: (freeSpecimens[investigation.toLowerCase()] ?? '').trim(),
@@ -1593,38 +1651,54 @@ export const OutpatientModule: React.FC = () => {
                 <div className="space-y-3">
                   <fieldset className="space-y-2">
                     <legend className="font-semibold text-slate-700">
-                      Facility investigations (optional)
+                      Select facility investigations
                     </legend>
-                    {labServices.map((item) => (
+                    {visibleLabServices.map((item) => (
                       <div key={item.id} className="space-y-1">
                         <label>
                           <input
                             type="checkbox"
                             checked={Object.hasOwn(labSelections, item.id)}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              const checked = event.currentTarget.checked;
                               setLabSelections((previous) => {
                                 const next = { ...previous };
-                                if (event.target.checked) next[item.id] = '';
+                                if (checked && currentFacility?.id && currentTenant?.id)
+                                  next[item.id] = {
+                                    service: item,
+                                    specimenType: '',
+                                    facilityId: currentFacility.id,
+                                    tenantId: currentTenant.id,
+                                  };
                                 else delete next[item.id];
                                 return next;
-                              })
-                            }
+                              });
+                            }}
                           />{' '}
                           {item.name} · {item.code} ·{' '}
-                          {item.unitPrice ? `KES ${item.unitPrice}` : 'price unavailable'}
+                          {currentLabServiceIds.has(item.id)
+                            ? item.unitPrice
+                              ? `KES ${item.unitPrice}`
+                              : 'price unavailable'
+                            : 'not in the current list; availability will be checked when ordering'}
                         </label>
                         {Object.hasOwn(labSelections, item.id) && (
                           <label className="block">
                             Specimen for {item.name}
                             <input
                               aria-label={`Specimen for ${item.name}`}
-                              value={labSelections[item.id]}
-                              onChange={(event) =>
-                                setLabSelections((previous) => ({
-                                  ...previous,
-                                  [item.id]: event.target.value,
-                                }))
-                              }
+                              value={labSelections[item.id].specimenType}
+                              onChange={(event) => {
+                                const specimenType = event.currentTarget.value;
+                                setLabSelections((previous) =>
+                                  previous[item.id]
+                                    ? {
+                                        ...previous,
+                                        [item.id]: { ...previous[item.id], specimenType },
+                                      }
+                                    : previous,
+                                );
+                              }}
                               maxLength={120}
                               placeholder="e.g. Blood, Urine"
                               className="w-full px-3 py-2 border border-slate-200 rounded-md"
@@ -1655,9 +1729,9 @@ export const OutpatientModule: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   />
                   <p className="text-slate-500">
-                    If an investigation is not listed, enter it for clinical review. Enter the
-                    specimen separately for each investigation; free text cannot be automatically
-                    priced.
+                    Select a facility investigation above to retain its service identity. If it is
+                    not listed, free text can be sent for clinical review but cannot be
+                    automatically priced. Enter the specimen separately for each investigation.
                   </p>
                 </div>
                 <label className="block font-semibold text-slate-700">

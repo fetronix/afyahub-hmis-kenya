@@ -70,11 +70,22 @@ export async function getLabOrders(
   return db
     .select({
       ...getTableColumns(schema.labOrders),
+      // The order-time code is a snapshot, not a billing identity. Expose a
+      // current code separately and only when the linked service is in scope.
+      currentServiceCode: schema.facilityServices.code,
       specimenId: sql<
         number | null
       >`(SELECT specimen_id FROM lab_specimen_orders WHERE order_id = "lab_orders"."id")`,
     })
     .from(schema.labOrders)
+    .leftJoin(
+      schema.facilityServices,
+      and(
+        eq(schema.labOrders.facilityServiceId, schema.facilityServices.id),
+        eq(schema.labOrders.facilityId, schema.facilityServices.facilityId),
+        eq(schema.labOrders.tenantId, schema.facilityServices.tenantId),
+      ),
+    )
     .where(and(...conditions))
     .orderBy(desc(schema.labOrders.orderedAt));
 }
@@ -122,6 +133,7 @@ export async function createLabOrder(
               eq(schema.facilityServices.tenantId, scope.tenantId),
               eq(schema.facilityServices.facilityId, scope.facilityId),
               eq(schema.facilityServices.category, 'LABORATORY'),
+              sql`lower(trim(${schema.facilityServices.department})) in ('laboratory', 'lab')`,
               eq(schema.facilityServices.isActive, true),
             ),
           )
@@ -181,6 +193,7 @@ export async function createLabOrder(
           ...orderData,
           ...scope,
           testName: canonicalName,
+          serviceCode: data.facilityServiceId ? testCode : null,
           specimenType: reviewedSpecimen ?? data.specimenType ?? null,
           reviewedSpecimenOptionId: reviewedSpecimen ? specimenOptionId : null,
           clinicalException,
@@ -195,6 +208,8 @@ export async function createLabOrder(
         resourceId: String(order.id),
         details: JSON.stringify({
           testId: order.testId,
+          facilityServiceId: order.facilityServiceId,
+          serviceCode: order.serviceCode,
           reviewedSpecimenOptionId: order.reviewedSpecimenOptionId,
           clinicalException,
         }),
@@ -1218,9 +1233,27 @@ export async function createLabOrderBatch(
               409,
             );
           const orders = await tx
-            .select({ order: schema.labOrders, testCode: schema.labTests.code })
+            .select({
+              order: schema.labOrders,
+              testCode: schema.labTests.code,
+              currentServiceCode: schema.facilityServices.code,
+            })
             .from(schema.labOrders)
-            .leftJoin(schema.labTests, eq(schema.labOrders.testId, schema.labTests.id))
+            .leftJoin(
+              schema.labTests,
+              and(
+                eq(schema.labOrders.testId, schema.labTests.id),
+                eq(schema.labOrders.facilityId, schema.labTests.facilityId),
+              ),
+            )
+            .leftJoin(
+              schema.facilityServices,
+              and(
+                eq(schema.labOrders.facilityServiceId, schema.facilityServices.id),
+                eq(schema.labOrders.facilityId, schema.facilityServices.facilityId),
+                eq(schema.labOrders.tenantId, schema.facilityServices.tenantId),
+              ),
+            )
             .where(
               and(
                 eq(schema.labOrders.batchId, existing.id),
@@ -1247,9 +1280,10 @@ export async function createLabOrderBatch(
               409,
             );
           return {
-            orders: orders.map(({ order, testCode }) => ({
+            orders: orders.map(({ order, testCode, currentServiceCode }) => ({
               ...order,
-              testCode,
+              testCode: testCode ?? order.serviceCode,
+              currentServiceCode,
               catalogueMatch:
                 (order.testId || order.facilityServiceId) && !order.clinicalException
                   ? ('FOUND' as const)
@@ -1290,6 +1324,7 @@ export async function createLabOrderBatch(
                   eq(schema.facilityServices.tenantId, scope.tenantId),
                   eq(schema.facilityServices.facilityId, scope.facilityId),
                   eq(schema.facilityServices.category, 'LABORATORY'),
+                  sql`lower(trim(${schema.facilityServices.department})) in ('laboratory', 'lab')`,
                   eq(schema.facilityServices.isActive, true),
                 ),
               )
@@ -1371,6 +1406,7 @@ export async function createLabOrderBatch(
               eq(schema.facilityServices.tenantId, scope.tenantId),
               eq(schema.facilityServices.facilityId, scope.facilityId),
               eq(schema.facilityServices.category, 'LABORATORY'),
+              sql`lower(trim(${schema.facilityServices.department})) in ('laboratory', 'lab')`,
               eq(schema.facilityServices.isActive, true),
             ),
           )
@@ -1447,6 +1483,7 @@ export async function createLabOrderBatch(
             ...scope,
             testId: test.id,
             facilityServiceId: test.facilityServiceId ?? null,
+            serviceCode: test.facilityServiceId ? test.code : null,
             testName: test.name,
             status: 'Ordered',
             orderedBy: data.orderedBy?.trim() || null,
@@ -1473,6 +1510,8 @@ export async function createLabOrderBatch(
           resourceId: String(order.id),
           details: JSON.stringify({
             testId: order.testId,
+            facilityServiceId: order.facilityServiceId,
+            serviceCode: order.serviceCode,
             reviewedSpecimenOptionId: order.reviewedSpecimenOptionId,
             clinicalException: order.clinicalException,
           }),

@@ -43,6 +43,24 @@ function postgresCode(error: unknown): string | undefined {
   return undefined;
 }
 
+/** Only a missing 0022 column should disable bed-night identity. Other
+ * undefined columns (including newer migrations) must not change the
+ * process-wide identity policy. Inspect the PostgreSQL cause, not the
+ * wrapper's SQL text, which can mention every column in the statement. */
+function isMissingBedNightIdentityColumn(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth++) {
+    const value = current as { code?: unknown; message?: unknown; cause?: unknown };
+    if (value.code === '42703')
+      return (
+        typeof value.message === 'string' &&
+        /\b(?:idempotency_suffix|ward_type|ward_name)\b/i.test(value.message)
+      );
+    current = value.cause;
+  }
+  return false;
+}
+
 let warnedMissingAttemptsTable = false;
 
 /**
@@ -54,13 +72,13 @@ let warnedMissingAttemptsTable = false;
  */
 let supportsBedNightIdentity = true;
 
-/** True when the database predates migration 0020. */
+/** True when the attempts table itself is absent. */
 export function isMissingAttemptsTable(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
 
   const code = postgresCode(error);
 
-  return code === '42P01' || code === '42703';
+  return code === '42P01';
 }
 
 /**
@@ -126,6 +144,7 @@ export async function recordChargeAttempt(
     quantity,
     fallbackUnitPrice: request.fallbackUnitPrice == null ? null : String(request.fallbackUnitPrice),
     reason: result.reason,
+    diagnosisCode: result.diagnosis?.code ?? null,
     detail: result.message ?? null,
     codesTried: [...(result.codesTried ?? request.codes ?? [])],
     status: 'PENDING' as const,
@@ -185,6 +204,7 @@ export async function recordChargeAttempt(
         lastAttemptAt: new Date(),
         updatedAt: new Date(),
         reason: values.reason,
+        diagnosisCode: values.diagnosisCode,
         detail: values.detail,
         codesTried: values.codesTried,
         quantity: values.quantity,
@@ -239,7 +259,7 @@ export async function recordChargeAttempt(
      * without the bed-night columns, so the queue keeps working while
      * the administrator applies the migration.
      */
-    if (postgresCode(error) === '42703' && supportsBedNightIdentity) {
+    if (isMissingBedNightIdentityColumn(error) && supportsBedNightIdentity) {
       supportsBedNightIdentity = false;
 
       console.warn(
@@ -247,6 +267,13 @@ export async function recordChargeAttempt(
       );
 
       return recordChargeAttempt(executor, request, result);
+    }
+
+    if (postgresCode(error) === '42703') {
+      console.error(
+        'Billing: the charge-attempt schema is incomplete. Apply the required migrations; manual reconciliation is required.',
+      );
+      return null;
     }
 
     if (isMissingAttemptsTable(error)) {
@@ -496,6 +523,7 @@ export interface ChargeAttemptRow {
   quantity: number;
   fallbackUnitPrice: string | null;
   reason: string;
+  diagnosisCode?: string | null;
   detail: string | null;
   codesTried: string[];
   status: string;
@@ -929,6 +957,12 @@ export async function retryChargeAttempt(
          * carries the outcome. A failed retry replaces it with the new one.
          */
         reason: result.charged ? row.reason : (result.reason ?? row.reason),
+        // Keep the historical diagnosis on resolution; a still-pending retry
+        // must instead expose its most recent specific evaluation.
+        diagnosisCode:
+          result.charged || verifiedDuplicate
+            ? (row.diagnosisCode ?? null)
+            : (result.diagnosis?.code ?? null),
         detail: result.charged
           ? `Billed as ${result.tariffCode ?? 'a tariff'} (${result.matchExplanation ?? 'matched'}).`
           : (result.message ?? row.detail),

@@ -400,6 +400,27 @@
             "when": 1792900000044,
             "tag": "0056_admission_and_retry_identity",
             "breakpoints": true
+        },
+        {
+            "idx": 57,
+            "version": "7",
+            "when": 1792900000045,
+            "tag": "0057_lab_service_scope",
+            "breakpoints": true
+        },
+        {
+            "idx": 58,
+            "version": "7",
+            "when": 1792900000046,
+            "tag": "0058_charge_attempt_diagnosis",
+            "breakpoints": true
+        },
+        {
+            "idx": 59,
+            "version": "7",
+            "when": 1792900000047,
+            "tag": "0059_lab_service_code_snapshot",
+            "breakpoints": true
         }
     ]
 }

@@ -185,6 +185,7 @@ try {
   browser = await puppeteer.launch({
     executablePath,
     headless: true,
+    dumpio: process.env.BROWSER_DEBUG === '1',
     args:
       process.env.BROWSER_NO_SANDBOX === '1'
         ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
@@ -330,7 +331,7 @@ try {
     await select.select(String(value));
     await handle.dispose();
   };
-  const makeService = async (code, name, department, category, unit, price) =>
+  const makeService = async (code, name, department, category, unit, price, tariffCode) =>
     api('POST', '/api/facility-services', {
       facilityId: facility,
       code,
@@ -340,6 +341,7 @@ try {
       category,
       unit,
       initialPrice: price,
+      ...(tariffCode ? { initialTariffCode: tariffCode } : {}),
       isActive: true,
       autoBill: true,
     });
@@ -586,7 +588,7 @@ try {
     'Browser permanently deleted a tariff and its service, with PostgreSQL verification: PASS',
   );
 
-  await makeService(
+  const count = await makeService(
     'BROWSER-COUNT-FAC',
     'Synthetic browser count',
     'laboratory',
@@ -594,13 +596,35 @@ try {
     'Test',
     '80.00',
   );
-  await makeService(
+  const urine = await makeService(
     'BROWSER-URINE-FAC',
     'Synthetic browser urine',
     'laboratory',
     'LABORATORY',
     'Test',
     '45.00',
+  );
+  const blood = await makeService(
+    'BLOOD01',
+    'blood test',
+    'laboratory',
+    'LABORATORY',
+    'Service',
+    '456.00',
+    'LB-BLD01',
+  );
+  check(
+    blood.service.code === 'BLOOD01' && blood.tariff.code === 'LB-BLD01',
+    'Differently coded synthetic service and tariff not created',
+  );
+  check(
+    (
+      await pool.query(
+        'SELECT count(*)::int n FROM facility_service_tariffs WHERE id=$1 AND facility_service_id=$2 AND tenant_id=$3 AND facility_id=$4 AND fee=456',
+        [blood.tariff.id, blood.service.id, tenant, facility],
+      )
+    ).rows[0].n === 1,
+    'Synthetic BLOOD01/LB-BLD01 tariff relation is incorrect',
   );
   const imaging = await makeService(
     'BROWSER-IMAGE',
@@ -650,8 +674,10 @@ try {
   );
   await chooseLabelInput('Synthetic browser count', 'checkbox');
   await chooseLabelInput('Synthetic browser urine', 'checkbox');
+  await chooseLabelInput('blood test', 'checkbox');
   await page.type('input[aria-label="Specimen for Synthetic browser count"]', 'Synthetic blood');
   await page.type('input[aria-label="Specimen for Synthetic browser urine"]', 'Synthetic urine');
+  await page.type('input[aria-label="Specimen for blood test"]', 'Synthetic blood 456');
   await page.type(
     'textarea[aria-label="Laboratory investigations, one per line"]',
     'Synthetic unlisted',
@@ -665,11 +691,26 @@ try {
   await click('Submit Orders to Laboratory');
   const labResponse = await pending;
   check(labResponse.status() === 201, 'Laboratory batch failed');
+  const submitted = JSON.parse(labResponse.request().postData() ?? 'null');
+  check(
+    submitted?.orderLines?.some(
+      (line) =>
+        line.facilityServiceId === blood.service.id && line.specimenType === 'Synthetic blood 456',
+    ),
+    'The browser did not submit the selected BLOOD01 service ID and separate specimen',
+  );
   const batch = await labResponse.json();
   check(
-    batch.orders.length === 3 &&
-      new Set(batch.orders.map((order) => order.specimenType)).size === 3,
-    'Individual specimens not persisted',
+    batch.orders.length === 4 &&
+      new Set(batch.orders.map((order) => order.specimenType)).size === 4 &&
+      batch.orders.find((order) => order.testName === 'Synthetic browser count')
+        ?.facilityServiceId === count.service.id &&
+      batch.orders.find((order) => order.testName === 'Synthetic browser urine')
+        ?.facilityServiceId === urine.service.id &&
+      batch.orders.find((order) => order.testName === 'blood test')?.facilityServiceId ===
+        blood.service.id &&
+      batch.orders.find((order) => order.testName === 'blood test')?.serviceCode === 'BLOOD01',
+    'Individual investigations, service identities or specimens not persisted',
   );
   check(
     batch.orders.find((order) => order.testName === 'Synthetic unlisted')?.clinicalException,
@@ -741,7 +782,7 @@ try {
   phase = 'laboratory execution';
   await click('Laboratory & Pathology', 'aside button');
   await waitText('Clinical Pathology & Diagnostic Laboratory');
-  for (const name of ['Synthetic browser count', 'Synthetic browser urine']) {
+  for (const name of ['Synthetic browser count', 'Synthetic browser urine', 'blood test']) {
     await page.waitForFunction(
       (text) =>
         [...document.querySelectorAll('span')].some((span) => span.textContent.trim() === text),
@@ -806,8 +847,25 @@ try {
       'Synthetic completed laboratory work did not bill',
     );
   }
+  const bloodOrder = batch.orders.find((order) => order.testName === 'blood test');
+  const bloodLine = (
+    await pool.query(
+      "SELECT facility_service_id,tariff_id,service_code,tariff_code,unit_price::text,total_amount::text FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+      [bloodOrder.id],
+    )
+  ).rows;
+  check(
+    bloodLine.length === 1 &&
+      bloodLine[0].facility_service_id === blood.service.id &&
+      bloodLine[0].tariff_id === blood.tariff.id &&
+      bloodLine[0].service_code === 'BLOOD01' &&
+      bloodLine[0].tariff_code === 'LB-BLD01' &&
+      bloodLine[0].unit_price === '456.00' &&
+      bloodLine[0].total_amount === '456.00',
+    'The completed browser BLOOD01 order did not produce exactly one LB-BLD01 KES 456 invoice item',
+  );
   console.log(
-    'Browser collected, entered, verified and explicitly completed both investigations: PASS',
+    'Browser collected, entered, verified and completed three investigations, including BLOOD01 → LB-BLD01 at KES 456: PASS',
   );
 
   phase = 'imaging report and encounter completion';
@@ -855,8 +913,8 @@ try {
   ).rows;
   check(
     invoices.length === 1 &&
-      invoices[0].total_amount === '575.00' &&
-      invoices[0].balance_amount === '575.00',
+      invoices[0].total_amount === '1031.00' &&
+      invoices[0].balance_amount === '1031.00',
     'Combined invoice total incorrect',
   );
   const lines = (
@@ -866,7 +924,7 @@ try {
     lines
       .map((line) => line.source_type)
       .sort()
-      .join(',') === 'CONSULTATION,LAB_ORDER,LAB_ORDER,RADIOLOGY',
+      .join(',') === 'CONSULTATION,LAB_ORDER,LAB_ORDER,LAB_ORDER,RADIOLOGY',
     'Invoice sources were missing or duplicated',
   );
   check(runtimeErrors.length === 0, `Browser runtime errors: ${runtimeErrors.join(',')}`);
@@ -887,7 +945,7 @@ try {
     'The original pending billing record changed during the clinical journey',
   );
   console.log(
-    'Browser completed lab, imaging and consultation: one unpaid KES 575 invoice with four lines; retries protected: PASS',
+    'Browser completed lab, imaging and consultation: one unpaid KES 1,031 invoice with five lines; retries protected: PASS',
   );
 } catch (error) {
   console.error(`Synthetic facility billing browser failed during ${phase}: ${error.message}`);

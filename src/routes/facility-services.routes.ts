@@ -317,7 +317,12 @@ router.get(
         .orderBy(asc(schema.facilityServices.name));
       return res.json(
         rows
-          .filter(({ service }) => facilityHasTariffModule(facility, service.department))
+          .filter(
+            ({ service }) =>
+              facilityHasTariffModule(facility, service.department) &&
+              (category !== 'LABORATORY' ||
+                tariffModuleForDepartment(service.department) === 'laboratory'),
+          )
           .map(({ service, tariff }) => {
             const valid =
               today &&

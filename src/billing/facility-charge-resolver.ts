@@ -520,6 +520,8 @@ export async function resolveConfiguredFacilityService(
       'SERVICE_NOT_CONFIGURED',
       'No facility service with this exact clinical identity and category is configured.',
     );
+  if (input.sourceType === 'LAB_ORDER' && department(service.department) !== 'laboratory')
+    return fail('WRONG_DEPARTMENT', 'The selected investigation is not a laboratory service.');
   if (
     serviceId &&
     sourceKind === 'LAB_TEST' &&

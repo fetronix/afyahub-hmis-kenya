@@ -431,8 +431,14 @@ export interface LabOrder {
   facilityId: number;
   patientId: number;
   encounterId?: number;
-  testId?: number;
+  testId?: number | null;
   facilityServiceId?: number | null;
+  /** Order-time code snapshot, null on older orders without a recorded snapshot. */
+  serviceCode?: string | null;
+  /** Current code of the explicitly linked service, joined within the order's scope. */
+  currentServiceCode?: string | null;
+  /** Catalogue code returned by order creation or idempotent replay. */
+  testCode?: string | null;
   testName: string;
   status: string;
   clinicalIndication?: string | null;
@@ -666,6 +672,8 @@ export interface BillingChargeAttempt {
   encounterType: string | null;
   quantity: number;
   reason: string;
+  /** Specific resolver outcome for newer charge evaluations. */
+  diagnosisCode?: string | null;
   detail: string | null;
   codesTried: string[];
   status: 'PENDING' | 'BILLED' | 'DUPLICATE' | 'VOID';
