@@ -39,10 +39,27 @@ export async function getInventoryItems(facilityId?: number) {
   }
 }
 
-export async function createInventoryItem(data: typeof schema.inventoryItems.$inferInsert) {
+export async function createInventoryItem(
+  data: typeof schema.inventoryItems.$inferInsert,
+  auditContext?: { tenantId: number; facilityId: number; userId: number },
+) {
   try {
-    const res = await db.insert(schema.inventoryItems).values(data).returning();
-    return res[0];
+    return await db.transaction(async (tx) => {
+      const [created] = await tx.insert(schema.inventoryItems).values(data).returning();
+      if (auditContext) {
+        if (created.facilityId !== auditContext.facilityId) throw new Error('INVENTORY_SCOPE_INVALID');
+        await tx.insert(schema.auditLogs).values({
+          tenantId: auditContext.tenantId,
+          facilityId: auditContext.facilityId,
+          userId: String(auditContext.userId),
+          action: 'CREATE',
+          resource: 'InventorySellingPrice',
+          resourceId: String(created.id),
+          details: `Inventory item created; selling price: ${created.sellingPrice ?? 'unrecorded'}.`,
+        });
+      }
+      return created;
+    });
   } catch (error) {
     log.error({ err: error }, 'inventory_item.create_failed');
     throw new Error('Failed to create inventory item', { cause: error });

@@ -505,8 +505,10 @@ export interface InventoryItem {
   reorderLevel: number;
   unitCost: string | null;
   sellingPrice: string | null;
+  priceRevision?: number;
   storeLocation: string;
   isActive: boolean;
+  updatedAt?: string;
 }
 
 export interface Supplier {
@@ -608,6 +610,15 @@ export interface BillingItem {
   serviceUnit?: string | null;
   serviceDate?: string | null;
   servicePerformedAt?: string | null;
+  inventoryItemId?: number | null;
+  prescriptionId?: number | null;
+  pharmacyStockTracking?: 'FEFO' | 'untracked' | null;
+  pharmacyBatchAllocations?: Array<{
+    batchId: number;
+    batchNumber: string;
+    expiryDate: string;
+    quantity: number;
+  }> | null;
   sourceType?: string | null;
   sourceId?: number | null;
   createdAt?: string;

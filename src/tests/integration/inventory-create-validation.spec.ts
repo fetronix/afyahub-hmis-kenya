@@ -26,7 +26,7 @@ describe('POST /api/inventory body validation', () => {
           facilityId: 10,
           userId: 2,
           roles: [],
-          permissions: [],
+          permissions: ['billing.update'],
           isSuperAdmin: false,
         },
       });
@@ -78,6 +78,6 @@ describe('POST /api/inventory body validation', () => {
       unitCost: 1.15,
       sellingPrice: '2.30',
       currentStock: 0,
-    });
+    }, { tenantId: 1, facilityId: 10, userId: 2 });
   });
 });

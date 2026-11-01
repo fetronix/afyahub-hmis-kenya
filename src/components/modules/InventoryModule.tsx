@@ -20,7 +20,17 @@ import {
 } from 'lucide-react';
 
 export const InventoryModule: React.FC = () => {
-  const { currentFacility, showToast, refreshKey, triggerRefresh } = useHmis();
+  const { currentFacility, authenticatedUser, showToast, refreshKey, triggerRefresh } = useHmis();
+  const canSetPrice = Boolean(
+    !authenticatedUser?.isSuperAdmin &&
+    authenticatedUser?.permissions?.includes('inventory.manage') &&
+    authenticatedUser?.permissions?.includes('billing.update'),
+  );
+  const [priceItem, setPriceItem] = useState<InventoryItem | null>(null);
+  const [priceValue, setPriceValue] = useState('');
+  const [priceReason, setPriceReason] = useState('');
+  const [priceBusy, setPriceBusy] = useState(false);
+  const [priceError, setPriceError] = useState('');
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -82,6 +92,8 @@ export const InventoryModule: React.FC = () => {
         return;
       }
       setLoading(true);
+      setPriceItem(null);
+      setPriceError('');
       setItemsError('');
       setBatchesError('');
       setExpiryError('');
@@ -114,6 +126,36 @@ export const InventoryModule: React.FC = () => {
     };
   }, [currentFacility?.id, refreshKey, attempt]);
 
+  const handlePriceChange = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (
+      !canSetPrice ||
+      !priceItem?.priceRevision ||
+      priceItem.facilityId !== currentFacility?.id ||
+      priceBusy
+    ) {
+      setPriceError('Reload the authorized facility inventory before changing this price.');
+      return;
+    }
+    setPriceBusy(true);
+    setPriceError('');
+    try {
+      await api.updateInventorySellingPrice(priceItem.id, {
+        facilityId: currentFacility.id,
+        sellingPrice: priceValue,
+        expectedPriceRevision: priceItem.priceRevision,
+        reason: priceReason,
+      });
+      setPriceItem(null);
+      showToast('Selling price saved. Existing dispensing prices are unchanged.');
+      triggerRefresh();
+    } catch (error: unknown) {
+      setPriceError(error instanceof Error ? error.message : 'The price could not be saved.');
+    } finally {
+      setPriceBusy(false);
+    }
+  };
+
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentFacility?.id) {
@@ -145,7 +187,7 @@ export const InventoryModule: React.FC = () => {
     }
     if (wantsBatch && (!batchNumber || !expiryDate)) {
       showToast(
-        'Enter both a batch number and an expiry date, or leave both blank to track the item as a plain stock count.',
+        'Enter both a batch number and an expiry date. Stock without batch and expiry evidence cannot be dispensed.',
         { tone: 'warning' },
       );
       return;
@@ -543,6 +585,24 @@ export const InventoryModule: React.FC = () => {
                               : Number(item.sellingPrice) === 0
                                 ? 'Zero or unset'
                                 : `KES ${Number(item.sellingPrice).toLocaleString()}`}
+                            {canSetPrice && (
+                              <div>
+                                <button
+                                  type="button"
+                                  aria-label={`Change price for ${item.name}`}
+                                  disabled={!item.priceRevision || item.facilityId !== currentFacility?.id}
+                                  className="text-xs underline disabled:opacity-50"
+                                  onClick={() => {
+                                    setPriceItem(item);
+                                    setPriceValue(item.sellingPrice ?? '');
+                                    setPriceReason('');
+                                    setPriceError('');
+                                  }}
+                                >
+                                  Change price<span className="sr-only"> for {item.name}</span>
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 font-sans">
                             {nearestExpiryByItem.get(item.id) ? (
@@ -974,7 +1034,8 @@ export const InventoryModule: React.FC = () => {
               <span>
                 Expiry belongs to the batch, not the item. Enter a batch number and an expiry date
                 to receive the opening stock into that lot; the stock list then counts down to it.
-                Leave both blank to track a plain stock count with no expiry.
+                A plain stock count without batch and expiry cannot be dispensed; existing counts
+                need controlled reconciliation before use.
               </span>
             )}
           </p>
@@ -999,10 +1060,12 @@ export const InventoryModule: React.FC = () => {
               <input
                 id="inventory-field-11"
                 type="text"
+                disabled={!canSetPrice}
                 value={newItem.sellingPrice}
                 onChange={(e) => setNewItem({ ...newItem, sellingPrice: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold"
               />
+              {!canSetPrice && <p>Setting a price requires inventory and facility finance permissions.</p>}
             </div>
           </div>
 
@@ -1018,6 +1081,52 @@ export const InventoryModule: React.FC = () => {
               className="w-full px-3 py-2 border border-slate-200 rounded-md"
             />
           </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(priceItem && canSetPrice && priceItem.facilityId === currentFacility?.id)}
+        onClose={() => { if (!priceBusy) setPriceItem(null); }}
+        closeOnEscape={!priceBusy}
+        closeOnBackdrop={!priceBusy}
+        title="Change inventory selling price"
+        actions={
+          <>
+            <SecondaryButton disabled={priceBusy} onClick={() => setPriceItem(null)}>Cancel</SecondaryButton>
+            <PrimaryButton disabled={priceBusy} type="submit" form="inventory-price-form">
+              {priceBusy ? 'Saving…' : 'Save price'}
+            </PrimaryButton>
+          </>
+        }
+      >
+        <form id="inventory-price-form" onSubmit={handlePriceChange} className="space-y-3 text-sm">
+          <p>{priceItem?.name} · {priceItem?.itemCode}</p>
+          <p>Existing dispensed medicine lines retain their original prices. Zero is not treated as free.</p>
+          {priceError && <p role="alert" className="text-rose-700">{priceError}</p>}
+          <label className="block">
+            Selling price (KES per {priceItem?.unit ?? 'unit'})
+            <input
+              aria-label="Selling price"
+              type="text"
+              inputMode="decimal"
+              required
+              value={priceValue}
+              onChange={(event) => setPriceValue(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <label className="block">
+            Reason for price change
+            <input
+              aria-label="Reason for price change"
+              required
+              minLength={3}
+              maxLength={500}
+              value={priceReason}
+              onChange={(event) => setPriceReason(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+            />
+          </label>
         </form>
       </Modal>
 

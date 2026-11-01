@@ -31,9 +31,10 @@ import * as schema from '../db/schema.ts';
 import { getFacilityByIdScoped, requirePatientInTenant } from '../db/queries.ts';
 import { loadPatientInScope } from '../db/queries/shared.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
-import { billingServiceKeys } from '../billing/tariff-codes.ts';
-import { codesForFamily } from '../billing/tariff-matching.ts';
+import { formatCents, parseMoneyToCents } from '../billing/settlement.ts';
+import { calendarDateInZone, validTimezone } from '../dashboard/timezone.ts';
 
 import {
   daysUntilExpiry,
@@ -41,7 +42,6 @@ import {
   parseIsoDate,
   planFefo,
   stockValueCents,
-  todayKey,
   type BatchExpiryStatus,
 } from './inventory-contracts.ts';
 
@@ -51,9 +51,14 @@ import {
 
 export type InventoryErrorCode =
   | 'INVALID_INPUT'
+  | 'FORBIDDEN'
   | 'ITEM_NOT_FOUND'
   | 'FACILITY_NOT_FOUND'
+  | 'FACILITY_TIMEZONE_REQUIRED'
+  | 'INVENTORY_PRICE_CONFLICT'
   | 'BATCH_NOT_FOUND'
+  | 'BATCH_EXPIRY_EVIDENCE_REQUIRED'
+  | 'BATCH_EXPIRY_MISMATCH'
   | 'INSUFFICIENT_STOCK'
   | 'STOCK_RECONCILIATION_REQUIRED'
   | 'EXPIRED_BATCH'
@@ -158,6 +163,29 @@ async function resolveFacility(
   return { facilityId: facility.id, tenantId: facility.tenantId };
 }
 
+async function facilityTimezone(
+  facilityId: number,
+  tenantId: number,
+  executor: Pick<typeof db, 'select'> = db,
+  lock = false,
+): Promise<string> {
+  const query = executor
+    .select({ timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
+    .from(schema.facilities)
+    .innerJoin(schema.tenants, eq(schema.facilities.tenantId, schema.tenants.id))
+    .where(and(eq(schema.facilities.id, facilityId), eq(schema.facilities.tenantId, tenantId)))
+    .limit(1);
+  const [facilityZone] = lock ? await query.for('share') : await query;
+  const timezone = facilityZone?.timezone ?? facilityZone?.tenantTimezone;
+  if (!validTimezone(timezone))
+    throw new InventoryDomainError(
+      'FACILITY_TIMEZONE_REQUIRED',
+      'Configure the facility timezone before checking medicine expiry.',
+      409,
+    );
+  return timezone;
+}
+
 function parsePositiveInt(value: unknown, label: string, max: number): number {
   const parsed =
     typeof value === 'number'
@@ -192,6 +220,63 @@ function parseCost(value: unknown): string {
   return parsed.toFixed(2);
 }
 
+/** An audited, optimistic price change; prior dispensing snapshots are never changed. */
+export async function updateInventorySellingPriceScoped(
+  context: AuthorizationContext,
+  itemId: number,
+  input: { facilityId?: number; sellingPrice?: unknown; expectedPriceRevision?: unknown; reason?: unknown },
+) {
+  if (!hasAllPermissions(context, ['inventory.manage', 'billing.update']))
+    throw new InventoryDomainError('FORBIDDEN', 'Inventory and facility finance permissions are required.', 403);
+  const { facilityId, tenantId } = await resolveFacility(context, input.facilityId);
+  const id = parsePositiveInt(itemId, 'Stock item ID', 2_147_483_647);
+  const cents =
+    typeof input.sellingPrice === 'string' ? parseMoneyToCents(input.sellingPrice) : null;
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  const expectedRevision = input.expectedPriceRevision;
+  if (cents === null || cents <= 0 || cents > 9_999_999_999)
+    throw new InventoryDomainError('INVALID_INPUT', 'Enter a positive selling price with at most two decimals.');
+  if (
+    typeof expectedRevision !== 'number' || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1 ||
+    reason.length < 3 || reason.length > 500 || /\p{Cc}/u.test(reason)
+  )
+    throw new InventoryDomainError('INVALID_INPUT', 'A current inventory revision and a reason are required.');
+  return db.transaction(async (tx) => {
+    const [item] = await tx
+      .select()
+      .from(schema.inventoryItems)
+      .where(and(eq(schema.inventoryItems.id, id), eq(schema.inventoryItems.facilityId, facilityId)))
+      .limit(1)
+      .for('update');
+    if (!item) throw new InventoryDomainError('ITEM_NOT_FOUND', 'Facility stock item not found.', 404);
+    if (item.priceRevision !== expectedRevision)
+      throw new InventoryDomainError(
+        'INVENTORY_PRICE_CONFLICT',
+        'The selling price changed since it was loaded. Reload the item before changing its price.',
+        409,
+      );
+    const price = formatCents(cents);
+    if (item.sellingPrice === price) return item;
+    if (item.priceRevision >= 2_147_483_647)
+      throw new InventoryDomainError('INVENTORY_PRICE_CONFLICT', 'The price revision requires review.', 409);
+    const [updated] = await tx
+      .update(schema.inventoryItems)
+      .set({ sellingPrice: price, priceRevision: item.priceRevision + 1, updatedAt: new Date() })
+      .where(eq(schema.inventoryItems.id, id))
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'InventorySellingPrice',
+      resourceId: String(id),
+      details: `Selling price changed from ${item.sellingPrice ?? 'unrecorded'} to ${price}. Reason: ${reason}`,
+    });
+    return updated;
+  });
+}
+
 /* ============================================================
    RECEIVE STOCK INTO A BATCH
    ============================================================ */
@@ -202,7 +287,7 @@ export async function receiveBatchScoped(
   input: ReceiveBatchInput,
   requestedFacilityId?: number | null,
 ) {
-  const { facilityId } = await resolveFacility(context, requestedFacilityId);
+  const { facilityId, tenantId } = await resolveFacility(context, requestedFacilityId);
 
   const batchNumber = typeof input.batchNumber === 'string' ? input.batchNumber.trim() : '';
 
@@ -224,18 +309,6 @@ export async function receiveBatchScoped(
     );
   }
 
-  /*
-   * Receiving stock that has already expired is always a mistake, and
-   * accepting it would quietly poison every FEFO calculation afterwards.
-   */
-  if (expiryRaw < todayKey()) {
-    throw new InventoryDomainError(
-      'EXPIRED_BATCH',
-      `Batch ${batchNumber} expired on ${expiryRaw} and cannot be received.`,
-      400,
-    );
-  }
-
   const quantity = parsePositiveInt(input.quantity, 'Quantity', 1_000_000);
   const costPerUnit = parseCost(input.costPerUnit);
 
@@ -252,11 +325,10 @@ export async function receiveBatchScoped(
   }
 
   return db.transaction(async (tx) => {
+    const timezone = await facilityTimezone(facilityId, tenantId, tx, true);
     /*
-     * Re-receiving the same batch number tops the lot up rather than
-     * violating inventory_batches_item_batch_idx. The expiry already on
-     * the row wins: a different date for the same batch number is a
-     * data-entry problem, not a reason to extend shelf life.
+     * Re-receiving the same batch number tops the lot up only when its
+     * expiry agrees. A mismatch needs physical review, not a silent change.
      */
     // All stock operations acquire the item lock before a batch lock.
     // Updating first prevents a receive/dispense lock-order deadlock.
@@ -281,6 +353,21 @@ export async function receiveBatchScoped(
         409,
       );
     }
+    // Re-check after the item lock in case the local date changed while waiting.
+    if (expiryRaw < calendarDateInZone(timezone))
+      throw new InventoryDomainError('EXPIRED_BATCH', 'The batch has expired and cannot be received.', 409);
+    const [existing] = await tx
+      .select({ expiryDate: schema.inventoryBatches.expiryDate })
+      .from(schema.inventoryBatches)
+      .where(and(eq(schema.inventoryBatches.itemId, item.id), eq(schema.inventoryBatches.batchNumber, batchNumber)))
+      .limit(1)
+      .for('update');
+    if (existing && existing.expiryDate !== expiryRaw)
+      throw new InventoryDomainError(
+        'BATCH_EXPIRY_MISMATCH',
+        'This batch number already has a different expiry date. Review the physical lot before receiving it.',
+        409,
+      );
 
     const [batch] = await tx
       .insert(schema.inventoryBatches)
@@ -325,7 +412,7 @@ export async function getBatchesScoped(
     horizonDays?: number;
   } = {},
 ): Promise<InventoryBatchRow[]> {
-  const { facilityId } = await resolveFacility(context, options.facilityId);
+  const { facilityId, tenantId } = await resolveFacility(context, options.facilityId);
 
   const conditions = [eq(schema.inventoryItems.facilityId, facilityId)];
 
@@ -350,7 +437,7 @@ export async function getBatchesScoped(
     .where(and(...conditions))
     .orderBy(asc(schema.inventoryBatches.expiryDate), asc(schema.inventoryBatches.id));
 
-  const today = todayKey();
+  const today = calendarDateInZone(await facilityTimezone(facilityId, tenantId));
   const horizon = options.horizonDays ?? 30;
 
   const decorated = rows.map((row) => ({
@@ -622,8 +709,6 @@ export async function dispenseFefoScoped(
       }),
     )
     .digest('hex');
-  const today = todayKey();
-
   return db.transaction(async (tx) => {
     // Same-key requests serialize even when they refer to different prescriptions.
     await tx.execute(
@@ -726,6 +811,9 @@ export async function dispenseFefoScoped(
         },
       };
     }
+    // Freeze the effective facility/tenant timezone while selecting stock.
+    // Replays above use their original snapshot even if configuration changed.
+    const timezone = await facilityTimezone(facilityId, tenantId, tx, true);
     /*
      * Declared here, assigned once inside the branch below, and read only
      * inside it. The previous `| null = null` initialiser was never read
@@ -837,6 +925,8 @@ export async function dispenseFefoScoped(
     let allocations: DispenseResult['allocations'] = [];
     let stockTracking: 'FEFO' | 'untracked' = 'untracked';
     let stockAfter: number | null = null;
+    let occurredAt: Date;
+    let dispensingDate: string;
 
     {
       const [found] = await tx
@@ -851,10 +941,14 @@ export async function dispenseFefoScoped(
         .limit(1)
         .for('update');
 
-      if (!found || found.isActive === false) {
+      if (!found || found.isActive !== true) {
         throw new InventoryDomainError('ITEM_NOT_FOUND', 'Active stock item not found.', 404);
       }
 
+      // Compute the local day after acquiring the stock lock, rather than
+      // using the server's timezone or a pre-lock date near midnight.
+      occurredAt = new Date();
+      dispensingDate = calendarDateInZone(timezone, occurredAt);
       item = found;
       if (item.currentStock === null || item.currentStock < quantity) {
         throw new InventoryDomainError(
@@ -875,10 +969,17 @@ export async function dispenseFefoScoped(
         .where(eq(schema.inventoryBatches.itemId, item.id))
         .for('update');
 
-      if (lots.length > 0) {
+      if (lots.length === 0) {
+        throw new InventoryDomainError(
+          'BATCH_EXPIRY_EVIDENCE_REQUIRED',
+          'Stock has no recorded batch and expiry. Reconcile the physical stock before dispensing; receiving new stock is not a conversion of existing stock.',
+          409,
+        );
+      }
+      {
         stockTracking = 'FEFO';
 
-        const plan = planFefo(lots, quantity, today);
+        const plan = planFefo(lots, quantity, dispensingDate);
 
         if (plan.shortfall > 0) {
           const detail = {
@@ -939,6 +1040,16 @@ export async function dispenseFefoScoped(
             ? allocations.map((allocation) => allocation.batchNumber).join(', ')
             : batchNumber,
         quantityDispensed: quantity,
+        // A zero/invalid value is not an audited free service. Preserve it
+        // as unknown so a later price edit cannot silently reprice this event.
+        sellingPriceSnapshot:
+          (parseMoneyToCents(item.sellingPrice) ?? 0) > 0 ? item.sellingPrice : null,
+        itemCodeSnapshot: item.itemCode,
+        itemNameSnapshot: item.name,
+        itemUnitSnapshot: item.unit,
+        dispensingDateSnapshot: dispensingDate!,
+        dispensingTimezoneSnapshot: timezone,
+        dispensedAt: occurredAt!,
         dispensedBy,
         notes,
       })
@@ -992,7 +1103,6 @@ export async function dispenseFefoScoped(
     // existing charge-attempt worklist can retry this source. This is not a
     // price and does not claim that billing has completed.
     const drugName = prescription?.drugName ?? item.name;
-    const codes = codesForFamily({ family: 'PHARMACY', name: drugName });
     const [billingWork] = await tx
       .insert(schema.billingChargeAttempts)
       .values({
@@ -1004,8 +1114,8 @@ export async function dispenseFefoScoped(
         sourceId: dispensation.id,
         itemType: 'Pharmacy',
         description: drugName,
-        codes,
-        serviceKeys: billingServiceKeys('PHARMACY', [drugName]),
+        codes: [],
+        serviceKeys: [],
         family: 'PHARMACY',
         serviceName: drugName,
         serviceRefType: 'PHARMACY',
@@ -1056,7 +1166,7 @@ export async function getItemBatchStockScoped(
 ) {
   if (itemIds.length === 0) return [];
 
-  const { facilityId } = await resolveFacility(context, requestedFacilityId);
+  const { facilityId, tenantId } = await resolveFacility(context, requestedFacilityId);
 
   const where = and(
     eq(schema.inventoryItems.facilityId, facilityId),
@@ -1073,7 +1183,7 @@ export async function getItemBatchStockScoped(
     .innerJoin(schema.inventoryItems, eq(schema.inventoryBatches.itemId, schema.inventoryItems.id))
     .where(where);
 
-  const today = todayKey();
+  const today = calendarDateInZone(await facilityTimezone(facilityId, tenantId));
 
   const byItem = new Map<number, { usable: number; expired: number; batches: number }>();
 

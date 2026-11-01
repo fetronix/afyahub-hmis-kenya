@@ -29,6 +29,8 @@ import { sql } from 'drizzle-orm';
 import { facilities, tenants } from './tenancy.ts';
 
 import { patients } from './patients.ts';
+import { inventoryItems } from './inventory.ts';
+import { medications } from './inpatient.ts';
 
 import { encounters } from './clinical.ts';
 import { users } from './auth.ts';
@@ -194,6 +196,15 @@ export const billingItems = pgTable('billing_items', {
   serviceUnit: text('service_unit'),
   serviceDate: date('service_date'),
   servicePerformedAt: timestamp('service_performed_at'),
+
+  // Populated only for inventory-priced pharmacy lines; the sourceId is the
+  // actual dispensation. Batch details are immutable line-time snapshots.
+  inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
+  prescriptionId: integer('prescription_id').references(() => medications.id),
+  pharmacyStockTracking: text('pharmacy_stock_tracking'),
+  pharmacyBatchAllocations: jsonb('pharmacy_batch_allocations').$type<
+    Array<{ batchId: number; batchNumber: string; expiryDate: string; quantity: number }>
+  >(),
 
   /*
    * Provenance: which clinical event produced this line item.

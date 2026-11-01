@@ -29,13 +29,25 @@ export interface InvoiceSnapshot {
   };
   items: Array<{
     id: number;
-    tariffId: number;
+    /** Null only for a verified inventory-priced medicine; old snapshots keep their tariff ID. */
+    tariffId: number | null;
     code: string;
     description: string;
     quantity: number;
     unitPrice: string;
     total: string;
     sourceType: string | null;
+    priceSource?: 'INVENTORY_SNAPSHOT';
+    inventoryItemId?: number;
+    prescriptionId?: number;
+    dispensationId?: number;
+    stockTracking?: 'FEFO' | 'untracked';
+    batchAllocations?: Array<{
+      batchId: number;
+      batchNumber: string;
+      expiryDate: string;
+      quantity: number;
+    }>;
   }>;
   amounts: {
     itemizedTotal: string;

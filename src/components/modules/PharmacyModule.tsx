@@ -181,9 +181,8 @@ export const PharmacyModule: React.FC = () => {
     setIsDispensing(true);
     try {
       /*
-       * Billing is now raised server-side from the facility's service
-       * tariffs. Creating the invoice here (with a hardcoded unit price)
-       * would double-charge the patient alongside the server charge.
+       * The server snapshots the facility inventory price while committing
+       * stock. Never create a second invoice or submit a client price here.
        */
       const result = await api.dispenseMedication({
         facilityId: currentFacility?.id,
@@ -485,6 +484,12 @@ export const PharmacyModule: React.FC = () => {
         )}
       </div>
 
+      <div role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+        Medicine returns and dispensing reversals are not yet supported by an integrated stock and
+        financial correction workflow. Refer them to pharmacy and finance for review; do not silently
+        restore stock or alter an invoice, receipt, or posted journal.
+      </div>
+
       {/* DISPENSING MODAL */}
       {dispenseTarget && dataReady && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
@@ -561,9 +566,9 @@ export const PharmacyModule: React.FC = () => {
                 if (lots.length === 0) {
                   return (
                     <div className="text-2xs bg-slate-50 border border-slate-200 rounded-md p-2.5 text-slate-600">
-                      <strong className="text-slate-800">No tracked batches.</strong> Dispensing
-                      deducts from the plain stock count. Receive a batch in Inventory to enable
-                      FEFO and expiry control.
+                      <strong className="text-slate-800">Batch and expiry not recorded.</strong>{' '}
+                      Dispensing is blocked until this physical stock is reconciled. Receiving new
+                      stock does not convert the existing count.
                     </div>
                   );
                 }
@@ -607,7 +612,20 @@ export const PharmacyModule: React.FC = () => {
                 <div>
                   ✓ Deducts <strong>{dispenseQty}</strong> units from Pharmacy Store stock.
                 </div>
-                <div>Billing is attempted only when a facility tariff is configured.</div>
+                <div>
+                  Review the selected medicine, strength and form against the prescription. The
+                  server records the facility inventory selling price at dispensing; no separate
+                  medicine tariff is required.
+                </div>
+                {selectedInventoryItem && (
+                  <div>
+                    {selectedInventoryItem.sellingPrice != null &&
+                    Number.isFinite(Number(selectedInventoryItem.sellingPrice)) &&
+                    Number(selectedInventoryItem.sellingPrice) > 0
+                      ? `Displayed price: KES ${selectedInventoryItem.sellingPrice} per ${selectedInventoryItem.unit ?? 'unit'}. The server confirms the current price when dispensing.`
+                      : 'No positive selling price is configured. Dispensing will be recorded but cannot be billed automatically.'}
+                  </div>
+                )}
               </div>
             </div>
 

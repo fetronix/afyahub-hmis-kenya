@@ -104,7 +104,8 @@ export async function recordChargeAttempt(
    * an operator problem, not a missing tariff. Only the "we could not
    * price this" case belongs in the queue.
    */
-  if (result.reason !== 'TARIFF_NOT_CONFIGURED') return null;
+  if (result.reason !== 'TARIFF_NOT_CONFIGURED' && result.reason !== 'INVENTORY_PRICE_REVIEW')
+    return null;
 
   /*
    * Without a numbered clinical source there is no stable identity for
@@ -478,7 +479,10 @@ export async function chargeAndRecord(
           resourceId: String(pending[0].id),
           details: 'Charge attempt resolved by replay of the clinical event.',
         });
-      } else if (!result.charged && result.reason === 'TARIFF_NOT_CONFIGURED') {
+      } else if (
+        !result.charged &&
+        (result.reason === 'TARIFF_NOT_CONFIGURED' || result.reason === 'INVENTORY_PRICE_REVIEW')
+      ) {
         const attemptId = await recordChargeAttempt(tx, request, result);
         if (attemptId === null) {
           result = {

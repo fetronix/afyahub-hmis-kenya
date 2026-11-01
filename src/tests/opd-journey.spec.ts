@@ -142,7 +142,11 @@ describe('The outpatient journey — contract tests', () => {
     expect(resolver).not.toContain('resolveFromRows');
     expect(billing).toContain('resolveFacilityCharge(');
     expect(billing).toContain('idempotencyKey');
-    expect(billing).toContain('facilityServiceId: service.id');
+    // Non-pharmacy lines retain their service identity; an inventory-priced
+    // medicine deliberately has no fabricated facility-service ID.
+    expect(billing).toContain('facilityServiceId: service?.id ?? null');
+    expect(billing).toContain('resolvePharmacyInventoryCharge(');
+    expect(billing).toContain('inventoryItemId: pharmacy?.itemId ?? null');
     expect(source('src/routes/index.ts')).not.toContain('masterTariffsRoutes');
   });
 

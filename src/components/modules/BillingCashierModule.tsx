@@ -739,6 +739,18 @@ export const BillingCashierModule: React.FC = () => {
                               {item.sourceType
                                 ? `${item.sourceType}${item.sourceId != null ? ` #${item.sourceId}` : ''}`
                                 : 'Source not recorded'}
+                              {item.inventoryItemId != null && (
+                                <>
+                                  <br />
+                                  {`Medicine #${item.inventoryItemId} · Prescription #${item.prescriptionId}`}
+                                  <br />
+                                  {item.pharmacyStockTracking === 'FEFO'
+                                    ? item.pharmacyBatchAllocations?.map((batch) =>
+                                        `${batch.batchNumber} ×${batch.quantity} (exp ${batch.expiryDate})`,
+                                      ).join(', ')
+                                    : 'No tracked batch; expiry not verified'}
+                                </>
+                              )}
                               <br />
                               {item.servicePerformedAt
                                 ? `Performed ${new Date(item.servicePerformedAt).toLocaleString('en-KE')}`

@@ -235,6 +235,15 @@ export const diagnosticsPharmacyClient = {
       body: JSON.stringify(item),
     }),
 
+  updateInventorySellingPrice: (
+    itemId: number,
+    data: { facilityId: number; sellingPrice: string; expectedPriceRevision: number; reason: string },
+  ) =>
+    fetchJson<InventoryItem>(`${API_BASE}/inventory/${itemId}/selling-price`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
   checkDispenseRequest: (data: { facilityId: number; idempotencyKey: string }) =>
     fetchJson<
       | { status: 'NOT_FOUND' }

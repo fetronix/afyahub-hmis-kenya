@@ -126,44 +126,24 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     expect(unpriced.charged).toBe(false);
     expect(unpriced.reason).toBe('TARIFF_NOT_CONFIGURED');
 
-    // chargeForService: matched active tariff -> inserts item + recalculates invoice
+    // chargeForService: evidenced inventory dispensing -> inserts item + recalculates invoice
     mockDb.state!.reset();
     mockDb.state!.queueSelect(
       [{ id: 42 }], // locked patient
       [{ id: 10 }], // authorized facility
+      [{ id: 55 }], // authorized encounter
       [], // no prior source charge
-      [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }],
-      [
-        {
-          id: 89,
-          tenantId: 1,
-          facilityId: 10,
-          patientId: 42,
-          itemId: 4,
-          quantityDispensed: 1,
-          dispensedAt: new Date(),
-        },
-      ],
-      [{ id: 4, code: 'ITEM-4', unit: 'Tablet' }],
-      [{ id: 4 }], // exact inventory code is unique in this facility
-      [{ id: 5, code: 'ITEM-4', name: 'Synthetic product', description: 'Synthetic product', department: 'pharmacy', category: 'PHARMACY', unit: 'Tablet', isActive: true, autoBill: true, tenantId: 1, facilityId: 10 }],
-      [
-        {
-          id: 6,
-          code: 'SYN-PRICE',
-          fee: '1500.00',
-          unit: 'Tablet',
-          department: 'pharmacy',
-          isActive: true,
-          autoBill: true,
-          approvalStatus: 'APPROVED',
-          approvedByUserId: 10,
-          approvedAt: new Date(),
-          approvalReference: 'reviewed',
-          effectiveFrom: null,
-          effectiveTo: null,
-        },
-      ],
+      [{
+        id: 89, tenantId: 1, facilityId: 10, patientId: 42, prescriptionId: 98, itemId: 4,
+        quantityDispensed: 1, sellingPriceSnapshot: '1500.00', itemCodeSnapshot: 'ITEM-4',
+        itemNameSnapshot: 'Synthetic product', itemUnitSnapshot: 'Tablet',
+        dispensingDateSnapshot: new Date().toISOString().slice(0, 10),
+        dispensingTimezoneSnapshot: 'UTC', dispensedAt: new Date(),
+      }],
+      [{ encounterId: 55 }],
+      [{ id: 4 }],
+      [{ tracking: 'FEFO' }],
+      [{ batchId: 601, batchNumber: 'SYN-LOT', expiryDate: '2099-12-31', quantity: 1, itemId: 4 }],
       [
         {
           id: 900,
@@ -199,6 +179,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
       patientId: 42,
       sourceType: 'PHARMACY',
       sourceId: 89,
+      encounterId: 55,
       itemType: 'Pharmacy',
       codes: ['ITEM-4'],
     });
@@ -471,7 +452,9 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
   });
 
   it('enforces FEFO pharmacy batch receipt, expiry refusal, multi-lot allocation, and stock summaries', async () => {
-    // Reject already-expired batch
+    // Reject already-expired batch after locking the stock item.
+    mockDb.state!.queueSelect([{ id: 50, facilityId: 10 }], [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }]);
+    mockDb.state!.queueUpdate([{ id: 50, currentStock: 100 }]);
     await expect(
       inventory.receiveBatchScoped(ctx, 50, {
         batchNumber: 'AMOX-OLD',
@@ -479,10 +462,10 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
         quantity: 100,
         costPerUnit: 5.5,
       }),
-    ).rejects.toMatchObject({ code: 'EXPIRED_BATCH', status: 400 });
+    ).rejects.toMatchObject({ code: 'EXPIRED_BATCH', status: 409 });
 
     // Receive valid batch
-    mockDb.state!.queueSelect([{ id: 50, facilityId: 10, name: 'Amoxicillin 500mg' }]);
+    mockDb.state!.queueSelect([{ id: 50, facilityId: 10, name: 'Amoxicillin 500mg' }], [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }], []);
     mockDb.state!.queueInsert([
       {
         id: 601,
@@ -506,6 +489,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     // FEFO dispense spans two unexpired lots earliest-expiry-first
     mockDb.state!.queueSelect(
       [], // no prior request with this idempotency key
+      [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }],
       [
         {
           id: 99,
@@ -524,6 +508,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
           facilityId: 10,
           itemCode: 'DRG-AMOX',
           name: 'Amoxicillin 500mg',
+          unit: 'Capsules', isActive: true, sellingPrice: '10.00',
           currentStock: 70,
         },
       ],
@@ -562,7 +547,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
         quantityRemaining: 40,
         costPerUnit: '5.50',
       },
-    ]);
+    ], [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }]);
     expect(await inventory.getBatchesScoped(ctx, { itemId: 50 })).toHaveLength(1);
 
     mockDb.state!.queueSelect([
@@ -576,7 +561,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
         quantityRemaining: 40,
         costPerUnit: '5.50',
       },
-    ]);
+    ], [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }]);
     const summary = await inventory.getExpirySummaryScoped(ctx);
     expect(summary.expiringUnits).toBe(40);
     expect(summary.affectedItems).toBe(1);
@@ -589,7 +574,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
         expiryDate: '2028-12-31',
         quantityRemaining: 40,
       },
-    ]);
+    ], [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }]);
     const picker = await inventory.getItemBatchStockScoped(ctx, [50]);
     expect(picker[0]).toMatchObject({ itemId: 50, usable: 40 });
   });

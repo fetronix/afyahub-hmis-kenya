@@ -232,41 +232,10 @@ export async function resolveFacilityCharge(
       eventDate = dateOf(performedAt);
       break;
     }
-    case 'PHARMACY': {
-      const [row] = await executor
-        .select()
-        .from(schema.pharmacyDispensations)
-        .where(eq(schema.pharmacyDispensations.id, request.sourceId))
-        .limit(1);
-      if (!row || !scope(row) || !row.itemId || row.quantityDispensed !== (request.quantity ?? 1))
-        return fail('SOURCE_REVIEW_REQUIRED', 'Dispensing identity or quantity requires review.');
-      const [item] = await executor
-        .select({
-          id: schema.inventoryItems.id,
-          code: schema.inventoryItems.itemCode,
-          unit: schema.inventoryItems.unit,
-        })
-        .from(schema.inventoryItems)
-        .where(
-          and(
-            eq(schema.inventoryItems.id, row.itemId),
-            eq(schema.inventoryItems.facilityId, request.facilityId),
-          ),
-        )
-        .limit(1);
-      if (!item)
-        return fail(
-          'CATALOGUE_NOT_FOUND',
-          'The dispensed product is not in this facility inventory.',
-        );
-      sourceKind = 'PHARMACY';
-      sourceId = row.itemId;
-      sourceCode = item.code;
-      sourceUnit = item.unit;
-      performedAt = row.dispensedAt;
-      eventDate = dateOf(performedAt);
-      break;
-    }
+    case 'PHARMACY':
+      // Medicines are priced only from the recorded dispensing-time
+      // inventory snapshot, never from a facility service tariff.
+      return fail('INVENTORY_PRICE_REQUIRED', 'Use the scoped dispensing inventory snapshot.');
     case 'ADMISSION':
     case 'BED_DAY': {
       const [row] = await executor

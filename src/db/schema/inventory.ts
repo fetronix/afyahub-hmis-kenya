@@ -69,6 +69,8 @@ export const inventoryItems = pgTable(
       scale: 2,
     }).default('0'),
 
+    priceRevision: integer('price_revision').notNull().default(1),
+
     storeLocation: text('store_location').default('Main Pharmacy Store'),
 
     isActive: boolean('is_active').default(true),
@@ -145,6 +147,15 @@ export const pharmacyDispensations = pgTable('pharmacy_dispensations', {
   batchNumber: text('batch_number'),
 
   quantityDispensed: integer('quantity_dispensed').notNull(),
+
+  // Written once, while the selected facility inventory row is locked.
+  // NULL price means unconfigured/unknown, including legacy dispensations.
+  sellingPriceSnapshot: numeric('selling_price_snapshot', { precision: 10, scale: 2 }),
+  itemCodeSnapshot: text('item_code_snapshot'),
+  itemNameSnapshot: text('item_name_snapshot'),
+  itemUnitSnapshot: text('item_unit_snapshot'),
+  dispensingDateSnapshot: date('dispensing_date_snapshot'),
+  dispensingTimezoneSnapshot: text('dispensing_timezone_snapshot'),
 
   dispensedBy: text('dispensed_by').notNull(),
 

@@ -31,29 +31,23 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         [encounter, patient, name, quantity],
       )
     ).rows[0].id as number;
-  const item = async (stock: number) =>
-    (
+  const item = async (stock: number, tracked = false) => {
+    const id = (
       await pool.query(
         "INSERT INTO inventory_items(facility_id,item_code,name,current_stock) VALUES($1,$2,'Synthetic stock item',$3) RETURNING id",
         [facility, `ITEM-${suffix}-${++sequence}`, stock],
       )
     ).rows[0].id as number;
+    if (tracked) await pool.query(
+      "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,$2,'2099-12-31',$3)",
+      [id, `VERIFIED-${suffix}-${sequence}`, stock],
+    );
+    return id;
+  };
   const configureProduct = async (id: number, fee: string) => {
-    const item = (
-      await pool.query(
-        'SELECT item_code, unit FROM inventory_items WHERE id=$1 AND facility_id=$2',
-        [id, facility],
-      )
-    ).rows[0];
-    const service = (
-      await pool.query(
-        "INSERT INTO facility_services(tenant_id,facility_id,code,name,description,department,category,unit,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic product','Synthetic product','pharmacy','PHARMACY',$4,true,true) RETURNING id",
-        [tenant, facility, String(item.item_code).toUpperCase(), item.unit],
-      )
-    ).rows[0].id;
     await pool.query(
-      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,facility_service_id,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic product','pharmacy',$4,$5,$6,true,true)",
-      [tenant, facility, String(item.item_code).toUpperCase(), item.unit, fee, service],
+      'UPDATE inventory_items SET selling_price=$1,price_revision=price_revision+1 WHERE id=$2 AND facility_id=$3',
+      [fee, id, facility],
     );
   };
   const batch = async (id: number, name: string, expiry: string, quantity: number) =>
@@ -237,7 +231,8 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     expect(response.body.allocations.map((a: { quantity: number }) => a.quantity)).toEqual([5, 3]);
     expect(response.body.billing).toMatchObject({
       charged: false,
-      reason: 'TARIFF_NOT_CONFIGURED',
+      reason: 'INVENTORY_PRICE_REVIEW',
+      diagnosis: { code: 'INVENTORY_PRICE_NOT_CONFIGURED' },
     });
     expect((await call('POST', '/api/pharmacy/dispense', managerToken, body)).status).toBe(409);
     expect(
@@ -278,7 +273,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     );
     expect(pending.rows).toEqual([
       {
-        reason: 'TARIFF_NOT_CONFIGURED',
+        reason: 'INVENTORY_PRICE_REVIEW',
         fallback_unit_price: null,
         service_name: 'Synthetic medication',
       },
@@ -336,7 +331,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
 
   it('checks a dispensing retry identity without leaking across facility or permission boundaries', async () => {
     const id = await prescription(4),
-      stockId = await item(4);
+      stockId = await item(4, true);
     const key = `status-${randomUUID()}`;
     const query = { facilityId: facility, idempotencyKey: key };
     expect((await call('POST', '/api/pharmacy/dispense/status', limitedToken, query)).status).toBe(
@@ -466,8 +461,8 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
 
   it('serializes competing partial fills and refuses missing keys and product changes', async () => {
     const id = await prescription(10),
-      stockId = await item(20),
-      otherItem = await item(20);
+      stockId = await item(20, true),
+      otherItem = await item(20, true);
     const body = {
       prescriptionId: id,
       patientId: patient,
@@ -509,7 +504,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
 
   it('allows authorized clinical hold, resume and discontinuation without dispensing or losing partial history', async () => {
     const id = await prescription(8),
-      stockId = await item(12);
+      stockId = await item(12, true);
     const status = (token: string, next: string, reason = 'Synthetic clinical reason') =>
       call('PUT', `/api/medications/${id}/status`, token, { status: next, reason });
     expect((await status(limitedToken, 'On Hold')).status).toBe(403);
@@ -662,7 +657,9 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
 
   it('leaves durable billing work when a dispensing commits before the billing step runs', async () => {
     const id = await prescription(2, `Synthetic outbox ${suffix}`),
-      stockId = await item(2);
+      stockId = await item(2, true);
+    // Capture a positive inventory price before simulating an interrupted route.
+    await configureProduct(stockId, '2.50');
     // Call the service directly to simulate a process stopping after its
     // clinical transaction commits but before the HTTP route prices it.
     const recorded = await dispenseFefoScoped(ctx, {
@@ -689,7 +686,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         )
       ).rows,
     ).toHaveLength(0);
-    await configureProduct(stockId, '2.50');
+    await configureProduct(stockId, '20.00');
     // A changed clinical source cannot be silently repriced from the queue.
     await pool.query('UPDATE medications SET drug_name=$1 WHERE id=$2', [
       'Synthetic changed label',
@@ -738,7 +735,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
 
   it('rolls back dispensing and stock if durable billing work cannot be recorded', async () => {
     const id = await prescription(2),
-      stockId = await item(2);
+      stockId = await item(2, true);
     const fn = `test_charge_attempt_${suffix.replaceAll('-', '')}`,
       trigger = `test_charge_attempt_trigger_${suffix.replaceAll('-', '')}`;
     await pool.query(
@@ -856,9 +853,9 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
     ).toBe(9);
   });
 
-  it('charges a configured synthetic pharmacy tariff, not a client price, exactly once', async () => {
+  it('charges the synthetic inventory selling price, not a client price, exactly once', async () => {
     const id = await prescription(4, 'Priced synthetic'),
-      stockId = await item(4);
+      stockId = await item(4, true);
     await configureProduct(stockId, '7.50');
     const body = {
       prescriptionId: id,
@@ -890,7 +887,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         )
       ).rows,
     ).toHaveLength(1);
-    // This price belongs solely to the disposable synthetic fixture, not a real tariff schedule.
+    // This price belongs solely to the disposable synthetic inventory fixture.
   });
 
   it('requires collection before result entry and prevents regression or re-accessioning', async () => {

@@ -331,7 +331,20 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number }> = ({ invoice
                 {view.snapshot.items.map((line) => (
                   <tr key={line.id} className="border-b border-slate-100">
                     <td>{line.code}</td>
-                    <td>{line.description}</td>
+                    <td>
+                      {line.description}
+                      {line.priceSource === 'INVENTORY_SNAPSHOT' && (
+                        <div className="text-xs text-slate-600">
+                          {`Medicine #${line.inventoryItemId} · Prescription #${line.prescriptionId} · Dispensing #${line.dispensationId}`}
+                          <br />
+                          {line.stockTracking === 'FEFO'
+                            ? line.batchAllocations?.map((batch) =>
+                                `${batch.batchNumber} ×${batch.quantity} (exp ${batch.expiryDate})`,
+                              ).join(', ')
+                            : 'No tracked batch; expiry not verified'}
+                        </div>
+                      )}
+                    </td>
                     <td>{line.quantity}</td>
                     <td>{money(line.unitPrice)}</td>
                     <td>{money(line.total)}</td>
