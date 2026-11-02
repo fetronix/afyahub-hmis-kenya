@@ -43,6 +43,24 @@ function postgresCode(error: unknown): string | undefined {
   return undefined;
 }
 
+/** Only a missing 0022 column should disable bed-night identity. Other
+ * undefined columns (including newer migrations) must not change the
+ * process-wide identity policy. Inspect the PostgreSQL cause, not the
+ * wrapper's SQL text, which can mention every column in the statement. */
+function isMissingBedNightIdentityColumn(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth++) {
+    const value = current as { code?: unknown; message?: unknown; cause?: unknown };
+    if (value.code === '42703')
+      return (
+        typeof value.message === 'string' &&
+        /\b(?:idempotency_suffix|ward_type|ward_name)\b/i.test(value.message)
+      );
+    current = value.cause;
+  }
+  return false;
+}
+
 let warnedMissingAttemptsTable = false;
 
 /**
@@ -54,13 +72,13 @@ let warnedMissingAttemptsTable = false;
  */
 let supportsBedNightIdentity = true;
 
-/** True when the database predates migration 0020. */
+/** True when the attempts table itself is absent. */
 export function isMissingAttemptsTable(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
 
   const code = postgresCode(error);
 
-  return code === '42P01' || code === '42703';
+  return code === '42P01';
 }
 
 /**
@@ -86,7 +104,11 @@ export async function recordChargeAttempt(
    * an operator problem, not a missing tariff. Only the "we could not
    * price this" case belongs in the queue.
    */
-  if (result.reason !== 'TARIFF_NOT_CONFIGURED') return null;
+  if (
+    result.reason !== 'TARIFF_NOT_CONFIGURED' &&
+    result.reason !== 'INVENTORY_PRICE_REVIEW' &&
+    result.reason !== 'BED_OCCUPANCY_REVIEW'
+  ) return null;
 
   /*
    * Without a numbered clinical source there is no stable identity for
@@ -122,10 +144,12 @@ export async function recordChargeAttempt(
     serviceRefCode: request.serviceRef?.code ?? null,
     serviceDate:
       request.serviceDate ??
-      (request.sourceType === 'BED_DAY' ? (request.idempotencySuffix ?? null) : null),
+      (request.sourceType === 'BED_DAY' && /^\d{4}-\d{2}-\d{2}$/.test(request.idempotencySuffix ?? '')
+        ? request.idempotencySuffix! : null),
     quantity,
     fallbackUnitPrice: request.fallbackUnitPrice == null ? null : String(request.fallbackUnitPrice),
     reason: result.reason,
+    diagnosisCode: result.diagnosis?.code ?? null,
     detail: result.message ?? null,
     codesTried: [...(result.codesTried ?? request.codes ?? [])],
     status: 'PENDING' as const,
@@ -185,6 +209,7 @@ export async function recordChargeAttempt(
         lastAttemptAt: new Date(),
         updatedAt: new Date(),
         reason: values.reason,
+        diagnosisCode: values.diagnosisCode,
         detail: values.detail,
         codesTried: values.codesTried,
         quantity: values.quantity,
@@ -239,7 +264,7 @@ export async function recordChargeAttempt(
      * without the bed-night columns, so the queue keeps working while
      * the administrator applies the migration.
      */
-    if (postgresCode(error) === '42703' && supportsBedNightIdentity) {
+    if (isMissingBedNightIdentityColumn(error) && supportsBedNightIdentity) {
       supportsBedNightIdentity = false;
 
       console.warn(
@@ -247,6 +272,13 @@ export async function recordChargeAttempt(
       );
 
       return recordChargeAttempt(executor, request, result);
+    }
+
+    if (postgresCode(error) === '42703') {
+      console.error(
+        'Billing: the charge-attempt schema is incomplete. Apply the required migrations; manual reconciliation is required.',
+      );
+      return null;
     }
 
     if (isMissingAttemptsTable(error)) {
@@ -338,14 +370,15 @@ export async function chargeAndRecord(
 
       // The queue only accepts numeric clinical source identities. String
       // identities still use the normal billing-item uniqueness guard.
-      const attempts: ChargeAttemptRow[] =
+      const attempts: ChargeAttemptRow[] = (
         typeof request.sourceId === 'number' && Number.isSafeInteger(request.sourceId)
           ? await tx
               .select()
               .from(schema.billingChargeAttempts)
               .where(attemptIdentityWhere(request))
               .for('update')
-          : [];
+          : []
+      ).filter((row: ChargeAttemptRow) => row.status !== 'SUPERSEDED');
       if (
         attempts.some(
           (row) => row.patientId !== request.patientId || row.itemType !== request.itemType,
@@ -451,7 +484,10 @@ export async function chargeAndRecord(
           resourceId: String(pending[0].id),
           details: 'Charge attempt resolved by replay of the clinical event.',
         });
-      } else if (!result.charged && result.reason === 'TARIFF_NOT_CONFIGURED') {
+      } else if (
+        !result.charged &&
+        (result.reason === 'TARIFF_NOT_CONFIGURED' || result.reason === 'INVENTORY_PRICE_REVIEW' || result.reason === 'BED_OCCUPANCY_REVIEW')
+      ) {
         const attemptId = await recordChargeAttempt(tx, request, result);
         if (attemptId === null) {
           result = {
@@ -496,6 +532,7 @@ export interface ChargeAttemptRow {
   quantity: number;
   fallbackUnitPrice: string | null;
   reason: string;
+  diagnosisCode?: string | null;
   detail: string | null;
   codesTried: string[];
   status: string;
@@ -632,7 +669,7 @@ export function toChargeRequest(row: ChargeAttemptRow, tenantId: number): Charge
 
 export interface RetryOutcome {
   attemptId: number;
-  status: 'BILLED' | 'DUPLICATE' | 'PENDING' | 'VOID';
+  status: 'BILLED' | 'DUPLICATE' | 'PENDING' | 'VOID' | 'SUPERSEDED';
   result: ChargeResult;
 }
 
@@ -654,6 +691,17 @@ async function enrichFromSource(
   executor: Executor,
   request: ChargeRequest,
 ): Promise<ChargeRequest> {
+  if (request.sourceType === 'BED_DAY') {
+    if (typeof request.sourceId !== 'number') throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    const [admission] = await executor.select().from(schema.admissions)
+      .where(and(eq(schema.admissions.id, request.sourceId), eq(schema.admissions.tenantId, request.tenantId),
+        eq(schema.admissions.facilityId, request.facilityId), eq(schema.admissions.patientId, request.patientId))).limit(1);
+    if (!admission || (request.encounterId != null && request.encounterId !== admission.encounterId))
+      throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    // A previously missing encounter may be attached only by the separate,
+    // authorized and audited admission-linking workflow.
+    return { ...request, encounterId: admission.encounterId ?? null };
+  }
   if (request.sourceType === 'PHARMACY') {
     if (typeof request.sourceId !== 'number') throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
     const [dispense] = await executor
@@ -847,6 +895,9 @@ export async function retryChargeAttempt(
     const row = await lockAttemptIdentity(tx, input);
     if (!row) return null;
 
+    if (row.status === 'SUPERSEDED') {
+      return { attemptId: row.id, status: 'SUPERSEDED', result: { charged: false, reason: 'INVALID_INPUT', message: 'This pending identity was superseded by an audited bed-history review. Retry the reviewed bed nights instead.' } };
+    }
     if (row.status !== 'PENDING') {
       return {
         attemptId: row.id,
@@ -865,12 +916,40 @@ export async function retryChargeAttempt(
     if (row.sourceId == null) {
       return { attemptId: row.id, status: 'PENDING', result: chargeReviewRequired() };
     }
+    // Stay-level review rows and legacy dated attempts without a recorded
+    // bed night are not billable nights. Do not overwrite their original
+    // diagnoses while probing the resolver; an authorized admission-specific
+    // review retains those rows and stages real dated evidence.
+    if (row.sourceType === 'BED_DAY') {
+      const date = row.idempotencySuffix ?? '';
+      const [night] = /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? await tx.select({ id: schema.inpatientBedNights.id }).from(schema.inpatientBedNights).where(and(
+            eq(schema.inpatientBedNights.admissionId, row.sourceId),
+            eq(schema.inpatientBedNights.tenantId, input.tenantId),
+            eq(schema.inpatientBedNights.facilityId, input.facilityId),
+            eq(schema.inpatientBedNights.patientId, row.patientId),
+            sql`${schema.inpatientBedNights.billingDate}::text = ${date}`,
+          )).limit(1)
+        : [];
+      if (!night) {
+        return {
+          attemptId: row.id,
+          status: 'PENDING',
+          result: {
+            charged: false,
+            reason: 'BED_OCCUPANCY_REVIEW',
+            diagnosis: { code: row.diagnosisCode ?? 'BED_NIGHT_EVIDENCE_REQUIRED', label: 'Bed occupancy review' },
+            message: `${row.detail ?? 'This bed charge has no verified night evidence.'} Use the admission-specific bed billing recovery before retrying.`,
+          },
+        };
+      }
+    }
     const request = toChargeRequest(row, input.tenantId);
-    const related: ChargeAttemptRow[] = await tx
+    const related: ChargeAttemptRow[] = (await tx
       .select()
       .from(schema.billingChargeAttempts)
       .where(attemptIdentityWhere(request))
-      .for('update');
+      .for('update')).filter((other: ChargeAttemptRow) => other.status !== 'SUPERSEDED');
     if (
       related.some(
         (other) =>
@@ -929,6 +1008,12 @@ export async function retryChargeAttempt(
          * carries the outcome. A failed retry replaces it with the new one.
          */
         reason: result.charged ? row.reason : (result.reason ?? row.reason),
+        // Keep the historical diagnosis on resolution; a still-pending retry
+        // must instead expose its most recent specific evaluation.
+        diagnosisCode:
+          result.charged || verifiedDuplicate
+            ? (row.diagnosisCode ?? null)
+            : (result.diagnosis?.code ?? null),
         detail: result.charged
           ? `Billed as ${result.tariffCode ?? 'a tariff'} (${result.matchExplanation ?? 'matched'}).`
           : (result.message ?? row.detail),

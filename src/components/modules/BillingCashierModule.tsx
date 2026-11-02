@@ -4,7 +4,6 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { RefundsPanel } from './RefundsPanel.tsx';
 import { InvoiceFinancialSummary } from './InvoiceFinancialSummary.tsx';
-import { AddClinicalService } from './AddClinicalService.tsx';
 import { FinalizedInvoicePanel } from './FinalizedInvoicePanel.tsx';
 import {
   clearPendingPayment,
@@ -740,6 +739,18 @@ export const BillingCashierModule: React.FC = () => {
                               {item.sourceType
                                 ? `${item.sourceType}${item.sourceId != null ? ` #${item.sourceId}` : ''}`
                                 : 'Source not recorded'}
+                              {item.inventoryItemId != null && (
+                                <>
+                                  <br />
+                                  {`Medicine #${item.inventoryItemId} · Prescription #${item.prescriptionId}`}
+                                  <br />
+                                  {item.pharmacyStockTracking === 'FEFO'
+                                    ? item.pharmacyBatchAllocations?.map((batch) =>
+                                        `${batch.batchNumber} ×${batch.quantity} (exp ${batch.expiryDate})`,
+                                      ).join(', ')
+                                    : 'No tracked batch; expiry not verified'}
+                                </>
+                              )}
                               <br />
                               {item.servicePerformedAt
                                 ? `Performed ${new Date(item.servicePerformedAt).toLocaleString('en-KE')}`
@@ -770,25 +781,6 @@ export const BillingCashierModule: React.FC = () => {
                 )}
               </div>
 
-              {currentFacility?.id &&
-                selectedInvoice.encounterId &&
-                !selectedInvoice.finalizedAt &&
-                selectedInvoice.status !== 'Void' && (
-                  <AddClinicalService
-                    key={selectedInvoice.id}
-                    facilityId={currentFacility.id}
-                    patientId={selectedInvoice.patientId}
-                    encounterId={selectedInvoice.encounterId}
-                    orderedBy={currentUser.name}
-                    canOrderLab={Boolean(
-                      authenticatedUser?.permissions?.includes('laboratory.orders.create'),
-                    )}
-                    canOrderImaging={Boolean(
-                      authenticatedUser?.permissions?.includes('clinical.create'),
-                    )}
-                    onCreated={triggerRefresh}
-                  />
-                )}
               <FinalizedInvoicePanel invoiceId={selectedInvoice.id} />
 
               <RefundsPanel invoiceId={selectedInvoice.id} />

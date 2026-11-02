@@ -7,6 +7,7 @@ import {
   approveProtocolScoped,
   authorizePlanScoped,
   completeDialysisSessionScoped,
+  cancelDialysisScheduleScoped,
   createAssessmentScoped,
   createMachineScoped,
   createPlanScoped,
@@ -139,6 +140,64 @@ describeDb('dialysis safety and isolation against PostgreSQL', () => {
     ).rejects.toMatchObject({ code: 'AUTHORIZED_PLAN_REQUIRED' });
     await authorizePlanScoped(a, planId);
   });
+  it('serializes a real scheduled-slot cancellation against session start', async () => {
+    const machine = await createMachineScoped(a, {
+      machineCode: 'RACE-01',
+      bayLabel: 'Synthetic race bay',
+      isolationZone: 'Test zone',
+    });
+    await setMachineStatusScoped(a, machine.id, {
+      status: 'AVAILABLE',
+      note: 'Synthetic readiness',
+      confirmedReady: true,
+    });
+    const scheduled = await scheduleDialysisScoped(a, {
+      patientId,
+      treatmentPlanId: planId,
+      machineId: machine.id,
+      scheduledDate: '2026-11-01',
+      startTime: '08:00',
+      endTime: '09:00',
+      shiftCode: 'test',
+      idempotencyKey: 'race-slot-1',
+    });
+    await expect(
+      cancelDialysisScheduleScoped(b, scheduled.scheduleId, 'Synthetic cancellation'),
+    ).rejects.toMatchObject({ code: 'SCHEDULE_NOT_FOUND' });
+    const results = await Promise.allSettled([
+      cancelDialysisScheduleScoped(a, scheduled.scheduleId, 'Synthetic cancellation'),
+      startDialysisSessionScoped(a, scheduled.scheduleId),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    const schedule = (
+      await pool.query('SELECT status FROM dialysis_schedules WHERE id=$1', [scheduled.scheduleId])
+    ).rows[0];
+    const sessions = (
+      await pool.query('SELECT id FROM dialysis_sessions WHERE schedule_id=$1', [
+        scheduled.scheduleId,
+      ])
+    ).rows;
+    const appointment = (
+      await pool.query('SELECT status FROM appointments WHERE id=$1', [scheduled.appointmentId])
+    ).rows[0];
+    if (schedule.status === 'CANCELLED') {
+      expect(sessions).toHaveLength(0);
+      expect(appointment.status).toBe('Cancelled');
+      expect(
+        (
+          await pool.query(
+            "SELECT event_type,actor_user_id FROM appointment_events WHERE appointment_id=$1 AND event_type='CANCELLED'",
+            [scheduled.appointmentId],
+          )
+        ).rows,
+      ).toEqual([{ event_type: 'CANCELLED', actor_user_id: a.actorUserId }]);
+    } else {
+      expect(schedule.status).toBe('IN_PROGRESS');
+      expect(sessions).toHaveLength(1);
+      expect(appointment.status).not.toBe('Cancelled');
+    }
+  });
   it('creates linked appointments once and prevents overlapping machine allocations', async () => {
     const input = {
       patientId,
@@ -174,8 +233,12 @@ describeDb('dialysis safety and isolation against PostgreSQL', () => {
       code: 'SCHEDULE_NOT_FOUND',
     });
     const workspace = await getDialysisWorkspaceScoped(a);
-    expect(workspace.schedules[0].status).toBe('IN_PROGRESS');
-    expect(workspace.sessions[0].status).not.toBe('COMPLETED');
+    expect(
+      workspace.schedules.find((row: { id: number }) => row.id === results[0].scheduleId)?.status,
+    ).toBe('IN_PROGRESS');
+    expect(workspace.sessions.find((row: { id: number }) => row.id === sessionId)?.status).not.toBe(
+      'COMPLETED',
+    );
   });
   it('atomically consumes unexpired batches once and does not invent costs', async () => {
     const item = await pool.query(

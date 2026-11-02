@@ -1,5 +1,6 @@
 import { DataTable } from '../../ui/layout.tsx';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import type { FacilityService } from '../../../types/index.ts';
 import { Baby } from 'lucide-react';
 
 import {
@@ -23,6 +24,7 @@ import {
 } from './shared.tsx';
 
 export interface DeliveryRegisterSectionProps {
+  facilityId?: number;
   activePregnancies: MaternityPregnancy[];
   inLabour: LabourRecord[];
   labours: LabourRecord[];
@@ -40,6 +42,7 @@ export interface DeliveryRegisterSectionProps {
 }
 
 export const DeliveryRegisterSection: React.FC<DeliveryRegisterSectionProps> = ({
+  facilityId,
   activePregnancies,
   inLabour,
   labours,
@@ -56,6 +59,32 @@ export const DeliveryRegisterSection: React.FC<DeliveryRegisterSectionProps> = (
   setNotice,
 }) => {
   const [babies, setBabies] = useState<BabyDraft[]>([createEmptyBaby()]);
+  const [deliveryServices, setDeliveryServices] = useState<FacilityService[]>([]);
+  const [serviceId, setServiceId] = useState('');
+  const [serviceError, setServiceError] = useState('');
+
+  useEffect(() => {
+    let current = true;
+    setServiceId('');
+    setDeliveryServices([]);
+    setServiceError('');
+    if (facilityId && deliveryOpen) {
+      api
+        .getAvailableFacilityServices(facilityId, { category: 'DELIVERY' })
+        .then((rows) => {
+          if (current) setDeliveryServices(rows);
+        })
+        .catch(() => {
+          if (current)
+            setServiceError(
+              'Delivery services could not be loaded. You can record care without selecting one; billing will require review.',
+            );
+        });
+    }
+    return () => {
+      current = false;
+    };
+  }, [facilityId, deliveryOpen]);
 
   const submitDelivery = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -66,6 +95,7 @@ export const DeliveryRegisterSection: React.FC<DeliveryRegisterSectionProps> = (
         labourRecordId: num(delivery.labourRecordId),
         deliveredAt: delivery.deliveredAt || new Date().toISOString(),
         deliveryMode: delivery.deliveryMode,
+        facilityServiceId: num(serviceId),
         bloodLossMl: num(delivery.bloodLossMl),
         perineum: text(delivery.perineum),
         placentaComplete:
@@ -94,6 +124,7 @@ export const DeliveryRegisterSection: React.FC<DeliveryRegisterSectionProps> = (
       );
       setDeliveryOpen(false);
       setBabies([createEmptyBaby()]);
+      setServiceId('');
 
       await loadAll();
     }, 'The delivery could not be recorded.');
@@ -118,6 +149,28 @@ export const DeliveryRegisterSection: React.FC<DeliveryRegisterSectionProps> = (
           className="space-y-3 rounded-xl border border-hair bg-surface p-4"
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Delivery service (optional)">
+              <select
+                value={serviceId}
+                onChange={(event) => setServiceId(event.target.value)}
+                className={fieldClass}
+              >
+                <option value="">No service selected — billing review required</option>
+                {deliveryServices.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name} ({service.code}) —{' '}
+                    {service.unitPrice === null || service.unitPrice === undefined
+                      ? 'price unavailable'
+                      : `KES ${service.unitPrice}`}
+                  </option>
+                ))}
+              </select>
+              {serviceError && (
+                <p role="alert" className="text-xs text-amber-700">
+                  {serviceError}
+                </p>
+              )}
+            </Field>
             <Field label="Pregnancy *">
               <select
                 required

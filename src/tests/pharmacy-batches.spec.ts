@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { appSource } from './support/schema-source.ts';
 import { api } from '../api/client.ts';
+import { calendarDateInZone } from '../dashboard/timezone.ts';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -31,6 +32,18 @@ function lot(
 }
 
 describe('Pharmacy stock — expiry and FEFO allocation', () => {
+  it('uses the facility-local calendar day at midnight and keeps the expiry day usable', () => {
+    const justBeforeNairobiMidnight = new Date('2026-11-01T20:59:59.000Z');
+    const justAfterNairobiMidnight = new Date('2026-11-01T21:00:00.000Z');
+    const expiring = [lot(1, 'SYNTHETIC', '2026-11-01', 3)];
+    expect(calendarDateInZone('Africa/Nairobi', justBeforeNairobiMidnight)).toBe('2026-11-01');
+    expect(planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justBeforeNairobiMidnight)).shortfall).toBe(0);
+    expect(calendarDateInZone('Africa/Nairobi', justAfterNairobiMidnight)).toBe('2026-11-02');
+    expect(planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justAfterNairobiMidnight)).shortfall).toBe(1);
+    expect(calendarDateInZone('America/Los_Angeles', justAfterNairobiMidnight)).toBe('2026-11-01');
+    expect(planFefo(expiring, 1, calendarDateInZone('America/Los_Angeles', justAfterNairobiMidnight)).shortfall).toBe(0);
+  });
+
   it('1. DATE PARSING', async () => {
     expect(parseIsoDate('2026-10-21') !== null, 'a plain ISO date parses').toBe(true);
     expect(parseIsoDate('2024-02-29') !== null, 'a leap day parses in a leap year').toBe(true);

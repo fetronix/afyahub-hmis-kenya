@@ -5,11 +5,6 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { createSession } from '../../auth/session.service.ts';
 import { chargeForService } from '../../billing/billing.service.ts';
 import {
-  approveMasterTariff,
-  createImagingService,
-  editMasterTariffs,
-} from '../../billing/master-catalogue.service.ts';
-import {
   attributeInvoicePayment,
   finalizeInvoice,
   getFinalizedInvoice,
@@ -283,27 +278,21 @@ describeDb('Finalized invoices and explicit receipt allocation', () => {
     ).rejects.toMatchObject({ code: 'ALREADY_FINALIZED' });
     // A different, completed service must create a separate open invoice, not
     // mutate the finalized one or duplicate its historical consultation line.
-    const target = { id: facility, tenantId: tenant, enabledModules: ['finance', 'radiology'] };
-    const imaging = await createImagingService(target, actor, {
-      description: 'Synthetic reported examination',
-    });
-    const [edited] = await editMasterTariffs(target, actor, [
-      {
-        tariffId: imaging.tariff.id,
-        revision: imaging.tariff.revision,
-        fee: '50.00',
-        unit: 'Study',
-        isActive: true,
-        autoBill: true,
-        effectiveFrom: null,
-        effectiveTo: null,
-      },
-    ]);
-    await approveMasterTariff(target, actor, edited.id, edited.revision, 'synthetic review');
+    const imageCode = `SYN-IMAGE-${suffix}`.toUpperCase();
+    const imageService = (
+      await pool.query(
+        "INSERT INTO facility_services(tenant_id,facility_id,code,name,description,department,category,unit,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic reported examination','Synthetic reported examination','radiology','RADIOLOGY','Study',true,true) RETURNING id",
+        [tenant, facility, imageCode],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,facility_service_id,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic reported examination','radiology','Study','50.00',$4,true,true)",
+      [tenant, facility, imageCode, imageService],
+    );
     const [order] = (
       await pool.query(
-        "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,encounter_id,modality,master_service_id,procedure_name,status,reported_at) VALUES($1,$2,$3,$4,'X-Ray',$5,'Synthetic reported examination','Reported',now()) RETURNING id",
-        [tenant, facility, patient, encounter, imaging.master.id],
+        "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,encounter_id,modality,facility_service_id,procedure_name,status,reported_at) VALUES($1,$2,$3,$4,'X-Ray',$5,'Synthetic reported examination','Reported',now()) RETURNING id",
+        [tenant, facility, patient, encounter, imageService],
       )
     ).rows;
     const charge = await chargeForService(db, {
@@ -311,7 +300,7 @@ describeDb('Finalized invoices and explicit receipt allocation', () => {
       facilityId: facility,
       patientId: patient,
       encounterId: encounter,
-      codes: [imaging.master.code],
+      codes: [imageCode],
       sourceType: 'RADIOLOGY',
       sourceId: order.id,
       itemType: 'Radiology',

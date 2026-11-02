@@ -18,6 +18,7 @@ import {
   boolean,
   numeric,
   uniqueIndex,
+  foreignKey,
 } from 'drizzle-orm/pg-core';
 
 import { facilities, tenants } from './tenancy.ts';
@@ -27,6 +28,7 @@ import { patients } from './patients.ts';
 import { encounters, queues } from './clinical.ts';
 import { sql } from 'drizzle-orm';
 import { masterServices } from './master-services.ts';
+import { facilityServices } from './facility-services.ts';
 import { users } from './auth.ts';
 
 export const labTests = pgTable(
@@ -130,56 +132,72 @@ export const labOrderBatches = pgTable(
    31. LABORATORY ORDERS
    ============================================================ */
 
-export const labOrders = pgTable('lab_orders', {
-  id: serial('id').primaryKey(),
+export const labOrders = pgTable(
+  'lab_orders',
+  {
+    id: serial('id').primaryKey(),
 
-  tenantId: integer('tenant_id')
-    .references(() => tenants.id)
-    .notNull(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
 
-  facilityId: integer('facility_id')
-    .references(() => facilities.id)
-    .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
 
-  patientId: integer('patient_id')
-    .references(() => patients.id)
-    .notNull(),
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
 
-  encounterId: integer('encounter_id').references(() => encounters.id),
+    encounterId: integer('encounter_id').references(() => encounters.id),
 
-  testId: integer('test_id').references(() => labTests.id),
+    testId: integer('test_id').references(() => labTests.id),
 
-  reviewedSpecimenOptionId: integer('reviewed_specimen_option_id').references(
-    () => labTestSpecimenOptions.id,
-  ),
+    facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
 
-  batchId: integer('batch_id').references(() => labOrderBatches.id),
+    // Order-time snapshot for display/audit; never a replacement for the ID.
+    serviceCode: text('service_code'),
 
-  // Explicit exceptions remain non-billable until a future controlled identity/specimen review.
-  clinicalException: boolean('clinical_exception').notNull().default(false),
+    reviewedSpecimenOptionId: integer('reviewed_specimen_option_id').references(
+      () => labTestSpecimenOptions.id,
+    ),
 
-  testName: text('test_name').notNull(),
+    batchId: integer('batch_id').references(() => labOrderBatches.id),
 
-  status: text('status').default('Ordered'),
-  clinicalIndication: text('clinical_indication'),
+    // Explicit exceptions remain non-billable until a future controlled identity/specimen review.
+    clinicalException: boolean('clinical_exception').notNull().default(false),
 
-  specimenType: text('specimen_type'),
+    testName: text('test_name').notNull(),
 
-  priority: text('priority').default('Routine'),
+    status: text('status').default('Ordered'),
+    clinicalIndication: text('clinical_indication'),
 
-  clinicalNotes: text('clinical_notes'),
+    specimenType: text('specimen_type'),
 
-  completedAt: timestamp('completed_at'),
-  completedByUserId: integer('completed_by_user_id').references(() => users.id),
+    priority: text('priority').default('Routine'),
 
-  sampleCollectedAt: timestamp('sample_collected_at'),
+    clinicalNotes: text('clinical_notes'),
 
-  sampleAccessionNumber: text('sample_accession_number'),
+    completedAt: timestamp('completed_at'),
+    completedByUserId: integer('completed_by_user_id').references(() => users.id),
 
-  orderedBy: text('ordered_by'),
+    sampleCollectedAt: timestamp('sample_collected_at'),
 
-  orderedAt: timestamp('ordered_at').defaultNow().notNull(),
-});
+    sampleAccessionNumber: text('sample_accession_number'),
+
+    orderedBy: text('ordered_by'),
+
+    orderedAt: timestamp('ordered_at').defaultNow().notNull(),
+  },
+  (table) => [
+    // Migration 0057 creates this NOT VALID; old conflicts require review.
+    foreignKey({
+      name: 'lab_orders_facility_service_scope_fk',
+      columns: [table.facilityServiceId, table.facilityId, table.tenantId],
+      foreignColumns: [facilityServices.id, facilityServices.facilityId, facilityServices.tenantId],
+    }),
+  ],
+);
 
 /* ============================================================
    32. LABORATORY RESULTS
@@ -238,6 +256,7 @@ export const radiologyOrders = pgTable('radiology_orders', {
   modality: text('modality').notNull(),
 
   masterServiceId: integer('master_service_id').references(() => masterServices.id),
+  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
 
   procedureName: text('procedure_name').notNull(),
 

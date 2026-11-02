@@ -252,6 +252,16 @@ export const Sidebar: React.FC<{ collapsed: boolean; onToggleCollapse: () => voi
     // Facility configuration overrides role permissions.
     if (!isFacilityModuleEnabled(id)) return false;
 
+    // Tariff administrators need a route to their own facility's service page,
+    // even when they have no staff-management permission. The page and APIs
+    // still require the facility-admin role and tariff permissions.
+    if (
+      id === 'configuration' &&
+      authenticatedUser?.roles?.includes('FACILITY_ADMIN') &&
+      (permissions.has('tariffs.read') || permissions.has('tariffs.manage'))
+    )
+      return true;
+
     const required: Partial<Record<ModuleId, string[]>> = {
       dashboard: [
         'patients.read',

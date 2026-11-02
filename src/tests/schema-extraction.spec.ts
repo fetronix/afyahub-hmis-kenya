@@ -31,6 +31,9 @@ describe('schema barrel: pre-extraction contract', () => {
     expect(Object.keys(schema).sort()).toEqual(
       [
         ...publicExports,
+        'appointmentCategories',
+        'appointmentEvents',
+        'appointmentRequests',
         'theatreRooms',
         'theatreBookings',
         'theatreScheduleEvents',
@@ -57,6 +60,13 @@ describe('schema barrel: pre-extraction contract', () => {
         'labOrderBatches',
         'radiologyOrderRequests',
         'encounterCreationRequests',
+        'facilityServices',
+        'inpatientBedBillingPolicies',
+        'inpatientBedBillingWork',
+        'inpatientBedStaySnapshots',
+        'inpatientBedBillingReviews',
+        'inpatientBedOccupancies',
+        'inpatientBedNights',
       ].sort(),
     );
   });

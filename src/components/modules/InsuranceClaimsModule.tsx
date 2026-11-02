@@ -109,7 +109,7 @@ export const InsuranceClaimsModule: React.FC = () => {
             ? api.getEncounters(undefined, currentFacility.id).catch(() => [] as Encounter[])
             : Promise.resolve([] as Encounter[]),
           currentFacility?.id
-            ? api.getServiceTariffs(currentFacility.id).catch(() => [] as ServiceTariff[])
+            ? api.getFacilityTariffs(currentFacility.id).catch(() => [] as ServiceTariff[])
             : Promise.resolve([] as ServiceTariff[]),
           shaEclaimsApi.getConnectionStatus(currentFacility?.id).catch(() => null),
           currentFacility?.id

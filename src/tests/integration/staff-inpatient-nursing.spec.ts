@@ -75,7 +75,7 @@ const ctx: AuthorizationContext = {
   tenantId: 1,
   facilityId: 10,
   roles: ['FACILITY_ADMIN'],
-  permissions: ['inpatient.read', 'inpatient.write', 'nursing.write', 'analytics.read'],
+  permissions: ['inpatient.read', 'inpatient.write', 'inpatient.beds.create', 'billing.update', 'nursing.write', 'analytics.read'],
   isSuperAdmin: false,
 };
 
@@ -253,7 +253,10 @@ describe('Staff Invitations, Ward/Bed Capacity, Nursing Vitals & Operations Repo
     expect(ward.totalBeds).toBe(0);
 
     // Update ward
-    mockDb.state!.queueSelect([{ id: 1, facilityId: 10, code: 'FMW-1', isActive: true }]);
+    mockDb.state!.queueSelect(
+      [{ id: 1, facilityId: 10, code: 'FMW-1', isActive: true }], // scoped ward
+      [{ id: 1, facilityId: 10, code: 'FMW-1', isActive: true }], // row lock
+    );
     mockDb.state!.queueUpdate([{ id: 1, facilityId: 10, name: 'Female Ward A', isActive: true }]);
     const updatedWard = await wardBeds.updateWard(ctx, 1, { name: 'Female Ward A' });
     expect(updatedWard.name).toBe('Female Ward A');
@@ -261,6 +264,7 @@ describe('Staff Invitations, Ward/Bed Capacity, Nursing Vitals & Operations Repo
     // Delete ward refused when admission history exists -> 409 WARD_HAS_HISTORY
     mockDb.state!.queueSelect(
       [{ id: 1, facilityId: 10, code: 'FMW-1', isActive: true }],
+      [{ id: 1, facilityId: 10, code: 'FMW-1', isActive: true }], // row lock
       [{ value: 3 }],
     );
     await expect(wardBeds.deleteWard(ctx, 1)).rejects.toMatchObject({
@@ -271,7 +275,10 @@ describe('Staff Invitations, Ward/Bed Capacity, Nursing Vitals & Operations Repo
     // Delete empty ward succeeds
     mockDb.state!.queueSelect(
       [{ id: 1, facilityId: 10, code: 'FMW-1', isActive: true }],
+      [{ id: 1, facilityId: 10, code: 'FMW-1', isActive: true }], // row lock
       [{ value: 0 }], // admissions
+      [], // transfer history
+      [], // occupancy history
       [{ value: 0 }], // occupied beds
     );
     mockDb.state!.queueDelete([], []);
@@ -300,6 +307,7 @@ describe('Staff Invitations, Ward/Bed Capacity, Nursing Vitals & Operations Repo
       count: 3,
       bedType: 'General',
       dailyCharge: '1500',
+      priceReason: 'Synthetic approved initial price',
     });
     expect(createdBeds.totalBeds).toBe(3);
   });

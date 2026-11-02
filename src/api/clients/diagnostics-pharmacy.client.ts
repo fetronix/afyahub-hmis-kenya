@@ -41,6 +41,12 @@ export const diagnosticsPharmacyClient = {
     encounterId: number;
     patientId: number;
     testIds?: number[];
+    facilityServiceId?: number;
+    orderLines?: Array<{
+      facilityServiceId?: number;
+      investigation?: string;
+      specimenType: string;
+    }>;
     investigations?: string[];
     clinicalException?: boolean;
     testSelections?: Array<{ testId: number; specimenOptionId: number }>;
@@ -227,6 +233,15 @@ export const diagnosticsPharmacyClient = {
     fetchJson<InventoryItem>(`${API_BASE}/inventory`, {
       method: 'POST',
       body: JSON.stringify(item),
+    }),
+
+  updateInventorySellingPrice: (
+    itemId: number,
+    data: { facilityId: number; sellingPrice: string; expectedPriceRevision: number; reason: string },
+  ) =>
+    fetchJson<InventoryItem>(`${API_BASE}/inventory/${itemId}/selling-price`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
 
   checkDispenseRequest: (data: { facilityId: number; idempotencyKey: string }) =>

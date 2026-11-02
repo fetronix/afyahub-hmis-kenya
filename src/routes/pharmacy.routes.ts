@@ -7,10 +7,10 @@
 
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
+import { parseMoneyToCents } from '../billing/settlement.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import * as billing from '../billing/billing.service.ts';
-import { billingServiceKeys } from '../billing/tariff-codes.ts';
-import { codesForFamily } from '../billing/tariff-matching.ts';
 import * as queries from '../db/queries.ts';
 import * as inventory from '../inventory/inventory.service.ts';
 import { chargeSafely } from './shared/charges.ts';
@@ -176,14 +176,49 @@ router.post(
       const context = requireAuthContext(req, res);
       if (!context) return;
       const body = getValidatedBody<Parameters<typeof queries.createInventoryItem>[0]>(req);
+      if (
+        (parseMoneyToCents(body.sellingPrice) ?? 0) > 0 &&
+        !hasAllPermissions(context, ['billing.update'])
+      )
+        return res.status(403).json({
+          error: 'FORBIDDEN',
+          message: 'Facility finance permission is required to set a selling price.',
+        });
       const facilityId = resolveFacilityScope(context, body.facilityId);
       const facility = await queries.getFacilityByIdScoped(context, facilityId);
       if (!facility) return res.status(404).json({ error: 'FACILITY_NOT_FOUND' });
-      const item = await queries.createInventoryItem({ ...body, facilityId: facility.id });
+      const item = await queries.createInventoryItem(
+        { ...body, facilityId: facility.id },
+        { tenantId: facility.tenantId, facilityId: facility.id, userId: context.userId },
+      );
       return res.status(201).json(item);
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
       respondInternalError(res, err, 'POST /api/inventory');
+    }
+  },
+);
+
+router.put(
+  '/api/inventory/:id/selling-price',
+  requirePermission('inventory.manage', 'billing.update'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))
+      return res.status(400).json({ error: 'INVALID_INPUT' });
+    try {
+      const result = await inventory.updateInventorySellingPriceScoped(context, Number(req.params.id), {
+        facilityId: req.body.facilityId,
+        sellingPrice: req.body.sellingPrice,
+        expectedPriceRevision: req.body.expectedPriceRevision,
+        reason: req.body.reason,
+      });
+      return res.json(result);
+    } catch (error: unknown) {
+      if (handleScopeError(error, res)) return;
+      if (handleInventoryError(error, res)) return;
+      respondInternalError(res, error, 'PUT /api/inventory/:id/selling-price');
     }
   },
 );
@@ -246,14 +281,8 @@ router.post(
 
       const dispensation = result.dispensation;
 
-      /*
-       * Price the dispensation from the facility tariff.
-       *
-       * The previous implementation created the invoice in the browser
-       * with a hardcoded KES 15 unit price, which meant pharmacy revenue
-       * never reflected the facility's own rates. Tariffs now win; the
-       * client-provided price is never treated as an approved tariff.
-       */
+      /* The committed dispensing contains the authoritative inventory price.
+       * Billing must not accept a client price or infer a pharmacy tariff. */
       let charge: billing.ChargeResult | null = null;
 
       if (dispensation && dispensation.id && dispensation.patientId) {
@@ -264,11 +293,8 @@ router.post(
           facilityId: dispensation.facilityId ?? req.authContext.facilityId ?? 0,
           patientId: dispensation.patientId,
           encounterId: result.billingContext.encounterId,
-          codes: codesForFamily({
-            family: 'PHARMACY',
-            name: drugName,
-          }),
-          serviceKeys: billingServiceKeys('PHARMACY', [drugName]),
+          codes: [],
+          serviceKeys: [],
           family: 'PHARMACY',
           serviceName: drugName,
           quantity:
@@ -277,8 +303,8 @@ router.post(
           sourceId: dispensation.id,
           itemType: 'Pharmacy',
           description: drugName,
-          // A browser-provided price is not an approved facility tariff.
-          // Without a configured tariff this event remains explicitly unpriced.
+          // Never accept a browser price or substitute a service tariff.
+          // Missing dispensing-time inventory evidence remains unresolved.
           fallbackUnitPrice: null,
           fallbackDescription: drugName,
         });

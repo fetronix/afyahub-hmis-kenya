@@ -2,8 +2,15 @@ import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
-const queries = vi.hoisted(() => ({ createAppointment: vi.fn(), getAppointments: vi.fn() }));
-vi.mock('../../db/queries.ts', () => queries);
+const service = vi.hoisted(() => ({
+  createAppointmentScoped: vi.fn(),
+  listAppointmentsScoped: vi.fn(),
+}));
+vi.mock('../../appointments/appointments.service.ts', () => ({
+  ...service,
+  AppointmentError: class AppointmentError extends Error {},
+  appointmentRequestKey: (key: string | undefined) => key,
+}));
 vi.mock('../../auth/authorization.middleware.ts', () => ({
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
@@ -16,6 +23,17 @@ describe('POST /api/appointments body validation', () => {
   beforeAll(async () => {
     const app = express();
     app.use(express.json());
+    app.use((req: any, _res, next) => {
+      req.authContext = {
+        userId: 7,
+        tenantId: 1,
+        facilityId: 10,
+        roles: [],
+        permissions: [],
+        isSuperAdmin: false,
+      };
+      next();
+    });
     app.use(appointmentsRoutes);
     ({ baseUrl, close } = await startTestServer(app));
   });
@@ -37,11 +55,14 @@ describe('POST /api/appointments body validation', () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('VALIDATION_ERROR');
     }
-    expect(queries.createAppointment).not.toHaveBeenCalled();
+    expect(service.createAppointmentScoped).not.toHaveBeenCalled();
   });
 
   it('forwards normalized known fields and strips client-controlled record metadata', async () => {
-    queries.createAppointment.mockResolvedValue({ id: 4 });
+    service.createAppointmentScoped.mockResolvedValue({
+      appointment: { id: 4 },
+      idempotentReplay: false,
+    });
     const response = await httpJson(baseUrl, 'POST', '/api/appointments', {
       body: {
         tenantId: 1,
@@ -52,11 +73,10 @@ describe('POST /api/appointments body validation', () => {
       },
     });
     expect(response.status).toBe(201);
-    expect(queries.createAppointment).toHaveBeenCalledWith({
-      tenantId: 1,
-      facilityId: 10,
-      patientId: 3,
-      scheduledTime: '2027-05-01T10:00',
-    });
+    expect(service.createAppointmentScoped).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, tenantId: 1, facilityId: 10 }),
+      { tenantId: 1, facilityId: 10, patientId: 3, scheduledTime: '2027-05-01T10:00' },
+      undefined,
+    );
   });
 });

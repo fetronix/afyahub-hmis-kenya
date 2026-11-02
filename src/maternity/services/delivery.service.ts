@@ -43,6 +43,7 @@ export type RecordDeliveryInput = {
   labourRecordId?: number | null;
   deliveredAt: string;
   deliveryMode: string;
+  facilityServiceId?: number | null;
   bloodLossMl?: number;
   perineum?: string;
   placentaComplete?: boolean;
@@ -188,6 +189,56 @@ export async function recordDelivery(context: AuthorizationContext, input: Recor
   const placentaDeliveredAt = optionalTimestamp(input.placentaDeliveredAt, 'Placenta delivered at');
 
   const result = await db.transaction(async (tx) => {
+    // Concurrent submissions must not record two deliveries for the same
+    // pregnancy after both observed its earlier Active state.
+    const [lockedPregnancy] = await tx
+      .select({ status: schema.maternityPregnancies.status })
+      .from(schema.maternityPregnancies)
+      .where(
+        and(
+          eq(schema.maternityPregnancies.id, pregnancy.id),
+          eq(schema.maternityPregnancies.tenantId, context.tenantId!),
+          eq(schema.maternityPregnancies.facilityId, pregnancy.facilityId),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    if (!lockedPregnancy || lockedPregnancy.status !== 'Active')
+      throw new MaternityDomainError(
+        'PREGNANCY_NOT_ACTIVE',
+        'This pregnancy is no longer active.',
+        409,
+      );
+    // This is an optional, explicit clinical selection. Never derive delivery
+    // prices from mode or silently attach a service to a historical record.
+    if (input.facilityServiceId !== undefined && input.facilityServiceId !== null) {
+      if (!Number.isSafeInteger(input.facilityServiceId) || input.facilityServiceId <= 0)
+        throw new MaternityDomainError(
+          'INVALID_DELIVERY_SERVICE',
+          'Choose a valid delivery service.',
+          400,
+        );
+      const [service] = await tx
+        .select({ id: schema.facilityServices.id })
+        .from(schema.facilityServices)
+        .where(
+          and(
+            eq(schema.facilityServices.id, input.facilityServiceId),
+            eq(schema.facilityServices.tenantId, context.tenantId!),
+            eq(schema.facilityServices.facilityId, pregnancy.facilityId),
+            eq(schema.facilityServices.category, 'DELIVERY'),
+            eq(schema.facilityServices.isActive, true),
+          ),
+        )
+        .limit(1)
+        .for('share');
+      if (!service)
+        throw new MaternityDomainError(
+          'INVALID_DELIVERY_SERVICE',
+          'The selected delivery service is unavailable in this facility.',
+          400,
+        );
+    }
     const [delivery] = await tx
       .insert(schema.deliveries)
       .values({
@@ -198,6 +249,7 @@ export async function recordDelivery(context: AuthorizationContext, input: Recor
         patientId: pregnancy.patientId,
         deliveredAt: deliveredAt!,
         deliveryMode: deliveryMode!,
+        facilityServiceId: input.facilityServiceId ?? null,
         bloodLossMl: checks.bloodLossMl.value,
         perineum,
         placentaComplete:

@@ -87,6 +87,7 @@ export interface Encounter {
   practitionerId?: number;
   encounterType: string;
   consultationMasterServiceId?: number | null;
+  consultationFacilityServiceId?: number | null;
   consultationSelectionReviewRequired?: boolean;
   departmentId?: number;
   status: string;
@@ -124,10 +125,44 @@ export interface Appointment {
   departmentId?: number;
   scheduledTime: string;
   durationMinutes: number;
-  appointmentType: string;
+  appointmentType: string | null;
   status: string;
-  reason?: string;
-  notes?: string;
+  reason?: string | null;
+  notes?: string | null;
+  bookingReference?: string | null;
+  categoryId?: number | null;
+  facilityServiceId?: number | null;
+  priority?: string | null;
+  createdByUserId?: number | null;
+  replacementOfId?: number | null;
+  checkinQueueId?: number | null;
+  createdAt: string;
+}
+
+export interface AppointmentCategory {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  code: string;
+  name: string;
+  facilityServiceId: number | null;
+  isActive: boolean;
+}
+
+export interface AppointmentEvent {
+  id: number;
+  appointmentId: number;
+  eventType: string;
+  actorType: string;
+  actorUserId: number;
+  fromStatus: string | null;
+  toStatus: string;
+  reason: string | null;
+  scheduledTimeBefore: string | null;
+  scheduledTimeAfter: string | null;
+  relatedAppointmentId: number | null;
+  queueId: number | null;
+  paymentState: string;
   createdAt: string;
 }
 
@@ -227,7 +262,46 @@ export interface Bed {
   status: string; // Available, Occupied, Maintenance, Cleaning, Reserved
   /** NULL when the facility has not set a charge. Never a guess. */
   dailyCharge: string | null;
+  priceRevision: number;
+  dailyChargeReviewRequired: boolean;
   currentPatientId?: number | null;
+}
+
+export interface BedBillingPolicy {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  cutoffMinutes: number;
+  graceMinutes: number;
+  sameDayRule: 'ONE' | 'ZERO';
+  isActive: boolean | null;
+  effectiveFrom: string | null;
+  effectiveUntil: string | null;
+  revision: number;
+  scope: 'FACILITY';
+  applicability: { code: string; message: string };
+}
+
+export interface BedBillingUnresolvedPage {
+  admissions: Array<{ admissionId: number; admissionStatus: string | null; pendingAttempts: number; stagingPending: boolean }>;
+  hasMore: boolean;
+  offset: number;
+  pageSize: number;
+}
+
+export interface BedOccupancyView {
+  admissionId: number;
+  admission: { patientId: number; encounterId: number | null; admissionDate: string; dischargeDate: string | null; status: string | null; wardId: number; bedId: number };
+  transfers: Array<{ fromWardId: number | null; fromBedId: number | null; toWardId: number; toBedId: number; transferredAt: string }>;
+  asOf: string;
+  staySnapshot: { timezoneSnapshot: string | null; cutoffMinutes: number | null; graceMinutes: number | null; sameDayRule: string | null; policyRevision: number | null; policyId: number | null; policyApplicability: string | null; policyEffectiveFrom: string | null; policyEffectiveUntil: string | null; manualAdmissionTime: boolean; manualDischargeTime: boolean; capturedAt: string } | null;
+  unresolved: { attempts: Array<{ id: number; idempotencySuffix: string | null; reason: string; diagnosisCode: string | null; attempts: number; lastAttemptAt: string }>; hasMore: boolean; stagingPending: boolean } | null;
+  policy: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO' } | null;
+  periods: Array<{ id: number; wardId: number; bedId: number; startedAt: string; endedAt: string | null; dailyRateSnapshot: string | null; priceRevisionSnapshot: number | null; bedNumberSnapshot: string; wardNameSnapshot: string }> ;
+  durationSeconds: number | null;
+  nights: number | null;
+  estimatedAmount: string | null;
+  review: { code: string; message: string } | null;
 }
 
 export interface Admission {
@@ -235,7 +309,9 @@ export interface Admission {
   tenantId: number;
   facilityId: number;
   patientId: number;
-  encounterId?: number;
+  encounterId?: number | null;
+  bedBillingReadiness?: { ready: boolean; issues: Array<{ code: string; message: string }> };
+  facilityServiceId?: number | null;
   wardId: number;
   bedId: number;
   admissionDate: string;
@@ -370,6 +446,26 @@ export interface TheatreCase {
   createdAt: string;
 }
 
+export interface FacilityService {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  code: string;
+  name: string;
+  description: string;
+  department: string;
+  category: string;
+  unit: string;
+  isActive: boolean;
+  autoBill: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tariffId?: number;
+  tariffCode?: string;
+  unitPrice?: string | null;
+  priceStatus?: string;
+}
+
 export interface ClinicalCatalogueService {
   id: number;
   code: string;
@@ -409,7 +505,14 @@ export interface LabOrder {
   facilityId: number;
   patientId: number;
   encounterId?: number;
-  testId?: number;
+  testId?: number | null;
+  facilityServiceId?: number | null;
+  /** Order-time code snapshot, null on older orders without a recorded snapshot. */
+  serviceCode?: string | null;
+  /** Current code of the explicitly linked service, joined within the order's scope. */
+  currentServiceCode?: string | null;
+  /** Catalogue code returned by order creation or idempotent replay. */
+  testCode?: string | null;
   testName: string;
   status: string;
   clinicalIndication?: string | null;
@@ -448,6 +551,7 @@ export interface RadiologyOrder {
   patientId: number;
   encounterId?: number;
   masterServiceId?: number | null;
+  facilityServiceId?: number | null;
   modality: string;
   procedureName: string;
   clinicalIndication?: string;
@@ -475,8 +579,10 @@ export interface InventoryItem {
   reorderLevel: number;
   unitCost: string | null;
   sellingPrice: string | null;
+  priceRevision?: number;
   storeLocation: string;
   isActive: boolean;
+  updatedAt?: string;
 }
 
 export interface Supplier {
@@ -578,6 +684,17 @@ export interface BillingItem {
   serviceUnit?: string | null;
   serviceDate?: string | null;
   servicePerformedAt?: string | null;
+  inventoryItemId?: number | null;
+  prescriptionId?: number | null;
+  bedOccupancyId?: number | null;
+  bedNightId?: number | null;
+  pharmacyStockTracking?: 'FEFO' | 'untracked' | null;
+  pharmacyBatchAllocations?: Array<{
+    batchId: number;
+    batchNumber: string;
+    expiryDate: string;
+    quantity: number;
+  }> | null;
   sourceType?: string | null;
   sourceId?: number | null;
   createdAt?: string;
@@ -610,6 +727,8 @@ export interface ServiceTariff {
   /** Whether automatic billing may use this tariff. */
   autoBill: boolean;
   isActive: boolean;
+  facilityServiceId?: number | null;
+  archivedAt?: string | null;
   masterServiceId?: number | null;
   approvalStatus?: 'DRAFT' | 'APPROVED';
   revision?: number;
@@ -640,6 +759,8 @@ export interface BillingChargeAttempt {
   encounterType: string | null;
   quantity: number;
   reason: string;
+  /** Specific resolver outcome for newer charge evaluations. */
+  diagnosisCode?: string | null;
   detail: string | null;
   codesTried: string[];
   status: 'PENDING' | 'BILLED' | 'DUPLICATE' | 'VOID';

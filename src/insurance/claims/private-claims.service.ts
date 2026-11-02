@@ -879,15 +879,24 @@ export async function preparePrivateInsuranceClaim(params: {
 
   const preparedLines = invoiceItems.map((bi, idx) => {
     const qty = Math.max(1, bi.quantity ?? 1);
-    const tariff =
-      (bi.tariffId ? facilityTariffs.find((t) => t.id === bi.tariffId) : undefined) ??
-      facilityTariffs.find(
-        (t) =>
-          (bi.tariffCode && t.code === bi.tariffCode) ||
-          t.description.toLowerCase() === bi.description.toLowerCase(),
-      );
+    // An inventory-priced medicine has no tariff identity. In particular,
+    // a coincidentally matching description is not evidence of a contracted
+    // payer code or reimbursement rate. Keep it explicitly unmapped until a
+    // product-specific payer mapping workflow exists.
+    const inventoryMedicine = bi.sourceType === 'PHARMACY' && bi.inventoryItemId != null;
+    const occupancyBedNight = bi.sourceType === 'BED_DAY' && bi.bedNightId != null;
+    // A bed's internal number is not a contracted payer code either.
+    const noTariffEvidence = inventoryMedicine || occupancyBedNight;
+    const tariff = noTariffEvidence
+      ? undefined
+      : (bi.tariffId ? facilityTariffs.find((t) => t.id === bi.tariffId) : undefined) ??
+        facilityTariffs.find(
+          (t) =>
+            (bi.tariffCode && t.code === bi.tariffCode) ||
+            t.description.toLowerCase() === bi.description.toLowerCase(),
+        );
 
-    const localCode = bi.tariffCode ?? tariff?.code ?? null;
+    const localCode = noTariffEvidence ? null : (bi.tariffCode ?? tariff?.code ?? null);
     const category = inferPrivateServiceCategory(
       bi.sourceType ?? bi.itemType ?? tariff?.department ?? bi.description,
     );

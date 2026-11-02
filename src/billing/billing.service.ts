@@ -2,15 +2,16 @@
  * JaliCare HMIS
  * Billing Engine
  *
- * Converts clinical activity into invoice line items using the
- * facility's own service tariffs (`facility_service_tariffs`).
+ * Converts completed clinical activity into invoice line items using
+ * facility service tariffs, or the dispensing-time facility inventory
+ * selling-price snapshot for medicines.
  *
  * DESIGN RULES
  * ------------
- * 1. The facility tariff is the ONLY source of price. This module never
- *    invents a price and never hardcodes one.
- * 2. If no tariff matches, the charge is skipped and reported back as
- *    `TARIFF_NOT_CONFIGURED`. The clinical action still succeeds.
+ * 1. The recorded facility tariff or pharmacy inventory snapshot is the
+ *    ONLY source of price. The engine never invents or accepts a caller price.
+ * 2. If required pricing evidence is missing, the charge remains unresolved.
+ *    The clinical action still succeeds.
  *    A missing price must never block patient care.
  * 3. Every engine charge carries an idempotency key backed by a UNIQUE
  *    partial index, so replaying a clinical event cannot double-bill.
@@ -42,7 +43,9 @@ import {
   type PaymentChannel,
 } from './settlement.ts';
 import type { BillingFamily } from './tariff-codes.ts';
-import { resolveMasterCharge } from './master-charge-resolver.ts';
+import { resolveFacilityCharge } from './facility-charge-resolver.ts';
+import { resolvePharmacyInventoryCharge } from './pharmacy-inventory-charge.ts';
+import { resolveBedOccupancyCharge } from './bed-occupancy-charge.ts';
 import { readInvoicePaymentLedger } from './payment-ledger.ts';
 import {
   failureLabel,
@@ -72,7 +75,13 @@ export type BillingSourceType =
   | 'MANUAL';
 
 export type ChargeSkipReason =
-  'TARIFF_NOT_CONFIGURED' | 'DUPLICATE' | 'INVOICE_CLOSED' | 'INVALID_INPUT' | 'ATTEMPT_VOIDED';
+  | 'TARIFF_NOT_CONFIGURED'
+  | 'INVENTORY_PRICE_REVIEW'
+  | 'BED_OCCUPANCY_REVIEW'
+  | 'DUPLICATE'
+  | 'INVOICE_CLOSED'
+  | 'INVALID_INPUT'
+  | 'ATTEMPT_VOIDED';
 
 export interface ChargeRequest {
   tenantId: number;
@@ -152,11 +161,9 @@ export interface ChargeRequest {
   /** Optional display override; the tariff description is used otherwise */
   description?: string;
 
-  /**
-   * Used only when NO tariff matches, for services whose price already
-   * lives on the source record (e.g. a dispensed medication's unit
-   * price). Tariffs still take precedence.
-   */
+  /** Legacy queued value retained for compatibility; automatic pricing
+   * never trusts this caller-supplied value. Medicine prices come from the
+   * immutable dispensing snapshot, and other services use their tariff. */
   fallbackUnitPrice?: string | number | null;
   fallbackDescription?: string;
 
@@ -185,7 +192,7 @@ export interface ChargeResult {
   unit?: string | null;
 
   /** How the tariff was found, when one was. */
-  matchRule?: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE';
+  matchRule?: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE' | 'INVENTORY_SNAPSHOT' | 'BED_OCCUPANCY_SNAPSHOT';
 
   /** Why the charge could not be priced, when it could not. */
   diagnosis?: { code: string; label: string; candidates?: string[] };
@@ -1026,11 +1033,16 @@ async function chargeForServiceInTransaction(
   }
 
   /* Resolve persisted clinical identity first; never price a text guess. */
-  const resolution = await resolveMasterCharge(executor, request);
+  const resolution =
+    request.sourceType === 'PHARMACY'
+      ? await resolvePharmacyInventoryCharge(executor, request)
+      : request.sourceType === 'BED_DAY'
+        ? await resolveBedOccupancyCharge(executor, request)
+        : await resolveFacilityCharge(executor, request);
   if ('failure' in resolution) {
     return {
       charged: false,
-      reason: 'TARIFF_NOT_CONFIGURED',
+      reason: request.sourceType === 'PHARMACY' ? 'INVENTORY_PRICE_REVIEW' : request.sourceType === 'BED_DAY' ? 'BED_OCCUPANCY_REVIEW' : 'TARIFF_NOT_CONFIGURED',
       diagnosis: {
         code: resolution.failure.code,
         label: resolution.failure.code.replaceAll('_', ' '),
@@ -1040,10 +1052,13 @@ async function chargeForServiceInTransaction(
       message: `${resolution.failure.message} The service was not billed; review the unresolved billing queue.`,
     };
   }
-  const { master, tariff } = resolution;
-  const unitPriceCents = parseMoneyToCents(tariff.fee);
-  if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('APPROVED_TARIFF_INVALID');
-  const description = master.description;
+  const pharmacy = 'prescriptionId' in resolution ? resolution : null;
+  const bedNight = 'nightId' in resolution ? resolution : null;
+  const service = 'service' in resolution ? resolution.service : null;
+  const tariff = 'tariff' in resolution ? resolution.tariff : null;
+  const unitPriceCents = parseMoneyToCents(pharmacy?.price ?? bedNight?.price ?? tariff?.fee);
+  if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('FACILITY_PRICE_INVALID');
+  const description = pharmacy?.name ?? bedNight?.name ?? service!.name;
 
   const invoice = await findOrCreateOpenInvoice(executor, request);
 
@@ -1070,18 +1085,24 @@ async function chargeForServiceInTransaction(
     .insert(schema.billingItems)
     .values({
       invoiceId: invoice.id,
-      tariffId: tariff.id,
-      tariffCode: tariff.code,
-      masterServiceId: master.id,
-      serviceCode: master.code,
-      serviceDepartment: master.department,
-      serviceUnit: tariff.unit,
+      tariffId: tariff?.id ?? null,
+      tariffCode: tariff?.code ?? null,
+      facilityServiceId: service?.id ?? null,
+      serviceCode: pharmacy?.code ?? bedNight?.code ?? service!.code,
+      serviceDepartment: pharmacy ? 'pharmacy' : bedNight ? 'inpatient' : service!.department,
+      serviceUnit: pharmacy?.unit ?? bedNight?.unit ?? tariff!.unit,
       serviceDate: resolution.serviceDate,
       servicePerformedAt: resolution.performedAt,
+      inventoryItemId: pharmacy?.itemId ?? null,
+      prescriptionId: pharmacy?.prescriptionId ?? null,
+      bedOccupancyId: bedNight?.occupancyId ?? null,
+      bedNightId: bedNight?.nightId ?? null,
+      pharmacyStockTracking: pharmacy?.stockTracking ?? null,
+      pharmacyBatchAllocations: pharmacy?.allocations ?? null,
       sourceType: request.sourceType,
       sourceId: typeof request.sourceId === 'number' ? request.sourceId : null,
       idempotencyKey,
-      itemType: request.itemType,
+      itemType: pharmacy ? 'Pharmacy' : request.itemType,
       description,
       quantity,
       unitPrice: fromCents(unitPriceCents),
@@ -1121,15 +1142,18 @@ async function chargeForServiceInTransaction(
     invoiceId: invoice.id,
     invoiceNumber: updatedInvoice?.invoiceNumber ?? invoice.invoiceNumber,
     itemId: inserted[0].id,
-    tariffCode: tariff.code,
+    ...(tariff ? { tariffCode: tariff.code } : {}),
     description,
     quantity,
-    unit: tariff.unit,
+    unit: pharmacy?.unit ?? bedNight?.unit ?? tariff!.unit,
     unitPrice: fromCents(unitPriceCents),
     totalAmount: fromCents(totalCents),
-    matchRule: resolution.rule,
-    matchExplanation: `Exact master service ${master.code}, with approved facility tariff ${tariff.code}.`,
-    codesTried: [master.code],
+    matchRule: pharmacy ? 'INVENTORY_SNAPSHOT' : bedNight ? 'BED_OCCUPANCY_SNAPSHOT' : ('rule' in resolution ? resolution.rule : undefined),
+    matchExplanation: pharmacy
+      ? `Facility inventory product ${pharmacy.code}; selling price recorded at dispensing.`
+      : bedNight ? `Bed ${bedNight.bedId}; daily charge recorded for the occupied period.`
+      : `Facility service ${service!.code}, tariff ${tariff!.code}.`,
+    codesTried: [pharmacy?.code ?? bedNight?.code ?? service!.code],
   };
 }
 

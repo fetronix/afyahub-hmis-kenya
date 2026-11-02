@@ -212,34 +212,3 @@ export async function completeQueueTokensForPatient(
       ),
     );
 }
-
-// Appointments
-export async function getAppointments(facilityId?: number, practitionerId?: number) {
-  try {
-    const query = db.select().from(schema.appointments);
-    const conditions = [];
-    if (facilityId) conditions.push(eq(schema.appointments.facilityId, facilityId));
-    if (practitionerId) conditions.push(eq(schema.appointments.practitionerId, practitionerId));
-
-    if (conditions.length > 0) {
-      return await query
-        .where(and(...conditions))
-        .orderBy(desc(schema.appointments.createdAt))
-        .limit(50);
-    }
-    return await query.orderBy(desc(schema.appointments.createdAt)).limit(50);
-  } catch (error) {
-    log.error({ err: error }, 'appointments.fetch_failed');
-    throw new Error('Failed to fetch appointments', { cause: error });
-  }
-}
-
-export async function createAppointment(data: typeof schema.appointments.$inferInsert) {
-  try {
-    const res = await db.insert(schema.appointments).values(data).returning();
-    return res[0];
-  } catch (error) {
-    log.error({ err: error }, 'appointment.create_failed');
-    throw new Error('Failed to create appointment', { cause: error });
-  }
-}

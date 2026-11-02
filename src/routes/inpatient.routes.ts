@@ -27,6 +27,7 @@ import { Router, type Response } from 'express';
 
 import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { requireAnyPermission, requirePermission } from '../auth/authorization.middleware.ts';
+import { ScopeAccessError } from '../auth/scope.service.ts';
 import { eq } from 'drizzle-orm';
 
 import * as billing from '../billing/billing.service.ts';
@@ -36,6 +37,7 @@ import { db } from '../db/index.ts';
 import * as queries from '../db/queries.ts';
 import * as schema from '../db/schema.ts';
 import * as wardBed from '../inpatient/ward-bed.service.ts';
+import * as bedBilling from '../inpatient/bed-billing.service.ts';
 import * as nursing from '../nursing/nursing.service.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { admissionChargeRequest } from '../billing/service-charges.ts';
@@ -43,6 +45,20 @@ import { handleInpatientError } from './shared/errors.ts';
 import { parseOptionalPositiveId, requireAuthContext } from './shared/request.ts';
 
 const router = Router();
+
+/** Read the same validated facility hint used by the inpatient module gate. */
+function requestedAdmissionFacility(req: AuthRequest): number | undefined {
+  const queryId = parseOptionalPositiveId(req.query.facilityId, 'facility ID');
+  const rawBodyId = req.body?.facilityId;
+  const bodyId = typeof rawBodyId === 'number'
+    ? (Number.isSafeInteger(rawBodyId) && rawBodyId > 0 ? rawBodyId : NaN)
+    : parseOptionalPositiveId(rawBodyId, 'facility ID');
+  if ((queryId !== undefined && !Number.isSafeInteger(queryId)) || (bodyId !== undefined && !Number.isSafeInteger(bodyId)))
+    throw new queries.InpatientDomainError('INVALID_INPUT', 'A valid facility ID is required.', 400);
+  if (queryId !== undefined && bodyId !== undefined && queryId !== bodyId)
+    throw new ScopeAccessError('The requested facility identifiers do not match.', 'FACILITY_SCOPE_MISMATCH');
+  return bodyId ?? queryId;
+}
 
 // =========================================================
 // INPATIENT: WARDS, BEDS AND ADMISSIONS
@@ -53,6 +69,56 @@ const router = Router();
 //
 // Occupancy is created only by admitting a patient and released
 // only by discharging one, so bed status cannot forge a bed.
+
+router.get('/inpatient/bed-billing-policy', requirePermission('inpatient.read'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.getBedBillingPolicy(context, parseOptionalPositiveId(req.query.facilityId, 'facility ID'))); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed policy read failed.'); res.status(500).json({ error: 'BED_POLICY_READ_FAILED' }); }
+});
+
+router.put('/inpatient/bed-billing-policy', requirePermission('inpatient.wards.update', 'billing.update'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.setBedBillingPolicy(context, { ...(req.body ?? {}), facilityId: requestedAdmissionFacility(req) })); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed policy update failed.'); res.status(500).json({ error: 'BED_POLICY_UPDATE_FAILED' }); }
+});
+
+router.get('/inpatient/bed-billing-unresolved', requirePermission('inpatient.read'), requireAnyPermission('billing.read', 'billing.create', 'billing.update'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try {
+    const rawOffset = req.query.offset;
+    if (rawOffset !== undefined && (typeof rawOffset !== 'string' || !/^(0|[1-9]\d*)$/.test(rawOffset)))
+      throw new queries.InpatientDomainError('INVALID_INPUT', 'Enter a valid bed billing page offset.', 400);
+    res.json(await bedBilling.getUnresolvedBedBilling(context, parseOptionalPositiveId(req.query.facilityId, 'facility ID'), rawOffset === undefined ? 0 : Number(rawOffset)));
+  } catch (error) {
+    if (handleInpatientError(error, res)) return;
+    console.error('Unresolved bed billing read failed.');
+    res.status(500).json({ error: 'BED_BILLING_UNRESOLVED_READ_FAILED' });
+  }
+});
+
+router.get('/admissions/:id/bed-occupancy', requirePermission('inpatient.read'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.getBedBillingView(context, Number(req.params.id), requestedAdmissionFacility(req))); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed occupancy read failed.'); res.status(500).json({ error: 'BED_OCCUPANCY_READ_FAILED' }); }
+});
+
+router.post('/admissions/:id/bed-billing-encounter', requirePermission('inpatient.read', 'clinical.read', 'billing.update'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.linkBedBillingEncounter(context, Number(req.params.id), req.body?.encounterId, req.body?.reason, req.body?.evidenceReference, req.body?.affirmRelationship, requestedAdmissionFacility(req))); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Admission encounter link failed.'); res.status(500).json({ error: 'BED_ENCOUNTER_LINK_FAILED' }); }
+});
+
+router.post('/admissions/:id/bed-history-review', requirePermission('inpatient.read', 'clinical.read', 'billing.update'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.status(201).json(await bedBilling.reviewBedHistory(context, Number(req.params.id), req.body ?? {}, requestedAdmissionFacility(req))); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed history review failed.'); res.status(500).json({ error: 'BED_HISTORY_REVIEW_FAILED' }); }
+});
+
+router.post('/admissions/:id/bed-billing-retry', requirePermission('inpatient.read', 'billing.create'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await queries.accrueBedDaysScoped(context, Number(req.params.id), undefined, requestedAdmissionFacility(req))); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed billing retry failed.'); res.status(500).json({ error: 'BED_BILLING_RETRY_FAILED' }); }
+});
 
 router.get(
   '/wards',
@@ -308,8 +374,9 @@ router.get(
 
     try {
       const wardId = parseOptionalPositiveId(req.query.wardId, 'ward ID');
+      const facilityId = requestedAdmissionFacility(req);
 
-      const list = await queries.getBedsScoped(context, wardId);
+      const list = await queries.getBedsScoped(context, wardId, facilityId);
 
       res.json(list);
     } catch (err: unknown) {
@@ -384,23 +451,13 @@ router.put(
     if (!context) return;
 
     try {
-      const bed = await queries.releaseBedScoped(context, Number(req.params.id));
-
-      await queries.logAuditEvent(
-        context.tenantId,
-        context.facilityId,
-        String(context.userId),
-        'UPDATE',
-        'Bed',
-        String(bed?.id ?? req.params.id),
-        'Bed released to Available after terminal cleaning',
-      );
+      const bed = await queries.releaseBedScoped(context, Number(req.params.id), requestedAdmissionFacility(req));
 
       res.json(bed);
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 
-      console.error('Bed release error:', err);
+      console.error('Bed release could not be committed.');
       res.status(500).json({
         success: false,
         error: 'BED_RELEASE_FAILED',
@@ -446,7 +503,7 @@ router.post(
     if (!context) return;
 
     try {
-      const admission = await queries.createAdmissionScoped(context, req.body ?? {});
+      const admission = await queries.createAdmissionScoped(context, { ...(req.body ?? {}), facilityId: requestedAdmissionFacility(req) });
 
       const charge = await chargeSafely(admissionChargeRequest(admission));
 
@@ -454,7 +511,7 @@ router.post(
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 
-      console.error('Admission creation error:', err);
+      console.error('Admission could not be committed.');
       res.status(500).json({
         success: false,
         error: 'ADMISSION_CREATION_FAILED',
@@ -472,37 +529,26 @@ router.post(
     if (!context) return;
 
     try {
+      const facilityId = requestedAdmissionFacility(req);
       const admission = await queries.dischargeAdmissionScoped(
         context,
         Number(req.params.id),
-        req.body ?? {},
+        { ...(req.body ?? {}), facilityId },
       );
 
-      /*
-       * Bill the stay through the one bed-day engine.
-       *
-       * Discharge does not have its own billing loop: it closes the
-       * occupancy, then asks the same accrual that transfers and the
-       * nightly job use for the nights. Every night is keyed
-       * BED_DAY:<admissionId>:<date>, so re-running this — or a job
-       * that already billed last week — adds nothing.
-       *
-       * A missing tariff leaves the night unpriced and reported; it
-       * never rolls back the discharge or the bed's Cleaning status.
-       */
-      const accrual = await queries.accrueBedDaysScoped(context, admission.id);
-
-      res.json({
-        ...admission,
-        billing: {
-          nights: accrual.nights,
-          bedDays: accrual.charges,
-        },
-      });
+      // Clinical discharge and a durable billing-work marker have committed.
+      // A staging or invoice failure must not be reported as a failed discharge.
+      try {
+        const accrual = await queries.accrueBedDaysScoped(context, admission.id, undefined, facilityId);
+        res.json({ ...admission, billing: { nights: accrual.nights, bedDays: accrual.charges, review: accrual.review } });
+      } catch {
+        console.error('Bed billing after committed discharge needs review.');
+        res.json({ ...admission, billing: { nights: null, bedDays: [], review: { code: 'BED_BILLING_STATUS_UNKNOWN', message: 'Discharge succeeded and the bed is in Cleaning; billing status could not be confirmed. Inspect the admission’s pending bed billing work before retrying.' } } });
+      }
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 
-      console.error('Discharge error:', err);
+      console.error('Discharge could not be committed.');
       res.status(500).json({
         success: false,
         error: 'DISCHARGE_FAILED',
@@ -524,10 +570,12 @@ router.post(
     if (!context) return;
 
     try {
+      const facilityId = requestedAdmissionFacility(req);
       const { admission, transfer } = await queries.transferAdmissionScoped(
         context,
         Number(req.params.id),
         {
+          facilityId,
           toWardId: req.body?.toWardId,
           toBedId: req.body?.toBedId,
           reason: req.body?.reason,
@@ -538,13 +586,15 @@ router.post(
         },
       );
 
-      /*
-       * Close the departing ward's bed-day segment using the OLD ward
-       * rate, so a stay that moves between wards is not re-priced.
-       */
-      const accrual = await queries.accrueBedDaysScoped(context, admission.id);
-
-      res.json({ admission, transfer, billing: accrual });
+      // Transfer has committed; the estimate is not a charge and a read
+      // failure must not make a completed transfer appear to have failed.
+      try {
+        const accrual = await queries.accrueBedDaysScoped(context, admission.id, undefined, facilityId);
+        res.json({ admission, transfer, billing: accrual });
+      } catch {
+        console.error('Bed estimate after committed transfer unavailable.');
+        res.json({ admission, transfer, billing: { estimateOnly: true, nights: null, charges: [], review: { code: 'BED_ESTIMATE_UNAVAILABLE', message: 'Transfer succeeded; the estimate is unavailable.' } } });
+      }
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 
@@ -584,9 +634,8 @@ router.get(
 /**
  * Accrue bed-day charges on demand.
  *
- * Called by discharge and transfer. Exposed so a scheduled job can
- * bill long stays without waiting for discharge — it is idempotent,
- * so running it repeatedly bills each night once.
+ * Active admissions return an estimate only. After discharge the saved
+ * occupancy evidence is staged and billed with idempotent night identities.
  */
 router.post(
   '/admissions/:id/accrue-bed-days',
@@ -601,6 +650,7 @@ router.post(
         context,
         Number(req.params.id),
         typeof req.body?.untilDate === 'string' ? req.body.untilDate : undefined,
+        requestedAdmissionFacility(req),
       );
 
       res.json(accrual);

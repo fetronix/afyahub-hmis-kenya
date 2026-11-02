@@ -29,13 +29,28 @@ export interface InvoiceSnapshot {
   };
   items: Array<{
     id: number;
-    tariffId: number;
+    /** Null for verified inventory medicine or bed-occupancy prices; old snapshots retain tariffs. */
+    tariffId: number | null;
     code: string;
     description: string;
     quantity: number;
     unitPrice: string;
     total: string;
     sourceType: string | null;
+    priceSource?: 'INVENTORY_SNAPSHOT' | 'BED_OCCUPANCY_SNAPSHOT';
+    admissionId?: number;
+    bedOccupancyId?: number;
+    bedNightId?: number;
+    inventoryItemId?: number;
+    prescriptionId?: number;
+    dispensationId?: number;
+    stockTracking?: 'FEFO' | 'untracked';
+    batchAllocations?: Array<{
+      batchId: number;
+      batchNumber: string;
+      expiryDate: string;
+      quantity: number;
+    }>;
   }>;
   amounts: {
     itemizedTotal: string;

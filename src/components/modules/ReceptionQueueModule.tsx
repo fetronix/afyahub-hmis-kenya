@@ -2,16 +2,17 @@ import { FormField, PrimaryButton, SecondaryButton } from '../ui/controls.tsx';
 import { ErrorState, StatusBadge } from '../ui/feedback.tsx';
 import { Modal } from '../ui/overlays.tsx';
 import { DataTable, FilterToolbar, PageHeader } from '../ui/layout.tsx';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AppointmentDiary } from './AppointmentDiary.tsx';
+import { AppointmentCategoryManager } from './AppointmentCategoryManager.tsx';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
-import { QueueItem, Appointment, Patient } from '../../types/index.ts';
+import type { QueueItem, AppointmentCategory, Patient } from '../../types/index.ts';
 import {
   Users,
   Clock,
   CheckCircle2,
-  Calendar,
   AlertCircle,
   PhoneCall,
   ArrowRight,
@@ -21,9 +22,17 @@ import {
 } from 'lucide-react';
 
 export const ReceptionQueueModule: React.FC = () => {
+  const { currentFacility, currentTenant } = useHmis();
+  const key = `${currentTenant?.id ?? 'none'}:${currentFacility?.id ?? 'none'}:${currentFacility?.timezone ?? currentTenant?.timezone ?? 'none'}`;
+  return <ReceptionQueueWorkspace key={key} />;
+};
+
+const ReceptionQueueWorkspace: React.FC = () => {
   const {
     currentTenant,
     currentFacility,
+    authenticatedUser,
+    setActiveModule,
     setSelectedPatient,
     setIsJourneyModalOpen,
     showToast,
@@ -31,8 +40,27 @@ export const ReceptionQueueModule: React.FC = () => {
     triggerRefresh,
   } = useHmis();
   const [queues, setQueues] = useState<QueueItem[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [loadedFacilityId, setLoadedFacilityId] = useState<number | undefined>();
+  const [configFacilityId, setConfigFacilityId] = useState<number | undefined>();
+  const [bookingPatients, setBookingPatients] = useState<Patient[]>([]);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patientSearchError, setPatientSearchError] = useState('');
+  const [categories, setCategories] = useState<AppointmentCategory[]>([]);
+  const [resources, setResources] = useState<{
+    departments: Array<{ id: number; name: string }>;
+    practitioners: Array<{ id: number; name: string; departmentId: number | null }>;
+  }>({ departments: [], practitioners: [] });
+  const [configurationError, setConfigurationError] = useState('');
+  const [savingAppointment, setSavingAppointment] = useState(false);
+  const [bookingError, setBookingError] = useState('');
+  const [searchingPatients, setSearchingPatients] = useState(false);
+  const bookingKey = useRef('');
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [selectedStation, setSelectedStation] = useState<string>('All');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -51,17 +79,28 @@ export const ReceptionQueueModule: React.FC = () => {
     patientId: '',
     scheduledTime: '',
     durationMinutes: 30,
-    appointmentType: 'Specialist Consultation',
+    appointmentType: '',
+    categoryId: '',
+    departmentId: '',
+    practitionerId: '',
+    priority: '',
     reason: '',
     notes: '',
   });
+  // Never render a previous facility's cached records while the new scope loads.
+  const visiblePatients = loadedFacilityId === currentFacility?.id ? patients : [];
+  const visibleQueues = loadedFacilityId === currentFacility?.id ? queues : [];
+  const visibleCategories = configFacilityId === currentFacility?.id ? categories : [];
+  const visibleResources =
+    configFacilityId === currentFacility?.id ? resources : { departments: [], practitioners: [] };
+  const isLoading =
+    loading || (!!currentFacility?.id && loadedFacilityId !== currentFacility.id && !loadError);
 
   useEffect(() => {
     let active = true;
     async function loadData() {
       if (!currentFacility?.id || !currentTenant?.id) {
         setQueues([]);
-        setAppointments([]);
         setPatients([]);
         setLoadError('Select an authorized facility to load reception.');
         setLoading(false);
@@ -70,25 +109,17 @@ export const ReceptionQueueModule: React.FC = () => {
       setLoading(true);
       setLoadError('');
       try {
-        const [qList, aList, pList] = await Promise.all([
+        const [qList, pList] = await Promise.all([
           api.getQueues(currentFacility.id, selectedStation),
-          api.getAppointments(currentFacility.id),
           api.getPatients(currentTenant.id, currentFacility.id),
         ]);
         if (!active) return;
         setQueues(qList);
-        setAppointments(aList);
         setPatients(pList);
-        setApptForm((prev) => ({
-          ...prev,
-          patientId: pList.some((patient) => String(patient.id) === prev.patientId)
-            ? prev.patientId
-            : '',
-        }));
+        setLoadedFacilityId(currentFacility.id);
       } catch (err) {
         if (!active) return;
         setQueues([]);
-        setAppointments([]);
         setPatients([]);
         setLoadError(err instanceof Error ? err.message : 'Unable to load reception records.');
       } finally {
@@ -100,6 +131,72 @@ export const ReceptionQueueModule: React.FC = () => {
       active = false;
     };
   }, [currentTenant?.id, currentFacility?.id, selectedStation, refreshKey, reloadAttempt]);
+
+  useEffect(() => {
+    let active = true;
+    if (!currentFacility?.id) {
+      setCategories([]);
+      setResources({ departments: [], practitioners: [] });
+      setConfigFacilityId(undefined);
+      return;
+    }
+    const selectedFacility = currentFacility.id;
+    setConfigurationError('');
+    Promise.all([
+      api.getAppointmentCategories(selectedFacility),
+      api.getAppointmentResources(selectedFacility),
+    ])
+      .then(([list, options]) => {
+        if (active) {
+          setCategories(list);
+          setResources(options);
+          setConfigFacilityId(selectedFacility);
+        }
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setCategories([]);
+          setResources({ departments: [], practitioners: [] });
+          setConfigurationError(
+            err instanceof Error ? err.message : 'Booking configuration unavailable.',
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentFacility?.id, refreshKey, reloadAttempt]);
+
+  const openAppointmentModal = () => {
+    bookingKey.current = crypto.randomUUID();
+    setBookingPatients(visiblePatients);
+    setPatientSearch('');
+    setPatientSearchError('');
+    setBookingError('');
+    setIsApptModalOpen(true);
+  };
+  const searchPatients = async () => {
+    if (!currentFacility?.id || !currentTenant?.id) return;
+    const selectedFacility = currentFacility.id;
+    setSearchingPatients(true);
+    setPatientSearchError('');
+    try {
+      const found = await api.getPatients(currentTenant.id, selectedFacility, patientSearch);
+      if (!mountedRef.current) return;
+      setBookingPatients(found);
+      setApptForm((old) => ({
+        ...old,
+        patientId: found.some((p) => String(p.id) === old.patientId) ? old.patientId : '',
+      }));
+    } catch (error: unknown) {
+      if (mountedRef.current)
+        setPatientSearchError(
+          error instanceof Error ? error.message : 'Patient search unavailable.',
+        );
+    } finally {
+      if (mountedRef.current) setSearchingPatients(false);
+    }
+  };
 
   const updateStatus = async (id: number, status: string) => {
     try {
@@ -120,37 +217,51 @@ export const ReceptionQueueModule: React.FC = () => {
       return;
     }
 
+    if (savingAppointment) return;
+    setSavingAppointment(true);
+    setBookingError('');
     try {
-      await api.createAppointment({
-        tenantId: currentFacility?.tenantId,
-        facilityId: currentFacility.id,
-        patientId: Number(apptForm.patientId),
-        scheduledTime: apptForm.scheduledTime,
-        durationMinutes: Number(apptForm.durationMinutes),
-        appointmentType: apptForm.appointmentType,
-        reason: apptForm.reason,
-        notes: apptForm.notes,
-        status: 'Scheduled',
+      await api.createAppointment(
+        {
+          tenantId: currentFacility.tenantId,
+          facilityId: currentFacility.id,
+          patientId: Number(apptForm.patientId),
+          scheduledTime: apptForm.scheduledTime,
+          durationMinutes: Number(apptForm.durationMinutes),
+          appointmentType: apptForm.appointmentType,
+          ...(apptForm.categoryId ? { categoryId: Number(apptForm.categoryId) } : {}),
+          ...(apptForm.departmentId ? { departmentId: Number(apptForm.departmentId) } : {}),
+          ...(apptForm.practitionerId ? { practitionerId: Number(apptForm.practitionerId) } : {}),
+          ...(apptForm.priority ? { priority: apptForm.priority } : {}),
+          reason: apptForm.reason,
+          notes: apptForm.notes,
+          status: 'Scheduled',
+        },
+        bookingKey.current,
+      );
+      if (!mountedRef.current) return;
+      showToast('Appointment saved. No payment or confirmation message was processed.', {
+        tone: 'success',
       });
-      showToast('Appointment booked successfully!');
       setIsApptModalOpen(false);
       setApptForm({
         patientId: '',
         scheduledTime: '',
         durationMinutes: 30,
-        appointmentType: 'Specialist Consultation',
+        appointmentType: '',
+        categoryId: '',
+        departmentId: '',
+        practitionerId: '',
+        priority: '',
         reason: '',
         notes: '',
       });
       triggerRefresh();
-    } catch (err: any) {
-      showToast(`Booking failed: ${err.message}`);
+    } catch (err: unknown) {
+      if (mountedRef.current) setBookingError(err instanceof Error ? err.message : 'Booking failed.');
+    } finally {
+      if (mountedRef.current) setSavingAppointment(false);
     }
-  };
-
-  const getPatientName = (patientId: number) => {
-    const p = patients.find((x) => x.id === patientId);
-    return p ? `${p.firstName} ${p.lastName}` : `Patient #${patientId}`;
   };
 
   const stations = ['All', 'Triage', 'Doctor', 'Laboratory', 'Radiology', 'Pharmacy', 'Billing'];
@@ -168,7 +279,7 @@ export const ReceptionQueueModule: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <PrimaryButton onClick={() => setIsApptModalOpen(true)}>
+          <PrimaryButton onClick={openAppointmentModal}>
             <Plus className="w-3.5 h-3.5" />
             <span>Book Appointment</span>
           </PrimaryButton>
@@ -181,6 +292,25 @@ export const ReceptionQueueModule: React.FC = () => {
           onRetry={() => setReloadAttempt((attempt) => attempt + 1)}
         />
       )}
+
+      {configurationError && (
+        <ErrorState
+          message={`Appointment configuration unavailable: ${configurationError}`}
+          onRetry={() => setReloadAttempt((attempt) => attempt + 1)}
+        />
+      )}
+      {currentFacility?.id &&
+        configFacilityId === currentFacility.id &&
+        !configurationError &&
+        (authenticatedUser?.isSuperAdmin ||
+          authenticatedUser?.permissions?.includes('appointments.categories.manage')) && (
+          <AppointmentCategoryManager
+            key={currentFacility.id}
+            facilityId={currentFacility.id}
+            categories={visibleCategories}
+            refresh={triggerRefresh}
+          />
+        )}
 
       {/* Queue Filter Segmented Controls */}
       <FilterToolbar>
@@ -211,7 +341,7 @@ export const ReceptionQueueModule: React.FC = () => {
               <Users className="w-4 h-4 text-blue-700" />
               <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
                 Active Queue Tokens (
-                {loading ? 'Loading…' : loadError ? 'Unavailable' : queues.length})
+                {isLoading ? 'Loading…' : loadError ? 'Unavailable' : visibleQueues.length})
               </h2>
             </div>
             <span className="text-2xs text-slate-400 font-mono">Live Calling Console</span>
@@ -231,7 +361,7 @@ export const ReceptionQueueModule: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
-                {loading ? (
+                {isLoading ? (
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-slate-400 font-sans">
                       Loading queue status...
@@ -243,15 +373,15 @@ export const ReceptionQueueModule: React.FC = () => {
                       Queue data unavailable.
                     </td>
                   </tr>
-                ) : queues.length === 0 ? (
+                ) : visibleQueues.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-slate-400 font-sans">
                       No waiting tokens currently in {selectedStation} queue.
                     </td>
                   </tr>
                 ) : (
-                  queues.map((q) => {
-                    const patient = patients.find((p) => p.id === q.patientId);
+                  visibleQueues.map((q) => {
+                    const patient = visiblePatients.find((p) => p.id === q.patientId);
 
                     return (
                       <tr key={q.id} className="hover:bg-slate-50/70">
@@ -358,91 +488,19 @@ export const ReceptionQueueModule: React.FC = () => {
           </div>
         </div>
 
-        {/* Scheduled Appointments (1 col) */}
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs flex flex-col">
-          <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-orange-600" />
-              <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-                Upcoming Appointments (
-                {loading ? 'Loading…' : loadError ? 'Unavailable' : appointments.length})
-              </h2>
-            </div>
-            <button
-              onClick={() => setIsApptModalOpen(true)}
-              className="text-2xs text-blue-700 font-semibold hover:text-blue-900"
-            >
-              + New
-            </button>
-          </div>
-
-          <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-            {loading ? (
-              <p role="status" className="py-4 text-center text-xs text-muted">
-                Loading appointments…
-              </p>
-            ) : loadError ? (
-              <p className="py-4 text-center text-xs text-rose-700">
-                Appointment data unavailable.
-              </p>
-            ) : appointments.length === 0 ? (
-              <div className="text-center py-10 text-xs text-slate-400">
-                No scheduled clinic appointments.
-              </div>
-            ) : (
-              appointments.map((appt) => (
-                <div
-                  key={appt.id}
-                  className="p-3 border border-slate-200 rounded-lg bg-slate-50/50 space-y-1.5 text-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-900">
-                      {getPatientName(appt.patientId)}
-                    </span>
-                    <span className="font-mono text-2xs text-blue-900 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
-                      {appt.scheduledTime}
-                    </span>
-                  </div>
-                  <div className="text-2xs text-slate-600">
-                    Type: <strong className="text-slate-800">{appt.appointmentType}</strong> (
-                    {appt.durationMinutes} mins)
-                  </div>
-                  {appt.reason && (
-                    <div className="text-2xs text-slate-500 italic">"{appt.reason}"</div>
-                  )}
-                  <div className="pt-2 flex items-center justify-between border-t border-slate-200/60">
-                    <span className="text-2xs text-slate-400">Status: {appt.status}</span>
-                    <button
-                      onClick={() => {
-                        const pat = patients.find((p) => p.id === appt.patientId);
-                        if (pat) {
-                          api
-                            .createQueueItem({
-                              tenantId: pat.tenantId,
-                              facilityId: pat.facilityId,
-                              patientId: pat.id,
-                              queueType: 'Doctor',
-                              tokenNumber: `APPT-${Math.floor(100 + Math.random() * 900)}`,
-                              priority: 'Priority',
-                              status: 'Waiting',
-                              waitingTimeMinutes: 0,
-                            })
-                            .then(() => {
-                              showToast(`Patient checked in and queued for doctor!`);
-                              triggerRefresh();
-                            });
-                        }
-                      }}
-                      className="px-2 py-0.5 text-2xs font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
-                    >
-                      Check-In Patient
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <AppointmentDiary
+          key={currentFacility?.id ?? 'none'}
+          facilityId={currentFacility?.id}
+          timezone={currentFacility?.timezone ?? currentTenant?.timezone ?? null}
+          patients={visiblePatients}
+          categories={visibleCategories}
+          practitioners={visibleResources.practitioners}
+          refreshKey={refreshKey}
+          triggerRefresh={triggerRefresh}
+          permissions={authenticatedUser?.permissions ?? []}
+          isSuperAdmin={authenticatedUser?.isSuperAdmin}
+          showToast={showToast}
+        />
       </div>
 
       {portalPatient ? (
@@ -458,22 +516,69 @@ export const ReceptionQueueModule: React.FC = () => {
       {/* Appointment Booking Modal */}
       <Modal
         open={isApptModalOpen}
-        onClose={() => setIsApptModalOpen(false)}
+        onClose={() => {
+          if (!savingAppointment) setIsApptModalOpen(false);
+        }}
+        closeOnBackdrop={!savingAppointment}
+        closeOnEscape={!savingAppointment}
         title="Schedule Patient Clinic Appointment"
-
         actions={
           <>
-            <SecondaryButton onClick={() => setIsApptModalOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton type="submit" form="appointment-form">
-              Confirm Booking
+            <SecondaryButton disabled={savingAppointment} onClick={() => setIsApptModalOpen(false)}>
+              Cancel
+            </SecondaryButton>
+            <PrimaryButton type="submit" form="appointment-form" disabled={savingAppointment}>
+              {savingAppointment ? 'Saving…' : 'Confirm Booking'}
             </PrimaryButton>
           </>
         }
       >
         <p className="mb-4 text-xs text-muted">
-          Book clinic slots for follow-up or specialty consultations.
+          This saves an appointment only. Verify availability separately; no treatment, charge,
+          payment or message is recorded.
         </p>
+        {configurationError && (
+          <p role="alert" className="mb-3 text-xs text-rose-700">
+            Booking categories and staff options unavailable: {configurationError}
+          </p>
+        )}
         <form id="appointment-form" onSubmit={handleCreateAppointment} className="space-y-4">
+          <FormField
+            label="Search registered patients"
+            htmlFor="appointment-patient-search"
+            hint="Search within this facility, then select the matching patient. Search returns up to 50 results."
+          >
+            <div className="flex gap-2">
+              <input
+                id="appointment-patient-search"
+                value={patientSearch}
+                onChange={(e) => setPatientSearch(e.target.value)}
+                className="w-full border rounded px-2 py-1"
+              />
+              <SecondaryButton
+                type="button"
+                disabled={searchingPatients}
+                onClick={() => void searchPatients()}
+              >
+                {searchingPatients ? 'Searching…' : 'Search'}
+              </SecondaryButton>
+            </div>
+          </FormField>
+          {patientSearchError && (
+            <p role="alert" className="text-rose-700">
+              {patientSearchError}
+            </p>
+          )}
+          <button
+            type="button"
+            className="text-xs text-blue-800 underline"
+            onClick={() => {
+              setIsApptModalOpen(false);
+              setActiveModule('registration');
+            }}
+          >
+            Register a new patient
+          </button>
           <FormField label="Select patient *" htmlFor="appointment-patient">
             <select
               id="appointment-patient"
@@ -483,9 +588,10 @@ export const ReceptionQueueModule: React.FC = () => {
               className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
             >
               <option value="">Select a patient</option>
-              {patients.map((p) => (
+              {bookingPatients.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.firstName} {p.lastName} ({p.mrn} · {p.phone})
+                  {p.firstName} {p.lastName} ({p.mrn}
+                  {p.phone ? ` · ${p.phone}` : ''})
                 </option>
               ))}
             </select>
@@ -521,14 +627,103 @@ export const ReceptionQueueModule: React.FC = () => {
             </FormField>
           </div>
 
-          <FormField label="Appointment type" htmlFor="appointment-type">
+          <FormField
+            label="Facility category"
+            htmlFor="appointment-category"
+            hint="Optional; configured categories may reference an existing facility service, but booking does not charge it."
+          >
+            <select
+              id="appointment-category"
+              value={apptForm.categoryId}
+              onChange={(e) => setApptForm({ ...apptForm, categoryId: e.target.value })}
+              className="w-full px-3 py-2 border rounded"
+            >
+              <option value="">Use the appointment type below</option>
+              {visibleCategories
+                .filter((c) => c.isActive)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
+          </FormField>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Department" htmlFor="appointment-department">
+              <select
+                id="appointment-department"
+                value={apptForm.departmentId}
+                onChange={(e) => setApptForm({ ...apptForm, departmentId: e.target.value })}
+                className="w-full border rounded p-2"
+              >
+                <option value="">Not assigned</option>
+                {visibleResources.departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField
+              label="Practitioner"
+              htmlFor="appointment-practitioner"
+              hint="Active in the facility; verify credentials separately."
+            >
+              <select
+                id="appointment-practitioner"
+                value={apptForm.practitionerId}
+                onChange={(e) => setApptForm({ ...apptForm, practitionerId: e.target.value })}
+                className="w-full border rounded p-2"
+              >
+                <option value="">Not assigned</option>
+                {visibleResources.practitioners.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+          <FormField label="Priority" htmlFor="appointment-priority">
+            <select
+              id="appointment-priority"
+              value={apptForm.priority}
+              onChange={(e) => setApptForm({ ...apptForm, priority: e.target.value })}
+              className="w-full border rounded p-2"
+            >
+              <option value="">Not assigned</option>
+              <option>Normal</option>
+              <option>Priority</option>
+              <option>Urgent</option>
+            </select>
+          </FormField>
+          <FormField
+            label="Appointment type"
+            htmlFor="appointment-type"
+            hint={
+              apptForm.categoryId
+                ? 'The selected facility category will be saved instead.'
+                : 'Choose a type if no facility category is selected.'
+            }
+          >
             <select
               id="appointment-type"
+              required={!apptForm.categoryId}
               value={apptForm.appointmentType}
               onChange={(e) => setApptForm({ ...apptForm, appointmentType: e.target.value })}
               className="w-full px-3 py-2 border border-slate-200 rounded-md"
             >
+              <option value="">Select a type</option>
               <option value="Specialist Consultation">Specialist Consultation</option>
+              <option value="OPD">OPD</option>
+              <option value="Laboratory">Laboratory</option>
+              <option value="Imaging">Imaging</option>
+              <option value="Maternity / ANC">Maternity / ANC</option>
+              <option value="Postnatal / MCH">Postnatal / MCH</option>
+              <option value="Procedure">Procedure</option>
+              <option value="Dialysis consultation">
+                Dialysis consultation (does not reserve a machine)
+              </option>
               <option value="Routine Chronic Follow-up">
                 Routine Chronic Follow-up (Hypertension/Diabetes)
               </option>
@@ -549,6 +744,20 @@ export const ReceptionQueueModule: React.FC = () => {
               className="w-full px-3 py-2 border border-slate-200 rounded-md"
             />
           </FormField>
+          <FormField label="Notes" htmlFor="appointment-notes">
+            <textarea
+              id="appointment-notes"
+              maxLength={10000}
+              value={apptForm.notes}
+              onChange={(e) => setApptForm({ ...apptForm, notes: e.target.value })}
+              className="w-full border rounded p-2"
+            />
+          </FormField>
+          {bookingError && (
+            <p role="alert" className="text-rose-700">
+              {bookingError}
+            </p>
+          )}
         </form>
       </Modal>
     </div>

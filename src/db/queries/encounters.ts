@@ -151,51 +151,55 @@ export class ConsultationSelectionError extends Error {
   }
 }
 
-const CONSULTATION_SOURCES: Record<string, string> = {
-  'ENCOUNTER:OUTPATIENT': 'Outpatient',
-  'ENCOUNTER:FOLLOW_UP': 'Follow Up',
-  'ENCOUNTER:EMERGENCY': 'Emergency',
-};
-
-async function consultationInFacility(facility: { id: number; tenantId: number }, id: unknown) {
+type EncounterExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+async function consultationInFacility(
+  facility: { id: number; tenantId: number },
+  id: unknown,
+  executor: EncounterExecutor = db,
+) {
   if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)
     throw new ConsultationSelectionError(
       'INVALID_CONSULTATION',
-      'Choose a valid consultation service.',
+      'Choose a valid facility consultation.',
     );
-  const [row] = await db
-    .select({ id: schema.masterServices.id, clinicalSource: schema.masterServices.clinicalSource })
-    .from(schema.masterServices)
-    .innerJoin(
-      schema.facilityServiceTariffs,
-      and(
-        eq(schema.facilityServiceTariffs.masterServiceId, schema.masterServices.id),
-        eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
-        eq(schema.facilityServiceTariffs.facilityId, facility.id),
-      ),
-    )
+  const [row] = await executor
+    .select({ id: schema.facilityServices.id })
+    .from(schema.facilityServices)
     .where(
       and(
-        eq(schema.masterServices.id, id),
-        eq(schema.masterServices.billingFamily, 'CONSULTATION'),
-        eq(schema.masterServices.isActive, true),
-        or(
-          isNull(schema.masterServices.tenantId),
-          eq(schema.masterServices.tenantId, facility.tenantId),
-        ),
-        or(
-          isNull(schema.masterServices.originFacilityId),
-          eq(schema.masterServices.originFacilityId, facility.id),
-        ),
+        eq(schema.facilityServices.id, id),
+        eq(schema.facilityServices.tenantId, facility.tenantId),
+        eq(schema.facilityServices.facilityId, facility.id),
+        eq(schema.facilityServices.category, 'CONSULTATION'),
+        eq(schema.facilityServices.isActive, true),
       ),
     )
     .limit(1);
-  if (!row || !CONSULTATION_SOURCES[row.clinicalSource])
+  if (!row)
     throw new ConsultationSelectionError(
       'CONSULTATION_UNAVAILABLE',
-      'The consultation is not available for this facility.',
+      'The consultation is not active in this facility.',
     );
-  return { id: row.id, encounterType: CONSULTATION_SOURCES[row.clinicalSource] };
+  return row;
+}
+
+async function soleConsultation(
+  facility: { id: number; tenantId: number },
+  executor: EncounterExecutor = db,
+) {
+  const rows = await executor
+    .select({ id: schema.facilityServices.id })
+    .from(schema.facilityServices)
+    .where(
+      and(
+        eq(schema.facilityServices.tenantId, facility.tenantId),
+        eq(schema.facilityServices.facilityId, facility.id),
+        eq(schema.facilityServices.category, 'CONSULTATION'),
+        eq(schema.facilityServices.isActive, true),
+      ),
+    )
+    .limit(2);
+  return rows.length === 1 ? rows[0] : null;
 }
 
 export async function createEncounterScoped(
@@ -217,16 +221,15 @@ export async function createEncounterScoped(
 
   const safeData = pickEncounterWritableFields(data as Record<string, unknown>);
 
-  await validateEncounterReferences(facility.id, facility.tenantId, safeData);
-
-  const selection =
-    data.consultationMasterServiceId == null
-      ? null
-      : await consultationInFacility(facility, data.consultationMasterServiceId);
-  if (selection && data.consultationSelectionReviewRequired)
+  if (
+    data.consultationFacilityServiceId != null &&
+    (typeof data.consultationFacilityServiceId !== 'number' ||
+      !Number.isSafeInteger(data.consultationFacilityServiceId) ||
+      data.consultationFacilityServiceId <= 0)
+  )
     throw new ConsultationSelectionError(
       'INVALID_CONSULTATION',
-      'Select a consultation or request review, not both.',
+      'Choose a valid facility consultation.',
     );
   if (
     data.consultationSelectionReviewRequired != null &&
@@ -236,11 +239,11 @@ export async function createEncounterScoped(
       'INVALID_CONSULTATION',
       'Invalid consultation review state.',
     );
-
-  // Older API clients may omit the selection. Keep clinical care available,
-  // but never interpret that omission (or an explicit false) as approval.
-  const reviewRequired = !selection;
-
+  if (data.consultationFacilityServiceId != null && data.consultationSelectionReviewRequired)
+    throw new ConsultationSelectionError(
+      'INVALID_CONSULTATION',
+      'Select a consultation or request review, not both.',
+    );
   const key = data.idempotencyKey;
   if (
     key !== undefined &&
@@ -250,18 +253,25 @@ export async function createEncounterScoped(
       'INVALID_IDEMPOTENCY_KEY',
       'Invalid encounter request key.',
     );
-  const payloadHash = createHash('sha256')
-    .update(
-      JSON.stringify({
-        tenantId: facility.tenantId,
-        facilityId: facility.id,
-        patientId: patient.id,
-        safeData,
-        consultationMasterServiceId: selection?.id ?? null,
-        consultationSelectionReviewRequired: reviewRequired,
-      }),
-    )
-    .digest('hex');
+  // A retry fingerprints the user's request, not mutable current catalogue
+  // state. Resolve the selected/sole service only after a new key is reserved.
+  const hashFor = (selectionId: number | null, reviewRequired: boolean) =>
+    createHash('sha256')
+      .update(
+        JSON.stringify({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          patientId: patient.id,
+          safeData,
+          consultationFacilityServiceId: selectionId,
+          consultationSelectionReviewRequired: reviewRequired,
+        }),
+      )
+      .digest('hex');
+  const payloadHash = hashFor(
+    data.consultationFacilityServiceId ?? null,
+    data.consultationSelectionReviewRequired === true,
+  );
   return db.transaction(async (tx) => {
     let requestId: number | null = null;
     if (key) {
@@ -272,6 +282,7 @@ export async function createEncounterScoped(
           facilityId: facility.id,
           idempotencyKey: key,
           payloadHash,
+          payloadVersion: 2,
           createdByUserId: context.userId,
         })
         .onConflictDoNothing()
@@ -288,7 +299,7 @@ export async function createEncounterScoped(
             ),
           )
           .for('update');
-        if (!prior || prior.payloadHash !== payloadHash || prior.createdByUserId !== context.userId)
+        if (!prior || prior.createdByUserId !== context.userId)
           throw new ConsultationSelectionError(
             'IDEMPOTENCY_CONFLICT',
             'This request key was already used for a different encounter.',
@@ -312,19 +323,47 @@ export async function createEncounterScoped(
             'The existing encounter request requires review.',
             409,
           );
+        // Keys recorded before the direct-service change hashed the resolved
+        // selection. Accept those unchanged historical hashes, never rewrite them.
+        const legacyHash = hashFor(
+          encounter.consultationFacilityServiceId ?? null,
+          !encounter.consultationFacilityServiceId,
+        );
+        const legacyCompatible =
+          prior.payloadVersion === 1 &&
+          prior.payloadHash === legacyHash &&
+          (data.consultationFacilityServiceId == null ||
+            data.consultationFacilityServiceId === encounter.consultationFacilityServiceId) &&
+          (!data.consultationSelectionReviewRequired || !encounter.consultationFacilityServiceId);
+        if (prior.payloadHash !== payloadHash && !legacyCompatible)
+          throw new ConsultationSelectionError(
+            'IDEMPOTENCY_CONFLICT',
+            'This request key was already used for a different encounter.',
+            409,
+          );
         return { ...encounter, idempotentReplay: true };
       }
       requestId = request.id;
     }
+    await validateEncounterReferences(facility.id, facility.tenantId, safeData);
+    const selection =
+      data.consultationFacilityServiceId == null
+        ? await soleConsultation(facility, tx)
+        : await consultationInFacility(facility, data.consultationFacilityServiceId, tx);
+    if (selection && data.consultationSelectionReviewRequired)
+      throw new ConsultationSelectionError(
+        'INVALID_CONSULTATION',
+        'Select a consultation or request review, not both.',
+      );
+    const reviewRequired = !selection;
     const [created] = await tx
       .insert(schema.encounters)
       .values({
         ...safeData,
-        ...(selection ? { encounterType: selection.encounterType } : {}),
         tenantId: facility.tenantId,
         facilityId: facility.id,
         patientId: patient.id,
-        consultationMasterServiceId: selection?.id ?? null,
+        consultationFacilityServiceId: selection?.id ?? null,
         consultationSelectionReviewRequired: reviewRequired,
       } as typeof schema.encounters.$inferInsert)
       .returning();
@@ -337,7 +376,7 @@ export async function createEncounterScoped(
         resource: 'CONSULTATION_SELECTION',
         resourceId: String(created.id),
         details: selection
-          ? `Selected master service ${selection.id}.`
+          ? `Selected facility service ${selection.id}.`
           : 'Consultation selection requires review.',
       });
     }
@@ -354,7 +393,7 @@ export async function createEncounterScoped(
 export async function selectEncounterConsultation(
   context: AuthorizationContext,
   encounterId: number,
-  masterId: unknown,
+  serviceId: unknown,
   reason: unknown,
 ) {
   if (!Number.isSafeInteger(encounterId) || encounterId <= 0)
@@ -378,7 +417,7 @@ export async function selectEncounterConsultation(
       'Encounter is outside the authorized facility.',
       'FACILITY_ACCESS_DENIED',
     );
-  const selection = await consultationInFacility(facility, masterId);
+  const selection = await consultationInFacility(facility, serviceId);
   return db.transaction(async (tx) => {
     await lockChargeIdentity(tx, facility.id, 'CONSULTATION', encounterId);
     const [locked] = await tx
@@ -400,8 +439,8 @@ export async function selectEncounterConsultation(
         'Only an active or completed encounter can be reviewed.',
         409,
       );
-    if (locked.consultationMasterServiceId) {
-      if (locked.consultationMasterServiceId === selection.id) return locked;
+    if (locked.consultationFacilityServiceId) {
+      if (locked.consultationFacilityServiceId === selection.id) return locked;
       throw new ConsultationSelectionError(
         'SELECTION_ALREADY_RECORDED',
         'A consultation selection already exists; use an authorized correction process.',
@@ -457,7 +496,7 @@ export async function selectEncounterConsultation(
     const [updated] = await tx
       .update(schema.encounters)
       .set({
-        consultationMasterServiceId: selection.id,
+        consultationFacilityServiceId: selection.id,
         consultationSelectionReviewRequired: false,
         updatedByUserId: context.userId,
         updatedAt: new Date(),
@@ -471,7 +510,7 @@ export async function selectEncounterConsultation(
       action: 'REVIEW',
       resource: 'CONSULTATION_SELECTION',
       resourceId: String(encounterId),
-      details: `Selected master service ${selection.id}; review: ${reference}`,
+      details: `Selected facility service ${selection.id}; review: ${reference}`,
     });
     return updated;
   });

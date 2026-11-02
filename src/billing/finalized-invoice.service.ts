@@ -5,6 +5,8 @@ import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { readInvoicePaymentLedger } from './payment-ledger.ts';
+import { resolvePharmacyInventoryCharge } from './pharmacy-inventory-charge.ts';
+import { resolveBedOccupancyCharge } from './bed-occupancy-charge.ts';
 import { formatCents, parseMoneyToCents } from './settlement.ts';
 import type {
   FinalizedInvoiceView,
@@ -398,8 +400,63 @@ export async function finalizeInvoice(
     for (const { item, tariff } of lines) {
       const unit = parseMoneyToCents(item.unitPrice),
         line = parseMoneyToCents(item.totalAmount);
-      if (!tariff || !item.tariffId || !present(item.tariffCode) || !present(item.description))
+      if (item.sourceType === 'PHARMACY' && item.tariffId === null) {
+        const evidence = await resolvePharmacyInventoryCharge(tx, {
+          tenantId: invoice.tenantId,
+          facilityId: invoice.facilityId,
+          patientId: invoice.patientId,
+          encounterId: invoice.encounterId,
+          sourceType: 'PHARMACY',
+          sourceId: item.sourceId ?? 0,
+          quantity: item.quantity ?? 0,
+          itemType: 'Pharmacy',
+          codes: [],
+        });
+        const allocations = item.pharmacyBatchAllocations;
+        const matchesAllocations =
+          !('failure' in evidence) &&
+          Array.isArray(allocations) &&
+          allocations.length === evidence.allocations.length &&
+          allocations.every((row, index) => {
+            const saved = evidence.allocations[index];
+            return (
+              row.batchId === saved.batchId &&
+              row.batchNumber === saved.batchNumber &&
+              row.expiryDate === saved.expiryDate &&
+              row.quantity === saved.quantity
+            );
+          });
+        if (
+          'failure' in evidence ||
+          item.facilityServiceId !== null ||
+          item.tariffCode !== null ||
+          item.inventoryItemId !== evidence.itemId ||
+          item.prescriptionId !== evidence.prescriptionId ||
+          item.description !== evidence.name ||
+          item.serviceCode !== evidence.code ||
+          item.serviceUnit !== evidence.unit ||
+          item.serviceDate !== evidence.serviceDate ||
+          item.pharmacyStockTracking !== evidence.stockTracking ||
+          unit !== parseMoneyToCents(evidence.price) ||
+          !matchesAllocations
+        )
+          issues.push(`Item ${item.id} needs matching recorded inventory dispensing and price evidence.`);
+      } else if (item.sourceType === 'BED_DAY' && item.tariffId === null) {
+        const evidence = await resolveBedOccupancyCharge(tx, {
+          tenantId: invoice.tenantId, facilityId: invoice.facilityId, patientId: invoice.patientId,
+          encounterId: invoice.encounterId, sourceType: 'BED_DAY', sourceId: item.sourceId ?? 0,
+          idempotencySuffix: item.serviceDate ?? undefined, serviceDate: item.serviceDate,
+          quantity: item.quantity ?? 0, itemType: 'Inpatient', codes: [],
+        });
+        if ('failure' in evidence || item.facilityServiceId !== null || item.tariffCode !== null ||
+            item.bedOccupancyId !== evidence.occupancyId || item.bedNightId !== evidence.nightId ||
+            item.description !== evidence.name || item.serviceCode !== evidence.code || item.serviceUnit !== evidence.unit ||
+            item.serviceDate !== evidence.serviceDate || item.serviceDepartment !== 'inpatient' ||
+            item.servicePerformedAt?.getTime() !== evidence.performedAt.getTime() || unit !== parseMoneyToCents(evidence.price))
+          issues.push(`Item ${item.id} needs matching recorded bed occupancy, cutoff and rate evidence.`);
+      } else if (!tariff || !item.tariffId || !present(item.tariffCode) || !present(item.description)) {
         issues.push(`Item ${item.id} needs a recorded facility tariff and code.`);
+      }
       if (
         !item.quantity ||
         !Number.isSafeInteger(item.quantity) ||
@@ -495,13 +552,31 @@ export async function finalizeInvoice(
       },
       items: lines.map(({ item }) => ({
         id: item.id,
-        tariffId: item.tariffId!,
-        code: item.tariffCode!,
+        tariffId: item.tariffId,
+        code: (item.tariffId === null ? item.serviceCode : item.tariffCode)!,
         description: item.description,
         quantity: item.quantity!,
         unitPrice: formatCents(parseMoneyToCents(item.unitPrice)!),
         total: formatCents(parseMoneyToCents(item.totalAmount)!),
         sourceType: item.sourceType,
+        ...(item.sourceType === 'PHARMACY' && item.tariffId === null
+          ? {
+              priceSource: 'INVENTORY_SNAPSHOT' as const,
+              inventoryItemId: item.inventoryItemId!,
+              prescriptionId: item.prescriptionId!,
+              dispensationId: item.sourceId!,
+              stockTracking: item.pharmacyStockTracking as 'FEFO' | 'untracked',
+              batchAllocations: item.pharmacyBatchAllocations!,
+            }
+          : {}),
+        ...(item.sourceType === 'BED_DAY' && item.tariffId === null
+          ? {
+              priceSource: 'BED_OCCUPANCY_SNAPSHOT' as const,
+              admissionId: item.sourceId!,
+              bedOccupancyId: item.bedOccupancyId!,
+              bedNightId: item.bedNightId!,
+            }
+          : {}),
       })),
       amounts: {
         itemizedTotal: formatCents(total!),

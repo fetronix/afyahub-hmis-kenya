@@ -15,7 +15,7 @@ import * as schema from '../db/schema.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { LaboratoryDomainError } from '../clinical/laboratory-contracts.ts';
 import { Router, type Response } from 'express';
 import {
@@ -90,46 +90,9 @@ router.post(
           });
       }
 
-      let examinationName = body.procedureName;
-      if (body.masterServiceId != null) {
-        const [exam] = await db
-          .select({ id: schema.masterServices.id, description: schema.masterServices.description })
-          .from(schema.masterServices)
-          .innerJoin(
-            schema.facilityServiceTariffs,
-            and(
-              eq(schema.facilityServiceTariffs.masterServiceId, schema.masterServices.id),
-              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
-              eq(schema.facilityServiceTariffs.facilityId, facility.id),
-            ),
-          )
-          .where(
-            and(
-              eq(schema.masterServices.id, Number(body.masterServiceId)),
-              eq(schema.masterServices.billingFamily, 'RADIOLOGY'),
-              eq(schema.masterServices.isActive, true),
-              or(
-                isNull(schema.masterServices.tenantId),
-                eq(schema.masterServices.tenantId, facility.tenantId),
-              ),
-              or(
-                isNull(schema.masterServices.originFacilityId),
-                eq(schema.masterServices.originFacilityId, facility.id),
-              ),
-            ),
-          )
-          .limit(1);
-        if (!exam)
-          return res.status(400).json({
-            error: 'EXAMINATION_NOT_AVAILABLE',
-            message: 'The examination is not available in this facility catalogue.',
-          });
-        examinationName = exam.description;
-      }
       const { idempotencyKey, ...orderBody } = body;
       const payload = {
         ...orderBody,
-        procedureName: examinationName,
         facilityId: facility.id,
         tenantId: facility.tenantId,
       } as Parameters<typeof queries.createRadiologyOrder>[0];

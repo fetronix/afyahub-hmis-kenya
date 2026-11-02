@@ -18,7 +18,7 @@ import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { parseMoneyToCents } from '../../billing/settlement.ts';
 import { readInvoicePaymentLedger } from '../../billing/payment-ledger.ts';
 import { calendarDateInZone, validTimezone } from '../../dashboard/timezone.ts';
-import { masterDepartmentMatches } from '../../billing/master-charge-resolver.ts';
+import { tariffModuleForDepartment } from '../../billing/tariff-departments.ts';
 import {
   dateVerdict,
   unitVerdict,
@@ -74,44 +74,44 @@ export async function createInvoice(
         if (!validTimezone(zone)) throw new Error('TARIFF_TIMEZONE_REQUIRED');
         for (const item of selected) {
           const [row] = await tx
-            .select({ tariff: schema.facilityServiceTariffs, master: schema.masterServices })
+            .select({ tariff: schema.facilityServiceTariffs, service: schema.facilityServices })
             .from(schema.facilityServiceTariffs)
             .innerJoin(
-              schema.masterServices,
-              eq(schema.masterServices.id, schema.facilityServiceTariffs.masterServiceId),
+              schema.facilityServices,
+              eq(schema.facilityServices.id, schema.facilityServiceTariffs.facilityServiceId),
             )
             .where(
               and(
                 eq(schema.facilityServiceTariffs.id, item.tariffId!),
                 eq(schema.facilityServiceTariffs.facilityId, invoiceData.facilityId),
                 eq(schema.facilityServiceTariffs.tenantId, invoiceData.tenantId),
+                eq(schema.facilityServices.facilityId, invoiceData.facilityId),
+                eq(schema.facilityServices.tenantId, invoiceData.tenantId),
               ),
             )
             .for('share');
           const t = row?.tariff,
-            m = row?.master;
+            service = row?.service;
           const family = (
-            m?.billingFamily === 'LABORATORY' ? 'LAB_TEST' : m?.billingFamily
+            service?.category === 'LABORATORY' ? 'LAB_TEST' : service?.category
           ) as CatalogueServiceType;
           if (
             !t ||
-            !m ||
+            !service ||
             !t.isActive ||
-            !m.isActive ||
-            !masterDepartmentMatches(t.department, m.department) ||
-            t.approvalStatus !== 'APPROVED' ||
-            !t.approvedByUserId ||
-            !t.approvedAt ||
-            !t.approvalReference ||
+            t.archivedAt ||
+            !service.isActive ||
+            tariffModuleForDepartment(t.department) !==
+              tariffModuleForDepartment(service.department) ||
             Number(t.fee) <= 0 ||
             dateVerdict(t.effectiveFrom, t.effectiveTo, calendarDateInZone(zone)) !== 'OK' ||
-            t.unit.trim().toLowerCase() !== m.unit.trim().toLowerCase() ||
+            t.unit.trim().toLowerCase() !== service.unit.trim().toLowerCase() ||
             unitVerdict(family, t.unit) !== 'OK' ||
-            item.masterServiceId !== m.id ||
-            item.serviceCode !== m.code ||
-            item.serviceDepartment !== m.department ||
+            item.facilityServiceId !== service.id ||
+            item.serviceCode !== service.code ||
+            item.serviceDepartment !== service.department ||
             item.serviceUnit !== t.unit ||
-            item.description !== m.description ||
+            item.description !== service.name ||
             item.tariffCode !== t.code ||
             parseMoneyToCents(item.unitPrice) !== parseMoneyToCents(t.fee)
           )

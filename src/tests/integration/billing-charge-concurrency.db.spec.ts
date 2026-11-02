@@ -38,9 +38,21 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
   let tenant: number, facility: number, patient: number, actor: number;
   let ctx: AuthorizationContext;
   let serial = 0;
-  const tariffCode = `SYN-CHARGE-${suffix}`;
   const items = new Map<number, { priced: number; unpriced: number }>();
-  // Use actual synthetic dispensations, not a synthetic MANUAL billing bypass.
+  const encounters = new Map<string, number>();
+  const encounterFor = async (patientId: number, facilityId: number) => {
+    const key = `${facilityId}:${patientId}`;
+    const existing = encounters.get(key);
+    if (existing) return existing;
+    const id = (await pool.query(
+      "INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'OUTPATIENT','ACTIVE') RETURNING id",
+      [tenant, facilityId, patientId],
+    )).rows[0].id as number;
+    encounters.set(key, id);
+    return id;
+  };
+  // Construct a controlled synthetic dispensing and immutable inventory
+  // evidence; stock/HTTP atomicity is tested independently in clinical tests.
   const request = async (
     patientId = patient,
     facilityId = facility,
@@ -48,62 +60,63 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
   ): Promise<ChargeRequest> => {
     const products = items.get(facilityId)!;
     const itemId = priced ? products.priced : products.unpriced;
-    const sourceId = (
-      await pool.query(
-        "INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,item_id,quantity_dispensed,dispensed_by) VALUES($1,$2,$3,$4,1,'Synthetic') RETURNING id",
-        [tenant, facilityId, patientId, itemId],
-      )
-    ).rows[0].id as number;
+    const encounterId = await encounterFor(patientId, facilityId);
+    const label = priced ? 'Synthetic priced item' : 'Synthetic unpriced item';
+    const prescriptionId = (await pool.query(
+      "INSERT INTO medications(encounter_id,patient_id,drug_name,dosage,frequency,duration,quantity,status) VALUES($1,$2,$3,'synthetic','synthetic','synthetic',1,'Dispensed') RETURNING id",
+      [encounterId, patientId, label],
+    )).rows[0].id;
+    const sourceId = (await pool.query(
+      `INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,prescription_id,item_id,
+         quantity_dispensed,dispensed_by,selling_price_snapshot,item_code_snapshot,item_name_snapshot,
+         item_unit_snapshot,dispensing_date_snapshot,dispensing_timezone_snapshot)
+       SELECT $1,$2,$3,$4,i.id,1,'Synthetic',NULLIF(i.selling_price,0),i.item_code,i.name,i.unit,
+         (now() AT TIME ZONE 'Africa/Nairobi')::date,'Africa/Nairobi'
+       FROM inventory_items i WHERE i.id=$5 AND i.facility_id=$2 RETURNING id`,
+      [tenant, facilityId, patientId, prescriptionId, itemId],
+    )).rows[0].id as number;
+    await pool.query(
+      "INSERT INTO pharmacy_dispense_requests(tenant_id,facility_id,idempotency_key,request_hash,dispensation_id,stock_tracking) VALUES($1,$2,$3,'synthetic',$4,'FEFO')",
+      [tenant, facilityId, `synthetic-${randomUUID()}`, sourceId],
+    );
+    const batch = (await pool.query(
+      "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,$2,'2099-12-31',0) RETURNING id,batch_number",
+      [itemId, `SYN-${randomUUID()}`],
+    )).rows[0];
+    await pool.query(
+      "INSERT INTO pharmacy_dispense_allocations(dispensation_id,batch_id,batch_number,expiry_date,quantity) VALUES($1,$2,$3,'2099-12-31',1)",
+      [sourceId, batch.id, batch.batch_number],
+    );
     return {
       tenantId: tenant,
       facilityId,
       patientId,
-      codes: [tariffCode],
+      encounterId,
+      codes: [],
       family: 'PHARMACY',
-      serviceName: priced ? 'Synthetic priced item' : 'Synthetic unpriced item',
+      serviceName: label,
+      quantity: 1,
       sourceType: 'PHARMACY',
       sourceId,
-      itemType: 'Synthetic',
+      itemType: 'Pharmacy',
     };
   };
   const configureFacility = async (facilityId: number) => {
-    const priced = (
-      await pool.query(
-        "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,$2,'Synthetic priced item','Tablet') RETURNING id",
-        [facilityId, `ITEM-${suffix}`],
-      )
-    ).rows[0].id as number;
-    const unpriced = (
-      await pool.query(
-        "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,$2,'Synthetic unpriced item','Tablet') RETURNING id",
-        [facilityId, `NOITEM-${suffix}`],
-      )
-    ).rows[0].id as number;
-    const master = (
-      await pool.query(
-        "INSERT INTO master_services(tenant_id,code,description,department,billing_family,unit,clinical_source,origin_facility_id,origin_source_id) VALUES($1,$2,'Synthetic priced item','pharmacy','PHARMACY','Tablet','PHARMACY',$3,$4) RETURNING id",
-        [tenant, `SYN-${facilityId}-${suffix}`.toUpperCase(), facilityId, priced],
-      )
-    ).rows[0].id;
-    await pool.query(
-      "INSERT INTO master_service_sources(tenant_id,facility_id,source_type,source_id,master_service_id,created_by_user_id) VALUES($1,$2,'PHARMACY',$3,$4,$5)",
-      [tenant, facilityId, priced, master, actor],
-    );
-    await pool.query(
-      "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee,master_service_id,is_active,auto_bill) VALUES($1,$2,$3,'Synthetic charge','pharmacy','Tablet','7.50',$4,true,true)",
-      [tenant, facilityId, tariffCode, master],
-    );
-    await pool.query(
-      "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE facility_id=$2 AND code=$3",
-      [actor, facilityId, tariffCode],
-    );
+    const priced = (await pool.query(
+      "INSERT INTO inventory_items(facility_id,item_code,name,unit,selling_price) VALUES($1,$2,'Synthetic priced item','Tablet','7.50') RETURNING id",
+      [facilityId, `ITEM-${suffix}`],
+    )).rows[0].id as number;
+    const unpriced = (await pool.query(
+      "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,$2,'Synthetic unpriced item','Tablet') RETURNING id",
+      [facilityId, `NOITEM-${suffix}`],
+    )).rows[0].id as number;
     items.set(facilityId, { priced, unpriced });
   };
   const makeInvoice = async () => {
     const id = (
       await pool.query(
-        "INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,credit_balance,status) VALUES($1,$2,$3,$4,'100.00','0.00','100.00','0.00','Pending') RETURNING id",
-        [tenant, facility, patient, `SYN-CHARGE-INV-${suffix}-${++serial}`],
+        "INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,encounter_id,invoice_number,total_amount,paid_amount,balance_amount,credit_balance,status) VALUES($1,$2,$3,$4,$5,'100.00','0.00','100.00','0.00','Pending') RETURNING id",
+        [tenant, facility, patient, await encounterFor(patient, facility), `SYN-CHARGE-INV-${suffix}-${++serial}`],
       )
     ).rows[0].id as number;
     await pool.query(
@@ -151,7 +164,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
     };
   });
 
-  it('recognizes a previously billed event even after its tariff is deactivated', async () => {
+  it('recognizes a previously billed event after its inventory item is deactivated', async () => {
     const another = (
       await pool.query(
         "INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender) VALUES($1,$2,$3,'Synthetic','Retry','2000-01-01','Other') RETURNING id",
@@ -162,8 +175,8 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
     const initial = await chargeAndRecord(db, same);
     expect(initial.charged).toBe(true);
     await pool.query(
-      'UPDATE facility_service_tariffs SET is_active=false WHERE facility_id=$1 AND code=$2',
-      [facility, tariffCode],
+      'UPDATE inventory_items SET is_active=false WHERE id=$1',
+      [items.get(facility)!.priced],
     );
     try {
       const retry = await chargeAndRecord(db, same);
@@ -183,12 +196,8 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
       ).toHaveLength(0);
     } finally {
       await pool.query(
-        'UPDATE facility_service_tariffs SET is_active=true WHERE facility_id=$1 AND code=$2',
-        [facility, tariffCode],
-      );
-      await pool.query(
-        "UPDATE facility_service_tariffs SET approval_status='APPROVED',approved_by_user_id=$1,approved_at=now(),approval_reference='Synthetic review' WHERE facility_id=$2 AND code=$3",
-        [actor, facility, tariffCode],
+        'UPDATE inventory_items SET is_active=true WHERE id=$1',
+        [items.get(facility)!.priced],
       );
     }
   });
@@ -211,7 +220,7 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
     );
     try {
       const results = await Promise.all([chargeAndRecord(db, same), chargeAndRecord(db, same)]);
-      expect(results.every((r) => r.reason === 'TARIFF_NOT_CONFIGURED')).toBe(true);
+      expect(results.every((r) => r.reason === 'INVENTORY_PRICE_REVIEW')).toBe(true);
       expect(
         results.every((r) => !r.message?.includes('could not be recorded in the retry queue')),
       ).toBe(true);

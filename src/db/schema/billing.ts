@@ -29,10 +29,13 @@ import { sql } from 'drizzle-orm';
 import { facilities, tenants } from './tenancy.ts';
 
 import { patients } from './patients.ts';
+import { inventoryItems } from './inventory.ts';
+import { inpatientBedNights, inpatientBedOccupancies, medications } from './inpatient.ts';
 
 import { encounters } from './clinical.ts';
 import { users } from './auth.ts';
 import { masterServices } from './master-services.ts';
+import { facilityServices } from './facility-services.ts';
 
 export const facilityServiceTariffs = pgTable(
   'facility_service_tariffs',
@@ -82,6 +85,9 @@ export const facilityServiceTariffs = pgTable(
     autoBill: boolean('auto_bill').notNull().default(true),
 
     isActive: boolean('is_active').notNull().default(true),
+    facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
+    archivedAt: timestamp('archived_at'),
+    archivedByUserId: integer('archived_by_user_id').references(() => users.id),
     masterServiceId: integer('master_service_id').references(() => masterServices.id),
     approvalStatus: text('approval_status').notNull().default('DRAFT'),
     approvedByUserId: integer('approved_by_user_id').references(() => users.id),
@@ -182,13 +188,25 @@ export const billingItems = pgTable('billing_items', {
 
   tariffCode: text('tariff_code'),
 
-  // Immutable snapshots on new catalogue-based charges; historical rows remain null.
+  // Historical master references remain intact; new lines record a facility service.
+  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
   masterServiceId: integer('master_service_id').references(() => masterServices.id),
   serviceCode: text('service_code'),
   serviceDepartment: text('service_department'),
   serviceUnit: text('service_unit'),
   serviceDate: date('service_date'),
   servicePerformedAt: timestamp('service_performed_at'),
+
+  // Populated only for inventory-priced pharmacy lines; the sourceId is the
+  // actual dispensation. Batch details are immutable line-time snapshots.
+  inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
+  prescriptionId: integer('prescription_id').references(() => medications.id),
+  bedOccupancyId: integer('bed_occupancy_id').references(() => inpatientBedOccupancies.id),
+  bedNightId: integer('bed_night_id').references(() => inpatientBedNights.id),
+  pharmacyStockTracking: text('pharmacy_stock_tracking'),
+  pharmacyBatchAllocations: jsonb('pharmacy_batch_allocations').$type<
+    Array<{ batchId: number; batchNumber: string; expiryDate: string; quantity: number }>
+  >(),
 
   /*
    * Provenance: which clinical event produced this line item.
@@ -359,6 +377,8 @@ export const billingChargeAttempts = pgTable(
     fallbackUnitPrice: numeric('fallback_unit_price', { precision: 10, scale: 2 }),
 
     reason: text('reason').notNull(),
+    // Optional specific resolver diagnosis; legacy reason semantics are unchanged.
+    diagnosisCode: text('diagnosis_code'),
     detail: text('detail'),
     codesTried: text('codes_tried').array().notNull().default([]),
 

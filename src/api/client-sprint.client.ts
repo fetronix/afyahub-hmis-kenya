@@ -203,6 +203,8 @@ export const sprintApi = {
     post(`/api/dialysis/treatment-plans/${id}/authorize`, body),
   scheduleDialysis: (body: unknown, key: string) =>
     post<{ scheduleId: number }>('/api/dialysis/schedules', body, key),
+  cancelDialysisSchedule: (id: number, body: unknown) =>
+    post(`/api/dialysis/schedules/${id}/cancel`, body),
   startDialysis: (id: number, body: unknown) => post(`/api/dialysis/schedules/${id}/start`, body),
   addObservation: (id: number, body: unknown) =>
     post(`/api/dialysis/sessions/${id}/observations`, body),

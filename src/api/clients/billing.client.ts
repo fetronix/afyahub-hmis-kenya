@@ -15,6 +15,7 @@ import type {
   InsuranceClaim,
   LabServiceDiagnostics,
   FacilityTariffValidation,
+  FacilityService,
   OccupancyTrendResponse,
   OperationsReport,
   PaymentLedgerRow,
@@ -26,37 +27,30 @@ import type {
 } from '../../types/index.ts';
 import { API_BASE, fetchJson } from './http.ts';
 
-export interface MasterTariffRow {
-  master: {
-    id: number;
-    code: string;
-    description: string;
-    department: string;
-    billingFamily: string;
-    unit: string;
-    clinicalSource: string;
-    originSourceId: number | null;
-  };
-  tariff: {
-    id: number;
-    code: string;
-    fee: string;
-    unit: string;
-    department: string;
-    isActive: boolean;
-    autoBill: boolean;
-    effectiveFrom: string | null;
-    effectiveTo: string | null;
-    approvalStatus: 'DRAFT' | 'APPROVED';
-    approvalReference: string | null;
-    revision: number;
-  } | null;
-}
-export interface MasterTariffEdit {
-  tariffId: number;
-  revision: number;
-  fee: string;
+export interface FacilityServiceInput {
+  facilityId: number;
+  code: string;
+  name: string;
+  description: string;
+  department: string;
+  category: string;
   unit: string;
+  isActive: boolean;
+  autoBill: boolean;
+}
+export type FacilityServiceExpectedState = Pick<
+  FacilityService,
+  'name' | 'description' | 'isActive' | 'autoBill'
+>;
+
+export interface FacilityTariffInput {
+  facilityId: number;
+  serviceId: number;
+  code: string;
+  description: string;
+  department: string;
+  unit: string;
+  fee: string;
   effectiveFrom: string | null;
   effectiveTo: string | null;
   isActive: boolean;
@@ -64,6 +58,77 @@ export interface MasterTariffEdit {
 }
 
 export const billingClient = {
+  getFacilityServices: (facilityId: number) =>
+    fetchJson<FacilityService[]>(
+      `${API_BASE}/facility-services?facilityId=${encodeURIComponent(facilityId)}`,
+    ),
+  getAvailableFacilityServices: (
+    facilityId: number,
+    filter: { department?: string; category?: string },
+  ) => {
+    const query = new URLSearchParams({ facilityId: String(facilityId) });
+    if (filter.department) query.set('department', filter.department);
+    if (filter.category) query.set('category', filter.category);
+    return fetchJson<FacilityService[]>(`${API_BASE}/facility-services/available?${query}`);
+  },
+  createFacilityService: (
+    input: FacilityServiceInput & { initialPrice: string; initialTariffCode?: string },
+  ) =>
+    fetchJson<{ service: FacilityService; tariff: ServiceTariff }>(
+      `${API_BASE}/facility-services`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  updateFacilityService: (
+    id: number,
+    input: FacilityServiceInput & { expectedState: FacilityServiceExpectedState },
+  ) =>
+    fetchJson<FacilityService>(`${API_BASE}/facility-services/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  setFacilityServiceStatus: (id: number, facilityId: number, isActive: boolean) =>
+    fetchJson<FacilityService>(`${API_BASE}/facility-services/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ facilityId, isActive }),
+    }),
+  deleteFacilityService: (id: number, facilityId: number) =>
+    fetchJson<{ deleted: true; id: number; deletedTariffs: number }>(
+      `${API_BASE}/facility-services/${id}/permanent?facilityId=${encodeURIComponent(facilityId)}`,
+      { method: 'DELETE' },
+    ),
+  getFacilityTariffs: (facilityId: number) =>
+    fetchJson<ServiceTariff[]>(
+      `${API_BASE}/facility-tariffs?facilityId=${encodeURIComponent(facilityId)}`,
+    ),
+  createFacilityTariff: (input: FacilityTariffInput) =>
+    fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateFacilityTariff: (id: number, input: FacilityTariffInput & { expectedRevision: number }) =>
+    fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  setFacilityTariffStatus: (id: number, facilityId: number, isActive: boolean) =>
+    fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ facilityId, isActive }),
+    }),
+  deleteFacilityTariff: (id: number, facilityId: number) =>
+    fetchJson<{ deleted: true; id: number }>(
+      `${API_BASE}/facility-tariffs/${id}/permanent?facilityId=${encodeURIComponent(facilityId)}`,
+      { method: 'DELETE' },
+    ),
+  archiveFacilityTariff: (id: number, facilityId: number) =>
+    fetchJson<ServiceTariff>(
+      `${API_BASE}/facility-tariffs/${id}?facilityId=${encodeURIComponent(facilityId)}`,
+      { method: 'DELETE' },
+    ),
+  getFacilityTariffByServiceCode: (facilityId: number, code: string) =>
+    fetchJson<{ service: FacilityService; tariff: ServiceTariff }>(
+      `${API_BASE}/facility-tariffs/by-service-code/${encodeURIComponent(code)}?facilityId=${encodeURIComponent(facilityId)}`,
+    ),
   getReviewedLabSpecimens: (facilityId: number) =>
     fetchJson<
       Array<{
@@ -227,88 +292,6 @@ export const billingClient = {
         invoice,
         items,
       }),
-    }),
-
-  getMasterTariffs: (facilityId: number) =>
-    fetchJson<MasterTariffRow[]>(`${API_BASE}/master-tariffs?facilityId=${facilityId}`),
-  syncMasterTariffs: (facilityId: number) =>
-    fetchJson<{
-      servicesCreated: number;
-      mappingsCreated: number;
-      tariffsCreated: number;
-      skippedMissingUnit: number;
-      note: string;
-    }>(`${API_BASE}/master-tariffs/sync`, { method: 'POST', body: JSON.stringify({ facilityId }) }),
-  createImagingMaster: (facilityId: number, description: string) =>
-    fetchJson<unknown>(`${API_BASE}/master-tariffs/imaging-services`, {
-      method: 'POST',
-      body: JSON.stringify({ facilityId, description }),
-    }),
-  saveMasterTariffs: (facilityId: number, rows: MasterTariffEdit[]) =>
-    fetchJson<unknown>(`${API_BASE}/master-tariffs/batch`, {
-      method: 'PUT',
-      body: JSON.stringify({ facilityId, rows }),
-    }),
-  approveMasterTariff: (
-    facilityId: number,
-    id: number,
-    revision: number,
-    approvalReference: string,
-  ) =>
-    fetchJson<unknown>(`${API_BASE}/master-tariffs/${id}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ facilityId, revision, approvalReference }),
-    }),
-  linkLegacyMasterTariff: (
-    facilityId: number,
-    masterId: number,
-    tariffId: number,
-    revision: number,
-  ) =>
-    fetchJson<unknown>(`${API_BASE}/master-tariffs/${masterId}/link-existing`, {
-      method: 'POST',
-      body: JSON.stringify({ facilityId, tariffId, revision }),
-    }),
-  getMasterTariffHistory: (facilityId: number, id: number) =>
-    fetchJson<
-      Array<{ id: number; action: string; userId: string; details: string; createdAt: string }>
-    >(`${API_BASE}/master-tariffs/${id}/history?facilityId=${facilityId}`),
-  getMasterSources: (facilityId: number) =>
-    fetchJson<Record<string, Array<{ id: number; code: string; name: string }>>>(
-      `${API_BASE}/master-tariff-sources?facilityId=${facilityId}`,
-    ),
-  getMasterMappings: (facilityId: number, masterId: number) =>
-    fetchJson<{
-      sources: Array<{ id: number; sourceType: string; sourceId: number; isActive: boolean }>;
-      aliases: Array<{ id: number; sourceType: string; alias: string; isActive: boolean }>;
-    }>(`${API_BASE}/master-tariffs/${masterId}/mappings?facilityId=${facilityId}`),
-  setMasterSourceMapping: (
-    facilityId: number,
-    masterId: number,
-    sourceType: string,
-    sourceId: number,
-    reviewReference: string,
-  ) =>
-    fetchJson<unknown>(`${API_BASE}/master-tariffs/${masterId}/source-mapping`, {
-      method: 'POST',
-      body: JSON.stringify({ facilityId, sourceType, sourceId, reviewReference }),
-    }),
-  approveMasterAlias: (
-    facilityId: number,
-    masterId: number,
-    sourceType: string,
-    sourceId: number,
-    reviewReference: string,
-  ) =>
-    fetchJson<unknown>(`${API_BASE}/master-tariffs/${masterId}/aliases`, {
-      method: 'POST',
-      body: JSON.stringify({ facilityId, sourceType, sourceId, reviewReference }),
-    }),
-
-  retireMasterAlias: (facilityId: number, aliasId: number, reviewReference: string) =>
-    fetchJson<unknown>(`${API_BASE}/master-tariff-aliases/${aliasId}/retire`, {
-      method: 'POST',
-      body: JSON.stringify({ facilityId, reviewReference }),
     }),
 
   getServiceTariffs: (facilityId: number) =>
