@@ -58,6 +58,11 @@ describe('schema barrel: pre-extraction contract', () => {
         'radiologyOrderRequests',
         'encounterCreationRequests',
         'facilityServices',
+        'inpatientBedBillingPolicies',
+        'inpatientBedStaySnapshots',
+        'inpatientBedBillingReviews',
+        'inpatientBedOccupancies',
+        'inpatientBedNights',
       ].sort(),
     );
   });

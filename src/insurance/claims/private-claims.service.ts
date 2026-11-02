@@ -884,7 +884,10 @@ export async function preparePrivateInsuranceClaim(params: {
     // payer code or reimbursement rate. Keep it explicitly unmapped until a
     // product-specific payer mapping workflow exists.
     const inventoryMedicine = bi.sourceType === 'PHARMACY' && bi.inventoryItemId != null;
-    const tariff = inventoryMedicine
+    const occupancyBedNight = bi.sourceType === 'BED_DAY' && bi.bedNightId != null;
+    // A bed's internal number is not a contracted payer code either.
+    const noTariffEvidence = inventoryMedicine || occupancyBedNight;
+    const tariff = noTariffEvidence
       ? undefined
       : (bi.tariffId ? facilityTariffs.find((t) => t.id === bi.tariffId) : undefined) ??
         facilityTariffs.find(
@@ -893,7 +896,7 @@ export async function preparePrivateInsuranceClaim(params: {
             t.description.toLowerCase() === bi.description.toLowerCase(),
         );
 
-    const localCode = inventoryMedicine ? null : (bi.tariffCode ?? tariff?.code ?? null);
+    const localCode = noTariffEvidence ? null : (bi.tariffCode ?? tariff?.code ?? null);
     const category = inferPrivateServiceCategory(
       bi.sourceType ?? bi.itemType ?? tariff?.department ?? bi.description,
     );

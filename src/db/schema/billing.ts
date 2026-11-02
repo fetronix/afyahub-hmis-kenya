@@ -30,7 +30,7 @@ import { facilities, tenants } from './tenancy.ts';
 
 import { patients } from './patients.ts';
 import { inventoryItems } from './inventory.ts';
-import { medications } from './inpatient.ts';
+import { inpatientBedNights, inpatientBedOccupancies, medications } from './inpatient.ts';
 
 import { encounters } from './clinical.ts';
 import { users } from './auth.ts';
@@ -201,6 +201,8 @@ export const billingItems = pgTable('billing_items', {
   // actual dispensation. Batch details are immutable line-time snapshots.
   inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
   prescriptionId: integer('prescription_id').references(() => medications.id),
+  bedOccupancyId: integer('bed_occupancy_id').references(() => inpatientBedOccupancies.id),
+  bedNightId: integer('bed_night_id').references(() => inpatientBedNights.id),
   pharmacyStockTracking: text('pharmacy_stock_tracking'),
   pharmacyBatchAllocations: jsonb('pharmacy_batch_allocations').$type<
     Array<{ batchId: number; batchNumber: string; expiryDate: string; quantity: number }>

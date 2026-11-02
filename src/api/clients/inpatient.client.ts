@@ -1,6 +1,8 @@
 import type {
   Admission,
   Bed,
+  BedBillingPolicy,
+  BedOccupancyView,
   InpatientBoard,
   ShiftHandover,
   TheatreCase,
@@ -59,6 +61,7 @@ export const inpatientClient = {
     bedType: string;
     /** Omit for "not priced" — never send 0. */
     dailyCharge?: string | null;
+    priceReason?: string;
   }) =>
     fetchJson<{ created: Bed[]; wardId: number; totalBeds: number }>(`${API_BASE}/beds`, {
       method: 'POST',
@@ -71,6 +74,8 @@ export const inpatientClient = {
       bedNumber?: string;
       bedType?: string;
       dailyCharge?: string | null;
+      expectedPriceRevision?: number;
+      priceReason?: string;
       status?: string;
     },
   ) =>
@@ -122,7 +127,7 @@ export const inpatientClient = {
   dischargePatient: (
     id: number,
     data: {
-      dischargeDate: string;
+      dischargeDate?: string;
       dischargeType: string;
       dischargeSummary: string;
     },
@@ -130,8 +135,9 @@ export const inpatientClient = {
     fetchJson<
       Admission & {
         billing?: {
-          nights: number;
+          nights: number | null;
           bedDays: Array<ServiceCharge | null>;
+          review?: { code: string; message: string } | null;
         };
       }
     >(`${API_BASE}/admissions/${id}/discharge`, {
@@ -155,6 +161,16 @@ export const inpatientClient = {
       method: 'POST',
       body: JSON.stringify({ untilDate }),
     }),
+
+  getBedBillingPolicy: () => fetchJson<BedBillingPolicy | null>(`${API_BASE}/inpatient/bed-billing-policy`),
+  setBedBillingPolicy: (data: { cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO'; expectedRevision?: number | null; reason: string }) =>
+    fetchJson<BedBillingPolicy>(`${API_BASE}/inpatient/bed-billing-policy`, { method: 'PUT', body: JSON.stringify(data) }),
+  getBedOccupancy: (id: number) => fetchJson<BedOccupancyView>(`${API_BASE}/admissions/${id}/bed-occupancy`),
+  linkBedBillingEncounter: (id: number, encounterId: number, reason: string) =>
+    fetchJson<Admission>(`${API_BASE}/admissions/${id}/bed-billing-encounter`, { method: 'POST', body: JSON.stringify({ encounterId, reason }) }),
+  reviewBedHistory: (id: number, data: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO'; reason: string; evidenceReference: string; affirmReviewedHistoryAndCharges: boolean; periods: Array<{ wardId: number; bedId: number; startedAt: string; endedAt: string; dailyRate: string }> }) =>
+    fetchJson<{ reviewId: number; nights: number }>(`${API_BASE}/admissions/${id}/bed-history-review`, { method: 'POST', body: JSON.stringify(data) }),
+  retryBedBilling: (id: number) => fetchJson<{ nights: number | null; charges: ServiceCharge[]; review: { code: string; message: string } | null }>(`${API_BASE}/admissions/${id}/bed-billing-retry`, { method: 'POST', body: '{}' }),
 
   getInpatientBoard: (facilityId?: number) =>
     fetchJson<InpatientBoard>(

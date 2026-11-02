@@ -104,6 +104,8 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       'maternity.update',
       'inpatient.read',
       'inpatient.admit',
+      'inpatient.discharge',
+      'inpatient.wards.update',
       'laboratory.read',
       'laboratory.orders.create',
       'laboratory.results.enter',
@@ -1117,7 +1119,7 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     expect(second.body).toMatchObject({ id: one.body.id, idempotentReplay: true });
   });
 
-  it('persists the selected admission identity and bills an exact occupied ward day once', async () => {
+  it('preserves the selected admission fee separately from the bed-rate invoice and bills only after discharge', async () => {
     const admissionService = await createService(
       'ADMISSION-SYN',
       'ADMISSION',
@@ -1143,22 +1145,18 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       )
     ).rows[0].id;
     const bed = (
-      await pool.query("INSERT INTO beds(ward_id,bed_number) VALUES($1,'SYN-1') RETURNING id", [
-        ward,
-      ])
+      await pool.query("INSERT INTO beds(ward_id,bed_number,daily_charge) VALUES($1,'SYN-1','100.00') RETURNING id", [ward])
     ).rows[0].id;
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Africa/Nairobi',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
+    await pool.query("UPDATE facilities SET timezone='Africa/Nairobi' WHERE id=$1", [facility]);
+    const policy = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', reason: 'Synthetic approved policy' });
+    expect(policy.status, JSON.stringify(policy.body)).toBe(200);
+    const encounter = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'INPATIENT','ACTIVE') RETURNING id", [tenant, facility, patient])).rows[0].id;
     const body = {
       facilityId: facility,
       patientId: patient,
+      encounterId: encounter,
       wardId: ward,
       bedId: bed,
-      admissionDate: `${today} 08:00`,
       facilityServiceId: admissionService.service.id,
     };
     expect(
@@ -1172,15 +1170,16 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     expect(admitted.status, JSON.stringify(admitted.body)).toBe(201);
     expect(admitted.body.facilityServiceId).toBe(admissionService.service.id);
     expect(admitted.body.billing).toMatchObject({ charged: true, totalAmount: '60.00' });
-    const accrued = await call('POST', `/api/admissions/${admitted.body.id}/accrue-bed-days`, {
-      untilDate: today,
-    });
+    const accrued = await call('POST', `/api/admissions/${admitted.body.id}/accrue-bed-days`, {});
     expect(accrued.status, JSON.stringify(accrued.body)).toBe(200);
-    expect(accrued.body.charges).toHaveLength(1);
-    expect(accrued.body.charges[0]).toMatchObject({ charged: true, totalAmount: '90.00' });
-    const replay = await call('POST', `/api/admissions/${admitted.body.id}/accrue-bed-days`, {
-      untilDate: today,
-    });
+    expect(accrued.body).toMatchObject({ estimateOnly: true, charges: [] });
+    const discharged = await call('POST', `/api/admissions/${admitted.body.id}/discharge`, {});
+    expect(discharged.status, JSON.stringify(discharged.body)).toBe(200);
+    expect(discharged.body.billing.bedDays).toHaveLength(1);
+    expect(discharged.body.billing.bedDays[0]).toMatchObject({ charged: true, totalAmount: '100.00', matchRule: 'BED_OCCUPANCY_SNAPSHOT' });
+    const replay = await call('POST', `/api/admissions/${admitted.body.id}/accrue-bed-days`, {});
+    expect(replay.status, JSON.stringify(replay.body)).toBe(200);
+    expect(replay.body.charges).toHaveLength(1);
     expect(replay.body.charges[0]).toMatchObject({ charged: false, reason: 'DUPLICATE' });
     const lines = (
       await pool.query(
@@ -1194,8 +1193,23 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
         facility_service_id: admissionService.service.id,
         unit_price: '60.00',
       },
-      { source_type: 'BED_DAY', facility_service_id: wardService.service.id, unit_price: '90.00' },
+      { source_type: 'BED_DAY', facility_service_id: null, unit_price: '100.00' },
     ]);
+    const provenance = (await pool.query(`
+      SELECT i.patient_id, i.encounter_id, o.bed_id, o.ward_id, o.daily_rate_snapshot,
+             n.unit_price_snapshot, n.total_snapshot
+      FROM billing_items bi
+      JOIN billing_invoices i ON i.id = bi.invoice_id
+      JOIN inpatient_bed_occupancies o ON o.id = bi.bed_occupancy_id
+      JOIN inpatient_bed_nights n ON n.id = bi.bed_night_id AND n.occupancy_id = o.id
+      WHERE bi.source_type = 'BED_DAY' AND bi.source_id = $1
+    `, [admitted.body.id])).rows;
+    expect(provenance).toEqual([{
+      patient_id: patient, encounter_id: encounter, bed_id: bed, ward_id: ward,
+      daily_rate_snapshot: '100.00', unit_price_snapshot: '100.00', total_snapshot: '100.00',
+    }]);
+    expect(wardService.service.id).not.toBeNull(); // The conflicting KES 90 service did not price this bed.
+    expect((await pool.query('SELECT status FROM beds WHERE id=$1', [bed])).rows[0].status).toBe('Cleaning');
   });
 
   it('bills a completed exact-code procedure and not an unconfirmed procedure', async () => {

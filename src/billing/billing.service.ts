@@ -45,6 +45,7 @@ import {
 import type { BillingFamily } from './tariff-codes.ts';
 import { resolveFacilityCharge } from './facility-charge-resolver.ts';
 import { resolvePharmacyInventoryCharge } from './pharmacy-inventory-charge.ts';
+import { resolveBedOccupancyCharge } from './bed-occupancy-charge.ts';
 import { readInvoicePaymentLedger } from './payment-ledger.ts';
 import {
   failureLabel,
@@ -76,6 +77,7 @@ export type BillingSourceType =
 export type ChargeSkipReason =
   | 'TARIFF_NOT_CONFIGURED'
   | 'INVENTORY_PRICE_REVIEW'
+  | 'BED_OCCUPANCY_REVIEW'
   | 'DUPLICATE'
   | 'INVOICE_CLOSED'
   | 'INVALID_INPUT'
@@ -190,7 +192,7 @@ export interface ChargeResult {
   unit?: string | null;
 
   /** How the tariff was found, when one was. */
-  matchRule?: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE' | 'INVENTORY_SNAPSHOT';
+  matchRule?: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE' | 'INVENTORY_SNAPSHOT' | 'BED_OCCUPANCY_SNAPSHOT';
 
   /** Why the charge could not be priced, when it could not. */
   diagnosis?: { code: string; label: string; candidates?: string[] };
@@ -1034,11 +1036,13 @@ async function chargeForServiceInTransaction(
   const resolution =
     request.sourceType === 'PHARMACY'
       ? await resolvePharmacyInventoryCharge(executor, request)
-      : await resolveFacilityCharge(executor, request);
+      : request.sourceType === 'BED_DAY'
+        ? await resolveBedOccupancyCharge(executor, request)
+        : await resolveFacilityCharge(executor, request);
   if ('failure' in resolution) {
     return {
       charged: false,
-      reason: request.sourceType === 'PHARMACY' ? 'INVENTORY_PRICE_REVIEW' : 'TARIFF_NOT_CONFIGURED',
+      reason: request.sourceType === 'PHARMACY' ? 'INVENTORY_PRICE_REVIEW' : request.sourceType === 'BED_DAY' ? 'BED_OCCUPANCY_REVIEW' : 'TARIFF_NOT_CONFIGURED',
       diagnosis: {
         code: resolution.failure.code,
         label: resolution.failure.code.replaceAll('_', ' '),
@@ -1048,12 +1052,13 @@ async function chargeForServiceInTransaction(
       message: `${resolution.failure.message} The service was not billed; review the unresolved billing queue.`,
     };
   }
-  const pharmacy = 'price' in resolution ? resolution : null;
+  const pharmacy = 'prescriptionId' in resolution ? resolution : null;
+  const bedNight = 'nightId' in resolution ? resolution : null;
   const service = 'service' in resolution ? resolution.service : null;
   const tariff = 'tariff' in resolution ? resolution.tariff : null;
-  const unitPriceCents = parseMoneyToCents(pharmacy?.price ?? tariff?.fee);
+  const unitPriceCents = parseMoneyToCents(pharmacy?.price ?? bedNight?.price ?? tariff?.fee);
   if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('FACILITY_PRICE_INVALID');
-  const description = pharmacy?.name ?? service!.name;
+  const description = pharmacy?.name ?? bedNight?.name ?? service!.name;
 
   const invoice = await findOrCreateOpenInvoice(executor, request);
 
@@ -1083,13 +1088,15 @@ async function chargeForServiceInTransaction(
       tariffId: tariff?.id ?? null,
       tariffCode: tariff?.code ?? null,
       facilityServiceId: service?.id ?? null,
-      serviceCode: pharmacy?.code ?? service!.code,
-      serviceDepartment: pharmacy ? 'pharmacy' : service!.department,
-      serviceUnit: pharmacy?.unit ?? tariff!.unit,
+      serviceCode: pharmacy?.code ?? bedNight?.code ?? service!.code,
+      serviceDepartment: pharmacy ? 'pharmacy' : bedNight ? 'inpatient' : service!.department,
+      serviceUnit: pharmacy?.unit ?? bedNight?.unit ?? tariff!.unit,
       serviceDate: resolution.serviceDate,
       servicePerformedAt: resolution.performedAt,
       inventoryItemId: pharmacy?.itemId ?? null,
       prescriptionId: pharmacy?.prescriptionId ?? null,
+      bedOccupancyId: bedNight?.occupancyId ?? null,
+      bedNightId: bedNight?.nightId ?? null,
       pharmacyStockTracking: pharmacy?.stockTracking ?? null,
       pharmacyBatchAllocations: pharmacy?.allocations ?? null,
       sourceType: request.sourceType,
@@ -1138,14 +1145,15 @@ async function chargeForServiceInTransaction(
     ...(tariff ? { tariffCode: tariff.code } : {}),
     description,
     quantity,
-    unit: pharmacy?.unit ?? tariff!.unit,
+    unit: pharmacy?.unit ?? bedNight?.unit ?? tariff!.unit,
     unitPrice: fromCents(unitPriceCents),
     totalAmount: fromCents(totalCents),
-    matchRule: pharmacy ? 'INVENTORY_SNAPSHOT' : ('rule' in resolution ? resolution.rule : undefined),
+    matchRule: pharmacy ? 'INVENTORY_SNAPSHOT' : bedNight ? 'BED_OCCUPANCY_SNAPSHOT' : ('rule' in resolution ? resolution.rule : undefined),
     matchExplanation: pharmacy
       ? `Facility inventory product ${pharmacy.code}; selling price recorded at dispensing.`
+      : bedNight ? `Bed ${bedNight.bedId}; daily charge recorded for the occupied period.`
       : `Facility service ${service!.code}, tariff ${tariff!.code}.`,
-    codesTried: [pharmacy?.code ?? service!.code],
+    codesTried: [pharmacy?.code ?? bedNight?.code ?? service!.code],
   };
 }
 

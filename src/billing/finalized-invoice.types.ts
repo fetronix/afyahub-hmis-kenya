@@ -29,7 +29,7 @@ export interface InvoiceSnapshot {
   };
   items: Array<{
     id: number;
-    /** Null only for a verified inventory-priced medicine; old snapshots keep their tariff ID. */
+    /** Null for verified inventory medicine or bed-occupancy prices; old snapshots retain tariffs. */
     tariffId: number | null;
     code: string;
     description: string;
@@ -37,7 +37,10 @@ export interface InvoiceSnapshot {
     unitPrice: string;
     total: string;
     sourceType: string | null;
-    priceSource?: 'INVENTORY_SNAPSHOT';
+    priceSource?: 'INVENTORY_SNAPSHOT' | 'BED_OCCUPANCY_SNAPSHOT';
+    admissionId?: number;
+    bedOccupancyId?: number;
+    bedNightId?: number;
     inventoryItemId?: number;
     prescriptionId?: number;
     dispensationId?: number;

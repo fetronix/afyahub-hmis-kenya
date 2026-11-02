@@ -36,6 +36,7 @@ import { db } from '../db/index.ts';
 import * as queries from '../db/queries.ts';
 import * as schema from '../db/schema.ts';
 import * as wardBed from '../inpatient/ward-bed.service.ts';
+import * as bedBilling from '../inpatient/bed-billing.service.ts';
 import * as nursing from '../nursing/nursing.service.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { admissionChargeRequest } from '../billing/service-charges.ts';
@@ -53,6 +54,42 @@ const router = Router();
 //
 // Occupancy is created only by admitting a patient and released
 // only by discharging one, so bed status cannot forge a bed.
+
+router.get('/inpatient/bed-billing-policy', requirePermission('inpatient.read'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.getBedBillingPolicy(context)); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed policy read failed:', error); res.status(500).json({ error: 'BED_POLICY_READ_FAILED' }); }
+});
+
+router.put('/inpatient/bed-billing-policy', requirePermission('inpatient.wards.update', 'billing.update'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.setBedBillingPolicy(context, req.body ?? {})); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed policy update failed:', error); res.status(500).json({ error: 'BED_POLICY_UPDATE_FAILED' }); }
+});
+
+router.get('/admissions/:id/bed-occupancy', requirePermission('inpatient.read'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.getBedBillingView(context, Number(req.params.id))); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed occupancy read failed:', error); res.status(500).json({ error: 'BED_OCCUPANCY_READ_FAILED' }); }
+});
+
+router.post('/admissions/:id/bed-billing-encounter', requirePermission('inpatient.read', 'clinical.read', 'billing.update'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await bedBilling.linkBedBillingEncounter(context, Number(req.params.id), req.body?.encounterId, req.body?.reason)); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Admission encounter link failed:', error); res.status(500).json({ error: 'BED_ENCOUNTER_LINK_FAILED' }); }
+});
+
+router.post('/admissions/:id/bed-history-review', requirePermission('inpatient.read', 'clinical.read', 'billing.update'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.status(201).json(await bedBilling.reviewBedHistory(context, Number(req.params.id), req.body ?? {})); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed history review failed:', error); res.status(500).json({ error: 'BED_HISTORY_REVIEW_FAILED' }); }
+});
+
+router.post('/admissions/:id/bed-billing-retry', requirePermission('inpatient.read', 'billing.create'), async (req: AuthRequest, res: Response) => {
+  const context = requireAuthContext(req, res); if (!context) return;
+  try { res.json(await queries.accrueBedDaysScoped(context, Number(req.params.id))); }
+  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed billing retry failed:', error); res.status(500).json({ error: 'BED_BILLING_RETRY_FAILED' }); }
+});
 
 router.get(
   '/wards',
@@ -478,27 +515,15 @@ router.post(
         req.body ?? {},
       );
 
-      /*
-       * Bill the stay through the one bed-day engine.
-       *
-       * Discharge does not have its own billing loop: it closes the
-       * occupancy, then asks the same accrual that transfers and the
-       * nightly job use for the nights. Every night is keyed
-       * BED_DAY:<admissionId>:<date>, so re-running this — or a job
-       * that already billed last week — adds nothing.
-       *
-       * A missing tariff leaves the night unpriced and reported; it
-       * never rolls back the discharge or the bed's Cleaning status.
-       */
-      const accrual = await queries.accrueBedDaysScoped(context, admission.id);
-
-      res.json({
-        ...admission,
-        billing: {
-          nights: accrual.nights,
-          bedDays: accrual.charges,
-        },
-      });
+      // Clinical discharge and durable bed-night queue entries have already
+      // committed. An invoice failure must not be reported as a failed discharge.
+      try {
+        const accrual = await queries.accrueBedDaysScoped(context, admission.id);
+        res.json({ ...admission, billing: { nights: accrual.nights, bedDays: accrual.charges, review: accrual.review } });
+      } catch {
+        console.error('Bed billing after committed discharge needs review.');
+        res.json({ ...admission, billing: { nights: null, bedDays: [], review: { code: 'BED_BILLING_STATUS_UNKNOWN', message: 'Discharge succeeded and the bed is in Cleaning; billing status could not be confirmed. Review the queued charge before retrying.' } } });
+      }
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 
@@ -538,13 +563,15 @@ router.post(
         },
       );
 
-      /*
-       * Close the departing ward's bed-day segment using the OLD ward
-       * rate, so a stay that moves between wards is not re-priced.
-       */
-      const accrual = await queries.accrueBedDaysScoped(context, admission.id);
-
-      res.json({ admission, transfer, billing: accrual });
+      // Transfer has committed; the estimate is not a charge and a read
+      // failure must not make a completed transfer appear to have failed.
+      try {
+        const accrual = await queries.accrueBedDaysScoped(context, admission.id);
+        res.json({ admission, transfer, billing: accrual });
+      } catch {
+        console.error('Bed estimate after committed transfer unavailable.');
+        res.json({ admission, transfer, billing: { estimateOnly: true, nights: null, charges: [], review: { code: 'BED_ESTIMATE_UNAVAILABLE', message: 'Transfer succeeded; the estimate is unavailable.' } } });
+      }
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 

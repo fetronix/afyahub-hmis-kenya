@@ -228,7 +228,32 @@ export interface Bed {
   status: string; // Available, Occupied, Maintenance, Cleaning, Reserved
   /** NULL when the facility has not set a charge. Never a guess. */
   dailyCharge: string | null;
+  priceRevision: number;
+  dailyChargeReviewRequired: boolean;
   currentPatientId?: number | null;
+}
+
+export interface BedBillingPolicy {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  cutoffMinutes: number;
+  graceMinutes: number;
+  sameDayRule: 'ONE' | 'ZERO';
+  revision: number;
+}
+
+export interface BedOccupancyView {
+  admissionId: number;
+  admission: { patientId: number; encounterId: number | null; admissionDate: string; dischargeDate: string | null; status: string | null; wardId: number; bedId: number };
+  transfers: Array<{ fromWardId: number | null; fromBedId: number | null; toWardId: number; toBedId: number; transferredAt: string }>;
+  asOf: string;
+  policy: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO' } | null;
+  periods: Array<{ id: number; wardId: number; bedId: number; startedAt: string; endedAt: string | null; dailyRateSnapshot: string | null; bedNumberSnapshot: string; wardNameSnapshot: string }>;
+  durationSeconds: number | null;
+  nights: number | null;
+  estimatedAmount: string | null;
+  review: { code: string; message: string } | null;
 }
 
 export interface Admission {
@@ -612,6 +637,8 @@ export interface BillingItem {
   servicePerformedAt?: string | null;
   inventoryItemId?: number | null;
   prescriptionId?: number | null;
+  bedOccupancyId?: number | null;
+  bedNightId?: number | null;
   pharmacyStockTracking?: 'FEFO' | 'untracked' | null;
   pharmacyBatchAllocations?: Array<{
     batchId: number;

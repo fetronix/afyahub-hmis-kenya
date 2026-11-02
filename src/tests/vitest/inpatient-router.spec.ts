@@ -68,15 +68,20 @@ const EXPECTED = [
   'DELETE /api/beds/:id',
   'DELETE /api/wards/:id',
   'GET /api/admissions',
+  'GET /api/admissions/:id/bed-occupancy',
   'GET /api/admissions/:id/transfers',
   'GET /api/admissions/:id/vitals',
   'GET /api/beds',
+  'GET /api/inpatient/bed-billing-policy',
   'GET /api/inpatient/board',
   'GET /api/nursing-notes',
   'GET /api/nursing-notes/handover',
   'GET /api/wards',
   'POST /api/admissions',
   'POST /api/admissions/:id/accrue-bed-days',
+  'POST /api/admissions/:id/bed-billing-encounter',
+  'POST /api/admissions/:id/bed-billing-retry',
+  'POST /api/admissions/:id/bed-history-review',
   'POST /api/admissions/:id/discharge',
   'POST /api/admissions/:id/transfer',
   'POST /api/admissions/:id/vitals',
@@ -86,6 +91,7 @@ const EXPECTED = [
   'PUT /api/beds/:id',
   'PUT /api/beds/:id/release',
   'PUT /api/beds/:id/status',
+  'PUT /api/inpatient/bed-billing-policy',
   'PUT /api/wards/:id',
 ].sort();
 
@@ -96,7 +102,7 @@ const routerRoutes = collectRoutes(inpatientRoutes).map((route) => {
 });
 
 describe('inpatient router', () => {
-  it('carries all 22 moved routes and no others', () => {
+  it('carries the original 22 routes and the six reviewed bed-billing routes, with no others', () => {
     expect(routerRoutes.sort()).toStrictEqual(EXPECTED);
   });
 

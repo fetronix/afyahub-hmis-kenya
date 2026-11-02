@@ -435,6 +435,13 @@
             "when": 1792900000049,
             "tag": "0061_inventory_price_revision",
             "breakpoints": true
+        },
+        {
+            "idx": 62,
+            "version": "7",
+            "when": 1792900000050,
+            "tag": "0062_inpatient_bed_occupancy_billing",
+            "breakpoints": true
         }
     ]
 }

@@ -6,6 +6,7 @@ import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { readInvoicePaymentLedger } from './payment-ledger.ts';
 import { resolvePharmacyInventoryCharge } from './pharmacy-inventory-charge.ts';
+import { resolveBedOccupancyCharge } from './bed-occupancy-charge.ts';
 import { formatCents, parseMoneyToCents } from './settlement.ts';
 import type {
   FinalizedInvoiceView,
@@ -440,6 +441,19 @@ export async function finalizeInvoice(
           !matchesAllocations
         )
           issues.push(`Item ${item.id} needs matching recorded inventory dispensing and price evidence.`);
+      } else if (item.sourceType === 'BED_DAY' && item.tariffId === null) {
+        const evidence = await resolveBedOccupancyCharge(tx, {
+          tenantId: invoice.tenantId, facilityId: invoice.facilityId, patientId: invoice.patientId,
+          encounterId: invoice.encounterId, sourceType: 'BED_DAY', sourceId: item.sourceId ?? 0,
+          idempotencySuffix: item.serviceDate ?? undefined, serviceDate: item.serviceDate,
+          quantity: item.quantity ?? 0, itemType: 'Inpatient', codes: [],
+        });
+        if ('failure' in evidence || item.facilityServiceId !== null || item.tariffCode !== null ||
+            item.bedOccupancyId !== evidence.occupancyId || item.bedNightId !== evidence.nightId ||
+            item.description !== evidence.name || item.serviceCode !== evidence.code || item.serviceUnit !== evidence.unit ||
+            item.serviceDate !== evidence.serviceDate || item.serviceDepartment !== 'inpatient' ||
+            item.servicePerformedAt?.getTime() !== evidence.performedAt.getTime() || unit !== parseMoneyToCents(evidence.price))
+          issues.push(`Item ${item.id} needs matching recorded bed occupancy, cutoff and rate evidence.`);
       } else if (!tariff || !item.tariffId || !present(item.tariffCode) || !present(item.description)) {
         issues.push(`Item ${item.id} needs a recorded facility tariff and code.`);
       }
@@ -553,6 +567,14 @@ export async function finalizeInvoice(
               dispensationId: item.sourceId!,
               stockTracking: item.pharmacyStockTracking as 'FEFO' | 'untracked',
               batchAllocations: item.pharmacyBatchAllocations!,
+            }
+          : {}),
+        ...(item.sourceType === 'BED_DAY' && item.tariffId === null
+          ? {
+              priceSource: 'BED_OCCUPANCY_SNAPSHOT' as const,
+              admissionId: item.sourceId!,
+              bedOccupancyId: item.bedOccupancyId!,
+              bedNightId: item.bedNightId!,
             }
           : {}),
       })),

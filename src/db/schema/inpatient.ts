@@ -15,6 +15,7 @@ import {
   text,
   integer,
   timestamp,
+  date,
   boolean,
   numeric,
   jsonb,
@@ -129,7 +130,9 @@ export const beds = pgTable(
     dailyCharge: numeric('daily_charge', {
       precision: 10,
       scale: 2,
-    }).default('1500.00'),
+    }),
+    priceRevision: integer('price_revision').notNull().default(1),
+    dailyChargeReviewRequired: boolean('daily_charge_review_required').notNull().default(false),
 
     currentPatientId: integer('current_patient_id').references(() => patients.id),
 
@@ -202,6 +205,86 @@ export const admissions = pgTable('admissions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/* Bed pricing policy is configured explicitly; no policy is invented for existing facilities. */
+export const inpatientBedBillingPolicies = pgTable('inpatient_bed_billing_policies', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id),
+  facilityId: integer('facility_id').notNull().references(() => facilities.id).unique(),
+  cutoffMinutes: integer('cutoff_minutes').notNull(),
+  graceMinutes: integer('grace_minutes').notNull(),
+  sameDayRule: text('same_day_rule').notNull(),
+  revision: integer('revision').notNull().default(1),
+  updatedByUserId: integer('updated_by_user_id').notNull().references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Policy frozen at admission; null fields mean review, not a free stay. */
+export const inpatientBedStaySnapshots = pgTable('inpatient_bed_stay_snapshots', {
+  id: serial('id').primaryKey(),
+  admissionId: integer('admission_id').notNull().references(() => admissions.id).unique(),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id),
+  facilityId: integer('facility_id').notNull().references(() => facilities.id),
+  patientId: integer('patient_id').notNull().references(() => patients.id),
+  timezoneSnapshot: text('timezone_snapshot'),
+  cutoffMinutes: integer('cutoff_minutes'),
+  graceMinutes: integer('grace_minutes'),
+  sameDayRule: text('same_day_rule'),
+  policyRevision: integer('policy_revision'),
+  manualAdmissionTime: boolean('manual_admission_time').notNull().default(false),
+  manualDischargeTime: boolean('manual_discharge_time').notNull().default(false),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A separately authorized attestation, never an automatic historic backfill. */
+export const inpatientBedBillingReviews = pgTable('inpatient_bed_billing_reviews', {
+  id: serial('id').primaryKey(),
+  admissionId: integer('admission_id').notNull().references(() => admissions.id).unique(),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id),
+  facilityId: integer('facility_id').notNull().references(() => facilities.id),
+  patientId: integer('patient_id').notNull().references(() => patients.id),
+  timezoneSnapshot: text('timezone_snapshot').notNull(),
+  cutoffMinutes: integer('cutoff_minutes').notNull(),
+  graceMinutes: integer('grace_minutes').notNull(),
+  sameDayRule: text('same_day_rule').notNull(),
+  evidenceReference: text('evidence_reference').notNull(),
+  reason: text('reason').notNull(),
+  reviewedByUserId: integer('reviewed_by_user_id').notNull().references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const inpatientBedOccupancies = pgTable('inpatient_bed_occupancies', {
+  id: serial('id').primaryKey(),
+  admissionId: integer('admission_id').notNull().references(() => admissions.id),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id),
+  facilityId: integer('facility_id').notNull().references(() => facilities.id),
+  patientId: integer('patient_id').notNull().references(() => patients.id),
+  wardId: integer('ward_id').notNull().references(() => wards.id),
+  bedId: integer('bed_id').notNull().references(() => beds.id),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  dailyRateSnapshot: numeric('daily_rate_snapshot', { precision: 10, scale: 2 }),
+  bedNumberSnapshot: text('bed_number_snapshot').notNull(),
+  bedTypeSnapshot: text('bed_type_snapshot'),
+  wardNameSnapshot: text('ward_name_snapshot').notNull(),
+  reviewId: integer('review_id').references(() => inpatientBedBillingReviews.id),
+  recordedByUserId: integer('recorded_by_user_id').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const inpatientBedNights = pgTable('inpatient_bed_nights', {
+  id: serial('id').primaryKey(),
+  admissionId: integer('admission_id').notNull().references(() => admissions.id),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id),
+  facilityId: integer('facility_id').notNull().references(() => facilities.id),
+  patientId: integer('patient_id').notNull().references(() => patients.id),
+  occupancyId: integer('occupancy_id').notNull().references(() => inpatientBedOccupancies.id),
+  billingDate: date('billing_date').notNull(),
+  cutoffAt: timestamp('cutoff_at', { withTimezone: true }),
+  unitPriceSnapshot: numeric('unit_price_snapshot', { precision: 10, scale: 2 }),
+  totalSnapshot: numeric('total_snapshot', { precision: 10, scale: 2 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 /* ============================================================
