@@ -104,6 +104,7 @@ export const InpatientModule: React.FC = () => {
   const canReadClinical = can('clinical.read');
   const canReviewBedHistory = canFinance && canReadClinical;
   const canRetryBedBilling = can('billing.create');
+  const canInspectBedBilling = can('inpatient.read') && (can('billing.read') || canFinance || canRetryBedBilling);
   const [wards, setWards] = useState<Ward[]>([]);
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [beds, setBeds] = useState<Bed[]>([]);
@@ -197,7 +198,7 @@ export const InpatientModule: React.FC = () => {
           api.getWards(currentFacility?.id),
           api.getAdmissions(currentFacility?.id, 'Admitted'),
           api.getPatients(currentTenant?.id, currentFacility?.id),
-          api.getBeds(),
+          api.getBeds(undefined, currentFacility?.id),
           // Board is optional: a failure must not hide the ward itself.
           api.getInpatientBoard(currentFacility?.id).catch(() => null),
         ]);
@@ -233,7 +234,7 @@ export const InpatientModule: React.FC = () => {
     let live = true;
     setBedViews({});
     Promise.all(admissions.map(async (admission) => {
-      try { return [admission.id, await api.getBedOccupancy(admission.id)] as const; }
+      try { return [admission.id, await api.getBedOccupancy(admission.id, currentFacility?.id)] as const; }
       catch { return [admission.id, null] as const; }
     })).then((entries) => { if (live) setBedViews(Object.fromEntries(entries)); });
     return () => { live = false; };
@@ -248,7 +249,7 @@ export const InpatientModule: React.FC = () => {
    */
   const handleReleaseBed = async (bed: Bed) => {
     try {
-      await api.releaseBed(bed.id);
+      await api.releaseBed(bed.id, currentFacility?.id);
       showToast(`Bed ${bed.bedNumber} released to Available.`);
       triggerRefresh();
     } catch (err: any) {
@@ -515,6 +516,7 @@ export const InpatientModule: React.FC = () => {
       // The bed is released server-side from the admission record, so a
       // client-supplied bedId is neither needed nor trusted.
       const discharged = await api.dischargePatient(dischargeTarget.id, {
+        facilityId: currentFacility?.id,
         dischargeType,
         dischargeSummary,
       });
@@ -612,8 +614,8 @@ export const InpatientModule: React.FC = () => {
         </div>
       </PageHeader>
 
-      <BedBillingPolicyPanel facilityId={currentFacility?.id} canManage={canUpdateWard && canFinance} refreshKey={refreshKey} />
-      {(canReviewBedHistory || canRetryBedBilling) && <BedBillingRecovery key={currentFacility?.id} canReview={canReviewBedHistory} canRetry={canRetryBedBilling} />}
+      <BedBillingPolicyPanel key={currentFacility?.id} facilityId={currentFacility?.id} canManage={canUpdateWard && canFinance} refreshKey={refreshKey} />
+      {canInspectBedBilling && <BedBillingRecovery key={currentFacility?.id} facilityId={currentFacility?.id} canReview={canReviewBedHistory} canRetry={canRetryBedBilling} />}
 
       {/* Ward Selection Strip */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center gap-2">

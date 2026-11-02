@@ -59,6 +59,7 @@ describe('schema barrel: pre-extraction contract', () => {
         'encounterCreationRequests',
         'facilityServices',
         'inpatientBedBillingPolicies',
+        'inpatientBedBillingWork',
         'inpatientBedStaySnapshots',
         'inpatientBedBillingReviews',
         'inpatientBedOccupancies',

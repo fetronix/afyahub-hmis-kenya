@@ -207,6 +207,17 @@ export const admissions = pgTable('admissions', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+/** Durable post-discharge billing work; staged once, never inferred for historical stays. */
+export const inpatientBedBillingWork = pgTable('inpatient_bed_billing_work', {
+  admissionId: integer('admission_id').primaryKey().references(() => admissions.id),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id),
+  facilityId: integer('facility_id').notNull().references(() => facilities.id),
+  patientId: integer('patient_id').notNull().references(() => patients.id),
+  recordedByUserId: integer('recorded_by_user_id').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  stagedAt: timestamp('staged_at', { withTimezone: true }),
+});
+
 /* Bed pricing policy is configured explicitly; no policy is invented for existing facilities. */
 export const inpatientBedBillingPolicies = pgTable('inpatient_bed_billing_policies', {
   id: serial('id').primaryKey(),

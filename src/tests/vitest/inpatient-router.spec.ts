@@ -73,6 +73,7 @@ const EXPECTED = [
   'GET /api/admissions/:id/vitals',
   'GET /api/beds',
   'GET /api/inpatient/bed-billing-policy',
+  'GET /api/inpatient/bed-billing-unresolved',
   'GET /api/inpatient/board',
   'GET /api/nursing-notes',
   'GET /api/nursing-notes/handover',
@@ -102,7 +103,7 @@ const routerRoutes = collectRoutes(inpatientRoutes).map((route) => {
 });
 
 describe('inpatient router', () => {
-  it('carries the original 22 routes and the six reviewed bed-billing routes, with no others', () => {
+  it('carries the original 22 routes, the six bed-billing routes and scoped recovery list, with no others', () => {
     expect(routerRoutes.sort()).toStrictEqual(EXPECTED);
   });
 

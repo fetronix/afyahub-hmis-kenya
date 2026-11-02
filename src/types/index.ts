@@ -243,11 +243,20 @@ export interface BedBillingPolicy {
   revision: number;
 }
 
+export interface BedBillingUnresolvedPage {
+  admissions: Array<{ admissionId: number; admissionStatus: string | null; pendingAttempts: number; stagingPending: boolean }>;
+  hasMore: boolean;
+  offset: number;
+  pageSize: number;
+}
+
 export interface BedOccupancyView {
   admissionId: number;
   admission: { patientId: number; encounterId: number | null; admissionDate: string; dischargeDate: string | null; status: string | null; wardId: number; bedId: number };
   transfers: Array<{ fromWardId: number | null; fromBedId: number | null; toWardId: number; toBedId: number; transferredAt: string }>;
   asOf: string;
+  staySnapshot: { timezoneSnapshot: string | null; cutoffMinutes: number | null; graceMinutes: number | null; sameDayRule: string | null; policyRevision: number | null; manualAdmissionTime: boolean; manualDischargeTime: boolean; capturedAt: string } | null;
+  unresolved: { attempts: Array<{ id: number; idempotencySuffix: string | null; reason: string; diagnosisCode: string | null; attempts: number; lastAttemptAt: string }>; hasMore: boolean; stagingPending: boolean } | null;
   policy: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO' } | null;
   periods: Array<{ id: number; wardId: number; bedId: number; startedAt: string; endedAt: string | null; dailyRateSnapshot: string | null; bedNumberSnapshot: string; wardNameSnapshot: string }>;
   durationSeconds: number | null;

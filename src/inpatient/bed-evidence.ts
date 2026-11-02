@@ -22,7 +22,7 @@ export async function readBedEvidence(executor: BedExecutor, admission: Admissio
   if (!review && !snapshot)
     throw new BedPolicyError('BED_HISTORY_REVIEW_REQUIRED', 'No occupancy and policy snapshots were captured for this historical stay.');
   if (!review && (snapshot!.manualAdmissionTime || snapshot!.manualDischargeTime))
-    throw new BedPolicyError('BED_MANUAL_TIME_REVIEW_REQUIRED', 'A manually entered clinical time needs an evidence-based bed billing review.');
+    throw new BedPolicyError('BED_MANUAL_TIME_REVIEW_REQUIRED', 'A client-supplied clinical time needs an evidence-based bed billing review. An older client may have supplied it automatically; its origin cannot be assumed.');
   const chosen = review ?? snapshot!;
   const policy: BedNightPolicy = {
     timezone: chosen.timezoneSnapshot ?? '',

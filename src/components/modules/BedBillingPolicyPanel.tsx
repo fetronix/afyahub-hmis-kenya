@@ -16,7 +16,7 @@ export const BedBillingPolicyPanel: React.FC<{ facilityId: number | undefined; c
   useEffect(() => {
     let live = true;
     setPolicy(undefined); setError('');
-    api.getBedBillingPolicy().then((p) => {
+    api.getBedBillingPolicy(facilityId).then((p) => {
       if (!live) return;
       setPolicy(p); setCutoff(p ? timeText(p.cutoffMinutes) : ''); setGrace(p ? String(p.graceMinutes) : ''); setSameDay(p?.sameDayRule ?? '');
     }).catch(() => { if (live) { setPolicy(undefined); setError('Bed billing policy could not be loaded. Do not assume it is configured.'); } });
@@ -28,7 +28,7 @@ export const BedBillingPolicyPanel: React.FC<{ facilityId: number | undefined; c
     const [hour, minute] = cutoff.split(':').map(Number);
     setSaving(true); setError('');
     try {
-      const result = await api.setBedBillingPolicy({ cutoffMinutes: hour * 60 + minute, graceMinutes: Number(grace), sameDayRule: sameDay, expectedRevision: policy?.revision ?? null, reason });
+      const result = await api.setBedBillingPolicy({ facilityId, cutoffMinutes: hour * 60 + minute, graceMinutes: Number(grace), sameDayRule: sameDay, expectedRevision: policy?.revision ?? null, reason });
       setPolicy(result); setReason(''); setError('Bed policy saved for future admissions. Existing stays retain their recorded policy.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Policy could not be saved.'); }
     finally { setSaving(false); }

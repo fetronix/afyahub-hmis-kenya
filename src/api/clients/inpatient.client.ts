@@ -2,6 +2,7 @@ import type {
   Admission,
   Bed,
   BedBillingPolicy,
+  BedBillingUnresolvedPage,
   BedOccupancyView,
   InpatientBoard,
   ShiftHandover,
@@ -11,12 +12,19 @@ import type {
 } from '../../types/index.ts';
 import { API_BASE, fetchJson, type ServiceCharge } from './http.ts';
 
+const facilityQuery = (facilityId?: number) => facilityId === undefined ? '' : `?facilityId=${encodeURIComponent(String(facilityId))}`;
+
 export const inpatientClient = {
   getWards: (facilityId?: number) =>
     fetchJson<Ward[]>(`${API_BASE}/wards${facilityId ? `?facilityId=${facilityId}` : ''}`),
 
-  getBeds: (wardId?: number) =>
-    fetchJson<Bed[]>(`${API_BASE}/beds${wardId ? `?wardId=${wardId}` : ''}`),
+  getBeds: (wardId?: number, facilityId?: number) => {
+    const params = new URLSearchParams();
+    if (wardId !== undefined) params.set('wardId', String(wardId));
+    if (facilityId !== undefined) params.set('facilityId', String(facilityId));
+    const query = params.toString();
+    return fetchJson<Bed[]>(`${API_BASE}/beds${query ? `?${query}` : ''}`);
+  },
 
   createWard: (data: {
     facilityId?: number;
@@ -97,8 +105,8 @@ export const inpatientClient = {
       }),
     }),
 
-  releaseBed: (id: number) =>
-    fetchJson<Bed>(`${API_BASE}/beds/${id}/release`, {
+  releaseBed: (id: number, facilityId?: number) =>
+    fetchJson<Bed>(`${API_BASE}/beds/${id}/release${facilityQuery(facilityId)}`, {
       method: 'PUT',
     }),
 
@@ -127,6 +135,7 @@ export const inpatientClient = {
   dischargePatient: (
     id: number,
     data: {
+      facilityId?: number;
       dischargeDate?: string;
       dischargeType: string;
       dischargeSummary: string;
@@ -147,7 +156,7 @@ export const inpatientClient = {
 
   transferAdmission: (
     id: number,
-    data: { toWardId: number; toBedId: number; reason?: string; transferredBy?: string },
+    data: { facilityId?: number; toWardId: number; toBedId: number; reason?: string; transferredBy?: string },
   ) =>
     fetchJson<any>(`${API_BASE}/admissions/${id}/transfer`, {
       method: 'POST',
@@ -156,21 +165,26 @@ export const inpatientClient = {
 
   getAdmissionTransfers: (id: number) => fetchJson<any[]>(`${API_BASE}/admissions/${id}/transfers`),
 
-  accrueBedDays: (id: number, untilDate?: string) =>
-    fetchJson<any>(`${API_BASE}/admissions/${id}/accrue-bed-days`, {
+  accrueBedDays: (id: number, untilDate?: string, facilityId?: number) =>
+    fetchJson<any>(`${API_BASE}/admissions/${id}/accrue-bed-days${facilityQuery(facilityId)}`, {
       method: 'POST',
       body: JSON.stringify({ untilDate }),
     }),
 
-  getBedBillingPolicy: () => fetchJson<BedBillingPolicy | null>(`${API_BASE}/inpatient/bed-billing-policy`),
-  setBedBillingPolicy: (data: { cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO'; expectedRevision?: number | null; reason: string }) =>
+  getBedBillingPolicy: (facilityId?: number) => fetchJson<BedBillingPolicy | null>(`${API_BASE}/inpatient/bed-billing-policy${facilityQuery(facilityId)}`),
+  setBedBillingPolicy: (data: { facilityId?: number; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO'; expectedRevision?: number | null; reason: string }) =>
     fetchJson<BedBillingPolicy>(`${API_BASE}/inpatient/bed-billing-policy`, { method: 'PUT', body: JSON.stringify(data) }),
-  getBedOccupancy: (id: number) => fetchJson<BedOccupancyView>(`${API_BASE}/admissions/${id}/bed-occupancy`),
-  linkBedBillingEncounter: (id: number, encounterId: number, reason: string) =>
-    fetchJson<Admission>(`${API_BASE}/admissions/${id}/bed-billing-encounter`, { method: 'POST', body: JSON.stringify({ encounterId, reason }) }),
-  reviewBedHistory: (id: number, data: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO'; reason: string; evidenceReference: string; affirmReviewedHistoryAndCharges: boolean; periods: Array<{ wardId: number; bedId: number; startedAt: string; endedAt: string; dailyRate: string }> }) =>
-    fetchJson<{ reviewId: number; nights: number }>(`${API_BASE}/admissions/${id}/bed-history-review`, { method: 'POST', body: JSON.stringify(data) }),
-  retryBedBilling: (id: number) => fetchJson<{ nights: number | null; charges: ServiceCharge[]; review: { code: string; message: string } | null }>(`${API_BASE}/admissions/${id}/bed-billing-retry`, { method: 'POST', body: '{}' }),
+  getUnresolvedBedBilling: (facilityId?: number, offset = 0) => {
+    const params = new URLSearchParams({ offset: String(offset) });
+    if (facilityId !== undefined) params.set('facilityId', String(facilityId));
+    return fetchJson<BedBillingUnresolvedPage>(`${API_BASE}/inpatient/bed-billing-unresolved?${params.toString()}`);
+  },
+  getBedOccupancy: (id: number, facilityId?: number) => fetchJson<BedOccupancyView>(`${API_BASE}/admissions/${id}/bed-occupancy${facilityQuery(facilityId)}`),
+  linkBedBillingEncounter: (id: number, encounterId: number, reason: string, facilityId?: number) =>
+    fetchJson<Admission>(`${API_BASE}/admissions/${id}/bed-billing-encounter${facilityQuery(facilityId)}`, { method: 'POST', body: JSON.stringify({ encounterId, reason }) }),
+  reviewBedHistory: (id: number, data: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO'; reason: string; evidenceReference: string; affirmReviewedHistoryAndCharges: boolean; periods: Array<{ wardId: number; bedId: number; startedAt: string; endedAt: string; dailyRate: string }> }, facilityId?: number) =>
+    fetchJson<{ reviewId: number; nights: number }>(`${API_BASE}/admissions/${id}/bed-history-review${facilityQuery(facilityId)}`, { method: 'POST', body: JSON.stringify(data) }),
+  retryBedBilling: (id: number, facilityId?: number) => fetchJson<{ nights: number | null; charges: ServiceCharge[]; review: { code: string; message: string } | null }>(`${API_BASE}/admissions/${id}/bed-billing-retry${facilityQuery(facilityId)}`, { method: 'POST', body: '{}' }),
 
   getInpatientBoard: (facilityId?: number) =>
     fetchJson<InpatientBoard>(

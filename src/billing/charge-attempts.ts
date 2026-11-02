@@ -916,6 +916,34 @@ export async function retryChargeAttempt(
     if (row.sourceId == null) {
       return { attemptId: row.id, status: 'PENDING', result: chargeReviewRequired() };
     }
+    // Stay-level review rows and legacy dated attempts without a recorded
+    // bed night are not billable nights. Do not overwrite their original
+    // diagnoses while probing the resolver; an authorized admission-specific
+    // review retains those rows and stages real dated evidence.
+    if (row.sourceType === 'BED_DAY') {
+      const date = row.idempotencySuffix ?? '';
+      const [night] = /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? await tx.select({ id: schema.inpatientBedNights.id }).from(schema.inpatientBedNights).where(and(
+            eq(schema.inpatientBedNights.admissionId, row.sourceId),
+            eq(schema.inpatientBedNights.tenantId, input.tenantId),
+            eq(schema.inpatientBedNights.facilityId, input.facilityId),
+            eq(schema.inpatientBedNights.patientId, row.patientId),
+            sql`${schema.inpatientBedNights.billingDate}::text = ${date}`,
+          )).limit(1)
+        : [];
+      if (!night) {
+        return {
+          attemptId: row.id,
+          status: 'PENDING',
+          result: {
+            charged: false,
+            reason: 'BED_OCCUPANCY_REVIEW',
+            diagnosis: { code: row.diagnosisCode ?? 'BED_NIGHT_EVIDENCE_REQUIRED', label: 'Bed occupancy review' },
+            message: `${row.detail ?? 'This bed charge has no verified night evidence.'} Use the admission-specific bed billing recovery before retrying.`,
+          },
+        };
+      }
+    }
     const request = toChargeRequest(row, input.tenantId);
     const related: ChargeAttemptRow[] = (await tx
       .select()

@@ -21,7 +21,7 @@ import {
   InpatientDomainError,
 } from '../inpatient-contracts.ts';
 
-import { requireTenantScope, requireFacilityScope } from '../../auth/scope.service.ts';
+import { requireTenantScope, requireFacilityScope, resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
 import type { ChargeResult } from '../../billing/billing.service.ts';
@@ -33,6 +33,8 @@ import {
   captureBedStay,
   closeCurrentBedPeriod,
   getBedBillingView,
+  markBedBillingStaged,
+  requireSelectedAdmissionFacility,
   stageDischargedBedNights,
 } from '../../inpatient/bed-billing.service.ts';
 
@@ -142,7 +144,7 @@ export async function getWardsScoped(
    BEDS
    ------------------------------------------------------------ */
 
-export async function getBedsScoped(context: AuthorizationContext, wardId?: number | null) {
+export async function getBedsScoped(context: AuthorizationContext, wardId?: number | null, requestedFacilityId?: number | null) {
   if (wardId !== undefined && wardId !== null) {
     const id = requirePositiveId(wardId, 'ward ID');
 
@@ -154,7 +156,7 @@ export async function getBedsScoped(context: AuthorizationContext, wardId?: numb
 
     const facility = await getFacilityByIdScoped(context, ward.facilityId);
 
-    if (!facility) {
+    if (!facility || resolveFacilityScope(context, requestedFacilityId) !== ward.facilityId) {
       throw new InpatientDomainError(
         'WARD_NOT_FOUND',
         'Ward not found in the authorised facility.',
@@ -169,7 +171,7 @@ export async function getBedsScoped(context: AuthorizationContext, wardId?: numb
       .orderBy(schema.beds.bedNumber);
   }
 
-  const facility = await requireInpatientFacility(context);
+  const facility = await requireInpatientFacility(context, requestedFacilityId);
 
   const wardRows = await db
     .select({ id: schema.wards.id })
@@ -518,6 +520,7 @@ export async function createAdmissionScoped(
    ------------------------------------------------------------ */
 
 export interface DischargeAdmissionInput {
+  facilityId?: number;
   dischargeDate?: string;
   dischargeType?: string | null;
   dischargeSummary?: string | null;
@@ -542,8 +545,7 @@ export async function dischargeAdmissionScoped(
       throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
     }
 
-    requireTenantScope(context, admission.tenantId);
-    requireFacilityScope(context, admission.tenantId, admission.facilityId);
+    requireSelectedAdmissionFacility(context, admission, input?.facilityId);
 
     if (admission.status !== ACTIVE_ADMISSION_STATUS) {
       throw new InpatientDomainError(
@@ -598,10 +600,14 @@ export async function dischargeAdmissionScoped(
         );
     }
 
-    // The charge and unresolved-queue identities are durable before the
-    // clinical transaction commits. Invoice generation happens afterwards.
-    await stageDischargedBedNights(tx, updated, dischargedAt);
-    await auditAdmission(tx, context, updated, 'UPDATE', 'Admission discharged.');
+    // Commit a durable, scoped work identity with the clinical discharge.
+    // Bed-night calculation and invoice/queue writes occur after this commits,
+    // so their failure cannot leave a discharged patient occupying the bed.
+    await tx.insert(schema.inpatientBedBillingWork).values({
+      admissionId: updated.id, tenantId: updated.tenantId, facilityId: updated.facilityId,
+      patientId: updated.patientId, recordedByUserId: context.userId,
+    });
+    await auditAdmission(tx, context, updated, 'UPDATE', 'Admission discharged; bed billing work recorded.');
     return updated;
   });
 }
@@ -687,10 +693,11 @@ export async function setBedStatusScoped(
  * Without this, every discharge removes a bed from the usable board
  * permanently, because nothing else ever restores 'Available'.
  */
-export async function releaseBedScoped(context: AuthorizationContext, bedId: number) {
+export async function releaseBedScoped(context: AuthorizationContext, bedId: number, requestedFacilityId?: number) {
   const id = requirePositiveId(bedId, 'bed ID');
 
-  const { bed } = await requireBedInScope(context, id);
+  const { bed, ward, facility } = await requireBedInScope(context, id);
+  requireSelectedAdmissionFacility(context, { tenantId: facility.tenantId, facilityId: ward.facilityId }, requestedFacilityId);
 
   if (bed.currentPatientId !== null && bed.currentPatientId !== undefined) {
     throw new InpatientDomainError(
@@ -708,40 +715,51 @@ export async function releaseBedScoped(context: AuthorizationContext, bedId: num
     );
   }
 
-  const [updated] = await db
-    .update(schema.beds)
-    .set({
-      status: 'Available',
-      currentPatientId: null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(schema.beds.id, bed.id),
-        eq(schema.beds.status, 'Cleaning'),
-        isNull(schema.beds.currentPatientId),
-        notExists(
-          db
-            .select({ id: schema.admissions.id })
-            .from(schema.admissions)
-            .where(
-              and(
-                eq(schema.admissions.bedId, schema.beds.id),
-                eq(schema.admissions.status, ACTIVE_ADMISSION_STATUS),
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(schema.beds)
+      .set({
+        status: 'Available',
+        currentPatientId: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.beds.id, bed.id),
+          eq(schema.beds.status, 'Cleaning'),
+          isNull(schema.beds.currentPatientId),
+          notExists(
+            tx
+              .select({ id: schema.admissions.id })
+              .from(schema.admissions)
+              .where(
+                and(
+                  eq(schema.admissions.bedId, schema.beds.id),
+                  eq(schema.admissions.status, ACTIVE_ADMISSION_STATUS),
+                ),
               ),
-            ),
+          ),
         ),
-      ),
-    )
-    .returning();
+      )
+      .returning();
 
-  if (!updated)
-    throw new InpatientDomainError(
-      'BED_STATUS_CONFLICT',
-      'Bed occupancy or status changed; refresh and try again.',
-      409,
-    );
-  return updated;
+    if (!updated)
+      throw new InpatientDomainError(
+        'BED_STATUS_CONFLICT',
+        'Bed occupancy or status changed; refresh and try again.',
+        409,
+      );
+    await tx.insert(schema.auditLogs).values({
+      tenantId: facility.tenantId,
+      facilityId: facility.id,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'Bed',
+      resourceId: String(updated.id),
+      details: 'Bed released to Available after terminal cleaning',
+    });
+    return updated;
+  });
 }
 
 // Operating Theatres
@@ -811,26 +829,30 @@ export async function updateTheatreCase(
 /**
  * Bed billing is calculated only after discharge: before then a later
  * transfer, same-day rule or grace period could change the final answer.
- * Clinical discharge staged the per-cutoff evidence and queue rows first.
+ * Clinical discharge commits a durable work marker before staging the nights.
  */
 export async function accrueBedDaysScoped(
   context: AuthorizationContext,
   admissionId: number,
   untilDate?: string | null,
+  requestedFacilityId?: number,
 ) {
   const admission = await getAdmissionByIdScoped(context, admissionId);
   if (!admission) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
+  requireSelectedAdmissionFacility(context, admission, requestedFacilityId);
   if (untilDate && !/^\d{4}-\d{2}-\d{2}$/.test(untilDate))
     throw new InpatientDomainError('INVALID_INPUT', 'Enter an ISO date for the accrual limit.', 400);
   if (admission.status === ACTIVE_ADMISSION_STATUS) {
-    const view = await getBedBillingView(context, admission.id);
+    const view = await getBedBillingView(context, admission.id, requestedFacilityId);
     return { nights: view.nights, charges: [] as ChargeResult[], segments: [], review: view.review, estimateOnly: true };
   }
   const staged = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(schema.admissions).where(eq(schema.admissions.id, admission.id)).for('update');
     if (!locked || locked.tenantId !== admission.tenantId || locked.facilityId !== admission.facilityId)
       throw new Error('BED_ADMISSION_SCOPE_CHANGED');
-    return stageDischargedBedNights(tx, locked, await databaseNow(tx));
+    const result = await stageDischargedBedNights(tx, locked, await databaseNow(tx));
+    await markBedBillingStaged(tx, locked, context.userId);
+    return result;
   });
   if (staged.review) return {
     nights: null, segments: [], review: staged.review, estimateOnly: false,
@@ -843,6 +865,7 @@ export async function accrueBedDaysScoped(
 }
 
 export interface TransferAdmissionInput {
+  facilityId?: number;
   toWardId: number;
   toBedId: number;
   reason?: string | null;
@@ -883,8 +906,7 @@ export async function transferAdmissionScoped(
         .for('update');
       if (!admission)
         throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
-      requireTenantScope(context, admission.tenantId);
-      requireFacilityScope(context, admission.tenantId, admission.facilityId);
+      requireSelectedAdmissionFacility(context, admission, input?.facilityId);
       if (admission.status !== ACTIVE_ADMISSION_STATUS)
         throw new InpatientDomainError(
           'ADMISSION_ALREADY_CLOSED',

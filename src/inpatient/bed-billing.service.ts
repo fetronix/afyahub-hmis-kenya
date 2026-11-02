@@ -1,6 +1,6 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
-import { hasAllPermissions } from '../auth/authorization.service.ts';
-import { requireFacilityScope, requireTenantScope } from '../auth/scope.service.ts';
+import { and, asc, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { hasAllPermissions, hasAnyPermission } from '../auth/authorization.service.ts';
+import { requireFacilityScope, requireTenantScope, resolveFacilityScope, ScopeAccessError } from '../auth/scope.service.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
@@ -24,18 +24,27 @@ const text = (v: unknown, label: string, max = 500) => {
   return v.trim();
 };
 
-export async function getBedBillingPolicy(context: AuthorizationContext) {
-  const facility = await requireInpatientFacility(context);
+/** Match the module-gated facility to the admission, including tenant-level users. */
+export function requireSelectedAdmissionFacility(context: AuthorizationContext, admission: { tenantId: number; facilityId: number }, requestedFacilityId?: number) {
+  requireTenantScope(context, admission.tenantId);
+  requireFacilityScope(context, admission.tenantId, admission.facilityId);
+  if (resolveFacilityScope(context, requestedFacilityId) !== admission.facilityId)
+    throw new ScopeAccessError('The admission is not in the selected facility.', 'FACILITY_SCOPE_MISMATCH');
+}
+
+export async function getBedBillingPolicy(context: AuthorizationContext, requestedFacilityId?: number) {
+  const facility = await requireInpatientFacility(context, requestedFacilityId);
   const [policy] = await db.select().from(schema.inpatientBedBillingPolicies)
     .where(and(eq(schema.inpatientBedBillingPolicies.tenantId, facility.tenantId), eq(schema.inpatientBedBillingPolicies.facilityId, facility.id))).limit(1);
   return policy ?? null;
 }
 
 export async function setBedBillingPolicy(context: AuthorizationContext, input: {
-  cutoffMinutes?: unknown; graceMinutes?: unknown; sameDayRule?: unknown; expectedRevision?: unknown; reason?: unknown;
+  facilityId?: unknown; cutoffMinutes?: unknown; graceMinutes?: unknown; sameDayRule?: unknown; expectedRevision?: unknown; reason?: unknown;
 }) {
   financialPermission(context, ['inpatient.wards.update', 'billing.update']);
-  const facility = await requireInpatientFacility(context);
+  const requestedFacilityId = input.facilityId == null ? undefined : requirePositiveId(input.facilityId, 'facility ID');
+  const facility = await requireInpatientFacility(context, requestedFacilityId);
   const cutoffMinutes = input.cutoffMinutes, graceMinutes = input.graceMinutes;
   const sameDayRule = input.sameDayRule;
   const reason = text(input.reason, 'Reason');
@@ -122,7 +131,7 @@ async function queueReview(tx: Transaction, admission: AdmissionRow, problem: Be
   return { nights: 0, requests: [] as ChargeRequest[], review: { code: problem.code, message: problem.message } };
 }
 
-/** Save all cutoff, rate and amount evidence and queue identities before discharge commits. */
+/** Atomically save all cutoff, rate and amount evidence and their queue identities. */
 export async function stageDischargedBedNights(tx: Transaction, admission: AdmissionRow, at: Date) {
   let evidence: Awaited<ReturnType<typeof readBedEvidence>>;
   try {
@@ -161,28 +170,124 @@ export async function stageDischargedBedNights(tx: Transaction, admission: Admis
   return { nights: requests.length, requests, review: null };
 }
 
-export async function getBedBillingView(context: AuthorizationContext, admissionId: number) {
+/** Mark work staged only in the transaction that durably saved the nights/review queue. */
+export async function markBedBillingStaged(tx: Transaction, admission: AdmissionRow, userId: number) {
+  const [marked] = await tx.update(schema.inpatientBedBillingWork).set({ stagedAt: sql`clock_timestamp()` })
+    .where(and(eq(schema.inpatientBedBillingWork.admissionId, admission.id),
+      eq(schema.inpatientBedBillingWork.tenantId, admission.tenantId),
+      eq(schema.inpatientBedBillingWork.facilityId, admission.facilityId),
+      eq(schema.inpatientBedBillingWork.patientId, admission.patientId),
+      isNull(schema.inpatientBedBillingWork.stagedAt)))
+    .returning({ admissionId: schema.inpatientBedBillingWork.admissionId });
+  if (marked) await tx.insert(schema.auditLogs).values({
+    tenantId: admission.tenantId, facilityId: admission.facilityId, userId: String(userId),
+    action: 'UPDATE', resource: 'InpatientBedBillingWork', resourceId: String(admission.id),
+    details: 'Bed billing evidence and queue identities staged.',
+  });
+}
+
+const canInspectBedAttempts = (context: AuthorizationContext) =>
+  hasAnyPermission(context, ['billing.read', 'billing.create', 'billing.update']);
+
+/** A scoped index of admissions with unresolved bed work, not the generic tariff queue. */
+export async function getUnresolvedBedBilling(context: AuthorizationContext, requestedFacilityId?: number, offset = 0) {
+  if (!hasAllPermissions(context, ['inpatient.read']) || !canInspectBedAttempts(context))
+    throw invalid('Inpatient and facility billing permissions are required.', 403);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000)
+    throw invalid('Enter a valid bed billing page offset.');
+  const facility = await requireInpatientFacility(context, requestedFacilityId);
+  const lastActivity = sql`greatest(max(${schema.billingChargeAttempts.lastAttemptAt}), max(${schema.inpatientBedBillingWork.createdAt}))`;
+  const pageSize = 50;
+  const rows = await db.select({
+    admissionId: schema.admissions.id,
+    admissionStatus: schema.admissions.status,
+    pendingAttempts: sql<number>`count(${schema.billingChargeAttempts.id})::int`,
+    stagingPending: sql<boolean>`bool_or(${schema.inpatientBedBillingWork.admissionId} is not null and ${schema.inpatientBedBillingWork.stagedAt} is null)`,
+  }).from(schema.admissions)
+    .leftJoin(schema.billingChargeAttempts, and(
+      eq(schema.billingChargeAttempts.sourceId, schema.admissions.id),
+      eq(schema.billingChargeAttempts.tenantId, schema.admissions.tenantId),
+      eq(schema.billingChargeAttempts.facilityId, schema.admissions.facilityId),
+      eq(schema.billingChargeAttempts.patientId, schema.admissions.patientId),
+      eq(schema.billingChargeAttempts.sourceType, 'BED_DAY'),
+      eq(schema.billingChargeAttempts.status, 'PENDING'),
+    ))
+    .leftJoin(schema.inpatientBedBillingWork, and(
+      eq(schema.inpatientBedBillingWork.admissionId, schema.admissions.id),
+      eq(schema.inpatientBedBillingWork.tenantId, schema.admissions.tenantId),
+      eq(schema.inpatientBedBillingWork.facilityId, schema.admissions.facilityId),
+      eq(schema.inpatientBedBillingWork.patientId, schema.admissions.patientId),
+    ))
+    .where(and(
+      eq(schema.admissions.tenantId, facility.tenantId),
+      eq(schema.admissions.facilityId, facility.id),
+      or(isNotNull(schema.billingChargeAttempts.id), and(isNotNull(schema.inpatientBedBillingWork.admissionId), isNull(schema.inpatientBedBillingWork.stagedAt))),
+    ))
+    .groupBy(schema.admissions.id, schema.admissions.status)
+    .orderBy(desc(lastActivity), desc(schema.admissions.id))
+    .limit(pageSize + 1).offset(offset);
+  return { admissions: rows.slice(0, pageSize), hasMore: rows.length > pageSize, offset, pageSize };
+}
+
+export async function getBedBillingView(context: AuthorizationContext, admissionId: number, requestedFacilityId?: number) {
   const id = requirePositiveId(admissionId, 'admission ID');
   const [admission] = await db.select().from(schema.admissions).where(eq(schema.admissions.id, id)).limit(1);
   if (!admission) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
-  requireTenantScope(context, admission.tenantId);
-  requireFacilityScope(context, admission.tenantId, admission.facilityId);
+  requireSelectedAdmissionFacility(context, admission, requestedFacilityId);
   const at = await databaseNow(db);
+  const [staySnapshot] = await db.select({
+    timezoneSnapshot: schema.inpatientBedStaySnapshots.timezoneSnapshot,
+    cutoffMinutes: schema.inpatientBedStaySnapshots.cutoffMinutes,
+    graceMinutes: schema.inpatientBedStaySnapshots.graceMinutes,
+    sameDayRule: schema.inpatientBedStaySnapshots.sameDayRule,
+    policyRevision: schema.inpatientBedStaySnapshots.policyRevision,
+    manualAdmissionTime: schema.inpatientBedStaySnapshots.manualAdmissionTime,
+    manualDischargeTime: schema.inpatientBedStaySnapshots.manualDischargeTime,
+    capturedAt: schema.inpatientBedStaySnapshots.capturedAt,
+  }).from(schema.inpatientBedStaySnapshots).where(and(
+    eq(schema.inpatientBedStaySnapshots.admissionId, id),
+    eq(schema.inpatientBedStaySnapshots.tenantId, admission.tenantId),
+    eq(schema.inpatientBedStaySnapshots.facilityId, admission.facilityId),
+    eq(schema.inpatientBedStaySnapshots.patientId, admission.patientId),
+  )).limit(1);
+  let unresolved: { attempts: Array<{ id: number; idempotencySuffix: string | null; reason: string; diagnosisCode: string | null; attempts: number; lastAttemptAt: Date }>; hasMore: boolean; stagingPending: boolean } | null = null;
+  if (canInspectBedAttempts(context)) {
+    const [work] = await db.select({ stagedAt: schema.inpatientBedBillingWork.stagedAt }).from(schema.inpatientBedBillingWork).where(and(
+      eq(schema.inpatientBedBillingWork.admissionId, id),
+      eq(schema.inpatientBedBillingWork.tenantId, admission.tenantId),
+      eq(schema.inpatientBedBillingWork.facilityId, admission.facilityId),
+      eq(schema.inpatientBedBillingWork.patientId, admission.patientId),
+    )).limit(1);
+    const attempts = await db.select({
+      id: schema.billingChargeAttempts.id, idempotencySuffix: schema.billingChargeAttempts.idempotencySuffix,
+      reason: schema.billingChargeAttempts.reason, diagnosisCode: schema.billingChargeAttempts.diagnosisCode,
+      attempts: schema.billingChargeAttempts.attempts, lastAttemptAt: schema.billingChargeAttempts.lastAttemptAt,
+    }).from(schema.billingChargeAttempts).where(and(
+      eq(schema.billingChargeAttempts.tenantId, admission.tenantId),
+      eq(schema.billingChargeAttempts.facilityId, admission.facilityId),
+      eq(schema.billingChargeAttempts.patientId, admission.patientId),
+      eq(schema.billingChargeAttempts.sourceType, 'BED_DAY'),
+      eq(schema.billingChargeAttempts.sourceId, admission.id),
+      eq(schema.billingChargeAttempts.status, 'PENDING'),
+    )).orderBy(asc(schema.billingChargeAttempts.id)).limit(101);
+    unresolved = { attempts: attempts.slice(0, 100), hasMore: attempts.length > 100, stagingPending: Boolean(work && work.stagedAt === null) };
+  }
   const periods = await db.select().from(schema.inpatientBedOccupancies).where(and(eq(schema.inpatientBedOccupancies.admissionId, id), isNull(schema.inpatientBedOccupancies.reviewId))).orderBy(asc(schema.inpatientBedOccupancies.startedAt));
   const transfers = await db.select({ fromWardId: schema.admissionTransfers.fromWardId, fromBedId: schema.admissionTransfers.fromBedId, toWardId: schema.admissionTransfers.toWardId, toBedId: schema.admissionTransfers.toBedId, transferredAt: schema.admissionTransfers.transferredAt }).from(schema.admissionTransfers)
     .where(and(eq(schema.admissionTransfers.admissionId, id), eq(schema.admissionTransfers.tenantId, admission.tenantId), eq(schema.admissionTransfers.facilityId, admission.facilityId))).orderBy(asc(schema.admissionTransfers.transferredAt), asc(schema.admissionTransfers.id));
   const clinical = { patientId: admission.patientId, encounterId: admission.encounterId, admissionDate: admission.admissionDate, dischargeDate: admission.dischargeDate, status: admission.status, wardId: admission.wardId, bedId: admission.bedId };
+  const diagnostics = { staySnapshot: staySnapshot ?? null, unresolved };
   try {
     const evidence = await readBedEvidence(db, admission, at);
     if (evidence.nights.some((night) => (parseMoneyToCents(night.rate) ?? 0) <= 0))
       throw new BedPolicyError('BED_RATE_REVIEW_REQUIRED', 'A positive, confirmed daily bed rate was not captured for every billable period.');
     const sum = evidence.nights.reduce((total, n) => total === null || parseMoneyToCents(n.rate) === null ? null : total + parseMoneyToCents(n.rate)!, 0 as number | null);
-    return { admissionId: id, admission: clinical, transfers, asOf: at, policy: evidence.policy, periods: evidence.periods,
+    return { admissionId: id, admission: clinical, transfers, asOf: at, ...diagnostics, policy: evidence.policy, periods: evidence.periods,
       durationSeconds: Math.max(0, Math.floor(((evidence.periods.at(-1)?.endedAt ?? at).getTime() - evidence.periods[0].startedAt.getTime()) / 1000)),
       nights: evidence.nights.length, estimatedAmount: sum === null ? null : formatCents(sum), review: null };
   } catch (error) {
     if (!(error instanceof BedPolicyError)) throw error;
-    return { admissionId: id, admission: clinical, transfers, asOf: at, policy: null, periods, durationSeconds: periods.length ? Math.max(0, Math.floor(((periods.at(-1)?.endedAt ?? at).getTime() - periods[0].startedAt.getTime()) / 1000)) : null,
+    return { admissionId: id, admission: clinical, transfers, asOf: at, ...diagnostics, policy: null, periods, durationSeconds: periods.length ? Math.max(0, Math.floor(((periods.at(-1)?.endedAt ?? at).getTime() - periods[0].startedAt.getTime()) / 1000)) : null,
       nights: null, estimatedAmount: null, review: { code: error.code, message: error.message } };
   }
 }
@@ -190,7 +295,7 @@ export async function getBedBillingView(context: AuthorizationContext, admission
 export { requestFor as bedNightChargeRequest };
 
 /** Explicitly link a missing encounter; never guess or replace an existing link. */
-export async function linkBedBillingEncounter(context: AuthorizationContext, admissionId: number, rawEncounterId: unknown, rawReason: unknown) {
+export async function linkBedBillingEncounter(context: AuthorizationContext, admissionId: number, rawEncounterId: unknown, rawReason: unknown, requestedFacilityId?: number) {
   financialPermission(context, ['inpatient.read', 'clinical.read', 'billing.update']);
   const id = requirePositiveId(admissionId, 'admission ID');
   const encounterId = requirePositiveId(rawEncounterId, 'encounter ID');
@@ -198,8 +303,7 @@ export async function linkBedBillingEncounter(context: AuthorizationContext, adm
   return db.transaction(async (tx) => {
     const [admission] = await tx.select().from(schema.admissions).where(eq(schema.admissions.id, id)).for('update');
     if (!admission) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
-    requireTenantScope(context, admission.tenantId);
-    requireFacilityScope(context, admission.tenantId, admission.facilityId);
+    requireSelectedAdmissionFacility(context, admission, requestedFacilityId);
     if (admission.encounterId != null) {
       if (admission.encounterId === encounterId) return admission;
       throw invalid('This admission already has an encounter; changing it requires controlled financial reconciliation.', 409);
@@ -234,7 +338,7 @@ export interface BedHistoryReviewInput {
  * Original admissions/transfers and unresolved attempts are retained. Existing
  * billed/voided bed transactions are deliberately outside this correction.
  */
-export async function reviewBedHistory(context: AuthorizationContext, rawAdmissionId: number, input: BedHistoryReviewInput) {
+export async function reviewBedHistory(context: AuthorizationContext, rawAdmissionId: number, input: BedHistoryReviewInput, requestedFacilityId?: number) {
   financialPermission(context, ['inpatient.read', 'clinical.read', 'billing.update']);
   const admissionId = requirePositiveId(rawAdmissionId, 'admission ID');
   const reason = text(input.reason, 'Reason');
@@ -266,8 +370,7 @@ export async function reviewBedHistory(context: AuthorizationContext, rawAdmissi
   return db.transaction(async (tx) => {
     const [admission] = await tx.select().from(schema.admissions).where(eq(schema.admissions.id, admissionId)).for('update');
     if (!admission) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
-    requireTenantScope(context, admission.tenantId);
-    requireFacilityScope(context, admission.tenantId, admission.facilityId);
+    requireSelectedAdmissionFacility(context, admission, requestedFacilityId);
     if (admission.status !== 'Discharged') throw invalid('Historical bed review is available after discharge; do not guess a still-open stay.', 409);
     const [previousReview] = await tx.select({ id: schema.inpatientBedBillingReviews.id }).from(schema.inpatientBedBillingReviews).where(eq(schema.inpatientBedBillingReviews.admissionId, admission.id)).limit(1);
     if (previousReview) throw invalid('This stay already has a signed bed-history review; later changes require a controlled financial correction.', 409);
@@ -330,6 +433,7 @@ export async function reviewBedHistory(context: AuthorizationContext, rawAdmissi
     await tx.insert(schema.auditLogs).values({ tenantId: admission.tenantId, facilityId: admission.facilityId, userId: String(context.userId), action: 'CREATE', resource: 'InpatientBedBillingReview', resourceId: String(review.id), details: JSON.stringify({ admissionId, reason, evidenceReference, priorAttemptsReviewed: attempts.length }) });
     const staged = await stageDischargedBedNights(tx, admission, now);
     if (staged.review) throw new Error('REVIEWED_BED_HISTORY_INVALID');
+    await markBedBillingStaged(tx, admission, context.userId);
     return { reviewId: review.id, nights: staged.nights };
   });
 }
