@@ -529,6 +529,14 @@ const PERMISSIONS = [
     description: 'Cancel appointments.',
   },
 
+  {
+    code: 'appointments.categories.manage',
+    name: 'Manage appointment categories',
+    module: 'appointments',
+    description:
+      'Configure facility appointment categories and optional service references; this does not authorize billing.',
+  },
+
   /* ==========================================================
      MATERNITY / MCH
      ========================================================== */

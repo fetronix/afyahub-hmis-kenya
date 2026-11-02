@@ -125,10 +125,44 @@ export interface Appointment {
   departmentId?: number;
   scheduledTime: string;
   durationMinutes: number;
-  appointmentType: string;
+  appointmentType: string | null;
   status: string;
-  reason?: string;
-  notes?: string;
+  reason?: string | null;
+  notes?: string | null;
+  bookingReference?: string | null;
+  categoryId?: number | null;
+  facilityServiceId?: number | null;
+  priority?: string | null;
+  createdByUserId?: number | null;
+  replacementOfId?: number | null;
+  checkinQueueId?: number | null;
+  createdAt: string;
+}
+
+export interface AppointmentCategory {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  code: string;
+  name: string;
+  facilityServiceId: number | null;
+  isActive: boolean;
+}
+
+export interface AppointmentEvent {
+  id: number;
+  appointmentId: number;
+  eventType: string;
+  actorType: string;
+  actorUserId: number;
+  fromStatus: string | null;
+  toStatus: string;
+  reason: string | null;
+  scheduledTimeBefore: string | null;
+  scheduledTimeAfter: string | null;
+  relatedAppointmentId: number | null;
+  queueId: number | null;
+  paymentState: string;
   createdAt: string;
 }
 
@@ -240,7 +274,12 @@ export interface BedBillingPolicy {
   cutoffMinutes: number;
   graceMinutes: number;
   sameDayRule: 'ONE' | 'ZERO';
+  isActive: boolean | null;
+  effectiveFrom: string | null;
+  effectiveUntil: string | null;
   revision: number;
+  scope: 'FACILITY';
+  applicability: { code: string; message: string };
 }
 
 export interface BedBillingUnresolvedPage {
@@ -255,10 +294,10 @@ export interface BedOccupancyView {
   admission: { patientId: number; encounterId: number | null; admissionDate: string; dischargeDate: string | null; status: string | null; wardId: number; bedId: number };
   transfers: Array<{ fromWardId: number | null; fromBedId: number | null; toWardId: number; toBedId: number; transferredAt: string }>;
   asOf: string;
-  staySnapshot: { timezoneSnapshot: string | null; cutoffMinutes: number | null; graceMinutes: number | null; sameDayRule: string | null; policyRevision: number | null; manualAdmissionTime: boolean; manualDischargeTime: boolean; capturedAt: string } | null;
+  staySnapshot: { timezoneSnapshot: string | null; cutoffMinutes: number | null; graceMinutes: number | null; sameDayRule: string | null; policyRevision: number | null; policyId: number | null; policyApplicability: string | null; policyEffectiveFrom: string | null; policyEffectiveUntil: string | null; manualAdmissionTime: boolean; manualDischargeTime: boolean; capturedAt: string } | null;
   unresolved: { attempts: Array<{ id: number; idempotencySuffix: string | null; reason: string; diagnosisCode: string | null; attempts: number; lastAttemptAt: string }>; hasMore: boolean; stagingPending: boolean } | null;
   policy: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO' } | null;
-  periods: Array<{ id: number; wardId: number; bedId: number; startedAt: string; endedAt: string | null; dailyRateSnapshot: string | null; bedNumberSnapshot: string; wardNameSnapshot: string }>;
+  periods: Array<{ id: number; wardId: number; bedId: number; startedAt: string; endedAt: string | null; dailyRateSnapshot: string | null; priceRevisionSnapshot: number | null; bedNumberSnapshot: string; wardNameSnapshot: string }> ;
   durationSeconds: number | null;
   nights: number | null;
   estimatedAmount: string | null;
@@ -270,7 +309,8 @@ export interface Admission {
   tenantId: number;
   facilityId: number;
   patientId: number;
-  encounterId?: number;
+  encounterId?: number | null;
+  bedBillingReadiness?: { ready: boolean; issues: Array<{ code: string; message: string }> };
   facilityServiceId?: number | null;
   wardId: number;
   bedId: number;

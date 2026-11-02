@@ -1,12 +1,20 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const mocks = vi.hoisted(() => ({
   getQueues: vi.fn(),
   getAppointments: vi.fn(),
+  getAppointmentCategories: vi.fn(),
+  getAppointmentResources: vi.fn(),
+  getAppointmentHistory: vi.fn(),
+  checkInAppointment: vi.fn(),
+  cancelAppointment: vi.fn(),
+  rescheduleAppointment: vi.fn(),
+  createAppointmentCategory: vi.fn(),
+  updateAppointmentCategory: vi.fn(),
   getPatients: vi.fn(),
   getPatient: vi.fn(),
   getEncounters: vi.fn(),
@@ -51,10 +59,21 @@ vi.mock('../../context/HmisContext.tsx', () => ({
       id: 10,
       tenantId: 1,
       name: 'Synthetic Facility',
+      timezone: 'Africa/Nairobi',
       enabledModules: ['opd', 'dialysis'],
       hiddenModules: [],
     },
-    authenticatedUser: { permissions: ['clinical.read', 'dialysis.read'] },
+    authenticatedUser: {
+      permissions: [
+        'clinical.read',
+        'dialysis.read',
+        'appointments.read',
+        'appointments.create',
+        'appointments.update',
+        'appointments.cancel',
+        'appointments.categories.manage',
+      ],
+    },
     currentUser: { name: 'Synthetic Clinician', role: 'Clinician' },
     refreshKey: 0,
     showToast: mocks.showToast,
@@ -110,6 +129,9 @@ beforeEach(() => {
   mocks.getPublicHealthReports.mockResolvedValue([]);
   mocks.getMoh705Summary.mockRejectedValue(new Error('This report is not produced by this build.'));
   mocks.getAppointments.mockResolvedValue([]);
+  mocks.getAppointmentCategories.mockResolvedValue([]);
+  mocks.getAppointmentResources.mockResolvedValue({ departments: [], practitioners: [] });
+  mocks.getAppointmentHistory.mockResolvedValue([]);
   mocks.getPatients.mockResolvedValue([
     { id: 5, firstName: 'Synthetic', lastName: 'Patient', mrn: 'TEST' },
   ]);
@@ -203,6 +225,10 @@ describe('unified workflow regressions', () => {
     const dialog = screen.getByRole('dialog', { name: 'Schedule Patient Clinic Appointment' });
     await user.selectOptions(within(dialog).getByLabelText('Select patient *'), '5');
     await user.type(within(dialog).getByLabelText('Date & time *'), '2026-11-06 10:00');
+    await user.selectOptions(
+      within(dialog).getByLabelText('Appointment type'),
+      'Specialist Consultation',
+    );
     await user.type(
       within(dialog).getByLabelText('Clinical indication / reason'),
       'Synthetic follow-up',
@@ -218,9 +244,150 @@ describe('unified workflow regressions', () => {
           reason: 'Synthetic follow-up',
           notes: '',
         }),
+        expect.any(String),
       ),
     );
     expect(mocks.triggerRefresh).toHaveBeenCalled();
+  });
+  it('keeps the same booking retry key after an unconfirmed response', async () => {
+    mocks.createAppointment.mockRejectedValueOnce(new Error('Connection interrupted')).mockResolvedValueOnce({ id: 12 });
+    const user = userEvent.setup();
+    render(<ReceptionQueueModule />);
+    await waitFor(() => expect(mocks.getPatients).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Book Appointment' }));
+    const dialog = screen.getByRole('dialog', { name: 'Schedule Patient Clinic Appointment' });
+    await user.selectOptions(within(dialog).getByLabelText('Select patient *'), '5');
+    await user.type(within(dialog).getByLabelText('Date & time *'), '2031-11-06 10:00');
+    await user.selectOptions(within(dialog).getByLabelText('Appointment type'), 'OPD');
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm Booking' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Connection interrupted');
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm Booking' }));
+    await waitFor(() => expect(mocks.createAppointment).toHaveBeenCalledTimes(2));
+    expect(mocks.createAppointment.mock.calls[0][1]).toBe(mocks.createAppointment.mock.calls[1][1]);
+    expect(mocks.createAppointment.mock.calls[0][1]).toEqual(expect.any(String));
+    expect(mocks.createAppointment.mock.calls[0][0]).toEqual(mocks.createAppointment.mock.calls[1][0]);
+  });
+  it('uses a date-scoped day/week/month diary and shows history and payment uncertainty', async () => {
+    const user = userEvent.setup();
+    mocks.getAppointments.mockResolvedValue([
+      {
+        id: 41,
+        tenantId: 1,
+        facilityId: 10,
+        patientId: 5,
+        scheduledTime: '2031-06-04T09:00',
+        durationMinutes: 30,
+        appointmentType: 'Synthetic',
+        status: 'Scheduled',
+        bookingReference: 'APT-SYNTHETIC',
+        createdAt: '2031-01-01',
+      },
+    ]);
+    mocks.getAppointmentHistory.mockResolvedValue([
+      {
+        id: 1,
+        appointmentId: 41,
+        eventType: 'CREATED',
+        actorType: 'STAFF',
+        actorUserId: 7,
+        fromStatus: null,
+        toStatus: 'Scheduled',
+        reason: null,
+        scheduledTimeBefore: null,
+        scheduledTimeAfter: '2031-06-04T09:00',
+        relatedAppointmentId: null,
+        queueId: null,
+        paymentState: 'NOT_ASSESSED',
+        createdAt: '2031-01-01',
+      },
+    ]);
+    render(<ReceptionQueueModule />);
+    expect(await screen.findByText('APT-SYNTHETIC', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('Payment: not linked or assessed in this diary.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Diary date'), { target: { value: '2031-06-04' } });
+    await user.click(screen.getByRole('button', { name: 'Week' }));
+    await waitFor(() =>
+      expect(mocks.getAppointments).toHaveBeenLastCalledWith(
+        10,
+        expect.objectContaining({ from: '2031-06-02', to: '2031-06-08', active: true }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Month' }));
+    await waitFor(() =>
+      expect(mocks.getAppointments).toHaveBeenLastCalledWith(
+        10,
+        expect.objectContaining({ from: '2031-06-01', to: '2031-06-30' }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'History' }));
+    const history = screen.getByRole('dialog', { name: 'Appointment history' });
+    expect(await within(history).findByText(/Staff user #7/)).toBeInTheDocument();
+    expect(within(history).getByText(/Payment state is not assessed/)).toBeInTheDocument();
+  });
+  it('reports cancellation failure in the dialog, requires a reason and never implies a refund', async () => {
+    const user = userEvent.setup();
+    mocks.getAppointments.mockResolvedValue([
+      {
+        id: 42,
+        tenantId: 1,
+        facilityId: 10,
+        patientId: 5,
+        scheduledTime: '2031-06-04T09:00',
+        durationMinutes: 30,
+        appointmentType: 'Synthetic',
+        status: 'Scheduled',
+        createdAt: '2031-01-01',
+      },
+    ]);
+    mocks.cancelAppointment
+      .mockRejectedValueOnce(new Error('Cancellation unavailable'))
+      .mockResolvedValueOnce({ id: 42, status: 'Cancelled' });
+    render(<ReceptionQueueModule />);
+    await screen.findByText('Payment: not linked or assessed in this diary.');
+    await user.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Cancel appointment' });
+    expect(within(dialog).getByText(/No payment or refund is processed/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(mocks.cancelAppointment).not.toHaveBeenCalled();
+    await user.type(within(dialog).getByLabelText('Reason *'), 'Synthetic cancellation');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Cancellation unavailable');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(mocks.cancelAppointment).toHaveBeenCalledWith(42, 10, 'Synthetic cancellation'),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Cancel appointment' })).not.toBeInTheDocument(),
+    );
+    expect(mocks.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Payment and refunds were not assessed'),
+      expect.anything(),
+    );
+  });
+  it('uses the appointment check-in endpoint and displays a refused queue operation', async () => {
+    const user = userEvent.setup();
+    mocks.getAppointments.mockResolvedValue([
+      {
+        id: 43,
+        tenantId: 1,
+        facilityId: 10,
+        patientId: 5,
+        scheduledTime: '2031-06-04T09:00',
+        durationMinutes: 30,
+        appointmentType: 'Synthetic',
+        status: 'Scheduled',
+        createdAt: '2031-01-01',
+      },
+    ]);
+    mocks.checkInAppointment.mockRejectedValueOnce(new Error('Already checked in'));
+    render(<ReceptionQueueModule />);
+    await user.click(await screen.findByRole('button', { name: 'Check in' }));
+    const dialog = screen.getByRole('dialog', { name: 'Check in appointment' });
+    await user.selectOptions(within(dialog).getByLabelText('Queue station *'), 'Triage');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Already checked in');
+    expect(mocks.checkInAppointment).toHaveBeenCalledWith(43, 10, 'Triage');
+    expect(mocks.triggerRefresh).not.toHaveBeenCalled();
   });
   it('keeps a confirmed zero threshold distinct from missing cost when creating stock', async () => {
     mocks.createInventoryItem.mockResolvedValueOnce({ id: 9 });

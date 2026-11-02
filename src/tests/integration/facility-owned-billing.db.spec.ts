@@ -1148,7 +1148,7 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       await pool.query("INSERT INTO beds(ward_id,bed_number,daily_charge) VALUES($1,'SYN-1','100.00') RETURNING id", [ward])
     ).rows[0].id;
     await pool.query("UPDATE facilities SET timezone='Africa/Nairobi' WHERE id=$1", [facility]);
-    const policy = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', reason: 'Synthetic approved policy' });
+    const policy = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', reason: 'Synthetic approved policy' });
     expect(policy.status, JSON.stringify(policy.body)).toBe(200);
     const encounter = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'INPATIENT','ACTIVE') RETURNING id", [tenant, facility, patient])).rows[0].id;
     const body = {

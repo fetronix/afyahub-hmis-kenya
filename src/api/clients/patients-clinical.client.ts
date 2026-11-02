@@ -1,5 +1,7 @@
 import type {
   Appointment,
+  AppointmentCategory,
+  AppointmentEvent,
   Diagnosis,
   Encounter,
   Medication,
@@ -228,16 +230,99 @@ export const patientsClinicalClient = {
       }),
     }),
 
-  getAppointments: (facilityId?: number) =>
-    fetchJson<Appointment[]>(
-      `${API_BASE}/appointments${facilityId ? `?facilityId=${facilityId}` : ''}`,
+  getAppointments: (
+    facilityId?: number,
+    options?: {
+      from?: string;
+      to?: string;
+      active?: boolean;
+      status?: string;
+      categoryId?: number;
+      patientId?: number;
+      practitionerId?: number;
+      limit?: number;
+      offset?: number;
+    },
+  ) => {
+    const params = new URLSearchParams();
+    if (facilityId) params.set('facilityId', String(facilityId));
+    for (const [key, value] of Object.entries(options ?? {}))
+      if (value !== undefined) params.set(key, String(value));
+    return fetchJson<Appointment[]>(`${API_BASE}/appointments${params.size ? `?${params}` : ''}`);
+  },
+
+  getAppointmentResources: (facilityId: number) =>
+    fetchJson<{
+      departments: Array<{ id: number; name: string }>;
+      practitioners: Array<{ id: number; name: string; departmentId: number | null }>;
+    }>(`${API_BASE}/appointments/resources?facilityId=${facilityId}`),
+
+  getAppointmentCategories: (facilityId: number) =>
+    fetchJson<AppointmentCategory[]>(
+      `${API_BASE}/appointments/categories?facilityId=${facilityId}`,
     ),
 
-  createAppointment: (appointment: Partial<Appointment>) =>
+  createAppointmentCategory: (input: {
+    facilityId: number;
+    code: string;
+    name: string;
+    facilityServiceId?: number | null;
+  }) =>
+    fetchJson<AppointmentCategory>(`${API_BASE}/appointments/categories`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  updateAppointmentCategory: (
+    id: number,
+    input: {
+      facilityId: number;
+      name?: string;
+      facilityServiceId?: number | null;
+      isActive?: boolean;
+    },
+  ) =>
+    fetchJson<AppointmentCategory>(`${API_BASE}/appointments/categories/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+
+  getAppointmentHistory: (facilityId: number, id: number) =>
+    fetchJson<AppointmentEvent[]>(
+      `${API_BASE}/appointments/${id}/history?facilityId=${facilityId}`,
+    ),
+
+  createAppointment: (appointment: Partial<Appointment>, key?: string) =>
     fetchJson<Appointment>(`${API_BASE}/appointments`, {
       method: 'POST',
+      ...(key ? { headers: { 'Idempotency-Key': key } } : {}),
       body: JSON.stringify(appointment),
     }),
+
+  cancelAppointment: (id: number, facilityId: number, reason: string) =>
+    fetchJson<Appointment>(`${API_BASE}/appointments/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, reason }),
+    }),
+
+  rescheduleAppointment: (
+    id: number,
+    facilityId: number,
+    scheduledTime: string,
+    reason: string,
+    key: string,
+  ) =>
+    fetchJson<Appointment>(`${API_BASE}/appointments/${id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': key },
+      body: JSON.stringify({ facilityId, scheduledTime, reason }),
+    }),
+
+  checkInAppointment: (id: number, facilityId: number, queueType: string) =>
+    fetchJson<{ appointment: Appointment; queue: QueueItem }>(
+      `${API_BASE}/appointments/${id}/check-in`,
+      { method: 'POST', body: JSON.stringify({ facilityId, queueType }) },
+    ),
 
   getObservations: (encounterId?: number, patientId?: number) => {
     const params = new URLSearchParams();

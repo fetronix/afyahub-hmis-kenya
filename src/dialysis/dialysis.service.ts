@@ -625,6 +625,115 @@ export async function scheduleDialysisScoped(scope: DialysisScope, input: Record
   }
 }
 
+// Cancelling a planned slot is not a clinical session, a charge or a refund.
+// Lock the schedule first, as startDialysisSessionScoped does, so a start and a
+// cancellation cannot both succeed. Website-linked bookings need a coordinated
+// external workflow and are deliberately refused here.
+export async function cancelDialysisScheduleScoped(
+  scope: DialysisScope,
+  scheduleId: number,
+  value: unknown,
+) {
+  positiveId(scheduleId, 'Schedule id');
+  const reason = text(value, 'Cancellation reason', 2000);
+  if (reason.length < 3)
+    throw new DialysisSafetyError(
+      'INVALID_INPUT',
+      'Cancellation reason must contain at least three characters.',
+    );
+  return tx(async (client) => {
+    const result = await client.query(
+      'SELECT * FROM dialysis_schedules WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE',
+      [scheduleId, scope.tenantId, scope.facilityId],
+    );
+    if (!result.rows.length)
+      throw new DialysisSafetyError('SCHEDULE_NOT_FOUND', 'Schedule not found.', 404);
+    const schedule = result.rows[0];
+    if (schedule.status !== 'SCHEDULED')
+      throw new DialysisSafetyError(
+        'SCHEDULE_STATE_CONFLICT',
+        'Only a scheduled, not yet started dialysis slot can be cancelled.',
+        409,
+      );
+    const session = await client.query(
+      'SELECT id FROM dialysis_sessions WHERE schedule_id=$1 LIMIT 1',
+      [scheduleId],
+    );
+    if (session.rows.length)
+      throw new DialysisSafetyError(
+        'SCHEDULE_STATE_CONFLICT',
+        'A clinical session already exists; review it through the clinical workflow.',
+        409,
+      );
+    const external = await client.query(
+      'SELECT id FROM external_bookings WHERE linked_dialysis_schedule_id=$1 OR ($2::integer IS NOT NULL AND linked_appointment_id=$2) LIMIT 1',
+      [scheduleId, schedule.appointment_id],
+    );
+    if (external.rows.length)
+      throw new DialysisSafetyError(
+        'SOURCE_WORKFLOW_REQUIRED',
+        'The schedule is linked to a website booking; coordinated cancellation is not yet supported.',
+        409,
+      );
+    if (schedule.appointment_id) {
+      const linked = await client.query(
+        'SELECT id,status,scheduled_time,checkin_queue_id FROM appointments WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 AND patient_id=$4 FOR UPDATE',
+        [schedule.appointment_id, scope.tenantId, scope.facilityId, schedule.patient_id],
+      );
+      if (
+        !linked.rows.length ||
+        !['Scheduled', 'Confirmed'].includes(linked.rows[0].status) ||
+        linked.rows[0].checkin_queue_id
+      ) {
+        throw new DialysisSafetyError(
+          'APPOINTMENT_STATE_CONFLICT',
+          'The linked appointment needs review before cancellation.',
+          409,
+        );
+      }
+      await client.query(
+        "UPDATE appointments SET status='Cancelled',updated_at=now() WHERE id=$1",
+        [schedule.appointment_id],
+      );
+      await client.query(
+        `INSERT INTO appointment_events(tenant_id,facility_id,appointment_id,event_type,actor_type,actor_user_id,from_status,to_status,reason,scheduled_time_before)
+        VALUES($1,$2,$3,'CANCELLED','STAFF',$4,$5,'Cancelled',$6,$7)`,
+        [
+          scope.tenantId,
+          scope.facilityId,
+          schedule.appointment_id,
+          scope.actorUserId,
+          linked.rows[0].status,
+          reason,
+          linked.rows[0].scheduled_time,
+        ],
+      );
+      await audit(client, scope, 'CANCEL', 'Appointment', schedule.appointment_id, {
+        fromStatus: linked.rows[0].status,
+        toStatus: 'Cancelled',
+        paymentState: 'NOT_ASSESSED',
+        dialysisScheduleId: scheduleId,
+      });
+    }
+    await client.query(
+      "UPDATE dialysis_schedules SET status='CANCELLED',cancellation_reason=$1,updated_at=now() WHERE id=$2",
+      [reason, scheduleId],
+    );
+    await audit(client, scope, 'CANCEL', 'dialysis_schedule', scheduleId, {
+      fromStatus: 'SCHEDULED',
+      toStatus: 'CANCELLED',
+      appointmentId: schedule.appointment_id,
+      paymentState: 'NOT_ASSESSED',
+    });
+    return {
+      id: scheduleId,
+      status: 'CANCELLED',
+      appointmentId: schedule.appointment_id,
+      paymentState: 'NOT_ASSESSED',
+    };
+  });
+}
+
 export async function startDialysisSessionScoped(scope: DialysisScope, scheduleId: number) {
   positiveId(scheduleId, 'Schedule id');
   return tx(async (client) => {

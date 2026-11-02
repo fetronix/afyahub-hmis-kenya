@@ -6,7 +6,7 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq, inArray, isNull, ne, notExists, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, notExists, or, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
@@ -22,6 +22,7 @@ import {
 } from '../inpatient-contracts.ts';
 
 import { requireTenantScope, requireFacilityScope, resolveFacilityScope } from '../../auth/scope.service.ts';
+import { hasAllPermissions } from '../../auth/authorization.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
 import type { ChargeResult } from '../../billing/billing.service.ts';
@@ -298,7 +299,7 @@ export async function createAdmissionScoped(
     return await db.transaction(async (tx) => {
       // Serialize admissions of the same patient, including attempts at different beds.
       const [lockedPatient] = await tx
-        .select({ id: schema.patients.id })
+        .select({ id: schema.patients.id, registrationFacilityId: schema.patients.registrationFacilityId })
         .from(schema.patients)
         .where(
           and(eq(schema.patients.id, patient.id), eq(schema.patients.tenantId, facility.tenantId)),
@@ -311,6 +312,15 @@ export async function createAdmissionScoped(
           'Patient not found in the authorised facility.',
           404,
         );
+      // Preserve documented referrals without allowing an arbitrary same-tenant
+      // patient ID to cross facility boundaries. Existing patient-list access
+      // policies remain unchanged; this does not invent a referral or consent.
+      if (lockedPatient.registrationFacilityId !== facility.id) {
+        const [relationship] = await tx.select({ id: schema.patientFacilities.id }).from(schema.patientFacilities)
+          .where(and(eq(schema.patientFacilities.patientId, patient.id), eq(schema.patientFacilities.tenantId, facility.tenantId),
+            eq(schema.patientFacilities.facilityId, facility.id), eq(schema.patientFacilities.status, 'ACTIVE'))).limit(1).for('share');
+        if (!relationship) throw new InpatientDomainError('PATIENT_NOT_FOUND', 'Patient not found in the authorised facility.', 404);
+      }
       const [ward] = await tx
         .select()
         .from(schema.wards)
@@ -340,26 +350,26 @@ export async function createAdmissionScoped(
         throw new InpatientDomainError('BED_NOT_FOUND', 'Bed not found in the selected ward.', 404);
       }
 
+      /* Database assignment time is authoritative for policy and occupancy. */
+      const assignedAt = await databaseNow(tx);
       if (encounterId !== null) {
-        const [encounter] = await tx
-          .select({ id: schema.encounters.id })
-          .from(schema.encounters)
-          .where(
-            and(
-              eq(schema.encounters.id, encounterId),
-              eq(schema.encounters.patientId, patient.id),
-              eq(schema.encounters.facilityId, facility.id),
-            ),
-          )
-          .limit(1);
-
-        if (!encounter) {
-          throw new InpatientDomainError(
-            'ENCOUNTER_NOT_FOUND',
-            'Encounter not found for this patient at this facility.',
-            404,
-          );
-        }
+        if (!hasAllPermissions(context, ['clinical.read']))
+          throw new InpatientDomainError('ENCOUNTER_PERMISSION_REQUIRED', 'Clinical read permission is required to link an existing encounter.', 403);
+        // Encounter timestamps are stored without a timezone. JaliCare writes
+        // new timestamps as UTC; interpret them explicitly rather than using
+        // the Node host timezone. Historical origin still requires review.
+        const [encounter] = await tx.select({ id: schema.encounters.id, encounterType: schema.encounters.encounterType, status: schema.encounters.status,
+          startedAt: sql<Date>`${schema.encounters.startedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
+          endedAt: sql<Date | null>`${schema.encounters.endedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
+        }).from(schema.encounters).where(and(
+          eq(schema.encounters.id, encounterId), eq(schema.encounters.tenantId, facility.tenantId),
+          eq(schema.encounters.patientId, patient.id), eq(schema.encounters.facilityId, facility.id),
+        )).limit(1).for('update');
+        if (!encounter) throw new InpatientDomainError('ENCOUNTER_NOT_FOUND', 'Encounter not found for this patient at this facility.', 404);
+        if (encounter.encounterType.trim().toUpperCase() !== 'INPATIENT' || encounter.status.trim().toUpperCase() !== 'ACTIVE' || encounter.endedAt || encounter.startedAt > assignedAt)
+          throw new InpatientDomainError('ENCOUNTER_NOT_ELIGIBLE', 'Choose an active inpatient encounter that has started for this admission.', 409);
+        const [alreadyLinked] = await tx.select({ id: schema.admissions.id }).from(schema.admissions).where(eq(schema.admissions.encounterId, encounterId)).limit(1);
+        if (alreadyLinked) throw new InpatientDomainError('ENCOUNTER_ALREADY_LINKED', 'This encounter is already linked to an admission.', 409);
       }
 
       /* ---- Bed availability ---------------------------------- */
@@ -462,9 +472,23 @@ export async function createAdmissionScoped(
           .for('share');
         if (choices.length === 1) admissionServiceId = choices[0].id;
       }
-      /* Capture the database assignment time, not a browser clock. */
-      const assignedAt = await databaseNow(tx);
       const admissionDate = manualAdmissionTime ? normaliseTimestamp(input.admissionDate) : assignedAt.toISOString();
+
+      // Admission-only staff can still provide care, but must not gain the
+      // separate clinical.create capability. Record the limitation below.
+      if (encounterId === null && !manualAdmissionTime && hasAllPermissions(context, ['clinical.create'])) {
+        const [encounter] = await tx.insert(schema.encounters).values({
+          tenantId: facility.tenantId, facilityId: facility.id, patientId: patient.id,
+          encounterType: 'INPATIENT', status: 'ACTIVE', startedAt: assignedAt,
+          createdByUserId: context.userId, updatedByUserId: context.userId,
+        }).returning();
+        encounterId = encounter.id;
+        await tx.insert(schema.auditLogs).values({
+          tenantId: facility.tenantId, facilityId: facility.id, userId: String(context.userId),
+          action: 'CREATE', resource: 'Encounter', resourceId: String(encounter.id),
+          details: 'Inpatient encounter created transactionally for admission; no care or consultation was recorded.',
+        });
+      }
 
       /* ---- Insert admission ---------------------------------- */
 
@@ -488,7 +512,13 @@ export async function createAdmissionScoped(
         .returning();
 
       /* Freeze the policy, bed identity and daily rate under the bed lock. */
-      await captureBedStay(tx, context, created, bed, ward, assignedAt, manualAdmissionTime);
+      const bedBillingIssues = await captureBedStay(tx, context, created, bed, ward, assignedAt, manualAdmissionTime);
+      if (encounterId === null) bedBillingIssues.push({
+        code: 'BED_ENCOUNTER_REQUIRED',
+        message: manualAdmissionTime
+          ? 'A manually timed admission requires a verified historical inpatient encounter; none was created automatically.'
+          : 'An inpatient encounter could not be created without clinical.create permission; authorized linking and billing review are required.',
+      });
 
       /* ---- Occupy the bed in the same transaction ------------ */
 
@@ -508,7 +538,7 @@ export async function createAdmissionScoped(
       });
       if (attempt === null) throw new Error('ADMISSION_BILLING_QUEUE_UNAVAILABLE');
       await auditAdmission(tx, context, created, 'CREATE', 'Admission created.');
-      return created;
+      return { ...created, bedBillingReadiness: { ready: bedBillingIssues.length === 0, issues: bedBillingIssues } };
     });
   } catch (error) {
     throw admissionConstraintError(error) ?? error;

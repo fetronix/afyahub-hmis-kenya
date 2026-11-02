@@ -11,6 +11,7 @@ import {
   InpatientBoard,
   FacilityService,
   BedOccupancyView,
+  BedBillingPolicy,
   Encounter,
 } from '../../types/index.ts';
 import { NursingPanel } from './NursingPanel.tsx';
@@ -137,6 +138,16 @@ export const InpatientModule: React.FC = () => {
   const [admissionServiceError, setAdmissionServiceError] = useState(false);
   const [patientEncounters, setPatientEncounters] = useState<Encounter[]>([]);
   const [encounterError, setEncounterError] = useState(false);
+  const [admissionPolicy, setAdmissionPolicy] = useState<BedBillingPolicy | null | undefined>(undefined);
+  const [admissionPolicyError, setAdmissionPolicyError] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setAdmissionPolicy(undefined); setAdmissionPolicyError(false);
+    if (isAdmitModalOpen && currentFacility?.id) api.getBedBillingPolicy(currentFacility.id)
+      .then((policy) => { if (live) setAdmissionPolicy(policy); })
+      .catch(() => { if (live) setAdmissionPolicyError(true); });
+    return () => { live = false; };
+  }, [isAdmitModalOpen, currentFacility?.id, refreshKey]);
   useEffect(() => {
     let live = true;
     setPatientEncounters([]); setEncounterError(false);
@@ -265,7 +276,7 @@ export const InpatientModule: React.FC = () => {
     }
 
     try {
-      await api.createAdmission({
+      const admitted = await api.createAdmission({
         // Tenant and facility scope are assigned server-side from the
         // authenticated session; facilityId is only a request hint.
         facilityId: currentFacility?.id,
@@ -284,7 +295,12 @@ export const InpatientModule: React.FC = () => {
         status: 'Admitted',
       });
 
-      showToast('Patient admitted successfully and bed marked Occupied!');
+      if (admitted.bedBillingReadiness?.ready) {
+        showToast('Patient admitted; bed occupied. Bed billing evidence was captured; charges are calculated at discharge.');
+      } else {
+        const issues = admitted.bedBillingReadiness?.issues.map((issue) => issue.message).join(' ') ?? 'Bed billing readiness could not be confirmed.';
+        showToast(`Patient admitted; bed occupied. Bed billing requires review: ${issues}`);
+      }
       setIsAdmitModalOpen(false);
       triggerRefresh();
     } catch (err: any) {
@@ -557,6 +573,9 @@ export const InpatientModule: React.FC = () => {
   const availableBedsForForm = beds.filter(
     (b) => b.wardId === Number(admitForm.wardId) && b.status === 'Available',
   );
+  const selectedAdmissionBed = availableBedsForForm.find((bed) => bed.id === Number(admitForm.bedId));
+  const bedPriceReady = Boolean(selectedAdmissionBed && !selectedAdmissionBed.dailyChargeReviewRequired &&
+    selectedAdmissionBed.dailyCharge && /^\d+(?:\.\d{1,2})?$/.test(selectedAdmissionBed.dailyCharge) && Number(selectedAdmissionBed.dailyCharge) > 0);
 
   return (
     <div className="space-y-6">
@@ -1031,8 +1050,9 @@ export const InpatientModule: React.FC = () => {
 
             <form onSubmit={handleCreateAdmission} className="space-y-4">
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Select Patient *</label>
+                <label htmlFor="inpatient-patient" className="block font-medium text-slate-700 mb-1">Select Patient *</label>
                 <select
+                  id="inpatient-patient"
                   required
                   value={admitForm.patientId}
                   onChange={(e) => setAdmitForm({ ...admitForm, patientId: e.target.value })}
@@ -1049,16 +1069,17 @@ export const InpatientModule: React.FC = () => {
               <div>
                 <label className="block font-medium text-slate-700 mb-1" htmlFor="inpatient-encounter">Verified encounter (optional)</label>
                 <select id="inpatient-encounter" value={admitForm.encounterId} onChange={(e) => setAdmitForm({ ...admitForm, encounterId: e.target.value })} className="w-full rounded-md border border-slate-200 px-3 py-2">
-                  <option value="">Do not link yet</option>
-                  {patientEncounters.map((encounter) => <option key={encounter.id} value={encounter.id}>#{encounter.id} · {encounter.encounterType} · {encounter.status} · {encounter.startedAt}</option>)}
+                  <option value="">Create a new inpatient encounter when authorized</option>
+                  {patientEncounters.filter((encounter) => encounter.encounterType.trim().toUpperCase() === 'INPATIENT' && encounter.status.trim().toUpperCase() === 'ACTIVE').map((encounter) => <option key={encounter.id} value={encounter.id}>#{encounter.id} · {encounter.encounterType} · {encounter.status} · {encounter.startedAt}</option>)}
                 </select>
-                <p className="mt-1 text-2xs text-amber-800">{encounterError ? 'Encounters could not be loaded. ' : !canReadClinical ? 'You cannot view encounters. ' : ''}Without a verified matching encounter, care can continue but bed billing requires authorized linking and retry.</p>
+                <p className="mt-1 text-2xs text-amber-800">{encounterError ? 'Existing encounters could not be loaded. ' : !canReadClinical ? 'You cannot view existing encounters. ' : ''}{can('clinical.create') ? 'A new inpatient encounter will be created for a database-timed admission unless a verified active inpatient encounter is selected. Manually timed admissions need a verified historical encounter instead.' : 'Creating an encounter requires clinical.create. Without a verified matching encounter, care can continue but bed billing requires authorized linking and retry.'}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Select Ward *</label>
+                  <label htmlFor="inpatient-ward" className="block font-medium text-slate-700 mb-1">Select Ward *</label>
                   <select
+                    id="inpatient-ward"
                     required
                     value={admitForm.wardId}
                     onChange={(e) => {
@@ -1082,8 +1103,9 @@ export const InpatientModule: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Select Bed *</label>
+                  <label htmlFor="inpatient-bed" className="block font-medium text-slate-700 mb-1">Select Bed *</label>
                   <select
+                    id="inpatient-bed"
                     required
                     value={admitForm.bedId}
                     onChange={(e) => setAdmitForm({ ...admitForm, bedId: e.target.value })}
@@ -1107,10 +1129,11 @@ export const InpatientModule: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">
+                  <label htmlFor="inpatient-admission-time" className="block font-medium text-slate-700 mb-1">
                     Historical admission time (optional)
                   </label>
                   <input
+                    id="inpatient-admission-time"
                     type="text"
                     value={admitForm.admissionDate}
                     onChange={(e) => setAdmitForm({ ...admitForm, admissionDate: e.target.value })}
@@ -1120,8 +1143,9 @@ export const InpatientModule: React.FC = () => {
                   <p className="mt-1 text-2xs text-slate-500">Blank records database time. Entering a historical time requires an audited billing review.</p>
                 </div>
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Admission Type</label>
+                  <label htmlFor="inpatient-admission-type" className="block font-medium text-slate-700 mb-1">Admission Type</label>
                   <select
+                    id="inpatient-admission-type"
                     required
                     value={admitForm.admissionType}
                     onChange={(e) => setAdmitForm({ ...admitForm, admissionType: e.target.value })}
@@ -1195,6 +1219,14 @@ export const InpatientModule: React.FC = () => {
                 />
               </div>
 
+              <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-900" role="status">
+                <p className="font-semibold">Bed billing readiness (checked again when admitting)</p>
+                <p>{admissionPolicyError ? 'Facility policy could not be loaded; billing readiness is unknown.' : admissionPolicy === undefined ? 'Checking facility policy…' : admissionPolicy === null ? 'No facility bed billing policy is configured; billing will require review.' : admissionPolicy.applicability?.message ?? 'Policy applicability could not be confirmed.'}</p>
+                <p>{bedPriceReady ? `Selected bed daily charge: KES ${selectedAdmissionBed?.dailyCharge}.` : 'Select a bed with a positive, confirmed daily charge; otherwise bed billing requires review.'}</p>
+                {admitForm.admissionDate.trim() && <p>A client-supplied admission time requires documented billing review and a verified historical inpatient encounter; one will not be created automatically.</p>}
+                {!admitForm.encounterId && !can('clinical.create') && <p>Automatic encounter creation requires clinical.create; an authorized link will be needed for bed billing.</p>}
+                <p>Care can proceed, but missing evidence is not a free or confirmed bill.</p>
+              </div>
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"

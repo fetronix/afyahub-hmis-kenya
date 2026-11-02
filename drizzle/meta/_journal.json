@@ -449,6 +449,20 @@
             "when": 1792900000051,
             "tag": "0063_inpatient_bed_billing_work",
             "breakpoints": true
+        },
+        {
+            "idx": 64,
+            "version": "7",
+            "when": 1792900000052,
+            "tag": "0064_staff_appointment_lifecycle",
+            "breakpoints": true
+        },
+        {
+            "idx": 65,
+            "version": "7",
+            "when": 1792900000053,
+            "tag": "0065_inpatient_policy_and_admission_evidence",
+            "breakpoints": true
         }
     ]
 }

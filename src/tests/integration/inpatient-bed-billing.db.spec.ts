@@ -14,7 +14,7 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
   let tenant: number, facility: number, sameTenantFacility: number, otherTenant: number, otherFacility: number, ward: number, secondWard: number, actor: number;
   let token: string, otherToken: string, sameTenantToken: string, tenantToken: string, limitedToken: string, platformToken: string, base: string, close: () => Promise<void>;
   let serial = 0;
-  const grants = ['inpatient.read','inpatient.admit','inpatient.discharge','inpatient.wards.update','inpatient.wards.delete','inpatient.beds.create','inpatient.beds.update','inpatient.beds.delete','billing.read','billing.create','billing.update','clinical.read'];
+  const grants = ['inpatient.read','inpatient.admit','inpatient.discharge','inpatient.wards.update','inpatient.wards.delete','inpatient.beds.create','inpatient.beds.update','inpatient.beds.delete','billing.read','billing.create','billing.update','clinical.read','clinical.create','billing.payments.record'];
   const call = (method: string, path: string, body?: Record<string, unknown>, auth = token) => httpJson(base, method, path, { token: auth, body });
   async function makePatient(f = facility, t = tenant) {
     return (await pool.query("INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender) VALUES($1,$2,$3,'Synthetic','Bed','2000-01-01','Other') RETURNING id", [t, f, `BED-P-${suffix}-${++serial}`])).rows[0].id as number;
@@ -25,9 +25,9 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
   async function makeBed(w = ward, rate: string | null = '100.00') {
     return (await pool.query("INSERT INTO beds(ward_id,bed_number,bed_type,status,daily_charge) VALUES($1,$2,'Standard','Available',$3) RETURNING id", [w, `BED-${suffix}-${++serial}`, rate])).rows[0].id as number;
   }
-  async function makeSyntheticStay(days: number, encounter = true, rate = '100.00') {
+  async function makeSyntheticStay(days: number, encounter = true, rate = '100.00', fixedStart?: Date) {
     const patient = await makePatient(), visit = encounter ? await makeEncounter(patient) : null, bed = await makeBed(ward, rate);
-    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const start = fixedStart ?? new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const admission = (await pool.query("INSERT INTO admissions(tenant_id,facility_id,patient_id,encounter_id,ward_id,bed_id,admission_date,status) VALUES($1,$2,$3,$4,$5,$6,$7,'Admitted') RETURNING id", [tenant, facility, patient, visit, ward, bed, start.toISOString()])).rows[0].id as number;
     await pool.query("UPDATE beds SET status='Occupied',current_patient_id=$1 WHERE id=$2", [patient, bed]);
     await pool.query("INSERT INTO inpatient_bed_stay_snapshots(admission_id,tenant_id,facility_id,patient_id,timezone_snapshot,cutoff_minutes,grace_minutes,same_day_rule,policy_revision) VALUES($1,$2,$3,$4,'Africa/Nairobi',0,0,'ONE',1)", [admission, tenant, facility, patient]);
@@ -62,16 +62,62 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     platformToken = (await createSession({ userId: platform, securityVersion: 1 })).sessionToken;
     const { createApp } = await import('../../app.ts');
     ({ baseUrl: base, close } = await startTestServer(await createApp()));
-    const configured = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', reason: 'Synthetic approved policy' });
+    const configured = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', reason: 'Synthetic approved policy' });
     expect(configured.status, JSON.stringify(configured.body)).toBe(200);
   });
   afterAll(async () => { if (close) await close(); });
+
+  it('automatically creates an inpatient encounter and captures policy and bed-price evidence through cashier payment', async () => {
+    const policy = await call('GET', '/api/inpatient/bed-billing-policy');
+    expect(policy.body).toMatchObject({ facilityId: facility, scope: 'FACILITY', isActive: true, effectiveFrom: '2020-01-01', applicability: { code: 'APPLICABLE' } });
+    const noRateWard = (await pool.query("INSERT INTO wards(facility_id,name,code,daily_rate) VALUES($1,'Synthetic policy ward',$2,NULL) RETURNING id", [facility, `AUTO-${suffix}`])).rows[0].id;
+    const patient = await makePatient(), bed = await makeBed(noRateWard, '100.00');
+    const admitted = await call('POST', '/api/admissions', { patientId: patient, wardId: noRateWard, bedId: bed });
+    expect(admitted.status, JSON.stringify(admitted.body)).toBe(201);
+    expect(admitted.body.bedBillingReadiness).toEqual({ ready: true, issues: [] });
+    const visit = admitted.body.encounterId;
+    expect(visit).toBeTypeOf('number');
+    const captured = (await pool.query(`SELECT a.patient_id,a.facility_id,a.encounter_id,e.encounter_type,e.status,e.created_by_user_id,
+      s.policy_id,s.policy_revision,s.policy_applicability,s.policy_effective_from::text,s.same_day_rule,s.manual_admission_time,
+      o.ward_id,o.bed_id,o.daily_rate_snapshot,o.price_revision_snapshot,o.started_at
+      FROM admissions a JOIN encounters e ON e.id=a.encounter_id JOIN inpatient_bed_stay_snapshots s ON s.admission_id=a.id
+      JOIN inpatient_bed_occupancies o ON o.admission_id=a.id WHERE a.id=$1`, [admitted.body.id])).rows[0];
+    expect(captured).toMatchObject({ patient_id: patient, facility_id: facility, encounter_id: visit, encounter_type: 'INPATIENT', status: 'ACTIVE', created_by_user_id: actor,
+      policy_id: policy.body.id, policy_revision: policy.body.revision, policy_applicability: 'APPLICABLE', policy_effective_from: '2020-01-01', same_day_rule: 'ONE', manual_admission_time: false,
+      ward_id: noRateWard, bed_id: bed, daily_rate_snapshot: '100.00', price_revision_snapshot: 1 });
+    expect(admitted.body.admissionDate).toBe(captured.started_at.toISOString());
+    expect((await pool.query("SELECT id FROM audit_logs WHERE resource='Encounter' AND resource_id=$1 AND action='CREATE'", [String(visit)])).rows).toHaveLength(1);
+    const closed = await call('POST', `/api/admissions/${admitted.body.id}/discharge`, { dischargeType: 'Synthetic', dischargeSummary: 'Synthetic only' });
+    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+    expect(closed.body.billing).toMatchObject({ nights: 1, bedDays: [{ charged: true, unitPrice: '100.00', totalAmount: '100.00', matchRule: 'BED_OCCUPANCY_SNAPSHOT' }] });
+    const lines = (await pool.query(`SELECT bi.invoice_id,bi.quantity,bi.unit_price,bi.total_amount,bi.bed_occupancy_id,bi.bed_night_id,
+      inv.encounter_id,inv.patient_id,inv.total_amount AS invoice_total,inv.paid_amount,inv.balance_amount
+      FROM billing_items bi JOIN billing_invoices inv ON inv.id=bi.invoice_id WHERE bi.source_type='BED_DAY' AND bi.source_id=$1`, [admitted.body.id])).rows;
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ quantity: 1, unit_price: '100.00', total_amount: '100.00', encounter_id: visit, patient_id: patient, invoice_total: '100.00', paid_amount: '0.00', balance_amount: '100.00' });
+    expect(lines[0].bed_occupancy_id).toBeTruthy(); expect(lines[0].bed_night_id).toBeTruthy();
+    expect((await pool.query('SELECT status,current_patient_id FROM beds WHERE id=$1', [bed])).rows[0]).toEqual({ status: 'Cleaning', current_patient_id: null });
+    const receipt = await call('POST', '/api/billing/payments', { invoiceId: lines[0].invoice_id, facilityId: facility, amount: '100.00', paymentMethod: 'Cash', idempotencyKey: `bed-cash-${suffix}` });
+    expect(receipt.status, JSON.stringify(receipt.body)).toBe(201);
+    expect(receipt.body.invoice).toMatchObject({ paidAmount: '100.00', balanceAmount: '0.00', status: 'Paid' });
+    const savedReceipt = (await pool.query('SELECT invoice_id,payment_method,amount,receipt_number FROM billing_payments WHERE id=$1', [receipt.body.payment.id])).rows[0];
+    expect(savedReceipt).toMatchObject({ invoice_id: lines[0].invoice_id, payment_method: 'Cash', amount: '100.00' });
+    expect(savedReceipt.receipt_number).toBeTruthy();
+    const paymentReplay = await call('POST', '/api/billing/payments', { invoiceId: lines[0].invoice_id, facilityId: facility, amount: '100.00', paymentMethod: 'Cash', idempotencyKey: `bed-cash-${suffix}` });
+    expect(paymentReplay.status).toBe(200); expect(paymentReplay.body).toMatchObject({ idempotentReplay: true, payment: { id: receipt.body.payment.id } });
+    expect((await pool.query('SELECT count(*)::int n FROM billing_payments WHERE invoice_id=$1', [lines[0].invoice_id])).rows[0].n).toBe(1);
+    const retry = await call('POST', `/api/admissions/${admitted.body.id}/bed-billing-retry`, {});
+    expect(retry.body.charges).toMatchObject([{ charged: false, reason: 'DUPLICATE' }]);
+    expect((await pool.query("SELECT count(*)::int n FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1", [admitted.body.id])).rows[0].n).toBe(1);
+    const anotherBed = await makeBed(noRateWard, '100.00');
+    expect((await call('POST', '/api/admissions', { patientId: patient, wardId: noRateWard, bedId: anotherBed, encounterId: visit })).status).toBe(409);
+  });
 
   it('bills a KES 100 bed with no ward rate using database-generated admission and discharge times', async () => {
     const noRateWard = (await pool.query("INSERT INTO wards(facility_id,name,code,daily_rate) VALUES($1,'Synthetic no-rate ward',$2,NULL) RETURNING id", [facility, `NULL-${suffix}`])).rows[0].id;
     const patient = await makePatient(), encounter = await makeEncounter(patient), bed = await makeBed(noRateWard);
     expect((await pool.query('SELECT daily_rate FROM wards WHERE id=$1', [noRateWard])).rows[0].daily_rate).toBeNull();
-    expect((await call('PUT', `/api/inpatient/bed-billing-policy?facilityId=${facility}`, { facilityId: sameTenantFacility, cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', reason: 'Synthetic mismatch' }, tenantToken)).status).toBe(403);
+    expect((await call('PUT', `/api/inpatient/bed-billing-policy?facilityId=${facility}`, { facilityId: sameTenantFacility, cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', reason: 'Synthetic mismatch' }, tenantToken)).status).toBe(403);
     expect((await pool.query('SELECT id FROM inpatient_bed_billing_policies WHERE facility_id=$1', [sameTenantFacility])).rows).toHaveLength(0);
     expect((await call('POST', `/api/admissions?facilityId=${sameTenantFacility}`, { facilityId: facility, patientId: patient, encounterId: encounter, wardId: noRateWard, bedId: bed }, tenantToken)).status).toBe(403);
     expect((await pool.query('SELECT id FROM admissions WHERE patient_id=$1', [patient])).rows).toHaveLength(0);
@@ -154,16 +200,39 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     const pending = (await pool.query("SELECT id,status FROM billing_charge_attempts WHERE source_type='BED_DAY' AND source_id=$1", [stay.admission])).rows[0];
     expect(pending.status).toBe('PENDING');
     const visit = await makeEncounter(stay.patient);
-    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter`, { encounterId: visit, reason: 'Verified synthetic encounter' }, otherToken)).status).toBe(403);
-    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter?facilityId=${sameTenantFacility}`, { encounterId: visit, reason: 'Verified synthetic encounter' }, tenantToken)).status).toBe(403);
+    const wrongPatient = await makePatient(), foreignVisit = await makeEncounter(wrongPatient);
+    const outpatient = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'OUTPATIENT','ACTIVE') RETURNING id", [tenant, facility, stay.patient])).rows[0].id;
+    const futureVisit = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status,started_at) VALUES($1,$2,$3,'INPATIENT','ACTIVE','2999-01-01') RETURNING id", [tenant, facility, stay.patient])).rows[0].id;
+    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter`, { encounterId: visit, reason: 'Synthetic', evidenceReference: 'Synthetic encounter register' })).status).toBe(400);
+    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter`, { encounterId: visit, reason: 'Synthetic', affirmRelationship: true })).status).toBe(400);
+    for (const id of [foreignVisit, outpatient, futureVisit]) {
+      const denied = await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter`, { encounterId: id, reason: 'Synthetic review', evidenceReference: 'Synthetic encounter register', affirmRelationship: true });
+      expect([404, 409]).toContain(denied.status);
+    }
+    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter`, { encounterId: visit, reason: 'Verified synthetic encounter', evidenceReference: 'Synthetic encounter register', affirmRelationship: true }, otherToken)).status).toBe(403);
+    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter?facilityId=${sameTenantFacility}`, { encounterId: visit, reason: 'Verified synthetic encounter', evidenceReference: 'Synthetic encounter register', affirmRelationship: true }, tenantToken)).status).toBe(403);
     expect((await pool.query('SELECT encounter_id FROM admissions WHERE id=$1', [stay.admission])).rows[0].encounter_id).toBeNull();
     expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-retry?facilityId=${sameTenantFacility}`, {}, tenantToken)).status).toBe(403);
-    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter?facilityId=${facility}`, { encounterId: visit, reason: 'Verified synthetic encounter' }, tenantToken)).status).toBe(200);
+    expect((await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter?facilityId=${facility}`, { encounterId: visit, reason: 'Verified synthetic encounter', evidenceReference: 'Synthetic encounter register', affirmRelationship: true }, tenantToken)).status).toBe(200);
+    const linkAudit = (await pool.query("SELECT details FROM audit_logs WHERE resource='Admission' AND resource_id=$1 AND details LIKE '%linked_missing_bed_billing_encounter%'", [String(stay.admission)])).rows[0];
+    expect(JSON.parse(linkAudit.details)).toMatchObject({ encounterId: visit, evidenceReference: 'Synthetic encounter register', affirmedIdentityAndDates: true });
     const [a, b] = await Promise.all([call('POST', `/api/admissions/${stay.admission}/bed-billing-retry?facilityId=${facility}`, {}, tenantToken), call('POST', `/api/billing/charge-attempts/${pending.id}/retry`, {})]);
     expect([a.status, b.status]).toEqual([200, 200]);
     expect(['BILLED', 'DUPLICATE']).toContain(b.body.status);
     expect((await pool.query("SELECT COUNT(*)::int AS n, SUM(total_amount)::numeric(10,2) AS total FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1", [stay.admission])).rows[0]).toEqual({ n: 1, total: '100.00' });
     expect((await pool.query("SELECT status FROM billing_charge_attempts WHERE source_type='BED_DAY' AND source_id=$1", [stay.admission])).rows[0].status).toBe('BILLED');
+  });
+
+  it('interprets UTC-written encounter timestamps independently of host timezone at the Nairobi date boundary', async () => {
+    const stay = await makeSyntheticStay(0, false, '100.00', new Date('2025-01-01T22:30:00Z'));
+    await pool.query("UPDATE admissions SET status='Discharged',discharge_date='2025-01-01T23:00:00.000Z' WHERE id=$1", [stay.admission]);
+    await pool.query("UPDATE inpatient_bed_occupancies SET ended_at='2025-01-01T23:00:00Z' WHERE admission_id=$1", [stay.admission]);
+    const visit = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status,started_at,ended_at) VALUES($1,$2,$3,'INPATIENT','COMPLETED','2025-01-01 22:30:00','2025-01-01 23:00:00') RETURNING id", [tenant, facility, stay.patient])).rows[0].id;
+    const linked = await call('POST', `/api/admissions/${stay.admission}/bed-billing-encounter`, { encounterId: visit, reason: 'Synthetic reviewed relationship', evidenceReference: 'Synthetic UTC encounter record', affirmRelationship: true });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const retried = await call('POST', `/api/admissions/${stay.admission}/bed-billing-retry`, {});
+    expect(retried.body.charges).toMatchObject([{ charged: true, totalAmount: '100.00' }]);
+    expect((await pool.query("SELECT service_date::text FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1", [stay.admission])).rows[0].service_date).toBe('2025-01-02');
   });
 
   it('returns literal null for an unconfigured scoped policy and does not apply a later policy to the stay', async () => {
@@ -208,7 +277,7 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     const secondView = await call('GET', `/api/admissions/${secondAdmission.body.id}/bed-occupancy`, undefined, sameTenantToken);
     expect(secondView.body.staySnapshot).toMatchObject({ cutoffMinutes: null, graceMinutes: null, sameDayRule: null, manualAdmissionTime: true, manualDischargeTime: true });
     expect(secondView.body.periods[0].dailyRateSnapshot).toBe('100.00');
-    const configured = await call('PUT', '/api/inpatient/bed-billing-policy', { facilityId: sameTenantFacility, cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', reason: 'Synthetic policy for future stays' }, tenantToken);
+    const configured = await call('PUT', '/api/inpatient/bed-billing-policy', { facilityId: sameTenantFacility, cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', reason: 'Synthetic policy for future stays' }, tenantToken);
     expect(configured.status, JSON.stringify(configured.body)).toBe(200);
     const retry = await call('POST', `/api/admissions/${admitted.body.id}/bed-billing-retry`, {}, sameTenantToken);
     expect(retry.body.review.code).toBe('BED_POLICY_REVIEW_REQUIRED');
@@ -274,6 +343,11 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     await expect(pool.query('DELETE FROM billing_items WHERE id=$1', [charge.itemId])).rejects.toMatchObject({ code: '23514' });
     await expect(pool.query('UPDATE inpatient_bed_nights SET unit_price_snapshot=200,total_snapshot=200 WHERE admission_id=$1', [stay.admission])).rejects.toMatchObject({ code: '23514' });
     expect((await pool.query('SELECT total_amount FROM billing_invoices WHERE id=$1', [charge.invoiceId])).rows[0].total_amount).toBe('100.00');
+    const payment = await call('POST', '/api/billing/payments', { invoiceId: charge.invoiceId, facilityId: facility, amount: '100.00', paymentMethod: 'Cash', payerParty: 'PATIENT', idempotencyKey: `bed-final-cash-${suffix}` });
+    expect(payment.status, JSON.stringify(payment.body)).toBe(201);
+    expect((await pool.query('SELECT invoice_id,payment_id,party,actor_user_id FROM billing_payment_attributions WHERE payment_id=$1', [payment.body.payment.id])).rows[0]).toEqual({ invoice_id: charge.invoiceId, payment_id: payment.body.payment.id, party: 'PATIENT', actor_user_id: actor });
+    const paid = await getFinalizedInvoice(context, charge.invoiceId);
+    expect(paid.finalized && paid.financial).toMatchObject({ patientBalance: '0.00', reconciled: true });
   });
 
   it('does not infer SHA or private payer codes from an internal bed number or matching description', async () => {
@@ -296,10 +370,103 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     expect((await pool.query('SELECT tariff_id,payer_service_code,facility_unit_price FROM sha_eclaim_items WHERE eclaim_id=$1', [sha.id])).rows[0]).toEqual({ tariff_id: null, payer_service_code: null, facility_unit_price: '100.00' });
   });
 
+  it('does not charge a legacy admission already linked to a non-inpatient encounter', async () => {
+    const stay = await makeSyntheticStay(0, false);
+    const wrongType = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'OUTPATIENT','ACTIVE') RETURNING id", [tenant, facility, stay.patient])).rows[0].id;
+    await pool.query('UPDATE admissions SET encounter_id=$1 WHERE id=$2', [wrongType, stay.admission]);
+    const closed = await call('POST', `/api/admissions/${stay.admission}/discharge`, {});
+    expect(closed.status).toBe(200); expect(closed.body.billing.bedDays).toMatchObject([{ charged: false, reason: 'BED_OCCUPANCY_REVIEW', diagnosis: { code: 'BED_ENCOUNTER_CONFLICT' } }]);
+    expect((await pool.query("SELECT id FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1", [stay.admission])).rows).toHaveLength(0);
+    expect((await pool.query('SELECT status FROM beds WHERE id=$1', [stay.bed])).rows[0].status).toBe('Cleaning');
+  });
+
+  it('requires the selected facility to own the patient or have an active documented relationship', async () => {
+    const patient = await makePatient(sameTenantFacility), bed = await makeBed();
+    const input = { patientId: patient, wardId: ward, bedId: bed, admissionType: 'Transfer' };
+    expect((await call('POST', '/api/admissions', input)).status).toBe(404);
+    await pool.query("INSERT INTO patient_facilities(patient_id,tenant_id,facility_id,status,relationship_type) VALUES($1,$2,$3,'ACTIVE','REFERRAL')", [patient, tenant, facility]);
+    const transferred = await call('POST', '/api/admissions', input);
+    expect(transferred.status, JSON.stringify(transferred.body)).toBe(201);
+    expect(transferred.body).toMatchObject({ patientId: patient, facilityId: facility, admissionType: 'Transfer', bedBillingReadiness: { ready: true } });
+  });
+
+  it('rejects an unrelated, non-inpatient or future encounter when creating an admission', async () => {
+    const patient = await makePatient(), other = await makePatient(), bed = await makeBed();
+    const otherPatientVisit = await makeEncounter(other);
+    const wrongType = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'OUTPATIENT','ACTIVE') RETURNING id", [tenant, facility, patient])).rows[0].id;
+    const future = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status,started_at) VALUES($1,$2,$3,'INPATIENT','ACTIVE','2999-01-01') RETURNING id", [tenant, facility, patient])).rows[0].id;
+    expect((await call('POST', '/api/admissions', { patientId: patient, wardId: ward, bedId: bed, encounterId: otherPatientVisit })).status).toBe(404);
+    for (const encounterId of [wrongType, future]) expect((await call('POST', '/api/admissions', { patientId: patient, wardId: ward, bedId: bed, encounterId })).status).toBe(409);
+    expect((await pool.query('SELECT id FROM admissions WHERE patient_id=$1', [patient])).rows).toHaveLength(0);
+    expect((await pool.query('SELECT status FROM beds WHERE id=$1', [bed])).rows[0].status).toBe('Available');
+  });
+
+  it('keeps care available without clinical-create permission but clearly marks encounter and billing unready', async () => {
+    const admissionOnly = await user(tenant, facility, 'admit-only', ['inpatient.read', 'inpatient.admit']);
+    const patient = await makePatient(), bed = await makeBed(), existing = await makeEncounter(patient);
+    expect((await call('POST', '/api/admissions', { patientId: patient, wardId: ward, bedId: bed, encounterId: existing }, admissionOnly.token)).status).toBe(403);
+    const result = await call('POST', '/api/admissions', { patientId: patient, wardId: ward, bedId: bed }, admissionOnly.token);
+    expect(result.status).toBe(201);
+    expect(result.body.encounterId).toBeNull();
+    expect(result.body.bedBillingReadiness).toMatchObject({ ready: false, issues: [{ code: 'BED_ENCOUNTER_REQUIRED' }] });
+    expect((await pool.query('SELECT count(*)::int n FROM encounters WHERE patient_id=$1', [patient])).rows[0].n).toBe(1);
+  });
+
+  it('does not fabricate an encounter for a manually timed admission even with clinical-create permission', async () => {
+    const patient = await makePatient(), bed = await makeBed();
+    const result = await call('POST', '/api/admissions', { patientId: patient, wardId: ward, bedId: bed, admissionDate: '2020-01-01T08:00:00Z' });
+    expect(result.status).toBe(201); expect(result.body.encounterId).toBeNull();
+    expect(result.body.bedBillingReadiness).toMatchObject({ ready: false, issues: expect.arrayContaining([{ code: 'BED_ENCOUNTER_REQUIRED', message: expect.stringMatching(/historical inpatient encounter/i) }]) });
+    expect((await pool.query('SELECT id FROM encounters WHERE patient_id=$1', [patient])).rows).toHaveLength(0);
+  });
+
+  it('rolls back the newly created encounter, admission and bed assignment when the admission audit fails', async () => {
+    const patient = await makePatient(), bed = await makeBed();
+    const fn = `synthetic_auto_enc_audit_${suffix}`, trigger = `synthetic_auto_enc_trigger_${suffix}`;
+    await pool.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.resource='Admission' AND NEW.action='CREATE' AND NEW.user_id='${actor}' THEN RAISE EXCEPTION 'synthetic admission audit failure'; END IF; RETURN NEW; END $$`);
+    await pool.query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
+    try {
+      expect((await call('POST', '/api/admissions', { patientId: patient, wardId: ward, bedId: bed })).status).toBe(500);
+      expect((await pool.query('SELECT id FROM encounters WHERE patient_id=$1', [patient])).rows).toHaveLength(0);
+      expect((await pool.query('SELECT id FROM admissions WHERE patient_id=$1', [patient])).rows).toHaveLength(0);
+      expect((await pool.query('SELECT status,current_patient_id FROM beds WHERE id=$1', [bed])).rows[0]).toEqual({ status: 'Available', current_patient_id: null });
+    } finally { await pool.query(`DROP TRIGGER ${trigger} ON audit_logs`); await pool.query(`DROP FUNCTION ${fn}()`); }
+  });
+
+  it('recognizes unconfirmed, inactive, future and expired policies and never applies a later policy to a prior stay', async () => {
+    const localFacility = (await pool.query("INSERT INTO facilities(tenant_id,code,name,timezone,enabled_modules) VALUES($1,$2,'Synthetic effective policy','Africa/Nairobi',$3::jsonb) RETURNING id", [tenant, `DATE-${suffix}`, JSON.stringify(['inpatient','finance'])])).rows[0].id;
+    const w = (await pool.query("INSERT INTO wards(facility_id,name,code,daily_rate) VALUES($1,'Synthetic date ward',$2,NULL) RETURNING id", [localFacility, `D-W-${suffix}`])).rows[0].id;
+    expect((await call('GET', `/api/inpatient/bed-billing-policy?facilityId=${localFacility}`, undefined, tenantToken)).body).toBeNull();
+    // A row written by the pre-0065 application has unknown applicability.
+    await pool.query("INSERT INTO inpatient_bed_billing_policies(tenant_id,facility_id,cutoff_minutes,grace_minutes,same_day_rule,updated_by_user_id) VALUES($1,$2,0,0,'ONE',$3)", [tenant, localFacility, actor]);
+    const legacy = await call('GET', `/api/inpatient/bed-billing-policy?facilityId=${localFacility}`, undefined, tenantToken);
+    expect(legacy.body).toMatchObject({ isActive: null, effectiveFrom: null, applicability: { code: 'NOT_ACTIVE' } });
+    const body = { facilityId: localFacility, cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', effectiveFrom: '2999-01-01', isActive: true, expectedRevision: legacy.body.revision, reason: 'Synthetic future policy' };
+    expect((await call('PUT', '/api/inpatient/bed-billing-policy', { ...body, effectiveFrom: '2031-02-30' }, tenantToken)).status).toBe(400);
+    const future = await call('PUT', '/api/inpatient/bed-billing-policy', body, tenantToken);
+    expect(future.body.applicability.code).toBe('NOT_YET_EFFECTIVE');
+    const patient = await makePatient(localFacility), bed = await makeBed(w);
+    const admitted = await call('POST', `/api/admissions?facilityId=${localFacility}`, { patientId: patient, wardId: w, bedId: bed }, tenantToken);
+    expect(admitted.status).toBe(201);
+    expect(admitted.body.bedBillingReadiness).toMatchObject({ ready: false, issues: [{ code: 'NOT_YET_EFFECTIVE' }] });
+    const snap = (await pool.query('SELECT policy_id,policy_revision,policy_applicability,same_day_rule FROM inpatient_bed_stay_snapshots WHERE admission_id=$1', [admitted.body.id])).rows[0];
+    expect(snap).toEqual({ policy_id: future.body.id, policy_revision: future.body.revision, policy_applicability: 'NOT_YET_EFFECTIVE', same_day_rule: null });
+    const active = await call('PUT', '/api/inpatient/bed-billing-policy', { ...body, effectiveFrom: '2020-01-01', expectedRevision: future.body.revision, reason: 'Synthetic policy active for future admissions' }, tenantToken);
+    expect(active.body.applicability.code).toBe('APPLICABLE');
+    const closed = await call('POST', `/api/admissions/${admitted.body.id}/discharge?facilityId=${localFacility}`, {}, tenantToken);
+    expect(closed.status).toBe(200); expect(closed.body.billing.review.code).toBe('BED_POLICY_REVIEW_REQUIRED');
+    expect((await pool.query("SELECT id FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1", [admitted.body.id])).rows).toHaveLength(0);
+    const inactive = await call('PUT', '/api/inpatient/bed-billing-policy', { ...body, isActive: false, effectiveFrom: '2020-01-01', expectedRevision: active.body.revision }, tenantToken);
+    expect(inactive.body.applicability.code).toBe('NOT_ACTIVE');
+    const expired = await call('PUT', '/api/inpatient/bed-billing-policy', { ...body, effectiveFrom: '2020-01-01', effectiveUntil: '2020-12-31', expectedRevision: inactive.body.revision }, tenantToken);
+    expect(expired.body.applicability.code).toBe('EXPIRED');
+    expect((await pool.query("SELECT count(*)::int n FROM audit_logs WHERE resource='InpatientBedBillingPolicy' AND resource_id=$1", [String(future.body.id)])).rows[0].n).toBe(4);
+  });
+
   it('restricts policy and bed-price changes, audits revisions, and leaves unchanged bed edits alone', async () => {
     const current = await call('GET', '/api/inpatient/bed-billing-policy');
     expect(current.status).toBe(200);
-    const proposed = { cutoffMinutes: 0, graceMinutes: 15, sameDayRule: 'ONE', expectedRevision: current.body.revision, reason: 'Synthetic policy change' };
+    const proposed = { cutoffMinutes: 0, graceMinutes: 15, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', expectedRevision: current.body.revision, reason: 'Synthetic policy change' };
     expect((await call('PUT', '/api/inpatient/bed-billing-policy', proposed, limitedToken)).status).toBe(403);
     expect((await call('PUT', '/api/inpatient/bed-billing-policy', proposed, platformToken)).status).toBe(403);
     expect((await call('PUT', '/api/inpatient/bed-billing-policy', { ...proposed, expectedRevision: current.body.revision + 9 })).status).toBe(409);
@@ -330,7 +497,7 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     const current = await call('GET', '/api/inpatient/bed-billing-policy');
     const admitted = await call('POST', '/api/admissions', { patientId: patient, encounterId: visit, wardId: ward, bedId: bed });
     expect(admitted.status).toBe(201);
-    const change = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ZERO', expectedRevision: current.body.revision, reason: 'Synthetic new policy' });
+    const change = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ZERO', isActive: true, effectiveFrom: '2020-01-01', expectedRevision: current.body.revision, reason: 'Synthetic new policy' });
     expect(change.status).toBe(200);
     try {
       const captured = (await pool.query('SELECT same_day_rule,policy_revision FROM inpatient_bed_stay_snapshots WHERE admission_id=$1', [admitted.body.id])).rows[0];
@@ -340,7 +507,7 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
       expect(closed.body.billing.bedDays).toHaveLength(1);
       expect(closed.body.billing.bedDays[0]).toMatchObject({ charged: true, totalAmount: '100.00' });
     } finally {
-      expect((await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', expectedRevision: change.body.revision, reason: 'Restore synthetic policy' })).status).toBe(200);
+      expect((await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', expectedRevision: change.body.revision, reason: 'Restore synthetic policy' })).status).toBe(200);
     }
   });
 
@@ -350,6 +517,7 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
       if (price === '1500.00') await pool.query('UPDATE beds SET daily_charge_review_required=true,price_revision=price_revision+1 WHERE id=$1', [bed]);
       const admitted = await call('POST', '/api/admissions', { patientId: patient, encounterId: visit, wardId: ward, bedId: bed });
       expect(admitted.status, JSON.stringify(admitted.body)).toBe(201);
+      expect(admitted.body.bedBillingReadiness).toMatchObject({ ready: false, issues: [{ code: 'BED_RATE_REVIEW_REQUIRED' }] });
       expect((await pool.query('SELECT daily_rate_snapshot FROM inpatient_bed_occupancies WHERE admission_id=$1', [admitted.body.id])).rows[0].daily_rate_snapshot).toBeNull();
       const closed = await call('POST', `/api/admissions/${admitted.body.id}/discharge`, {});
       expect(closed.status, JSON.stringify(closed.body)).toBe(200);
@@ -584,6 +752,22 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     const retry = await call('POST', `/api/admissions/${admitted.body.id}/bed-billing-retry`, {});
     expect(retry.body.charges).toMatchObject([{ charged: true, unitPrice: '100.00', totalAmount: '100.00' }]);
     expect((await pool.query('SELECT manual_discharge_time FROM inpatient_bed_stay_snapshots WHERE admission_id=$1', [admitted.body.id])).rows[0].manual_discharge_time).toBe(true);
+  });
+
+  it('links an encounter after a signed history review when legacy clinical dates were ambiguous', async () => {
+    const patient = await makePatient(), bed = await makeBed(), visit = await makeEncounter(patient);
+    const start = new Date(Date.now() - 60_000).toISOString();
+    const admission = (await pool.query("INSERT INTO admissions(tenant_id,facility_id,patient_id,ward_id,bed_id,admission_date,status) VALUES($1,$2,$3,$4,$5,'legacy ambiguous time','Admitted') RETURNING id", [tenant, facility, patient, ward, bed])).rows[0].id;
+    await pool.query("UPDATE beds SET status='Occupied',current_patient_id=$1 WHERE id=$2", [patient, bed]);
+    const closed = await call('POST', `/api/admissions/${admission}/discharge`, {});
+    expect(closed.status).toBe(200);
+    const link = { encounterId: visit, reason: 'Synthetic verified clinical record', evidenceReference: 'Synthetic encounter register', affirmRelationship: true };
+    expect((await call('POST', `/api/admissions/${admission}/bed-billing-encounter`, link)).status).toBe(409);
+    const review = await call('POST', `/api/admissions/${admission}/bed-history-review`, { timezone: 'Africa/Nairobi', cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', reason: 'Synthetic signed review', evidenceReference: 'Synthetic ward register', affirmReviewedHistoryAndCharges: true, periods: [{ wardId: ward, bedId: bed, startedAt: start, endedAt: closed.body.dischargeDate, dailyRate: '100.00' }] });
+    expect(review.status, JSON.stringify(review.body)).toBe(201);
+    expect((await call('POST', `/api/admissions/${admission}/bed-billing-encounter`, link)).status).toBe(200);
+    const retried = await call('POST', `/api/admissions/${admission}/bed-billing-retry`, {});
+    expect(retried.body.charges).toMatchObject([{ charged: true, totalAmount: '100.00' }]);
   });
 
   it('requires an explicit audited history review for legacy stays and retains the old pending attempt', async () => {

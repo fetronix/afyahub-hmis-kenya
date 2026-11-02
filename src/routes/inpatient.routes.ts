@@ -104,7 +104,7 @@ router.get('/admissions/:id/bed-occupancy', requirePermission('inpatient.read'),
 
 router.post('/admissions/:id/bed-billing-encounter', requirePermission('inpatient.read', 'clinical.read', 'billing.update'), async (req: AuthRequest, res: Response) => {
   const context = requireAuthContext(req, res); if (!context) return;
-  try { res.json(await bedBilling.linkBedBillingEncounter(context, Number(req.params.id), req.body?.encounterId, req.body?.reason, requestedAdmissionFacility(req))); }
+  try { res.json(await bedBilling.linkBedBillingEncounter(context, Number(req.params.id), req.body?.encounterId, req.body?.reason, req.body?.evidenceReference, req.body?.affirmRelationship, requestedAdmissionFacility(req))); }
   catch (error) { if (handleInpatientError(error, res)) return; console.error('Admission encounter link failed.'); res.status(500).json({ error: 'BED_ENCOUNTER_LINK_FAILED' }); }
 });
 
@@ -511,7 +511,7 @@ router.post(
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 
-      console.error('Admission creation error:', err);
+      console.error('Admission could not be committed.');
       res.status(500).json({
         success: false,
         error: 'ADMISSION_CREATION_FAILED',

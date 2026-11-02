@@ -20,6 +20,7 @@ import {
   recordAdverseEventScoped,
   recordConsumableScoped,
   scheduleDialysisScoped,
+  cancelDialysisScheduleScoped,
   setMachineStatusScoped,
   startDialysisSessionScoped,
   type DialysisScope,
@@ -174,6 +175,24 @@ router.post(
         idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
       });
       res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/schedules/:id/cancel',
+  requirePermission('dialysis.schedule.manage', 'appointments.cancel'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        schedule: await cancelDialysisScheduleScoped(
+          await scoped(req),
+          Number(req.params.id),
+          req.body?.reason,
+        ),
+      });
     } catch (error) {
       fail(res, error);
     }

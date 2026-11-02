@@ -6,7 +6,8 @@ import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { InpatientDomainError } from '../db/inpatient-contracts.ts';
 import { requireInpatientFacility, requirePositiveId } from '../db/queries/shared.ts';
-import { validTimezone } from '../dashboard/timezone.ts';
+import { calendarDateInZone, validTimezone } from '../dashboard/timezone.ts';
+import { parseCalendarDate } from '../dashboard/date-range.ts';
 import { lockChargeIdentity, recordChargeAttempt } from '../billing/charge-attempts.ts';
 import { buildIdempotencyKey, type ChargeRequest } from '../billing/billing.service.ts';
 import { parseMoneyToCents, formatCents } from '../billing/settlement.ts';
@@ -32,15 +33,34 @@ export function requireSelectedAdmissionFacility(context: AuthorizationContext, 
     throw new ScopeAccessError('The admission is not in the selected facility.', 'FACILITY_SCOPE_MISMATCH');
 }
 
+type PolicyRow = typeof schema.inpatientBedBillingPolicies.$inferSelect;
+function policyApplicability(policy: PolicyRow | undefined, zone: string | null | undefined, at: Date) {
+  if (!policy) return { code: 'NOT_CONFIGURED', message: 'No facility bed billing policy is configured.' };
+  if (!validTimezone(zone)) return { code: 'TIMEZONE_REQUIRED', message: 'The facility or tenant timezone is missing or invalid.' };
+  if (policy.isActive !== true) return { code: 'NOT_ACTIVE', message: 'The policy is inactive or its active status has not been confirmed.' };
+  if (!policy.effectiveFrom) return { code: 'EFFECTIVE_DATE_REQUIRED', message: 'The policy effective date has not been confirmed.' };
+  const date = calendarDateInZone(zone, at);
+  if (policy.effectiveFrom > date) return { code: 'NOT_YET_EFFECTIVE', message: 'The policy is not yet effective in the facility timezone.' };
+  if (policy.effectiveUntil && policy.effectiveUntil < date) return { code: 'EXPIRED', message: 'The policy is past its effective end date.' };
+  if (!validBedPolicy({ timezone: zone, cutoffMinutes: policy.cutoffMinutes, graceMinutes: policy.graceMinutes, sameDayRule: policy.sameDayRule as BedNightPolicy['sameDayRule'] }))
+    return { code: 'INVALID', message: 'The policy configuration is invalid.' };
+  return { code: 'APPLICABLE', message: 'An active facility-wide policy applies to the admission date.' };
+}
+
 export async function getBedBillingPolicy(context: AuthorizationContext, requestedFacilityId?: number) {
   const facility = await requireInpatientFacility(context, requestedFacilityId);
   const [policy] = await db.select().from(schema.inpatientBedBillingPolicies)
     .where(and(eq(schema.inpatientBedBillingPolicies.tenantId, facility.tenantId), eq(schema.inpatientBedBillingPolicies.facilityId, facility.id))).limit(1);
-  return policy ?? null;
+  if (!policy) return null;
+  const [scope] = await db.select({ timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
+    .from(schema.facilities).innerJoin(schema.tenants, eq(schema.facilities.tenantId, schema.tenants.id))
+    .where(and(eq(schema.facilities.id, facility.id), eq(schema.facilities.tenantId, facility.tenantId))).limit(1);
+  const applicability = policyApplicability(policy, scope?.timezone ?? scope?.tenantTimezone, await databaseNow(db));
+  return { ...policy, applicability, scope: 'FACILITY' as const };
 }
 
 export async function setBedBillingPolicy(context: AuthorizationContext, input: {
-  facilityId?: unknown; cutoffMinutes?: unknown; graceMinutes?: unknown; sameDayRule?: unknown; expectedRevision?: unknown; reason?: unknown;
+  facilityId?: unknown; cutoffMinutes?: unknown; graceMinutes?: unknown; sameDayRule?: unknown; isActive?: unknown; effectiveFrom?: unknown; effectiveUntil?: unknown; expectedRevision?: unknown; reason?: unknown;
 }) {
   financialPermission(context, ['inpatient.wards.update', 'billing.update']);
   const requestedFacilityId = input.facilityId == null ? undefined : requirePositiveId(input.facilityId, 'facility ID');
@@ -52,6 +72,13 @@ export async function setBedBillingPolicy(context: AuthorizationContext, input: 
       !Number.isInteger(cutoffMinutes) || cutoffMinutes < 0 || cutoffMinutes > 1439 ||
       !Number.isInteger(graceMinutes) || graceMinutes < 0 || graceMinutes > 1439 ||
       (sameDayRule !== 'ONE' && sameDayRule !== 'ZERO')) throw invalid('Enter a cutoff, grace period and same-day rule.');
+  if (typeof input.isActive !== 'boolean' || !parseCalendarDate(input.effectiveFrom) ||
+      (input.effectiveUntil != null && input.effectiveUntil !== '' && !parseCalendarDate(input.effectiveUntil)))
+    throw invalid('Choose the active status and a valid facility-local effective date.');
+  const isActive = input.isActive;
+  const effectiveFrom = input.effectiveFrom as string;
+  const effectiveUntil = input.effectiveUntil ? input.effectiveUntil as string : null;
+  if (effectiveUntil && effectiveUntil < effectiveFrom) throw invalid('The effective end date cannot precede the start date.');
   return db.transaction(async (tx) => {
     const [lockedFacility] = await tx.select({ id: schema.facilities.id, timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
       .from(schema.facilities).innerJoin(schema.tenants, eq(schema.facilities.tenantId, schema.tenants.id))
@@ -63,11 +90,12 @@ export async function setBedBillingPolicy(context: AuthorizationContext, input: 
       .where(eq(schema.inpatientBedBillingPolicies.facilityId, facility.id)).for('update');
     if ((old && input.expectedRevision !== old.revision) || (!old && input.expectedRevision != null))
       throw invalid('The bed billing policy changed; refresh and review before saving.', 409);
+    const values = { cutoffMinutes, graceMinutes, sameDayRule, isActive, effectiveFrom, effectiveUntil };
     const [saved] = old
-      ? await tx.update(schema.inpatientBedBillingPolicies).set({ cutoffMinutes, graceMinutes, sameDayRule, revision: old.revision + 1, updatedByUserId: context.userId, updatedAt: new Date() }).where(eq(schema.inpatientBedBillingPolicies.id, old.id)).returning()
-      : await tx.insert(schema.inpatientBedBillingPolicies).values({ tenantId: facility.tenantId, facilityId: facility.id, cutoffMinutes, graceMinutes, sameDayRule, updatedByUserId: context.userId }).returning();
-    await tx.insert(schema.auditLogs).values({ tenantId: facility.tenantId, facilityId: facility.id, userId: String(context.userId), action: old ? 'UPDATE' : 'CREATE', resource: 'InpatientBedBillingPolicy', resourceId: String(saved.id), details: JSON.stringify({ before: old ? { cutoffMinutes: old.cutoffMinutes, graceMinutes: old.graceMinutes, sameDayRule: old.sameDayRule, revision: old.revision } : null, after: { cutoffMinutes, graceMinutes, sameDayRule, revision: saved.revision }, reason }) });
-    return saved;
+      ? await tx.update(schema.inpatientBedBillingPolicies).set({ ...values, revision: old.revision + 1, updatedByUserId: context.userId, updatedAt: new Date() }).where(eq(schema.inpatientBedBillingPolicies.id, old.id)).returning()
+      : await tx.insert(schema.inpatientBedBillingPolicies).values({ tenantId: facility.tenantId, facilityId: facility.id, ...values, updatedByUserId: context.userId }).returning();
+    await tx.insert(schema.auditLogs).values({ tenantId: facility.tenantId, facilityId: facility.id, userId: String(context.userId), action: old ? 'UPDATE' : 'CREATE', resource: 'InpatientBedBillingPolicy', resourceId: String(saved.id), details: JSON.stringify({ before: old ? { cutoffMinutes: old.cutoffMinutes, graceMinutes: old.graceMinutes, sameDayRule: old.sameDayRule, isActive: old.isActive, effectiveFrom: old.effectiveFrom, effectiveUntil: old.effectiveUntil, revision: old.revision } : null, after: { ...values, revision: saved.revision }, reason }) });
+    return { ...saved, scope: 'FACILITY' as const, applicability: policyApplicability(saved, lockedFacility.timezone ?? lockedFacility.tenantTimezone, await databaseNow(tx)) };
   });
 }
 
@@ -79,14 +107,24 @@ export async function captureBedStay(tx: Transaction, context: AuthorizationCont
   const [policy] = await tx.select().from(schema.inpatientBedBillingPolicies)
     .where(and(eq(schema.inpatientBedBillingPolicies.tenantId, admission.tenantId), eq(schema.inpatientBedBillingPolicies.facilityId, admission.facilityId))).for('share');
   const zone = scope?.timezone ?? scope?.tenantTimezone;
+  const applicability = policyApplicability(policy, zone, at);
+  const applicable = applicability.code === 'APPLICABLE' ? policy : undefined;
   await tx.insert(schema.inpatientBedStaySnapshots).values({
     admissionId: admission.id, tenantId: admission.tenantId, facilityId: admission.facilityId, patientId: admission.patientId,
     timezoneSnapshot: validTimezone(zone) ? zone : null,
-    cutoffMinutes: policy?.cutoffMinutes ?? null, graceMinutes: policy?.graceMinutes ?? null,
-    sameDayRule: policy?.sameDayRule ?? null, policyRevision: policy?.revision ?? null,
+    cutoffMinutes: applicable?.cutoffMinutes ?? null, graceMinutes: applicable?.graceMinutes ?? null,
+    sameDayRule: applicable?.sameDayRule ?? null, policyRevision: policy?.revision ?? null,
+    policyId: policy?.id ?? null, policyApplicability: applicability.code,
+    policyEffectiveFrom: policy?.effectiveFrom ?? null, policyEffectiveUntil: policy?.effectiveUntil ?? null,
     manualAdmissionTime,
   });
   await captureBedPeriod(tx, context, admission, bed, ward, at);
+  const issues = [] as Array<{ code: string; message: string }>;
+  if (!applicable) issues.push(applicability);
+  if (bed.dailyChargeReviewRequired || (parseMoneyToCents(bed.dailyCharge) ?? 0) <= 0)
+    issues.push({ code: 'BED_RATE_REVIEW_REQUIRED', message: 'This bed does not have a positive, confirmed daily charge.' });
+  if (manualAdmissionTime) issues.push({ code: 'BED_MANUAL_TIME_REVIEW_REQUIRED', message: 'A client-supplied admission time requires documented billing review.' });
+  return issues;
 }
 
 export async function captureBedPeriod(tx: Transaction, context: AuthorizationContext, admission: AdmissionRow, bed: typeof schema.beds.$inferSelect, ward: typeof schema.wards.$inferSelect, at: Date) {
@@ -94,6 +132,7 @@ export async function captureBedPeriod(tx: Transaction, context: AuthorizationCo
   return tx.insert(schema.inpatientBedOccupancies).values({
     admissionId: admission.id, tenantId: admission.tenantId, facilityId: admission.facilityId, patientId: admission.patientId,
     wardId: ward.id, bedId: bed.id, startedAt: at, dailyRateSnapshot: price,
+    priceRevisionSnapshot: bed.priceRevision,
     bedNumberSnapshot: bed.bedNumber, bedTypeSnapshot: bed.bedType, wardNameSnapshot: ward.name,
     recordedByUserId: context.userId,
   }).returning();
@@ -241,6 +280,10 @@ export async function getBedBillingView(context: AuthorizationContext, admission
     graceMinutes: schema.inpatientBedStaySnapshots.graceMinutes,
     sameDayRule: schema.inpatientBedStaySnapshots.sameDayRule,
     policyRevision: schema.inpatientBedStaySnapshots.policyRevision,
+    policyId: schema.inpatientBedStaySnapshots.policyId,
+    policyApplicability: schema.inpatientBedStaySnapshots.policyApplicability,
+    policyEffectiveFrom: schema.inpatientBedStaySnapshots.policyEffectiveFrom,
+    policyEffectiveUntil: schema.inpatientBedStaySnapshots.policyEffectiveUntil,
     manualAdmissionTime: schema.inpatientBedStaySnapshots.manualAdmissionTime,
     manualDischargeTime: schema.inpatientBedStaySnapshots.manualDischargeTime,
     capturedAt: schema.inpatientBedStaySnapshots.capturedAt,
@@ -295,11 +338,13 @@ export async function getBedBillingView(context: AuthorizationContext, admission
 export { requestFor as bedNightChargeRequest };
 
 /** Explicitly link a missing encounter; never guess or replace an existing link. */
-export async function linkBedBillingEncounter(context: AuthorizationContext, admissionId: number, rawEncounterId: unknown, rawReason: unknown, requestedFacilityId?: number) {
+export async function linkBedBillingEncounter(context: AuthorizationContext, admissionId: number, rawEncounterId: unknown, rawReason: unknown, rawEvidenceReference: unknown, affirmRelationship: unknown, requestedFacilityId?: number) {
   financialPermission(context, ['inpatient.read', 'clinical.read', 'billing.update']);
   const id = requirePositiveId(admissionId, 'admission ID');
   const encounterId = requirePositiveId(rawEncounterId, 'encounter ID');
   const reason = text(rawReason, 'Reason');
+  const evidenceReference = text(rawEvidenceReference, 'Evidence reference');
+  if (affirmRelationship !== true) throw invalid('Confirm that the inpatient encounter and dates were verified against the admission record.');
   return db.transaction(async (tx) => {
     const [admission] = await tx.select().from(schema.admissions).where(eq(schema.admissions.id, id)).for('update');
     if (!admission) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
@@ -308,16 +353,54 @@ export async function linkBedBillingEncounter(context: AuthorizationContext, adm
       if (admission.encounterId === encounterId) return admission;
       throw invalid('This admission already has an encounter; changing it requires controlled financial reconciliation.', 409);
     }
-    const [encounter] = await tx.select({ id: schema.encounters.id }).from(schema.encounters).where(and(
+    // Current writers persist UTC in timestamp-without-timezone columns. A
+    // legacy source may have used another convention: the date check is only
+    // a guard, and staff must still affirm the documentary relationship.
+    const [encounter] = await tx.select({ id: schema.encounters.id, encounterType: schema.encounters.encounterType,
+      startedAt: sql<Date>`${schema.encounters.startedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
+      endedAt: sql<Date | null>`${schema.encounters.endedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
+    }).from(schema.encounters).where(and(
       eq(schema.encounters.id, encounterId), eq(schema.encounters.tenantId, admission.tenantId),
-      eq(schema.encounters.facilityId, admission.facilityId), eq(schema.encounters.patientId, admission.patientId))).limit(1).for('share');
+      eq(schema.encounters.facilityId, admission.facilityId), eq(schema.encounters.patientId, admission.patientId))).limit(1).for('update');
     if (!encounter) throw new InpatientDomainError('ENCOUNTER_NOT_FOUND', 'Encounter not found for this patient in this facility.', 404);
+    if (encounter.encounterType.trim().toUpperCase() !== 'INPATIENT')
+      throw invalid('Only a verified inpatient encounter can be linked.', 409);
+    const [otherAdmission] = await tx.select({ id: schema.admissions.id }).from(schema.admissions)
+      .where(and(eq(schema.admissions.encounterId, encounterId), sql`${schema.admissions.id} <> ${admission.id}`)).limit(1);
+    if (otherAdmission) throw invalid('The encounter is already linked to another admission.', 409);
+    const [scope] = await tx.select({ timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
+      .from(schema.facilities).innerJoin(schema.tenants, eq(schema.facilities.tenantId, schema.tenants.id))
+      .where(and(eq(schema.facilities.id, admission.facilityId), eq(schema.facilities.tenantId, admission.tenantId))).limit(1);
+    const [review] = await tx.select({ id: schema.inpatientBedBillingReviews.id, timezone: schema.inpatientBedBillingReviews.timezoneSnapshot })
+      .from(schema.inpatientBedBillingReviews).where(and(eq(schema.inpatientBedBillingReviews.admissionId, admission.id),
+        eq(schema.inpatientBedBillingReviews.tenantId, admission.tenantId), eq(schema.inpatientBedBillingReviews.facilityId, admission.facilityId),
+        eq(schema.inpatientBedBillingReviews.patientId, admission.patientId))).limit(1);
+    const zone = review?.timezone ?? scope?.timezone ?? scope?.tenantTimezone;
+    if (!validTimezone(zone)) throw invalid('A valid facility or tenant timezone is required to verify encounter dates.', 409);
+    const periods = await tx.select({ start: schema.inpatientBedOccupancies.startedAt, end: schema.inpatientBedOccupancies.endedAt })
+      .from(schema.inpatientBedOccupancies).where(and(eq(schema.inpatientBedOccupancies.admissionId, admission.id),
+        eq(schema.inpatientBedOccupancies.tenantId, admission.tenantId), eq(schema.inpatientBedOccupancies.facilityId, admission.facilityId),
+        eq(schema.inpatientBedOccupancies.patientId, admission.patientId),
+        review ? eq(schema.inpatientBedOccupancies.reviewId, review.id) : isNull(schema.inpatientBedOccupancies.reviewId)))
+      .orderBy(asc(schema.inpatientBedOccupancies.startedAt));
+    const explicitInstant = (value: string | null) => {
+      if (!value || !/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+      const result = new Date(value); return Number.isFinite(result.getTime()) ? result : null;
+    };
+    const start = periods[0]?.start ?? explicitInstant(admission.admissionDate);
+    const end = admission.status === 'Discharged'
+      ? periods.at(-1)?.end ?? explicitInstant(admission.dischargeDate)
+      : await databaseNow(tx);
+    if (!start || !end) throw invalid('The admission dates are not sufficiently recorded to verify an encounter; documented clinical review is required.', 409);
+    if (calendarDateInZone(zone, encounter.startedAt) > calendarDateInZone(zone, end) ||
+        (encounter.endedAt && calendarDateInZone(zone, encounter.endedAt) < calendarDateInZone(zone, start)))
+      throw invalid('The inpatient encounter dates do not overlap the admission dates.', 409);
     const [prior] = await tx.select({ id: schema.billingItems.id }).from(schema.billingItems)
       .where(and(eq(schema.billingItems.sourceType, 'BED_DAY'), eq(schema.billingItems.sourceId, admission.id))).limit(1);
     if (prior) throw invalid('Existing bed-night invoice lines require financial reconciliation before linking an encounter.', 409);
     const [updated] = await tx.update(schema.admissions).set({ encounterId, updatedAt: new Date() })
       .where(eq(schema.admissions.id, id)).returning();
-    await tx.insert(schema.auditLogs).values({ tenantId: admission.tenantId, facilityId: admission.facilityId, userId: String(context.userId), action: 'UPDATE', resource: 'Admission', resourceId: String(id), details: JSON.stringify({ change: 'linked_missing_bed_billing_encounter', encounterId, reason }) });
+    await tx.insert(schema.auditLogs).values({ tenantId: admission.tenantId, facilityId: admission.facilityId, userId: String(context.userId), action: 'UPDATE', resource: 'Admission', resourceId: String(id), details: JSON.stringify({ change: 'linked_missing_bed_billing_encounter', encounterId, reason, evidenceReference, affirmedIdentityAndDates: true }) });
     return updated;
   });
 }

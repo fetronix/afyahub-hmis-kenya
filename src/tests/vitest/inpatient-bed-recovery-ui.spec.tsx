@@ -46,9 +46,11 @@ describe('Inpatient bed policy and recovery', () => {
     await user.type(screen.getByLabelText('Facility-local cutoff'), '06:00');
     await user.type(screen.getByLabelText('Discharge grace minutes'), '30');
     await user.selectOptions(screen.getByLabelText('Same-day stay rule'), 'ONE');
+    await user.selectOptions(screen.getByLabelText('Policy active status'), 'true');
+    await user.type(screen.getByLabelText('Policy effective from'), '2020-01-01');
     await user.type(screen.getByLabelText('Policy change reason'), 'Synthetic approved policy');
     await user.click(screen.getByRole('button', { name: 'Save policy' }));
-    await waitFor(() => expect(mocked.api.setBedBillingPolicy).toHaveBeenCalledWith({ facilityId: 2, cutoffMinutes: 360, graceMinutes: 30, sameDayRule: 'ONE', expectedRevision: null, reason: 'Synthetic approved policy' }));
+    await waitFor(() => expect(mocked.api.setBedBillingPolicy).toHaveBeenCalledWith({ facilityId: 2, cutoffMinutes: 360, graceMinutes: 30, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', effectiveUntil: null, expectedRevision: null, reason: 'Synthetic approved policy' }));
     expect(await screen.findByText(/Existing stays retain their recorded policy/)).toBeInTheDocument();
   });
 
@@ -104,6 +106,26 @@ describe('Inpatient bed policy and recovery', () => {
     await user.click(screen.getByRole('button', { name: 'Inspect evidence' }));
     expect(await screen.findByText(/Bed billing staging has not completed/)).toBeInTheDocument();
     expect(screen.getByText(/does not establish payment or completed staging/)).toBeInTheDocument();
+  });
+
+  it('requires staff affirmation before submitting a historical encounter link', async () => {
+    mocked.api.getBedOccupancy.mockResolvedValue({ ...view, admission: { ...view.admission, encounterId: null } });
+    mocked.api.linkBedBillingEncounter.mockResolvedValue({ ...view.admission, encounterId: 19 });
+    const user = userEvent.setup();
+    render(<BedBillingRecovery facilityId={2} canReview canRetry={false} />);
+    await user.click(screen.getByText('Recover bed billing for an admission'));
+    await screen.findByText(/Admission #42/);
+    await user.click(screen.getByRole('button', { name: 'Inspect evidence' }));
+    const submit = await screen.findByRole('button', { name: 'Link encounter' });
+    const form = within(submit.closest('form')!);
+    await user.type(form.getByLabelText('Encounter ID'), '19');
+    await user.type(form.getByLabelText('Reason'), 'Synthetic verified record');
+    await user.type(form.getByLabelText('Evidence reference'), 'Synthetic encounter register');
+    await user.click(submit);
+    expect(mocked.api.linkBedBillingEncounter).not.toHaveBeenCalled();
+    await user.click(form.getByRole('checkbox', { name: /verified the patient, facility, encounter type and dates/i }));
+    await user.click(submit);
+    await waitFor(() => expect(mocked.api.linkBedBillingEncounter).toHaveBeenCalledWith(42, 19, 'Synthetic verified record', 'Synthetic encounter register', true, 2));
   });
 
   it('reports a failed unresolved-work read instead of showing an empty result', async () => {

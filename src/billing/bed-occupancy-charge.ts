@@ -1,8 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema.ts';
 import { databaseNow, readBedEvidence, type BedExecutor } from '../inpatient/bed-evidence.ts';
 import { BedPolicyError } from '../inpatient/bed-night-policy.ts';
 import { parseMoneyToCents } from './settlement.ts';
+import { calendarDateInZone } from '../dashboard/timezone.ts';
 import type { ChargeRequest } from './billing.service.ts';
 
 export type BedOccupancyResolution =
@@ -24,6 +25,17 @@ export async function resolveBedOccupancyCharge(executor: BedExecutor, request: 
     return fail('BED_ENCOUNTER_REQUIRED', 'The admission has no linked encounter. An authorized user must link the verified encounter before retrying.');
   if (admission.encounterId !== (request.encounterId ?? null))
     return fail('BED_ENCOUNTER_CONFLICT', 'The admission and billing encounter do not match; review before retrying.');
+  // Interpret the application's UTC-written, timezone-less encounter fields
+  // independently of the Node host timezone. Legacy dates are only a guard.
+  const [encounter] = await executor.select({ id: schema.encounters.id, encounterType: schema.encounters.encounterType,
+    startedAt: sql<Date>`${schema.encounters.startedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
+    endedAt: sql<Date | null>`${schema.encounters.endedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
+  }).from(schema.encounters).where(and(
+    eq(schema.encounters.id, admission.encounterId), eq(schema.encounters.tenantId, admission.tenantId),
+    eq(schema.encounters.facilityId, admission.facilityId), eq(schema.encounters.patientId, admission.patientId),
+  )).limit(1);
+  if (!encounter || encounter.encounterType.trim().toUpperCase() !== 'INPATIENT')
+    return fail('BED_ENCOUNTER_CONFLICT', 'The linked encounter is not a verified inpatient encounter for this patient and facility.');
   const [night] = await executor.select().from(schema.inpatientBedNights).where(and(
     eq(schema.inpatientBedNights.admissionId, admission.id), eq(schema.inpatientBedNights.tenantId, admission.tenantId),
     eq(schema.inpatientBedNights.facilityId, admission.facilityId), eq(schema.inpatientBedNights.patientId, admission.patientId),
@@ -35,6 +47,12 @@ export async function resolveBedOccupancyCharge(executor: BedExecutor, request: 
     if (error instanceof BedPolicyError) return fail(error.code, error.message);
     throw error;
   }
+  const firstPeriod = evidence.periods[0];
+  const lastPeriod = evidence.periods.at(-1);
+  if (!firstPeriod || !lastPeriod?.endedAt ||
+      calendarDateInZone(evidence.policy.timezone, encounter.startedAt) > calendarDateInZone(evidence.policy.timezone, lastPeriod.endedAt) ||
+      (encounter.endedAt && calendarDateInZone(evidence.policy.timezone, encounter.endedAt) < calendarDateInZone(evidence.policy.timezone, firstPeriod.startedAt)))
+    return fail('BED_ENCOUNTER_CONFLICT', 'The linked inpatient encounter dates do not overlap the recorded stay.');
   const computed = evidence.nights.find((entry) => entry.date === date);
   const occupancy = evidence.periods.find((period) => period.id === night.occupancyId);
   if (!computed || !occupancy || computed.occupancyId !== night.occupancyId ||

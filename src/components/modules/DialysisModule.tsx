@@ -1,5 +1,7 @@
 import { PageHeader } from '../ui/layout.tsx';
-import React, { useCallback, useEffect, useState } from 'react';
+import { Modal } from '../ui/overlays.tsx';
+import { FormField, PrimaryButton, SecondaryButton } from '../ui/controls.tsx';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { sprintApi, type DialysisWorkspace } from '../../api/client-sprint.client.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 
@@ -59,10 +61,20 @@ function ProtocolFields({
   );
 }
 export const DialysisModule: React.FC = () => {
+  const { currentFacility } = useHmis();
+  return <DialysisWorkspaceView key={currentFacility?.id ?? 'none'} />;
+};
+
+const DialysisWorkspaceView: React.FC = () => {
   const { currentFacility, authenticatedUser, showToast } = useHmis();
   const [data, setData] = useState<DialysisWorkspace | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [protocol, setProtocol] = useState({
     version: '',
     approvalReference: '',
@@ -93,6 +105,8 @@ export const DialysisModule: React.FC = () => {
     shiftCode: '',
   });
   const [scheduleKey, setScheduleKey] = useState(() => crypto.randomUUID());
+  const [cancelScheduleId, setCancelScheduleId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [complete, setComplete] = useState({
     sessionId: '',
     outcome: '',
@@ -118,9 +132,10 @@ export const DialysisModule: React.FC = () => {
     if (!currentFacility?.id) return;
     try {
       setError('');
-      setData(await sprintApi.dialysisWorkspace(currentFacility.id));
+      const workspace = await sprintApi.dialysisWorkspace(currentFacility.id);
+      if (mountedRef.current) setData(workspace);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not load dialysis.');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not load dialysis.');
     }
   }, [currentFacility?.id]);
   useEffect(() => {
@@ -130,14 +145,15 @@ export const DialysisModule: React.FC = () => {
     setBusy(true);
     try {
       await action();
+      if (!mountedRef.current) return false;
       showToast(message, { tone: 'success' });
       await load();
       return true;
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Operation failed.', { tone: 'error' });
+      if (mountedRef.current) showToast(e instanceof Error ? e.message : 'Operation failed.', { tone: 'error' });
       return false;
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
   if (!currentFacility) return <p>Select a facility to view dialysis.</p>;
@@ -190,6 +206,20 @@ export const DialysisModule: React.FC = () => {
                   <li key={s.id} className="flex flex-wrap items-center gap-2">
                     #{s.id} · Patient #{s.patientId} · {s.scheduledDate} {s.startTime}–{s.endTime} ·{' '}
                     {s.status}
+                    {s.status === 'SCHEDULED' &&
+                      can('dialysis.schedule.manage') &&
+                      can('appointments.cancel') && (
+                        <button
+                          className="btn-quiet"
+                          disabled={busy}
+                          onClick={() => {
+                            setCancelScheduleId(s.id);
+                            setCancelReason('');
+                          }}
+                        >
+                          Cancel schedule
+                        </button>
+                      )}
                     {s.status === 'SCHEDULED' && can('dialysis.sessions.record') && (
                       <button
                         className="btn-quiet"
@@ -817,6 +847,59 @@ export const DialysisModule: React.FC = () => {
           </form>
         </div>
       )}
+      <Modal
+        open={cancelScheduleId !== null}
+        title="Cancel dialysis schedule"
+        onClose={() => {
+          if (!busy) setCancelScheduleId(null);
+        }}
+        closeOnBackdrop={!busy}
+        closeOnEscape={!busy}
+        actions={
+          <>
+            <SecondaryButton disabled={busy} onClick={() => setCancelScheduleId(null)}>
+              Close
+            </SecondaryButton>
+            <PrimaryButton type="submit" form="cancel-dialysis-schedule" disabled={busy}>
+              Cancel schedule
+            </PrimaryButton>
+          </>
+        }
+      >
+        <p className="text-xs mb-3">
+          The planned slot and linked appointment are retained as cancelled. No treatment, payment
+          or refund is recorded. Website-linked or started sessions require separate review.
+        </p>
+        <form
+          id="cancel-dialysis-schedule"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (cancelScheduleId === null) return;
+            void run(
+              () =>
+                sprintApi.cancelDialysisSchedule(cancelScheduleId, {
+                  facilityId: fid,
+                  reason: cancelReason,
+                }),
+              'Dialysis slot cancelled. Payment was not assessed.',
+            ).then((ok) => {
+              if (ok) setCancelScheduleId(null);
+            });
+          }}
+        >
+          <FormField label="Cancellation reason *" htmlFor="dialysis-cancellation-reason">
+            <textarea
+              id="dialysis-cancellation-reason"
+              className={field}
+              required
+              minLength={3}
+              maxLength={2000}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+            />
+          </FormField>
+        </form>
+      </Modal>
     </div>
   );
 };

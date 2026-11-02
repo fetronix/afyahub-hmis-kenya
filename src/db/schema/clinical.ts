@@ -166,6 +166,16 @@ export const appointments = pgTable('appointments', {
 
   notes: text('notes'),
 
+  // Nullable for pre-existing, website and dialysis appointments. The SQL
+  // migration enforces facility-scoped category, service and replacement FKs.
+  bookingReference: text('booking_reference'),
+  categoryId: integer('category_id'),
+  facilityServiceId: integer('facility_service_id'),
+  priority: text('priority'),
+  createdByUserId: integer('created_by_user_id').references(() => users.id),
+  replacementOfId: integer('replacement_of_id'),
+  checkinQueueId: integer('checkin_queue_id'),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
 
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

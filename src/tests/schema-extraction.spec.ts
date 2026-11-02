@@ -31,6 +31,9 @@ describe('schema barrel: pre-extraction contract', () => {
     expect(Object.keys(schema).sort()).toEqual(
       [
         ...publicExports,
+        'appointmentCategories',
+        'appointmentEvents',
+        'appointmentRequests',
         'theatreRooms',
         'theatreBookings',
         'theatreScheduleEvents',
