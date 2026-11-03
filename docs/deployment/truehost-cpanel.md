@@ -294,46 +294,42 @@ not something a script may guess.
 
 ## 9. Backup and restore
 
-### Dump (SSH)
+### Backup and recovery gate
 
-```bash
-cd <app-root>
-pg_dump -Fc -f jalicare-$(date +%F-%H%M).dump "$SQL_DB_NAME"
-ls -lh jalicare-*.dump        # a 0-byte file is not a backup
-```
+Backups contain sensitive health data. A designated operator must take an
+approved, consistent pre-migration backup to **access-controlled, encrypted
+storage outside the repository and application directory**. Never put a dump
+in Git, a Docker build context, a public web root, a CI artifact or chat.
+Record its source, timestamp, access controls, retention and integrity evidence.
+For PostgreSQL, a custom-format `pg_dump` can be appropriate when used with the
+facility's approved credentials and backup procedure; `pg_restore --list` only
+checks that an archive can be listed, not that it can be recovered.
 
-`pg_dump -Fc` is a custom-format archive: it restores selectively and is not
-truncated by a text-mode transfer.
+Before authorizing an upgrade, restore the actual backup into a newly created,
+isolated, empty **non-production** database under an approved procedure. Verify
+the target identity first, keep external integrations disabled, and compare the
+migration ledger and representative clinical, financial and audit records
+without exposing patient information. Record the result and recovery time.
+A successful restore drill and an approved recovery plan are required; a
+nonzero file size is not proof of a usable backup.
 
-### Dump (no SSH)
+**Never test recovery by restoring over the live database.** `pg_restore --clean`
+can drop existing objects and destroy newer data. Any production recovery,
+failover or replacement requires a separate, authorized incident plan, a
+verified backup of the current state and explicit operator approval.
 
-cPanel → **phpPgAdmin** → your database → **Export** → format *Custom*.
-Download the result. Still check the size.
+### Backup presence check before migrating
 
-### Restore
-
-```bash
-pg_restore --clean --if-exists -d "$SQL_DB_NAME" jalicare-2026-10-22-1200.dump
-```
-
-`--clean --if-exists` drops the objects the dump contains before recreating
-them. On the live database this destroys current data: restore only to fix a
-known-bad migration, and keep the pre-restore dump.
-
-### Verify a backup before migrating
-
-```bash
-npm run db:preflight -- --backup=jalicare-2026-10-22-1200.dump
-```
-
-A missing or empty file is blocking, and the preflight will not call the
-target ready.
+`npm run db:preflight -- --backup=<absolute-protected-backup-path>` can check
+that a file is present and non-empty. This check does **not** verify that the
+archive is complete, restorable, encrypted or current. It cannot replace the
+isolated recovery drill and operator review described above.
 
 ---
 
 ## 10. Applying a migration
 
-Only after the preflight says ready and the backup exists:
+Only after the preflight is reviewed, the actual backup has been restored and checked in isolation, and the migration/recovery plan has been approved:
 
 ```bash
 npm run db:migrate -- --yes
@@ -420,23 +416,23 @@ those commands to serve traffic.
 - [ ] application restarted, log shows `listening on http://0.0.0.0:<port>`
 - [ ] `/`, `/api/health`, a client route and one asset all return 200
 - [ ] `npm run db:preflight` says READY (or every warning is understood)
-- [ ] a verified backup exists and has a non-zero size
+- [ ] an approved, protected backup has been restored and checked in an isolated non-production environment
 - [ ] migration applied with approval, then `npm run db:status` is clean
 
 ---
 
-## 14. Rolling back
+## 14. Rollback and recovery
 
-```bash
-# 1. previous bundle
-mv build build.failed
-mv build.previous build
-# cPanel -> Restart
+Keep the previous application bundle in protected storage and record its exact
+revision before deployment. An application rollback is appropriate only when
+that version is compatible with the current schema and the authorized owner
+has assessed transactions made after the change.
 
-# 2. database, from the dump taken before the migration
-pg_restore --clean --if-exists -d "$SQL_DB_NAME" jalicare-<timestamp>.dump
-```
-
-Keep the previous `build/` and `dist/` on the server before each deploy
-(`mv build build.previous && mv dist dist.previous`). They cost a few MB and
-turn a rollback into a file move.
+A database restore is a separate, potentially destructive incident operation,
+not a routine second step in rolling back application code. Do not restore over
+production merely to test recovery. If recovery is necessary, the authorized
+database owner must confirm the exact source and target, preserve a new backup
+of the current state, assess data loss and follow a separately approved plan.
+Restore and verify the backup in isolation first. See the
+[hospital-readiness gate](../audits/hospital-readiness-2026-11-03.md) for the
+outstanding requirements.

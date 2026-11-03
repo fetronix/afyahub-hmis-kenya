@@ -590,7 +590,9 @@ export const InventoryModule: React.FC = () => {
                                 <button
                                   type="button"
                                   aria-label={`Change price for ${item.name}`}
-                                  disabled={!item.priceRevision || item.facilityId !== currentFacility?.id}
+                                  disabled={
+                                    !item.priceRevision || item.facilityId !== currentFacility?.id
+                                  }
                                   className="text-xs underline disabled:opacity-50"
                                   onClick={() => {
                                     setPriceItem(item);
@@ -1033,9 +1035,9 @@ export const InventoryModule: React.FC = () => {
             ) : (
               <span>
                 Expiry belongs to the batch, not the item. Enter a batch number and an expiry date
-                to receive the opening stock into that lot; the stock list then counts down to it.
-                A plain stock count without batch and expiry cannot be dispensed; existing counts
-                need controlled reconciliation before use.
+                to receive the opening stock into that lot; the stock list then counts down to it. A
+                plain stock count without batch and expiry cannot be dispensed; existing counts need
+                controlled reconciliation before use.
               </span>
             )}
           </p>
@@ -1065,7 +1067,9 @@ export const InventoryModule: React.FC = () => {
                 onChange={(e) => setNewItem({ ...newItem, sellingPrice: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono font-bold"
               />
-              {!canSetPrice && <p>Setting a price requires inventory and facility finance permissions.</p>}
+              {!canSetPrice && (
+                <p>Setting a price requires inventory and facility finance permissions.</p>
+              )}
             </div>
           </div>
 
@@ -1086,13 +1090,17 @@ export const InventoryModule: React.FC = () => {
 
       <Modal
         open={Boolean(priceItem && canSetPrice && priceItem.facilityId === currentFacility?.id)}
-        onClose={() => { if (!priceBusy) setPriceItem(null); }}
+        onClose={() => {
+          if (!priceBusy) setPriceItem(null);
+        }}
         closeOnEscape={!priceBusy}
         closeOnBackdrop={!priceBusy}
         title="Change inventory selling price"
         actions={
           <>
-            <SecondaryButton disabled={priceBusy} onClick={() => setPriceItem(null)}>Cancel</SecondaryButton>
+            <SecondaryButton disabled={priceBusy} onClick={() => setPriceItem(null)}>
+              Cancel
+            </SecondaryButton>
             <PrimaryButton disabled={priceBusy} type="submit" form="inventory-price-form">
               {priceBusy ? 'Saving…' : 'Save price'}
             </PrimaryButton>
@@ -1100,9 +1108,18 @@ export const InventoryModule: React.FC = () => {
         }
       >
         <form id="inventory-price-form" onSubmit={handlePriceChange} className="space-y-3 text-sm">
-          <p>{priceItem?.name} · {priceItem?.itemCode}</p>
-          <p>Existing dispensed medicine lines retain their original prices. Zero is not treated as free.</p>
-          {priceError && <p role="alert" className="text-rose-700">{priceError}</p>}
+          <p>
+            {priceItem?.name} · {priceItem?.itemCode}
+          </p>
+          <p>
+            Existing dispensed medicine lines retain their original prices. Zero is not treated as
+            free.
+          </p>
+          {priceError && (
+            <p role="alert" className="text-rose-700">
+              {priceError}
+            </p>
+          )}
           <label className="block">
             Selling price (KES per {priceItem?.unit ?? 'unit'})
             <input

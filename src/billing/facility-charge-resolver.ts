@@ -183,6 +183,35 @@ export async function resolveFacilityCharge(
           'SOURCE_REVIEW_REQUIRED',
           'Investigation identity and specimen require review.',
         );
+      // Preserve the historical reviewed-specimen evidence for legacy test-ID
+      // orders. Direct facility-service orders may record a clinician-entered
+      // specimen; this guard must not invent an extra rule for those orders.
+      if (row.testId && !row.facilityServiceId) {
+        if (!row.reviewedSpecimenOptionId)
+          return fail(
+            'SOURCE_REVIEW_REQUIRED',
+            'The legacy test lacks reviewed specimen evidence.',
+          );
+        const [option] = await executor
+          .select({ type: schema.labTestSpecimenOptions.specimenType })
+          .from(schema.labTestSpecimenOptions)
+          .where(
+            and(
+              eq(schema.labTestSpecimenOptions.id, row.reviewedSpecimenOptionId),
+              eq(schema.labTestSpecimenOptions.testId, row.testId),
+              eq(schema.labTestSpecimenOptions.tenantId, request.tenantId),
+              eq(schema.labTestSpecimenOptions.facilityId, request.facilityId),
+              isNull(schema.labTestSpecimenOptions.retiredAt),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (!option || norm(option.type) !== norm(row.specimenType))
+          return fail(
+            'SOURCE_REVIEW_REQUIRED',
+            'The recorded specimen no longer matches its reviewed option.',
+          );
+      }
       if (row.testId) {
         const [test] = await executor
           .select({ id: schema.labTests.id, code: schema.labTests.code })

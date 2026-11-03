@@ -192,7 +192,14 @@ export interface ChargeResult {
   unit?: string | null;
 
   /** How the tariff was found, when one was. */
-  matchRule?: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE' | 'INVENTORY_SNAPSHOT' | 'BED_OCCUPANCY_SNAPSHOT';
+  matchRule?:
+    | 'LINK'
+    | 'FAMILY_LINK'
+    | 'ALIAS'
+    | 'CODE'
+    | 'CATALOGUE'
+    | 'INVENTORY_SNAPSHOT'
+    | 'BED_OCCUPANCY_SNAPSHOT';
 
   /** Why the charge could not be priced, when it could not. */
   diagnosis?: { code: string; label: string; candidates?: string[] };
@@ -1042,7 +1049,12 @@ async function chargeForServiceInTransaction(
   if ('failure' in resolution) {
     return {
       charged: false,
-      reason: request.sourceType === 'PHARMACY' ? 'INVENTORY_PRICE_REVIEW' : request.sourceType === 'BED_DAY' ? 'BED_OCCUPANCY_REVIEW' : 'TARIFF_NOT_CONFIGURED',
+      reason:
+        request.sourceType === 'PHARMACY'
+          ? 'INVENTORY_PRICE_REVIEW'
+          : request.sourceType === 'BED_DAY'
+            ? 'BED_OCCUPANCY_REVIEW'
+            : 'TARIFF_NOT_CONFIGURED',
       diagnosis: {
         code: resolution.failure.code,
         label: resolution.failure.code.replaceAll('_', ' '),
@@ -1148,11 +1160,18 @@ async function chargeForServiceInTransaction(
     unit: pharmacy?.unit ?? bedNight?.unit ?? tariff!.unit,
     unitPrice: fromCents(unitPriceCents),
     totalAmount: fromCents(totalCents),
-    matchRule: pharmacy ? 'INVENTORY_SNAPSHOT' : bedNight ? 'BED_OCCUPANCY_SNAPSHOT' : ('rule' in resolution ? resolution.rule : undefined),
+    matchRule: pharmacy
+      ? 'INVENTORY_SNAPSHOT'
+      : bedNight
+        ? 'BED_OCCUPANCY_SNAPSHOT'
+        : 'rule' in resolution
+          ? resolution.rule
+          : undefined,
     matchExplanation: pharmacy
       ? `Facility inventory product ${pharmacy.code}; selling price recorded at dispensing.`
-      : bedNight ? `Bed ${bedNight.bedId}; daily charge recorded for the occupied period.`
-      : `Facility service ${service!.code}, tariff ${tariff!.code}.`,
+      : bedNight
+        ? `Bed ${bedNight.bedId}; daily charge recorded for the occupied period.`
+        : `Facility service ${service!.code}, tariff ${tariff!.code}.`,
     codesTried: [pharmacy?.code ?? bedNight?.code ?? service!.code],
   };
 }

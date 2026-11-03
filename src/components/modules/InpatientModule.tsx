@@ -18,6 +18,7 @@ import { NursingPanel } from './NursingPanel.tsx';
 import { BedBillingPolicyPanel } from './BedBillingPolicyPanel.tsx';
 import { BedBillingRecovery } from './BedBillingRecovery.tsx';
 import { isFacilityFinancialPermission } from '../../auth/permission-boundaries.ts';
+import { selectBedRate } from '../../inpatient/bed-rate.ts';
 
 /*
  * The ward and bed vocabulary comes from the same module the server
@@ -52,6 +53,11 @@ const EMPTY_WARD_FORM = {
   wardType: 'General',
   genderAllocation: 'Mixed',
   dailyRate: '',
+  originalDailyRate: '',
+  dailyRateConfigured: false,
+  expectedPriceRevision: undefined as number | undefined,
+  confirmLegacyRate: false,
+  priceReason: '',
 };
 
 function displayDuration(seconds: number): string {
@@ -105,7 +111,8 @@ export const InpatientModule: React.FC = () => {
   const canReadClinical = can('clinical.read');
   const canReviewBedHistory = canFinance && canReadClinical;
   const canRetryBedBilling = can('billing.create');
-  const canInspectBedBilling = can('inpatient.read') && (can('billing.read') || canFinance || canRetryBedBilling);
+  const canInspectBedBilling =
+    can('inpatient.read') && (can('billing.read') || canFinance || canRetryBedBilling);
   const [wards, setWards] = useState<Ward[]>([]);
   const [selectedWard, setSelectedWard] = useState<Ward | null>(null);
   const [beds, setBeds] = useState<Bed[]>([]);
@@ -138,26 +145,45 @@ export const InpatientModule: React.FC = () => {
   const [admissionServiceError, setAdmissionServiceError] = useState(false);
   const [patientEncounters, setPatientEncounters] = useState<Encounter[]>([]);
   const [encounterError, setEncounterError] = useState(false);
-  const [admissionPolicy, setAdmissionPolicy] = useState<BedBillingPolicy | null | undefined>(undefined);
+  const [admissionPolicy, setAdmissionPolicy] = useState<BedBillingPolicy | null | undefined>(
+    undefined,
+  );
   const [admissionPolicyError, setAdmissionPolicyError] = useState(false);
   useEffect(() => {
     let live = true;
-    setAdmissionPolicy(undefined); setAdmissionPolicyError(false);
-    if (isAdmitModalOpen && currentFacility?.id) api.getBedBillingPolicy(currentFacility.id)
-      .then((policy) => { if (live) setAdmissionPolicy(policy); })
-      .catch(() => { if (live) setAdmissionPolicyError(true); });
-    return () => { live = false; };
+    setAdmissionPolicy(undefined);
+    setAdmissionPolicyError(false);
+    if (isAdmitModalOpen && currentFacility?.id)
+      api
+        .getBedBillingPolicy(currentFacility.id)
+        .then((policy) => {
+          if (live) setAdmissionPolicy(policy);
+        })
+        .catch(() => {
+          if (live) setAdmissionPolicyError(true);
+        });
+    return () => {
+      live = false;
+    };
   }, [isAdmitModalOpen, currentFacility?.id, refreshKey]);
   useEffect(() => {
     let live = true;
-    setPatientEncounters([]); setEncounterError(false);
+    setPatientEncounters([]);
+    setEncounterError(false);
     setAdmitForm((previous) => ({ ...previous, encounterId: '' }));
     if (isAdmitModalOpen && admitForm.patientId && canReadClinical) {
-      api.getEncounters(Number(admitForm.patientId), currentFacility?.id).then((rows) => {
-        if (live) setPatientEncounters(rows);
-      }).catch(() => { if (live) setEncounterError(true); });
+      api
+        .getEncounters(Number(admitForm.patientId), currentFacility?.id)
+        .then((rows) => {
+          if (live) setPatientEncounters(rows);
+        })
+        .catch(() => {
+          if (live) setEncounterError(true);
+        });
     }
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [isAdmitModalOpen, admitForm.patientId, currentFacility?.id, canReadClinical]);
   useEffect(() => {
     let current = true;
@@ -182,6 +208,11 @@ export const InpatientModule: React.FC = () => {
   /* ---------------- ward and bed set-up ---------------- */
   const [wardFormOpen, setWardFormOpen] = useState(false);
   const [wardForm, setWardForm] = useState(EMPTY_WARD_FORM);
+  const wardPriceRequested =
+    wardForm.id === null
+      ? wardForm.dailyRate.trim() !== ''
+      : wardForm.dailyRate.trim() !== wardForm.originalDailyRate.trim() ||
+        wardForm.confirmLegacyRate;
   const [bedsFormOpen, setBedsFormOpen] = useState(false);
   const [bedsForm, setBedsForm] = useState(EMPTY_BEDS_FORM);
   const [bedEditTarget, setBedEditTarget] = useState<Bed | null>(null);
@@ -244,11 +275,23 @@ export const InpatientModule: React.FC = () => {
   useEffect(() => {
     let live = true;
     setBedViews({});
-    Promise.all(admissions.map(async (admission) => {
-      try { return [admission.id, await api.getBedOccupancy(admission.id, currentFacility?.id)] as const; }
-      catch { return [admission.id, null] as const; }
-    })).then((entries) => { if (live) setBedViews(Object.fromEntries(entries)); });
-    return () => { live = false; };
+    Promise.all(
+      admissions.map(async (admission) => {
+        try {
+          return [
+            admission.id,
+            await api.getBedOccupancy(admission.id, currentFacility?.id),
+          ] as const;
+        } catch {
+          return [admission.id, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (live) setBedViews(Object.fromEntries(entries));
+    });
+    return () => {
+      live = false;
+    };
   }, [admissions, currentFacility?.id, refreshKey]);
 
   const handleSelectWard = (ward: Ward) => {
@@ -284,7 +327,9 @@ export const InpatientModule: React.FC = () => {
         wardId: Number(admitForm.wardId),
         bedId: Number(admitForm.bedId),
         ...(admitForm.encounterId ? { encounterId: Number(admitForm.encounterId) } : {}),
-        ...(admitForm.admissionDate.trim() ? { admissionDate: admitForm.admissionDate.trim() } : {}),
+        ...(admitForm.admissionDate.trim()
+          ? { admissionDate: admitForm.admissionDate.trim() }
+          : {}),
         admissionType: admitForm.admissionType,
         ...(admitForm.facilityServiceId
           ? { facilityServiceId: Number(admitForm.facilityServiceId) }
@@ -296,9 +341,13 @@ export const InpatientModule: React.FC = () => {
       });
 
       if (admitted.bedBillingReadiness?.ready) {
-        showToast('Patient admitted; bed occupied. Bed billing evidence was captured; charges are calculated at discharge.');
+        showToast(
+          'Patient admitted; bed occupied. Bed billing evidence was captured; charges are calculated at discharge.',
+        );
       } else {
-        const issues = admitted.bedBillingReadiness?.issues.map((issue) => issue.message).join(' ') ?? 'Bed billing readiness could not be confirmed.';
+        const issues =
+          admitted.bedBillingReadiness?.issues.map((issue) => issue.message).join(' ') ??
+          'Bed billing readiness could not be confirmed.';
         showToast(`Patient admitted; bed occupied. Bed billing requires review: ${issues}`);
       }
       setIsAdmitModalOpen(false);
@@ -328,6 +377,11 @@ export const InpatientModule: React.FC = () => {
             wardType: ward.wardType,
             genderAllocation: ward.genderAllocation,
             dailyRate: ward.dailyRate === null ? '' : String(ward.dailyRate),
+            originalDailyRate: ward.dailyRate === null ? '' : String(ward.dailyRate),
+            dailyRateConfigured: ward.dailyRateConfigured === true,
+            expectedPriceRevision: ward.dailyRateRevision,
+            confirmLegacyRate: false,
+            priceReason: '',
           }
         : EMPTY_WARD_FORM,
     );
@@ -337,6 +391,14 @@ export const InpatientModule: React.FC = () => {
 
   const handleSubmitWard = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (wardPriceRequested && (!canFinance || wardForm.priceReason.trim().length < 3)) {
+      showToast('Ward pricing requires facility finance permission and a price-change reason.');
+      return;
+    }
+    if (wardPriceRequested && wardForm.id !== null && wardForm.expectedPriceRevision == null) {
+      showToast('Ward price revision is unavailable; refresh before changing the price.');
+      return;
+    }
     setSetupBusy(true);
 
     try {
@@ -347,18 +409,26 @@ export const InpatientModule: React.FC = () => {
           code: wardForm.code.trim().toUpperCase(),
           wardType: wardForm.wardType.trim(),
           genderAllocation: wardForm.genderAllocation,
-          // Blank means "not priced", which the server stores as NULL.
-          dailyRate: wardForm.dailyRate.trim() === '' ? null : wardForm.dailyRate.trim(),
+          ...(wardPriceRequested
+            ? { dailyRate: wardForm.dailyRate.trim(), priceReason: wardForm.priceReason.trim() }
+            : {}),
         });
 
         showToast(`Ward ${created.code} created. Add its beds next.`);
         setSelectedWard(created);
       } else {
         const updated = await api.updateWard(wardForm.id, {
+          facilityId: currentFacility?.id,
           name: wardForm.name.trim(),
           wardType: wardForm.wardType.trim(),
           genderAllocation: wardForm.genderAllocation,
-          dailyRate: wardForm.dailyRate.trim() === '' ? null : wardForm.dailyRate.trim(),
+          ...(wardPriceRequested
+            ? {
+                dailyRate: wardForm.dailyRate.trim() || null,
+                expectedPriceRevision: wardForm.expectedPriceRevision,
+                priceReason: wardForm.priceReason.trim(),
+              }
+            : {}),
         });
 
         showToast(`Ward ${updated.code} updated.`);
@@ -381,6 +451,7 @@ export const InpatientModule: React.FC = () => {
 
     try {
       const updated = await api.updateWard(ward.id, {
+        facilityId: currentFacility?.id,
         isActive: ward.isActive === false,
       });
 
@@ -411,7 +482,7 @@ export const InpatientModule: React.FC = () => {
     setSetupBusy(true);
 
     try {
-      await api.deleteWard(ward.id);
+      await api.deleteWard(ward.id, currentFacility?.id);
       showToast(`Ward ${ward.code} deleted.`);
       setSelectedWard(null);
       triggerRefresh();
@@ -434,6 +505,7 @@ export const InpatientModule: React.FC = () => {
 
     try {
       const result = await api.createBeds({
+        facilityId: currentFacility?.id,
         wardId: selectedWard.id,
         prefix: bedsForm.prefix.trim().toUpperCase(),
         startNumber: numberText(bedsForm.startNumber),
@@ -472,9 +544,16 @@ export const InpatientModule: React.FC = () => {
 
     const proposedPrice = bedEdit.dailyCharge.trim();
     const oldPrice = bedEditTarget.dailyCharge;
-    const priceChanged = proposedPrice === '' ? oldPrice !== null : oldPrice === null || Number(proposedPrice) !== Number(oldPrice);
-    const confirmExisting = bedEditTarget.dailyChargeReviewRequired && bedEdit.priceReason.trim().length > 0;
-    if ((priceChanged || confirmExisting) && (!canFinance || bedEdit.priceReason.trim().length < 3)) {
+    const priceChanged =
+      proposedPrice === ''
+        ? oldPrice !== null
+        : oldPrice === null || Number(proposedPrice) !== Number(oldPrice);
+    const confirmExisting =
+      bedEditTarget.dailyChargeReviewRequired && bedEdit.priceReason.trim().length > 0;
+    if (
+      (priceChanged || confirmExisting) &&
+      (!canFinance || bedEdit.priceReason.trim().length < 3)
+    ) {
       showToast('Changing or confirming a bed rate requires finance permission and a reason.');
       return;
     }
@@ -482,9 +561,16 @@ export const InpatientModule: React.FC = () => {
 
     try {
       await api.updateBed(bedEditTarget.id, {
+        facilityId: currentFacility?.id,
         bedNumber: bedEdit.bedNumber.trim(),
         bedType: bedEdit.bedType.trim(),
-        ...(priceChanged || confirmExisting ? { dailyCharge: proposedPrice === '' ? null : proposedPrice, expectedPriceRevision: bedEditTarget.priceRevision, priceReason: bedEdit.priceReason.trim() } : {}),
+        ...(priceChanged || confirmExisting
+          ? {
+              dailyCharge: proposedPrice === '' ? null : proposedPrice,
+              expectedPriceRevision: bedEditTarget.priceRevision,
+              priceReason: bedEdit.priceReason.trim(),
+            }
+          : {}),
         // Occupancy is set by admitting, never by this form.
         ...(bedEditTarget.status !== 'Occupied' ? { status: bedEdit.status } : {}),
       });
@@ -511,7 +597,7 @@ export const InpatientModule: React.FC = () => {
     setSetupBusy(true);
 
     try {
-      await api.deleteBed(bed.id);
+      await api.deleteBed(bed.id, currentFacility?.id);
       showToast(`Bed ${bed.bedNumber} deleted.`);
       triggerRefresh();
     } catch (err: any) {
@@ -538,18 +624,29 @@ export const InpatientModule: React.FC = () => {
       });
 
       const billed = (discharged.billing?.bedDays ?? []).filter((charge) => charge?.charged);
-      const unresolved = (discharged.billing?.bedDays ?? []).filter((charge) => charge && !charge.charged && charge.reason !== 'DUPLICATE');
+      const unresolved = (discharged.billing?.bedDays ?? []).filter(
+        (charge) => charge && !charge.charged && charge.reason !== 'DUPLICATE',
+      );
       if (discharged.billing?.review || unresolved.length) {
-        showToast(`Patient discharged; bed sent for cleaning. Bed billing needs review: ${discharged.billing?.review?.message ?? unresolved[0]?.message ?? 'Billing was not confirmed.'} Use the admission-specific bed billing recovery below.`);
+        showToast(
+          `Patient discharged; bed sent for cleaning. Bed billing needs review: ${discharged.billing?.review?.message ?? unresolved[0]?.message ?? 'Billing was not confirmed.'} Use the admission-specific bed billing recovery below.`,
+        );
       } else if (billed.length) {
         const amounts = billed.map((charge) => charge?.totalAmount);
         const total = amounts.every((amount) => amount != null && Number.isFinite(Number(amount)))
-          ? `, KES ${amounts.reduce<number>((sum, amount) => sum + Number(amount), 0).toFixed(2)}` : ' (total unavailable)';
-        showToast(`Patient discharged; bed sent for cleaning. ${billed.length} night(s) added to the invoice${total}.`);
+          ? `, KES ${amounts.reduce<number>((sum, amount) => sum + Number(amount), 0).toFixed(2)}`
+          : ' (total unavailable)';
+        showToast(
+          `Patient discharged; bed sent for cleaning. ${billed.length} night(s) added to the invoice${total}.`,
+        );
       } else if (discharged.billing?.nights === 0) {
-        showToast('Patient discharged; bed sent for cleaning. The recorded policy produced no billable nights.');
+        showToast(
+          'Patient discharged; bed sent for cleaning. The recorded policy produced no billable nights.',
+        );
       } else {
-        showToast('Patient discharged; bed sent for cleaning. Check bed billing for this admission.');
+        showToast(
+          'Patient discharged; bed sent for cleaning. Check bed billing for this admission.',
+        );
       }
       setDischargeTarget(null);
       triggerRefresh();
@@ -573,9 +670,14 @@ export const InpatientModule: React.FC = () => {
   const availableBedsForForm = beds.filter(
     (b) => b.wardId === Number(admitForm.wardId) && b.status === 'Available',
   );
-  const selectedAdmissionBed = availableBedsForForm.find((bed) => bed.id === Number(admitForm.bedId));
-  const bedPriceReady = Boolean(selectedAdmissionBed && !selectedAdmissionBed.dailyChargeReviewRequired &&
-    selectedAdmissionBed.dailyCharge && /^\d+(?:\.\d{1,2})?$/.test(selectedAdmissionBed.dailyCharge) && Number(selectedAdmissionBed.dailyCharge) > 0);
+  const selectedAdmissionBed = availableBedsForForm.find(
+    (bed) => bed.id === Number(admitForm.bedId),
+  );
+  const selectedAdmissionWard = activeWards.find((ward) => ward.id === Number(admitForm.wardId));
+  const admissionRate =
+    selectedAdmissionBed && selectedAdmissionWard
+      ? selectBedRate(selectedAdmissionBed, selectedAdmissionWard)
+      : null;
 
   return (
     <div className="space-y-6">
@@ -604,37 +706,51 @@ export const InpatientModule: React.FC = () => {
             </SecondaryButton>
           )}
 
-          {canAdmit && <PrimaryButton
-            onClick={() => {
-              const activeWards = wards.filter((w) => w.isActive !== false);
+          {canAdmit && (
+            <PrimaryButton
+              onClick={() => {
+                const activeWards = wards.filter((w) => w.isActive !== false);
 
-              if (activeWards.length > 0) {
-                const firstWardBeds = beds.filter((b) => b.wardId === activeWards[0].id);
-                const firstAvailable = firstWardBeds.find((b) => b.status === 'Available');
+                if (activeWards.length > 0) {
+                  const firstWardBeds = beds.filter((b) => b.wardId === activeWards[0].id);
+                  const firstAvailable = firstWardBeds.find((b) => b.status === 'Available');
 
-                setAdmitForm((prev) => ({
-                  ...prev,
-                  wardId: activeWards[0].id.toString(),
-                  patientId: '',
-                  encounterId: '',
-                  admissionDate: '',
-                  admissionType: '',
-                  provisionalDiagnosis: '',
-                  nursingNotes: '',
-                  bedId: firstAvailable ? firstAvailable.id.toString() : '',
-                }));
-              }
-              setIsAdmitModalOpen(true);
-            }}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Admit Patient to Ward</span>
-          </PrimaryButton>}
+                  setAdmitForm((prev) => ({
+                    ...prev,
+                    wardId: activeWards[0].id.toString(),
+                    patientId: '',
+                    encounterId: '',
+                    admissionDate: '',
+                    admissionType: '',
+                    provisionalDiagnosis: '',
+                    nursingNotes: '',
+                    bedId: firstAvailable ? firstAvailable.id.toString() : '',
+                  }));
+                }
+                setIsAdmitModalOpen(true);
+              }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Admit Patient to Ward</span>
+            </PrimaryButton>
+          )}
         </div>
       </PageHeader>
 
-      <BedBillingPolicyPanel key={currentFacility?.id} facilityId={currentFacility?.id} canManage={canUpdateWard && canFinance} refreshKey={refreshKey} />
-      {canInspectBedBilling && <BedBillingRecovery key={currentFacility?.id} facilityId={currentFacility?.id} canReview={canReviewBedHistory} canRetry={canRetryBedBilling} />}
+      <BedBillingPolicyPanel
+        key={currentFacility?.id}
+        facilityId={currentFacility?.id}
+        canManage={canUpdateWard && canFinance}
+        refreshKey={refreshKey}
+      />
+      {canInspectBedBilling && (
+        <BedBillingRecovery
+          key={currentFacility?.id}
+          facilityId={currentFacility?.id}
+          canReview={canReviewBedHistory}
+          canRetry={canRetryBedBilling}
+        />
+      )}
 
       {/* Ward Selection Strip */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center gap-2">
@@ -709,11 +825,13 @@ export const InpatientModule: React.FC = () => {
             <span className="text-2xs text-slate-500">
               {selectedWard ? (
                 <>
-                  Type: {selectedWard.wardType} · Allocation: {selectedWard.genderAllocation} ·
-                  Ward reference rate (not used for bed billing):{' '}
-                  {selectedWard.dailyRate === null
-                    ? 'not set'
-                    : `KES ${Number(selectedWard.dailyRate).toLocaleString()} / day`}
+                  Type: {selectedWard.wardType} · Allocation: {selectedWard.genderAllocation} · Ward
+                  default:{' '}
+                  {selectedWard.dailyRateConfigured && selectedWard.dailyRate !== null
+                    ? `KES ${selectedWard.dailyRate} / night`
+                    : selectedWard.dailyRate !== null
+                      ? `KES ${selectedWard.dailyRate} (unconfirmed, not used)`
+                      : 'not configured'}
                   {selectedWard.isActive === false && ' · retired'}
                 </>
               ) : (
@@ -812,6 +930,7 @@ export const InpatientModule: React.FC = () => {
             .map((b) => {
               const isOccupied = b.status === 'Occupied';
               const isCleaning = b.status === 'Cleaning';
+              const availableRate = selectedWard ? selectBedRate(b, selectedWard) : null;
               const occupant = b.currentPatientId
                 ? patients.find((p) => p.id === b.currentPatientId)
                 : null;
@@ -865,7 +984,11 @@ export const InpatientModule: React.FC = () => {
                     </div>
                     <div className="font-mono font-bold text-xs">{b.bedNumber}</div>
                     <div className="text-3xs text-slate-400 truncate">{b.bedType}</div>
-                    <div className="text-3xs text-slate-600">{b.dailyCharge === null ? 'Rate not set' : `KES ${b.dailyCharge} / night`}{b.dailyChargeReviewRequired ? ' · confirm rate' : ''}</div>
+                    <div className="text-3xs text-slate-600">
+                      {availableRate?.rate
+                        ? `Setup: KES ${availableRate.rate} / night · ${availableRate.source === 'BED_OVERRIDE' ? 'bed override' : 'ward default'}`
+                        : 'Setup rate requires review'}
+                    </div>
                   </div>
 
                   {bedBoard && (
@@ -884,7 +1007,13 @@ export const InpatientModule: React.FC = () => {
                             : 'No vitals recorded'
                         }
                       >
-                        {hasCritical ? '⚠ CRITICAL' : vitalsOverdue ? 'Vitals due' : bedBoard.lastVitalsAt ? 'Vitals recorded' : 'No vitals recorded'}
+                        {hasCritical
+                          ? '⚠ CRITICAL'
+                          : vitalsOverdue
+                            ? 'Vitals due'
+                            : bedBoard.lastVitalsAt
+                              ? 'Vitals recorded'
+                              : 'No vitals recorded'}
                       </span>
                     </div>
                   )}
@@ -981,14 +1110,46 @@ export const InpatientModule: React.FC = () => {
                         Bed #{bed?.bedNumber || adm.bedId}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600"><div>Clinical: {adm.admissionDate}</div><div>Assignment: {evidence?.periods[0]?.startedAt ?? 'unavailable'}</div></td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <div>Clinical: {adm.admissionDate}</div>
+                      <div>Assignment: {evidence?.periods[0]?.startedAt ?? 'unavailable'}</div>
+                    </td>
                     <td className="px-4 py-3 font-sans text-slate-700">
-                      {evidence === undefined ? 'Loading…' : evidence === null ? 'Estimate unavailable' : <>
-                        <div>Current stay rate: {currentPeriod?.dailyRateSnapshot == null ? 'not captured' : `KES ${currentPeriod.dailyRateSnapshot} / night`}</div>
-                        <div>Duration: {evidence.durationSeconds == null ? 'unavailable' : displayDuration(evidence.durationSeconds)}</div>
-                        <div>{evidence.review ? evidence.review.message : `${evidence.nights} night(s) · ${evidence.estimatedAmount === null ? 'estimate unavailable' : `KES ${evidence.estimatedAmount} estimated`}`}</div>
-                        <div className="text-3xs text-slate-500">As of {evidence.asOf}; estimate may change at discharge.</div>
-                      </>}
+                      {evidence === undefined ? (
+                        'Loading…'
+                      ) : evidence === null ? (
+                        'Estimate unavailable'
+                      ) : (
+                        <>
+                          <div>
+                            Current stay rate:{' '}
+                            {currentPeriod?.dailyRateSnapshot == null
+                              ? 'not captured'
+                              : `KES ${currentPeriod.dailyRateSnapshot} / night`}
+                            {currentPeriod?.rateSourceSnapshot === 'BED_OVERRIDE'
+                              ? ' · bed override'
+                              : currentPeriod?.rateSourceSnapshot === 'WARD_DEFAULT'
+                                ? ' · ward default'
+                                : currentPeriod?.rateSourceSnapshot === 'REVIEWED'
+                                  ? ' · reviewed evidence'
+                                  : ' · source not captured'}
+                          </div>
+                          <div>
+                            Duration:{' '}
+                            {evidence.durationSeconds == null
+                              ? 'unavailable'
+                              : displayDuration(evidence.durationSeconds)}
+                          </div>
+                          <div>
+                            {evidence.review
+                              ? evidence.review.message
+                              : `${evidence.nights} night(s) · ${evidence.estimatedAmount === null ? 'estimate unavailable' : `KES ${evidence.estimatedAmount} estimated`}`}
+                          </div>
+                          <div className="text-3xs text-slate-500">
+                            As of {evidence.asOf}; estimate may change at discharge.
+                          </div>
+                        </>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-sans text-slate-700">
                       {adm.admittingDoctor || 'Not recorded'}
@@ -1002,17 +1163,19 @@ export const InpatientModule: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-sans">
-                      {can('inpatient.discharge') && <button
-                        onClick={() => {
-                          setDischargeTarget(adm);
-                          setDischargeSummary('');
-                          setDischargeType('');
-                        }}
-                        className="px-2.5 py-1 text-2xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded transition-colors flex items-center gap-1 ml-auto"
-                      >
-                        <LogOut className="w-3 h-3" />
-                        <span>Discharge</span>
-                      </button>}
+                      {can('inpatient.discharge') && (
+                        <button
+                          onClick={() => {
+                            setDischargeTarget(adm);
+                            setDischargeSummary('');
+                            setDischargeType('');
+                          }}
+                          className="px-2.5 py-1 text-2xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded transition-colors flex items-center gap-1 ml-auto"
+                        >
+                          <LogOut className="w-3 h-3" />
+                          <span>Discharge</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1050,7 +1213,12 @@ export const InpatientModule: React.FC = () => {
 
             <form onSubmit={handleCreateAdmission} className="space-y-4">
               <div>
-                <label htmlFor="inpatient-patient" className="block font-medium text-slate-700 mb-1">Select Patient *</label>
+                <label
+                  htmlFor="inpatient-patient"
+                  className="block font-medium text-slate-700 mb-1"
+                >
+                  Select Patient *
+                </label>
                 <select
                   id="inpatient-patient"
                   required
@@ -1067,17 +1235,49 @@ export const InpatientModule: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block font-medium text-slate-700 mb-1" htmlFor="inpatient-encounter">Verified encounter (optional)</label>
-                <select id="inpatient-encounter" value={admitForm.encounterId} onChange={(e) => setAdmitForm({ ...admitForm, encounterId: e.target.value })} className="w-full rounded-md border border-slate-200 px-3 py-2">
+                <label
+                  className="block font-medium text-slate-700 mb-1"
+                  htmlFor="inpatient-encounter"
+                >
+                  Verified encounter (optional)
+                </label>
+                <select
+                  id="inpatient-encounter"
+                  value={admitForm.encounterId}
+                  onChange={(e) => setAdmitForm({ ...admitForm, encounterId: e.target.value })}
+                  className="w-full rounded-md border border-slate-200 px-3 py-2"
+                >
                   <option value="">Create a new inpatient encounter when authorized</option>
-                  {patientEncounters.filter((encounter) => encounter.encounterType.trim().toUpperCase() === 'INPATIENT' && encounter.status.trim().toUpperCase() === 'ACTIVE').map((encounter) => <option key={encounter.id} value={encounter.id}>#{encounter.id} · {encounter.encounterType} · {encounter.status} · {encounter.startedAt}</option>)}
+                  {patientEncounters
+                    .filter(
+                      (encounter) =>
+                        encounter.encounterType.trim().toUpperCase() === 'INPATIENT' &&
+                        encounter.status.trim().toUpperCase() === 'ACTIVE',
+                    )
+                    .map((encounter) => (
+                      <option key={encounter.id} value={encounter.id}>
+                        #{encounter.id} · {encounter.encounterType} · {encounter.status} ·{' '}
+                        {encounter.startedAt}
+                      </option>
+                    ))}
                 </select>
-                <p className="mt-1 text-2xs text-amber-800">{encounterError ? 'Existing encounters could not be loaded. ' : !canReadClinical ? 'You cannot view existing encounters. ' : ''}{can('clinical.create') ? 'A new inpatient encounter will be created for a database-timed admission unless a verified active inpatient encounter is selected. Manually timed admissions need a verified historical encounter instead.' : 'Creating an encounter requires clinical.create. Without a verified matching encounter, care can continue but bed billing requires authorized linking and retry.'}</p>
+                <p className="mt-1 text-2xs text-amber-800">
+                  {encounterError
+                    ? 'Existing encounters could not be loaded. '
+                    : !canReadClinical
+                      ? 'You cannot view existing encounters. '
+                      : ''}
+                  {can('clinical.create')
+                    ? 'A new inpatient encounter will be created for a database-timed admission unless a verified active inpatient encounter is selected. Manually timed admissions need a verified historical encounter instead.'
+                    : 'Creating an encounter requires clinical.create. Without a verified matching encounter, care can continue but bed billing requires authorized linking and retry.'}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="inpatient-ward" className="block font-medium text-slate-700 mb-1">Select Ward *</label>
+                  <label htmlFor="inpatient-ward" className="block font-medium text-slate-700 mb-1">
+                    Select Ward *
+                  </label>
                   <select
                     id="inpatient-ward"
                     required
@@ -1103,7 +1303,9 @@ export const InpatientModule: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="inpatient-bed" className="block font-medium text-slate-700 mb-1">Select Bed *</label>
+                  <label htmlFor="inpatient-bed" className="block font-medium text-slate-700 mb-1">
+                    Select Bed *
+                  </label>
                   <select
                     id="inpatient-bed"
                     required
@@ -1114,22 +1316,30 @@ export const InpatientModule: React.FC = () => {
                     {availableBedsForForm.length === 0 && (
                       <option value="">No available bed</option>
                     )}
-                    {availableBedsForForm.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.bedNumber} ({b.bedType}
-                        {b.dailyCharge === null
-                          ? ' · rate not set'
-                          : ` · KES ${b.dailyCharge}/night${b.dailyChargeReviewRequired ? ' (confirmation needed)' : ''}`}
-                        )
-                      </option>
-                    ))}
+                    {availableBedsForForm.map((b) => {
+                      const rate = selectedAdmissionWard
+                        ? selectBedRate(b, selectedAdmissionWard)
+                        : null;
+                      return (
+                        <option key={b.id} value={b.id}>
+                          {b.bedNumber} ({b.bedType}
+                          {rate?.rate
+                            ? ` · KES ${rate.rate}/night (${rate.source === 'BED_OVERRIDE' ? 'bed override' : 'ward default'})`
+                            : ' · rate review required'}
+                          )
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="inpatient-admission-time" className="block font-medium text-slate-700 mb-1">
+                  <label
+                    htmlFor="inpatient-admission-time"
+                    className="block font-medium text-slate-700 mb-1"
+                  >
                     Historical admission time (optional)
                   </label>
                   <input
@@ -1140,10 +1350,18 @@ export const InpatientModule: React.FC = () => {
                     placeholder="Automatic if blank"
                     className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
                   />
-                  <p className="mt-1 text-2xs text-slate-500">Blank records database time. Entering a historical time requires an audited billing review.</p>
+                  <p className="mt-1 text-2xs text-slate-500">
+                    Blank records database time. Entering a historical time requires an audited
+                    billing review.
+                  </p>
                 </div>
                 <div>
-                  <label htmlFor="inpatient-admission-type" className="block font-medium text-slate-700 mb-1">Admission Type</label>
+                  <label
+                    htmlFor="inpatient-admission-type"
+                    className="block font-medium text-slate-700 mb-1"
+                  >
+                    Admission Type
+                  </label>
                   <select
                     id="inpatient-admission-type"
                     required
@@ -1219,12 +1437,41 @@ export const InpatientModule: React.FC = () => {
                 />
               </div>
 
-              <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-900" role="status">
-                <p className="font-semibold">Bed billing readiness (checked again when admitting)</p>
-                <p>{admissionPolicyError ? 'Facility policy could not be loaded; billing readiness is unknown.' : admissionPolicy === undefined ? 'Checking facility policy…' : admissionPolicy === null ? 'No facility bed billing policy is configured; billing will require review.' : admissionPolicy.applicability?.message ?? 'Policy applicability could not be confirmed.'}</p>
-                <p>{bedPriceReady ? `Selected bed daily charge: KES ${selectedAdmissionBed?.dailyCharge}.` : 'Select a bed with a positive, confirmed daily charge; otherwise bed billing requires review.'}</p>
-                {admitForm.admissionDate.trim() && <p>A client-supplied admission time requires documented billing review and a verified historical inpatient encounter; one will not be created automatically.</p>}
-                {!admitForm.encounterId && !can('clinical.create') && <p>Automatic encounter creation requires clinical.create; an authorized link will be needed for bed billing.</p>}
+              <div
+                className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-900"
+                role="status"
+              >
+                <p className="font-semibold">
+                  Bed billing readiness (checked again when admitting)
+                </p>
+                <p>
+                  {admissionPolicyError
+                    ? 'Facility policy could not be loaded; billing readiness is unknown.'
+                    : admissionPolicy === undefined
+                      ? 'Checking facility policy…'
+                      : admissionPolicy === null
+                        ? 'No facility bed billing policy is configured; billing will require review.'
+                        : (admissionPolicy.applicability?.message ??
+                          'Policy applicability could not be confirmed.')}
+                </p>
+                <p>
+                  {admissionRate?.rate
+                    ? `Selected rate: KES ${admissionRate.rate} per night (${admissionRate.source === 'BED_OVERRIDE' ? 'bed override' : 'ward default'}).`
+                    : (admissionRate?.issue?.message ??
+                      'Select a bed with a confirmed override or ward default; otherwise bed billing requires review.')}
+                </p>
+                {admitForm.admissionDate.trim() && (
+                  <p>
+                    A client-supplied admission time requires documented billing review and a
+                    verified historical inpatient encounter; one will not be created automatically.
+                  </p>
+                )}
+                {!admitForm.encounterId && !can('clinical.create') && (
+                  <p>
+                    Automatic encounter creation requires clinical.create; an authorized link will
+                    be needed for bed billing.
+                  </p>
+                )}
                 <p>Care can proceed, but missing evidence is not a free or confirmed bill.</p>
               </div>
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
@@ -1273,7 +1520,7 @@ export const InpatientModule: React.FC = () => {
                   value={dischargeType}
                   onChange={(e) => setDischargeType(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                  >
+                >
                   <option value="">Select documented disposition</option>
                   <option value="Routine Discharge (Recovered / Improved)">
                     Routine Discharge (Recovered / Improved)
@@ -1411,20 +1658,56 @@ export const InpatientModule: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Daily rate (KES)</label>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Ward default per night (KES)
+                  </label>
                   <input
                     type="text"
                     inputMode="decimal"
+                    disabled={!canFinance}
                     value={wardForm.dailyRate}
                     onChange={(e) => setWardForm({ ...wardForm, dailyRate: e.target.value })}
-                    placeholder="Leave blank if not set"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono"
+                    placeholder="Leave blank if unconfigured"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono disabled:bg-slate-100"
                   />
                   <p className="mt-1 text-3xs text-slate-500">
-                    Informational ward reference only. Bed billing uses each bed’s recorded daily charge; it does not fall back to this ward rate.
+                    A confirmed bed override wins; otherwise the confirmed ward default applies.
+                    Blank is not a free stay. Changes affect future occupancy, not past snapshots.
                   </p>
                 </div>
               </div>
+              {wardForm.id !== null &&
+                !wardForm.dailyRateConfigured &&
+                wardForm.originalDailyRate && (
+                  <label className="flex items-start gap-2 rounded border border-amber-200 bg-amber-50 p-2 text-amber-900">
+                    <input
+                      type="checkbox"
+                      disabled={!canFinance}
+                      checked={wardForm.confirmLegacyRate}
+                      onChange={(e) =>
+                        setWardForm({ ...wardForm, confirmLegacyRate: e.target.checked })
+                      }
+                    />
+                    <span>
+                      The existing ward amount is unconfirmed and is not used for billing. After
+                      verifying it, confirm this amount as the ward default for future occupancy.
+                    </span>
+                  </label>
+                )}
+              {wardPriceRequested && (
+                <label className="block">
+                  Reason for ward price approval or change *
+                  <input
+                    required
+                    minLength={3}
+                    maxLength={500}
+                    aria-label="Reason for ward price approval or change"
+                    value={wardForm.priceReason}
+                    onChange={(e) => setWardForm({ ...wardForm, priceReason: e.target.value })}
+                    className="block w-full rounded-md border border-slate-200 px-3 py-2"
+                  />
+                </label>
+              )}
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
@@ -1543,7 +1826,7 @@ export const InpatientModule: React.FC = () => {
                 </div>
                 <div>
                   <label className="block font-medium text-slate-700 mb-1">
-                    Daily charge (KES)
+                    Bed override per night (KES)
                   </label>
                   <input
                     type="text"
@@ -1551,13 +1834,29 @@ export const InpatientModule: React.FC = () => {
                     disabled={!canFinance}
                     value={bedsForm.dailyCharge}
                     onChange={(e) => setBedsForm({ ...bedsForm, dailyCharge: e.target.value })}
-                    placeholder="Leave blank if not set"
+                    placeholder="Blank uses confirmed ward default"
                     className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono disabled:bg-slate-100"
                   />
                 </div>
               </div>
-              {bedsForm.dailyCharge.trim() && <label className="block">Reason for initial bed rate *<input required minLength={3} maxLength={500} value={bedsForm.priceReason} onChange={(e) => setBedsForm({ ...bedsForm, priceReason: e.target.value })} className="block w-full rounded-md border border-slate-200 px-3 py-2" /></label>}
-              {!canFinance && <p className="text-2xs text-slate-500">A facility finance user must set or confirm bed rates separately.</p>}
+              {bedsForm.dailyCharge.trim() && (
+                <label className="block">
+                  Reason for initial bed rate *
+                  <input
+                    required
+                    minLength={3}
+                    maxLength={500}
+                    value={bedsForm.priceReason}
+                    onChange={(e) => setBedsForm({ ...bedsForm, priceReason: e.target.value })}
+                    className="block w-full rounded-md border border-slate-200 px-3 py-2"
+                  />
+                </label>
+              )}
+              {!canFinance && (
+                <p className="text-2xs text-slate-500">
+                  A facility finance user must set or confirm bed rates separately.
+                </p>
+              )}
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
@@ -1626,7 +1925,7 @@ export const InpatientModule: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium text-slate-700 mb-1">
-                    Daily charge (KES)
+                    Bed override per night (KES)
                   </label>
                   <input
                     type="text"
@@ -1634,10 +1933,13 @@ export const InpatientModule: React.FC = () => {
                     disabled={!canFinance}
                     value={bedEdit.dailyCharge}
                     onChange={(e) => setBedEdit({ ...bedEdit, dailyCharge: e.target.value })}
-                    placeholder="Leave blank if not set"
+                    placeholder="Blank uses confirmed ward default"
                     className="w-full px-3 py-2 border border-slate-200 rounded-md font-mono disabled:bg-slate-100"
                   />
-                  <p className="mt-1 text-3xs text-slate-500">A rate change affects future assignments, not previously captured stays.</p>
+                  <p className="mt-1 text-3xs text-slate-500">
+                    Blank uses a confirmed ward default; a change affects future assignments, not
+                    captured stays.
+                  </p>
                 </div>
                 <div>
                   <label className="block font-medium text-slate-700 mb-1">Status</label>
@@ -1647,16 +1949,40 @@ export const InpatientModule: React.FC = () => {
                     onChange={(e) => setBedEdit({ ...bedEdit, status: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-md disabled:bg-slate-100"
                   >
-                    {bedEditTarget.status === 'Occupied' && <option value="Occupied">Occupied</option>}
-                    <option value="Available" disabled={bedEditTarget.status === 'Cleaning'}>Available</option>
+                    {bedEditTarget.status === 'Occupied' && (
+                      <option value="Occupied">Occupied</option>
+                    )}
+                    <option value="Available" disabled={bedEditTarget.status === 'Cleaning'}>
+                      Available
+                    </option>
                     <option value="Cleaning">Cleaning</option>
                     <option value="Maintenance">Maintenance</option>
                     <option value="Reserved">Reserved</option>
                   </select>
                 </div>
               </div>
-              {canFinance && <label className="block">Price change / confirmation reason<input minLength={3} maxLength={500} value={bedEdit.priceReason} onChange={(e) => setBedEdit({ ...bedEdit, priceReason: e.target.value })} className="block w-full rounded-md border border-slate-200 px-3 py-2" /><span className="text-3xs text-slate-500">{bedEditTarget.dailyChargeReviewRequired ? 'This legacy rate needs confirmation: verify it, then enter a reason to confirm even if unchanged.' : 'Required only if the bed price changes.'}</span></label>}
-              {!canFinance && <p className="text-2xs text-slate-500">Changing or confirming a price requires facility finance permission.</p>}
+              {canFinance && (
+                <label className="block">
+                  Price change / confirmation reason
+                  <input
+                    minLength={3}
+                    maxLength={500}
+                    value={bedEdit.priceReason}
+                    onChange={(e) => setBedEdit({ ...bedEdit, priceReason: e.target.value })}
+                    className="block w-full rounded-md border border-slate-200 px-3 py-2"
+                  />
+                  <span className="text-3xs text-slate-500">
+                    {bedEditTarget.dailyChargeReviewRequired
+                      ? 'This legacy rate needs confirmation: verify it, then enter a reason to confirm even if unchanged.'
+                      : 'Required only if the bed price changes.'}
+                  </span>
+                </label>
+              )}
+              {!canFinance && (
+                <p className="text-2xs text-slate-500">
+                  Changing or confirming a price requires facility finance permission.
+                </p>
+              )}
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button

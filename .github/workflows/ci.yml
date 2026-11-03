@@ -77,6 +77,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Reject tracked database archives
+        # Metadata only. Historical objects and external copies require the
+        # separately authorized incident response in docs/security/DATA-EXPOSURE.md.
+        run: npm run security:check-tracked-database-backups
+
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 

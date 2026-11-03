@@ -65,7 +65,9 @@ const serviceInput = z.object({
   autoBill: z.boolean(),
 });
 const createServiceInput = serviceInput.extend({
-  initialPrice: money,
+  // A new unpriced catalogue entry defaults to zero; zero is explicitly not
+  // billable unless a separately supported free-service workflow is added.
+  initialPrice: money.default('0.00'),
   initialTariffCode: code.optional(),
 });
 // Service identity is immutable; compare every editable value under the row

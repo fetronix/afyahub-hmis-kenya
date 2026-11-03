@@ -9,6 +9,11 @@ import {
   listMasterCatalogue,
   syncMasterCatalogue,
 } from '../../billing/master-catalogue.service.ts';
+import {
+  addReviewedSpecimen,
+  listReviewedSpecimens,
+  retireReviewedSpecimen,
+} from '../../billing/lab-specimen-config.service.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
@@ -24,10 +29,50 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     opd: number,
     imaging: number;
   let base: string, token: string, close: () => Promise<void>;
+  type DirectService = {
+    service: { id: number; code: string };
+    tariff: { id: number; revision: number };
+  };
+  let directOpd: DirectService,
+    directFollowUp: DirectService,
+    directLabA: DirectService,
+    directLabB: DirectService,
+    directImaging: DirectService;
   let facilityRow: { id: number; tenantId: number; enabledModules: unknown };
   const modules = ['registration', 'finance', 'opd', 'laboratory', 'radiology'];
   const call = (method: string, path: string, body?: Record<string, unknown>, session = token) =>
     httpJson(base, method, path, { token: session, body });
+
+  async function createDirectService(
+    code: string,
+    name: string,
+    category: string,
+    department: string,
+    unit: string,
+    initialPrice: string,
+    session = token,
+    target = facility,
+  ): Promise<DirectService> {
+    const result = await call(
+      'POST',
+      '/api/facility-services',
+      {
+        facilityId: target,
+        code,
+        name,
+        description: name,
+        category,
+        department,
+        unit,
+        initialPrice,
+        isActive: true,
+        autoBill: true,
+      },
+      session,
+    );
+    expect(result.status, JSON.stringify(result.body)).toBe(201);
+    return result.body;
+  }
 
   async function configure(masterId: number, fee: string, target = facilityRow, reviewer = actor) {
     const row = (await listMasterCatalogue(target)).find((value) => value.master.id === masterId)!;
@@ -143,77 +188,137 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       })
     ).master.id;
     await configure(imaging, '300.00');
-    const a = await call('POST', '/api/master-lab-specimens', {
+    // The master specimen administration endpoint was retired with the master
+    // catalogue UI. Seed reviewed options through the existing scoped service
+    // so historical test-selection paths still exercise real validation.
+    const retired = await call('POST', '/api/master-lab-specimens', {
       facilityId: facility,
       testId: testA,
       specimenType: 'Synthetic blood',
       reviewReference: 'synthetic clinical review A',
     });
-    const b = await call('POST', '/api/master-lab-specimens', {
-      facilityId: facility,
+    expect(retired.status).toBe(404);
+    const a = await addReviewedSpecimen(facilityRow, actor, {
+      testId: testA,
+      specimenType: 'Synthetic blood',
+      reviewReference: 'synthetic clinical review A',
+    });
+    const b = await addReviewedSpecimen(facilityRow, actor, {
       testId: testB,
       specimenType: 'Synthetic urine',
       reviewReference: 'synthetic clinical review B',
     });
-    expect(a.status).toBe(201);
-    expect(b.status).toBe(201);
-    optionA = a.body.id;
-    optionB = b.body.id;
+    optionA = a.id;
+    optionB = b.id;
+    directOpd = await createDirectService(
+      'SYN-OPD',
+      'Synthetic OPD',
+      'CONSULTATION',
+      'opd',
+      'Visit',
+      '100.00',
+    );
+    directFollowUp = await createDirectService(
+      'SYN-FOLLOWUP',
+      'Synthetic follow up',
+      'CONSULTATION',
+      'opd',
+      'Visit',
+      '150.00',
+    );
+    directLabA = await createDirectService(
+      'SYN-COUNT',
+      'Synthetic count',
+      'LABORATORY',
+      'laboratory',
+      'Test',
+      '80.00',
+    );
+    directLabB = await createDirectService(
+      'SYN-URINE',
+      'Synthetic urine',
+      'LABORATORY',
+      'laboratory',
+      'Test',
+      '45.00',
+    );
+    directImaging = await createDirectService(
+      'SYN-IMAGE',
+      'Synthetic specific imaging exam',
+      'RADIOLOGY',
+      'radiology',
+      'Examination',
+      '300.00',
+    );
   });
   afterAll(async () => {
     if (close) await close();
   });
 
-  it('exposes exact approved scoped prices and reviewed individual specimens, not legacy defaults', async () => {
+  it('exposes scoped facility prices and retains reviewed specimen records without the master endpoint', async () => {
+    const labsPath = `/api/facility-services/available?facilityId=${facility}&category=LABORATORY`;
+    expect((await call('GET', labsPath, undefined, '')).status).toBe(401);
     expect(
       (
         await call(
           'GET',
-          `/api/master-services?facilityId=${facility}&family=LABORATORY`,
-          undefined,
-          '',
+          `/api/facility-services/available?facilityId=${other}&category=LABORATORY`,
         )
       ).status,
-    ).toBe(401);
-    expect(
-      (await call('GET', `/api/master-services?facilityId=${other}&family=LABORATORY`)).status,
     ).toBe(403);
-    const labs = await call('GET', `/api/master-services?facilityId=${facility}&family=LABORATORY`);
+    expect(
+      (await call('GET', `/api/master-services?facilityId=${facility}&family=LABORATORY`)).status,
+    ).toBe(404);
+    const labs = await call('GET', labsPath);
     expect(labs.status).toBe(200);
-    expect(labs.body.find((row: { id: number }) => row.id === testA)).toMatchObject({
-      unitPrice: '80.00',
-      priceStatus: 'AVAILABLE',
-      specimenOptions: [{ id: optionA, specimenType: 'Synthetic blood' }],
-    });
-    expect(labs.body.find((row: { id: number }) => row.id === testB)).toMatchObject({
-      unitPrice: '45.00',
-      specimenOptions: [{ id: optionB, specimenType: 'Synthetic urine' }],
-    });
+    expect(labs.body.find((row: { id: number }) => row.id === directLabA.service.id)).toMatchObject(
+      {
+        unitPrice: '80.00',
+        priceStatus: 'AVAILABLE',
+      },
+    );
+    expect(labs.body.find((row: { id: number }) => row.id === directLabB.service.id)).toMatchObject(
+      {
+        unitPrice: '45.00',
+        priceStatus: 'AVAILABLE',
+      },
+    );
     const consultations = await call(
       'GET',
-      `/api/master-services?facilityId=${facility}&family=CONSULTATION`,
+      `/api/facility-services/available?facilityId=${facility}&category=CONSULTATION`,
     );
-    expect(consultations.body.find((row: { id: number }) => row.id === followUp)).toMatchObject({
+    expect(
+      consultations.body.find((row: { id: number }) => row.id === directFollowUp.service.id),
+    ).toMatchObject({
       unitPrice: '150.00',
-      clinicalSource: 'ENCOUNTER:FOLLOW_UP',
+      priceStatus: 'AVAILABLE',
     });
     const images = await call(
       'GET',
-      `/api/master-services?facilityId=${facility}&family=RADIOLOGY`,
+      `/api/facility-services/available?facilityId=${facility}&category=RADIOLOGY`,
     );
-    expect(images.body.find((row: { id: number }) => row.id === imaging)).toMatchObject({
-      unitPrice: '300.00',
-    });
     expect(
-      (
-        await call('POST', '/api/master-lab-specimens', {
-          facilityId: facility,
-          testId: testA,
-          specimenType: 'blood, urine',
-          reviewReference: 'synthetic',
-        })
-      ).status,
-    ).toBe(400);
+      images.body.find((row: { id: number }) => row.id === directImaging.service.id),
+    ).toMatchObject({
+      unitPrice: '300.00',
+      priceStatus: 'AVAILABLE',
+    });
+    const reviewed = await listReviewedSpecimens(facilityRow);
+    expect(reviewed.find((row) => row.id === optionA)).toMatchObject({
+      testId: testA,
+      specimenType: 'Synthetic blood',
+    });
+    expect(reviewed.find((row) => row.id === optionB)).toMatchObject({
+      testId: testB,
+      specimenType: 'Synthetic urine',
+    });
+    await expect(
+      addReviewedSpecimen(facilityRow, actor, {
+        testId: testA,
+        specimenType: 'blood, urine',
+        reviewReference: 'synthetic',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_SPECIMEN_OPTION' });
   });
 
   it('isolates tenants and applies different approved prices to the same service in two facilities', async () => {
@@ -232,23 +337,37 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
         [tenant, other, `OTHER-${suffix}`],
       )
     ).rows[0].id;
-    const otherRow = { id: other, tenantId: tenant, enabledModules: modules };
-    await syncMasterCatalogue(otherRow, otherActor);
-    await configure(followUp, '333.00', otherRow, otherActor);
-    const a = await call('GET', `/api/master-services?facilityId=${facility}&family=CONSULTATION`);
+    const otherFollowUp = await createDirectService(
+      'SYN-FOLLOWUP',
+      'Synthetic follow up',
+      'CONSULTATION',
+      'opd',
+      'Visit',
+      '333.00',
+      otherToken,
+      other,
+    );
+    const a = await call(
+      'GET',
+      `/api/facility-services/available?facilityId=${facility}&category=CONSULTATION`,
+    );
     const b = await call(
       'GET',
-      `/api/master-services?facilityId=${other}&family=CONSULTATION`,
+      `/api/facility-services/available?facilityId=${other}&category=CONSULTATION`,
       undefined,
       otherToken,
     );
-    expect(a.body.find((row: { id: number }) => row.id === followUp).unitPrice).toBe('150.00');
-    expect(b.body.find((row: { id: number }) => row.id === followUp).unitPrice).toBe('333.00');
+    expect(
+      a.body.find((row: { id: number }) => row.id === directFollowUp.service.id).unitPrice,
+    ).toBe('150.00');
+    expect(
+      b.body.find((row: { id: number }) => row.id === otherFollowUp.service.id).unitPrice,
+    ).toBe('333.00');
     expect(
       (
         await call(
           'GET',
-          `/api/master-services?facilityId=${facility}&family=CONSULTATION`,
+          `/api/facility-services/available?facilityId=${facility}&category=CONSULTATION`,
           undefined,
           otherToken,
         )
@@ -261,7 +380,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
         facilityId: other,
         patientId: otherPatient,
         encounterType: 'Outpatient',
-        consultationMasterServiceId: followUp,
+        consultationFacilityServiceId: otherFollowUp.service.id,
         idempotencyKey: randomUUID(),
       },
       otherToken,
@@ -295,14 +414,18 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       )
     ).rows[0].id;
     expect(
-      (await call('GET', `/api/master-services?facilityId=${foreignFacility}&family=CONSULTATION`))
-        .status,
+      (
+        await call(
+          'GET',
+          `/api/facility-services/available?facilityId=${foreignFacility}&category=CONSULTATION`,
+        )
+      ).status,
     ).toBe(403);
     const crossPatient = await call('POST', '/api/encounters', {
       facilityId: facility,
       patientId: foreignPatient,
       encounterType: 'Outpatient',
-      consultationMasterServiceId: followUp,
+      consultationFacilityServiceId: directFollowUp.service.id,
       idempotencyKey: randomUUID(),
     });
     expect([400, 403, 404]).toContain(crossPatient.status);
@@ -321,7 +444,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       facilityId: facility,
       patientId: patient,
       encounterType: 'Outpatient',
-      consultationMasterServiceId: followUp,
+      consultationFacilityServiceId: directFollowUp.service.id,
       status: 'Active',
       idempotencyKey: randomUUID(),
     };
@@ -331,19 +454,23 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     ]);
     expect([visit.status, replayVisit.status].sort()).toEqual([200, 201]);
     expect(visit.body.id).toBe(replayVisit.body.id);
-    expect(visit.body.consultationMasterServiceId).toBe(followUp);
-    expect(visit.body.encounterType).toBe('Follow Up');
+    expect(visit.body.consultationFacilityServiceId).toBe(directFollowUp.service.id);
+    expect(visit.body.encounterType).toBe('Outpatient');
     expect(
-      (await call('POST', '/api/encounters', { ...visitPayload, consultationMasterServiceId: opd }))
-        .status,
+      (
+        await call('POST', '/api/encounters', {
+          ...visitPayload,
+          consultationFacilityServiceId: directOpd.service.id,
+        })
+      ).status,
     ).toBe(409);
     const eid = visit.body.id;
     const labPayload = {
       patientId: patient,
       encounterId: eid,
-      testSelections: [
-        { testId: testA, specimenOptionId: optionA },
-        { testId: testB, specimenOptionId: optionB },
+      orderLines: [
+        { facilityServiceId: directLabA.service.id, specimenType: 'Synthetic blood' },
+        { facilityServiceId: directLabB.service.id, specimenType: 'Synthetic urine' },
       ],
       clinicalIndication: 'synthetic indication',
       priority: 'Routine',
@@ -351,7 +478,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     };
     const invalid = await call('POST', '/api/lab-orders/batch', {
       ...labPayload,
-      testSelections: [{ testId: testA, specimenOptionId: optionB }],
+      orderLines: [{ facilityServiceId: directLabA.service.id, specimenType: '' }],
       idempotencyKey: randomUUID(),
     });
     expect(invalid.status).toBe(400);
@@ -369,9 +496,9 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     ).toEqual(['Synthetic blood', 'Synthetic urine']);
     expect(
       batch.body.orders
-        .map((order: { reviewedSpecimenOptionId: number }) => order.reviewedSpecimenOptionId)
+        .map((order: { facilityServiceId: number }) => order.facilityServiceId)
         .sort(),
-    ).toEqual([optionA, optionB].sort());
+    ).toEqual([directLabA.service.id, directLabB.service.id].sort());
     expect(
       (
         await call('POST', '/api/lab-orders/batch', {
@@ -384,7 +511,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       facilityId: facility,
       patientId: patient,
       encounterId: eid,
-      masterServiceId: imaging,
+      facilityServiceId: directImaging.service.id,
       modality: 'Synthetic',
       procedureName: 'Ignored caller title',
       clinicalIndication: 'synthetic reason',
@@ -493,25 +620,25 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       ).rows[0].n,
     ).toBe(1);
     const selected = await call('POST', `/api/encounters/${visit.body.id}/consultation-selection`, {
-      masterServiceId: opd,
+      facilityServiceId: directOpd.service.id,
       reviewReason: 'synthetic identity review',
     });
     expect(selected.body.billing).toMatchObject({ charged: true, totalAmount: '100.00' });
     const replay = await call('POST', `/api/encounters/${visit.body.id}/consultation-selection`, {
-      masterServiceId: opd,
+      facilityServiceId: directOpd.service.id,
       reviewReason: 'synthetic identity review',
     });
     expect(replay.body.billing.reason).toBe('DUPLICATE');
     expect(
       (
         await call('POST', `/api/encounters/${visit.body.id}/consultation-selection`, {
-          masterServiceId: followUp,
+          facilityServiceId: directFollowUp.service.id,
           reviewReason: 'synthetic correction review',
         })
       ).status,
     ).toBe(409);
   });
-  it('requires individual reviewed specimens for billable single and batch orders', async () => {
+  it('preserves reviewed specimen evidence for legacy test-ID orders', async () => {
     const visit = await call('POST', '/api/encounters', {
       facilityId: facility,
       patientId: patient,
@@ -641,30 +768,35 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     }
   });
 
-  it('keeps an unapproved investigation in clinical care and queues it until its price is reviewed', async () => {
-    const masterId = await sourceMaster(testB);
-    const row = (await listMasterCatalogue(facilityRow)).find(
-      (value) => value.master.id === masterId,
-    )!;
-    const [edited] = await editMasterTariffs(facilityRow, actor, [
-      {
-        tariffId: row.tariff!.id,
-        revision: row.tariff!.revision,
-        fee: '46.00',
-        unit: row.master.unit,
-        isActive: true,
-        autoBill: true,
+  it('keeps an unpriced investigation in care and retries it once after an explicit facility price is set', async () => {
+    const updatePrice = async (fee: string) => {
+      const result = await call('PUT', `/api/facility-tariffs/${directLabB.tariff.id}`, {
+        facilityId: facility,
+        serviceId: directLabB.service.id,
+        expectedRevision: directLabB.tariff.revision,
+        code: directLabB.service.code,
+        description: 'Synthetic urine',
+        department: 'laboratory',
+        unit: 'Test',
+        fee,
         effectiveFrom: null,
         effectiveTo: null,
-      },
-    ]);
+        isActive: true,
+        autoBill: true,
+      });
+      expect(result.status, JSON.stringify(result.body)).toBe(200);
+      directLabB.tariff.revision = result.body.revision;
+    };
+    await updatePrice('0.00');
     const preview = await call(
       'GET',
-      `/api/master-services?facilityId=${facility}&family=LABORATORY`,
+      `/api/facility-services/available?facilityId=${facility}&category=LABORATORY`,
     );
-    expect(preview.body.find((value: { id: number }) => value.id === testB)).toMatchObject({
+    expect(
+      preview.body.find((value: { id: number }) => value.id === directLabB.service.id),
+    ).toMatchObject({
       unitPrice: null,
-      priceStatus: 'TARIFF_UNAPPROVED',
+      priceStatus: 'UNCONFIGURED_OR_OUTSIDE_DATE',
     });
     const visit = await call('POST', '/api/encounters', {
       facilityId: facility,
@@ -676,12 +808,13 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     const batch = await call('POST', '/api/lab-orders/batch', {
       encounterId: visit.body.id,
       patientId: patient,
-      testSelections: [{ testId: testB, specimenOptionId: optionB }],
+      facilityServiceId: directLabB.service.id,
+      specimenType: 'Synthetic urine',
       clinicalIndication: 'synthetic indication',
       priority: 'Routine',
       idempotencyKey: randomUUID(),
     });
-    expect(batch.status).toBe(201);
+    expect(batch.status, JSON.stringify(batch.body)).toBe(201);
     const order = batch.body.orders[0];
     expect(
       (await call('PUT', `/api/lab-orders/${order.id}/status`, { status: 'Sample Collected' }))
@@ -698,8 +831,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     expect(completed.status).toBe(200);
     expect(completed.body.billing).toMatchObject({
       charged: false,
-      reason: 'TARIFF_NOT_CONFIGURED',
-      diagnosis: { code: 'TARIFF_UNAPPROVED' },
+      diagnosis: { code: 'ZERO_PRICE' },
     });
     expect(
       (
@@ -716,94 +848,71 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       )
     ).rows[0];
     expect(pending).toBeTruthy();
-    await approveMasterTariff(
-      facilityRow,
-      actor,
-      edited.id,
-      edited.revision,
-      'synthetic approval after review',
-    );
+    await updatePrice('46.00');
     const retry = await call('POST', `/api/billing/charge-attempts/${pending.id}/retry`, {
       facilityId: facility,
     });
-    expect(retry.status).toBe(200);
+    expect(retry.status, JSON.stringify(retry.body)).toBe(200);
+    expect(retry.body).toMatchObject({
+      status: 'BILLED',
+      result: { charged: true, totalAmount: '46.00' },
+    });
     expect(
       (
-        await pool.query(
-          "SELECT unit_price::text FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
-          [order.id],
-        )
-      ).rows[0].unit_price,
-    ).toBe('46.00');
-    expect(
-      (
-        await pool.query(
-          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
-          [order.id],
-        )
-      ).rows[0].n,
-    ).toBe(1);
+        await call('POST', `/api/billing/charge-attempts/${pending.id}/retry`, {
+          facilityId: facility,
+        })
+      ).body.result.reason,
+    ).toBe('DUPLICATE');
+    const items = (
+      await pool.query(
+        "SELECT unit_price::text FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+        [order.id],
+      )
+    ).rows;
+    expect(items).toEqual([{ unit_price: '46.00' }]);
   });
 
-  it('refuses disabled, future and retired specimen options and foreign test IDs', async () => {
-    const masterId = await sourceMaster(testB);
-    let row = (await listMasterCatalogue(facilityRow)).find(
-      (value) => value.master.id === masterId,
-    )!;
-    let [edited] = await editMasterTariffs(facilityRow, actor, [
-      {
-        tariffId: row.tariff!.id,
-        revision: row.tariff!.revision,
+  it('rejects future or disabled prices, foreign tests and retired reviewed specimens', async () => {
+    const updateTariff = async (effectiveFrom: string | null, isActive: boolean) => {
+      const result = await call('PUT', `/api/facility-tariffs/${directLabB.tariff.id}`, {
+        facilityId: facility,
+        serviceId: directLabB.service.id,
+        expectedRevision: directLabB.tariff.revision,
+        code: directLabB.service.code,
+        description: 'Synthetic urine',
+        department: 'laboratory',
+        unit: 'Test',
         fee: '46.00',
-        unit: row.master.unit,
-        isActive: true,
-        autoBill: true,
-        effectiveFrom: '2099-01-01',
+        effectiveFrom,
         effectiveTo: null,
-      },
-    ]);
-    await approveMasterTariff(
-      facilityRow,
-      actor,
-      edited.id,
-      edited.revision,
-      'synthetic future review',
-    );
+        isActive,
+        autoBill: true,
+      });
+      expect(result.status, JSON.stringify(result.body)).toBe(200);
+      directLabB.tariff.revision = result.body.revision;
+    };
+    await updateTariff('2099-01-01', true);
     let preview = await call(
       'GET',
-      `/api/master-services?facilityId=${facility}&family=LABORATORY`,
+      `/api/facility-services/available?facilityId=${facility}&category=LABORATORY`,
     );
-    expect(preview.body.find((value: { id: number }) => value.id === testB)).toMatchObject({
+    expect(
+      preview.body.find((value: { id: number }) => value.id === directLabB.service.id),
+    ).toMatchObject({
       unitPrice: null,
-      priceStatus: 'NOT_YET_EFFECTIVE',
+      priceStatus: 'UNCONFIGURED_OR_OUTSIDE_DATE',
     });
-    row = (await listMasterCatalogue(facilityRow)).find((value) => value.master.id === masterId)!;
-    [edited] = await editMasterTariffs(facilityRow, actor, [
-      {
-        tariffId: row.tariff!.id,
-        revision: row.tariff!.revision,
-        fee: '46.00',
-        unit: row.master.unit,
-        isActive: false,
-        autoBill: false,
-        effectiveFrom: null,
-        effectiveTo: null,
-      },
-    ]);
-    // The administration service must refuse to approve an inactive tariff.
-    await expect(
-      approveMasterTariff(
-        facilityRow,
-        actor,
-        edited.id,
-        edited.revision,
-        'synthetic disabled review',
-      ),
-    ).rejects.toThrow('Enable the service');
-    preview = await call('GET', `/api/master-services?facilityId=${facility}&family=LABORATORY`);
-    expect(preview.body.find((value: { id: number }) => value.id === testB)).toMatchObject({
+    await updateTariff(null, false);
+    preview = await call(
+      'GET',
+      `/api/facility-services/available?facilityId=${facility}&category=LABORATORY`,
+    );
+    expect(
+      preview.body.find((value: { id: number }) => value.id === directLabB.service.id),
+    ).toMatchObject({
       unitPrice: null,
-      priceStatus: 'TARIFF_INACTIVE',
+      priceStatus: 'UNCONFIGURED_OR_OUTSIDE_DATE',
     });
     const foreign = (
       await pool.query(
@@ -811,16 +920,13 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
         [other],
       )
     ).rows[0].id;
-    expect(
-      (
-        await call('POST', '/api/master-lab-specimens', {
-          facilityId: facility,
-          testId: foreign,
-          specimenType: 'Synthetic',
-          reviewReference: 'synthetic review',
-        })
-      ).status,
-    ).toBe(404);
+    await expect(
+      addReviewedSpecimen(facilityRow, actor, {
+        testId: foreign,
+        specimenType: 'Synthetic',
+        reviewReference: 'synthetic review',
+      }),
+    ).rejects.toMatchObject({ code: 'TEST_NOT_FOUND' });
     const single = await call('POST', '/api/lab-orders', {
       facilityId: facility,
       patientId: patient,
@@ -836,14 +942,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       specimenOptionId: optionB,
     });
     expect(beforeRetirement.status).toBe(201);
-    expect(
-      (
-        await call('POST', `/api/master-lab-specimens/${optionB}/retire`, {
-          facilityId: facility,
-          reviewReference: 'synthetic retirement',
-        })
-      ).status,
-    ).toBe(200);
+    await retireReviewedSpecimen(facilityRow, actor, optionB, 'synthetic retirement');
     expect(
       (
         await call('PUT', `/api/lab-orders/${beforeRetirement.body.id}/status`, {
@@ -851,15 +950,13 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
         })
       ).status,
     ).toBe(200);
-    const retiredResult = await call('POST', '/api/lab-results', {
+    const result = await call('POST', '/api/lab-results', {
       orderId: beforeRetirement.body.id,
       patientId: patient,
       parameterName: 'Synthetic',
       measuredValue: '1',
     });
-    expect(
-      (await call('POST', `/api/lab-results/${retiredResult.body.id}/verify`, {})).status,
-    ).toBe(200);
+    expect((await call('POST', `/api/lab-results/${result.body.id}/verify`, {})).status).toBe(200);
     const retiredCompletion = await call(
       'POST',
       `/api/lab-orders/${beforeRetirement.body.id}/complete`,
@@ -943,7 +1040,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       const completed = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
       expect(completed.body.billing).toMatchObject({
         charged: false,
-        diagnosis: { code: 'CATALOGUE_NOT_FOUND' },
+        diagnosis: { code: 'SERVICE_NOT_SELECTED' },
       });
       expect(
         (
@@ -1013,7 +1110,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     });
     expect(completed.body.billing).toMatchObject({
       charged: false,
-      diagnosis: { code: 'CATALOGUE_NOT_FOUND' },
+      diagnosis: { code: 'SERVICE_NOT_SELECTED' },
     });
     const pending = (
       await pool.query(
@@ -1068,7 +1165,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       diagnosis: { code: 'CONSULTATION_SELECTION_REQUIRED' },
     });
     const selection = await call('POST', `/api/encounters/${legacy.id}/consultation-selection`, {
-      masterServiceId: opd,
+      facilityServiceId: directOpd.service.id,
       reviewReason: 'synthetic old uncharged visit review',
     });
     expect(selection.body.billing).toMatchObject({ charged: true, totalAmount: '100.00' });
@@ -1105,7 +1202,7 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       diagnosis: { code: 'CONSULTATION_SELECTION_REQUIRED' },
     });
     const selection = await call('POST', `/api/encounters/${legacy.id}/consultation-selection`, {
-      masterServiceId: followUp,
+      facilityServiceId: directFollowUp.service.id,
       reviewReason: 'synthetic billed record review',
     });
     expect(selection.status).toBe(409);

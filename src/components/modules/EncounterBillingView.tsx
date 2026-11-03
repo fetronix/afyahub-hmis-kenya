@@ -147,9 +147,12 @@ export const EncounterBillingView: React.FC<{
                                 {`Medicine #${item.inventoryItemId} · Prescription #${item.prescriptionId}`}
                                 <br />
                                 {item.pharmacyStockTracking === 'FEFO'
-                                  ? item.pharmacyBatchAllocations?.map((batch) =>
-                                      `${batch.batchNumber} ×${batch.quantity} (exp ${batch.expiryDate})`,
-                                    ).join(', ')
+                                  ? item.pharmacyBatchAllocations
+                                      ?.map(
+                                        (batch) =>
+                                          `${batch.batchNumber} ×${batch.quantity} (exp ${batch.expiryDate})`,
+                                      )
+                                      .join(', ')
                                   : 'No tracked batch; expiry not verified'}
                               </>
                             )}

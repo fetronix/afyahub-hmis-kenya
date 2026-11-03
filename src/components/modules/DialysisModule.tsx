@@ -73,7 +73,9 @@ const DialysisWorkspaceView: React.FC = () => {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
   const [protocol, setProtocol] = useState({
     version: '',
@@ -150,7 +152,8 @@ const DialysisWorkspaceView: React.FC = () => {
       await load();
       return true;
     } catch (e: unknown) {
-      if (mountedRef.current) showToast(e instanceof Error ? e.message : 'Operation failed.', { tone: 'error' });
+      if (mountedRef.current)
+        showToast(e instanceof Error ? e.message : 'Operation failed.', { tone: 'error' });
       return false;
     } finally {
       if (mountedRef.current) setBusy(false);

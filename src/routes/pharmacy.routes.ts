@@ -208,12 +208,16 @@ router.put(
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))
       return res.status(400).json({ error: 'INVALID_INPUT' });
     try {
-      const result = await inventory.updateInventorySellingPriceScoped(context, Number(req.params.id), {
-        facilityId: req.body.facilityId,
-        sellingPrice: req.body.sellingPrice,
-        expectedPriceRevision: req.body.expectedPriceRevision,
-        reason: req.body.reason,
-      });
+      const result = await inventory.updateInventorySellingPriceScoped(
+        context,
+        Number(req.params.id),
+        {
+          facilityId: req.body.facilityId,
+          sellingPrice: req.body.sellingPrice,
+          expectedPriceRevision: req.body.expectedPriceRevision,
+          reason: req.body.reason,
+        },
+      );
       return res.json(result);
     } catch (error: unknown) {
       if (handleScopeError(error, res)) return;

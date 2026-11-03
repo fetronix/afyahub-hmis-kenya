@@ -889,12 +889,12 @@ export async function preparePrivateInsuranceClaim(params: {
     const noTariffEvidence = inventoryMedicine || occupancyBedNight;
     const tariff = noTariffEvidence
       ? undefined
-      : (bi.tariffId ? facilityTariffs.find((t) => t.id === bi.tariffId) : undefined) ??
+      : ((bi.tariffId ? facilityTariffs.find((t) => t.id === bi.tariffId) : undefined) ??
         facilityTariffs.find(
           (t) =>
             (bi.tariffCode && t.code === bi.tariffCode) ||
             t.description.toLowerCase() === bi.description.toLowerCase(),
-        );
+        ));
 
     const localCode = noTariffEvidence ? null : (bi.tariffCode ?? tariff?.code ?? null);
     const category = inferPrivateServiceCategory(

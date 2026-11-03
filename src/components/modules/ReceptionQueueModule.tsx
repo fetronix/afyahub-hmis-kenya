@@ -59,7 +59,9 @@ const ReceptionQueueWorkspace: React.FC = () => {
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
   const [selectedStation, setSelectedStation] = useState<string>('All');
   const [loading, setLoading] = useState(true);
@@ -258,7 +260,8 @@ const ReceptionQueueWorkspace: React.FC = () => {
       });
       triggerRefresh();
     } catch (err: unknown) {
-      if (mountedRef.current) setBookingError(err instanceof Error ? err.message : 'Booking failed.');
+      if (mountedRef.current)
+        setBookingError(err instanceof Error ? err.message : 'Booking failed.');
     } finally {
       if (mountedRef.current) setSavingAppointment(false);
     }

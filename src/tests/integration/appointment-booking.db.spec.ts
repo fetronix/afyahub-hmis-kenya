@@ -184,24 +184,63 @@ describeDb('Staff appointments (synthetic PostgreSQL and authenticated HTTP)', (
   it('refuses generic lifecycle actions on a confirmed website-linked appointment', async () => {
     const scope = { tenantId: tenant, facilityId: facility, actorUserId: actor };
     const createdClient = await createBookingClientScoped(scope, {
-      clientName: 'Synthetic site', allowedServices: ['TEST_REVIEW'],
+      clientName: 'Synthetic site',
+      allowedServices: ['TEST_REVIEW'],
     });
     const client = await authenticateBookingClient(createdClient.apiKey);
     const slot = await createBookingSlotScoped(scope, {
-      serviceCode: 'TEST_REVIEW', date: '2034-12-01', startTime: '08:00', endTime: '08:30', capacity: 1,
+      serviceCode: 'TEST_REVIEW',
+      date: '2034-12-01',
+      startTime: '08:00',
+      endTime: '08:30',
+      capacity: 1,
     });
     const request = await createWebsiteBooking(client, {
-      slotId: slot.id, patientName: 'Synthetic A', phone: '0712345678', idempotencyKey: `web-${suffix}`,
+      slotId: slot.id,
+      patientName: 'Synthetic A',
+      phone: '0712345678',
+      idempotencyKey: `web-${suffix}`,
     });
-    const booking = await pool.query('SELECT id FROM external_bookings WHERE booking_reference=$1', [request.booking.reference]);
-    const linked = await confirmBookingScoped(scope, booking.rows[0].id, patient, { identityVerified: true, availabilityReviewed: true });
+    const booking = await pool.query(
+      'SELECT id FROM external_bookings WHERE booking_reference=$1',
+      [request.booking.reference],
+    );
+    const linked = await confirmBookingScoped(scope, booking.rows[0].id, patient, {
+      identityVerified: true,
+      availabilityReviewed: true,
+    });
     const path = `/api/appointments/${linked.appointmentId}`;
     expect((await call('POST', `${path}/cancel`, { reason: 'Synthetic reason' })).status).toBe(409);
-    expect((await call('POST', `${path}/reschedule`, { scheduledTime: '2034-12-02T09:00', reason: 'Synthetic reason' }, token, `web-reschedule-${suffix}`)).status).toBe(409);
+    expect(
+      (
+        await call(
+          'POST',
+          `${path}/reschedule`,
+          { scheduledTime: '2034-12-02T09:00', reason: 'Synthetic reason' },
+          token,
+          `web-reschedule-${suffix}`,
+        )
+      ).status,
+    ).toBe(409);
     expect((await call('POST', `${path}/check-in`, { queueType: 'Triage' })).status).toBe(409);
-    expect((await pool.query('SELECT status FROM appointments WHERE id=$1', [linked.appointmentId])).rows[0].status).toBe('Scheduled');
-    expect((await pool.query('SELECT status,linked_appointment_id FROM external_bookings WHERE id=$1', [booking.rows[0].id])).rows[0]).toEqual({ status: 'CONFIRMED', linked_appointment_id: linked.appointmentId });
-    expect((await pool.query('SELECT id FROM appointment_events WHERE appointment_id=$1', [linked.appointmentId])).rows).toHaveLength(0);
+    expect(
+      (await pool.query('SELECT status FROM appointments WHERE id=$1', [linked.appointmentId]))
+        .rows[0].status,
+    ).toBe('Scheduled');
+    expect(
+      (
+        await pool.query('SELECT status,linked_appointment_id FROM external_bookings WHERE id=$1', [
+          booking.rows[0].id,
+        ])
+      ).rows[0],
+    ).toEqual({ status: 'CONFIRMED', linked_appointment_id: linked.appointmentId });
+    expect(
+      (
+        await pool.query('SELECT id FROM appointment_events WHERE appointment_id=$1', [
+          linked.appointmentId,
+        ])
+      ).rows,
+    ).toHaveLength(0);
   });
 
   it('never lists another tenant or facility when a facility-bound caller omits the hint', async () => {

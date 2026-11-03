@@ -38,7 +38,7 @@ const blankService = {
   department: '',
   category: '',
   unit: '',
-  initialPrice: '',
+  initialPrice: '0.00',
   initialTariffCode: '',
   isActive: true,
   autoBill: true,
@@ -470,16 +470,22 @@ export const FacilityServicesManager: React.FC<{
           </p>
           {!serviceEdit && (
             <>
-              <label>
-                Initial price (KES)
-                <input
-                  required
-                  inputMode="decimal"
-                  className={fields}
-                  value={service.initialPrice}
-                  onChange={(e) => setService({ ...service, initialPrice: e.target.value })}
-                />
-              </label>
+              <div>
+                <label>
+                  Initial price (KES)
+                  <input
+                    required
+                    inputMode="decimal"
+                    aria-describedby="initial-service-price-help"
+                    className={fields}
+                    value={service.initialPrice}
+                    onChange={(e) => setService({ ...service, initialPrice: e.target.value })}
+                  />
+                </label>
+                <p id="initial-service-price-help" className="text-slate-500">
+                  KES 0.00 means unpriced, not a free billable service.
+                </p>
+              </div>
               <label>
                 Initial tariff code{' '}
                 <span className="text-slate-500">(optional; defaults to service code)</span>

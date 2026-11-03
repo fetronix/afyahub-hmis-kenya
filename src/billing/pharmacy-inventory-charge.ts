@@ -62,7 +62,10 @@ export async function resolvePharmacyInventoryCharge(
     dispense.quantityDispensed <= 0 ||
     dispense.quantityDispensed !== (request.quantity ?? 1)
   )
-    return fail('DISPENSATION_SCOPE_OR_QUANTITY_INVALID', 'Dispensing identity or quantity requires review.');
+    return fail(
+      'DISPENSATION_SCOPE_OR_QUANTITY_INVALID',
+      'Dispensing identity or quantity requires review.',
+    );
 
   if (!dispense.prescriptionId)
     return fail(
@@ -96,7 +99,8 @@ export async function resolvePharmacyInventoryCharge(
       ),
     )
     .limit(1);
-  if (!item) return fail('INVENTORY_SCOPE_INVALID', 'The selected facility product requires review.');
+  if (!item)
+    return fail('INVENTORY_SCOPE_INVALID', 'The selected facility product requires review.');
 
   const [recordedRequest] = await executor
     .select({ tracking: schema.pharmacyDispenseRequests.stockTracking })
@@ -127,7 +131,10 @@ export async function resolvePharmacyInventoryCharge(
     calendarDateInZone(dispense.dispensingTimezoneSnapshot, dispense.dispensedAt) !==
       dispense.dispensingDateSnapshot
   )
-    return fail('DISPENSING_SNAPSHOT_INCOMPLETE', 'The dispensing product, unit or date evidence is incomplete.');
+    return fail(
+      'DISPENSING_SNAPSHOT_INCOMPLETE',
+      'The dispensing product, unit or date evidence is incomplete.',
+    );
   if ((parseMoneyToCents(dispense.sellingPriceSnapshot) ?? 0) <= 0)
     return fail(
       'INVENTORY_PRICE_NOT_CONFIGURED',
@@ -152,20 +159,23 @@ export async function resolvePharmacyInventoryCharge(
   const tracking = recordedRequest.tracking;
   if (
     tracking !== 'FEFO' ||
-    (!allocationRows.length ||
-        allocationRows.some(
-          (allocation) =>
-            allocation.itemId !== item.id ||
-            !present(allocation.batchNumber) ||
-            !parseIsoDate(allocation.expiryDate) ||
-            allocation.expiryDate < dispense.dispensingDateSnapshot! ||
-            !Number.isSafeInteger(allocation.quantity) ||
-            allocation.quantity <= 0,
-        ) ||
-        allocationRows.reduce((sum, allocation) => sum + allocation.quantity, 0) !==
-          dispense.quantityDispensed)
+    !allocationRows.length ||
+    allocationRows.some(
+      (allocation) =>
+        allocation.itemId !== item.id ||
+        !present(allocation.batchNumber) ||
+        !parseIsoDate(allocation.expiryDate) ||
+        allocation.expiryDate < dispense.dispensingDateSnapshot! ||
+        !Number.isSafeInteger(allocation.quantity) ||
+        allocation.quantity <= 0,
+    ) ||
+    allocationRows.reduce((sum, allocation) => sum + allocation.quantity, 0) !==
+      dispense.quantityDispensed
   )
-    return fail('DISPENSATION_BATCH_EVIDENCE_INVALID', 'Dispensing batch allocations require reconciliation.');
+    return fail(
+      'DISPENSATION_BATCH_EVIDENCE_INVALID',
+      'Dispensing batch allocations require reconciliation.',
+    );
 
   return {
     price: dispense.sellingPriceSnapshot!,

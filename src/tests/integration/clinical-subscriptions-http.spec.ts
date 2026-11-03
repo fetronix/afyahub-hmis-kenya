@@ -403,17 +403,27 @@ describe('HTTP Integration: Platform Subscriptions, Maternal Health & Inpatient 
     mockDb.state!.queueInsert([
       { id: 2, facilityId: 10, code: 'PW-1', name: 'Paediatric Ward', totalBeds: 0 },
     ]);
+    const wardBody = {
+      name: 'Paediatric Ward',
+      code: 'PW-1',
+      wardType: 'Paediatric',
+      genderAllocation: 'Mixed',
+    };
+    const unauthorizedRate = await httpJson(baseUrl, 'POST', '/api/wards', {
+      token: TOKENS.receptionistA,
+      body: { ...wardBody, dailyRate: '1800', priceReason: 'Synthetic price' },
+    });
+    expect(unauthorizedRate.status).toBe(403);
     const wardCreated = await httpJson(baseUrl, 'POST', '/api/wards', {
       token: TOKENS.receptionistA,
-      body: {
-        name: 'Paediatric Ward',
-        code: 'PW-1',
-        wardType: 'Paediatric',
-        genderAllocation: 'Mixed',
-        dailyRate: '1800',
-      },
+      body: wardBody,
     });
     expect(wardCreated.status).toBe(201);
-    expect(queriesMocks.logAuditEvent).toHaveBeenCalled();
+    expect(mockDb.state!.calls).toContainEqual(
+      expect.objectContaining({
+        op: 'insert',
+        values: expect.objectContaining({ resource: 'Ward', action: 'CREATE' }),
+      }),
+    );
   });
 });

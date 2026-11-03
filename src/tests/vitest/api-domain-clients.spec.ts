@@ -178,17 +178,51 @@ describe('Domain API clients and backward-compatible src/api/client.ts facade', 
   });
 
   it('passes the selected facility to bed policy and unresolved recovery endpoints', async () => {
-    nextResponse = () => new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
+    nextResponse = () =>
+      new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
     await expect(inpatientClient.getBedBillingPolicy(101)).resolves.toBeNull();
     await inpatientClient.getUnresolvedBedBilling(101, 50);
-    const policy = { facilityId: 101, cutoffMinutes: 360, graceMinutes: 30, sameDayRule: 'ONE' as const, isActive: true, effectiveFrom: '2020-01-01', expectedRevision: null, reason: 'Synthetic approved policy' };
+    const policy = {
+      facilityId: 101,
+      cutoffMinutes: 360,
+      graceMinutes: 30,
+      sameDayRule: 'ONE' as const,
+      isActive: true,
+      effectiveFrom: '2020-01-01',
+      expectedRevision: null,
+      reason: 'Synthetic approved policy',
+    };
     await inpatientClient.setBedBillingPolicy(policy);
     await inpatientClient.getBeds(undefined, 101);
     await inpatientClient.getBedOccupancy(42, 101);
-    await inpatientClient.linkBedBillingEncounter(42, 19, 'Synthetic reason', 'Synthetic encounter register', true, 101);
-    await inpatientClient.reviewBedHistory(42, { timezone: 'Africa/Nairobi', cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', reason: 'Synthetic reason', evidenceReference: 'Synthetic record', affirmReviewedHistoryAndCharges: true, periods: [] }, 101);
+    await inpatientClient.linkBedBillingEncounter(
+      42,
+      19,
+      'Synthetic reason',
+      'Synthetic encounter register',
+      true,
+      101,
+    );
+    await inpatientClient.reviewBedHistory(
+      42,
+      {
+        timezone: 'Africa/Nairobi',
+        cutoffMinutes: 0,
+        graceMinutes: 0,
+        sameDayRule: 'ONE',
+        reason: 'Synthetic reason',
+        evidenceReference: 'Synthetic record',
+        affirmReviewedHistoryAndCharges: true,
+        periods: [],
+      },
+      101,
+    );
     await inpatientClient.retryBedBilling(42, 101);
-    await inpatientClient.dischargePatient(42, { facilityId: 101, dischargeType: 'Synthetic', dischargeSummary: 'Synthetic discharge' });
+    await inpatientClient.dischargePatient(42, {
+      facilityId: 101,
+      dischargeType: 'Synthetic',
+      dischargeSummary: 'Synthetic discharge',
+    });
     await inpatientClient.releaseBed(3, 101);
     expect(captured.map(({ method, url }) => `${method} ${url}`)).toEqual([
       'GET /api/inpatient/bed-billing-policy?facilityId=101',

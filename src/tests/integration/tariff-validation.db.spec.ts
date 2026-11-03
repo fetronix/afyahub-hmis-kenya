@@ -4,6 +4,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { pool } from '../../db/index.ts';
 import type { FacilityTariffValidation } from '../../types/index.ts';
 import { createSession } from '../../auth/session.service.ts';
+import { inspectTariffConfiguration } from '../../billing/tariff-validation.service.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
@@ -87,28 +88,42 @@ describeDb('Facility tariff validation', () => {
   afterAll(async () => {
     if (close) await close();
   });
-  it('requires facility administration, permission and scope', async () => {
-    const path = `/api/billing/tariff-validation?facilityId=${facility}`;
+  it('keeps the retired review endpoint unavailable and enforces permissions and scope on the current catalogue', async () => {
+    const retired = `/api/billing/tariff-validation?facilityId=${facility}`;
+    expect((await httpJson(base, 'GET', retired, { token })).status).toBe(404);
+    const path = `/api/facility-services?facilityId=${facility}`;
     expect((await httpJson(base, 'GET', path, { token: noPermission })).status).toBe(403);
     expect((await httpJson(base, 'GET', path, { token: foreign })).status).toBe(403);
-    expect((await httpJson(base, 'GET', `${path}&limit=201`, { token })).status).toBe(400);
+    expect((await httpJson(base, 'GET', path, { token: '' })).status).toBe(401);
+    expect((await httpJson(base, 'GET', path, { token })).status).toBe(200);
+    expect(
+      (
+        await httpJson(
+          base,
+          'GET',
+          `/api/facility-services/available?facilityId=${facility}&department=unknown`,
+          { token },
+        )
+      ).status,
+    ).toBe(400);
   });
   it('reports all pages of own catalogue and invalid configuration without leaking another facility', async () => {
     const checks: FacilityTariffValidation['checks'] = [];
     let offset: number | null = 0;
     let pages = 0;
     while (offset !== null) {
-      const response: { status: number; headers: Headers; body: FacilityTariffValidation } =
-        await httpJson<FacilityTariffValidation>(
-          base,
-          'GET',
-          `/api/billing/tariff-validation?facilityId=${facility}&limit=3&offset=${offset}`,
-          { token },
-        );
-      expect(response.status).toBe(200);
-      expect(response.body.limitations.join(' ')).toMatch(/not facility approval/i);
-      checks.push(...response.body.checks);
-      offset = response.body.nextOffset;
+      // The retired HTTP review is not re-exposed. Retain the historical
+      // evaluator's pagination and no-patient-details assertions in-process;
+      // its caller is responsible for authentication and scope.
+      const result: FacilityTariffValidation = await inspectTariffConfiguration(
+        tenant,
+        facility,
+        offset,
+        3,
+      );
+      expect(result.limitations.join(' ')).toMatch(/not facility approval/i);
+      checks.push(...result.checks);
+      offset = result.nextOffset;
       pages++;
       expect(pages).toBeLessThan(20);
     }

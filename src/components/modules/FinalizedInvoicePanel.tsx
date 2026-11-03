@@ -338,9 +338,12 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number }> = ({ invoice
                           {`Medicine #${line.inventoryItemId} · Prescription #${line.prescriptionId} · Dispensing #${line.dispensationId}`}
                           <br />
                           {line.stockTracking === 'FEFO'
-                            ? line.batchAllocations?.map((batch) =>
-                                `${batch.batchNumber} ×${batch.quantity} (exp ${batch.expiryDate})`,
-                              ).join(', ')
+                            ? line.batchAllocations
+                                ?.map(
+                                  (batch) =>
+                                    `${batch.batchNumber} ×${batch.quantity} (exp ${batch.expiryDate})`,
+                                )
+                                .join(', ')
                             : 'No tracked batch; expiry not verified'}
                         </div>
                       )}

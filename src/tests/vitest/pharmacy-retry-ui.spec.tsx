@@ -99,8 +99,13 @@ describe('Pharmacy retry recovery in one browser', () => {
   });
 
   it('shows the inventory price as a preview and submits no client price or tariff', async () => {
-    mocked.api.getInventory.mockResolvedValue([{ id: 55, name: 'Synthetic stock', unit: 'Tablet', sellingPrice: '7.50', currentStock: 10 }]);
-    mocked.api.dispenseMedication.mockResolvedValue({ stockTracking: 'untracked', billing: { charged: true, totalAmount: '7.50', invoiceNumber: 'SYN' } });
+    mocked.api.getInventory.mockResolvedValue([
+      { id: 55, name: 'Synthetic stock', unit: 'Tablet', sellingPrice: '7.50', currentStock: 10 },
+    ]);
+    mocked.api.dispenseMedication.mockResolvedValue({
+      stockTracking: 'untracked',
+      billing: { charged: true, totalAmount: '7.50', invoiceNumber: 'SYN' },
+    });
     const user = userEvent.setup();
     render(<PharmacyModule />);
     await user.click(await screen.findByRole('button', { name: 'Dispense Item' }));

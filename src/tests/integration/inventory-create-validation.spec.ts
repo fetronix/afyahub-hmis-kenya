@@ -71,13 +71,16 @@ describe('POST /api/inventory body validation', () => {
       },
     });
     expect(response.status).toBe(201);
-    expect(queries.createInventoryItem).toHaveBeenCalledWith({
-      facilityId: 10,
-      itemCode: 'A',
-      name: 'Item',
-      unitCost: 1.15,
-      sellingPrice: '2.30',
-      currentStock: 0,
-    }, { tenantId: 1, facilityId: 10, userId: 2 });
+    expect(queries.createInventoryItem).toHaveBeenCalledWith(
+      {
+        facilityId: 10,
+        itemCode: 'A',
+        name: 'Item',
+        unitCost: 1.15,
+        sellingPrice: '2.30',
+        currentStock: 0,
+      },
+      { tenantId: 1, facilityId: 10, userId: 2 },
+    );
   });
 });

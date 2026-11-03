@@ -224,10 +224,19 @@ function parseCost(value: unknown): string {
 export async function updateInventorySellingPriceScoped(
   context: AuthorizationContext,
   itemId: number,
-  input: { facilityId?: number; sellingPrice?: unknown; expectedPriceRevision?: unknown; reason?: unknown },
+  input: {
+    facilityId?: number;
+    sellingPrice?: unknown;
+    expectedPriceRevision?: unknown;
+    reason?: unknown;
+  },
 ) {
   if (!hasAllPermissions(context, ['inventory.manage', 'billing.update']))
-    throw new InventoryDomainError('FORBIDDEN', 'Inventory and facility finance permissions are required.', 403);
+    throw new InventoryDomainError(
+      'FORBIDDEN',
+      'Inventory and facility finance permissions are required.',
+      403,
+    );
   const { facilityId, tenantId } = await resolveFacility(context, input.facilityId);
   const id = parsePositiveInt(itemId, 'Stock item ID', 2_147_483_647);
   const cents =
@@ -235,20 +244,33 @@ export async function updateInventorySellingPriceScoped(
   const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
   const expectedRevision = input.expectedPriceRevision;
   if (cents === null || cents <= 0 || cents > 9_999_999_999)
-    throw new InventoryDomainError('INVALID_INPUT', 'Enter a positive selling price with at most two decimals.');
+    throw new InventoryDomainError(
+      'INVALID_INPUT',
+      'Enter a positive selling price with at most two decimals.',
+    );
   if (
-    typeof expectedRevision !== 'number' || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1 ||
-    reason.length < 3 || reason.length > 500 || /\p{Cc}/u.test(reason)
+    typeof expectedRevision !== 'number' ||
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 1 ||
+    reason.length < 3 ||
+    reason.length > 500 ||
+    /\p{Cc}/u.test(reason)
   )
-    throw new InventoryDomainError('INVALID_INPUT', 'A current inventory revision and a reason are required.');
+    throw new InventoryDomainError(
+      'INVALID_INPUT',
+      'A current inventory revision and a reason are required.',
+    );
   return db.transaction(async (tx) => {
     const [item] = await tx
       .select()
       .from(schema.inventoryItems)
-      .where(and(eq(schema.inventoryItems.id, id), eq(schema.inventoryItems.facilityId, facilityId)))
+      .where(
+        and(eq(schema.inventoryItems.id, id), eq(schema.inventoryItems.facilityId, facilityId)),
+      )
       .limit(1)
       .for('update');
-    if (!item) throw new InventoryDomainError('ITEM_NOT_FOUND', 'Facility stock item not found.', 404);
+    if (!item)
+      throw new InventoryDomainError('ITEM_NOT_FOUND', 'Facility stock item not found.', 404);
     if (item.priceRevision !== expectedRevision)
       throw new InventoryDomainError(
         'INVENTORY_PRICE_CONFLICT',
@@ -258,7 +280,11 @@ export async function updateInventorySellingPriceScoped(
     const price = formatCents(cents);
     if (item.sellingPrice === price) return item;
     if (item.priceRevision >= 2_147_483_647)
-      throw new InventoryDomainError('INVENTORY_PRICE_CONFLICT', 'The price revision requires review.', 409);
+      throw new InventoryDomainError(
+        'INVENTORY_PRICE_CONFLICT',
+        'The price revision requires review.',
+        409,
+      );
     const [updated] = await tx
       .update(schema.inventoryItems)
       .set({ sellingPrice: price, priceRevision: item.priceRevision + 1, updatedAt: new Date() })
@@ -355,11 +381,20 @@ export async function receiveBatchScoped(
     }
     // Re-check after the item lock in case the local date changed while waiting.
     if (expiryRaw < calendarDateInZone(timezone))
-      throw new InventoryDomainError('EXPIRED_BATCH', 'The batch has expired and cannot be received.', 409);
+      throw new InventoryDomainError(
+        'EXPIRED_BATCH',
+        'The batch has expired and cannot be received.',
+        409,
+      );
     const [existing] = await tx
       .select({ expiryDate: schema.inventoryBatches.expiryDate })
       .from(schema.inventoryBatches)
-      .where(and(eq(schema.inventoryBatches.itemId, item.id), eq(schema.inventoryBatches.batchNumber, batchNumber)))
+      .where(
+        and(
+          eq(schema.inventoryBatches.itemId, item.id),
+          eq(schema.inventoryBatches.batchNumber, batchNumber),
+        ),
+      )
       .limit(1)
       .for('update');
     if (existing && existing.expiryDate !== expiryRaw)

@@ -47,7 +47,8 @@ export async function createInventoryItem(
     return await db.transaction(async (tx) => {
       const [created] = await tx.insert(schema.inventoryItems).values(data).returning();
       if (auditContext) {
-        if (created.facilityId !== auditContext.facilityId) throw new Error('INVENTORY_SCOPE_INVALID');
+        if (created.facilityId !== auditContext.facilityId)
+          throw new Error('INVENTORY_SCOPE_INVALID');
         await tx.insert(schema.auditLogs).values({
           tenantId: auditContext.tenantId,
           facilityId: auditContext.facilityId,

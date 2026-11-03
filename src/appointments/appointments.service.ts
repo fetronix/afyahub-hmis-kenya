@@ -122,16 +122,14 @@ async function saveRequest(
   appointmentId: number,
 ) {
   if (!key) return;
-  await tx
-    .insert(schema.appointmentRequests)
-    .values({
-      ...scope,
-      actorUserId: actor,
-      operation,
-      requestKey: key,
-      requestHash,
-      resultAppointmentId: appointmentId,
-    });
+  await tx.insert(schema.appointmentRequests).values({
+    ...scope,
+    actorUserId: actor,
+    operation,
+    requestKey: key,
+    requestHash,
+    resultAppointmentId: appointmentId,
+  });
 }
 async function audit(
   tx: Tx,
@@ -142,16 +140,14 @@ async function audit(
   id: number,
   details: Record<string, unknown>,
 ) {
-  await tx
-    .insert(schema.auditLogs)
-    .values({
-      ...scope,
-      userId: String(actor),
-      action,
-      resource,
-      resourceId: String(id),
-      details: JSON.stringify(details),
-    });
+  await tx.insert(schema.auditLogs).values({
+    ...scope,
+    userId: String(actor),
+    action,
+    resource,
+    resourceId: String(id),
+    details: JSON.stringify(details),
+  });
 }
 async function event(
   tx: Tx,

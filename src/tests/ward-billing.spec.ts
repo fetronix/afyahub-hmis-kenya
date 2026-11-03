@@ -853,20 +853,64 @@ describe('Inpatient ward billing — the discharge that billed the bed at nothin
     const staging = source('src/inpatient/bed-billing.service.ts');
     const bedResolver = source('src/billing/bed-occupancy-charge.ts');
     const evidence = source('src/inpatient/bed-evidence.ts');
-    expect(accrual.includes('stageDischargedBedNights('), 'discharged accrual stages immutable occupancy evidence').toBe(true);
-    expect(accrual.includes('estimateOnly: true'), 'an active stay is estimated rather than billed').toBe(true);
-    expect(accrual.includes('chargeAndRecord(db,'), 'each night still uses the existing billing engine').toBe(true);
-    expect(staging.includes("sourceType: 'BED_DAY'"), 'the night is charged as a bed-day').toBe(true);
-    expect(staging.includes('idempotencySuffix: date'), 'each night keeps its date in the key').toBe(true);
-    expect(staging.includes('sourceId: admission.id'), 'the charge stays attached to the admission').toBe(true);
-    expect(staging.includes('encounterId: admission.encounterId ?? null'), 'the request retains the verified encounter').toBe(true);
-    expect(!accrual.includes('.insert(schema.admissionTransfers)'), 'billing never creates a transfer').toBe(true);
-    expect(!accrual.includes('.insert(schema.admissions)'), 'billing never re-admits the patient').toBe(true);
-    expect(resolver.includes('const where = eq(schema.facilityServiceTariffs.facilityId, facilityId);'), 'other services retain facility tariff isolation').toBe(true);
-    expect(staging.includes('facilityId: admission.facilityId') && staging.includes('patientId: admission.patientId'), 'the night retains the scoped facility and patient').toBe(true);
-    expect(evidence.includes('calculateBedNights(policy, periods, asOf)'), 'the facility policy uses captured occupancy periods').toBe(true);
-    expect(bedResolver.includes('night.unitPriceSnapshot') && !bedResolver.includes('facilityServiceTariffs'), 'the bed-night resolver uses the captured rate rather than tariffs').toBe(true);
-    expect(bedResolver.includes('admission.tenantId !== request.tenantId') && bedResolver.includes('admission.facilityId !== request.facilityId'), 'the bed resolver verifies tenant and facility').toBe(true);
+    expect(
+      accrual.includes('stageDischargedBedNights('),
+      'discharged accrual stages immutable occupancy evidence',
+    ).toBe(true);
+    expect(
+      accrual.includes('estimateOnly: true'),
+      'an active stay is estimated rather than billed',
+    ).toBe(true);
+    expect(
+      accrual.includes('chargeAndRecord(db,'),
+      'each night still uses the existing billing engine',
+    ).toBe(true);
+    expect(staging.includes("sourceType: 'BED_DAY'"), 'the night is charged as a bed-day').toBe(
+      true,
+    );
+    expect(
+      staging.includes('idempotencySuffix: date'),
+      'each night keeps its date in the key',
+    ).toBe(true);
+    expect(
+      staging.includes('sourceId: admission.id'),
+      'the charge stays attached to the admission',
+    ).toBe(true);
+    expect(
+      staging.includes('encounterId: admission.encounterId ?? null'),
+      'the request retains the verified encounter',
+    ).toBe(true);
+    expect(
+      !accrual.includes('.insert(schema.admissionTransfers)'),
+      'billing never creates a transfer',
+    ).toBe(true);
+    expect(
+      !accrual.includes('.insert(schema.admissions)'),
+      'billing never re-admits the patient',
+    ).toBe(true);
+    expect(
+      resolver.includes('const where = eq(schema.facilityServiceTariffs.facilityId, facilityId);'),
+      'other services retain facility tariff isolation',
+    ).toBe(true);
+    expect(
+      staging.includes('facilityId: admission.facilityId') &&
+        staging.includes('patientId: admission.patientId'),
+      'the night retains the scoped facility and patient',
+    ).toBe(true);
+    expect(
+      evidence.includes('calculateBedNights(policy, periods, asOf)'),
+      'the facility policy uses captured occupancy periods',
+    ).toBe(true);
+    expect(
+      bedResolver.includes('night.unitPriceSnapshot') &&
+        !bedResolver.includes('facilityServiceTariffs'),
+      'the bed-night resolver uses the captured rate rather than tariffs',
+    ).toBe(true);
+    expect(
+      bedResolver.includes('admission.tenantId !== request.tenantId') &&
+        bedResolver.includes('admission.facilityId !== request.facilityId'),
+      'the bed resolver verifies tenant and facility',
+    ).toBe(true);
   });
 
   it('9. LABORATORY AND OPD BILLING ARE UNCHANGED', async () => {

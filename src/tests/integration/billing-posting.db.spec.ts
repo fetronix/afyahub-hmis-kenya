@@ -11,6 +11,12 @@ import { recordManualRefund } from '../../billing/refunds.service.ts';
 import { inspectBillingLedgerScoped } from '../../accounting/billing-ledger-diagnostics.service.ts';
 import { inspectBillingJournalExceptionsScoped } from '../../accounting/billing-journal-exceptions.service.ts';
 import { postBillingSourceScoped } from '../../accounting/billing-posting.service.ts';
+import { inspectTariffConfiguration } from '../../billing/tariff-validation.service.ts';
+import {
+  importTariffs,
+  previewTariffImport,
+  tariffImportStatus,
+} from '../../billing/tariff-import.service.ts';
 import {
   createAccountScoped,
   createFinancialPeriodScoped,
@@ -608,22 +614,23 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
     ).toBe(true);
   });
 
-  it('reports billed codes absent from the current catalogue without patient details and rolls tariff changes back on audit failure', async () => {
+  it('keeps historical billed-code diagnostics private and rolls current service changes back on audit failure', async () => {
     const invoice = await makeInvoice(false);
     await pool.query('UPDATE billing_items SET tariff_id=NULL,tariff_code=$2 WHERE invoice_id=$1', [
       invoice,
       `MISSING-${suffix}`,
     ]);
-    const report = await httpJson(
-      base,
-      'GET',
-      `/api/billing/tariff-validation?facilityId=${facility}&limit=200`,
-      { token: managerToken },
-    );
-    expect(report.status).toBe(200);
-    const billed = report.body.checks.find(
-      (row: { code: string | null }) => row.code === `MISSING-${suffix}`,
-    );
+    // The old review endpoint is deliberately retired; exercise the retained
+    // historical evaluator directly without re-exposing its report in the UI.
+    expect(
+      (
+        await httpJson(base, 'GET', `/api/billing/tariff-validation?facilityId=${facility}`, {
+          token: managerToken,
+        })
+      ).status,
+    ).toBe(404);
+    const report = await inspectTariffConfiguration(tenant, facility, 0, 200);
+    const billed = report.checks.find((row) => row.code === `MISSING-${suffix}`);
     expect(billed).toMatchObject({
       kind: 'BILLED_SERVICE',
       reasons: expect.arrayContaining([
@@ -634,23 +641,31 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
     expect(JSON.stringify(billed)).not.toContain('Patient');
     expect(
       (
-        await httpJson(
-          base,
-          'GET',
-          `/api/billing/tariff-validation?facilityId=${facility}&limit=200`,
-          { token: foreignToken },
-        )
+        await httpJson(base, 'GET', `/api/facility-tariffs?facilityId=${facility}`, {
+          token: foreignToken,
+        })
       ).status,
     ).toBe(403);
-    const input = {
+
+    const serviceBody = {
       facilityId: facility,
       code: `ATOMIC-${suffix}`,
+      name: 'Synthetic service',
       description: 'Synthetic service',
+      category: 'CONSULTATION',
       department: 'opd',
       unit: 'Visit',
-      fee: '42.00',
+      initialPrice: '50.00',
+      isActive: true,
+      autoBill: true,
     };
-    const path = '/api/service-tariffs';
+    const created = await httpJson(base, 'POST', '/api/facility-services', {
+      token: managerToken,
+      body: serviceBody,
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const service = created.body.service;
+    const currentTariff = created.body.tariff;
     const functionName = `synthetic_tariff_fail_${suffix.replace(/-/g, '')}`;
     const triggerName = `synthetic_tariff_trigger_${suffix.replace(/-/g, '')}`;
     await pool.query(`CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
@@ -660,40 +675,66 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
       `CREATE TRIGGER ${triggerName} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${functionName}()`,
     );
     try {
-      expect(
-        (await httpJson(base, 'POST', path, { token: managerToken, body: input })).status,
-      ).toBe(500);
+      const failingCode = `FAIL-${serviceBody.code}`;
       expect(
         (
-          await pool.query(
-            'SELECT count(*)::int AS n FROM facility_service_tariffs WHERE facility_id=$1 AND code=$2',
-            [facility, input.code.toUpperCase()],
-          )
-        ).rows[0].n,
-      ).toBe(0);
-      expect(
-        (
-          await httpJson(base, 'PUT', `${path}/${tariff}`, {
+          await httpJson(base, 'POST', '/api/facility-services', {
             token: managerToken,
-            body: { ...input, code: `SYN-${suffix}`, fee: '99.00', department: 'laboratory' },
+            body: { ...serviceBody, code: failingCode },
+          })
+        ).status,
+      ).toBe(500);
+      for (const table of ['facility_services', 'facility_service_tariffs'])
+        expect(
+          (
+            await pool.query(
+              `SELECT count(*)::int n FROM ${table} WHERE facility_id=$1 AND code=$2`,
+              [facility, failingCode.toUpperCase()],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+      expect(
+        (
+          await httpJson(base, 'PUT', `/api/facility-tariffs/${currentTariff.id}`, {
+            token: managerToken,
+            body: {
+              facilityId: facility,
+              serviceId: service.id,
+              expectedRevision: currentTariff.revision,
+              code: serviceBody.code,
+              description: 'Synthetic revised',
+              department: 'opd',
+              unit: 'Visit',
+              fee: '99.00',
+              effectiveFrom: null,
+              effectiveTo: null,
+              isActive: true,
+              autoBill: true,
+            },
           })
         ).status,
       ).toBe(500);
       expect(
-        (await pool.query('SELECT fee::text FROM facility_service_tariffs WHERE id=$1', [tariff]))
-          .rows[0].fee,
+        (
+          await pool.query('SELECT fee::text FROM facility_service_tariffs WHERE id=$1', [
+            currentTariff.id,
+          ])
+        ).rows[0].fee,
       ).toBe('50.00');
       expect(
         (
-          await httpJson(base, 'PATCH', `${path}/${tariff}/deactivate`, {
+          await httpJson(base, 'PATCH', `/api/facility-tariffs/${currentTariff.id}/status`, {
             token: managerToken,
-            body: { facilityId: facility },
+            body: { facilityId: facility, isActive: false },
           })
         ).status,
       ).toBe(500);
       expect(
-        (await pool.query('SELECT is_active FROM facility_service_tariffs WHERE id=$1', [tariff]))
-          .rows[0].is_active,
+        (
+          await pool.query('SELECT is_active FROM facility_service_tariffs WHERE id=$1', [
+            currentTariff.id,
+          ])
+        ).rows[0].is_active,
       ).toBe(true);
     } finally {
       await pool.query(`DROP TRIGGER ${triggerName} ON audit_logs`);
@@ -701,7 +742,7 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
     }
   });
 
-  it('validates and atomically imports only explicitly approved tariffs with safe retries', async () => {
+  it('retains atomic legacy import validation and retries without restoring the retired HTTP importer', async () => {
     const rows = [
       {
         code: `IMPORT-A-${suffix}`,
@@ -720,13 +761,41 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
         autoBill: false,
       },
     ];
+    const facilityRow = {
+      id: facility,
+      tenantId: tenant,
+      enabledModules: ['finance', 'accounting', 'opd', 'laboratory'],
+    };
+    // All actors see the removed endpoint as unavailable. Authorization on the
+    // current service catalogue remains tested separately; these core legacy
+    // functions are called only with explicitly scoped synthetic input.
     const path = '/api/service-tariffs/import';
-    const preview = await httpJson(base, 'POST', `${path}/validate`, {
-      token: managerToken,
-      body: { facilityId: facility, rows },
-    });
-    expect(preview.status).toBe(200);
-    expect(preview.body).toMatchObject({ valid: true, rowCount: 2, issues: [] });
+    for (const session of [managerToken, accountingOnlyToken, foreignToken])
+      expect(
+        (
+          await httpJson(base, 'POST', path, {
+            token: session,
+            body: { facilityId: facility, rows },
+          })
+        ).status,
+      ).toBe(404);
+    expect(
+      (
+        await httpJson(base, 'POST', '/api/facility-services', {
+          token: accountingOnlyToken,
+          body: { facilityId: facility },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await httpJson(base, 'GET', `/api/facility-services?facilityId=${facility}`, {
+          token: foreignToken,
+        })
+      ).status,
+    ).toBe(403);
+    const preview = await previewTariffImport(facilityRow, rows);
+    expect(preview).toMatchObject({ valid: true, rowCount: 2, issues: [] });
     expect(
       (
         await pool.query(
@@ -735,20 +804,15 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
         )
       ).rows[0].n,
     ).toBe(0);
-    const invalid = await httpJson(base, 'POST', `${path}/validate`, {
-      token: managerToken,
-      body: { facilityId: facility, rows: [{ ...rows[0], fee: undefined }] },
-    });
-    expect(invalid.body.valid).toBe(false);
-    expect(invalid.body.issues[0].reasons).toContain('MISSING_PRICE');
-    const duplicate = await httpJson(base, 'POST', `${path}/validate`, {
-      token: managerToken,
-      body: {
-        facilityId: facility,
-        rows: [rows[0], { ...rows[0], code: rows[0].code.toLowerCase() }],
-      },
-    });
-    expect(duplicate.body.issues[0].reasons).toContain('DUPLICATE_CODE_IN_BATCH');
+    const { fee: _omittedFee, ...missingPrice } = rows[0];
+    const invalid = await previewTariffImport(facilityRow, [missingPrice]);
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues[0].reasons).toContain('MISSING_PRICE');
+    const duplicate = await previewTariffImport(facilityRow, [
+      rows[0],
+      { ...rows[0], code: rows[0].code.toLowerCase() },
+    ]);
+    expect(duplicate.issues[0].reasons).toContain('DUPLICATE_CODE_IN_BATCH');
     const key = randomUUID();
     const body = {
       facilityId: facility,
@@ -757,24 +821,15 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
       confirmed: true,
       approvalReference: 'Synthetic facility review',
     };
-    expect((await httpJson(base, 'POST', path, { token: accountingOnlyToken, body })).status).toBe(
-      403,
-    );
-    expect((await httpJson(base, 'POST', path, { token: foreignToken, body })).status).toBe(403);
-    expect(
-      (
-        await httpJson(base, 'POST', path, {
-          token: managerToken,
-          body: { ...body, confirmed: false },
-        })
-      ).status,
-    ).toBe(400);
+    await expect(
+      importTariffs(facilityRow, actor, { ...body, confirmed: false }),
+    ).rejects.toMatchObject({ code: 'APPROVAL_REFERENCE_REQUIRED' });
     const attempts = await Promise.all(
-      Array.from({ length: 4 }, () => httpJson(base, 'POST', path, { token: managerToken, body })),
+      Array.from({ length: 4 }, () => importTariffs(facilityRow, actor, body)),
     );
-    expect(attempts.filter((response) => response.status === 201)).toHaveLength(1);
-    expect(attempts.filter((response) => response.status === 200)).toHaveLength(3);
-    expect(new Set(attempts.map((response) => response.body.batchId)).size).toBe(1);
+    expect(attempts.filter((result) => !result.idempotentReplay)).toHaveLength(1);
+    expect(attempts.filter((result) => result.idempotentReplay)).toHaveLength(3);
+    expect(new Set(attempts.map((result) => result.batchId)).size).toBe(1);
     expect(
       (
         await pool.query(
@@ -783,33 +838,18 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
         )
       ).rows[0].n,
     ).toBe(2);
-    expect(
-      (
-        await httpJson(base, 'POST', path, {
-          token: managerToken,
-          body: { ...body, approvalReference: 'Different review' },
-        })
-      ).body.error,
-    ).toBe('IDEMPOTENCY_CONFLICT');
-    const status = await httpJson(base, 'POST', `${path}/status`, {
-      token: managerToken,
-      body: { facilityId: facility, idempotencyKey: key },
-    });
-    expect(status.body).toMatchObject({
-      status: 'RECORDED',
-      rowCount: 2,
-      batchId: attempts[0].body.batchId,
-    });
+    await expect(
+      importTariffs(facilityRow, actor, { ...body, approvalReference: 'Different review' }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    const status = await tariffImportStatus(facilityRow, key);
+    expect(status).toMatchObject({ status: 'RECORDED', rowCount: 2, batchId: attempts[0].batchId });
     await expect(
       pool.query('UPDATE facility_tariff_import_batches SET row_count=row_count WHERE id=$1', [
-        status.body.batchId,
+        attempts[0].batchId,
       ]),
     ).rejects.toMatchObject({ code: '23514' });
-    const conflict = await httpJson(base, 'POST', `${path}/validate`, {
-      token: managerToken,
-      body: { facilityId: facility, rows },
-    });
-    expect(conflict.body.issues[0].reasons).toContain('CODE_ALREADY_EXISTS');
+    const conflict = await previewTariffImport(facilityRow, rows);
+    expect(conflict.issues[0].reasons).toContain('CODE_ALREADY_EXISTS');
 
     const functionName = `synthetic_import_fail_${suffix.replace(/-/g, '')}`;
     const triggerName = `synthetic_import_trigger_${suffix.replace(/-/g, '')}`;
@@ -821,11 +861,13 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
     );
     try {
       const failingRows = rows.map((row) => ({ ...row, code: `FAIL-${row.code}` }));
-      const failure = await httpJson(base, 'POST', path, {
-        token: managerToken,
-        body: { ...body, rows: failingRows, idempotencyKey: randomUUID() },
-      });
-      expect(failure.status).toBe(500);
+      await expect(
+        importTariffs(facilityRow, actor, {
+          ...body,
+          rows: failingRows,
+          idempotencyKey: randomUUID(),
+        }),
+      ).rejects.toThrow('Synthetic audit failure');
       expect(
         (
           await pool.query(

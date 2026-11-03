@@ -63,7 +63,18 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
   let facilityRow: { id: number; tenantId: number; enabledModules: unknown };
   let otherRow: { id: number; tenantId: number; enabledModules: unknown };
   let encounterId: number, invoiceId: number, imagingId: number, admissionId: number;
-  let base: string, close: () => Promise<void>, token: string;
+  let base: string, close: () => Promise<void>, token: string, otherToken: string;
+  type DirectService = {
+    service: { id: number; code: string; name: string };
+    tariff: { id: number; revision: number };
+  };
+  let directOpd: DirectService,
+    directLab: DirectService,
+    directImaging: DirectService,
+    directAdmission: DirectService,
+    directZero: DirectService,
+    directFollowUp: DirectService,
+    otherOpd: DirectService;
   const modules = [
     'registration',
     'finance',
@@ -150,10 +161,14 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     ).id;
     itemId = (
       await pool.query(
-        "INSERT INTO inventory_items(facility_id,item_code,name,unit,current_stock) VALUES($1,'MED-A','Synthetic actual product','Tablets',20) RETURNING id",
+        "INSERT INTO inventory_items(facility_id,item_code,name,unit,current_stock,selling_price) VALUES($1,'MED-A','Synthetic actual product','Tablets',20,'25.00') RETURNING id",
         [facility],
       )
     ).rows[0].id;
+    await pool.query(
+      "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,'SYNTHETIC','2099-12-31',20)",
+      [itemId],
+    );
     wardId = (
       await pool.query(
         "INSERT INTO wards(facility_id,code,name) VALUES($1,'WARD-A','Synthetic ward') RETURNING id",
@@ -161,9 +176,10 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       )
     ).rows[0].id;
     bedId = (
-      await pool.query("INSERT INTO beds(ward_id,bed_number) VALUES($1,'A-1') RETURNING id", [
-        wardId,
-      ])
+      await pool.query(
+        "INSERT INTO beds(ward_id,bed_number,daily_charge) VALUES($1,'A-1','90.00') RETURNING id",
+        [wardId],
+      )
     ).rows[0].id;
     legacyId = (
       await pool.query(
@@ -194,6 +210,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       'inpatient.read',
       'inpatient.admit',
       'inpatient.discharge',
+      'inpatient.wards.update',
       'billing.read',
       'billing.create',
       'billing.update',
@@ -209,7 +226,15 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
         [role, permission],
       );
     }
+    const otherActor = (
+      await pool.query(
+        "INSERT INTO users(uid,username,email,full_name,password_hash,account_status,tenant_id,facility_id) VALUES($1,$1,$2,'Synthetic other facility','test-only','ACTIVE',$3,$4) RETURNING id",
+        [`master-other-${suffix}`, `master-other-${suffix}@example.test`, tenant, other],
+      )
+    ).rows[0].id;
+    await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [otherActor, role]);
     token = (await createSession({ userId: actor, securityVersion: 1 })).sessionToken;
+    otherToken = (await createSession({ userId: otherActor, securityVersion: 1 })).sessionToken;
     const { createApp } = await import('../../app.ts');
     ({ baseUrl: base, close } = await startTestServer(await createApp()));
     ctx = {
@@ -217,9 +242,83 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       tenantId: tenant,
       facilityId: facility,
       roles: ['FACILITY_ADMIN'],
-      permissions: ['billing.read', 'billing.payments.record', 'billing.refunds.record'],
+      permissions: [
+        'billing.read',
+        'billing.payments.record',
+        'billing.refunds.record',
+        'clinical.read',
+        'clinical.create',
+      ],
       isSuperAdmin: false,
     };
+    await pool.query("UPDATE facilities SET timezone='Africa/Nairobi' WHERE id=$1", [facility]);
+    const policy = await call('PUT', '/api/inpatient/bed-billing-policy', {
+      cutoffMinutes: 0,
+      graceMinutes: 0,
+      sameDayRule: 'ONE',
+      isActive: true,
+      effectiveFrom: '2020-01-01',
+      reason: 'Synthetic reviewed policy',
+    });
+    expect(policy.status, JSON.stringify(policy.body)).toBe(200);
+    directOpd = await createDirectService(
+      'DIRECT-OPD',
+      'Synthetic consultation',
+      'CONSULTATION',
+      'opd',
+      'Visit',
+      '100.00',
+    );
+    directLab = await createDirectService(
+      'CBC',
+      'Synthetic exact count',
+      'LABORATORY',
+      'laboratory',
+      'Test',
+      '800.00',
+    );
+    directImaging = await createDirectService(
+      'DIRECT-IMAGING',
+      'Synthetic specific examination',
+      'RADIOLOGY',
+      'radiology',
+      'Examination',
+      '300.00',
+    );
+    directAdmission = await createDirectService(
+      'DIRECT-ADMISSION',
+      'Synthetic admission',
+      'ADMISSION',
+      'inpatient',
+      'Admission',
+      '60.00',
+    );
+    directZero = await createDirectService(
+      'DIRECT-ZERO',
+      'Synthetic zero price consultation',
+      'CONSULTATION',
+      'opd',
+      'Visit',
+      '0.00',
+    );
+    directFollowUp = await createDirectService(
+      'DIRECT-FOLLOW',
+      'Synthetic follow up',
+      'CONSULTATION',
+      'opd',
+      'Visit',
+      '42.00',
+    );
+    otherOpd = await createDirectService(
+      'DIRECT-OPD',
+      'Synthetic consultation',
+      'CONSULTATION',
+      'opd',
+      'Visit',
+      '999.00',
+      otherToken,
+      other,
+    );
   });
 
   afterAll(async () => {
@@ -227,6 +326,36 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
   });
   const call = (method: string, path: string, body?: Record<string, unknown>, session = token) =>
     httpJson(base, method, path, { token: session, body });
+  async function createDirectService(
+    code: string,
+    name: string,
+    category: string,
+    department: string,
+    unit: string,
+    initialPrice: string,
+    session = token,
+    target = facility,
+  ): Promise<DirectService> {
+    const result = await call(
+      'POST',
+      '/api/facility-services',
+      {
+        facilityId: target,
+        code,
+        name,
+        description: name,
+        category,
+        department,
+        unit,
+        initialPrice,
+        isActive: true,
+        autoBill: true,
+      },
+      session,
+    );
+    expect(result.status, JSON.stringify(result.body)).toBe(201);
+    return result.body;
+  }
 
   it('synchronises exact sources without changing existing prices and requires review', async () => {
     const before = (
@@ -281,15 +410,12 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
   });
 
   it('bills exactly one completed consultation, with immutable source and tariff snapshots', async () => {
-    const opd = (await listMasterCatalogue(facilityRow)).find(
-      (row) => row.master.code === 'JC-OPD-CONSULT',
-    )!.master;
     const encounter = await createEncounterScoped(ctx, {
       tenantId: tenant,
       facilityId: facility,
       patientId: patient,
       encounterType: 'OUTPATIENT',
-      consultationMasterServiceId: opd.id,
+      consultationFacilityServiceId: directOpd.service.id,
     });
     encounterId = encounter.id;
     expect(
@@ -314,8 +440,8 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       )
     ).rows[0];
     expect(line).toMatchObject({
-      tariff_code: 'OPD-CONSULT',
-      service_code: 'JC-OPD-CONSULT',
+      tariff_code: 'DIRECT-OPD',
+      service_code: 'DIRECT-OPD',
       service_department: 'opd',
       service_unit: 'Visit',
       source_type: 'CONSULTATION',
@@ -412,7 +538,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       ...labOrderChargeRequest(completed),
       codes: ['LAB-SPUT'],
     });
-    expect(outcome).toMatchObject({ charged: false, diagnosis: { code: 'CATALOGUE_NOT_FOUND' } });
+    expect(outcome).toMatchObject({ charged: false, diagnosis: { code: 'SERVICE_NOT_SELECTED' } });
     expect(
       (
         await pool.query(
@@ -437,7 +563,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       facilityId: facility,
       patientId: patient,
       encounterId,
-      masterServiceId: imagingId,
+      facilityServiceId: directImaging.service.id,
       modality: 'Ultrasound',
       procedureName: 'Synthetic specific examination',
       status: 'Requested',
@@ -457,18 +583,52 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
   });
 
   it('bills the actual dispensed inventory item and its actual quantity', async () => {
+    const visit = await createEncounterScoped(ctx, {
+      tenantId: tenant,
+      facilityId: facility,
+      patientId: patient,
+      encounterType: 'OUTPATIENT',
+      consultationFacilityServiceId: directOpd.service.id,
+    });
+    const prescribed = await call('POST', '/api/medications', {
+      encounterId: visit.id,
+      patientId: patient,
+      drugName: 'Synthetic prescribed product',
+      dosage: 'Synthetic',
+      frequency: 'Synthetic',
+      duration: 'Synthetic',
+      quantity: 2,
+    });
+    expect(prescribed.status, JSON.stringify(prescribed.body)).toBe(201);
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [itemId])).rows[0]
+        .current_stock,
+    ).toBe(20);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM billing_invoices WHERE encounter_id=$1', [
+          visit.id,
+        ])
+      ).rows[0].n,
+    ).toBe(0);
     const result = await dispenseFefoScoped(ctx, {
       facilityId: facility,
       patientId: patient,
+      prescriptionId: prescribed.body.id,
       itemId,
       quantityDispensed: 2,
       dispensedBy: 'Synthetic',
       idempotencyKey: randomUUID(),
     });
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [itemId])).rows[0]
+        .current_stock,
+    ).toBe(18);
     const billed = await chargeAndRecord(db, {
       tenantId: tenant,
       facilityId: facility,
       patientId: patient,
+      encounterId: visit.id,
       codes: ['MISLEADING-DRUG-NAME'],
       family: 'PHARMACY',
       sourceType: 'PHARMACY',
@@ -477,7 +637,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       quantity: 2,
       serviceName: result.billingContext.drugName,
     });
-    expect(billed).toMatchObject({
+    expect(billed, JSON.stringify(billed)).toMatchObject({
       charged: true,
       description: 'Synthetic actual product',
       quantity: 2,
@@ -489,30 +649,26 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     const admission = await createAdmissionScoped(ctx, {
       facilityId: facility,
       patientId: patient,
-      encounterId,
       wardId,
       bedId,
+      facilityServiceId: directAdmission.service.id,
     });
     admissionId = admission.id;
     const billed = await chargeAndRecord(db, admissionChargeRequest(admission));
     expect(billed).toMatchObject({ charged: true, totalAmount: '60.00' });
-    const row = (await listMasterCatalogue(facilityRow)).find(
-      (x) => x.master.code === 'JC-EMERGENCY-CONSULT',
-    )!;
-    expect(row.tariff?.fee).toBe('0.00');
     const emergency = await createEncounterScoped(ctx, {
       tenantId: tenant,
       facilityId: facility,
       patientId: patient,
       encounterType: 'EMERGENCY',
-      consultationMasterServiceId: row.master.id,
+      consultationFacilityServiceId: directZero.service.id,
     });
     const done = await updateEncounterScoped(ctx, emergency.id, { status: 'Completed' });
     const blocked = await chargeAndRecord(db, consultationChargeRequest(done!));
     expect(blocked).toMatchObject({ charged: false, diagnosis: { code: 'ZERO_PRICE' } });
   });
 
-  it('atomically queues ward-specific bed-day work on transfer and avoids requeueing on discharge', async () => {
+  it('records a transfer and durable discharge work, then bills the occupied bed snapshot only once', async () => {
     const [nextWard] = (
       await pool.query(
         "INSERT INTO wards(facility_id,code,name) VALUES($1,$2,'Synthetic transfer ward') RETURNING id",
@@ -520,41 +676,65 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       )
     ).rows;
     const [nextBed] = (
-      await pool.query("INSERT INTO beds(ward_id,bed_number) VALUES($1,'B-1') RETURNING id", [
-        nextWard.id,
-      ])
+      await pool.query(
+        "INSERT INTO beds(ward_id,bed_number,daily_charge) VALUES($1,'B-1','120.00') RETURNING id",
+        [nextWard.id],
+      )
     ).rows;
-    await syncMasterCatalogue(facilityRow, actor);
-    await configure(facilityRow, await sourceMaster('BED_DAY', nextWard.id), '120.00');
     await transferAdmissionScoped(ctx, admissionId, {
       toWardId: nextWard.id,
       toBedId: nextBed.id,
       transferredBy: 'Synthetic',
     });
-    // Simulates a crash before the route's post-commit billing call: the work is already durable.
-    const queued = (
-      await pool.query(
-        "SELECT id,service_ref_id,service_date,idempotency_suffix FROM billing_charge_attempts WHERE source_type='BED_DAY' AND source_id=$1 AND status='PENDING'",
-        [admissionId],
-      )
-    ).rows;
-    expect(queued).toHaveLength(1);
-    expect(queued[0].service_ref_id).toBe(nextWard.id);
-    expect(queued[0].service_date).toBeTruthy();
-    const result = await accrueBedDaysScoped(ctx, admissionId);
-    expect(result.charges).toHaveLength(1);
-    expect(result.charges[0]).toMatchObject({ charged: true, totalAmount: '120.00' });
-    const replay = await accrueBedDaysScoped(ctx, admissionId);
-    expect(replay.charges[0]).toMatchObject({ charged: false, reason: 'DUPLICATE' });
-    await dischargeAdmissionScoped(ctx, admissionId, {});
+    const beforeDischarge = await accrueBedDaysScoped(ctx, admissionId);
+    expect(beforeDischarge).toMatchObject({ estimateOnly: true, charges: [] });
     expect(
       (
         await pool.query(
-          "SELECT count(*)::int n FROM billing_charge_attempts WHERE source_type='BED_DAY' AND source_id=$1 AND status='PENDING'",
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1",
           [admissionId],
         )
       ).rows[0].n,
     ).toBe(0);
+    const occupancy = (
+      await pool.query(
+        'SELECT bed_id,daily_rate_snapshot::text FROM inpatient_bed_occupancies WHERE admission_id=$1 ORDER BY started_at,id',
+        [admissionId],
+      )
+    ).rows;
+    expect(occupancy).toEqual([
+      { bed_id: bedId, daily_rate_snapshot: '90.00' },
+      { bed_id: nextBed.id, daily_rate_snapshot: '120.00' },
+    ]);
+    await dischargeAdmissionScoped(ctx, admissionId, {});
+    // Simulate a crash before staging: clinical discharge must already have
+    // left a durable work identity and released the bed to Cleaning.
+    expect(
+      (
+        await pool.query('SELECT staged_at FROM inpatient_bed_billing_work WHERE admission_id=$1', [
+          admissionId,
+        ])
+      ).rows[0].staged_at,
+    ).toBeNull();
+    expect(
+      (await pool.query('SELECT status FROM beds WHERE id=$1', [nextBed.id])).rows[0].status,
+    ).toBe('Cleaning');
+    const result = await accrueBedDaysScoped(ctx, admissionId);
+    expect(result.charges).toHaveLength(1);
+    expect(result.charges[0]).toMatchObject({ charged: true, matchRule: 'BED_OCCUPANCY_SNAPSHOT' });
+    const line = (
+      await pool.query(
+        `SELECT bi.unit_price::text, o.daily_rate_snapshot::text, o.bed_id
+      FROM billing_items bi JOIN inpatient_bed_occupancies o ON o.id=bi.bed_occupancy_id
+      WHERE bi.source_type='BED_DAY' AND bi.source_id=$1`,
+        [admissionId],
+      )
+    ).rows;
+    expect(line).toHaveLength(1);
+    expect(line[0].unit_price).toBe(line[0].daily_rate_snapshot);
+    expect([bedId, nextBed.id]).toContain(line[0].bed_id);
+    const replay = await accrueBedDaysScoped(ctx, admissionId);
+    expect(replay.charges[0]).toMatchObject({ charged: false, reason: 'DUPLICATE' });
     expect(
       (
         await pool.query(
@@ -565,7 +745,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     ).toBe(1);
   });
 
-  it('prioritizes an exact source mapping, then uses and auditably retires a reviewed alias', async () => {
+  it('ignores retired master aliases when billing an exact facility service and retains their audit', async () => {
     const ids = (
       await pool.query(
         "INSERT INTO lab_tests(facility_id,code,name) VALUES($1,$2,'Synthetic X'),($1,$3,'Synthetic Y') RETURNING id",
@@ -575,6 +755,22 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     await syncMasterCatalogue(facilityRow, actor);
     const x = await sourceMaster('LAB_TEST', ids[0]),
       y = await sourceMaster('LAB_TEST', ids[1]);
+    const directX = await createDirectService(
+      `X-${suffix}`,
+      'Synthetic X',
+      'LABORATORY',
+      'laboratory',
+      'Test',
+      '11.00',
+    );
+    await createDirectService(
+      `Y-${suffix}`,
+      'Synthetic Y',
+      'LABORATORY',
+      'laboratory',
+      'Test',
+      '22.00',
+    );
     const option = await addReviewedSpecimen(facilityRow, actor, {
       testId: ids[0],
       specimenType: 'Synthetic reviewed specimen X',
@@ -629,7 +825,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     const second = await complete();
     expect(await chargeAndRecord(db, labOrderChargeRequest(second))).toMatchObject({
       charged: true,
-      totalAmount: '22.00',
+      totalAmount: '11.00',
     });
     await expect(
       retireMasterAlias(otherRow, actor, alias.id, 'synthetic reason'),
@@ -637,9 +833,21 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     await retireMasterAlias(facilityRow, actor, alias.id, 'synthetic reason');
     const third = await complete();
     expect(await chargeAndRecord(db, labOrderChargeRequest(third))).toMatchObject({
-      charged: false,
-      diagnosis: { code: 'MASTER_MAPPING_MISSING' },
+      charged: true,
+      totalAmount: '11.00',
     });
+    const billedIdentities = (
+      await pool.query(
+        "SELECT facility_service_id,master_service_id FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=ANY($1::int[])",
+        [[first.id, second.id, third.id]],
+      )
+    ).rows;
+    expect(billedIdentities).toHaveLength(3);
+    expect(
+      billedIdentities.every(
+        (row) => row.facility_service_id === directX.service.id && row.master_service_id === null,
+      ),
+    ).toBe(true);
     expect(
       (
         await pool.query(
@@ -658,7 +866,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     ).toBe('11.00');
   });
 
-  it('requires a reviewed mapping even when source and master codes are identical', async () => {
+  it('does not bill a legacy master mapping until a facility-owned service is configured', async () => {
     const code = `EXACT-${suffix.toUpperCase()}`;
     const [source] = (
       await pool.query(
@@ -683,10 +891,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       'GET',
       `/api/master-services?facilityId=${facility}&family=LABORATORY`,
     );
-    expect(preview.body.find((entry: { id: number }) => entry.id === source.id)).toMatchObject({
-      unitPrice: null,
-      priceStatus: 'MASTER_MAPPING_MISSING',
-    });
+    expect(preview.status).toBe(404);
     const option = await addReviewedSpecimen(facilityRow, actor, {
       testId: source.id,
       specimenType: 'Synthetic reviewed exact specimen',
@@ -712,7 +917,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     const completed = await completeLabInvestigation(ctx, order!.id);
     expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
       charged: false,
-      diagnosis: { code: 'MASTER_MAPPING_MISSING' },
+      diagnosis: { code: 'SERVICE_NOT_CONFIGURED' },
     });
     expect(
       (
@@ -735,6 +940,25 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
         )
       ).rows[0].n,
     ).toBe(1);
+    // A historical mapping alone must not reactivate master-based charging.
+    expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'SERVICE_NOT_CONFIGURED' },
+    });
+    const configured = await call('POST', '/api/facility-services', {
+      facilityId: facility,
+      code,
+      initialTariffCode: `DIRECT-${code}`,
+      name: 'Synthetic exact match',
+      description: 'Synthetic exact match',
+      category: 'LABORATORY',
+      department: 'laboratory',
+      unit: 'Test',
+      initialPrice: '44.00',
+      isActive: true,
+      autoBill: true,
+    });
+    expect(configured.status, JSON.stringify(configured.body)).toBe(201);
     expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
       charged: true,
       totalAmount: '44.00',
@@ -746,51 +970,55 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     expect(
       (
         await pool.query(
-          "SELECT master_service_id,service_date,service_performed_at FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          "SELECT master_service_id,facility_service_id,service_date,service_performed_at FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
           [order!.id],
         )
       ).rows[0],
-    ).toMatchObject({ master_service_id: master.id, service_performed_at: expect.any(Date) });
-    // Synthetic retirement simulation: matching codes must not resurrect a retired link.
+    ).toMatchObject({
+      master_service_id: null,
+      facility_service_id: configured.body.service.id,
+      service_performed_at: expect.any(Date),
+    });
+    // Retiring the legacy link cannot alter the current facility service or
+    // rewrite the historical invoice snapshot.
     await pool.query('UPDATE master_service_sources SET is_active=false WHERE id=$1', [mapping.id]);
-    const retired = await call(
+    const available = await call(
       'GET',
-      `/api/master-services?facilityId=${facility}&family=LABORATORY`,
+      `/api/facility-services/available?facilityId=${facility}&category=LABORATORY`,
     );
-    expect(retired.body.find((entry: { id: number }) => entry.id === source.id)).toMatchObject({
-      unitPrice: null,
-      priceStatus: 'MASTER_MAPPING_MISSING',
+    expect(
+      available.body.find((entry: { id: number }) => entry.id === configured.body.service.id),
+    ).toMatchObject({
+      unitPrice: '44.00',
+      priceStatus: 'AVAILABLE',
     });
   });
 
-  it('blocks future, expired and subsequently edited unapproved tariffs', async () => {
-    const row = (await listMasterCatalogue(facilityRow)).find(
-      (x) => x.master.code === 'JC-OPD-FOLLOWUP',
-    )!;
-    const edit = async (from: string | null, to: string | null) => {
-      const current = (await listMasterCatalogue(facilityRow)).find(
-        (x) => x.master.id === row.master.id,
-      )!.tariff!;
-      const [saved] = await editMasterTariffs(facilityRow, actor, [
-        {
-          tariffId: current.id,
-          revision: current.revision,
-          fee: '42.00',
-          unit: 'Visit',
-          isActive: true,
-          autoBill: true,
-          effectiveFrom: from,
-          effectiveTo: to,
-        },
-      ]);
-      await approveMasterTariff(facilityRow, actor, saved.id, saved.revision, 'synthetic review');
+  it('blocks future, expired and inactive facility tariffs on the clinical event date', async () => {
+    const edit = async (from: string | null, to: string | null, active = true) => {
+      const saved = await call('PUT', `/api/facility-tariffs/${directFollowUp.tariff.id}`, {
+        facilityId: facility,
+        serviceId: directFollowUp.service.id,
+        expectedRevision: directFollowUp.tariff.revision,
+        code: directFollowUp.service.code,
+        description: 'Synthetic follow up',
+        department: 'opd',
+        unit: 'Visit',
+        fee: '42.00',
+        isActive: active,
+        autoBill: true,
+        effectiveFrom: from,
+        effectiveTo: to,
+      });
+      expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+      directFollowUp.tariff.revision = saved.body.revision;
     };
     const encounter = await createEncounterScoped(ctx, {
       tenantId: tenant,
       facilityId: facility,
       patientId: patient,
       encounterType: 'FOLLOW_UP',
-      consultationMasterServiceId: row.master.id,
+      consultationFacilityServiceId: directFollowUp.service.id,
     });
     const done = await updateEncounterScoped(ctx, encounter.id, { status: 'Completed' });
     await edit('2099-01-01', null);
@@ -801,18 +1029,23 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     expect((await chargeAndRecord(db, consultationChargeRequest(done!))).diagnosis?.code).toBe(
       'EXPIRED',
     );
-    await pool.query('UPDATE facility_service_tariffs SET fee=43 WHERE id=$1', [row.tariff!.id]);
+    await edit(null, null, false);
     expect((await chargeAndRecord(db, consultationChargeRequest(done!))).diagnosis?.code).toBe(
-      'TARIFF_UNAPPROVED',
+      'TARIFF_NOT_CONFIGURED',
     );
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='CONSULTATION' AND source_id=$1",
+          [encounter.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
   });
 
   it('rechecks manual tariff snapshots under transaction and retains an audited whole-invoice void', async () => {
-    const row = (await listMasterCatalogue(facilityRow)).find(
-      (x) => x.master.code === 'JC-OPD-CONSULT',
-    )!;
-    const tariff = row.tariff!,
-      master = row.master;
+    const tariff = directOpd.tariff,
+      service = directOpd.service;
     const data = {
       tenantId: tenant,
       facilityId: facility,
@@ -823,16 +1056,16 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     };
     const line = {
       itemType: 'Consultation',
-      description: master.description,
+      description: service.name,
       quantity: 1,
       unitPrice: '99.00',
       totalAmount: '99.00',
       tariffId: tariff.id,
-      tariffCode: tariff.code,
-      masterServiceId: master.id,
-      serviceCode: master.code,
-      serviceDepartment: master.department,
-      serviceUnit: tariff.unit,
+      tariffCode: service.code,
+      facilityServiceId: service.id,
+      serviceCode: service.code,
+      serviceDepartment: 'opd',
+      serviceUnit: 'Visit',
     };
     await expect(createInvoice(data, [line])).rejects.toThrow();
     expect(
@@ -874,14 +1107,11 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     });
     expect(created.status).toBe(201);
     const pid = created.body.id;
-    const opd = (await listMasterCatalogue(facilityRow)).find(
-      (row) => row.master.code === 'JC-OPD-CONSULT',
-    )!.master;
     const visit = await call('POST', '/api/encounters', {
       facilityId: facility,
       patientId: pid,
       encounterType: 'OUTPATIENT',
-      consultationMasterServiceId: opd.id,
+      consultationFacilityServiceId: directOpd.service.id,
     });
     expect(visit.status).toBe(201);
     expect(visit.body.billing).toBeNull();
@@ -922,7 +1152,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       facilityId: facility,
       patientId: pid,
       encounterId: eid,
-      masterServiceId: imagingId,
+      facilityServiceId: directImaging.service.id,
       modality: 'Synthetic',
       procedureName: 'Caller text',
     });
@@ -969,68 +1199,69 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     const admitted = await call('POST', '/api/admissions', {
       facilityId: facility,
       patientId: pid,
-      encounterId: eid,
       wardId,
       bedId: bed,
+      facilityServiceId: directAdmission.service.id,
     });
-    expect(admitted.status).toBe(201);
-    expect(admitted.body.billing).toMatchObject({
-      charged: true,
-      totalAmount: '60.00',
-      invoiceId: invoice,
-    });
+    expect(admitted.status, JSON.stringify(admitted.body)).toBe(201);
+    expect(admitted.body.billing).toMatchObject({ charged: true, totalAmount: '60.00' });
+    expect(admitted.body.encounterId).not.toBe(eid);
+    expect(admitted.body.billing.invoiceId).not.toBe(invoice);
     const detail = await call('GET', `/api/invoices/${invoice}`);
     expect(detail.status).toBe(200);
     expect(detail.body.invoice).toMatchObject({
-      totalAmount: '1285.00',
-      balanceAmount: '1285.00',
+      totalAmount: '1225.00',
+      balanceAmount: '1225.00',
       patientId: pid,
     });
     expect(detail.body.items.map((line: { sourceType: string }) => line.sourceType).sort()).toEqual(
-      ['ADMISSION', 'CONSULTATION', 'LAB_ORDER', 'PHARMACY', 'RADIOLOGY'],
+      ['CONSULTATION', 'LAB_ORDER', 'PHARMACY', 'RADIOLOGY'],
     );
+    const inpatientInvoice = await call('GET', `/api/invoices/${admitted.body.billing.invoiceId}`);
+    expect(inpatientInvoice.status).toBe(200);
+    expect(inpatientInvoice.body.invoice).toMatchObject({
+      totalAmount: '60.00',
+      patientId: pid,
+      encounterId: admitted.body.encounterId,
+    });
+    expect(
+      inpatientInvoice.body.items.map((line: { sourceType: string }) => line.sourceType),
+    ).toEqual(['ADMISSION']);
   });
 
-  it('restricts master tariff HTTP access and records reviewed price changes', async () => {
+  it('keeps master HTTP endpoints retired, scopes direct changes and records their audit', async () => {
     expect(
       (await call('GET', `/api/master-tariffs?facilityId=${facility}`, undefined, '')).status,
     ).toBe(401);
-    expect((await call('GET', `/api/master-tariffs?facilityId=${other}`)).status).toBe(403);
-    const listed = await call('GET', `/api/master-tariffs?facilityId=${facility}`);
+    expect((await call('GET', `/api/master-tariffs?facilityId=${facility}`)).status).toBe(404);
+    expect((await call('GET', `/api/facility-tariffs?facilityId=${other}`)).status).toBe(403);
+    const listed = await call('GET', `/api/facility-tariffs?facilityId=${facility}`);
     expect(listed.status).toBe(200);
-    const row = listed.body.find(
-      (r: { master: { code: string } }) => r.master.code === 'JC-EMERGENCY-CONSULT',
-    );
-    const edited = await call('PUT', '/api/master-tariffs/batch', {
+    expect(listed.body.some((row: { id: number }) => row.id === directZero.tariff.id)).toBe(true);
+    const edited = await call('PUT', `/api/facility-tariffs/${directZero.tariff.id}`, {
       facilityId: facility,
-      rows: [
-        {
-          tariffId: row.tariff.id,
-          revision: row.tariff.revision,
-          fee: '35.00',
-          unit: 'Visit',
-          isActive: true,
-          autoBill: true,
-          effectiveFrom: null,
-          effectiveTo: null,
-        },
-      ],
+      serviceId: directZero.service.id,
+      expectedRevision: directZero.tariff.revision,
+      code: directZero.service.code,
+      description: 'Synthetic emergency price',
+      department: 'opd',
+      unit: 'Visit',
+      fee: '35.00',
+      isActive: true,
+      autoBill: true,
+      effectiveFrom: null,
+      effectiveTo: null,
     });
-    expect(edited.status).toBe(200);
-    expect(edited.body[0]).toMatchObject({ fee: '35.00', approvalStatus: 'DRAFT' });
-    const approved = await call('POST', `/api/master-tariffs/${row.tariff.id}/approve`, {
-      facilityId: facility,
-      revision: edited.body[0].revision,
-      approvalReference: 'synthetic approval',
-    });
-    expect(approved.status).toBe(200);
-    expect(approved.body.approvalStatus).toBe('APPROVED');
-    const history = await call(
-      'GET',
-      `/api/master-tariffs/${row.tariff.id}/history?facilityId=${facility}`,
-    );
-    expect(history.status).toBe(200);
-    expect(history.body.some((x: { action: string }) => x.action === 'APPROVE')).toBe(true);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    expect(edited.body.fee).toBe('35.00');
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM audit_logs WHERE resource='FACILITY_SERVICE_TARIFF' AND resource_id=$1 AND action='UPDATE'",
+          [String(directZero.tariff.id)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
     const preserved = (
       await pool.query('SELECT fee::text FROM facility_service_tariffs WHERE id=$1', [legacyId])
     ).rows[0].fee;
@@ -1039,19 +1270,25 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
 
   it('uses facility-specific prices and blocks cross-facility mappings and null approvals', async () => {
     const otherCtx = { ...ctx, facilityId: other };
-    const opd = (await listMasterCatalogue(otherRow)).find(
-      (row) => row.master.code === 'JC-OPD-CONSULT',
-    )!.master;
     const enc = await createEncounterScoped(otherCtx, {
       tenantId: tenant,
       facilityId: other,
       patientId: patient,
       encounterType: 'OUTPATIENT',
-      consultationMasterServiceId: opd.id,
+      consultationFacilityServiceId: otherOpd.service.id,
     });
     const done = await updateEncounterScoped(otherCtx, enc.id, { status: 'Completed' });
     const billed = await chargeAndRecord(db, consultationChargeRequest(done!));
     expect(billed).toMatchObject({ charged: true, totalAmount: '999.00' });
+    await expect(
+      createEncounterScoped(otherCtx, {
+        tenantId: tenant,
+        facilityId: other,
+        patientId: patient,
+        encounterType: 'OUTPATIENT',
+        consultationFacilityServiceId: directOpd.service.id,
+      }),
+    ).rejects.toMatchObject({ code: 'CONSULTATION_UNAVAILABLE' });
     const masterId = await sourceMaster('LAB_TEST', testId);
     await expect(
       pool.query(

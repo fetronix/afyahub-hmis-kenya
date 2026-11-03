@@ -76,13 +76,11 @@ function respond(error: unknown, res: Response) {
   }
   // Do not log driver details, input, patient identifiers or clinical notes.
   console.error('[appointments] Request failed unexpectedly.');
-  res
-    .status(500)
-    .json({
-      success: false,
-      error: 'INTERNAL_ERROR',
-      message: 'The request could not be completed.',
-    });
+  res.status(500).json({
+    success: false,
+    error: 'INTERNAL_ERROR',
+    message: 'The request could not be completed.',
+  });
 }
 
 router.get(
@@ -120,14 +118,12 @@ router.post(
     if (!context) return;
     try {
       const body = getValidatedBody<AppointmentCategoryInput>(req);
-      res
-        .status(201)
-        .json(
-          await createAppointmentCategoryScoped(context, {
-            ...body,
-            facilityId: selectedFacility(body.facilityId, req.query.facilityId),
-          }),
-        );
+      res.status(201).json(
+        await createAppointmentCategoryScoped(context, {
+          ...body,
+          facilityId: selectedFacility(body.facilityId, req.query.facilityId),
+        }),
+      );
     } catch (error) {
       respond(error, res);
     }

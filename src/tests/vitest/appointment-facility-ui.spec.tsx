@@ -6,18 +6,29 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   facility: { id: 10, tenantId: 1, timezone: 'Africa/Nairobi' },
-  getQueues: vi.fn(), getPatients: vi.fn(), getAppointments: vi.fn(),
-  getAppointmentCategories: vi.fn(), getAppointmentResources: vi.fn(),
-  showToast: vi.fn(), triggerRefresh: vi.fn(),
+  getQueues: vi.fn(),
+  getPatients: vi.fn(),
+  getAppointments: vi.fn(),
+  getAppointmentCategories: vi.fn(),
+  getAppointmentResources: vi.fn(),
+  showToast: vi.fn(),
+  triggerRefresh: vi.fn(),
 }));
 vi.mock('../../api/client.ts', () => ({ api: mocks }));
-vi.mock('../../components/portal/PortalInviteDialog.tsx', () => ({ PortalInviteDialog: () => null }));
+vi.mock('../../components/portal/PortalInviteDialog.tsx', () => ({
+  PortalInviteDialog: () => null,
+}));
 vi.mock('../../context/HmisContext.tsx', () => ({
   useHmis: () => ({
-    currentFacility: mocks.facility, currentTenant: { id: 1, timezone: 'Africa/Nairobi' },
+    currentFacility: mocks.facility,
+    currentTenant: { id: 1, timezone: 'Africa/Nairobi' },
     authenticatedUser: { permissions: ['appointments.read', 'appointments.create'] },
-    setActiveModule: vi.fn(), setSelectedPatient: vi.fn(), setIsJourneyModalOpen: vi.fn(),
-    showToast: mocks.showToast, refreshKey: 0, triggerRefresh: mocks.triggerRefresh,
+    setActiveModule: vi.fn(),
+    setSelectedPatient: vi.fn(),
+    setIsJourneyModalOpen: vi.fn(),
+    showToast: mocks.showToast,
+    refreshKey: 0,
+    triggerRefresh: mocks.triggerRefresh,
   }),
 }));
 import { ReceptionQueueModule } from '../../components/modules/ReceptionQueueModule.tsx';
@@ -26,10 +37,30 @@ afterEach(cleanup);
 it('discards the previous facility queue, patient and unsaved notes before the new facility loads', async () => {
   const user = userEvent.setup();
   let finishB: (value: any[]) => void = () => {};
-  const pendingB = new Promise<any[]>((resolve) => { finishB = resolve; });
+  const pendingB = new Promise<any[]>((resolve) => {
+    finishB = resolve;
+  });
   mocks.facility = { id: 10, tenantId: 1, timezone: 'Africa/Nairobi' };
-  mocks.getQueues.mockImplementation((id: number) => id === 10 ? Promise.resolve([{ id: 7, patientId: 101, tokenNumber: 'SYN-1', queueType: 'Triage', priority: 'Normal', status: 'Waiting', waitingTimeMinutes: 0 }]) : pendingB);
-  mocks.getPatients.mockImplementation((_tenant: number, id: number) => id === 10 ? Promise.resolve([{ id: 101, firstName: 'Synthetic', lastName: 'Facility A', mrn: 'SYN-A' }]) : pendingB);
+  mocks.getQueues.mockImplementation((id: number) =>
+    id === 10
+      ? Promise.resolve([
+          {
+            id: 7,
+            patientId: 101,
+            tokenNumber: 'SYN-1',
+            queueType: 'Triage',
+            priority: 'Normal',
+            status: 'Waiting',
+            waitingTimeMinutes: 0,
+          },
+        ])
+      : pendingB,
+  );
+  mocks.getPatients.mockImplementation((_tenant: number, id: number) =>
+    id === 10
+      ? Promise.resolve([{ id: 101, firstName: 'Synthetic', lastName: 'Facility A', mrn: 'SYN-A' }])
+      : pendingB,
+  );
   mocks.getAppointments.mockResolvedValue([]);
   mocks.getAppointmentCategories.mockResolvedValue([]);
   mocks.getAppointmentResources.mockResolvedValue({ departments: [], practitioners: [] });

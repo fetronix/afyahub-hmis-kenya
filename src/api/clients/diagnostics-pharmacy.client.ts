@@ -237,7 +237,12 @@ export const diagnosticsPharmacyClient = {
 
   updateInventorySellingPrice: (
     itemId: number,
-    data: { facilityId: number; sellingPrice: string; expectedPriceRevision: number; reason: string },
+    data: {
+      facilityId: number;
+      sellingPrice: string;
+      expectedPriceRevision: number;
+      reason: string;
+    },
   ) =>
     fetchJson<InventoryItem>(`${API_BASE}/inventory/${itemId}/selling-price`, {
       method: 'PUT',

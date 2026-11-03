@@ -27,6 +27,10 @@ import {
 } from '../../routes/shared/errors.ts';
 import * as queries from '../../db/queries.ts';
 import * as reporting from '../../reporting/reporting.service.ts';
+import {
+  FinancialReportError,
+  getFinancialTransactionsScoped,
+} from '../../reporting/financial-transactions.service.ts';
 import { parseOptionalPositiveId, requireAuthContext } from '../../routes/shared/request.ts';
 import {
   facilityHasTariffModule,
@@ -48,6 +52,34 @@ import * as schema from '../../db/schema.ts';
 const router = Router();
 
 // Legacy catalogue/link diagnostics were retired with the old resolver.
+
+router.get(
+  '/api/reporting/financial-transactions',
+  requirePermission('reports.read', 'billing.read'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      const facilityId = parseOptionalPositiveId(req.query.facilityId, 'facility');
+      const report = await getFinancialTransactionsScoped(
+        context,
+        facilityId,
+        req.query.from,
+        req.query.to,
+        req.query.offset,
+      );
+      return res.json(report);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      if (err instanceof FinancialReportError || err instanceof queries.InpatientDomainError) {
+        return res
+          .status(err.status)
+          .json({ success: false, error: err.code, message: err.message });
+      }
+      return respondInternalError(res, err, 'financial transaction report');
+    }
+  },
+);
 
 /**
  * Operational report: bed occupancy by ward and length of stay.
@@ -141,8 +173,8 @@ router.get(
 );
 
 /**
- * Revenue by service category, derived from invoice lines.
- * Excludes voided invoices so the figures reconcile to cash.
+ * Invoice-cohort totals derived from invoice lines, not recognized ledger
+ * revenue or transaction-date cash. Voided invoices are excluded.
  */
 
 router.get(

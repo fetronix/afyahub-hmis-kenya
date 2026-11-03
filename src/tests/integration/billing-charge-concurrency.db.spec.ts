@@ -44,10 +44,12 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
     const key = `${facilityId}:${patientId}`;
     const existing = encounters.get(key);
     if (existing) return existing;
-    const id = (await pool.query(
-      "INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'OUTPATIENT','ACTIVE') RETURNING id",
-      [tenant, facilityId, patientId],
-    )).rows[0].id as number;
+    const id = (
+      await pool.query(
+        "INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'OUTPATIENT','ACTIVE') RETURNING id",
+        [tenant, facilityId, patientId],
+      )
+    ).rows[0].id as number;
     encounters.set(key, id);
     return id;
   };
@@ -62,27 +64,33 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
     const itemId = priced ? products.priced : products.unpriced;
     const encounterId = await encounterFor(patientId, facilityId);
     const label = priced ? 'Synthetic priced item' : 'Synthetic unpriced item';
-    const prescriptionId = (await pool.query(
-      "INSERT INTO medications(encounter_id,patient_id,drug_name,dosage,frequency,duration,quantity,status) VALUES($1,$2,$3,'synthetic','synthetic','synthetic',1,'Dispensed') RETURNING id",
-      [encounterId, patientId, label],
-    )).rows[0].id;
-    const sourceId = (await pool.query(
-      `INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,prescription_id,item_id,
+    const prescriptionId = (
+      await pool.query(
+        "INSERT INTO medications(encounter_id,patient_id,drug_name,dosage,frequency,duration,quantity,status) VALUES($1,$2,$3,'synthetic','synthetic','synthetic',1,'Dispensed') RETURNING id",
+        [encounterId, patientId, label],
+      )
+    ).rows[0].id;
+    const sourceId = (
+      await pool.query(
+        `INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,prescription_id,item_id,
          quantity_dispensed,dispensed_by,selling_price_snapshot,item_code_snapshot,item_name_snapshot,
          item_unit_snapshot,dispensing_date_snapshot,dispensing_timezone_snapshot)
        SELECT $1,$2,$3,$4,i.id,1,'Synthetic',NULLIF(i.selling_price,0),i.item_code,i.name,i.unit,
          (now() AT TIME ZONE 'Africa/Nairobi')::date,'Africa/Nairobi'
        FROM inventory_items i WHERE i.id=$5 AND i.facility_id=$2 RETURNING id`,
-      [tenant, facilityId, patientId, prescriptionId, itemId],
-    )).rows[0].id as number;
+        [tenant, facilityId, patientId, prescriptionId, itemId],
+      )
+    ).rows[0].id as number;
     await pool.query(
       "INSERT INTO pharmacy_dispense_requests(tenant_id,facility_id,idempotency_key,request_hash,dispensation_id,stock_tracking) VALUES($1,$2,$3,'synthetic',$4,'FEFO')",
       [tenant, facilityId, `synthetic-${randomUUID()}`, sourceId],
     );
-    const batch = (await pool.query(
-      "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,$2,'2099-12-31',0) RETURNING id,batch_number",
-      [itemId, `SYN-${randomUUID()}`],
-    )).rows[0];
+    const batch = (
+      await pool.query(
+        "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,$2,'2099-12-31',0) RETURNING id,batch_number",
+        [itemId, `SYN-${randomUUID()}`],
+      )
+    ).rows[0];
     await pool.query(
       "INSERT INTO pharmacy_dispense_allocations(dispensation_id,batch_id,batch_number,expiry_date,quantity) VALUES($1,$2,$3,'2099-12-31',1)",
       [sourceId, batch.id, batch.batch_number],
@@ -102,21 +110,31 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
     };
   };
   const configureFacility = async (facilityId: number) => {
-    const priced = (await pool.query(
-      "INSERT INTO inventory_items(facility_id,item_code,name,unit,selling_price) VALUES($1,$2,'Synthetic priced item','Tablet','7.50') RETURNING id",
-      [facilityId, `ITEM-${suffix}`],
-    )).rows[0].id as number;
-    const unpriced = (await pool.query(
-      "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,$2,'Synthetic unpriced item','Tablet') RETURNING id",
-      [facilityId, `NOITEM-${suffix}`],
-    )).rows[0].id as number;
+    const priced = (
+      await pool.query(
+        "INSERT INTO inventory_items(facility_id,item_code,name,unit,selling_price) VALUES($1,$2,'Synthetic priced item','Tablet','7.50') RETURNING id",
+        [facilityId, `ITEM-${suffix}`],
+      )
+    ).rows[0].id as number;
+    const unpriced = (
+      await pool.query(
+        "INSERT INTO inventory_items(facility_id,item_code,name,unit) VALUES($1,$2,'Synthetic unpriced item','Tablet') RETURNING id",
+        [facilityId, `NOITEM-${suffix}`],
+      )
+    ).rows[0].id as number;
     items.set(facilityId, { priced, unpriced });
   };
   const makeInvoice = async () => {
     const id = (
       await pool.query(
         "INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,encounter_id,invoice_number,total_amount,paid_amount,balance_amount,credit_balance,status) VALUES($1,$2,$3,$4,$5,'100.00','0.00','100.00','0.00','Pending') RETURNING id",
-        [tenant, facility, patient, await encounterFor(patient, facility), `SYN-CHARGE-INV-${suffix}-${++serial}`],
+        [
+          tenant,
+          facility,
+          patient,
+          await encounterFor(patient, facility),
+          `SYN-CHARGE-INV-${suffix}-${++serial}`,
+        ],
       )
     ).rows[0].id as number;
     await pool.query(
@@ -174,10 +192,9 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
     const same = await request(another);
     const initial = await chargeAndRecord(db, same);
     expect(initial.charged).toBe(true);
-    await pool.query(
-      'UPDATE inventory_items SET is_active=false WHERE id=$1',
-      [items.get(facility)!.priced],
-    );
+    await pool.query('UPDATE inventory_items SET is_active=false WHERE id=$1', [
+      items.get(facility)!.priced,
+    ]);
     try {
       const retry = await chargeAndRecord(db, same);
       expect(retry).toMatchObject({
@@ -195,10 +212,9 @@ describeDb('Automatic charge transaction boundary (synthetic PostgreSQL)', () =>
         ).rows,
       ).toHaveLength(0);
     } finally {
-      await pool.query(
-        'UPDATE inventory_items SET is_active=true WHERE id=$1',
-        [items.get(facility)!.priced],
-      );
+      await pool.query('UPDATE inventory_items SET is_active=true WHERE id=$1', [
+        items.get(facility)!.priced,
+      ]);
     }
   });
 

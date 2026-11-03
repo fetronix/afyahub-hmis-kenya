@@ -249,8 +249,10 @@ export interface Ward {
   genderAllocation: string;
   /** Counted from the beds in the ward, not typed in. */
   totalBeds: number;
-  /** NULL when the facility has not set a rate. Never a guess. */
+  /** A legacy number is not a billing default until explicitly confirmed. */
   dailyRate: string | null;
+  dailyRateConfigured?: boolean;
+  dailyRateRevision?: number;
   isActive: boolean;
 }
 
@@ -283,7 +285,12 @@ export interface BedBillingPolicy {
 }
 
 export interface BedBillingUnresolvedPage {
-  admissions: Array<{ admissionId: number; admissionStatus: string | null; pendingAttempts: number; stagingPending: boolean }>;
+  admissions: Array<{
+    admissionId: number;
+    admissionStatus: string | null;
+    pendingAttempts: number;
+    stagingPending: boolean;
+  }>;
   hasMore: boolean;
   offset: number;
   pageSize: number;
@@ -291,13 +298,68 @@ export interface BedBillingUnresolvedPage {
 
 export interface BedOccupancyView {
   admissionId: number;
-  admission: { patientId: number; encounterId: number | null; admissionDate: string; dischargeDate: string | null; status: string | null; wardId: number; bedId: number };
-  transfers: Array<{ fromWardId: number | null; fromBedId: number | null; toWardId: number; toBedId: number; transferredAt: string }>;
+  admission: {
+    patientId: number;
+    encounterId: number | null;
+    admissionDate: string;
+    dischargeDate: string | null;
+    status: string | null;
+    wardId: number;
+    bedId: number;
+  };
+  transfers: Array<{
+    fromWardId: number | null;
+    fromBedId: number | null;
+    toWardId: number;
+    toBedId: number;
+    transferredAt: string;
+  }>;
   asOf: string;
-  staySnapshot: { timezoneSnapshot: string | null; cutoffMinutes: number | null; graceMinutes: number | null; sameDayRule: string | null; policyRevision: number | null; policyId: number | null; policyApplicability: string | null; policyEffectiveFrom: string | null; policyEffectiveUntil: string | null; manualAdmissionTime: boolean; manualDischargeTime: boolean; capturedAt: string } | null;
-  unresolved: { attempts: Array<{ id: number; idempotencySuffix: string | null; reason: string; diagnosisCode: string | null; attempts: number; lastAttemptAt: string }>; hasMore: boolean; stagingPending: boolean } | null;
-  policy: { timezone: string; cutoffMinutes: number; graceMinutes: number; sameDayRule: 'ONE' | 'ZERO' } | null;
-  periods: Array<{ id: number; wardId: number; bedId: number; startedAt: string; endedAt: string | null; dailyRateSnapshot: string | null; priceRevisionSnapshot: number | null; bedNumberSnapshot: string; wardNameSnapshot: string }> ;
+  staySnapshot: {
+    timezoneSnapshot: string | null;
+    cutoffMinutes: number | null;
+    graceMinutes: number | null;
+    sameDayRule: string | null;
+    policyRevision: number | null;
+    policyId: number | null;
+    policyApplicability: string | null;
+    policyEffectiveFrom: string | null;
+    policyEffectiveUntil: string | null;
+    manualAdmissionTime: boolean;
+    manualDischargeTime: boolean;
+    capturedAt: string;
+  } | null;
+  unresolved: {
+    attempts: Array<{
+      id: number;
+      idempotencySuffix: string | null;
+      reason: string;
+      diagnosisCode: string | null;
+      attempts: number;
+      lastAttemptAt: string;
+    }>;
+    hasMore: boolean;
+    stagingPending: boolean;
+  } | null;
+  policy: {
+    timezone: string;
+    cutoffMinutes: number;
+    graceMinutes: number;
+    sameDayRule: 'ONE' | 'ZERO';
+  } | null;
+  periods: Array<{
+    id: number;
+    wardId: number;
+    bedId: number;
+    startedAt: string;
+    endedAt: string | null;
+    dailyRateSnapshot: string | null;
+    priceRevisionSnapshot: number | null;
+    /** NULL/absent on older stays whose source was not recorded. */
+    rateSourceSnapshot?: 'BED_OVERRIDE' | 'WARD_DEFAULT' | 'REVIEWED' | null;
+    bedNumberSnapshot: string;
+    wardNameSnapshot: string;
+  }>;
   durationSeconds: number | null;
   nights: number | null;
   estimatedAmount: string | null;
@@ -1223,6 +1285,43 @@ export interface RevenueChannelReconciliation {
   reconciled: boolean;
   /** Stored method names that did not map to a known channel. */
   unmappedMethods: string[];
+}
+
+export interface FinancialTransactionsReport {
+  facilityId: number;
+  from: string;
+  to: string;
+  timezone: string;
+  totals: {
+    receiptCount: number;
+    grossReceipts: string;
+    refundCount: number;
+    manualRefunds: string;
+    netRecorded: string;
+  };
+  receipts: Array<{ method: string; count: number; amount: string }>;
+  refunds: Array<{ method: string; count: number; amount: string }>;
+  departments: Array<{ department: string; source: string; count: number; amount: string }>;
+  bedCharges: Array<{ source: string; count: number; amount: string }>;
+  invoiceCohort: { count: number; invoiced: string; currentOutstanding: string };
+  excludedScopeConflicts: number;
+  transactions: {
+    rows: Array<{
+      kind: 'RECEIPT' | 'MANUAL_REFUND';
+      id: number;
+      reference: string;
+      method: string | null;
+      amount: string;
+      invoiceNumber: string;
+      externalReference: string | null;
+      localDate: string;
+      recordedAtUtcAssumed: string;
+    }>;
+    hasMore: boolean;
+    offset: number;
+    pageSize: number;
+  };
+  limitations: string[];
 }
 
 export interface RevenueReport {

@@ -181,11 +181,13 @@ export async function createLabOrder(
           );
         reviewedSpecimen = option.specimenType;
       }
-      // A clinician can specify the original specimen text. Free-text
-      // investigations remain unpriced until their identity is selected.
+      // Direct facility-service orders can carry the clinician's specimen
+      // text. A legacy test-ID-only order must retain the previously required
+      // reviewed specimen evidence; a test code alone does not establish it.
       const clinicalException =
         (!data.testId && !data.facilityServiceId) ||
         !(reviewedSpecimen ?? data.specimenType)?.trim() ||
+        Boolean(data.testId && !data.facilityServiceId && !reviewedSpecimen) ||
         data.clinicalException === true;
       const [order] = await tx
         .insert(schema.labOrders)
@@ -1454,7 +1456,9 @@ export async function createLabOrderBatch(
             id: test.id,
             name: test.name,
             code: test.code ?? null,
-            match: 'FOUND',
+            // Legacy test IDs without reviewed specimen evidence remain
+            // usable in care, but not silently eligible for billing.
+            match: 'REVIEW_REQUIRED',
           });
         }
       }
@@ -1492,7 +1496,9 @@ export async function createLabOrderBatch(
             reviewedSpecimenOptionId: test.reviewedSpecimenOptionId ?? null,
             batchId,
             clinicalException:
-              (!test.id && !test.facilityServiceId) || data.clinicalException === true,
+              (!test.id && !test.facilityServiceId) ||
+              Boolean(test.id && !test.facilityServiceId && !test.reviewedSpecimenOptionId) ||
+              data.clinicalException === true,
             priority,
             clinicalNotes: data.clinicalNotes?.trim() || null,
           })

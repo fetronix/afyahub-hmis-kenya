@@ -16,6 +16,7 @@ import type {
   LabServiceDiagnostics,
   FacilityTariffValidation,
   FacilityService,
+  FinancialTransactionsReport,
   OccupancyTrendResponse,
   OperationsReport,
   PaymentLedgerRow,
@@ -72,7 +73,7 @@ export const billingClient = {
     return fetchJson<FacilityService[]>(`${API_BASE}/facility-services/available?${query}`);
   },
   createFacilityService: (
-    input: FacilityServiceInput & { initialPrice: string; initialTariffCode?: string },
+    input: FacilityServiceInput & { initialPrice?: string; initialTariffCode?: string },
   ) =>
     fetchJson<{ service: FacilityService; tariff: ServiceTariff }>(
       `${API_BASE}/facility-services`,
@@ -246,6 +247,22 @@ export const billingClient = {
     const query = params.toString();
 
     return fetchJson<RevenueReport>(`${API_BASE}/analytics/revenue${query ? `?${query}` : ''}`);
+  },
+
+  getFinancialTransactionsReport: (
+    facilityId: number,
+    range: { from: string; to: string },
+    offset = 0,
+  ) => {
+    const params = new URLSearchParams({
+      facilityId: String(facilityId),
+      from: range.from,
+      to: range.to,
+      offset: String(offset),
+    });
+    return fetchJson<FinancialTransactionsReport>(
+      `${API_BASE}/reporting/financial-transactions?${params}`,
+    );
   },
 
   getOperationsReport: (facilityId?: number) =>

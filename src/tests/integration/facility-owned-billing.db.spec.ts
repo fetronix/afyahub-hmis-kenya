@@ -675,7 +675,20 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
   });
 
   it('keeps an unpriced clinical order and creates unresolved billing work without charging zero', async () => {
-    const unpriced = await createService('LAB-ZERO', 'LABORATORY', 'laboratory', '0.00', 'Test');
+    const created = await call('POST', '/api/facility-services', {
+      facilityId: facility,
+      code: 'LAB-ZERO',
+      name: 'Synthetic unpriced laboratory service',
+      description: 'Synthetic default-price service',
+      department: 'laboratory',
+      category: 'LABORATORY',
+      unit: 'Test',
+      isActive: true,
+      autoBill: true,
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const unpriced = created.body;
+    expect(unpriced.tariff.fee).toBe('0.00');
     const visit = await call('POST', '/api/encounters', {
       facilityId: facility,
       patientId: patient,
@@ -1145,12 +1158,27 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       )
     ).rows[0].id;
     const bed = (
-      await pool.query("INSERT INTO beds(ward_id,bed_number,daily_charge) VALUES($1,'SYN-1','100.00') RETURNING id", [ward])
+      await pool.query(
+        "INSERT INTO beds(ward_id,bed_number,daily_charge) VALUES($1,'SYN-1','100.00') RETURNING id",
+        [ward],
+      )
     ).rows[0].id;
     await pool.query("UPDATE facilities SET timezone='Africa/Nairobi' WHERE id=$1", [facility]);
-    const policy = await call('PUT', '/api/inpatient/bed-billing-policy', { cutoffMinutes: 0, graceMinutes: 0, sameDayRule: 'ONE', isActive: true, effectiveFrom: '2020-01-01', reason: 'Synthetic approved policy' });
+    const policy = await call('PUT', '/api/inpatient/bed-billing-policy', {
+      cutoffMinutes: 0,
+      graceMinutes: 0,
+      sameDayRule: 'ONE',
+      isActive: true,
+      effectiveFrom: '2020-01-01',
+      reason: 'Synthetic approved policy',
+    });
     expect(policy.status, JSON.stringify(policy.body)).toBe(200);
-    const encounter = (await pool.query("INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'INPATIENT','ACTIVE') RETURNING id", [tenant, facility, patient])).rows[0].id;
+    const encounter = (
+      await pool.query(
+        "INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status) VALUES($1,$2,$3,'INPATIENT','ACTIVE') RETURNING id",
+        [tenant, facility, patient],
+      )
+    ).rows[0].id;
     const body = {
       facilityId: facility,
       patientId: patient,
@@ -1176,7 +1204,11 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     const discharged = await call('POST', `/api/admissions/${admitted.body.id}/discharge`, {});
     expect(discharged.status, JSON.stringify(discharged.body)).toBe(200);
     expect(discharged.body.billing.bedDays).toHaveLength(1);
-    expect(discharged.body.billing.bedDays[0]).toMatchObject({ charged: true, totalAmount: '100.00', matchRule: 'BED_OCCUPANCY_SNAPSHOT' });
+    expect(discharged.body.billing.bedDays[0]).toMatchObject({
+      charged: true,
+      totalAmount: '100.00',
+      matchRule: 'BED_OCCUPANCY_SNAPSHOT',
+    });
     const replay = await call('POST', `/api/admissions/${admitted.body.id}/accrue-bed-days`, {});
     expect(replay.status, JSON.stringify(replay.body)).toBe(200);
     expect(replay.body.charges).toHaveLength(1);
@@ -1195,7 +1227,9 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       },
       { source_type: 'BED_DAY', facility_service_id: null, unit_price: '100.00' },
     ]);
-    const provenance = (await pool.query(`
+    const provenance = (
+      await pool.query(
+        `
       SELECT i.patient_id, i.encounter_id, o.bed_id, o.ward_id, o.daily_rate_snapshot,
              n.unit_price_snapshot, n.total_snapshot
       FROM billing_items bi
@@ -1203,13 +1237,25 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       JOIN inpatient_bed_occupancies o ON o.id = bi.bed_occupancy_id
       JOIN inpatient_bed_nights n ON n.id = bi.bed_night_id AND n.occupancy_id = o.id
       WHERE bi.source_type = 'BED_DAY' AND bi.source_id = $1
-    `, [admitted.body.id])).rows;
-    expect(provenance).toEqual([{
-      patient_id: patient, encounter_id: encounter, bed_id: bed, ward_id: ward,
-      daily_rate_snapshot: '100.00', unit_price_snapshot: '100.00', total_snapshot: '100.00',
-    }]);
+    `,
+        [admitted.body.id],
+      )
+    ).rows;
+    expect(provenance).toEqual([
+      {
+        patient_id: patient,
+        encounter_id: encounter,
+        bed_id: bed,
+        ward_id: ward,
+        daily_rate_snapshot: '100.00',
+        unit_price_snapshot: '100.00',
+        total_snapshot: '100.00',
+      },
+    ]);
     expect(wardService.service.id).not.toBeNull(); // The conflicting KES 90 service did not price this bed.
-    expect((await pool.query('SELECT status FROM beds WHERE id=$1', [bed])).rows[0].status).toBe('Cleaning');
+    expect((await pool.query('SELECT status FROM beds WHERE id=$1', [bed])).rows[0].status).toBe(
+      'Cleaning',
+    );
   });
 
   it('bills a completed exact-code procedure and not an unconfirmed procedure', async () => {
@@ -1917,5 +1963,52 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
         ])
       ).rows[0].n,
     ).toBe(1);
+  });
+  it('defaults new facility services to unpriced zero across departments without exposing them as billable or crossing facilities', async () => {
+    const examples = [
+      ['CONSULTATION', 'opd', 'Visit'],
+      ['LABORATORY', 'laboratory', 'Test'],
+      ['RADIOLOGY', 'radiology', 'Examination'],
+      ['PROCEDURE', 'theatre', 'Procedure'],
+      ['ADMISSION', 'inpatient', 'Admission'],
+      ['OTHER', 'finance', 'Service'],
+    ];
+    for (const [category, department, unit] of examples) {
+      const code = `ZERO-${category}-${suffix}`;
+      const result = await call('POST', '/api/facility-services', {
+        facilityId: facility,
+        code,
+        name: `Synthetic ${category}`,
+        description: 'Synthetic unpriced catalogue entry',
+        department,
+        category,
+        unit,
+        isActive: true,
+        autoBill: true,
+      });
+      expect(result.status, JSON.stringify(result.body)).toBe(201);
+      expect(result.body.tariff.fee).toBe('0.00');
+      const available = await call(
+        'GET',
+        `/api/facility-services/available?facilityId=${facility}&category=${category}`,
+      );
+      expect(available.status).toBe(200);
+      expect(
+        available.body.find((row: { id: number }) => row.id === result.body.service.id),
+      ).toMatchObject({
+        unitPrice: null,
+        priceStatus: 'UNCONFIGURED_OR_OUTSIDE_DATE',
+      });
+      const otherList = await call(
+        'GET',
+        `/api/facility-services/available?facilityId=${other}&category=${category}`,
+        undefined,
+        otherToken,
+      );
+      expect(otherList.status).toBe(200);
+      expect(otherList.body.some((row: { id: number }) => row.id === result.body.service.id)).toBe(
+        false,
+      );
+    }
   });
 });

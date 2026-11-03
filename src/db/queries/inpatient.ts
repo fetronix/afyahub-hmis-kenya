@@ -21,7 +21,11 @@ import {
   InpatientDomainError,
 } from '../inpatient-contracts.ts';
 
-import { requireTenantScope, requireFacilityScope, resolveFacilityScope } from '../../auth/scope.service.ts';
+import {
+  requireTenantScope,
+  requireFacilityScope,
+  resolveFacilityScope,
+} from '../../auth/scope.service.ts';
 import { hasAllPermissions } from '../../auth/authorization.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
@@ -29,6 +33,7 @@ import type { ChargeResult } from '../../billing/billing.service.ts';
 import { chargeAndRecord, recordChargeAttempt } from '../../billing/charge-attempts.ts';
 import { admissionChargeRequest } from '../../billing/service-charges.ts';
 import { databaseNow } from '../../inpatient/bed-evidence.ts';
+import { selectBedRate } from '../../inpatient/bed-rate.ts';
 import {
   captureBedPeriod,
   captureBedStay,
@@ -145,7 +150,11 @@ export async function getWardsScoped(
    BEDS
    ------------------------------------------------------------ */
 
-export async function getBedsScoped(context: AuthorizationContext, wardId?: number | null, requestedFacilityId?: number | null) {
+export async function getBedsScoped(
+  context: AuthorizationContext,
+  wardId?: number | null,
+  requestedFacilityId?: number | null,
+) {
   if (wardId !== undefined && wardId !== null) {
     const id = requirePositiveId(wardId, 'ward ID');
 
@@ -292,14 +301,18 @@ export async function createAdmissionScoped(
     encounterId = requirePositiveId(input.encounterId, 'encounter ID');
   }
 
-  const manualAdmissionTime = typeof input?.admissionDate === 'string' && input.admissionDate.trim().length > 0;
+  const manualAdmissionTime =
+    typeof input?.admissionDate === 'string' && input.admissionDate.trim().length > 0;
   const admissionType = optionalText(input?.admissionType, 60) ?? 'Emergency';
 
   try {
     return await db.transaction(async (tx) => {
       // Serialize admissions of the same patient, including attempts at different beds.
       const [lockedPatient] = await tx
-        .select({ id: schema.patients.id, registrationFacilityId: schema.patients.registrationFacilityId })
+        .select({
+          id: schema.patients.id,
+          registrationFacilityId: schema.patients.registrationFacilityId,
+        })
         .from(schema.patients)
         .where(
           and(eq(schema.patients.id, patient.id), eq(schema.patients.tenantId, facility.tenantId)),
@@ -316,10 +329,25 @@ export async function createAdmissionScoped(
       // patient ID to cross facility boundaries. Existing patient-list access
       // policies remain unchanged; this does not invent a referral or consent.
       if (lockedPatient.registrationFacilityId !== facility.id) {
-        const [relationship] = await tx.select({ id: schema.patientFacilities.id }).from(schema.patientFacilities)
-          .where(and(eq(schema.patientFacilities.patientId, patient.id), eq(schema.patientFacilities.tenantId, facility.tenantId),
-            eq(schema.patientFacilities.facilityId, facility.id), eq(schema.patientFacilities.status, 'ACTIVE'))).limit(1).for('share');
-        if (!relationship) throw new InpatientDomainError('PATIENT_NOT_FOUND', 'Patient not found in the authorised facility.', 404);
+        const [relationship] = await tx
+          .select({ id: schema.patientFacilities.id })
+          .from(schema.patientFacilities)
+          .where(
+            and(
+              eq(schema.patientFacilities.patientId, patient.id),
+              eq(schema.patientFacilities.tenantId, facility.tenantId),
+              eq(schema.patientFacilities.facilityId, facility.id),
+              eq(schema.patientFacilities.status, 'ACTIVE'),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (!relationship)
+          throw new InpatientDomainError(
+            'PATIENT_NOT_FOUND',
+            'Patient not found in the authorised facility.',
+            404,
+          );
       }
       const [ward] = await tx
         .select()
@@ -336,7 +364,11 @@ export async function createAdmissionScoped(
         );
       }
       if (ward.isActive === false) {
-        throw new InpatientDomainError('WARD_RETIRED', 'A retired ward cannot accept new admissions.', 409);
+        throw new InpatientDomainError(
+          'WARD_RETIRED',
+          'A retired ward cannot accept new admissions.',
+          409,
+        );
       }
 
       const [bed] = await tx
@@ -354,22 +386,65 @@ export async function createAdmissionScoped(
       const assignedAt = await databaseNow(tx);
       if (encounterId !== null) {
         if (!hasAllPermissions(context, ['clinical.read']))
-          throw new InpatientDomainError('ENCOUNTER_PERMISSION_REQUIRED', 'Clinical read permission is required to link an existing encounter.', 403);
+          throw new InpatientDomainError(
+            'ENCOUNTER_PERMISSION_REQUIRED',
+            'Clinical read permission is required to link an existing encounter.',
+            403,
+          );
         // Encounter timestamps are stored without a timezone. JaliCare writes
         // new timestamps as UTC; interpret them explicitly rather than using
         // the Node host timezone. Historical origin still requires review.
-        const [encounter] = await tx.select({ id: schema.encounters.id, encounterType: schema.encounters.encounterType, status: schema.encounters.status,
-          startedAt: sql<Date>`${schema.encounters.startedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
-          endedAt: sql<Date | null>`${schema.encounters.endedAt} AT TIME ZONE 'UTC'`.mapWith((value: string) => new Date(value)),
-        }).from(schema.encounters).where(and(
-          eq(schema.encounters.id, encounterId), eq(schema.encounters.tenantId, facility.tenantId),
-          eq(schema.encounters.patientId, patient.id), eq(schema.encounters.facilityId, facility.id),
-        )).limit(1).for('update');
-        if (!encounter) throw new InpatientDomainError('ENCOUNTER_NOT_FOUND', 'Encounter not found for this patient at this facility.', 404);
-        if (encounter.encounterType.trim().toUpperCase() !== 'INPATIENT' || encounter.status.trim().toUpperCase() !== 'ACTIVE' || encounter.endedAt || encounter.startedAt > assignedAt)
-          throw new InpatientDomainError('ENCOUNTER_NOT_ELIGIBLE', 'Choose an active inpatient encounter that has started for this admission.', 409);
-        const [alreadyLinked] = await tx.select({ id: schema.admissions.id }).from(schema.admissions).where(eq(schema.admissions.encounterId, encounterId)).limit(1);
-        if (alreadyLinked) throw new InpatientDomainError('ENCOUNTER_ALREADY_LINKED', 'This encounter is already linked to an admission.', 409);
+        const [encounter] = await tx
+          .select({
+            id: schema.encounters.id,
+            encounterType: schema.encounters.encounterType,
+            status: schema.encounters.status,
+            startedAt: sql<Date>`${schema.encounters.startedAt} AT TIME ZONE 'UTC'`.mapWith(
+              (value: string) => new Date(value),
+            ),
+            endedAt: sql<Date | null>`${schema.encounters.endedAt} AT TIME ZONE 'UTC'`.mapWith(
+              (value: string) => new Date(value),
+            ),
+          })
+          .from(schema.encounters)
+          .where(
+            and(
+              eq(schema.encounters.id, encounterId),
+              eq(schema.encounters.tenantId, facility.tenantId),
+              eq(schema.encounters.patientId, patient.id),
+              eq(schema.encounters.facilityId, facility.id),
+            ),
+          )
+          .limit(1)
+          .for('update');
+        if (!encounter)
+          throw new InpatientDomainError(
+            'ENCOUNTER_NOT_FOUND',
+            'Encounter not found for this patient at this facility.',
+            404,
+          );
+        if (
+          encounter.encounterType.trim().toUpperCase() !== 'INPATIENT' ||
+          encounter.status.trim().toUpperCase() !== 'ACTIVE' ||
+          encounter.endedAt ||
+          encounter.startedAt > assignedAt
+        )
+          throw new InpatientDomainError(
+            'ENCOUNTER_NOT_ELIGIBLE',
+            'Choose an active inpatient encounter that has started for this admission.',
+            409,
+          );
+        const [alreadyLinked] = await tx
+          .select({ id: schema.admissions.id })
+          .from(schema.admissions)
+          .where(eq(schema.admissions.encounterId, encounterId))
+          .limit(1);
+        if (alreadyLinked)
+          throw new InpatientDomainError(
+            'ENCOUNTER_ALREADY_LINKED',
+            'This encounter is already linked to an admission.',
+            409,
+          );
       }
 
       /* ---- Bed availability ---------------------------------- */
@@ -472,21 +547,40 @@ export async function createAdmissionScoped(
           .for('share');
         if (choices.length === 1) admissionServiceId = choices[0].id;
       }
-      const admissionDate = manualAdmissionTime ? normaliseTimestamp(input.admissionDate) : assignedAt.toISOString();
+      const admissionDate = manualAdmissionTime
+        ? normaliseTimestamp(input.admissionDate)
+        : assignedAt.toISOString();
 
       // Admission-only staff can still provide care, but must not gain the
       // separate clinical.create capability. Record the limitation below.
-      if (encounterId === null && !manualAdmissionTime && hasAllPermissions(context, ['clinical.create'])) {
-        const [encounter] = await tx.insert(schema.encounters).values({
-          tenantId: facility.tenantId, facilityId: facility.id, patientId: patient.id,
-          encounterType: 'INPATIENT', status: 'ACTIVE', startedAt: assignedAt,
-          createdByUserId: context.userId, updatedByUserId: context.userId,
-        }).returning();
+      if (
+        encounterId === null &&
+        !manualAdmissionTime &&
+        hasAllPermissions(context, ['clinical.create'])
+      ) {
+        const [encounter] = await tx
+          .insert(schema.encounters)
+          .values({
+            tenantId: facility.tenantId,
+            facilityId: facility.id,
+            patientId: patient.id,
+            encounterType: 'INPATIENT',
+            status: 'ACTIVE',
+            startedAt: assignedAt,
+            createdByUserId: context.userId,
+            updatedByUserId: context.userId,
+          })
+          .returning();
         encounterId = encounter.id;
         await tx.insert(schema.auditLogs).values({
-          tenantId: facility.tenantId, facilityId: facility.id, userId: String(context.userId),
-          action: 'CREATE', resource: 'Encounter', resourceId: String(encounter.id),
-          details: 'Inpatient encounter created transactionally for admission; no care or consultation was recorded.',
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          userId: String(context.userId),
+          action: 'CREATE',
+          resource: 'Encounter',
+          resourceId: String(encounter.id),
+          details:
+            'Inpatient encounter created transactionally for admission; no care or consultation was recorded.',
         });
       }
 
@@ -512,13 +606,22 @@ export async function createAdmissionScoped(
         .returning();
 
       /* Freeze the policy, bed identity and daily rate under the bed lock. */
-      const bedBillingIssues = await captureBedStay(tx, context, created, bed, ward, assignedAt, manualAdmissionTime);
-      if (encounterId === null) bedBillingIssues.push({
-        code: 'BED_ENCOUNTER_REQUIRED',
-        message: manualAdmissionTime
-          ? 'A manually timed admission requires a verified historical inpatient encounter; none was created automatically.'
-          : 'An inpatient encounter could not be created without clinical.create permission; authorized linking and billing review are required.',
-      });
+      const bedBillingIssues = await captureBedStay(
+        tx,
+        context,
+        created,
+        bed,
+        ward,
+        assignedAt,
+        manualAdmissionTime,
+      );
+      if (encounterId === null)
+        bedBillingIssues.push({
+          code: 'BED_ENCOUNTER_REQUIRED',
+          message: manualAdmissionTime
+            ? 'A manually timed admission requires a verified historical inpatient encounter; none was created automatically.'
+            : 'An inpatient encounter could not be created without clinical.create permission; authorized linking and billing review are required.',
+        });
 
       /* ---- Occupy the bed in the same transaction ------------ */
 
@@ -538,7 +641,10 @@ export async function createAdmissionScoped(
       });
       if (attempt === null) throw new Error('ADMISSION_BILLING_QUEUE_UNAVAILABLE');
       await auditAdmission(tx, context, created, 'CREATE', 'Admission created.');
-      return { ...created, bedBillingReadiness: { ready: bedBillingIssues.length === 0, issues: bedBillingIssues } };
+      return {
+        ...created,
+        bedBillingReadiness: { ready: bedBillingIssues.length === 0, issues: bedBillingIssues },
+      };
     });
   } catch (error) {
     throw admissionConstraintError(error) ?? error;
@@ -587,10 +693,13 @@ export async function dischargeAdmissionScoped(
 
     await lockCurrentAdmissionBed(tx, admission);
     const dischargedAt = await databaseNow(tx);
-    const manualDischargeTime = typeof input?.dischargeDate === 'string' && input.dischargeDate.trim().length > 0;
+    const manualDischargeTime =
+      typeof input?.dischargeDate === 'string' && input.dischargeDate.trim().length > 0;
     await closeCurrentBedPeriod(tx, admission, dischargedAt);
     if (manualDischargeTime) {
-      await tx.update(schema.inpatientBedStaySnapshots).set({ manualDischargeTime: true })
+      await tx
+        .update(schema.inpatientBedStaySnapshots)
+        .set({ manualDischargeTime: true })
         .where(eq(schema.inpatientBedStaySnapshots.admissionId, admission.id));
     }
 
@@ -598,7 +707,9 @@ export async function dischargeAdmissionScoped(
       .update(schema.admissions)
       .set({
         status: CLOSED_ADMISSION_STATUS,
-        dischargeDate: manualDischargeTime ? normaliseTimestamp(input.dischargeDate) : dischargedAt.toISOString(),
+        dischargeDate: manualDischargeTime
+          ? normaliseTimestamp(input.dischargeDate)
+          : dischargedAt.toISOString(),
         dischargeType: optionalText(input?.dischargeType, 120),
         dischargeSummary: optionalText(input?.dischargeSummary, 8000),
         updatedAt: new Date(),
@@ -634,10 +745,19 @@ export async function dischargeAdmissionScoped(
     // Bed-night calculation and invoice/queue writes occur after this commits,
     // so their failure cannot leave a discharged patient occupying the bed.
     await tx.insert(schema.inpatientBedBillingWork).values({
-      admissionId: updated.id, tenantId: updated.tenantId, facilityId: updated.facilityId,
-      patientId: updated.patientId, recordedByUserId: context.userId,
+      admissionId: updated.id,
+      tenantId: updated.tenantId,
+      facilityId: updated.facilityId,
+      patientId: updated.patientId,
+      recordedByUserId: context.userId,
     });
-    await auditAdmission(tx, context, updated, 'UPDATE', 'Admission discharged; bed billing work recorded.');
+    await auditAdmission(
+      tx,
+      context,
+      updated,
+      'UPDATE',
+      'Admission discharged; bed billing work recorded.',
+    );
     return updated;
   });
 }
@@ -723,11 +843,19 @@ export async function setBedStatusScoped(
  * Without this, every discharge removes a bed from the usable board
  * permanently, because nothing else ever restores 'Available'.
  */
-export async function releaseBedScoped(context: AuthorizationContext, bedId: number, requestedFacilityId?: number) {
+export async function releaseBedScoped(
+  context: AuthorizationContext,
+  bedId: number,
+  requestedFacilityId?: number,
+) {
   const id = requirePositiveId(bedId, 'bed ID');
 
   const { bed, ward, facility } = await requireBedInScope(context, id);
-  requireSelectedAdmissionFacility(context, { tenantId: facility.tenantId, facilityId: ward.facilityId }, requestedFacilityId);
+  requireSelectedAdmissionFacility(
+    context,
+    { tenantId: facility.tenantId, facilityId: ward.facilityId },
+    requestedFacilityId,
+  );
 
   if (bed.currentPatientId !== null && bed.currentPatientId !== undefined) {
     throw new InpatientDomainError(
@@ -868,27 +996,54 @@ export async function accrueBedDaysScoped(
   requestedFacilityId?: number,
 ) {
   const admission = await getAdmissionByIdScoped(context, admissionId);
-  if (!admission) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
+  if (!admission)
+    throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Admission not found.', 404);
   requireSelectedAdmissionFacility(context, admission, requestedFacilityId);
   if (untilDate && !/^\d{4}-\d{2}-\d{2}$/.test(untilDate))
-    throw new InpatientDomainError('INVALID_INPUT', 'Enter an ISO date for the accrual limit.', 400);
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'Enter an ISO date for the accrual limit.',
+      400,
+    );
   if (admission.status === ACTIVE_ADMISSION_STATUS) {
     const view = await getBedBillingView(context, admission.id, requestedFacilityId);
-    return { nights: view.nights, charges: [] as ChargeResult[], segments: [], review: view.review, estimateOnly: true };
+    return {
+      nights: view.nights,
+      charges: [] as ChargeResult[],
+      segments: [],
+      review: view.review,
+      estimateOnly: true,
+    };
   }
   const staged = await db.transaction(async (tx) => {
-    const [locked] = await tx.select().from(schema.admissions).where(eq(schema.admissions.id, admission.id)).for('update');
-    if (!locked || locked.tenantId !== admission.tenantId || locked.facilityId !== admission.facilityId)
+    const [locked] = await tx
+      .select()
+      .from(schema.admissions)
+      .where(eq(schema.admissions.id, admission.id))
+      .for('update');
+    if (
+      !locked ||
+      locked.tenantId !== admission.tenantId ||
+      locked.facilityId !== admission.facilityId
+    )
       throw new Error('BED_ADMISSION_SCOPE_CHANGED');
     const result = await stageDischargedBedNights(tx, locked, await databaseNow(tx));
     await markBedBillingStaged(tx, locked, context.userId);
     return result;
   });
-  if (staged.review) return {
-    nights: null, segments: [], review: staged.review, estimateOnly: false,
-    charges: [{ charged: false, reason: 'BED_OCCUPANCY_REVIEW' as const, message: staged.review.message }],
-  };
-  const requests = untilDate ? staged.requests.filter((r) => r.serviceDate && r.serviceDate <= untilDate) : staged.requests;
+  if (staged.review)
+    return {
+      nights: null,
+      segments: [],
+      review: staged.review,
+      estimateOnly: false,
+      charges: [
+        { charged: false, reason: 'BED_OCCUPANCY_REVIEW' as const, message: staged.review.message },
+      ],
+    };
+  const requests = untilDate
+    ? staged.requests.filter((r) => r.serviceDate && r.serviceDate <= untilDate)
+    : staged.requests;
   const charges: Array<ChargeResult | null> = [];
   for (const request of requests) charges.push(await chargeAndRecord(db, request));
   return { nights: requests.length, charges, segments: [], review: null, estimateOnly: false };
@@ -960,7 +1115,11 @@ export async function transferAdmissionScoped(
         );
       }
       if (ward.isActive === false) {
-        throw new InpatientDomainError('WARD_RETIRED', 'A retired ward cannot accept a transfer.', 409);
+        throw new InpatientDomainError(
+          'WARD_RETIRED',
+          'A retired ward cannot accept a transfer.',
+          409,
+        );
       }
 
       const [bed] = await tx
@@ -1062,8 +1221,13 @@ export async function transferAdmissionScoped(
         .where(eq(schema.beds.id, bed.id));
 
       await captureBedPeriod(tx, context, updated, bed, ward, transferredAt);
+      const rate = selectBedRate(bed, ward);
       await auditAdmission(tx, context, updated, 'UPDATE', 'Admission transferred.');
-      return { transfer, admission: updated };
+      return {
+        transfer,
+        admission: updated,
+        bedBillingReadiness: { ready: !rate.issue, issues: rate.issue ? [rate.issue] : [] },
+      };
     });
   } catch (error) {
     throw admissionConstraintError(error) ?? error;

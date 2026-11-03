@@ -50,13 +50,26 @@ const router = Router();
 function requestedAdmissionFacility(req: AuthRequest): number | undefined {
   const queryId = parseOptionalPositiveId(req.query.facilityId, 'facility ID');
   const rawBodyId = req.body?.facilityId;
-  const bodyId = typeof rawBodyId === 'number'
-    ? (Number.isSafeInteger(rawBodyId) && rawBodyId > 0 ? rawBodyId : NaN)
-    : parseOptionalPositiveId(rawBodyId, 'facility ID');
-  if ((queryId !== undefined && !Number.isSafeInteger(queryId)) || (bodyId !== undefined && !Number.isSafeInteger(bodyId)))
-    throw new queries.InpatientDomainError('INVALID_INPUT', 'A valid facility ID is required.', 400);
+  const bodyId =
+    typeof rawBodyId === 'number'
+      ? Number.isSafeInteger(rawBodyId) && rawBodyId > 0
+        ? rawBodyId
+        : NaN
+      : parseOptionalPositiveId(rawBodyId, 'facility ID');
+  if (
+    (queryId !== undefined && !Number.isSafeInteger(queryId)) ||
+    (bodyId !== undefined && !Number.isSafeInteger(bodyId))
+  )
+    throw new queries.InpatientDomainError(
+      'INVALID_INPUT',
+      'A valid facility ID is required.',
+      400,
+    );
   if (queryId !== undefined && bodyId !== undefined && queryId !== bodyId)
-    throw new ScopeAccessError('The requested facility identifiers do not match.', 'FACILITY_SCOPE_MISMATCH');
+    throw new ScopeAccessError(
+      'The requested facility identifiers do not match.',
+      'FACILITY_SCOPE_MISMATCH',
+    );
   return bodyId ?? queryId;
 }
 
@@ -70,55 +83,176 @@ function requestedAdmissionFacility(req: AuthRequest): number | undefined {
 // Occupancy is created only by admitting a patient and released
 // only by discharging one, so bed status cannot forge a bed.
 
-router.get('/inpatient/bed-billing-policy', requirePermission('inpatient.read'), async (req: AuthRequest, res: Response) => {
-  const context = requireAuthContext(req, res); if (!context) return;
-  try { res.json(await bedBilling.getBedBillingPolicy(context, parseOptionalPositiveId(req.query.facilityId, 'facility ID'))); }
-  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed policy read failed.'); res.status(500).json({ error: 'BED_POLICY_READ_FAILED' }); }
-});
+router.get(
+  '/inpatient/bed-billing-policy',
+  requirePermission('inpatient.read'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      res.json(
+        await bedBilling.getBedBillingPolicy(
+          context,
+          parseOptionalPositiveId(req.query.facilityId, 'facility ID'),
+        ),
+      );
+    } catch (error) {
+      if (handleInpatientError(error, res)) return;
+      console.error('Bed policy read failed.');
+      res.status(500).json({ error: 'BED_POLICY_READ_FAILED' });
+    }
+  },
+);
 
-router.put('/inpatient/bed-billing-policy', requirePermission('inpatient.wards.update', 'billing.update'), async (req: AuthRequest, res: Response) => {
-  const context = requireAuthContext(req, res); if (!context) return;
-  try { res.json(await bedBilling.setBedBillingPolicy(context, { ...(req.body ?? {}), facilityId: requestedAdmissionFacility(req) })); }
-  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed policy update failed.'); res.status(500).json({ error: 'BED_POLICY_UPDATE_FAILED' }); }
-});
+router.put(
+  '/inpatient/bed-billing-policy',
+  requirePermission('inpatient.wards.update', 'billing.update'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      res.json(
+        await bedBilling.setBedBillingPolicy(context, {
+          ...(req.body ?? {}),
+          facilityId: requestedAdmissionFacility(req),
+        }),
+      );
+    } catch (error) {
+      if (handleInpatientError(error, res)) return;
+      console.error('Bed policy update failed.');
+      res.status(500).json({ error: 'BED_POLICY_UPDATE_FAILED' });
+    }
+  },
+);
 
-router.get('/inpatient/bed-billing-unresolved', requirePermission('inpatient.read'), requireAnyPermission('billing.read', 'billing.create', 'billing.update'), async (req: AuthRequest, res: Response) => {
-  const context = requireAuthContext(req, res); if (!context) return;
-  try {
-    const rawOffset = req.query.offset;
-    if (rawOffset !== undefined && (typeof rawOffset !== 'string' || !/^(0|[1-9]\d*)$/.test(rawOffset)))
-      throw new queries.InpatientDomainError('INVALID_INPUT', 'Enter a valid bed billing page offset.', 400);
-    res.json(await bedBilling.getUnresolvedBedBilling(context, parseOptionalPositiveId(req.query.facilityId, 'facility ID'), rawOffset === undefined ? 0 : Number(rawOffset)));
-  } catch (error) {
-    if (handleInpatientError(error, res)) return;
-    console.error('Unresolved bed billing read failed.');
-    res.status(500).json({ error: 'BED_BILLING_UNRESOLVED_READ_FAILED' });
-  }
-});
+router.get(
+  '/inpatient/bed-billing-unresolved',
+  requirePermission('inpatient.read'),
+  requireAnyPermission('billing.read', 'billing.create', 'billing.update'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      const rawOffset = req.query.offset;
+      if (
+        rawOffset !== undefined &&
+        (typeof rawOffset !== 'string' || !/^(0|[1-9]\d*)$/.test(rawOffset))
+      )
+        throw new queries.InpatientDomainError(
+          'INVALID_INPUT',
+          'Enter a valid bed billing page offset.',
+          400,
+        );
+      res.json(
+        await bedBilling.getUnresolvedBedBilling(
+          context,
+          parseOptionalPositiveId(req.query.facilityId, 'facility ID'),
+          rawOffset === undefined ? 0 : Number(rawOffset),
+        ),
+      );
+    } catch (error) {
+      if (handleInpatientError(error, res)) return;
+      console.error('Unresolved bed billing read failed.');
+      res.status(500).json({ error: 'BED_BILLING_UNRESOLVED_READ_FAILED' });
+    }
+  },
+);
 
-router.get('/admissions/:id/bed-occupancy', requirePermission('inpatient.read'), async (req: AuthRequest, res: Response) => {
-  const context = requireAuthContext(req, res); if (!context) return;
-  try { res.json(await bedBilling.getBedBillingView(context, Number(req.params.id), requestedAdmissionFacility(req))); }
-  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed occupancy read failed.'); res.status(500).json({ error: 'BED_OCCUPANCY_READ_FAILED' }); }
-});
+router.get(
+  '/admissions/:id/bed-occupancy',
+  requirePermission('inpatient.read'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      res.json(
+        await bedBilling.getBedBillingView(
+          context,
+          Number(req.params.id),
+          requestedAdmissionFacility(req),
+        ),
+      );
+    } catch (error) {
+      if (handleInpatientError(error, res)) return;
+      console.error('Bed occupancy read failed.');
+      res.status(500).json({ error: 'BED_OCCUPANCY_READ_FAILED' });
+    }
+  },
+);
 
-router.post('/admissions/:id/bed-billing-encounter', requirePermission('inpatient.read', 'clinical.read', 'billing.update'), async (req: AuthRequest, res: Response) => {
-  const context = requireAuthContext(req, res); if (!context) return;
-  try { res.json(await bedBilling.linkBedBillingEncounter(context, Number(req.params.id), req.body?.encounterId, req.body?.reason, req.body?.evidenceReference, req.body?.affirmRelationship, requestedAdmissionFacility(req))); }
-  catch (error) { if (handleInpatientError(error, res)) return; console.error('Admission encounter link failed.'); res.status(500).json({ error: 'BED_ENCOUNTER_LINK_FAILED' }); }
-});
+router.post(
+  '/admissions/:id/bed-billing-encounter',
+  requirePermission('inpatient.read', 'clinical.read', 'billing.update'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      res.json(
+        await bedBilling.linkBedBillingEncounter(
+          context,
+          Number(req.params.id),
+          req.body?.encounterId,
+          req.body?.reason,
+          req.body?.evidenceReference,
+          req.body?.affirmRelationship,
+          requestedAdmissionFacility(req),
+        ),
+      );
+    } catch (error) {
+      if (handleInpatientError(error, res)) return;
+      console.error('Admission encounter link failed.');
+      res.status(500).json({ error: 'BED_ENCOUNTER_LINK_FAILED' });
+    }
+  },
+);
 
-router.post('/admissions/:id/bed-history-review', requirePermission('inpatient.read', 'clinical.read', 'billing.update'), async (req: AuthRequest, res: Response) => {
-  const context = requireAuthContext(req, res); if (!context) return;
-  try { res.status(201).json(await bedBilling.reviewBedHistory(context, Number(req.params.id), req.body ?? {}, requestedAdmissionFacility(req))); }
-  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed history review failed.'); res.status(500).json({ error: 'BED_HISTORY_REVIEW_FAILED' }); }
-});
+router.post(
+  '/admissions/:id/bed-history-review',
+  requirePermission('inpatient.read', 'clinical.read', 'billing.update'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      res
+        .status(201)
+        .json(
+          await bedBilling.reviewBedHistory(
+            context,
+            Number(req.params.id),
+            req.body ?? {},
+            requestedAdmissionFacility(req),
+          ),
+        );
+    } catch (error) {
+      if (handleInpatientError(error, res)) return;
+      console.error('Bed history review failed.');
+      res.status(500).json({ error: 'BED_HISTORY_REVIEW_FAILED' });
+    }
+  },
+);
 
-router.post('/admissions/:id/bed-billing-retry', requirePermission('inpatient.read', 'billing.create'), async (req: AuthRequest, res: Response) => {
-  const context = requireAuthContext(req, res); if (!context) return;
-  try { res.json(await queries.accrueBedDaysScoped(context, Number(req.params.id), undefined, requestedAdmissionFacility(req))); }
-  catch (error) { if (handleInpatientError(error, res)) return; console.error('Bed billing retry failed.'); res.status(500).json({ error: 'BED_BILLING_RETRY_FAILED' }); }
-});
+router.post(
+  '/admissions/:id/bed-billing-retry',
+  requirePermission('inpatient.read', 'billing.create'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      res.json(
+        await queries.accrueBedDaysScoped(
+          context,
+          Number(req.params.id),
+          undefined,
+          requestedAdmissionFacility(req),
+        ),
+      );
+    } catch (error) {
+      if (handleInpatientError(error, res)) return;
+      console.error('Bed billing retry failed.');
+      res.status(500).json({ error: 'BED_BILLING_RETRY_FAILED' });
+    }
+  },
+);
 
 router.get(
   '/wards',
@@ -164,18 +298,11 @@ router.post(
     if (!context) return;
 
     try {
-      const created = await wardBed.createWard(context, req.body ?? {});
-
-      await queries.logAuditEvent(
-        context.tenantId,
-        context.facilityId,
-        String(context.userId),
-        'CREATE',
-        'Ward',
-        String(created.id),
-        `Created ward ${created.code} — ${created.name}`,
-      );
-
+      // The ward and its audit entries commit together inside the service.
+      const created = await wardBed.createWard(context, {
+        ...(req.body ?? {}),
+        facilityId: requestedAdmissionFacility(req),
+      });
       res.status(201).json(created);
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
@@ -198,18 +325,13 @@ router.put(
     if (!context) return;
 
     try {
-      const updated = await wardBed.updateWard(context, req.params.id, req.body ?? {});
-
-      await queries.logAuditEvent(
-        context.tenantId,
-        context.facilityId,
-        String(context.userId),
-        'UPDATE',
-        'Ward',
-        String(updated.id),
-        `Updated ward ${updated.code}`,
+      // The ward and its audit entries commit together inside the service.
+      const updated = await wardBed.updateWard(
+        context,
+        req.params.id,
+        req.body ?? {},
+        requestedAdmissionFacility(req),
       );
-
       res.json(updated);
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
@@ -232,7 +354,11 @@ router.delete(
     if (!context) return;
 
     try {
-      const result = await wardBed.deleteWard(context, req.params.id);
+      const result = await wardBed.deleteWard(
+        context,
+        req.params.id,
+        requestedAdmissionFacility(req),
+      );
 
       await queries.logAuditEvent(
         context.tenantId,
@@ -271,7 +397,11 @@ router.post(
     if (!context) return;
 
     try {
-      const result = await wardBed.createBeds(context, req.body ?? {});
+      const result = await wardBed.createBeds(
+        context,
+        req.body ?? {},
+        requestedAdmissionFacility(req),
+      );
 
       await queries.logAuditEvent(
         context.tenantId,
@@ -305,7 +435,12 @@ router.put(
     if (!context) return;
 
     try {
-      const updated = await wardBed.updateBed(context, req.params.id, req.body ?? {});
+      const updated = await wardBed.updateBed(
+        context,
+        req.params.id,
+        req.body ?? {},
+        requestedAdmissionFacility(req),
+      );
 
       await queries.logAuditEvent(
         context.tenantId,
@@ -339,7 +474,11 @@ router.delete(
     if (!context) return;
 
     try {
-      const result = await wardBed.deleteBed(context, req.params.id);
+      const result = await wardBed.deleteBed(
+        context,
+        req.params.id,
+        requestedAdmissionFacility(req),
+      );
 
       await queries.logAuditEvent(
         context.tenantId,
@@ -451,7 +590,11 @@ router.put(
     if (!context) return;
 
     try {
-      const bed = await queries.releaseBedScoped(context, Number(req.params.id), requestedAdmissionFacility(req));
+      const bed = await queries.releaseBedScoped(
+        context,
+        Number(req.params.id),
+        requestedAdmissionFacility(req),
+      );
 
       res.json(bed);
     } catch (err: unknown) {
@@ -503,7 +646,10 @@ router.post(
     if (!context) return;
 
     try {
-      const admission = await queries.createAdmissionScoped(context, { ...(req.body ?? {}), facilityId: requestedAdmissionFacility(req) });
+      const admission = await queries.createAdmissionScoped(context, {
+        ...(req.body ?? {}),
+        facilityId: requestedAdmissionFacility(req),
+      });
 
       const charge = await chargeSafely(admissionChargeRequest(admission));
 
@@ -530,20 +676,38 @@ router.post(
 
     try {
       const facilityId = requestedAdmissionFacility(req);
-      const admission = await queries.dischargeAdmissionScoped(
-        context,
-        Number(req.params.id),
-        { ...(req.body ?? {}), facilityId },
-      );
+      const admission = await queries.dischargeAdmissionScoped(context, Number(req.params.id), {
+        ...(req.body ?? {}),
+        facilityId,
+      });
 
       // Clinical discharge and a durable billing-work marker have committed.
       // A staging or invoice failure must not be reported as a failed discharge.
       try {
-        const accrual = await queries.accrueBedDaysScoped(context, admission.id, undefined, facilityId);
-        res.json({ ...admission, billing: { nights: accrual.nights, bedDays: accrual.charges, review: accrual.review } });
+        const accrual = await queries.accrueBedDaysScoped(
+          context,
+          admission.id,
+          undefined,
+          facilityId,
+        );
+        res.json({
+          ...admission,
+          billing: { nights: accrual.nights, bedDays: accrual.charges, review: accrual.review },
+        });
       } catch {
         console.error('Bed billing after committed discharge needs review.');
-        res.json({ ...admission, billing: { nights: null, bedDays: [], review: { code: 'BED_BILLING_STATUS_UNKNOWN', message: 'Discharge succeeded and the bed is in Cleaning; billing status could not be confirmed. Inspect the admission’s pending bed billing work before retrying.' } } });
+        res.json({
+          ...admission,
+          billing: {
+            nights: null,
+            bedDays: [],
+            review: {
+              code: 'BED_BILLING_STATUS_UNKNOWN',
+              message:
+                'Discharge succeeded and the bed is in Cleaning; billing status could not be confirmed. Inspect the admission’s pending bed billing work before retrying.',
+            },
+          },
+        });
       }
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
@@ -571,7 +735,7 @@ router.post(
 
     try {
       const facilityId = requestedAdmissionFacility(req);
-      const { admission, transfer } = await queries.transferAdmissionScoped(
+      const { admission, transfer, bedBillingReadiness } = await queries.transferAdmissionScoped(
         context,
         Number(req.params.id),
         {
@@ -589,11 +753,29 @@ router.post(
       // Transfer has committed; the estimate is not a charge and a read
       // failure must not make a completed transfer appear to have failed.
       try {
-        const accrual = await queries.accrueBedDaysScoped(context, admission.id, undefined, facilityId);
-        res.json({ admission, transfer, billing: accrual });
+        const accrual = await queries.accrueBedDaysScoped(
+          context,
+          admission.id,
+          undefined,
+          facilityId,
+        );
+        res.json({ admission, transfer, bedBillingReadiness, billing: accrual });
       } catch {
         console.error('Bed estimate after committed transfer unavailable.');
-        res.json({ admission, transfer, billing: { estimateOnly: true, nights: null, charges: [], review: { code: 'BED_ESTIMATE_UNAVAILABLE', message: 'Transfer succeeded; the estimate is unavailable.' } } });
+        res.json({
+          admission,
+          transfer,
+          bedBillingReadiness,
+          billing: {
+            estimateOnly: true,
+            nights: null,
+            charges: [],
+            review: {
+              code: 'BED_ESTIMATE_UNAVAILABLE',
+              message: 'Transfer succeeded; the estimate is unavailable.',
+            },
+          },
+        });
       }
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;

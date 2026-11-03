@@ -75,7 +75,15 @@ const ctx: AuthorizationContext = {
   tenantId: 1,
   facilityId: 10,
   roles: ['FACILITY_ADMIN'],
-  permissions: ['inpatient.read', 'inpatient.write', 'inpatient.beds.create', 'billing.update', 'nursing.write', 'analytics.read'],
+  permissions: [
+    'inpatient.read',
+    'inpatient.write',
+    'inpatient.wards.create',
+    'inpatient.beds.create',
+    'billing.update',
+    'nursing.write',
+    'analytics.read',
+  ],
   isSuperAdmin: false,
 };
 
@@ -248,9 +256,16 @@ describe('Staff Invitations, Ward/Bed Capacity, Nursing Vitals & Operations Repo
       wardType: 'Medical',
       genderAllocation: 'Female',
       dailyRate: '2000',
+      priceReason: 'Synthetic ward price approval',
     });
     expect(ward.code).toBe('FMW-1');
     expect(ward.totalBeds).toBe(0);
+    expect(mockDb.state!.calls).toContainEqual(
+      expect.objectContaining({
+        op: 'insert',
+        values: expect.objectContaining({ resource: 'WardDailyRate' }),
+      }),
+    );
 
     // Update ward
     mockDb.state!.queueSelect(

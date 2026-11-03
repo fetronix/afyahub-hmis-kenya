@@ -108,7 +108,8 @@ export async function recordChargeAttempt(
     result.reason !== 'TARIFF_NOT_CONFIGURED' &&
     result.reason !== 'INVENTORY_PRICE_REVIEW' &&
     result.reason !== 'BED_OCCUPANCY_REVIEW'
-  ) return null;
+  )
+    return null;
 
   /*
    * Without a numbered clinical source there is no stable identity for
@@ -144,8 +145,10 @@ export async function recordChargeAttempt(
     serviceRefCode: request.serviceRef?.code ?? null,
     serviceDate:
       request.serviceDate ??
-      (request.sourceType === 'BED_DAY' && /^\d{4}-\d{2}-\d{2}$/.test(request.idempotencySuffix ?? '')
-        ? request.idempotencySuffix! : null),
+      (request.sourceType === 'BED_DAY' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(request.idempotencySuffix ?? '')
+        ? request.idempotencySuffix!
+        : null),
     quantity,
     fallbackUnitPrice: request.fallbackUnitPrice == null ? null : String(request.fallbackUnitPrice),
     reason: result.reason,
@@ -486,7 +489,9 @@ export async function chargeAndRecord(
         });
       } else if (
         !result.charged &&
-        (result.reason === 'TARIFF_NOT_CONFIGURED' || result.reason === 'INVENTORY_PRICE_REVIEW' || result.reason === 'BED_OCCUPANCY_REVIEW')
+        (result.reason === 'TARIFF_NOT_CONFIGURED' ||
+          result.reason === 'INVENTORY_PRICE_REVIEW' ||
+          result.reason === 'BED_OCCUPANCY_REVIEW')
       ) {
         const attemptId = await recordChargeAttempt(tx, request, result);
         if (attemptId === null) {
@@ -693,10 +698,22 @@ async function enrichFromSource(
 ): Promise<ChargeRequest> {
   if (request.sourceType === 'BED_DAY') {
     if (typeof request.sourceId !== 'number') throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
-    const [admission] = await executor.select().from(schema.admissions)
-      .where(and(eq(schema.admissions.id, request.sourceId), eq(schema.admissions.tenantId, request.tenantId),
-        eq(schema.admissions.facilityId, request.facilityId), eq(schema.admissions.patientId, request.patientId))).limit(1);
-    if (!admission || (request.encounterId != null && request.encounterId !== admission.encounterId))
+    const [admission] = await executor
+      .select()
+      .from(schema.admissions)
+      .where(
+        and(
+          eq(schema.admissions.id, request.sourceId),
+          eq(schema.admissions.tenantId, request.tenantId),
+          eq(schema.admissions.facilityId, request.facilityId),
+          eq(schema.admissions.patientId, request.patientId),
+        ),
+      )
+      .limit(1);
+    if (
+      !admission ||
+      (request.encounterId != null && request.encounterId !== admission.encounterId)
+    )
       throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
     // A previously missing encounter may be attached only by the separate,
     // authorized and audited admission-linking workflow.
@@ -896,7 +913,16 @@ export async function retryChargeAttempt(
     if (!row) return null;
 
     if (row.status === 'SUPERSEDED') {
-      return { attemptId: row.id, status: 'SUPERSEDED', result: { charged: false, reason: 'INVALID_INPUT', message: 'This pending identity was superseded by an audited bed-history review. Retry the reviewed bed nights instead.' } };
+      return {
+        attemptId: row.id,
+        status: 'SUPERSEDED',
+        result: {
+          charged: false,
+          reason: 'INVALID_INPUT',
+          message:
+            'This pending identity was superseded by an audited bed-history review. Retry the reviewed bed nights instead.',
+        },
+      };
     }
     if (row.status !== 'PENDING') {
       return {
@@ -923,13 +949,19 @@ export async function retryChargeAttempt(
     if (row.sourceType === 'BED_DAY') {
       const date = row.idempotencySuffix ?? '';
       const [night] = /^\d{4}-\d{2}-\d{2}$/.test(date)
-        ? await tx.select({ id: schema.inpatientBedNights.id }).from(schema.inpatientBedNights).where(and(
-            eq(schema.inpatientBedNights.admissionId, row.sourceId),
-            eq(schema.inpatientBedNights.tenantId, input.tenantId),
-            eq(schema.inpatientBedNights.facilityId, input.facilityId),
-            eq(schema.inpatientBedNights.patientId, row.patientId),
-            sql`${schema.inpatientBedNights.billingDate}::text = ${date}`,
-          )).limit(1)
+        ? await tx
+            .select({ id: schema.inpatientBedNights.id })
+            .from(schema.inpatientBedNights)
+            .where(
+              and(
+                eq(schema.inpatientBedNights.admissionId, row.sourceId),
+                eq(schema.inpatientBedNights.tenantId, input.tenantId),
+                eq(schema.inpatientBedNights.facilityId, input.facilityId),
+                eq(schema.inpatientBedNights.patientId, row.patientId),
+                sql`${schema.inpatientBedNights.billingDate}::text = ${date}`,
+              ),
+            )
+            .limit(1)
         : [];
       if (!night) {
         return {
@@ -938,18 +970,23 @@ export async function retryChargeAttempt(
           result: {
             charged: false,
             reason: 'BED_OCCUPANCY_REVIEW',
-            diagnosis: { code: row.diagnosisCode ?? 'BED_NIGHT_EVIDENCE_REQUIRED', label: 'Bed occupancy review' },
+            diagnosis: {
+              code: row.diagnosisCode ?? 'BED_NIGHT_EVIDENCE_REQUIRED',
+              label: 'Bed occupancy review',
+            },
             message: `${row.detail ?? 'This bed charge has no verified night evidence.'} Use the admission-specific bed billing recovery before retrying.`,
           },
         };
       }
     }
     const request = toChargeRequest(row, input.tenantId);
-    const related: ChargeAttemptRow[] = (await tx
-      .select()
-      .from(schema.billingChargeAttempts)
-      .where(attemptIdentityWhere(request))
-      .for('update')).filter((other: ChargeAttemptRow) => other.status !== 'SUPERSEDED');
+    const related: ChargeAttemptRow[] = (
+      await tx
+        .select()
+        .from(schema.billingChargeAttempts)
+        .where(attemptIdentityWhere(request))
+        .for('update')
+    ).filter((other: ChargeAttemptRow) => other.status !== 'SUPERSEDED');
     if (
       related.some(
         (other) =>

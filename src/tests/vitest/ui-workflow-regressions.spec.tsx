@@ -250,7 +250,9 @@ describe('unified workflow regressions', () => {
     expect(mocks.triggerRefresh).toHaveBeenCalled();
   });
   it('keeps the same booking retry key after an unconfirmed response', async () => {
-    mocks.createAppointment.mockRejectedValueOnce(new Error('Connection interrupted')).mockResolvedValueOnce({ id: 12 });
+    mocks.createAppointment
+      .mockRejectedValueOnce(new Error('Connection interrupted'))
+      .mockResolvedValueOnce({ id: 12 });
     const user = userEvent.setup();
     render(<ReceptionQueueModule />);
     await waitFor(() => expect(mocks.getPatients).toHaveBeenCalled());
@@ -265,7 +267,9 @@ describe('unified workflow regressions', () => {
     await waitFor(() => expect(mocks.createAppointment).toHaveBeenCalledTimes(2));
     expect(mocks.createAppointment.mock.calls[0][1]).toBe(mocks.createAppointment.mock.calls[1][1]);
     expect(mocks.createAppointment.mock.calls[0][1]).toEqual(expect.any(String));
-    expect(mocks.createAppointment.mock.calls[0][0]).toEqual(mocks.createAppointment.mock.calls[1][0]);
+    expect(mocks.createAppointment.mock.calls[0][0]).toEqual(
+      mocks.createAppointment.mock.calls[1][0],
+    );
   });
   it('uses a date-scoped day/week/month diary and shows history and payment uncertainty', async () => {
     const user = userEvent.setup();

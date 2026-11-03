@@ -484,10 +484,13 @@ export const PharmacyModule: React.FC = () => {
         )}
       </div>
 
-      <div role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+      <div
+        role="note"
+        className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"
+      >
         Medicine returns and dispensing reversals are not yet supported by an integrated stock and
-        financial correction workflow. Refer them to pharmacy and finance for review; do not silently
-        restore stock or alter an invoice, receipt, or posted journal.
+        financial correction workflow. Refer them to pharmacy and finance for review; do not
+        silently restore stock or alter an invoice, receipt, or posted journal.
       </div>
 
       {/* DISPENSING MODAL */}

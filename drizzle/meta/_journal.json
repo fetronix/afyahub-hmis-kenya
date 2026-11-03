@@ -463,6 +463,13 @@
             "when": 1792900000053,
             "tag": "0065_inpatient_policy_and_admission_evidence",
             "breakpoints": true
+        },
+        {
+            "idx": 66,
+            "version": "7",
+            "when": 1792900000054,
+            "tag": "0066_ward_default_bed_price_evidence",
+            "breakpoints": true
         }
     ]
 }

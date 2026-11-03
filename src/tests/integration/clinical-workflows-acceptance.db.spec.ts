@@ -38,10 +38,11 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         [facility, `ITEM-${suffix}-${++sequence}`, stock],
       )
     ).rows[0].id as number;
-    if (tracked) await pool.query(
-      "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,$2,'2099-12-31',$3)",
-      [id, `VERIFIED-${suffix}-${sequence}`, stock],
-    );
+    if (tracked)
+      await pool.query(
+        "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,$2,'2099-12-31',$3)",
+        [id, `VERIFIED-${suffix}-${sequence}`, stock],
+      );
     return id;
   };
   const configureProduct = async (id: number, fee: string) => {

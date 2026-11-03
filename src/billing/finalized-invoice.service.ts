@@ -440,21 +440,46 @@ export async function finalizeInvoice(
           unit !== parseMoneyToCents(evidence.price) ||
           !matchesAllocations
         )
-          issues.push(`Item ${item.id} needs matching recorded inventory dispensing and price evidence.`);
+          issues.push(
+            `Item ${item.id} needs matching recorded inventory dispensing and price evidence.`,
+          );
       } else if (item.sourceType === 'BED_DAY' && item.tariffId === null) {
         const evidence = await resolveBedOccupancyCharge(tx, {
-          tenantId: invoice.tenantId, facilityId: invoice.facilityId, patientId: invoice.patientId,
-          encounterId: invoice.encounterId, sourceType: 'BED_DAY', sourceId: item.sourceId ?? 0,
-          idempotencySuffix: item.serviceDate ?? undefined, serviceDate: item.serviceDate,
-          quantity: item.quantity ?? 0, itemType: 'Inpatient', codes: [],
+          tenantId: invoice.tenantId,
+          facilityId: invoice.facilityId,
+          patientId: invoice.patientId,
+          encounterId: invoice.encounterId,
+          sourceType: 'BED_DAY',
+          sourceId: item.sourceId ?? 0,
+          idempotencySuffix: item.serviceDate ?? undefined,
+          serviceDate: item.serviceDate,
+          quantity: item.quantity ?? 0,
+          itemType: 'Inpatient',
+          codes: [],
         });
-        if ('failure' in evidence || item.facilityServiceId !== null || item.tariffCode !== null ||
-            item.bedOccupancyId !== evidence.occupancyId || item.bedNightId !== evidence.nightId ||
-            item.description !== evidence.name || item.serviceCode !== evidence.code || item.serviceUnit !== evidence.unit ||
-            item.serviceDate !== evidence.serviceDate || item.serviceDepartment !== 'inpatient' ||
-            item.servicePerformedAt?.getTime() !== evidence.performedAt.getTime() || unit !== parseMoneyToCents(evidence.price))
-          issues.push(`Item ${item.id} needs matching recorded bed occupancy, cutoff and rate evidence.`);
-      } else if (!tariff || !item.tariffId || !present(item.tariffCode) || !present(item.description)) {
+        if (
+          'failure' in evidence ||
+          item.facilityServiceId !== null ||
+          item.tariffCode !== null ||
+          item.bedOccupancyId !== evidence.occupancyId ||
+          item.bedNightId !== evidence.nightId ||
+          item.description !== evidence.name ||
+          item.serviceCode !== evidence.code ||
+          item.serviceUnit !== evidence.unit ||
+          item.serviceDate !== evidence.serviceDate ||
+          item.serviceDepartment !== 'inpatient' ||
+          item.servicePerformedAt?.getTime() !== evidence.performedAt.getTime() ||
+          unit !== parseMoneyToCents(evidence.price)
+        )
+          issues.push(
+            `Item ${item.id} needs matching recorded bed occupancy, cutoff and rate evidence.`,
+          );
+      } else if (
+        !tariff ||
+        !item.tariffId ||
+        !present(item.tariffCode) ||
+        !present(item.description)
+      ) {
         issues.push(`Item ${item.id} needs a recorded facility tariff and code.`);
       }
       if (

@@ -155,6 +155,11 @@ describe('Facility services and tariff tables', () => {
     await user.type(screen.getByLabelText('Description'), 'Consultation details');
     await user.selectOptions(screen.getByLabelText('Service category'), 'CONSULTATION');
     await user.type(screen.getByLabelText('Billing unit'), 'Visit');
+    expect(screen.getByLabelText('Initial price (KES)')).toHaveValue('0.00');
+    expect(
+      screen.getByText(/KES 0.00 means unpriced, not a free billable service/),
+    ).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Initial price (KES)'));
     await user.type(screen.getByLabelText('Initial price (KES)'), '123.45');
     await user.click(screen.getByRole('button', { name: 'Save service' }));
     await waitFor(() =>

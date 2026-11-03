@@ -20,6 +20,7 @@
     "test": "vitest run --coverage",
     "test:docker": "node scripts/test-docker.mjs",
     "test:browser:synthetic": "node scripts/synthetic-browser-smoke.mjs",
+    "security:check-tracked-database-backups": "node scripts/check-tracked-database-backups.mjs",
     "db:status:all": "node scripts/run-script.mjs migration-status --expect-all",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:permissions": "node scripts/run-script.mjs seed-permissions",

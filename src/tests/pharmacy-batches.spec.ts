@@ -37,11 +37,20 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
     const justAfterNairobiMidnight = new Date('2026-11-01T21:00:00.000Z');
     const expiring = [lot(1, 'SYNTHETIC', '2026-11-01', 3)];
     expect(calendarDateInZone('Africa/Nairobi', justBeforeNairobiMidnight)).toBe('2026-11-01');
-    expect(planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justBeforeNairobiMidnight)).shortfall).toBe(0);
+    expect(
+      planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justBeforeNairobiMidnight))
+        .shortfall,
+    ).toBe(0);
     expect(calendarDateInZone('Africa/Nairobi', justAfterNairobiMidnight)).toBe('2026-11-02');
-    expect(planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justAfterNairobiMidnight)).shortfall).toBe(1);
+    expect(
+      planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justAfterNairobiMidnight))
+        .shortfall,
+    ).toBe(1);
     expect(calendarDateInZone('America/Los_Angeles', justAfterNairobiMidnight)).toBe('2026-11-01');
-    expect(planFefo(expiring, 1, calendarDateInZone('America/Los_Angeles', justAfterNairobiMidnight)).shortfall).toBe(0);
+    expect(
+      planFefo(expiring, 1, calendarDateInZone('America/Los_Angeles', justAfterNairobiMidnight))
+        .shortfall,
+    ).toBe(0);
   });
 
   it('1. DATE PARSING', async () => {
