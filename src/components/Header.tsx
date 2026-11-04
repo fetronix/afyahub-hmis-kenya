@@ -28,7 +28,7 @@ export const moduleTitles: Record<ModuleId, string> = {
   claims: 'Social Health Authority (SHA) E-Claims',
   private_insurance: 'Private Insurance & Multi-Payer Claims',
   public_health: 'MOH 705 & Disease Surveillance',
-  analytics: 'Reports, Revenue & Bed Utilisation',
+  analytics: 'Reporting Centre',
   interoperability: 'DHA Certification Readiness & HL7 FHIR',
   platform_administration: 'Platform Administration',
   configuration: 'Facility & System Configuration Engine',

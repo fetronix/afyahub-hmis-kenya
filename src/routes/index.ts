@@ -67,6 +67,7 @@ import platformRoutes from './platform.routes.ts';
 
 import auditRoutes from './domains/audit.routes.ts';
 import billingAnalyticsRoutes from './domains/billing-analytics.routes.ts';
+import reportCentreRoutes from './domains/report-centre.routes.ts';
 import billingChargesRoutes from './domains/billing-charges.routes.ts';
 import claimsRoutes from './domains/claims.routes.ts';
 import encountersRoutes from './domains/encounters.routes.ts';
@@ -164,6 +165,7 @@ export function createApiRoutes(): Router {
   api.use('/public-health', requireFacilityModule('public_health'));
   api.use('/analytics', requireFacilityModule('analytics'));
   api.use('/reporting', requireFacilityModule('analytics'));
+  api.use('/reporting/centre', reportCentreRoutes);
   api.use('/interoperability', requireFacilityModule('interoperability'));
   api.use('/audit-logs', requireFacilityModule('audit'));
 

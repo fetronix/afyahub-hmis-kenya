@@ -121,7 +121,7 @@ export const navSections: NavSection[] = [
      */
     title: 'INTELLIGENCE & REPORTING',
     items: [
-      { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
+      { id: 'analytics', label: 'Reporting Centre', icon: BarChart3 },
       { id: 'public_health', label: 'MOH 705 Surveillance', icon: Activity },
     ],
   },

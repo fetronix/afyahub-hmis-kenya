@@ -64,9 +64,30 @@ async function scopedInvoice(executor: Executor, context: AuthorizationContext, 
   return invoice;
 }
 
-async function requireFinanceEnabled(executor: Executor, invoice: Invoice) {
+function requireExpectedFacility(invoice: Invoice, expectedFacilityId?: number) {
+  if (expectedFacilityId === undefined) return;
+  if (!Number.isSafeInteger(expectedFacilityId) || expectedFacilityId <= 0) {
+    throw new InvoiceFinalizationError('INVALID_FACILITY_ID', 'A valid facility is required.', 400);
+  }
+  if (invoice.facilityId !== expectedFacilityId) {
+    throw new InvoiceFinalizationError(
+      'INVOICE_NOT_FOUND',
+      'Invoice not found in the selected facility.',
+      404,
+    );
+  }
+}
+
+async function requireFinanceEnabled(
+  executor: Executor,
+  invoice: Invoice,
+  requireReportingCentre = false,
+) {
   const [facility] = await executor
-    .select({ enabledModules: schema.facilities.enabledModules })
+    .select({
+      enabledModules: schema.facilities.enabledModules,
+      hiddenModules: schema.facilities.hiddenModules,
+    })
     .from(schema.facilities)
     .where(
       and(
@@ -77,7 +98,11 @@ async function requireFinanceEnabled(executor: Executor, invoice: Invoice) {
   if (
     !facility ||
     !Array.isArray(facility.enabledModules) ||
-    !facility.enabledModules.includes('finance')
+    !facility.enabledModules.includes('finance') ||
+    (Array.isArray(facility.hiddenModules) && facility.hiddenModules.includes('finance')) ||
+    (requireReportingCentre &&
+      (!facility.enabledModules.includes('analytics') ||
+        (Array.isArray(facility.hiddenModules) && facility.hiddenModules.includes('analytics'))))
   )
     throw new InvoiceFinalizationError(
       'FACILITY_MODULE_DISABLED',
@@ -658,12 +683,16 @@ export async function finalizeInvoice(
 export async function getFinalizedInvoice(
   context: AuthorizationContext,
   rawInvoiceId: number,
+  expectedFacilityId?: number,
 ): Promise<FinalizedInvoiceView | { finalized: false }> {
   requirePermissions(context, 'billing.read', 'clinical.read');
+  if (expectedFacilityId !== undefined)
+    requirePermissions(context, 'reports.read', 'patients.read');
   return db.transaction(
     async (tx) => {
       const invoice = await scopedInvoice(tx, context, validId(rawInvoiceId));
-      await requireFinanceEnabled(tx, invoice);
+      requireExpectedFacility(invoice, expectedFacilityId);
+      await requireFinanceEnabled(tx, invoice, expectedFacilityId !== undefined);
       const [finalization] = await tx
         .select()
         .from(schema.billingInvoiceFinalizations)
@@ -757,10 +786,14 @@ export async function getFinalizedInvoice(
 export async function recordInvoicePrintAccess(
   context: AuthorizationContext,
   rawInvoiceId: number,
+  expectedFacilityId?: number,
 ) {
   requirePermissions(context, 'billing.read', 'clinical.read');
+  if (expectedFacilityId !== undefined)
+    requirePermissions(context, 'reports.read', 'reports.export', 'patients.read');
   const invoice = await scopedInvoice(db, context, validId(rawInvoiceId));
-  await requireFinanceEnabled(db, invoice);
+  requireExpectedFacility(invoice, expectedFacilityId);
+  await requireFinanceEnabled(db, invoice, expectedFacilityId !== undefined);
   const [record] = await db
     .select({ invoiceId: schema.billingInvoiceFinalizations.invoiceId })
     .from(schema.billingInvoiceFinalizations)

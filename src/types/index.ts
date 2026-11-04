@@ -1364,6 +1364,8 @@ export interface LengthOfStaySummary {
   longestStayDays: number | null;
   overstayCount: number;
   unparseableCount: number;
+  unresolvedPatientCount?: number;
+  outOfScopeAdmissionCount?: number;
   dischargedInWindow: number;
   averageDischargedStayDays: number | null;
   medianDischargedStayDays: number | null;

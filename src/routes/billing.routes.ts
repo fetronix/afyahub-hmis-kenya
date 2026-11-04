@@ -218,7 +218,11 @@ router.get(
     if (!context) return;
     res.setHeader('Cache-Control', 'no-store');
     try {
-      res.json(await finalized.getFinalizedInvoice(context, Number(req.params.id)));
+      const expectedFacilityId =
+        req.query.facilityId === undefined ? undefined : Number(req.query.facilityId);
+      res.json(
+        await finalized.getFinalizedInvoice(context, Number(req.params.id), expectedFacilityId),
+      );
     } catch (error) {
       if (error instanceof finalized.InvoiceFinalizationError) {
         return res.status(error.status).json({
@@ -277,7 +281,9 @@ router.post(
     if (!context) return;
     res.setHeader('Cache-Control', 'no-store');
     try {
-      await finalized.recordInvoicePrintAccess(context, Number(req.params.id));
+      const expectedFacilityId =
+        req.body?.facilityId === undefined ? undefined : Number(req.body.facilityId);
+      await finalized.recordInvoicePrintAccess(context, Number(req.params.id), expectedFacilityId);
       res.json({ authorized: true });
     } catch (error) {
       if (error instanceof finalized.InvoiceFinalizationError)

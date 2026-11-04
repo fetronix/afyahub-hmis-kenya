@@ -1,0 +1,409 @@
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
+  LoaderCircle,
+  Printer,
+  Search,
+} from 'lucide-react';
+import { reportCentreApi } from '../../../api/report-centre.client.ts';
+import type { ReportEngineId } from '../../../reporting/report-catalogue.ts';
+import { reportFilterSummary, reportValue } from '../../../reporting/report-centre.format.ts';
+import {
+  REPORT_ENGINES,
+  type ReportFilters,
+  type ReportResult,
+} from '../../../reporting/report-centre.types.ts';
+
+const input =
+  'mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-500';
+const button =
+  'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+const primary =
+  'inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50';
+
+function positiveField(value: string, label: string): number | undefined {
+  if (!value.trim()) return undefined;
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new Error(`${label} must be a positive whole number.`);
+  }
+  return Number(value);
+}
+
+function saveDownload(base64: string, contentType: string, filename: string) {
+  const raw = atob(base64);
+  const bytes = Uint8Array.from(raw, (character) => character.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: contentType }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export const ReportWorkbench: React.FC<{
+  id: ReportEngineId;
+  facilityId: number;
+  canExport: boolean;
+}> = ({ id, facilityId, canExport }) => {
+  const definition = REPORT_ENGINES[id];
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [patientId, setPatientId] = useState('');
+  const [wardId, setWardId] = useState('');
+  const [result, setResult] = useState<ReportResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const version = useRef(0);
+  useLayoutEffect(() => {
+    version.current += 1;
+    return () => {
+      version.current += 1;
+      document.body.classList.remove('print-report-centre');
+    };
+  }, []);
+
+  function draft(): ReportFilters {
+    return {
+      facilityId,
+      ...(search.trim() ? { search: search.trim() } : {}),
+      ...(status ? { status } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(patientId.trim() ? { patientId: positiveField(patientId, 'Patient ID') } : {}),
+      ...(wardId.trim() ? { wardId: positiveField(wardId, 'Ward ID') } : {}),
+      offset: 0,
+      limit: 25,
+    };
+  }
+
+  async function generate(filters: ReportFilters) {
+    const requestVersion = version.current;
+    setBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      const next = await reportCentreApi.generate(id, filters);
+      if (requestVersion === version.current) setResult(next);
+    } catch (reason) {
+      if (requestVersion === version.current)
+        setError(reason instanceof Error ? reason.message : 'The report could not be generated.');
+    } finally {
+      if (requestVersion === version.current) setBusy(false);
+    }
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      void generate(draft());
+    } catch (reason) {
+      setResult(null);
+      setError(reason instanceof Error ? reason.message : 'Check the filters.');
+    }
+  }
+
+  async function printPage() {
+    if (!result || busy || !canExport) return;
+    const requestVersion = version.current;
+    setBusy(true);
+    setError('');
+    try {
+      const next = await reportCentreApi.generate(id, result.filters, 'print');
+      if (requestVersion !== version.current) return;
+      // Render the newly audited page synchronously before opening the print dialog.
+      flushSync(() => setResult(next));
+      document.body.classList.add('print-report-centre');
+      window.addEventListener(
+        'afterprint',
+        () => document.body.classList.remove('print-report-centre'),
+        { once: true },
+      );
+      window.print();
+    } catch (reason) {
+      document.body.classList.remove('print-report-centre');
+      if (requestVersion === version.current)
+        setError(reason instanceof Error ? reason.message : 'The report could not be printed.');
+    } finally {
+      if (requestVersion === version.current) setBusy(false);
+    }
+  }
+
+  async function download(format: 'pdf' | 'xlsx') {
+    if (!result || busy || !canExport) return;
+    const requestVersion = version.current;
+    setBusy(true);
+    setError('');
+    try {
+      const file = await reportCentreApi.export(id, result.filters, format);
+      if (requestVersion === version.current)
+        saveDownload(file.base64, file.contentType, file.filename);
+    } catch (reason) {
+      if (requestVersion === version.current)
+        setError(reason instanceof Error ? reason.message : 'The report could not be exported.');
+    } finally {
+      if (requestVersion === version.current) setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4 text-sm text-teal-950">
+        <p className="font-semibold">Operational subset</p>
+        <p className="mt-1 leading-relaxed text-teal-800">{definition.description}</p>
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-teal-800">
+          {definition.notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      </div>
+
+      <form onSubmit={submit} className="space-y-4" aria-label="Report filters">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
+            {definition.searchLabel}
+            <input
+              className={input}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              maxLength={80}
+              placeholder="Enter a search term"
+            />
+          </label>
+          {definition.statuses && (
+            <label className="text-xs font-semibold text-slate-600">
+              Status
+              <select
+                className={input}
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                <option value="">All statuses</option>
+                {definition.statuses.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {definition.dateLabel && (
+            <>
+              <label className="text-xs font-semibold text-slate-600">
+                {definition.dateLabel} from
+                <input
+                  className={input}
+                  type="date"
+                  value={from}
+                  onChange={(event) => setFrom(event.target.value)}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                {definition.dateLabel} to
+                <input
+                  className={input}
+                  type="date"
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                />
+              </label>
+              <p className="text-xs text-slate-500 sm:col-span-2">
+                Optional inclusive range, maximum 366 days. Both dates are required.
+              </p>
+            </>
+          )}
+          {definition.patientFilter && (
+            <label className="text-xs font-semibold text-slate-600">
+              Patient ID (optional)
+              <input
+                className={input}
+                inputMode="numeric"
+                value={patientId}
+                onChange={(event) => setPatientId(event.target.value)}
+              />
+            </label>
+          )}
+          {definition.wardFilter && (
+            <label className="text-xs font-semibold text-slate-600">
+              Ward ID (optional)
+              <input
+                className={input}
+                inputMode="numeric"
+                value={wardId}
+                onChange={(event) => setWardId(event.target.value)}
+              />
+            </label>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button className={primary} type="submit" disabled={busy}>
+            {busy ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            Generate report
+          </button>
+          <span className="text-xs text-slate-500">
+            The report uses the selected facility only.
+          </span>
+        </div>
+      </form>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+        >
+          {error}
+        </div>
+      )}
+      {!result && !busy && !error && (
+        <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+          Choose applicable filters and generate a report to see recorded data.
+        </div>
+      )}
+      {result && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 report-no-print">
+            <p className="text-xs text-slate-500">
+              Showing the last generated filters. Generate again after changing filters.
+            </p>
+            {canExport ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={button}
+                  disabled={busy}
+                  onClick={() => void printPage()}
+                >
+                  <Printer className="h-4 w-4" /> Print page
+                </button>
+                <button
+                  type="button"
+                  className={button}
+                  disabled={busy}
+                  onClick={() => void download('pdf')}
+                >
+                  <Download className="h-4 w-4" /> PDF
+                </button>
+                <button
+                  type="button"
+                  className={button}
+                  disabled={busy}
+                  onClick={() => void download('xlsx')}
+                >
+                  <FileSpreadsheet className="h-4 w-4" /> Excel
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Export and print require report export permission.
+              </p>
+            )}
+          </div>
+          {canExport && (
+            <p className="text-xs text-slate-500 report-no-print">
+              PDF and Excel include all matching records, up to 1,000; print contains the current
+              page.
+            </p>
+          )}
+          <section
+            id="report-centre-print"
+            className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+          >
+            <div className="border-b border-slate-100 bg-slate-50/70 p-4">
+              <p className="text-2xs font-bold uppercase tracking-widest text-teal-700">
+                JaliCare HMIS · Reporting Centre
+              </p>
+              <h3 className="mt-1 text-base font-bold text-slate-900">{result.title}</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                {result.facilityName} · Generated {result.generatedAt} (UTC)
+              </p>
+              <p className="mt-2 text-xs text-slate-600">
+                {reportFilterSummary(result.filters, definition.dateLabel).join(' · ')}
+              </p>
+              <p className="mt-2 text-xs font-semibold text-slate-700">
+                {result.total} matching record{result.total === 1 ? '' : 's'}
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-amber-800">
+                {result.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+            {result.rows.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">
+                {result.total === 0
+                  ? 'No records match the selected filters.'
+                  : 'No records on this page. Results may have changed; use Previous or generate again.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[680px] text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      {result.columns.map((column) => (
+                        <th key={column.key} className="px-3 py-3 font-semibold">
+                          {column.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {result.rows.map((row, index) => (
+                      <tr key={result.offset + index} className="align-top">
+                        {result.columns.map((column) => (
+                          <td key={column.key} className="px-3 py-3 text-slate-700">
+                            {reportValue(row[column.key], column, result.currency)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+              <span>
+                {result.total === 0
+                  ? 'No matching records'
+                  : `Showing ${result.offset + 1}–${result.offset + result.rows.length} of ${result.total}`}
+              </span>
+              <div className="flex gap-2 report-no-print">
+                <button
+                  type="button"
+                  className={button}
+                  disabled={busy || result.offset === 0}
+                  onClick={() =>
+                    void generate({
+                      ...result.filters,
+                      offset: Math.max(0, result.offset - result.limit),
+                    })
+                  }
+                >
+                  <ChevronLeft className="h-4 w-4" /> Previous
+                </button>
+                <button
+                  type="button"
+                  className={button}
+                  disabled={busy || result.offset + result.rows.length >= result.total}
+                  onClick={() =>
+                    void generate({ ...result.filters, offset: result.offset + result.limit })
+                  }
+                >
+                  Next <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+};

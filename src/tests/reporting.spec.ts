@@ -216,8 +216,12 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
 
       const window = app.slice(index, index + 300);
       expect(
-        window.includes("requirePermission('reports.read')"),
-        `${route} requires reports.read`,
+        window.includes("requirePermission('reports.read',"),
+        `${route} requires reports.read and source-domain permissions`,
+      ).toBe(true);
+      expect(
+        window.includes('requireReportSourceModules'),
+        `${route} checks its enabled and hidden source modules`,
       ).toBe(true);
       expect(window.includes('requireAuthContext'), `${route} resolves the auth context`).toBe(
         true,
@@ -268,7 +272,16 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
 
     const app = readRepoFile('src/App.tsx');
     expect(app.includes("case 'analytics':"), 'App routes the analytics module').toBe(true);
-    expect(app.includes('<ReportsModule />'), 'App mounts the reports module').toBe(true);
+    expect(app.includes('<ReportCentre />'), 'App mounts the reporting centre').toBe(true);
+    const centre = readRepoFile('src/components/modules/report-centre/ReportCentre.tsx');
+    expect(
+      centre.includes('<ReportsModule />'),
+      'the existing analytics overview remains available inside the centre',
+    ).toBe(true);
+    expect(
+      centre.includes('showOverview && canOverview'),
+      'legacy analytics requires source permissions before rendering',
+    ).toBe(true);
 
     const sidebar = readRepoFile('src/components/Sidebar.tsx');
     expect(sidebar.includes("id: 'analytics'"), 'sidebar lists Reports & Revenue').toBe(true);
@@ -278,10 +291,7 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
     ).toBe(true);
 
     const header = readRepoFile('src/components/Header.tsx');
-    expect(
-      header.includes("'Reports, Revenue & Bed Utilisation'"),
-      'header titles the module',
-    ).toBe(true);
+    expect(header.includes("analytics: 'Reporting Centre'"), 'header titles the module').toBe(true);
 
     const module = readRepoFile('src/components/modules/ReportsModule.tsx');
 

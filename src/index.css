@@ -776,4 +776,30 @@
   .ui-data-table {
     min-width: 0;
   }
+  body.print-report-centre * {
+    visibility: hidden !important;
+  }
+  body.print-report-centre #report-centre-print,
+  body.print-report-centre #report-centre-print * {
+    visibility: visible !important;
+  }
+  body.print-report-centre #report-centre-print {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    overflow: visible;
+    border: 0;
+  }
+  body.print-report-centre #report-centre-print div {
+    overflow: visible;
+  }
+  body.print-report-centre #report-centre-print table {
+    min-width: 0;
+    width: 100%;
+    table-layout: fixed;
+    overflow-wrap: anywhere;
+  }
+  body.print-report-centre .report-no-print {
+    display: none !important;
+  }
 }

@@ -10,16 +10,24 @@ const money = (amount: string | null) =>
   amount === null ? 'Unknown — review receipts' : `KES ${amount}`;
 
 /** Snapshot and audited print of the existing invoice; does not submit a claim. */
-export const FinalizedInvoicePanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => {
+export const FinalizedInvoicePanel: React.FC<{ invoiceId: number; reportCentre?: boolean }> = ({
+  invoiceId,
+  reportCentre = false,
+}) => {
   const { currentFacility, authenticatedUser, refreshKey, triggerRefresh } = useHmis();
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const canRead =
     !authenticatedUser?.isSuperAdmin &&
     permissions.has('billing.read') &&
-    permissions.has('clinical.read');
-  const canFinalize = canRead && permissions.has('billing.update');
-  const canAttribute = permissions.has('billing.payments.record');
-  const canViewHub = permissions.has('payment_hub.transactions.read');
+    permissions.has('clinical.read') &&
+    (!reportCentre ||
+      (Boolean(currentFacility?.id) &&
+        permissions.has('reports.read') &&
+        permissions.has('reports.export') &&
+        permissions.has('patients.read')));
+  const canFinalize = !reportCentre && canRead && permissions.has('billing.update');
+  const canAttribute = !reportCentre && permissions.has('billing.payments.record');
+  const canViewHub = !reportCentre && permissions.has('payment_hub.transactions.read');
   const [view, setView] = useState<FinalizedInvoiceView | { finalized: false } | null>(null);
   const [error, setError] = useState('');
   const [issues, setIssues] = useState<string[]>([]);
@@ -58,7 +66,7 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number }> = ({ invoice
     setConfirmed(false);
     if (canRead)
       api
-        .getInvoiceFinalization(invoiceId)
+        .getInvoiceFinalization(invoiceId, reportCentre ? facilityId : undefined)
         .then((data) => {
           if (!cancelled) setView(data);
         })
@@ -70,7 +78,7 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number }> = ({ invoice
       cancelled = true;
       document.body.classList.remove('print-finalized-invoice');
     };
-  }, [invoiceId, facilityId, authenticatedUser?.id, canRead, refreshKey, reload]);
+  }, [invoiceId, facilityId, authenticatedUser?.id, canRead, reportCentre, refreshKey, reload]);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,7 +149,7 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number }> = ({ invoice
     setBusy(true);
     setError('');
     try {
-      await api.recordInvoicePrintAccess(invoiceId);
+      await api.recordInvoicePrintAccess(invoiceId, reportCentre ? facilityId : undefined);
       if (version !== scopeVersion.current) return;
       document.body.classList.add('print-finalized-invoice');
       window.addEventListener(

@@ -27,6 +27,7 @@ import {
 } from '../../routes/shared/errors.ts';
 import * as queries from '../../db/queries.ts';
 import * as reporting from '../../reporting/reporting.service.ts';
+import { requireReportSourceModules } from '../../reporting/legacy-report-guard.ts';
 import {
   FinancialReportError,
   getFinancialTransactionsScoped,
@@ -91,7 +92,8 @@ router.get(
 
 router.get(
   '/api/reporting/operations',
-  requirePermission('reports.read'),
+  requirePermission('reports.read', 'inpatient.read', 'patients.read'),
+  requireReportSourceModules('inpatient'),
   async (req: AuthRequest, res: Response) => {
     const context = requireAuthContext(req, res);
 
@@ -104,7 +106,35 @@ router.get(
       );
 
       const report = await reporting.getOperationsReportScoped(context, facilityId);
-
+      const facility = await queries.getFacilityByIdScoped(context, facilityId);
+      if (!facility) return res.status(404).json({ success: false, error: 'FACILITY_NOT_FOUND' });
+      // Do not return identifiable rows if the mandatory audit cannot commit.
+      await db.transaction(async (tx) => {
+        await tx.insert(schema.auditLogs).values({
+          tenantId: facility.tenantId,
+          facilityId,
+          userId: String(context.userId),
+          action: 'VIEW',
+          resource: 'legacy_operations_report',
+          details: JSON.stringify({ rowCount: report.longestStays.length }),
+        });
+        const patientIds = [...new Set(report.longestStays.map((stay) => stay.patientId))];
+        if (patientIds.length) {
+          await tx.insert(schema.patientRecordAccessLogs).values(
+            patientIds.map((patientId) => ({
+              patientId,
+              userId: context.userId,
+              tenantId: facility.tenantId,
+              facilityId,
+              action: 'VIEW',
+              accessChannel: 'STAFF_PORTAL',
+              recordType: 'LEGACY_OPERATIONS_REPORT',
+              purpose: 'OPERATIONS',
+            })),
+          );
+        }
+      });
+      res.setHeader('Cache-Control', 'no-store');
       return res.json(report);
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
@@ -134,7 +164,8 @@ router.get(
 
 router.get(
   '/api/reporting/occupancy-trend',
-  requirePermission('reports.read'),
+  requirePermission('reports.read', 'inpatient.read'),
+  requireReportSourceModules('inpatient'),
   async (req: AuthRequest, res: Response) => {
     const context = requireAuthContext(req, res);
 
@@ -179,7 +210,8 @@ router.get(
 
 router.get(
   '/api/analytics/revenue',
-  requirePermission('reports.read'),
+  requirePermission('reports.read', 'billing.read'),
+  requireReportSourceModules('finance'),
   async (req: AuthRequest, res: Response) => {
     const context = requireAuthContext(req, res);
 
@@ -320,7 +352,24 @@ router.get(
 
 router.get(
   '/api/analytics/summary',
-  requirePermission('reports.read'),
+  requirePermission(
+    'reports.read',
+    'billing.read',
+    'patients.read',
+    'inpatient.read',
+    'inventory.read',
+    'laboratory.read',
+    'theatre.read',
+  ),
+  requireReportSourceModules(
+    'finance',
+    'inpatient',
+    'inventory',
+    'laboratory',
+    'theatre',
+    'registration',
+    'reception',
+  ),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {

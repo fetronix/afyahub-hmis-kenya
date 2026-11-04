@@ -165,9 +165,9 @@ export const billingClient = {
       refunds: BillingRefund[];
     }>(`${API_BASE}/invoices/${id}`),
 
-  getInvoiceFinalization: (id: number) =>
+  getInvoiceFinalization: (id: number, facilityId?: number) =>
     fetchJson<FinalizedInvoiceView | { finalized: false }>(
-      `${API_BASE}/invoices/${id}/finalization`,
+      `${API_BASE}/invoices/${id}/finalization${facilityId ? `?facilityId=${facilityId}` : ''}`,
     ),
   finalizeInvoice: (
     id: number,
@@ -177,8 +177,11 @@ export const billingClient = {
       `${API_BASE}/invoices/${id}/finalize`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
-  recordInvoicePrintAccess: (id: number) =>
-    fetchJson<{ authorized: true }>(`${API_BASE}/invoices/${id}/print-access`, { method: 'POST' }),
+  recordInvoicePrintAccess: (id: number, facilityId?: number) =>
+    fetchJson<{ authorized: true }>(`${API_BASE}/invoices/${id}/print-access`, {
+      method: 'POST',
+      ...(facilityId ? { body: JSON.stringify({ facilityId }) } : {}),
+    }),
   attributeInvoicePayment: (
     invoiceId: number,
     paymentId: number,
