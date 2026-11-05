@@ -418,7 +418,10 @@ export const ReportCentre: React.FC = () => {
                       key={`${scopeKey}:${selected.report.id}`}
                       id={selected.report.engine}
                       facilityId={currentFacility.id}
-                      canExport={has('reports.export')}
+                      canExport={has(
+                        'reports.export',
+                        ...(REPORT_ENGINES[selected.report.engine].exportPermissions ?? []),
+                      )}
                     />
                   ) : availability(selected.report).allowed &&
                     selected.report.workflow === 'invoice' ? (

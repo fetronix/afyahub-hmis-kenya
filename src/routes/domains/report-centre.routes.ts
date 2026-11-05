@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import type { AuthRequest } from '../../auth/auth.middleware.ts';
 import { requirePermission } from '../../auth/authorization.middleware.ts';
 import { requireAuthContext } from '../shared/request.ts';
-import { handleScopeError, respondInternalError } from '../shared/errors.ts';
+import { handleScopeError } from '../shared/errors.ts';
 import { exportReport } from '../../reporting/report-centre.export.ts';
 import { generateReport, ReportCentreError } from '../../reporting/report-centre.service.ts';
 
@@ -18,7 +18,18 @@ function handleError(error: unknown, res: Response) {
     res.status(error.status).json({ success: false, error: error.code, message: error.message });
     return;
   }
-  respondInternalError(res, error, 'report centre');
+  // Database error details may contain patient names, search terms or other protected values.
+  // Keep a safe SQLSTATE for operations while returning the existing generic 500 response.
+  const code =
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    /^[0-9A-Z]{5}$/.test(error.code)
+      ? error.code
+      : 'UNEXPECTED';
+  console.error('[api] report centre failed', { code });
+  res.status(500).json({ error: 'The request could not be completed.' });
 }
 
 router.post(

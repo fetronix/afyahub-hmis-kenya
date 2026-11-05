@@ -1,4 +1,6 @@
 import type { ReportEngineId } from './report-catalogue.ts';
+import { OPERATIONAL_REPORT_ENGINES } from './report-centre.operational-definitions.ts';
+import { LEDGER_REPORT_ENGINES } from './report-centre.ledger-definitions.ts';
 
 export interface ReportColumn {
   key: string;
@@ -11,14 +13,31 @@ export interface ReportEngineDefinition {
   id: ReportEngineId;
   title: string;
   description: string;
-  module: 'inventory' | 'procurement' | 'inpatient';
+  module:
+    | 'inventory'
+    | 'procurement'
+    | 'inpatient'
+    | 'opd'
+    | 'laboratory'
+    | 'radiology'
+    | 'pharmacy'
+    | 'finance'
+    | 'registration'
+    | 'accounting';
   permissions: readonly string[];
+  /** Some domains impose an additional permission for printed/exported copies. */
+  exportPermissions?: readonly string[];
+  /** Ledger journals are denominated in KES, independent of tenant display currency. */
+  fixedCurrency?: 'KES';
   columns: readonly ReportColumn[];
   searchLabel: string;
   dateLabel?: string;
+  dateMode?: 'asOf';
   statuses?: readonly { value: string; label: string }[];
   patientFilter?: boolean;
   wardFilter?: boolean;
+  departmentFilter?: boolean;
+  staffFilter?: boolean;
   notes: readonly string[];
 }
 
@@ -39,6 +58,8 @@ const inventoryStatuses = [
 ] as const;
 
 export const REPORT_ENGINES: Record<ReportEngineId, ReportEngineDefinition> = {
+  ...OPERATIONAL_REPORT_ENGINES,
+  ...LEDGER_REPORT_ENGINES,
   'inventory-category': {
     id: 'inventory-category',
     title: 'Inventory by category',
@@ -128,12 +149,20 @@ export interface ReportFilters {
   to?: string;
   patientId?: number;
   wardId?: number;
+  departmentId?: number;
+  staffId?: number;
   offset?: number;
   limit?: number;
 }
 
 export type ReportValue = string | number | null;
 export type ReportRow = Record<string, ReportValue>;
+
+export interface ReportSummary {
+  label: string;
+  value: ReportValue;
+  kind?: 'money';
+}
 
 export interface ReportResult {
   reportId: ReportEngineId;
@@ -146,6 +175,8 @@ export interface ReportResult {
   filters: ReportFilters;
   columns: readonly ReportColumn[];
   rows: ReportRow[];
+  /** Aggregate of the entire filtered snapshot, never just the visible page. */
+  summaries?: ReportSummary[];
   total: number;
   offset: number;
   limit: number;

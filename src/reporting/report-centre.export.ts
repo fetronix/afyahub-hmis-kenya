@@ -33,6 +33,10 @@ function content(result: ReportResult): {
       `Facility: ${result.facilityName}`,
       `Generated (UTC): ${result.generatedAt}`,
       `Records: ${result.total}`,
+      ...(result.summaries ?? []).map(
+        (summary) =>
+          `${summary.label}: ${reportValue(summary.value, { key: 'summary', label: summary.label, kind: summary.kind }, result.currency)}`,
+      ),
       ...reportFilterSummary(result.filters, definition.dateLabel),
       ...result.notes.map((note) => `Note: ${note}`),
     ],

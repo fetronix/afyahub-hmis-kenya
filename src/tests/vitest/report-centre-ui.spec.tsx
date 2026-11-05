@@ -304,6 +304,91 @@ describe('Reporting Centre navigation and report workbench', () => {
     expect(screen.queryByText('Synthetic Item')).not.toBeInTheDocument();
   });
 
+  it('passes department, staff, status and patient filters to the outpatient report', async () => {
+    mocks.context.currentFacility.enabledModules.push('opd');
+    mocks.generate.mockImplementation(async (id, filters) => result(id, filters, [], 0));
+    render(<ReportCentre />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
+      target: { value: 'OPD attendance' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /OPD attendance/i }));
+    fireEvent.change(screen.getByLabelText('Recorded encounter start date from'), {
+      target: { value: '2026-04-01' },
+    });
+    fireEvent.change(screen.getByLabelText('Recorded encounter start date to'), {
+      target: { value: '2026-04-30' },
+    });
+    fireEvent.change(screen.getByLabelText('Patient ID (optional)'), { target: { value: '123' } });
+    fireEvent.change(screen.getByLabelText('Department ID (optional)'), {
+      target: { value: '45' },
+    });
+    fireEvent.change(screen.getByLabelText('Staff user ID (optional)'), {
+      target: { value: '67' },
+    });
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'COMPLETED' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    expect(await screen.findByText('No records match the selected filters.')).toBeInTheDocument();
+    expect(mocks.generate).toHaveBeenCalledWith(
+      'outpatient-encounters',
+      expect.objectContaining({
+        facilityId: 10,
+        from: '2026-04-01',
+        to: '2026-04-30',
+        patientId: 123,
+        departmentId: 45,
+        staffId: 67,
+        status: 'COMPLETED',
+      }),
+    );
+  });
+
+  it('shows the full filtered financial subtotal and an unreconciled warning', async () => {
+    mocks.generate.mockImplementation(async (id, filters) => ({
+      ...result(id, filters, [], 2),
+      summaries: [
+        { label: 'Known recorded receipts (refunds not deducted)', value: '210.00', kind: 'money' },
+      ],
+    }));
+    render(<ReportCentre />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
+      target: { value: 'All-cashier daily summary' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /All-cashier daily summary/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    expect(
+      await screen.findByText(/Known recorded receipts \(refunds not deducted\): KES 210.00/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/not reconciled bank\/provider settlements/).length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('requires the accounting export grant and sends one as-of date for ledger balances', async () => {
+    mocks.context.currentFacility.enabledModules.push('accounting');
+    mocks.context.authenticatedUser.permissions.push('accounting.read');
+    mocks.generate.mockImplementation(async (id, filters) => result(id, filters, [], 0));
+    render(<ReportCentre />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
+      target: { value: 'Balance sheet' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Balance sheet/ }));
+    fireEvent.change(screen.getByLabelText('As-of date (required)'), {
+      target: { value: '2026-04-30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    expect(
+      await screen.findByText(
+        /Export and print require report and any applicable source-domain export permissions/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'PDF' })).not.toBeInTheDocument();
+    expect(mocks.generate).toHaveBeenCalledWith(
+      'ledger-balance-sheet',
+      expect.objectContaining({ facilityId: 10, to: '2026-04-30' }),
+    );
+    expect(mocks.generate.mock.calls[0][1].from).toBeUndefined();
+  });
+
   it('reuses the scoped finalized-invoice panel and labels the legacy overview as unreconciled', () => {
     render(<ReportCentre />);
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {

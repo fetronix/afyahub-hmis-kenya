@@ -6,6 +6,8 @@ import { resolveFacilityScope } from '../auth/scope.service.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { validateRange } from '../dashboard/date-range.ts';
 import type { ReportEngineId } from './report-catalogue.ts';
+import { operationalQueryPlan } from './report-centre.operational-queries.ts';
+import { ledgerQueryPlan } from './report-centre.ledger-queries.ts';
 import {
   REPORT_ENGINES,
   type ReportFilters,
@@ -65,6 +67,8 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
     'to',
     'patientId',
     'wardId',
+    'departmentId',
+    'staffId',
     'offset',
     'limit',
   ]);
@@ -86,7 +90,14 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
   }
   const from = optionalText(input.from, 'Start date', 10);
   const to = optionalText(input.to, 'End date', 10);
-  if ((from || to) && (!definition.dateLabel || !from || !to || !validateRange(from, to))) {
+  if (definition.dateMode === 'asOf') {
+    if (from || !to || !validateRange(to, to)) {
+      throw new ReportCentreError(
+        'INVALID_DATE_RANGE',
+        'Select a valid as-of date for this report.',
+      );
+    }
+  } else if ((from || to) && (!definition.dateLabel || !from || !to || !validateRange(from, to))) {
     throw new ReportCentreError(
       'INVALID_DATE_RANGE',
       'Select a valid inclusive date range of at most 366 days for this report.',
@@ -94,7 +105,14 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
   }
   const patientId = optionalId(input.patientId, 'Patient');
   const wardId = optionalId(input.wardId, 'Ward');
-  if ((patientId && !definition.patientFilter) || (wardId && !definition.wardFilter)) {
+  const departmentId = optionalId(input.departmentId, 'Department');
+  const staffId = optionalId(input.staffId, 'Staff user');
+  if (
+    (patientId && !definition.patientFilter) ||
+    (wardId && !definition.wardFilter) ||
+    (departmentId && !definition.departmentFilter) ||
+    (staffId && !definition.staffFilter)
+  ) {
     throw new ReportCentreError(
       'INVALID_REPORT_FILTER',
       'This filter is not supported by the report.',
@@ -103,7 +121,19 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
   const offset = input.offset === undefined ? 0 : integer(input.offset, 'Offset', 0, MAX_OFFSET);
   const limit =
     input.limit === undefined ? 25 : integer(input.limit, 'Page size', 1, MAX_REPORT_PAGE);
-  return { facilityId, search, status, from, to, patientId, wardId, offset, limit };
+  return {
+    facilityId,
+    search,
+    status,
+    from,
+    to,
+    patientId,
+    wardId,
+    departmentId,
+    staffId,
+    offset,
+    limit,
+  };
 }
 
 function engineId(raw: string): ReportEngineId {
@@ -113,15 +143,20 @@ function engineId(raw: string): ReportEngineId {
   return raw as ReportEngineId;
 }
 
-interface QueryPlan {
+export interface QueryPlan {
   from: string;
   where: string[];
   params: unknown[];
   select: string;
   order: string;
   missingExpression?: string;
+  missingLabel?: string;
   undatedWhere?: string[];
   undatedParams?: unknown[];
+  undatedLabel?: string;
+  summaryExpression?: string;
+  summaryLabel?: string;
+  summaries?: readonly { expression: string; label: string }[];
 }
 
 function pattern(value: string): string {
@@ -130,6 +165,10 @@ function pattern(value: string): string {
 }
 
 function queryPlan(id: ReportEngineId, tenantId: number, filters: ReportFilters): QueryPlan {
+  const operational = operationalQueryPlan(id, tenantId, filters);
+  if (operational) return operational;
+  const ledger = ledgerQueryPlan(id, tenantId, filters);
+  if (ledger) return ledger;
   const params: unknown[] = [tenantId, filters.facilityId];
   const param = (value: unknown) => {
     params.push(value);
@@ -186,6 +225,7 @@ function queryPlan(id: ReportEngineId, tenantId: number, filters: ReportFilters)
       missingExpression: 's.id IS NULL',
     };
   }
+  if (id !== 'current-inpatients') throw new Error('REPORT_QUERY_PLAN_MISSING');
   where.push('a.tenant_id=$1', 'a.facility_id=$2', "a.status='Admitted'");
   if (filters.search) {
     const p = param(pattern(filters.search));
@@ -237,9 +277,16 @@ async function audit(
         total,
         offset: filters.offset,
         limit: filters.limit,
-        filterFields: ['search', 'status', 'from', 'to', 'patientId', 'wardId'].filter((key) =>
-          Boolean(filters[key as keyof ReportFilters]),
-        ),
+        filterFields: [
+          'search',
+          'status',
+          'from',
+          'to',
+          'patientId',
+          'wardId',
+          'departmentId',
+          'staffId',
+        ].filter((key) => Boolean(filters[key as keyof ReportFilters])),
         // Search text and patient identifiers stay out of the general audit log.
         from: filters.from,
         to: filters.to,
@@ -292,8 +339,15 @@ export async function generateReport(
       403,
     );
   }
-  if (intent !== 'VIEW' && !hasAllPermissions(context, ['reports.export'])) {
-    throw new ReportCentreError('FORBIDDEN', 'Report export permission is required.', 403);
+  if (
+    intent !== 'VIEW' &&
+    !hasAllPermissions(context, ['reports.export', ...(definition.exportPermissions ?? [])])
+  ) {
+    throw new ReportCentreError(
+      'FORBIDDEN',
+      'Report and source-domain export permissions are required.',
+      403,
+    );
   }
   const filters = validateFilters(id, rawFilters);
   const facilityId = resolveFacilityScope(context, filters.facilityId);
@@ -319,11 +373,23 @@ export async function generateReport(
       'SELECT currency FROM tenants WHERE id=$1',
       [facility.tenantId],
     );
-    const currency = currencyRows.rows[0]?.currency?.trim() || null;
+    const currency = definition.fixedCurrency ?? (currencyRows.rows[0]?.currency?.trim() || null);
     const plan = queryPlan(id, facility.tenantId, filters);
     const clauses = plan.where.join(' AND ');
-    const count = await client.query<{ total: string; missing: string }>(
-      `SELECT COUNT(*)::text AS total, ${plan.missingExpression ? `COUNT(*) FILTER (WHERE ${plan.missingExpression})` : '0'}::text AS missing FROM ${plan.from} WHERE ${clauses}`,
+    const summaries =
+      plan.summaries ??
+      (plan.summaryLabel && plan.summaryExpression
+        ? [{ label: plan.summaryLabel, expression: plan.summaryExpression }]
+        : []);
+    // Expressions are static internal plans, never user-provided SQL.
+    const summaryColumns = summaries.map(
+      (summary, index) => `(${summary.expression})::text AS "summary${index}"`,
+    );
+    const count = await client.query<
+      { total: string; missing: string } & Record<string, string | null>
+    >(
+      `SELECT COUNT(*)::text AS total, ${plan.missingExpression ? `COUNT(*) FILTER (WHERE ${plan.missingExpression})` : '0'}::text AS missing${summaryColumns.length ? `, ${summaryColumns.join(', ')}` : ''}
+       FROM ${plan.from} WHERE ${clauses}`,
       plan.params,
     );
     const total = Number(count.rows[0].total);
@@ -348,9 +414,11 @@ export async function generateReport(
     const missing = Number(count.rows[0].missing);
     if (missing > 0)
       notes.push(
-        `${missing} record(s) have missing or out-of-scope linked details and need review.`,
+        plan.missingLabel
+          ? `${missing} ${plan.missingLabel}; review the source records.`
+          : `${missing} record(s) have missing or out-of-scope linked details and need review.`,
       );
-    if (id === 'purchase-orders' && filters.from && plan.undatedWhere && plan.undatedParams) {
+    if (filters.from && plan.undatedWhere && plan.undatedParams) {
       const undated = await client.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM ${plan.from} WHERE ${plan.undatedWhere.join(' AND ')}`,
         plan.undatedParams,
@@ -358,7 +426,7 @@ export async function generateReport(
       const excluded = Number(undated.rows[0].count);
       if (excluded > 0)
         notes.push(
-          `${excluded} order(s) without an expected delivery date are excluded from this date range.`,
+          `${excluded} ${plan.undatedLabel ?? 'order(s) without an expected delivery date'} are excluded from this date range.`,
         );
     }
     await audit(client, context, facility.tenantId, facilityId, id, intent, data.rows, total, {
@@ -378,6 +446,15 @@ export async function generateReport(
       filters: { ...filters, offset, limit },
       columns: definition.columns,
       rows,
+      ...(summaries.length
+        ? {
+            summaries: summaries.map((summary, index) => ({
+              label: summary.label,
+              value: total === 0 ? '0.00' : count.rows[0][`summary${index}`],
+              kind: 'money' as const,
+            })),
+          }
+        : {}),
       total,
       offset,
       limit,

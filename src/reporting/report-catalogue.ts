@@ -1,6 +1,23 @@
 /** Shared reporting navigation. A catalogue entry is not evidence that a report is implemented. */
 export type ReportEngineId =
-  'inventory-category' | 'inventory-store' | 'purchase-orders' | 'current-inpatients';
+  | 'inventory-category'
+  | 'inventory-store'
+  | 'purchase-orders'
+  | 'current-inpatients'
+  | 'inventory-expiry'
+  | 'outpatient-encounters'
+  | 'inpatient-admissions'
+  | 'inpatient-discharges'
+  | 'laboratory-orders'
+  | 'radiology-requests'
+  | 'pharmacy-dispensations'
+  | 'cashier-receipts'
+  | 'recorded-refunds'
+  | 'invoice-balances'
+  | 'patient-registrations'
+  | 'ledger-trial-movements'
+  | 'ledger-income'
+  | 'ledger-balance-sheet';
 
 export interface ReportEntry {
   id: string;
@@ -159,7 +176,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency:
           'Complete transaction-date data, cashier/department identity and verified reconciliation.',
-        engine: null,
+        engine: 'cashier-receipts',
         workflow: null,
       },
       {
@@ -168,7 +185,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency:
           'Complete transaction-date data, cashier/department identity and verified reconciliation.',
-        engine: null,
+        engine: 'cashier-receipts',
         workflow: null,
       },
       {
@@ -203,8 +220,8 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'Trial balance',
         group: null,
         dependency:
-          'Auto posting, mappings, costs and source reconciliation; current statements are not complete.',
-        engine: null,
+          'Opening balances, posting completeness, mappings and source reconciliation; the available view is posted account movements only.',
+        engine: 'ledger-trial-movements',
         workflow: null,
       },
       {
@@ -212,8 +229,8 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'Income statement',
         group: null,
         dependency:
-          'Auto posting, mappings, costs and source reconciliation; current statements are not complete.',
-        engine: null,
+          'Posting completeness, recognized revenue/cost policies, account mappings and source reconciliation.',
+        engine: 'ledger-income',
         workflow: null,
       },
       {
@@ -221,8 +238,8 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'Balance sheet',
         group: null,
         dependency:
-          'Auto posting, mappings, costs and source reconciliation; current statements are not complete.',
-        engine: null,
+          'Posting completeness, opening balances, classification, account mappings and source reconciliation.',
+        engine: 'ledger-balance-sheet',
         workflow: null,
       },
       {
@@ -290,7 +307,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency:
           'Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.',
-        engine: null,
+        engine: 'invoice-balances',
         workflow: null,
       },
       {
@@ -335,7 +352,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency:
           'Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.',
-        engine: null,
+        engine: 'recorded-refunds',
         workflow: null,
       },
     ],
@@ -430,7 +447,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'Expiry reports',
         group: null,
         dependency: 'Complete safe grouping, historical/cost evidence, filters and export.',
-        engine: null,
+        engine: 'inventory-expiry',
         workflow: null,
       },
       {
@@ -509,7 +526,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'OPD attendance',
         group: 'OPD',
         dependency: 'Defined report events, referral lifecycle, clinician attribution and exports.',
-        engine: null,
+        engine: 'outpatient-encounters',
         workflow: null,
       },
       {
@@ -559,7 +576,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: 'INPATIENT',
         dependency:
           'Scoped detailed reports and reconciliation of billing; rate evidence and policy.',
-        engine: null,
+        engine: 'inpatient-admissions',
         workflow: null,
       },
       {
@@ -568,7 +585,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: 'INPATIENT',
         dependency:
           'Scoped detailed reports and reconciliation of billing; rate evidence and policy.',
-        engine: null,
+        engine: 'inpatient-discharges',
         workflow: null,
       },
       {
@@ -594,7 +611,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'Test reports',
         group: 'LABORATORY',
         dependency: 'Precise result/release and timing rules, grouped reports and safe exports.',
-        engine: null,
+        engine: 'laboratory-orders',
         workflow: null,
       },
       {
@@ -659,7 +676,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: 'RADIOLOGY',
         dependency:
           'Completed procedure definition, report grouping; reconciled finance for revenue.',
-        engine: null,
+        engine: 'radiology-requests',
         workflow: null,
       },
       {
@@ -702,7 +719,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'Dispensing',
         group: 'PHARMACY',
         dependency: 'Report filtering, full movement ledger and controlled returns.',
-        engine: null,
+        engine: 'pharmacy-dispensations',
         workflow: null,
       },
       {
@@ -875,8 +892,8 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'Patient reports',
         group: null,
         dependency:
-          'Defined reporting data and relationships; cashier finance reconciliation where applicable.',
-        engine: null,
+          'Complete longitudinal records and governed patient-report definitions; the available view covers facility registrations only.',
+        engine: 'patient-registrations',
         workflow: null,
       },
       {
@@ -966,7 +983,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency:
           'Defined reporting data and relationships; cashier finance reconciliation where applicable.',
-        engine: null,
+        engine: 'inpatient-discharges',
         workflow: null,
       },
       {

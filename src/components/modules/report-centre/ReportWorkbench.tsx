@@ -56,6 +56,8 @@ export const ReportWorkbench: React.FC<{
   const [to, setTo] = useState('');
   const [patientId, setPatientId] = useState('');
   const [wardId, setWardId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [staffId, setStaffId] = useState('');
   const [result, setResult] = useState<ReportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -77,6 +79,10 @@ export const ReportWorkbench: React.FC<{
       ...(to ? { to } : {}),
       ...(patientId.trim() ? { patientId: positiveField(patientId, 'Patient ID') } : {}),
       ...(wardId.trim() ? { wardId: positiveField(wardId, 'Ward ID') } : {}),
+      ...(departmentId.trim()
+        ? { departmentId: positiveField(departmentId, 'Department ID') }
+        : {}),
+      ...(staffId.trim() ? { staffId: positiveField(staffId, 'Staff user ID') } : {}),
       offset: 0,
       limit: 25,
     };
@@ -192,7 +198,22 @@ export const ReportWorkbench: React.FC<{
               </select>
             </label>
           )}
-          {definition.dateLabel && (
+          {definition.dateLabel && definition.dateMode === 'asOf' ? (
+            <>
+              <label className="text-xs font-semibold text-slate-600">
+                {definition.dateLabel} (required)
+                <input
+                  className={input}
+                  type="date"
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                />
+              </label>
+              <p className="text-xs text-slate-500 sm:col-span-2">
+                Includes posted entries through this date.
+              </p>
+            </>
+          ) : definition.dateLabel ? (
             <>
               <label className="text-xs font-semibold text-slate-600">
                 {definition.dateLabel} from
@@ -216,7 +237,7 @@ export const ReportWorkbench: React.FC<{
                 Optional inclusive range, maximum 366 days. Both dates are required.
               </p>
             </>
-          )}
+          ) : null}
           {definition.patientFilter && (
             <label className="text-xs font-semibold text-slate-600">
               Patient ID (optional)
@@ -236,6 +257,28 @@ export const ReportWorkbench: React.FC<{
                 inputMode="numeric"
                 value={wardId}
                 onChange={(event) => setWardId(event.target.value)}
+              />
+            </label>
+          )}
+          {definition.departmentFilter && (
+            <label className="text-xs font-semibold text-slate-600">
+              Department ID (optional)
+              <input
+                className={input}
+                inputMode="numeric"
+                value={departmentId}
+                onChange={(event) => setDepartmentId(event.target.value)}
+              />
+            </label>
+          )}
+          {definition.staffFilter && (
+            <label className="text-xs font-semibold text-slate-600">
+              Staff user ID (optional)
+              <input
+                className={input}
+                inputMode="numeric"
+                value={staffId}
+                onChange={(event) => setStaffId(event.target.value)}
               />
             </label>
           )}
@@ -303,7 +346,7 @@ export const ReportWorkbench: React.FC<{
               </div>
             ) : (
               <p className="text-xs text-slate-500">
-                Export and print require report export permission.
+                Export and print require report and any applicable source-domain export permissions.
               </p>
             )}
           </div>
@@ -331,6 +374,16 @@ export const ReportWorkbench: React.FC<{
               <p className="mt-2 text-xs font-semibold text-slate-700">
                 {result.total} matching record{result.total === 1 ? '' : 's'}
               </p>
+              {(result.summaries ?? []).map((summary) => (
+                <p key={summary.label} className="mt-1 text-xs font-semibold text-slate-700">
+                  {summary.label}:{' '}
+                  {reportValue(
+                    summary.value,
+                    { key: 'summary', label: summary.label, kind: summary.kind },
+                    result.currency,
+                  )}
+                </p>
+              ))}
               <ul className="mt-2 space-y-1 text-xs text-amber-800">
                 {result.notes.map((note) => (
                   <li key={note}>{note}</li>
