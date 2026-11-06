@@ -418,40 +418,44 @@ export const billingChargeAttempts = pgTable(
    41. BILLING PAYMENTS
    ============================================================ */
 
-export const billingPayments = pgTable('billing_payments', {
-  id: serial('id').primaryKey(),
+export const billingPayments = pgTable(
+  'billing_payments',
+  {
+    id: serial('id').primaryKey(),
 
-  invoiceId: integer('invoice_id')
-    .references(() => billingInvoices.id)
-    .notNull(),
+    invoiceId: integer('invoice_id')
+      .references(() => billingInvoices.id)
+      .notNull(),
 
-  receiptNumber: text('receipt_number').notNull().unique(),
+    receiptNumber: text('receipt_number').notNull().unique(),
 
-  paymentMethod: text('payment_method').default('M-Pesa'),
+    paymentMethod: text('payment_method').default('M-Pesa'),
 
-  amount: numeric('amount', {
-    precision: 10,
-    scale: 2,
-  }).notNull(),
+    amount: numeric('amount', {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
 
-  referenceCode: text('reference_code'),
+    referenceCode: text('reference_code'),
 
-  /*
-   * The code printed on the customer's M-Pesa or Airtel confirmation
-   * message. Distinct from reference_code so reconciliation can match
-   * against a mobile money statement without parsing free text.
-   */
-  transactionCode: text('transaction_code'),
+    /*
+     * The code printed on the customer's M-Pesa or Airtel confirmation
+     * message. Distinct from reference_code so reconciliation can match
+     * against a mobile money statement without parsing free text.
+     */
+    transactionCode: text('transaction_code'),
 
-  /* FULLY_PAID | BALANCE_REMAINING | OVERPAID at the moment of posting. */
-  settlementStatus: text('settlement_status'),
+    /* FULLY_PAID | BALANCE_REMAINING | OVERPAID at the moment of posting. */
+    settlementStatus: text('settlement_status'),
 
-  cashierName: text('cashier_name').notNull(),
+    cashierName: text('cashier_name').notNull(),
 
-  paymentDate: timestamp('payment_date').defaultNow().notNull(),
+    paymentDate: timestamp('payment_date').defaultNow().notNull(),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('billing_payments_invoice_source_idx').on(table.invoiceId, table.id)],
+);
 
 /** Immutable snapshot of one existing invoice; it is not a separate invoice. */
 export const billingInvoiceFinalizations = pgTable('billing_invoice_finalizations', {

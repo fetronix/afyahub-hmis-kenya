@@ -345,11 +345,12 @@ export async function recordSettledPayment(
           .limit(1);
 
         if (existing) {
+          // The code may belong to another facility. Do not disclose that
+          // receipt's ID, reference, patient or facility in a duplicate error.
           throw new PaymentDomainError(
             'DUPLICATE_TRANSACTION_CODE',
-            `Transaction code ${transactionCode} has already been receipted.`,
+            'This transaction code has already been receipted; seek review.',
             409,
-            { transactionCode, receiptId: existing.id },
           );
         }
       }
@@ -562,13 +563,19 @@ export async function recordSettledPayment(
      * code; the check above only exists to give a clean message when it
      * wins the race.
      */
-    if (error instanceof Error && /billing_payments_transaction_code_unique/i.test(error.message)) {
-      throw new PaymentDomainError(
-        'DUPLICATE_TRANSACTION_CODE',
-        `Transaction code ${transactionCode} has already been receipted.`,
-        409,
-        { transactionCode },
-      );
+    // Drizzle can wrap the PostgreSQL error. Inspect structured fields only;
+    // SQL error messages can contain financial data and must not be exposed.
+    let cause: unknown = error;
+    for (let depth = 0; depth < 4 && cause && typeof cause === 'object'; depth++) {
+      const pg = cause as { code?: unknown; constraint?: unknown; cause?: unknown };
+      if (pg.code === '23505' && pg.constraint === 'billing_payments_transaction_code_unique') {
+        throw new PaymentDomainError(
+          'DUPLICATE_TRANSACTION_CODE',
+          'This transaction code has already been receipted; seek review.',
+          409,
+        );
+      }
+      cause = pg.cause;
     }
 
     throw error;

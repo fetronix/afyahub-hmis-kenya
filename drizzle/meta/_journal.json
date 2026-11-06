@@ -484,6 +484,13 @@
             "when": 1792900000056,
             "tag": "0068_integration_credential_revocation",
             "breakpoints": true
+        },
+        {
+            "idx": 69,
+            "version": "7",
+            "when": 1792900000057,
+            "tag": "0069_payment_settlement_recovery",
+            "breakpoints": true
         }
     ]
 }

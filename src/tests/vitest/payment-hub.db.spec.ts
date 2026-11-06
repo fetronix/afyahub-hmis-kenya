@@ -608,16 +608,23 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
         allowOverpayment: false,
       }),
     );
-    await pool.query('UPDATE payment_hub_transactions SET request_hash=$1 WHERE id=$2', [
-      oldHash,
-      transactionId,
-    ]);
+    // Construct a genuine pre-field identity without mutating an existing
+    // request: request hashes are now immutable after insertion.
+    const legacy = await pool.query(
+      `INSERT INTO payment_hub_transactions(integration_id,tenant_id,facility_id,invoice_id,amount_cents,idempotency_key,request_hash,initiated_by_user_id)
+       VALUES($1,$2,$3,$4,2000,'synthetic-request-legacy',$5,$6) RETURNING id`,
+      [integrationId, tenantA, facilityA, invoiceId, oldHash, userA],
+    );
+    await pool.query(
+      `UPDATE payment_hub_transactions SET status='PENDING',provider_request_id=$1 WHERE id=$2`,
+      [`legacy-${randomUUID()}`, legacy.rows[0].id],
+    );
     const legacyRetry = await call(
       aToken,
       'POST',
       '/api/payment-hub/facility/collections',
       body,
-      'synthetic-request-1',
+      'synthetic-request-legacy',
     );
     expect(legacyRetry.status).toBe(200);
     expect(legacyRetry.data.idempotentReplay).toBe(true);
@@ -627,7 +634,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       'POST',
       '/api/payment-hub/facility/collections',
       { ...body, confirmSeparateRequest: true },
-      'synthetic-request-1',
+      'synthetic-request-legacy',
     );
     expect(changedLegacyRetry.status).toBe(409);
     expect(pushCount).toBe(1);
@@ -1304,7 +1311,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       'Synthetic cashier',
     );
     const t = await pool.query(
-      `INSERT INTO payment_hub_transactions(integration_id,tenant_id,facility_id,invoice_id,amount_cents,idempotency_key,request_hash,status,initiated_by_user_id) VALUES($1,$2,$3,$4,4000,$5,'synthetic','PROVIDER_CONFIRMED',$6) RETURNING id`,
+      `INSERT INTO payment_hub_transactions(integration_id,tenant_id,facility_id,invoice_id,amount_cents,idempotency_key,request_hash,initiated_by_user_id) VALUES($1,$2,$3,$4,4000,$5,'synthetic',$6) RETURNING id`,
       [
         productionId,
         tenantA,
@@ -1314,14 +1321,22 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
         userA,
       ],
     );
-    const id = t.rows[0].id,
-      body = {
-        facilityId: facilityA,
-        billingPaymentId: payment.payment.id,
-        verifiedReference: ref,
-        evidenceReference: 'SYNTHETIC-STATEMENT',
-        attested: true,
-      };
+    const id = t.rows[0].id;
+    await pool.query(
+      `UPDATE payment_hub_transactions SET status='PENDING',provider_request_id=$1 WHERE id=$2`,
+      [`synthetic-production-${randomUUID()}`, id],
+    );
+    await pool.query(
+      `UPDATE payment_hub_transactions SET status='PROVIDER_CONFIRMED',result_code='0' WHERE id=$1`,
+      [id],
+    );
+    const body = {
+      facilityId: facilityA,
+      billingPaymentId: payment.payment.id,
+      verifiedReference: ref,
+      evidenceReference: 'SYNTHETIC-STATEMENT',
+      attested: true,
+    };
     expect(
       (
         await call(bToken, 'POST', `/api/payment-hub/facility/transactions/${id}/reconcile`, {
@@ -1423,6 +1438,127 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       ),
     ).rejects.toThrow();
   });
+  it('enforces immutable request lifecycle and sandbox/operational isolation in PostgreSQL and the service', async () => {
+    const freshInvoice = (
+      await pool.query(
+        `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,credit_balance,status)
+       SELECT tenant_id,facility_id,patient_id,$2,'50.00','0.00','50.00','0.00','Unpaid' FROM billing_invoices WHERE id=$1 RETURNING id`,
+        [invoiceId, `SYN-ISOLATION-${randomUUID()}`],
+      )
+    ).rows[0].id;
+    const code = `ST${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
+    // This is an independent manual receipt; it is not created by the sandbox.
+    const receipt = await recordSettledPayment(
+      {
+        userId: userA,
+        tenantId: tenantA,
+        facilityId: facilityA,
+        roles: [],
+        permissions: ['billing.payments.record'],
+        isSuperAdmin: false,
+      },
+      { invoiceId: freshInvoice, amount: '20.00', paymentMethod: 'M-Pesa', transactionCode: code },
+      'Synthetic cashier',
+    );
+    const inserted = await pool.query(
+      `INSERT INTO payment_hub_transactions(integration_id,tenant_id,facility_id,invoice_id,amount_cents,idempotency_key,request_hash,initiated_by_user_id)
+       VALUES($1,$2,$3,$4,2000,$5,'synthetic',$6) RETURNING id`,
+      [integrationId, tenantA, facilityA, freshInvoice, `state-${randomUUID()}`, userA],
+    );
+    const id = inserted.rows[0].id;
+    await expect(
+      pool.query(
+        `UPDATE payment_hub_transactions SET status='PROVIDER_CONFIRMED',result_code='0' WHERE id=$1`,
+        [id],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await pool.query(
+      `UPDATE payment_hub_transactions SET status='PENDING',provider_request_id=$1 WHERE id=$2`,
+      [`sandbox-${randomUUID()}`, id],
+    );
+    await expect(
+      pool.query(
+        `UPDATE payment_hub_transactions SET status='PROVIDER_CONFIRMED',result_code='1' WHERE id=$1`,
+        [id],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await pool.query(
+      `UPDATE payment_hub_transactions SET status='PROVIDER_CONFIRMED',result_code='0' WHERE id=$1`,
+      [id],
+    );
+    await expect(
+      pool.query(`UPDATE payment_hub_transactions SET status='PENDING' WHERE id=$1`, [id]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(`UPDATE payment_hub_transactions SET amount_cents=2100 WHERE id=$1`, [id]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(`UPDATE payment_hub_transactions SET request_hash='other' WHERE id=$1`, [id]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
+        `UPDATE payment_hub_transactions SET provider_request_id='replacement' WHERE id=$1`,
+        [id],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(`UPDATE payment_hub_transactions SET integration_id=$1 WHERE id=$2`, [
+        productionId,
+        id,
+      ]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(`UPDATE facility_payment_integrations SET environment='PRODUCTION' WHERE id=$1`, [
+        integrationId,
+      ]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(`DELETE FROM payment_hub_transactions WHERE id=$1`, [id]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
+        `INSERT INTO payment_hub_transactions(integration_id,tenant_id,facility_id,invoice_id,amount_cents,idempotency_key,request_hash,status,initiated_by_user_id)
+       VALUES($1,$2,$3,$4,2000,$5,'synthetic','PROVIDER_CONFIRMED',$6)`,
+        [integrationId, tenantA, facilityA, freshInvoice, `forged-${randomUUID()}`, userA],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
+        `INSERT INTO payment_hub_reconciliations(transaction_id,tenant_id,facility_id,billing_payment_id,evidence_reference,matched_by_user_id)
+       VALUES($1,$2,$3,$4,'SYNTHETIC',$5)`,
+        [id, tenantA, facilityA, receipt.payment.id, userA],
+      ),
+    ).rejects.toThrow();
+    const attempt = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/transactions/${id}/reconcile`,
+      {
+        facilityId: facilityA,
+        billingPaymentId: receipt.payment.id,
+        verifiedReference: code,
+        evidenceReference: 'SYNTHETIC',
+        attested: true,
+      },
+    );
+    expect(attempt.status).toBe(403);
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS n FROM payment_hub_reconciliations WHERE transaction_id=$1',
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int AS n FROM billing_payments WHERE invoice_id=$1', [
+          freshInvoice,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
   it('deduplicates concurrent initiation and keeps provider adapter registration fail-closed', async () => {
     const body = {
       facilityId: facilityA,

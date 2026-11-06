@@ -3,11 +3,15 @@ export function collectionStatusLabel(status: string, resultCode: string | null)
   if (status === 'FAILED' && resultCode === '1032') return 'CANCELLED BY CUSTOMER';
   if (status === 'PENDING' && resultCode && resultCode !== '0')
     return 'PENDING — QUERY INCONCLUSIVE';
+  if (status === 'PROVIDER_CONFIRMED' && resultCode !== '0')
+    return 'REVIEW REQUIRED — INCONSISTENT QUERY EVIDENCE';
   if (status === 'PROVIDER_CONFIRMED') return 'PROVIDER REPORTED SUCCESS — NOT SETTLED';
   return status.replaceAll('_', ' ');
 }
 
 export function collectionStatusNotice(status: string, resultCode: string | null): string {
+  if (status === 'PROVIDER_CONFIRMED' && resultCode !== '0')
+    return 'The stored success status lacks matching query evidence. Review it; no payment should be assumed.';
   if (status === 'FAILED' && resultCode === '1032')
     return 'The scoped provider query reported cancellation. No receipt or invoice payment was created.';
   switch (status) {

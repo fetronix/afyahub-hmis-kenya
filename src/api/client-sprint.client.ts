@@ -37,6 +37,33 @@ export interface AccountingOverview {
   };
   limitations: { notice: string; billingReconciliation: string; serviceLineProfitability: string };
 }
+export interface PaymentSettlementSource {
+  sourceType: 'BILLING_PAYMENT' | 'BILLING_REFUND';
+  sourceId: number;
+  paymentId: number;
+  invoiceId: number;
+  amountKes: string;
+  recordNumber: string;
+  method: string | null;
+  createdAt: string;
+  party: string | null;
+  status: string;
+  reviewCode: string | null;
+  journalId: number | null;
+  journalNumber: string | null;
+  reversalJournalId: number | null;
+}
+export interface SettlementAccount {
+  id: number;
+  accountCode: string;
+  accountName: string;
+  accountType: 'ASSET' | 'LIABILITY';
+}
+export interface PaymentSettlementPage {
+  sources: PaymentSettlementSource[];
+  next: { afterType: PaymentSettlementSource['sourceType']; afterId: number } | null;
+  notice: string;
+}
 export interface BillingConsistencyReport {
   invoices: Array<{
     id: number;
@@ -120,6 +147,41 @@ function patch<T>(url: string, body: unknown) {
   return fetchJson<T>(url, { method: 'PATCH', body: JSON.stringify(body) });
 }
 export const sprintApi = {
+  paymentSettlements: (
+    facilityId: number,
+    state: 'UNRESOLVED' | 'ALL',
+    cursor?: { afterType: string; afterId: number } | null,
+  ) =>
+    fetchJson<PaymentSettlementPage>(
+      `/api/accounting/payment-settlements?${new URLSearchParams({
+        facilityId: String(facilityId),
+        state,
+        ...(cursor ? { afterType: cursor.afterType, afterId: String(cursor.afterId) } : {}),
+      })}`,
+    ),
+  settlementAccounts: (facilityId: number, search = '', afterId = 0) =>
+    fetchJson<{ accounts: SettlementAccount[]; nextAfterId: number | null }>(
+      `/api/accounting/payment-settlement-accounts?${new URLSearchParams({
+        facilityId: String(facilityId),
+        search,
+        afterId: String(afterId),
+      })}`,
+    ),
+  retryPaymentSettlement: (sourceType: string, sourceId: number, body: unknown) =>
+    post<{
+      journal: { id: number; journalNumber: string };
+      idempotentReplay: boolean;
+      reversed: boolean;
+      allocation: {
+        party: string | null;
+        amountKes: string;
+        receivableKes: string;
+        liabilityKes: string;
+      };
+    }>(
+      `/api/accounting/payment-settlements/${encodeURIComponent(sourceType)}/${sourceId}/retry`,
+      body,
+    ),
   accountingOverview: (facilityId: number, startDate: string, endDate: string) =>
     fetchJson<AccountingOverview>(
       `/api/accounting/overview?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate })}`,

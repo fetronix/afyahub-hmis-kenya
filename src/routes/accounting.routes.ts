@@ -49,6 +49,11 @@ import {
 import { inspectBillingConsistencyScoped } from '../accounting/billing-diagnostics.service.ts';
 import { inspectBillingLedgerScoped } from '../accounting/billing-ledger-diagnostics.service.ts';
 import { inspectBillingJournalExceptionsScoped } from '../accounting/billing-journal-exceptions.service.ts';
+import {
+  listSettlementAccountsScoped,
+  listSettlementSourcesScoped,
+  retrySettlementSourceScoped,
+} from '../accounting/payment-settlement-recovery.service.ts';
 
 const router = Router();
 
@@ -131,6 +136,64 @@ router.get(
         limit: req.query.limit,
       });
       res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/payment-settlements',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await listSettlementSourcesScoped(await scoped(req), {
+          afterType: req.query.afterType,
+          afterId: req.query.afterId,
+          limit: req.query.limit,
+          state: req.query.state,
+        })),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/payment-settlement-accounts',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await listSettlementAccountsScoped(await scoped(req), {
+          search: req.query.search,
+          afterId: req.query.afterId,
+          limit: req.query.limit,
+        })),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/payment-settlements/:sourceType/:sourceId/retry',
+  requirePermission('accounting.journals.post', 'billing.read'),
+  validateBody(postBillingSourceBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await retrySettlementSourceScoped(
+        await scoped(req),
+        req.params.sourceType,
+        req.params.sourceId,
+        req.body,
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
     } catch (error) {
       fail(res, error);
     }

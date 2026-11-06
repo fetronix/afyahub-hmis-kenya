@@ -1181,6 +1181,402 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
     }
   });
 
+  it('recovers an interrupted receipt posting through durable source status, scoped HTTP retries and balanced journals', async () => {
+    const invoice = await makeInvoice();
+    const receipt = await pay(invoice, '20.00', 'PATIENT');
+    const id = receipt.payment.id;
+    const readStatus = async () =>
+      (
+        await pool.query(
+          `SELECT status,review_code,journal_id FROM accounting_payment_settlement_status
+       WHERE tenant_id=$1 AND facility_id=$2 AND source_type='BILLING_PAYMENT' AND source_id=$3`,
+          [tenant, facility, id],
+        )
+      ).rows[0];
+    // The receipt and invoice have committed; no separate enqueue is necessary.
+    expect(await readStatus()).toMatchObject({
+      status: 'RECONCILIATION_REQUIRED',
+      review_code: 'ACTIVE_INVOICE_POSTING_REQUIRED',
+      journal_id: null,
+    });
+    await postBillingSourceScoped(scope, 'BILLING_INVOICE', invoice, invoiceInput());
+    expect(await readStatus()).toMatchObject({
+      status: 'SUCCESS_AWAITING_SETTLEMENT',
+      journal_id: null,
+    });
+    const list = `/api/accounting/payment-settlements?facilityId=${facility}&state=UNRESOLVED&afterType=BILLING_PAYMENT&afterId=${id - 1}&limit=1`;
+    const visible = await httpJson(base, 'GET', list, { token: managerToken });
+    expect(visible.status).toBe(200);
+    expect(visible.body.sources[0]).toMatchObject({
+      sourceType: 'BILLING_PAYMENT',
+      sourceId: id,
+      status: 'SUCCESS_AWAITING_SETTLEMENT',
+    });
+    expect((await httpJson(base, 'GET', list, { token: accountingOnlyToken })).status).toBe(403);
+    expect((await httpJson(base, 'GET', list, { token: foreignToken })).status).toBe(403);
+    const other = await httpJson(
+      base,
+      'GET',
+      `/api/accounting/payment-settlements?facilityId=${foreignFacility}&state=ALL`,
+      { token: foreignToken },
+    );
+    expect(other.status).toBe(200);
+    expect(other.body.sources.some((s: { sourceId: number }) => s.sourceId === id)).toBe(false);
+    const accountPage = await httpJson(
+      base,
+      'GET',
+      `/api/accounting/payment-settlement-accounts?facilityId=${facility}&limit=2`,
+      { token: managerToken },
+    );
+    expect(accountPage.status).toBe(200);
+    expect(accountPage.body.accounts).toHaveLength(2);
+    expect(accountPage.body.nextAfterId).toBeTruthy();
+    expect(accountPage.body.accounts.some((a: { id: number }) => a.id === foreignAccount)).toBe(
+      false,
+    );
+
+    const path = `/api/accounting/payment-settlements/BILLING_PAYMENT/${id}/retry`;
+    const body = {
+      facilityId: facility,
+      entryDate: date,
+      description: 'Synthetic recovered receipt',
+      settlementAccountId: cash,
+      liabilityAccountId: liability,
+    };
+    expect((await httpJson(base, 'POST', path, { token: accountingOnlyToken, body })).status).toBe(
+      403,
+    );
+    expect(
+      (
+        await httpJson(base, 'POST', path, {
+          token: managerToken,
+          body: { ...body, facilityId: foreignFacility },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await httpJson(base, 'POST', path, {
+          token: foreignToken,
+          body: { ...body, facilityId: foreignFacility },
+        })
+      ).status,
+    ).toBe(404);
+
+    // Fail after the journal lines have been written but before their audit and
+    // transaction commit. The source survives and is still visible for retry.
+    const functionName = `synthetic_settlement_failure_${suffix.replace(/-/g, '')}`;
+    const triggerName = `synthetic_settlement_trigger_${suffix.replace(/-/g, '')}`;
+    await pool.query(`CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.user_id='${actor}' AND NEW.resource='journal_entries' THEN RAISE EXCEPTION 'Synthetic interruption'; END IF;
+      RETURN NEW; END $$`);
+    await pool.query(
+      `CREATE TRIGGER ${triggerName} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${functionName}()`,
+    );
+    try {
+      const failed = await httpJson(base, 'POST', path, { token: managerToken, body });
+      expect(failed.status).toBe(500);
+      expect(JSON.stringify(failed.body)).not.toContain('Synthetic interruption');
+      expect(await readStatus()).toMatchObject({
+        status: 'SUCCESS_AWAITING_SETTLEMENT',
+        journal_id: null,
+      });
+      expect(
+        (
+          await pool.query(
+            `SELECT id FROM journal_entries WHERE facility_id=$1 AND source_type='BILLING_PAYMENT' AND source_id=$2`,
+            [facility, String(id)],
+          )
+        ).rows,
+      ).toHaveLength(0);
+      const attempts = await pool.query(
+        `SELECT action,details FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND resource='accounting_payment_settlement' AND resource_id=$3 ORDER BY id`,
+        [tenant, facility, String(id)],
+      );
+      expect(attempts.rows.map((r) => r.action)).toEqual(['ATTEMPT', 'FAILED']);
+      expect(JSON.parse(attempts.rows[1].details)).toMatchObject({
+        sourceType: 'BILLING_PAYMENT',
+        code: 'POSTING_OPERATION_FAILED',
+      });
+      expect(JSON.stringify(attempts.rows)).not.toContain('Synthetic recovered receipt');
+    } finally {
+      await pool.query(`DROP TRIGGER ${triggerName} ON audit_logs`);
+      await pool.query(`DROP FUNCTION ${functionName}()`);
+    }
+
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => httpJson(base, 'POST', path, { token: managerToken, body })),
+    );
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(results.filter((r) => r.status === 200)).toHaveLength(5);
+    expect(new Set(results.map((r) => r.body.journal.id)).size).toBe(1);
+    const journalId = results[0].body.journal.id;
+    expect(await readStatus()).toMatchObject({ status: 'SETTLED', journal_id: journalId });
+    const journal = (
+      await pool.query(
+        `SELECT count(*)::int AS lines,sum(debit_cents)::text AS debit,sum(credit_cents)::text AS credit FROM journal_lines WHERE journal_entry_id=$1`,
+        [journalId],
+      )
+    ).rows[0];
+    expect(journal).toEqual({ lines: 2, debit: '2000', credit: '2000' });
+    expect(
+      (
+        await pool.query('SELECT count(*)::int AS n FROM billing_payments WHERE invoice_id=$1', [
+          invoice,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await httpJson(base, 'POST', path, {
+          token: managerToken,
+          body: { ...body, description: 'Changed after posting' },
+        })
+      ).status,
+    ).toBe(409);
+    await reverse(journalId);
+    expect(await readStatus()).toMatchObject({
+      status: 'REVERSED',
+      review_code: 'JOURNAL_REVERSED',
+      journal_id: journalId,
+    });
+    const replay = await httpJson(base, 'POST', path, { token: managerToken, body });
+    expect(replay.status).toBe(200);
+    expect(replay.body.reversed).toBe(true);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int AS n FROM billing_payments WHERE invoice_id=$1', [
+          invoice,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('tracks manual refund posting, partial/full refunds and reversals without altering history', async () => {
+    const invoice = await makeInvoice();
+    await postBillingSourceScoped(scope, 'BILLING_INVOICE', invoice, invoiceInput());
+    const receipt = await pay(invoice, '40.00', 'PATIENT');
+    const paymentId = receipt.payment.id;
+    const paymentBody = {
+      entryDate: date,
+      description: 'Synthetic receipt posting',
+      settlementAccountId: cash,
+      liabilityAccountId: liability,
+    };
+    const paymentPath = `/api/accounting/payment-settlements/BILLING_PAYMENT/${paymentId}/retry`;
+    expect(
+      (
+        await httpJson(base, 'POST', paymentPath, {
+          token: managerToken,
+          body: { ...paymentBody, facilityId: facility },
+        })
+      ).status,
+    ).toBe(201);
+    const status = async (type: string, id: number) =>
+      (
+        await pool.query(
+          `SELECT status,review_code,journal_id,reversal_journal_id FROM accounting_payment_settlement_status WHERE tenant_id=$1 AND facility_id=$2 AND source_type=$3 AND source_id=$4`,
+          [tenant, facility, type, id],
+        )
+      ).rows[0];
+    const refund = async (amount: string) =>
+      recordManualRefund(context, {
+        facilityId: facility,
+        invoiceId: invoice,
+        paymentId,
+        amount,
+        refundMethod: 'CASH',
+        reason: 'Synthetic manual refund',
+        manualConfirmation: true,
+        idempotencyKey: randomUUID(),
+      });
+    const first = await refund('15.00');
+    expect(await status('BILLING_PAYMENT', paymentId)).toMatchObject({
+      status: 'RECONCILIATION_REQUIRED',
+      review_code: 'REFUND_POSTING_REVIEW_REQUIRED',
+    });
+    expect(await status('BILLING_REFUND', first.refund.id)).toMatchObject({
+      status: 'SUCCESS_AWAITING_SETTLEMENT',
+    });
+    const firstPath = `/api/accounting/payment-settlements/BILLING_REFUND/${first.refund.id}/retry`;
+    const firstBody = {
+      facilityId: facility,
+      entryDate: date,
+      description: 'Synthetic first refund',
+      settlementAccountId: cash,
+      receivableRefundKes: '15.00',
+    };
+    expect(
+      (await httpJson(base, 'POST', firstPath, { token: managerToken, body: firstBody })).status,
+    ).toBe(201);
+    expect(await status('BILLING_PAYMENT', paymentId)).toMatchObject({
+      status: 'PARTIALLY_REFUNDED',
+    });
+    const second = await refund('25.00');
+    const secondPath = `/api/accounting/payment-settlements/BILLING_REFUND/${second.refund.id}/retry`;
+    const secondBody = {
+      facilityId: facility,
+      entryDate: date,
+      description: 'Synthetic final refund',
+      settlementAccountId: cash,
+      receivableRefundKes: '25.00',
+    };
+    const posted = await httpJson(base, 'POST', secondPath, {
+      token: managerToken,
+      body: secondBody,
+    });
+    expect(posted.status).toBe(201);
+    expect(await status('BILLING_PAYMENT', paymentId)).toMatchObject({ status: 'REFUNDED' });
+    await reverse(posted.body.journal.id);
+    expect(await status('BILLING_REFUND', second.refund.id)).toMatchObject({
+      status: 'REVERSED',
+      journal_id: posted.body.journal.id,
+    });
+    expect(await status('BILLING_PAYMENT', paymentId)).toMatchObject({
+      status: 'RECONCILIATION_REQUIRED',
+      review_code: 'REFUND_POSTING_REVIEW_REQUIRED',
+    });
+    const replay = await httpJson(base, 'POST', secondPath, {
+      token: managerToken,
+      body: secondBody,
+    });
+    expect(replay.status).toBe(200);
+    expect(replay.body.reversed).toBe(true);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int AS n FROM billing_refunds WHERE payment_id=$1', [
+          paymentId,
+        ])
+      ).rows[0].n,
+    ).toBe(2);
+    expect(
+      (await pool.query('SELECT count(*)::int AS n FROM billing_payments WHERE id=$1', [paymentId]))
+        .rows[0].n,
+    ).toBe(1);
+    expect(
+      (await pool.query('SELECT paid_amount FROM billing_invoices WHERE id=$1', [invoice])).rows[0]
+        .paid_amount,
+    ).toBe('0.00');
+  });
+
+  it('refuses a recovery attempt when its audit cannot be written and keeps the source discoverable', async () => {
+    const invoice = await makeInvoice();
+    await postBillingSourceScoped(scope, 'BILLING_INVOICE', invoice, invoiceInput());
+    const receipt = await pay(invoice, '10.00', 'PATIENT');
+    const id = receipt.payment.id;
+    const functionName = `synthetic_attempt_failure_${suffix.replace(/-/g, '')}`;
+    const triggerName = `synthetic_attempt_trigger_${suffix.replace(/-/g, '')}`;
+    await pool.query(`CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.user_id='${actor}' AND NEW.resource='accounting_payment_settlement' AND NEW.action='ATTEMPT' THEN RAISE EXCEPTION 'Synthetic audit interruption'; END IF;
+      RETURN NEW; END $$`);
+    await pool.query(
+      `CREATE TRIGGER ${triggerName} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${functionName}()`,
+    );
+    const path = `/api/accounting/payment-settlements/BILLING_PAYMENT/${id}/retry`;
+    const body = {
+      facilityId: facility,
+      entryDate: date,
+      description: 'Synthetic audited recovery',
+      settlementAccountId: cash,
+    };
+    try {
+      expect((await httpJson(base, 'POST', path, { token: managerToken, body })).status).toBe(500);
+      const source = (
+        await pool.query(
+          `SELECT status,journal_id FROM accounting_payment_settlement_status WHERE tenant_id=$1 AND facility_id=$2 AND source_type='BILLING_PAYMENT' AND source_id=$3`,
+          [tenant, facility, id],
+        )
+      ).rows[0];
+      expect(source).toMatchObject({ status: 'SUCCESS_AWAITING_SETTLEMENT', journal_id: null });
+      expect(
+        (
+          await pool.query(
+            `SELECT id FROM journal_entries WHERE facility_id=$1 AND source_type='BILLING_PAYMENT' AND source_id=$2`,
+            [facility, String(id)],
+          )
+        ).rows,
+      ).toHaveLength(0);
+    } finally {
+      await pool.query(`DROP TRIGGER ${triggerName} ON audit_logs`);
+      await pool.query(`DROP FUNCTION ${functionName}()`);
+    }
+    expect((await httpJson(base, 'POST', path, { token: managerToken, body })).status).toBe(201);
+  });
+
+  it('serializes concurrent receipt creation by one durable request identity', async () => {
+    const invoice = await makeInvoice();
+    await postBillingSourceScoped(scope, 'BILLING_INVOICE', invoice, invoiceInput());
+    const code = `ST${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const input = {
+      facilityId: facility,
+      invoiceId: invoice,
+      amount: '20.00',
+      payerParty: 'PATIENT' as const,
+      paymentMethod: 'M-Pesa',
+      transactionCode: code,
+      idempotencyKey: randomUUID(),
+    };
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => recordSettledPayment(context, input, 'Synthetic cashier')),
+    );
+    expect(results.filter((r) => !r.idempotentReplay)).toHaveLength(1);
+    expect(new Set(results.map((r) => r.payment.id)).size).toBe(1);
+    await expect(
+      recordSettledPayment(context, { ...input, amount: '21.00' }, 'Synthetic cashier'),
+    ).rejects.toMatchObject({ code: 'PAYMENT_IDEMPOTENCY_CONFLICT' });
+    const id = results[0].payment.id;
+    const source = (
+      await pool.query(
+        `SELECT status,journal_id FROM accounting_payment_settlement_status WHERE tenant_id=$1 AND facility_id=$2 AND source_type='BILLING_PAYMENT' AND source_id=$3`,
+        [tenant, facility, id],
+      )
+    ).rows[0];
+    expect(source).toMatchObject({ status: 'SUCCESS_AWAITING_SETTLEMENT', journal_id: null });
+    expect(
+      (
+        await pool.query('SELECT count(*)::int AS n FROM billing_payments WHERE invoice_id=$1', [
+          invoice,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('prevents simultaneous duplicate mobile-money references without leaking another receipt', async () => {
+    const invoices = await Promise.all([makeInvoice(), makeInvoice()]);
+    const code = `ST${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const inputs = invoices.map((invoiceId) => ({
+      facilityId: facility,
+      invoiceId,
+      amount: '20.00',
+      payerParty: 'PATIENT' as const,
+      paymentMethod: 'M-Pesa',
+      transactionCode: code,
+      idempotencyKey: randomUUID(),
+    }));
+    const results = await Promise.allSettled(
+      inputs.map((input) => recordSettledPayment(context, input, 'Synthetic cashier')),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ code: 'DUPLICATE_TRANSACTION_CODE', detail: {} });
+    expect(rejected.reason.message).not.toContain(code);
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS n FROM billing_payments WHERE lower(transaction_code)=lower($1)',
+          [code],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    const amounts = (
+      await pool.query(
+        'SELECT paid_amount FROM billing_invoices WHERE id=ANY($1::int[]) ORDER BY paid_amount',
+        [invoices],
+      )
+    ).rows.map((r) => r.paid_amount);
+    expect(amounts).toEqual(['0.00', '20.00']);
+  });
+
   it('fails closed on incomplete inputs, account scope/classification, missing parent, transaction failure and period closure', async () => {
     const draft = await makeInvoice(false);
     await expect(

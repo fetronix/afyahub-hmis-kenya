@@ -5,6 +5,7 @@ import { PaymentHubError } from './errors.ts';
 import { providerBoundary } from './adapters/index.ts';
 import { validateDarajaCredentials } from './adapters/daraja.ts';
 import type { Capability, QueryOutcome } from './adapters/contracts.ts';
+import { queryState, requestStates, type RequestState } from './payment-lifecycle.ts';
 import {
   decryptFacilitySecret,
   encryptFacilitySecret,
@@ -1781,6 +1782,12 @@ export async function queryTransaction(scope: HubScope, transactionId: number) {
         'The provider did not return a request reference; manual review is required.',
         409,
       );
+    if (t.status === 'INITIATING' || !requestStates.includes(t.status as RequestState))
+      throw new PaymentHubError(
+        'REQUEST_STATE_REVIEW_REQUIRED',
+        'The request state needs review before a status query.',
+        409,
+      );
     const adapter = providerBoundary(i.adapter_key, await secretFor(c, scope, i.id));
     if (!adapter.status)
       throw new PaymentHubError('CAPABILITY_UNAVAILABLE', 'Status query is not implemented.', 409);
@@ -1812,34 +1819,23 @@ export async function queryTransaction(scope: HubScope, transactionId: number) {
     );
     if (!row.rows.length || row.rows[0].provider_request_id !== prepared.reference)
       throw new PaymentHubError('TRANSACTION_NOT_FOUND', 'Transaction not found.', 404);
-    let status = row.rows[0].status as string;
-    if (outcome.outcome === 'CONFIRMED')
-      status =
-        status === 'FAILED' || status === 'REVIEW_REQUIRED'
-          ? 'REVIEW_REQUIRED'
-          : 'PROVIDER_CONFIRMED';
-    else if (outcome.outcome === 'CANCELLED')
-      // The existing FAILED state plus the documented result code identifies
-      // a cancelled request without changing historical rows or the schema.
-      status =
-        status === 'PROVIDER_CONFIRMED' || status === 'REVIEW_REQUIRED'
-          ? 'REVIEW_REQUIRED'
-          : 'FAILED';
-    else if (
-      status === 'PROVIDER_CONFIRMED' &&
-      outcome.resultCode !== null &&
-      outcome.resultCode !== '0'
+    const previous = row.rows[0];
+    if (
+      !requestStates.includes(previous.status as RequestState) ||
+      previous.status === 'INITIATING'
     )
-      status = 'REVIEW_REQUIRED';
-    // An inconclusive later query must not erase evidence of a cancellation or
-    // the last conflicting result. It never creates a payment or success.
-    const persistedCode =
-      outcome.outcome === 'UNKNOWN' && ['FAILED', 'REVIEW_REQUIRED'].includes(row.rows[0].status)
-        ? row.rows[0].result_code
-        : outcome.resultCode;
+      throw new PaymentHubError(
+        'REQUEST_STATE_REVIEW_REQUIRED',
+        'The request state changed; review it before querying again.',
+        409,
+      );
+    const { status, resultCode } = queryState(
+      { status: previous.status as RequestState, resultCode: previous.result_code },
+      outcome,
+    );
     await c.query(
       'UPDATE payment_hub_transactions SET status=$1,result_code=$2,last_query_at=now(),updated_at=now() WHERE id=$3',
-      [status, persistedCode, transactionId],
+      [status, resultCode, transactionId],
     );
     await audit(c, scope.actorUserId, scope, 'QUERY', 'transaction', transactionId, {
       status,

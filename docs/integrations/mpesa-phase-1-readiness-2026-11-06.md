@@ -1,5 +1,7 @@
 # M-Pesa Phase 1 verification and Phase 2 gate
 
+> Historical verification snapshot: subsequent receipt-to-ledger recovery hardening is reported in [M-Pesa settlement hardening](mpesa-settlement-hardening-2026-11-06.md). The authenticated provider callback and Phase 2 gate remain blocked.
+
 Date: 2026-11-06. Phase 1 is based on `f83ac7d552dc5008e222c4cec9f2c93d5b001546` on the designated Arena branch. The [pre-change audit](mpesa-phase-1-audit-2026-11-06.md) records inspection of remote `main` and the integration branch before implementation. This is a verification report, not a deployment authorization.
 
 ## Gate decision: NOT READY FOR PHASE 2
