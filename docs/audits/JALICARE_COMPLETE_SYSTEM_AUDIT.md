@@ -3,6 +3,7 @@
 - **Evidence date:** 6 November 2026, Africa/Nairobi
 - **Application revision audited:** `db412a624d419ee8ab6ea5a930b4c6d438313a89`
 - **Branch:** `arena/e088f11d-afyahub-hmis-kenya`
+- **Independent follow-up:** 6 November 2026, against report commit `9b4c7c531a6501f8086e91316b08eddc397ca1be`; that commit changed the report only, so the audited application remains `db412a6`. Follow-up observations and reruns are separately identified below.
 - **Decision:** **PRODUCTION BLOCKER** for unrestricted, full-scope deployment. This is an audit, not a release, legal opinion, certification or implementation plan approval.
 
 ## A. Executive summary
@@ -11,26 +12,28 @@ JaliCare is a substantial, real application, not just a set of mock screens. It 
 
 The most consequential findings are:
 
-| Priority | Finding                                                  | Evidence and consequence                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P0       | Historical database archives in a public Git repository  | Four database-dump paths were added in reachable repository history and later removed from the current tree. GitHub metadata reported the repository as public during this audit. The content, whether anyone accessed it, and containment/notification/rotation are **not** verified. `docs/security/DATA-EXPOSURE.md`; current-tree backup guard does not check history. Treat as a potential data incident; do not reproduce or redistribute the dumps.                   |
-| P0       | Production security and recovery not demonstrated        | Identifier encryption can fall back to plaintext; database TLS defaults off; browser tokens use `localStorage`; MFA-required accounts cannot finish sign-in; restore, key custody, all-source log redaction, penetration testing and deployment configuration are not verified. `src/security/field-crypto.ts`, `src/config/env.ts`, `src/auth/auth.controller.ts`.                                                                                                          |
-| P0       | Interoperability can display a previous patient's record | A fresh synthetic mocked UI probe reproduced patient B selected while the FHIR preview retained patient A. Failed/late responses and facility changes also require identity-bound state review. No real patient exposure was established. See J17.                                                                                                                                                                                                                           |
-| P1       | Clinical patient selection can omit older patients       | The shared scoped patient list returns only the 50 newest matches. OPD, inpatient, radiology and other reviewed selectors do not provide further browsing, and an OPD triage button cannot open a patient absent from that list. See J18; do not confuse this with the separate paginated Report Centre selector.                                                                                                                                                            |
-| P0       | Provider money and payer outcomes are not verified       | Daraja collection/status is sandbox-only, callbacks are rejected, and sandbox status does not settle an invoice. KCB and Equity provide sandbox authentication probes only. NCBA and direct Britam, PACIS and Jubilee transport are unavailable. SHA has simulations and guarded interfaces, not proven real-facility certification. See E.                                                                                                                                  |
-| P1       | Clinical and charge workflows have critical boundaries   | Theatre is scheduling only; specialty-specific notes/prescriptions/charges cannot be saved; dialysis completes as `UNBILLED`; the general charge-attempt API is present but its former review panel is not mounted. Facility owners must be able to detect and resolve unbilled completed care safely. See C and D.                                                                                                                                                          |
-| P1       | Reporting is a limited subset, not MedSmart parity       | The 144-entry catalogue has 21 links to 18 limited engines, one invoice-workflow link and 122 entries without a Centre engine/workflow. No MOH 705 aggregate or KHIS/DHIS2 submission is implemented. Catalogue entries and local reports are not statutory certification. Appendix 1 lists every entry.                                                                                                                                                                     |
-| P1       | Financial completeness is not established                | Reviewed invoice/receipt/refund journals exist, but they are separate transactions and require explicit mappings. Payer AR, item adjustments, full supplier payables, fixed assets, payroll and end-to-end bank-provider reconciliation are not complete. Invoice balances are not independently reconciled AR; a receipt, payer acknowledgement and bank settlement are different events.                                                                                   |
-| P1       | Booking notification state can mislead                   | `sendBookingReminderScoped` records overall `COMPLETED` when delivery is `FAILED` or `NOT_CONFIGURED` (only `UNKNOWN` changes the overall status). Initial per-channel results remain honest, but replay returns only the overall status. Notification-log update failures are swallowed. This is a code-level ambiguity and evidence-loss risk, not proof that a message was delivered or that records were lost. `src/booking/website-booking.service.ts:338-382,814-882`. |
-| P1       | Insurance estimates can treat unknown as zero            | Private claim construction defaults absent unit/benefit values to zero/`NONE`, and its helper maps null/empty money to zero. This can make an estimate appear more certain than the underlying policy; no incorrect real claim or payment was established. `src/insurance/claims/private-claims.service.ts:947-957`; `src/insurance/core/types.ts:448-509`.                                                                                                                  |
+| Priority | Finding                                                                      | Evidence and consequence                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0       | Historical database archives in a public Git repository                      | Four database-dump paths were added in reachable repository history and later removed from the current tree. GitHub metadata reported the repository as public during this audit. The content, whether anyone accessed it, and containment/notification/rotation are **not** verified. `docs/security/DATA-EXPOSURE.md`; current-tree backup guard does not check history. Treat as a potential data incident; do not reproduce or redistribute the dumps.                   |
+| P0       | Production security and recovery not demonstrated                            | Identifier encryption can fall back to plaintext; database TLS defaults off; browser tokens use `localStorage`; MFA-required accounts cannot finish sign-in; restore, key custody, all-source log redaction, penetration testing and deployment configuration are not verified. `src/security/field-crypto.ts`, `src/config/env.ts`, `src/auth/auth.controller.ts`.                                                                                                          |
+| P0       | Interoperability can display a previous patient's record                     | A fresh synthetic mocked UI probe reproduced patient B selected while the FHIR preview retained patient A. Failed/late responses and facility changes also require identity-bound state review. No real patient exposure was established. See J17.                                                                                                                                                                                                                           |
+| P0       | Patient portal can expose a verified result outside its allowed facility set | The authenticated patient's overview queries verified `lab_results` by patient and status without joining/filtering the order's facility; the dedicated laboratory list does filter orders. A synthetic fake-pool probe captured that query and returned an outside-facility-labelled result. This concerns the **same patient**, not a demonstrated cross-patient leak. Production and real-patient impact were not checked. See J20.                                       |
+| P0       | Provider money and payer outcomes are not verified                           | Daraja collection/status is sandbox-only, callbacks are rejected, and sandbox status does not settle an invoice. KCB and Equity provide sandbox authentication probes only. NCBA and direct Britam, PACIS and Jubilee transport are unavailable. SHA has simulations and guarded interfaces, not proven real-facility certification. See E.                                                                                                                                  |
+| P1       | Portal release policy and returned note fields are inconsistent              | When registration and account facilities differ, the portal checks one facility's setting while selecting records from both; visits also return raw `clinicalNotes` in JSON and downloads despite the service's stated no-internal-notes boundary. Whether any particular note is restricted is a governance question. See J21–J22; no real records were inspected.                                                                                                          |
+| P1       | Clinical patient selection can omit older patients                           | The shared scoped patient list returns only the 50 newest matches. OPD, inpatient, radiology and other reviewed selectors do not provide further browsing, and an OPD triage button cannot open a patient absent from that list. See J18; do not confuse this with the separate paginated Report Centre selector.                                                                                                                                                            |
+| P1       | Clinical and charge workflows have critical boundaries                       | Theatre is scheduling only; specialty-specific notes/prescriptions/charges cannot be saved; dialysis completes as `UNBILLED`; the general charge-attempt API is present but its former review panel is not mounted. Facility owners must be able to detect and resolve unbilled completed care safely. See C and D.                                                                                                                                                          |
+| P1       | Reporting is a limited subset, not MedSmart parity                           | The 144-entry catalogue has 21 links to 18 limited engines, one invoice-workflow link and 122 entries without a Centre engine/workflow. No MOH 705 aggregate or KHIS/DHIS2 submission is implemented. Catalogue entries and local reports are not statutory certification. Appendix 1 lists every entry.                                                                                                                                                                     |
+| P1       | Financial completeness is not established                                    | Reviewed invoice/receipt/refund journals exist, but they are separate transactions and require explicit mappings. Payer AR, item adjustments, full supplier payables, fixed assets, payroll and end-to-end bank-provider reconciliation are not complete. Invoice balances are not independently reconciled AR; a receipt, payer acknowledgement and bank settlement are different events.                                                                                   |
+| P1       | Booking notification state can mislead                                       | `sendBookingReminderScoped` records overall `COMPLETED` when delivery is `FAILED` or `NOT_CONFIGURED` (only `UNKNOWN` changes the overall status). Initial per-channel results remain honest, but replay returns only the overall status. Notification-log update failures are swallowed. This is a code-level ambiguity and evidence-loss risk, not proof that a message was delivered or that records were lost. `src/booking/website-booking.service.ts:338-382,814-882`. |
+| P1       | Insurance estimates can treat unknown as zero                                | Private claim construction defaults absent unit/benefit values to zero/`NONE`, and its helper maps null/empty money to zero. This can make an estimate appear more certain than the underlying policy; no incorrect real claim or payment was established. `src/insurance/claims/private-claims.service.ts:947-957`; `src/insurance/core/types.ts:448-509`.                                                                                                                  |
 
-**Fresh audit checks:** TypeScript, formatting, ESLint, backup-current-tree guard, client/server builds and a mock migration dry-run passed. With an intentionally unreachable synthetic database, **172 test files / 1,664 tests passed; 56 files / 458 tests skipped; zero test failures**. A fresh no-database coverage run **failed its thresholds** (32.69% statements / 26.66% branches / 37.18% functions / 33.02% lines). Full DB-backed tests and passing coverage are historical, from the same application commit, not a fresh run in this audit. Full results and limitations are in I.
+**Fresh audit checks:** TypeScript, formatting, ESLint, backup-current-tree guard, client/server builds and a mock migration dry-run passed. With an intentionally unreachable synthetic database, **172 test files / 1,664 tests passed; 56 files / 458 tests skipped; zero test failures**. The initial no-database coverage run **failed its thresholds** (32.69% statements / 26.66% branches / 37.18% functions / 33.02% lines); the independently repeated clean-archive run also **failed**, at 32.71% / 26.66% / 37.18% / 33.04%, respectively. Full DB-backed tests and passing coverage are historical, from the same application commit, not fresh runs in this audit. Full results and limitations are in I.
 
 ## B. Overall assessment, methodology and status definitions
 
 ### Scope and evidence limits
 
-Read the current mounted routers and middleware order, UI registry and module components, domain services, schemas and migration journal, integration boundaries, test configuration, prior evidence and CI metadata. The clinical journey and representative mutation, authorization, price, audit, export and error paths were traced across layers. Static inventories parse **485 TS/TSX files** and identify **188 Drizzle `pgTable` declarations** in exported domain schema files. A separate migration text scan identifies **189 distinct literal `CREATE TABLE` names**: `website_booking_reminders` is SQL-only and accessed with raw SQL, not a Drizzle declaration. Neither count proves the shape of a deployed database. The route-call scan is only syntactic and includes false positives and misses dynamically defined routes; no exact live endpoint count is claimed. Mounts are inventoried in Appendix 3.
+Read the current mounted routers and middleware order, UI registry and module components, domain services, schemas and migration journal, integration boundaries, test configuration, prior evidence and CI metadata. The clinical journey and representative mutation, authorization, price, audit, export and error paths were traced across layers. Static inventories parse **485 TS/TSX files** and identify **188 Drizzle `pgTable` declarations** in exported domain schema files. A separate migration text scan identifies **189 distinct literal `CREATE TABLE` names**: `website_booking_reminders` is SQL-only and accessed with raw SQL, not a Drizzle declaration. Neither count proves the shape of a deployed database. The original exploratory route-call scan was syntactic and included false positives. A follow-up filtered parse records 499 literal `router`/`webhookRouter` calls across 57 of 58 selected source files plus one separately identified dynamic registration; it is still not an effective endpoint count or an authorization proof. Mounts are inventoried in Appendix 3 and the qualified source index is in Appendix 5.
 
 No real database, patient data, deployment, provider, sandbox account, or production secret was accessed. No schema or application functionality was changed, no migrations were applied, and no provider call was made for this audit. Dependency checks used the npm registry; GitHub was used for repository/CI metadata. Historical reports are supporting evidence, not substitutes for inspection or present production acceptance. Static inspection and selected tests cannot prove that every handler is secure or every facility dataset is valid.
 
@@ -82,11 +85,24 @@ The following splits the clinical surface into more than 18 areas so the smaller
 | Dialysis — **PARTIALLY IMPLEMENTED**                                                                                                    | `U/DialysisModule.tsx`; `R/dialysis.routes.ts`, `src/dialysis/dialysis.service.ts`; dialysis machines, assessments, plans, schedules, sessions, consumables/events, M0027; `T/vitest/client-dialysis.db.spec.ts`, `T/schema-dialysis.spec.ts`                                                                                                      | A clinician-entered assessment, facility protocol, plan authorization, scheduling, observation and adverse-event records exist. Completion returns `UNBILLED`; billing, recurrence/rescheduling, shared capacity, laboratory and stock linkage remain open. UI still asks for patient, assessment and session IDs in several paths (`U/DialysisModule.tsx:439-498,644-650`), contrary to browse-first requirements. Do not invent clinical protocols.                                                                       |
 | Specialty-specific clinical documentation — **FRONTEND ONLY** for this named feature                                                    | `U/SpecialtyModule.tsx`; ordinary appointment/encounter APIs and tables are separate; `T/vitest/ui-workflow-regressions.spec.tsx`                                                                                                                                                                                                                  | The screen explicitly says it cannot save specialty notes, prescriptions or charges. It can display existing surrounding data, but there is no demonstrated specialty-specific clinical lifecycle. Implement only after approved specialty requirements and safe source identities are available.                                                                                                                                                                                                                           |
 | Referral and record sharing — **PARTIALLY IMPLEMENTED**                                                                                 | `U/OutpatientModule.tsx`, `U/PatientPortalModule.tsx`, `src/portal/portal-sharing.service.ts`, `src/insurance/claims/claim-evidence.service.ts`; `referrals`, documents, grants and access logs, M0017/0018/0040; `T/patient-portal.spec.ts`, `T/vitest/claim-evidence-ui.spec.tsx`                                                                | Referral text and selected evidence/sharing paths exist, but schema and a FHIR preview do not prove a complete signed referral lifecycle, provider-to-provider transfer, interoperability or printable referral.                                                                                                                                                                                                                                                                                                            |
-| Patient portal, consent and allergies — **PARTIALLY IMPLEMENTED**                                                                       | `src/components/portal/PortalApp.tsx`, `U/PatientPortalModule.tsx`; `src/portal/*.ts`, `src/clinical/{consent,allergy,access-log}.service.ts`; portal accounts/invitations/sessions/settings/grants, `patient_consents/allergies/access_logs`, M0017/0018; `T/patient-portal.spec.ts`, `T/consent-allergy.spec.ts`                                 | Separate patient sessions, invitation activation, scoped record views, access history and sharing are implemented. Default delivery is unavailable; `localStorage` bearer token risk, consent completeness, revocation, abuse, accessibility and real-facility acceptance remain to be assessed.                                                                                                                                                                                                                            |
+| Patient portal, consent and allergies — **PARTIALLY IMPLEMENTED**                                                                       | `src/components/portal/PortalApp.tsx`, `U/PatientPortalModule.tsx`; `src/portal/*.ts`, `src/clinical/{consent,allergy,access-log}.service.ts`; portal accounts/invitations/sessions/settings/grants, `patient_consents/allergies/access_logs`, M0017/0018; `T/patient-portal.spec.ts`, `T/consent-allergy.spec.ts`                                 | Separate patient sessions, invitation activation, record views, access history and sharing exist. Facility scope, release-policy and note-minimization gaps were found in portal reads (J20–J22); do not treat all views as correctly scoped. Default delivery is unavailable; `localStorage` bearer token risk, consent completeness, revocation, abuse, accessibility and real-facility acceptance remain to be assessed.                                                                                                 |
 | Public health and disease surveillance — **PARTIALLY IMPLEMENTED** locally                                                              | `U/PublicHealthModule.tsx`; `R/domains/public-health.routes.ts`, `R/domains/interop.routes.ts`; `public_health_reports`, M0000 baseline; `T/integration/public-health-explicit-counts.db.spec.ts`                                                                                                                                                  | Local notifiable disease records exist. No KHIS/DHIS2/DHA submission or queue is implemented; MOH 705 endpoint returns 501. Verify current IDSR rules, transmission, denominators and official return specification before claiming compliance.                                                                                                                                                                                                                                                                             |
 | FHIR/clinical interoperability — **PARTIALLY IMPLEMENTED**                                                                              | `U/InteroperabilityModule.tsx`; `R/dha.routes.ts`, `R/domains/interop.routes.ts`, `src/integrations/dha/`, `src/integrations/sha/sha.fhir.ts`; `dha_api_calls`, mappings, patient/access tables, M0012/0013/0026; `T/dha.spec.ts`, `T/vitest/dha-boundaries.spec.ts`                                                                               | A local FHIR R4 patient preview and DHA configuration/readiness paths exist. A synthetic probe reproduced a stale cross-patient display risk (J17); there is also a non-paginated 50-patient chooser (J18) and an interoperability module-gate mismatch to review (J19). A JSON resource, HTTP 200 or self-assessment is not national exchange conformance, facility approval or an externally accepted message.                                                                                                            |
 
-### C.1 End-to-end patient and financial trace
+### C.1 Explicit emergency, safety and document crosswalk
+
+These targeted findings supplement the detailed module and Report Centre inventories. “Not implemented” below is limited to a **dedicated workflow found in the inspected repository**, not a claim about an external hospital system or future requirement. Searches covered `src`, the module registry, routes, schemas and catalogue; a label, a generic note, or an insurance benefit code is not a complete operational module.
+
+| Requested feature / status                                                                                                                   | Frontend; backend; data/migrations; test/evidence                                                                                                                                                                                                                                                       | Boundary and remaining work                                                                                                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Emergency/casualty triage — **PARTIALLY IMPLEMENTED** through general workflows                                                              | `U/ReceptionQueueModule.tsx`, `U/OutpatientModule.tsx`, `U/InpatientModule.tsx`; `R/queues.routes.ts`, `R/vitals.routes.ts`; queues/observations/encounters/admissions, M0000/0064; `T/opd-journey.spec.ts`, `T/integration/queue-write-validation.spec.ts`.                                            | Emergency queue priority and emergency admission choice exist. A dedicated casualty/resuscitation/emergency clinical lifecycle or department-specific reporting was not established. Agree facility scope and test triage/escalation, handover and charge/discharge safely.                                                         |
+| Ambulance/dispatch — **NOT IMPLEMENTED** as a dedicated workflow                                                                             | No dedicated ambulance UI, route, schema or end-to-end test was found in inspected `src`; `src/integrations/sha/sha.fhir.ts` contains an ambulance/emergency **benefit code** only.                                                                                                                     | A code is not dispatch, vehicle/staff/trip tracking or care/transfer documentation. Obtain authorized operational, clinical and payer requirements before design.                                                                                                                                                                   |
+| Mortuary — **NOT IMPLEMENTED** as a dedicated workflow                                                                                       | `U/InpatientModule.tsx` offers a deceased discharge option; `admissions` in `S/inpatient.ts` and M0000 record discharge context. No dedicated mortuary UI, routes, tables or lifecycle test was identified.                                                                                             | A discharge disposition is not a body register, custody chain, release/consent, storage or reconciliation workflow. Confirm local policy and privacy requirements.                                                                                                                                                                  |
+| Blood bank/transfusion — **NOT IMPLEMENTED** as a dedicated workflow                                                                         | Generic laboratory and inventory components/tables exist (`U/LaboratoryModule.tsx`, `U/InventoryModule.tsx`, `S/laboratory.ts`, `S/inventory.ts`); no dedicated blood-bank/transfusion UI, route, schema or end-to-end test was found in inspected `src`.                                               | Generic stock and lab orders do not establish donor, compatibility, blood-product traceability, transfusion checks, reactions or recalls. Require approved clinical and traceability specifications.                                                                                                                                |
+| Quality, incident and infection prevention — **PARTIALLY IMPLEMENTED** as isolated records, not a complete management programme              | `U/NursingPanel.tsx:27` permits an `Incident` note; `U/PublicHealthModule.tsx` and `R/domains/public-health.routes.ts` provide local disease-surveillance functions; nursing/public-health tables, M0000/0009; `T/nursing-contracts.spec.ts`, `T/integration/public-health-explicit-counts.db.spec.ts`. | A nursing note and local disease counts are not a safety-event investigation, complaints management, corrective-action tracker, infection-control programme or facility-wide quality dashboard. No dedicated complete workflow was established. Approve classifications, privacy, ownership, escalation and evidence.               |
+| Discharge summary and other patient printables — **PARTIALLY IMPLEMENTED** for recorded/portal summary; Centre printable **NOT IMPLEMENTED** | `U/InpatientModule.tsx:610–624,1538–1546`, `src/portal/portal-records.service.ts:564–611`, `src/components/portal/PortalApp.tsx:822–845`; `admissions`, patient-portal settings, M0000/0018; `T/integration/inpatient-acceptance.db.spec.ts`, `T/patient-portal.spec.ts`.                               | Discharge includes entered free text; the portal can show it when its policy allows, subject to J21. This does not prove an approved signed/printed clinical summary. Appendix 1 separately inventories Centre sick-off, medical-note, referral-letter, statement, receipt and other printables; catalogue entries are not engines. |
+
+### C.2 End-to-end patient and financial trace
 
 1. **Identity → attendance:** an authorized staff member registers/selects a real facility patient, creates or checks in an appointment, and moves through a scoped queue. Website requests use a separate client-key API and require staff identity and shared-diary review before confirmation; they are not automatically a completed encounter or payment.
 2. **Triage → care:** observations and encounter notes/diagnoses are saved against scoped patient/encounter identities. OPD can request lab/imaging and prescribe. Orders and prescriptions are not themselves proof of completion or dispensing. Specialty notes and full theatre clinical care remain disconnected; dialysis session completion does not auto-bill.
@@ -94,7 +110,7 @@ The following splits the clinical surface into more than 18 areas so the smaller
 4. **Invoice → receipt/refund:** invoice lines and totals are persisted; finalization records a reviewed responsibility split, not external insurer authorization. Manually recorded receipts are not necessarily independently bank-confirmed. Refund records describe a manual action, not an electronic transfer. Item-level adjustment/credit-note lifecycle and comprehensive outstanding AR are missing.
 5. **Discharge → accounting/reporting:** discharge is a clinical commit, not proof that every charge succeeded; it marks the bed for cleaning and creates durable bed-billing work. Reviewed source posting creates balanced, source-linked journals separately; source and journal cannot be assumed atomic. Report Centre uses a limited set of scoped, declared snapshots and ledger movements, not a comprehensive verified accounting close or statutory submission.
 
-A historical synthetic HTTP/PostgreSQL finance chain and limited browser journeys exist (I); this audit did **not** freshly verify the complete registration → care → discharge → payment → ledger/report journey in a browser or at a facility.
+A historical synthetic HTTP/PostgreSQL finance chain and limited browser journeys exist (I); this audit did **not** freshly verify the complete registration → care → discharge → payment → ledger/report journey in a browser or at a facility. The earlier `docs/audits/laboratory-facility-identity.md` records a narrower synthetic browser → PostgreSQL scenario: an explicitly linked facility lab tariff of **KES 456.00** produced no order-time charge and exactly one matching invoice line after collection, verification and completion; repeated completion did not duplicate the item. That same synthetic scenario reported an **unpaid** five-line KES 1,031 invoice. `T/integration/laboratory-facility-identity.db.spec.ts` contains related DB assertions. This is historical fixture-specific evidence, not a real facility price, payer acceptance, paid journey or fresh audit reproduction.
 
 ## D. Billing, cashier and accounting
 
@@ -200,6 +216,8 @@ MOH 705A/705B, surveillance, other MOH registers and KHIS/DHIS2 transmission req
 - `Dockerfile`, `docker-compose.yml`, `README.md` and `docs/deployment/` document non-root packaging, migration/preflight, logging and recovery practices. No live environment, load, availability, patching, independent restore, monitoring or rollback was tested. The pool maximum is 10 (`src/db/index.ts`); provider timeouts/network calls and concurrent workloads need load testing. The client build produces a ~2.5 MB minified JS chunk and a size warning.
 - `src/security/field-crypto.ts` can run without `FIELD_ENCRYPTION_KEY`, store direct identifiers in plaintext, and read legacy plaintext even when a key is set. Deployment may or may not configure it; enabling a key does not retroactively encrypt existing records. Inventory encrypted vs plaintext fields and plan authorized migration/key recovery without silently altering historical data.
 
+- Patient portal record release requires immediate owner review: the overview lab query lacks the facility restriction used in the laboratory list (J20), one facility policy is applied to a two-facility selection (J21), and encounter `clinicalNotes` are returned to the patient session despite the service comment promising no internal notes (J22). These are same-patient release-scope/minimization issues, not demonstrated cross-patient access or proof of real-world exposure. A separate best-effort `EXPORT` audit event can be lost while the awaited `DOWNLOAD` event remains required (J23).
+
 ### H.3 Kenyan clinical, data and reporting considerations
 
 These are source-grounded review points, **not legal advice or a certification**. Legal texts and national interfaces can change; counsel and facility/DHA/MOH owners must verify current commencement, judgments, scope, standards and contracts before use.
@@ -242,6 +260,22 @@ All commands ran at audited application revision `db412a6`, with Node 22.22.3 an
 - A historical joined synthetic DB test covered a finalized invoice, manual receipt, reviewed journals, imported bank statement, GL match and worksheet, including idempotency/isolation/balanced entries and `bankConfirmed: false`. It did **not** contact a bank or establish real settlement.
 - GitHub run [42244057430](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/42244057430) reports `success` at the audited SHA for seven jobs: PostgreSQL 16 migrations/specs, dependency audit, PostgreSQL coverage, fresh-checkout Docker bootstrap, production build, typecheck/lint and formatting. Job metadata was fetched; detailed hosted job-log download returned EOF because its separate results host was unavailable, so the exact historical local counts above are not asserted as independently read from hosted logs.
 
+### I.3 Independent clean-snapshot follow-up
+
+The follow-up independently archived report commit `9b4c7c5` to temporary directories, reused the existing dependency installation, and ran checks there rather than altering the checkout's pre-existing ignored build artefact. That commit did not change application code from `db412a6`. No database was started, reset, migrated or connected; the test database was intentionally unreachable. No real patients, deployed instance, provider, provider sandbox or credentials were used.
+
+| Check in independent follow-up                                                                                                    | Result and limit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run test:unit`, no database                                                                                                  | **PASS**: 172 passed / 56 skipped files; 1,664 passed / 458 skipped tests; zero assertion failures. Skipped DB suites are not passes.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `npm run test:coverage`, separate clean archive, no database                                                                      | **FAIL**, exit 1: the same 172/56 files and 1,664/458 tests passed/skipped with zero failed tests, but coverage was **32.71% statements, 26.66% branches, 37.18% functions, 33.04% lines**. All four global ratchets and several file-specific thresholds failed. The missing DB-dependent suites contribute to this result; it is not the historical DB-enabled run.                                                                                                                                                                                                                          |
+| `npm run typecheck`, `format:check`, `lint`, `security:check-tracked-database-backups`, `build`, `build:server`, `verify:dry-run` | All exited 0. Lint had **0 errors and 91 warnings**; client bundling warned of a chunk over 500 kB. Formatting checks configured project paths, not this audit document. The backup check covers current tracked paths, not history. The dry-run used mock DB shapes and made no writes.                                                                                                                                                                                                                                                                                                       |
+| Audit-document checks                                                                                                             | `prettier --check docs/audits/JALICARE_COMPLETE_SYSTEM_AUDIT.md` and `git diff --check` passed after the follow-up edits. A temporary structural check counted 25 main clinical rows, 144 catalogue entries, 499 indexed route declarations across 57 files, 188 indexed schema tables and all nine required status labels; this checks document consistency, not functionality.                                                                                                                                                                                                               |
+| `npm audit --omit=dev --json`; `npm audit --json`                                                                                 | Production dependencies: **0 reported vulnerabilities**, exit 0. All dependencies: **4 moderate**, exit 1. This is a registry snapshot, not penetration or deployment testing.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Two temporary `tsx` diagnostic scripts using synthetic fixtures and a fake `pool.query`                                           | Both exited 0 after **asserting three existing risky observations**, not desired safety outcomes: generated lab-overview SQL lacks a facility join/filter and maps a fake outside-facility-labelled row; a two-facility discharge read looks up only the account facility's policy; the visits response maps a synthetic `clinicalNotes` value. These are fake-pool service/query-shape observations, **not** real PostgreSQL, HTTP, browser, cross-patient or production tests. No test or application code was added to the repository. See J20–J22.                                         |
+| Repository/CI metadata                                                                                                            | `gh repo view fetronix/afyahub-hmis-kenya --json isPrivate` returned `false` at follow-up; public visibility alone does not establish access to a specific historical dump. [CI 42285051475](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/42285051475) for report commit `9b4c7c5` reports seven successful jobs: PostgreSQL 16 coverage, fresh-checkout Docker bootstrap, production build, PostgreSQL 16 migrations/database specs, formatting, dependency audit, and typecheck/lint. This is separate from the application-commit CI and historical local DB results in I.2. |
+
+**Safety-stash visibility:** Earlier work recorded a retained `stash@{0}`, but in this follow-up `git stash list` is empty in this checkout and a read-only `git fsck --no-reflogs --unreachable` reported no unreachable commit objects locally. This follow-up did not drop or clear a stash. Its availability in another checkout or prior environment is unknown; this does not establish loss of committed branch work. Check the original workspace before relying on that safety copy, and do not assume it can be recovered here.
+
 **Migration/release rule:** inspect pending migrations and deployed data read-only; obtain a verified backup and separately approved preflight, upgrade, rollback and maintenance plan. Do not reset a database, rewrite migration history, infer historical patient/service identities, or apply migrations simply because a synthetic test passed. M0070 locks/preflights ledger scope and can block writes; assess the actual database before scheduling an approved upgrade.
 
 ## J. Gaps, disconnected code, misleading states and risks
@@ -267,11 +301,43 @@ All commands ran at audited application revision `db412a6`, with Node 22.22.3 an
 | J17 / P0      | Stale patient and facility data in interoperability UI — **PRODUCTION BLOCKER** for this interface               | A fresh mocked jsdom diagnostic reproduced the patient-A/patient-B mismatch; static trace: `U/InteroperabilityModule.tsx:90-104,132-140,454-460,673-677` shares `selectedPatientId` between two selectors. After FHIR resource A has loaded, changing the eligibility selector to patient B changes the FHIR selector value without fetching/clearing resource A; Copy/Download can still use A's data. Conversely, changing the FHIR selector does not clear an eligibility result, and a failed or late FHIR request/facility switch does not reliably clear or bind prior `fhirData`. The server FHIR route requires `interop.fhir.patient.read` and a scoped patient lookup (`R/domains/interop.routes.ts:40-61`); this is not a claim that the API bypasses authorization. `T/dha-compliance.spec.ts` checks other boundaries, but no patient/facility-switch UI test was found. This is a demonstrated synthetic wrong-patient display risk, not proof of real exposure. Clear and bind results to patient/facility/request identity, guard copy/download and test race/error transitions before release.                                                           |
 | J18 / P1      | Patient chooser capped at 50 without browsing further — **PRODUCTION BLOCKER** for affected clinical workflows   | `src/db/queries/patients.ts:285-369` returns at most the 50 newest scoped matches, and `src/api/clients/patients-clinical.client.ts:64-81` exposes no page parameter. `U/OutpatientModule.tsx:201-203,1071-1127` selects from that list; a waiting triage patient's button does nothing when their record is absent. `U/InpatientModule.tsx:241-242,1222-1235`, `U/RadiologyModule.tsx:100-101,489-504`, `U/SpecialtyModule.tsx:53-56,120-133` and `U/InteroperabilityModule.tsx:99-104,453-467` likewise use the capped list without a further patient search/page in the reviewed controls. Other screens use the list for patient labels, sometimes falling back to an ID. Registration and reception have search; Report Centre has a separate paginated selector, so do not conflate them. No >50-patient clinical UI acceptance test was found; `T/integration/report-centre-selectors.db.spec.ts` covers the separate report picker. Risk is omitted/unclickable patients and misleading identity context, not proven data loss. Add scoped pagination/search and identity-safe workflows, and test older patients, queue selection, errors and facility switches. |
 | J19 / P1      | FHIR route does not match interoperability module-gate prefix — **PARTIALLY IMPLEMENTED**                        | `R/index.ts` installs `requireFacilityModule('interoperability')` on `/interoperability` and `/integrations`; the FHIR handler is `/api/interop/fhir/patient/:id` in `R/domains/interop.routes.ts:40-61`. The `/interop` prefix therefore does not pass either of those module gates. It still passes staff authentication/authorization, `interop.fhir.patient.read`, and a scoped patient lookup; this is not a demonstrated cross-facility bypass. Confirm whether the feature must be unavailable when the facility module is disabled, then align and test the intended policy. `T/vitest/route-inventory.spec.ts` checks mounted anchors, not this disabled-module decision; no targeted disabled-module FHIR test was found.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| J20 / P0      | Patient-portal overview omits facility filtering — **PRODUCTION BLOCKER** for affected portal use                | Same-patient verified lab result may be included from outside the allowed facility set; source and a synthetic fake-pool query-shape probe. See J.1 for all layers, tests and remediation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| J21 / P1      | Portal applies one facility policy to two-facility data — **PARTIALLY IMPLEMENTED**                              | Origin-facility release settings are not independently checked when account and registration facilities differ. Conditional policy risk; see J.1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| J22 / P1      | Portal visits return clinician notes despite stated no-internal-notes boundary — **PARTIALLY IMPLEMENTED**       | Raw field is returned in API JSON and record download, though the reviewed visit card does not display it. Classification and approved release policy require owner review; see J.1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| J23 / P2      | Patient-portal export audit event is best effort — **PARTIALLY IMPLEMENTED**                                     | Separate `EXPORT` event failure is caught after the mandatory `DOWNLOAD` event; loss of one event type is possible, not proof all access was unaudited. See J.1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+### J.1 Detailed patient-portal findings and safe verification plan
+
+**J20 — overview laboratory scope — PRODUCTION BLOCKER for the affected portal use.**
+
+- **Frontend:** `src/components/portal/PortalApp.tsx:537–555` renders `recentVerifiedResults` returned by the overview; `src/api/portal-client.ts` calls the portal API.
+- **Backend/data:** the authenticated `GET /api/portal/overview` (`src/portal/portal.routes.ts:227–248`) invokes `src/portal/portal-records.service.ts:83–102,125–132,206–225`. The service computes the allowed registration/account facility IDs but the overview lab query filters only `lab_results.patient_id` and `status = 'Verified'`, with no join to `lab_orders.facility_id`. `lab_results` has an `order_id` but no facility column (`S/laboratory.ts:135–150,206–215`; M0000/0008/0018). By contrast `listPortalLabResults` first scopes orders by facility (`portal-records.service.ts:358–425`). The account is still required to be the same patient; this is **not** evidence of a cross-patient or cross-tenant exploit.
+- **Evidence and tests:** A temporary synthetic fake-pool service diagnostic captured the actual generated overview SQL with parameters `[7001, 'Verified', 5]`, no facility predicate or join, and mapped a fake result labelled as belonging to facility 303 while the constructed allowed set was 101/102. The fake pool did not query a real `lab_orders` table, so the outside-facility association was a **fixture assumption**, not a real PostgreSQL result. `T/patient-portal.spec.ts:693–726` checks for a facility filter somewhere in the lab-order list but not specifically on this overview query; no focused multi-facility overview test was found. No real record or exposure was examined.
+- **Remaining work:** under an approved follow-up, establish originating-order tenant/facility and the approved release policy for every returned result; fail closed on missing/ambiguous ownership. Add independent synthetic PostgreSQL and HTTP/browser tests with one patient, allowed and disallowed facilities, verified/unverified results, errors, policy differences and permission/session negatives. Have the privacy/clinical owners decide any interim restriction and assess logs/impact without assuming incidents or changing production in this audit.
+
+**J21 — cross-facility portal release policy — PARTIALLY IMPLEMENTED.**
+
+- **Frontend/backend:** `U/PatientPortalModule.tsx` configures facility release settings and `src/components/portal/PortalApp.tsx` displays the resulting records. `src/portal/portal.service.ts:160–205,1124–1135` allows an invitation at a facility where a patient registered elsewhere has been seen; `portal-records.service.ts:83–102,358–374,511–525,564–605` selects the union of registration and account facilities but loads the account facility's policy when present. The laboratory, prescription, appointments, summary, dashboard and download paths warrant review against the agreed origin-facility policy, not just the example below.
+- **Data/migrations:** `patient_portal_settings` is keyed per facility (M0018); `patients`, `admissions`, `lab_orders`, `medications`/`encounters` supply the records (M0000/0018 and later migrations).
+- **Evidence/tests:** A second temporary fake-pool diagnostic constructed registration facility 101 and account facility 102. The real service loaded the default-allow policy for 102, selected discharged admissions from both 101 and 102, and mapped a synthetic admission from 101; no 101 policy query occurred. The disabled policy for 101 was a **hypothetical fixture condition**, not a fetched configuration. The code does not establish whether cross-facility release should instead be governed by account policy, origin policy, consent or another approved arrangement. `T/patient-portal.spec.ts` includes source-pattern scope tests but no demonstrated differing-policy, two-facility end-to-end release test was found.
+- **Remaining work:** have the data/clinical owners define which facility's settings and consent govern each record; enforce the approved rule consistently, cover null/legacy facilities, revocation and downloads, and validate with synthetic two-facility PostgreSQL, API and browser tests. Do not assume a real policy or real disclosure.
+
+**J22 — returned encounter notes — PARTIALLY IMPLEMENTED.**
+
+- **Frontend/backend:** `src/portal/portal-records.service.ts:10–21` says internal and clinician-to-clinician notes are excluded, but `listPortalVisits` selects `encounters.clinicalNotes` and spreads the selected encounter into its response (`:273–305,339–342`). Authenticated `GET /api/portal/visits` returns it (`portal.routes.ts:252–258`); `buildPortalRecordSummary` includes those visits (`portal-records.service.ts:627–695`) and `/records/download` serializes the summary (`portal.routes.ts:305–327`). `src/api/portal-client.ts:174–180` declares the field. The reviewed `PortalApp.tsx:584–630` visit card does **not** display it, but absence from the card does not remove it from network/download payloads.
+- **Data/migrations/tests:** `encounters.clinical_notes` is a free-text field (`S/clinical.ts:88–94`; M0000), and portal session/settings/access tables come from M0018 and related migrations. A temporary fake-pool call to the actual `listPortalVisits` mapped a synthetic clinician-only-note marker into the returned object; no real note was read. `T/patient-portal.spec.ts` tests broad release rules, but no targeted assertion that this field is omitted was found.
+- **Remaining work:** classify the field with clinical/privacy owners and reconcile the product's stated no-internal-notes boundary with patients' rights and approved policy. If excluded, use an explicit response allowlist for both API and download and test no leakage, including old records and exports; if intentionally shared, update and approve the contract, consent and disclosure behavior. This observation does not establish that every `clinicalNotes` value is confidential or that harm occurred.
+
+**J23 — export audit completeness — PARTIALLY IMPLEMENTED.**
+
+- **Frontend/backend:** the patient download control is in `src/components/portal/PortalApp.tsx:1153–1178`; `portal.routes.ts:305–327` calls `logPortalRecordAccess(... action: 'EXPORT')` without awaiting it and catches/logs any error while returning the download.
+- **Data/migrations/tests:** `patient_record_access_logs` (M0002 and subsequent clinical/portal migrations) also receives an awaited `DOWNLOAD` log from `buildPortalRecordSummary` (`portal-records.service.ts:682–686`); a failure there prevents that summary from completing. Thus this is **not** a claim that an entirely unaudited download must succeed. `T/patient-portal.spec.ts` checks access-log patterns; no focused failure-injection assertion for the separate `EXPORT` event was identified.
+- **Remaining work:** agree whether both events are required, define transactional/retry and failure behavior, and add synthetic failure-injection tests without leaking PHI or weakening the existing awaited `DOWNLOAD` boundary.
 
 ## K. Production blockers and release prerequisites
 
 1. **Potential data exposure:** owner-led containment, preservation/forensic assessment, current-tree and history/copy review, credential rotation as warranted and DPO/legal determination of any notifications. No assumption that Git history was cleaned.
-2. **Security baseline:** independently validate deployed TLS and database encryption, secrets custody/recovery, all PHI and provider-token flows, MFA/session design, least privilege/tenant isolation and the FHIR module policy (J19), distributed rate limiting, audit retention/tamper controls, vulnerability and penetration testing. Verify backup **and restore**.
+2. **Security baseline:** independently validate deployed TLS and database encryption, secrets custody/recovery, all PHI and provider-token flows, MFA/session design, least privilege/tenant isolation, FHIR module policy (J19), patient-portal lab scope, originating-facility release policy and note minimization (J20–J22), distributed rate limiting, audit retention/tamper controls, vulnerability and penetration testing. Verify backup **and restore**.
 3. **Clinical safety:** resolve the demonstrated stale-patient/context risk and the 50-patient chooser limit (J17–J18) for affected workflows; named clinical owners approve each enabled scope, downtime process, triage, lab verification, medication/dispensing, maternity, bed policy and recovery. Do not advertise full theatre/specialty/dialysis workflows until missing paths are implemented and validated.
 4. **Financial integrity:** facility-approved prices/units/dates and chart/period/opening balances; worklist for missing charges; audited adjustments/reversals; complete invoice/receipt/refund/claim/posting/reconciliation evidence, segmentation of duties and financial UAT. No unconfirmed care is billed.
 5. **Provider security and contracts:** keep production provider and callback gates closed until official facility-specific contracts, authorized sandbox checks, authenticated replay-safe callback/transaction validation, approved accounting mappings and reconciliation are verified. A mock, credential or token is not provider acceptance.
@@ -283,7 +349,7 @@ All commands ran at audited application revision `db412a6`, with Node 22.22.3 an
 | Order                            | Workstream                                                                                                                                                                                 | Exit evidence before advancing                                                                                                                                                                                   |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 — immediately                  | Potential exposure response and data-owner coordination                                                                                                                                    | Incident owner, containment decisions, assessed access/copies, credential-rotation decisions, DPO/legal review and documented recovery; no secret/dump reproduction.                                             |
-| 1 — security foundation          | Enforce an approved encryption/session/MFA/TLS/secret/audit strategy; verify least privilege and facility separation                                                                       | Threat model, key/backup restore exercise, negative/cross-tenant and multi-instance tests, independent review, documented operational configuration.                                                             |
+| 1 — security foundation          | Enforce an approved encryption/session/MFA/TLS/secret/audit strategy; resolve portal scope/release risks J20–J22; verify least privilege and facility separation                           | Threat model, key/backup restore exercise, negative/cross-tenant and multi-instance tests, independent review, documented operational configuration.                                                             |
 | 2 — safe care-to-cash recovery   | Resolve patient/context selection risks J17–J18; make incomplete and unbilled source work visible; resolve booking reminder state and unknown benefit values; preserve historic references | Browser → API → isolated PostgreSQL evidence for completed/unperformed care, missing prices, actual dispensing/bed quantities, retry/idempotency, journal balance and audit rollback; clinical/finance sign-off. |
 | 3 — focused clinical completion  | Theatre, specialty, dialysis and cross-channel booking as independently prioritized                                                                                                        | Facility-approved requirements and protocols, scoped selectors, state machine/consent/safety records, failure/permissions/concurrency tests and clinical UAT. No invented practice or retrospective recoding.    |
 | 4 — accounting/procurement/HR    | Approved adjustments, AR/AP, fixed assets, receiving, payroll and close controls                                                                                                           | Reconciled trial/ledger subledgers, period/reversal policies, approved tax/HR rules and synthetic plus finance UAT evidence. Do not modify posted records.                                                       |
@@ -291,7 +357,7 @@ All commands ran at audited application revision `db412a6`, with Node 22.22.3 an
 | 6 — external providers           | Obtain contracts and implement only authorized operations per facility/provider/environment                                                                                                | Real authorized sandbox evidence, verified authentication/callback and financial isolation, replay/recovery/reconciliation tests, provider and facility approval before any production enablement.               |
 | 7 — release readiness            | Production-like load/security/restore, controlled upgrade and training                                                                                                                     | All blockers closed for the explicitly enabled scope, reviewed change and rollback plan, monitored rollout and named operational owners.                                                                         |
 
-**Concise disposition:** Existing: scoped local clinical, invoice, ledger, portal, configuration and limited report paths. Partial: specialty/theatre/dialysis, finance recovery, payer workflows, inventory/procurement, security and report coverage. Missing: complete theatre clinical lifecycle, reliable delivery sender, MOH 705/KHIS transmission, payroll, full asset/AP and most catalogue reports. Must fix before appropriate release: historical data-incident response; stale or inaccessible patient selections; encryption/session/MFA and recovery evidence; charge-review visibility; reminder status/audit handling and unknown-as-zero estimates. Externally blocked: authenticated provider callbacks, real bank/payment/payer operations and national exchange acceptance. Recommended order: incident → security → clinical/financial recovery → approved domain/report completion → provider acceptance → controlled release.
+The concise existing/missing/partial/fix/external-blocker/roadmap disposition follows the evidence appendices at the end of this document.
 
 ---
 
@@ -597,3 +663,1178 @@ These sources informed the assessment; they are not evidence of a particular fac
 | DHA Kenya eClaims implementation guide [2](https://fhir.dha.go.ke/ig/eclaims)                                                                                                                                                                                                                                                                        | Draft version 0.1.0 FHIR R4 profiles and technical context, not certification or a signed facility/provider contract.                                    |
 
 Repository evidence is versioned with the audited source. Particularly relevant historical documents: `docs/security/DATA-EXPOSURE.md`, `docs/integrations/sandbox-ready-development-strategy-2026-11-06.md`, `docs/audits/report-filter-selection-upgrade-2026-11-06.md`, `docs/audits/facility-billing-work-in-progress.md`, `docs/audits/patient-booking-dialysis-work-in-progress.md`, `docs/testing/SYNTHETIC_BROWSER_SMOKE.md`, and the focused laboratory, pharmacy, inpatient and theatre audits. Where older descriptions differ from current source, this report uses the audited code and explicitly notes historical test limits.
+
+---
+
+## Appendix 5 — source-level route declarations and directly named guards
+
+This is an **audit index, not an effective endpoint list or authorization certification**. A Babel parse of the 56 `*.routes.ts` files plus `src/payment-hub/routes.ts` and `src/insurance/hub/routes.ts` (the selected set contains 58 files in total) found **499 literal HTTP-method calls** whose receiver was literally `router` or `webhookRouter`, in 57 files, with no parse errors. `src/routes/platform.routes.ts` has no matching literal calls; it composes nested routers. The scan excludes `req.get` header reads, dynamically formed paths, `app`/`api` calls, nonliteral paths and route definitions outside this file set. It does not determine whether any router is mounted. The one nonliteral registration detected in this set, `src/routes/procurement.routes.ts:226`, is a loop for `approve`, `reject` and `complete`; it is not included in 499. Runtime mounting, prefixes, pre-auth exceptions, facility module gates, router-level/handler-level checks and permissions must be read with `src/app.ts`, `src/routes/index.ts`, the source and Appendix 3. Several retained legacy routers are intentionally unmounted.
+
+A path below is **exactly the string in that source file**, not necessarily a complete or reachable URL: some are absolute `/api/...`, others are relative to a parent mount. Following `|` are only direct argument expressions whose identifier resembles `require*`, `validate*`, `authenticate*`, `authorize*`, `enforce*` or `verify*`, plus the identifiers `access` and `secureCredentials`. No expression shown means _no matching direct argument was extracted_; it does **not** mean public, unprotected or lacking validation. Some listed expressions are validators or handlers rather than authorization. Route-level scope checks and parent middleware are not captured. `requirePermission` requires all named permissions, `requireAnyPermission` any one, and `requireRole` any listed role; facility and object ownership still need independent checks (`src/auth/authorization.middleware.ts` and `authorization.service.ts`). Lines refer to application revision `db412a6`.
+
+<details>
+<summary><code>src/auth/auth.routes.ts</code> — 7 literal declarations</summary>
+
+```text
+L25 POST /login | validateBody(loginBodySchema, { code: (issue) => (issue.path[0] === 'password' ? 'INVALID_PASSWORD' : 'INVALID_IDENTIFIER'), })
+L37 GET /facility-admin-invitations/validate | validateQuery(invitationTokenQuerySchema, { code: 'INVALID_INVITATION_TOKEN' }); validateFacilityAdminInvitationController
+L43 POST /facility-admin-invitations/accept | validateBody(acceptInvitationBodySchema, { code: 'INVALID_REQUEST' })
+L53 GET /staff-invitations/validate | validateQuery(invitationTokenQuerySchema, { code: 'INVALID_INVITATION_TOKEN' }); validateStaffInvitationController
+L59 POST /staff-invitations/accept | validateBody(acceptInvitationBodySchema, { code: 'INVALID_REQUEST' })
+L68 GET /session | requireAuth
+L73 POST /logout | requireAuth
+```
+
+</details>
+
+<details>
+<summary><code>src/auth/staff-invitation.routes.ts</code> — 9 literal declarations</summary>
+
+```text
+L85 GET /regulators | requirePermission('users.invite')
+L107 POST /verify-practitioner | requirePermission('users.invite')
+L155 POST /manual-verification | requirePermission('users.invite')
+L193 GET /verification-dashboard | requirePermission('users.invitations.read')
+L216 GET /roles | requirePermission('users.invite')
+L225 POST / | requirePermission('users.invite'); validateBody(createStaffInvitationBodySchema, { code: 'INVALID_INPUT' })
+L288 GET / | requirePermission('users.invitations.read')
+L303 POST /:id/reissue | requirePermission('users.invitations.reissue'); validateParams(invitationIdParamSchema, { code: 'INVALID_INVITATION_ID' })
+L345 POST /:id/revoke | requirePermission('users.invitations.revoke'); validateParams(invitationIdParamSchema, { code: 'INVALID_INVITATION_ID' })
+```
+
+</details>
+
+<details>
+<summary><code>src/auth/staff-roles.routes.ts</code> — 6 literal declarations</summary>
+
+```text
+L102 GET / | requirePermission('users.invite')
+L123 GET /roles | requirePermission('users.invite')
+L137 PUT /:userId/roles | requirePermission('users.invite'); validateParams(staffUserIdParamSchema, { code: 'INVALID_STAFF_ID' }); validateBody(staffRoleIdsBodySchema, { code: 'INVALID_ROLE_SELECTION' })
+L173 GET /roles/:roleId/permissions | requirePermission('users.invite'); validateParams(staffRoleIdParamSchema, { code: 'INVALID_ROLE_ID' })
+L198 PUT /roles/:roleId/permissions | requirePermission('users.invite'); validateParams(staffRoleIdParamSchema, { code: 'INVALID_ROLE_ID' }); validateBody(staffRolePermissionsBodySchema, { code: 'INVALID_PERMISSION_SELECTION' })
+L233 PUT /:userId/status | requirePermission('users.invite'); validateParams(staffUserIdParamSchema, { code: 'INVALID_STAFF_ID' }); validateBody(staffAccountStatusBodySchema, { code: (issue) => (issue.path[0] === 'reason' ? 'INVALID_REASON' : 'INVALID_STATUS'), })
+```
+
+</details>
+
+<details>
+<summary><code>src/booking/booking-admin.routes.ts</code> — 6 literal declarations</summary>
+
+```text
+L54 GET /workspace | requirePermission('booking.read')
+L61 POST /clients | requirePermission('booking.clients.manage')
+L75 POST /clients/:id/revoke | requirePermission('booking.clients.manage')
+L89 POST /slots | requirePermission('booking.manage')
+L99 POST /bookings/:id/confirm | requirePermission('booking.manage')
+L121 POST /bookings/:id/reminders | requirePermission('booking.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/booking/website-booking.routes.ts</code> — 5 literal declarations</summary>
+
+```text
+L37 GET /availability
+L50 POST /bookings
+L61 GET /bookings/:reference
+L75 POST /bookings/:reference/reschedule
+L94 POST /bookings/:reference/cancel
+```
+
+</details>
+
+<details>
+<summary><code>src/clinical/clinical-records.routes.ts</code> — 7 literal declarations</summary>
+
+```text
+L85 GET /:id/consents | requirePermission('patients.read')
+L102 POST /:id/consents | requirePermission('patients.update')
+L125 POST /:id/consents/:consentId/revoke | requirePermission('patients.update')
+L157 GET /:id/allergies | requirePermission('clinical.read')
+L174 POST /:id/allergies | requirePermission('clinical.create')
+L197 PATCH /:id/allergies/:allergyId | requirePermission('clinical.update')
+L231 POST /:id/allergies/check | requirePermission('clinical.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/clinical/icd11/icd11.routes.ts</code> — 4 literal declarations</summary>
+
+```text
+L48 GET /status | requireAnyPermission('clinical.read', 'clinical.icd11.read')
+L56 GET /search | requireAnyPermission('clinical.read', 'clinical.icd11.read')
+L71 GET /mappings/:code | requireAnyPermission('clinical.read', 'clinical.icd11.read')
+L105 POST /mappings/:code/review | requirePermission('clinical.icd11.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/compliance/compliance.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L43 GET /dha
+L80 GET /dha/requirements/:id
+```
+
+</details>
+
+<details>
+<summary><code>src/config/facility-modules.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L98 GET /:id/modules
+L160 PATCH /:id/modules
+```
+
+</details>
+
+<details>
+<summary><code>src/dashboard/dashboard.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L50 GET /overview
+L71 POST /search | requireAnyPermission('patients.read', 'billing.read', 'tariffs.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/insurance/claims/claim-evidence.routes.ts</code> — 1 literal declarations</summary>
+
+```text
+L8 POST /preview | requirePermission('billing.read', 'clinical.read'); requireAnyPermission('insurance.sha.claims.prepare', 'insurance.private.claims.prepare')
+```
+
+</details>
+
+<details>
+<summary><code>src/insurance/hub/routes.ts</code> — 15 literal declarations</summary>
+
+```text
+L73 GET /platform | requireSuperAdmin(); requirePermission('payer_hub.global.read')
+L81 GET /platform/facilities | requireSuperAdmin(); requirePermission('payer_hub.assign')
+L89 POST /platform/payers | requireSuperAdmin(); requirePermission('payer_hub.global.manage')
+L97 PATCH /platform/payers/:id | requireSuperAdmin(); requirePermission('payer_hub.global.manage')
+L108 PUT /platform/payers/:id/workflows/:workflow | requireSuperAdmin(); requirePermission('payer_hub.global.manage')
+L124 PUT /platform/payers/:id/facilities/:facilityId | requireSuperAdmin(); requirePermission('payer_hub.assign')
+L140 POST /platform/assignments/:id/production-decision | requireSuperAdmin(); requirePermission('payer_hub.production.approve')
+L152 GET /facility/catalogue | requireAnyPermission( 'payer_hub.catalogue.read', 'insurance.read', 'insurance.private.claims.prepare', 'insurance.sha.claims.prepare', 'insurance.claims.create', )
+L165 GET /facility/configuration-audit | requirePermission('payer_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L176 POST /facility/payers/:id/access-request | requirePermission('payer_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L187 PUT /facility/payers/:id/activation | requirePermission('payer_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L202 PUT /facility/payers/:id/environments/:environment | requirePermission('payer_hub.credentials.manage'); requireFacilityIntegrationAdministrator
+L218 POST /facility/payers/:id/environments/:environment/revoke | requirePermission('payer_hub.credentials.manage'); requireFacilityIntegrationAdministrator
+L233 POST /facility/payers/:id/production-request | requirePermission('payer_hub.production.request'); requireFacilityIntegrationAdministrator
+L244 POST /facility/payers/:id/connection-test | requirePermission('payer_hub.facility.manage'); requireFacilityIntegrationAdministrator
+```
+
+</details>
+
+<details>
+<summary><code>src/notifications/inbox.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L39 GET / | access
+L74 POST /read | access
+L95 POST /read-all | access
+```
+
+</details>
+
+<details>
+<summary><code>src/payment-hub/routes.ts</code> — 27 literal declarations</summary>
+
+```text
+L79 GET /platform | requireSuperAdmin(); requirePermission('payment_hub.global.read')
+L87 GET /platform/facilities | requireSuperAdmin(); requirePermission('payment_hub.assign')
+L95 POST /platform/providers | requireSuperAdmin(); requirePermission('payment_hub.global.manage')
+L105 PATCH /platform/providers/:id | requireSuperAdmin(); requirePermission('payment_hub.global.manage')
+L116 PUT /platform/providers/:id/environments/:environment | requireSuperAdmin(); requirePermission('payment_hub.global.manage')
+L132 PUT /platform/providers/:id/capabilities/:capability | requireSuperAdmin(); requirePermission('payment_hub.global.manage')
+L148 PUT /platform/providers/:id/facilities/:facilityId | requireSuperAdmin(); requirePermission('payment_hub.assign')
+L164 POST /platform/integrations/:id/production-decision | requireSuperAdmin(); requirePermission('payment_hub.production.approve')
+L176 GET /facility/catalogue | requirePermission('payment_hub.catalogue.read')
+L194 GET /facility/configuration-audit | requirePermission('payment_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L202 POST /facility/providers/:id/access-request | requirePermission('payment_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L213 POST /facility/providers/:id/integrations | requirePermission('payment_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L224 PUT /facility/integrations/:id/credentials | requirePermission('payment_hub.credentials.manage'); requireFacilityIntegrationAdministrator; secureCredentials
+L236 POST /facility/integrations/:id/credentials/revoke | requirePermission('payment_hub.credentials.manage'); requireFacilityIntegrationAdministrator; secureCredentials
+L248 POST /facility/integrations/:id/credentials/reencrypt | requirePermission('payment_hub.credentials.manage'); requireFacilityIntegrationAdministrator; secureCredentials
+L260 POST /facility/integrations/:id/accounts | requirePermission('payment_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L275 POST /facility/integrations/:id/health | requirePermission('payment_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L286 PUT /facility/integrations/:id/enabled | requirePermission('payment_hub.facility.manage'); requireFacilityIntegrationAdministrator
+L303 POST /facility/integrations/:id/production-request | requirePermission('payment_hub.production.request'); requireFacilityIntegrationAdministrator
+L315 GET /facility/transactions | requirePermission('payment_hub.transactions.read')
+L322 GET /facility/collections/integrations | requirePermission('payment_hub.collection.initiate', 'billing.read')
+L332 GET /facility/collections/invoices | requirePermission('payment_hub.collection.initiate', 'billing.read')
+L342 POST /facility/collections/recovery | requirePermission('payment_hub.collection.initiate', 'billing.read')
+L352 POST /facility/collections | requirePermission('payment_hub.collection.initiate', 'billing.read')
+L363 POST /facility/transactions/:id/query | requirePermission('payment_hub.payments.verify')
+L373 POST /facility/transactions/:id/reconcile | requirePermission('payment_hub.reconciliation.manage')
+L387 POST /facility/reconciliations/:id/void | requirePermission('payment_hub.reconciliation.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/payment-hub/webhook.routes.ts</code> — 1 literal declarations</summary>
+
+```text
+L18 POST /mpesa
+```
+
+</details>
+
+<details>
+<summary><code>src/portal/portal-admin.routes.ts</code> — 19 literal declarations</summary>
+
+```text
+L103 GET /patients/:patientId/status | requirePermission('portal.invite')
+L122 POST /patients/:patientId/invitations | requirePermission('portal.invite')
+L167 POST /invitations/:invitationId/link | requirePermission('portal.invite')
+L192 POST /invitations/:invitationId/handed-over | requirePermission('portal.invite')
+L214 POST /invitations/:invitationId/revoke | requirePermission('portal.invites.manage')
+L242 GET /overview | requirePermission('portal.accounts.manage')
+L261 GET /accounts | requirePermission('portal.accounts.manage')
+L287 GET /accounts/:accountId | requirePermission('portal.accounts.manage')
+L306 POST /accounts/:accountId/suspend | requirePermission('portal.accounts.manage')
+L332 POST /accounts/:accountId/reactivate | requirePermission('portal.accounts.manage')
+L358 POST /accounts/:accountId/revoke | requirePermission('portal.accounts.manage')
+L384 POST /accounts/:accountId/force-reset | requirePermission('portal.accounts.manage')
+L406 GET /audit | requirePermission('portal.audit.read')
+L427 GET /risks | requirePermission('portal.accounts.manage')
+L446 GET /settings | requirePermission('portal.settings.manage')
+L465 PUT /settings | requirePermission('portal.settings.manage')
+L498 POST /card/lookup | requirePermission('patients.read')
+L522 GET /accounts/:accountId/card | requirePermission('portal.accounts.manage')
+L571 POST /sharing/redeem | requirePermission('patients.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/portal/portal.routes.ts</code> — 19 literal declarations</summary>
+
+```text
+L118 POST /auth/activate
+L184 POST /auth/login
+L213 POST /auth/logout
+L229 GET /me
+L238 GET /overview
+L252 GET /visits
+L261 GET /laboratory
+L270 GET /medications
+L279 GET /appointments
+L288 GET /discharge-summaries
+L305 GET /records/download
+L334 POST /records/correction-request
+L357 GET /sharing
+L366 POST /sharing
+L382 POST /sharing/:id/revoke
+L391 GET /access-history
+L402 GET /card
+L411 POST /card
+L434 POST /password
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/accounting.routes.ts</code> — 25 literal declarations</summary>
+
+```text
+L107 GET /billing-consistency | requirePermission('accounting.read'); requirePermission('billing.read')
+L126 GET /billing-ledger-review | requirePermission('accounting.read'); requirePermission('billing.read')
+L145 GET /payment-settlements | requirePermission('accounting.read', 'billing.read')
+L165 GET /payment-settlement-accounts | requirePermission('accounting.read', 'billing.read')
+L184 POST /payment-settlements/:sourceType/:sourceId/retry | requirePermission('accounting.journals.post', 'billing.read'); validateBody(postBillingSourceBodySchema)
+L203 GET /overview | requirePermission('accounting.read')
+L213 GET /billing-journal-exceptions | requirePermission('accounting.read', 'billing.read')
+L231 POST /accounts | requirePermission('accounting.coa.manage'); validateBody(createAccountBodySchema)
+L247 POST /periods | requirePermission('accounting.coa.manage'); validateBody(createFinancialPeriodBodySchema)
+L263 POST /periods/:id/close | requirePermission('accounting.periods.close'); validateBody(closeFinancialPeriodBodySchema)
+L283 POST /journals | requirePermission('accounting.journals.post'); validateBody(postJournalBodySchema)
+L300 GET /billing-postings/:sourceType/:sourceId | requirePermission('accounting.read', 'billing.read')
+L319 POST /billing-postings/:sourceType/:sourceId | requirePermission('accounting.journals.post', 'billing.read'); validateBody(postBillingSourceBodySchema)
+L341 POST /journals/:id/reverse | requirePermission('accounting.journals.post'); validateBody(reverseJournalBodySchema)
+L366 GET /trial-balance.csv | requirePermission('accounting.reports.export')
+L394 GET /expenses | requirePermission('accounting.read')
+L401 POST /expenses | requirePermission('accounting.expenses.request'); validateBody(createExpenseRequestBodySchema)
+L417 POST /expenses/:id/decision | requirePermission('accounting.expenses.approve'); validateBody(decideExpenseRequestBodySchema)
+L436 POST /expenses/:id/post | requirePermission('accounting.journals.post'); validateBody(facilityActionBodySchema)
+L450 GET /bank | requirePermission('accounting.read')
+L457 POST /bank/accounts | requirePermission('accounting.bank.manage'); validateBody(createBankAccountBodySchema)
+L472 POST /bank/accounts/:id/statements | requirePermission('accounting.bank.manage')
+L488 POST /bank/transactions/:id/match | requirePermission('accounting.bank.manage')
+L506 GET /bank/accounts/:id/statements/:statementId/reconciliation | requirePermission('accounting.read')
+L524 POST /bank/accounts/:id/statements/:statementId/reconciliation | requirePermission('accounting.bank.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/appointments.routes.ts</code> — 10 literal declarations</summary>
+
+```text
+L86 GET /api/appointments/resources | requirePermission('appointments.read')
+L99 GET /api/appointments/categories | requirePermission('appointments.read')
+L112 POST /api/appointments/categories | requirePermission('appointments.categories.manage'); validateBody(appointmentCategoryBodySchema)
+L132 PATCH /api/appointments/categories/:id | requirePermission('appointments.categories.manage'); validateBody(appointmentCategoryUpdateSchema)
+L153 GET /api/appointments | requirePermission('appointments.read'); validateQuery(appointmentListQuerySchema)
+L167 POST /api/appointments | requirePermission('appointments.create'); validateBody(createAppointmentBodySchema)
+L190 GET /api/appointments/:id/history | requirePermission('appointments.read')
+L209 POST /api/appointments/:id/cancel | requirePermission('appointments.cancel'); validateBody(appointmentCancelSchema)
+L229 POST /api/appointments/:id/reschedule | requirePermission('appointments.update'); requirePermission('appointments.create'); validateBody(appointmentRescheduleSchema)
+L254 POST /api/appointments/:id/check-in | requirePermission('appointments.update'); requirePermission('appointments.create'); validateBody(appointmentCheckInSchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/billing.routes.ts</code> — 8 literal declarations</summary>
+
+```text
+L29 GET /api/invoices | requirePermission('billing.read')
+L103 GET /api/invoices/:id/items | requirePermission('billing.read')
+L177 GET /api/invoices/:id | requirePermission('billing.read')
+L213 GET /api/invoices/:id/finalization | requirePermission('billing.read', 'clinical.read')
+L244 POST /api/invoices/:id/finalize | requirePermission('billing.read', 'billing.update', 'clinical.read')
+L276 POST /api/invoices/:id/print-access | requirePermission('billing.read', 'clinical.read')
+L302 POST /api/invoices/:id/payments/:paymentId/attribution | requirePermission('billing.read', 'billing.payments.record')
+L338 POST /api/invoices/:id/void | requirePermission('billing.update'); validateBody(voidInvoiceBodySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/dha.routes.ts</code> — 7 literal declarations</summary>
+
+```text
+L41 GET /api/integrations/dha/readiness | requireSuperAdmin()
+L71 GET /api/integrations/dha/service-mappings | requireAnyPermission('tariffs.read', 'system.settings.manage')
+L103 PUT /api/integrations/dha/service-mappings | requireAnyPermission('tariffs.manage', 'system.settings.manage')
+L144 GET /api/integrations/dha/invoices/:id/interventions | requireAnyPermission('insurance.read', 'billing.read')
+L177 GET /api/integrations/dha/calls | requireAnyPermission('audit.security.read', 'system.settings.manage')
+L210 POST /api/integrations/dha/patients/:id/eligibility | requirePermission('patients.read'); requirePermission('insurance.sha.eligibility.check')
+L245 GET /api/integrations/dha/patients/:id/coverage | requirePermission('patients.read'); requirePermission('insurance.sha.benefits.validate')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/diagnoses.routes.ts</code> — 4 literal declarations</summary>
+
+```text
+L27 GET /api/diagnoses | requirePermission('clinical.read')
+L61 POST /api/diagnoses | requirePermission('clinical.create')
+L94 GET /api/procedures | requirePermission('clinical.read')
+L124 POST /api/procedures | requirePermission('clinical.create')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/dialysis.routes.ts</code> — 15 literal declarations</summary>
+
+```text
+L72 GET /workspace | requirePermission('dialysis.read')
+L79 POST /protocols | requirePermission('dialysis.protocols.manage')
+L93 POST /machines | requirePermission('dialysis.machines.manage')
+L107 PATCH /machines/:id/status | requirePermission('dialysis.machines.manage')
+L125 POST /assessments | requirePermission('dialysis.assessments.manage')
+L139 POST /treatment-plans | requirePermission('dialysis.assessments.manage')
+L153 POST /treatment-plans/:id/authorize | requirePermission('dialysis.plans.authorize'); validateBody(facilityActionBodySchema)
+L168 POST /schedules | requirePermission('dialysis.schedule.manage')
+L183 POST /schedules/:id/cancel | requirePermission('dialysis.schedule.manage', 'appointments.cancel')
+L201 POST /schedules/:id/start | requirePermission('dialysis.sessions.record'); validateBody(facilityActionBodySchema)
+L214 POST /sessions/:id/observations | requirePermission('dialysis.sessions.record')
+L232 POST /sessions/:id/consumables | requirePermission('dialysis.sessions.record', 'inventory.manage')
+L247 POST /sessions/:id/complete | requirePermission('dialysis.sessions.record')
+L265 POST /sessions/:id/adverse-events | requirePermission('dialysis.adverse_events.manage')
+L283 POST /adverse-events/:id/follow-up | requirePermission('dialysis.adverse_events.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/audit.routes.ts</code> — 1 literal declarations</summary>
+
+```text
+L28 GET /api/audit-logs | requirePermission('audit.read'); validateQuery(auditLogsQuerySchema, { code: 'INVALID_FACILITY_ID' })
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/billing-analytics.routes.ts</code> — 5 literal declarations</summary>
+
+```text
+L57 GET /api/reporting/financial-transactions | requirePermission('reports.read', 'billing.read')
+L93 GET /api/reporting/operations | requirePermission('reports.read', 'inpatient.read', 'patients.read'); requireReportSourceModules('inpatient')
+L165 GET /api/reporting/occupancy-trend | requirePermission('reports.read', 'inpatient.read'); requireReportSourceModules('inpatient')
+L211 GET /api/analytics/revenue | requirePermission('reports.read', 'billing.read'); requireReportSourceModules('finance')
+L353 GET /api/analytics/summary | requirePermission( 'reports.read', 'billing.read', 'patients.read', 'inpatient.read', 'inventory.read', 'laboratory.read', 'theatre.read', ); requireReportSourceModules( 'finance', 'inpatient', 'inventory', 'laboratory', 'theatre', 'registration', 'reception', )
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/billing-charges.routes.ts</code> — 4 literal declarations</summary>
+
+```text
+L48 GET /api/billing/charge-attempts | requireAnyPermission('billing.read', 'tariffs.read')
+L101 POST /api/billing/charge-attempts/:id/retry | requireAnyPermission('billing.update', 'tariffs.manage')
+L151 POST /api/billing/charge-attempts/retry | requireAnyPermission('billing.update', 'tariffs.manage')
+L183 POST /api/billing/charge-attempts/:id/void | requireAnyPermission('billing.update', 'tariffs.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/claims.routes.ts</code> — 8 literal declarations</summary>
+
+```text
+L62 GET /api/claims | requireAnyPermission('insurance.read', 'billing.read')
+L99 GET /api/invoices/:id/claimable-lines | requireAnyPermission('insurance.read', 'billing.read'); validateParams(invoiceIdParamSchema)
+L133 GET /api/claims/:id/items | requireAnyPermission('insurance.read', 'billing.read'); validateParams(claimIdParamSchema)
+L167 POST /api/claims | requirePermission('insurance.claims.create'); validateBody(draftClaimBodySchema)
+L197 POST /api/claims/:id/submit | requirePermission('insurance.claims.create'); validateParams(claimIdParamSchema); validateBody(claimOptionalFacilityBodySchema)
+L233 POST /api/claims/:id/adjudicate | requirePermission('insurance.claims.manage'); validateParams(claimIdParamSchema); validateBody(adjudicateClaimBodySchema)
+L272 POST /api/claims/:id/settle | requirePermission('insurance.claims.manage'); validateParams(claimIdParamSchema); validateBody(claimOptionalFacilityBodySchema)
+L315 PUT /api/claims/:id/status | requirePermission('insurance.claims.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/encounters.routes.ts</code> — 4 literal declarations</summary>
+
+```text
+L42 GET /api/encounters | requirePermission('clinical.read')
+L87 POST /api/encounters | requirePermission('clinical.create')
+L134 POST /api/encounters/:id/consultation-selection | requirePermission('clinical.update')
+L161 PUT /api/encounters/:id | requirePermission('clinical.update')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/interop.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L40 GET /api/interop/fhir/patient/:id | requirePermission('interop.fhir.patient.read')
+L182 GET /api/interop/dha/moh-705 | requirePermission('reports.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/invoices.routes.ts</code> — 7 literal declarations</summary>
+
+```text
+L61 POST /api/invoices | requirePermission('billing.create'); validateBody(createInvoiceBodySchema, { code: 'INVALID_INVOICE' })
+L401 POST /api/billing/payments | requirePermission('billing.payments.record'); validateBody(recordPaymentBodySchema)
+L440 POST /api/billing/payments/status | requirePermission('billing.read', 'billing.payments.record')
+L462 POST /api/billing/payments/cancel-pending | requirePermission('billing.read', 'billing.payments.record')
+L485 POST /api/billing/refunds | requirePermission('billing.read'); requirePermission('billing.refunds.record'); validateBody(refundBodySchema)
+L515 POST /api/billing/refunds/status | requirePermission('billing.read'); requirePermission('billing.refunds.record'); validateBody(refundStatusBodySchema)
+L542 GET /api/billing/payments | requirePermission('billing.payments.record'); validateQuery(paymentLedgerQuerySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/patients.routes.ts</code> — 4 literal declarations</summary>
+
+```text
+L46 GET /api/patients | requirePermission('patients.read'); validateQuery(scopedCollectionQuerySchema, { code: 'INVALID_SCOPE_ID' })
+L95 GET /api/patients/:id | requirePermission('patients.read'); validateParams(patientIdParamSchema, { code: 'INVALID_PATIENT_ID' })
+L160 POST /api/patients | requirePermission('patients.create'); validateBody(createPatientBodySchema)
+L223 PUT /api/patients/:id | requirePermission('patients.update'); validateParams(patientIdParamSchema, { code: 'INVALID_PATIENT_ID' }); validateBody(updatePatientBodySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/public-health.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L36 GET /api/public-health/reports | requirePermission('reports.read')
+L92 POST /api/public-health/reports | requirePermission('public_health.reports.create')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/report-centre.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L37 POST /:reportId/options | requirePermission('reports.read')
+L51 POST /:reportId/generate | requirePermission('reports.read')
+L75 POST /:reportId/export | requirePermission('reports.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/service-tariff-links.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L56 GET /api/service-tariff-links | requirePermission('tariffs.read')
+L120 POST /api/service-tariff-links | requirePermission('tariffs.manage')
+L315 PATCH /api/service-tariff-links/:id/deactivate | requirePermission('tariffs.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/domains/tenancy.routes.ts</code> — 5 literal declarations</summary>
+
+```text
+L41 GET /api/tenants
+L63 GET /api/tenants/:id | validateParams(tenantIdParamSchema, { code: 'INVALID_TENANT_ID' })
+L105 GET /api/facilities | validateQuery(facilitiesListQuerySchema, { code: 'INVALID_TENANT_ID' })
+L141 GET /api/facilities/:id | validateParams(facilityIdParamSchema, { code: 'INVALID_FACILITY_ID' })
+L183 GET /api/departments | requirePermission('patients.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/facility-services.routes.ts</code> — 13 literal declarations</summary>
+
+```text
+L251 GET /api/facility-services/available | requireAnyPermission( 'clinical.read', 'laboratory.read', 'radiology.read', 'pharmacy.read', 'inpatient.read', 'maternity.read', 'billing.read', 'tariffs.read', )
+L356 GET /api/facility-services | requirePermission('tariffs.read')
+L381 POST /api/facility-services | requirePermission('tariffs.manage')
+L450 PUT /api/facility-services/:id | requirePermission('tariffs.manage')
+L543 PATCH /api/facility-services/:id/status | requirePermission('tariffs.manage')
+L593 DELETE /api/facility-services/:id/permanent | requirePermission('tariffs.manage')
+L685 GET /api/facility-tariffs | requirePermission('tariffs.read')
+L711 GET /api/facility-tariffs/by-service-code/:code | requireAnyPermission( 'clinical.read', 'laboratory.read', 'radiology.read', 'pharmacy.read', 'inpatient.read', 'billing.read', 'tariffs.read', )
+L911 POST /api/facility-tariffs | requirePermission('tariffs.manage')
+L916 PUT /api/facility-tariffs/:id | requirePermission('tariffs.manage')
+L921 PATCH /api/facility-tariffs/:id/status | requirePermission('tariffs.manage')
+L971 DELETE /api/facility-tariffs/:id/permanent | requirePermission('tariffs.manage')
+L1025 DELETE /api/facility-tariffs/:id | requirePermission('tariffs.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/inpatient.routes.ts</code> — 29 literal declarations</summary>
+
+```text
+L86 GET /inpatient/bed-billing-policy | requirePermission('inpatient.read')
+L107 PUT /inpatient/bed-billing-policy | requirePermission('inpatient.wards.update', 'billing.update')
+L128 GET /inpatient/bed-billing-unresolved | requirePermission('inpatient.read'); requireAnyPermission('billing.read', 'billing.create', 'billing.update')
+L161 GET /admissions/:id/bed-occupancy | requirePermission('inpatient.read')
+L183 POST /admissions/:id/bed-billing-encounter | requirePermission('inpatient.read', 'clinical.read', 'billing.update')
+L209 POST /admissions/:id/bed-history-review | requirePermission('inpatient.read', 'clinical.read', 'billing.update')
+L234 POST /admissions/:id/bed-billing-retry | requirePermission('inpatient.read', 'billing.create')
+L257 GET /wards | requirePermission('inpatient.read')
+L292 POST /wards | requirePermission('inpatient.wards.create')
+L319 PUT /wards/:id | requirePermission('inpatient.wards.update')
+L348 DELETE /wards/:id | requirePermission('inpatient.wards.delete')
+L391 POST /beds | requirePermission('inpatient.beds.create')
+L429 PUT /beds/:id | requirePermission('inpatient.beds.update')
+L468 DELETE /beds/:id | requirePermission('inpatient.beds.delete')
+L506 GET /beds | requirePermission('inpatient.read')
+L540 PUT /beds/:id/status | requirePermission('inpatient.admit')
+L584 PUT /beds/:id/release | requirePermission('inpatient.admit')
+L612 GET /admissions | requirePermission('inpatient.read')
+L640 POST /admissions | requirePermission('inpatient.admit')
+L669 POST /admissions/:id/discharge | requirePermission('inpatient.discharge')
+L728 POST /admissions/:id/transfer | requirePermission('inpatient.admit')
+L792 GET /admissions/:id/transfers | requirePermission('inpatient.read')
+L822 POST /admissions/:id/accrue-bed-days | requirePermission('billing.create')
+L855 GET /inpatient/board | requirePermission('inpatient.read')
+L885 GET /admissions/:id/vitals | requirePermission('inpatient.read')
+L924 POST /admissions/:id/vitals | requirePermission('clinical.create')
+L969 GET /nursing-notes/handover | requirePermission('inpatient.read')
+L996 GET /nursing-notes | requirePermission('inpatient.read')
+L1027 POST /nursing-notes | requirePermission('clinical.create')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/laboratory.routes.ts</code> — 9 literal declarations</summary>
+
+```text
+L42 GET /api/lab-tests | requirePermission('laboratory.read')
+L63 GET /api/lab-orders | requirePermission('laboratory.read')
+L83 POST /api/lab-orders/batch | requirePermission('laboratory.orders.create'); validateBody(createLabOrderBatchBodySchema)
+L126 POST /api/lab-orders | requirePermission('laboratory.orders.create'); validateBody(createLabOrderBodySchema)
+L147 PUT /api/lab-orders/:id/status | requirePermission('laboratory.results.enter'); validateBody(updateLabOrderStatusBodySchema)
+L176 GET /api/lab-results | requirePermission('laboratory.read')
+L201 POST /api/lab-results | requirePermission('laboratory.results.enter'); validateBody(createLabResultBodySchema)
+L248 POST /api/lab-orders/:id/complete | requirePermission('laboratory.results.verify')
+L268 POST /api/lab-results/:id/verify | requirePermission('laboratory.results.verify'); validateBody(verifyLabResultBodySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/master-tariffs.routes.ts</code> — 16 literal declarations</summary>
+
+```text
+L44 GET /api/master-tariffs | requirePermission('tariffs.read')
+L58 POST /api/master-tariffs/sync | requirePermission('tariffs.manage')
+L72 POST /api/master-tariffs/imaging-services | requirePermission('tariffs.manage')
+L88 PUT /api/master-tariffs/batch | requirePermission('tariffs.manage')
+L102 POST /api/master-tariffs/:id/approve | requirePermission('tariffs.manage')
+L124 POST /api/master-tariffs/:masterId/link-existing | requirePermission('tariffs.manage')
+L146 GET /api/master-tariffs/:id/history | requirePermission('tariffs.read')
+L161 GET /api/master-tariffs/:masterId/mappings | requirePermission('tariffs.read')
+L175 POST /api/master-tariffs/:masterId/source-mapping | requirePermission('tariffs.manage')
+L196 POST /api/master-tariffs/:masterId/aliases | requirePermission('tariffs.manage')
+L214 POST /api/master-tariff-aliases/:id/retire | requirePermission('tariffs.manage')
+L235 GET /api/master-tariff-sources | requirePermission('tariffs.read')
+L267 GET /api/master-lab-specimens | requirePermission('tariffs.read')
+L281 POST /api/master-lab-specimens | requirePermission('tariffs.manage')
+L297 POST /api/master-lab-specimens/:id/retire | requirePermission('tariffs.manage')
+L320 GET /api/master-services | requireAnyPermission('clinical.read', 'laboratory.read', 'billing.read', 'tariffs.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/maternal-health.routes.ts</code> — 23 literal declarations</summary>
+
+```text
+L42 GET /maternity/summary | requirePermission('maternity.read')
+L69 GET /maternity/pregnancies | requirePermission('maternity.read')
+L102 POST /maternity/pregnancies | requirePermission('maternity.create')
+L127 GET /maternity/pregnancies/:id | requirePermission('maternity.read')
+L152 PATCH /maternity/pregnancies/:id | requirePermission('maternity.update')
+L181 GET /maternity/pregnancies/:id/anc-visits | requirePermission('maternity.read')
+L206 POST /maternity/anc-visits | requirePermission('maternity.create')
+L231 GET /maternity/labours | requirePermission('maternity.read')
+L261 POST /maternity/labours | requirePermission('maternity.create')
+L286 GET /maternity/labours/:id | requirePermission('maternity.read')
+L311 PATCH /maternity/labours/:id | requirePermission('maternity.update')
+L336 POST /maternity/partograph | requirePermission('maternity.create')
+L361 GET /maternity/deliveries | requirePermission('maternity.read')
+L393 POST /maternity/deliveries | requirePermission('maternity.update')
+L420 GET /maternity/deliveries/:id | requirePermission('maternity.read')
+L452 GET /maternity/postnatal | requirePermission('maternity.read')
+L479 GET /maternity/pregnancies/:id/postnatal | requirePermission('maternity.read')
+L504 POST /maternity/postnatal | requirePermission('maternity.create')
+L543 GET /immunisation/schedule | requirePermission('maternity.read')
+L558 GET /immunisation/card | requirePermission('maternity.read')
+L595 GET /immunisation/records | requirePermission('maternity.read')
+L632 POST /immunisation/records | requirePermission('maternity.create')
+L657 GET /immunisation/due | requirePermission('maternity.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/medications.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L28 GET /api/medications | requirePermission('pharmacy.read')
+L48 POST /api/medications | requirePermission('clinical.create'); validateBody(createMedicationBodySchema)
+L127 PUT /api/medications/:id/status | requirePermission('clinical.update'); validateBody(medicationStatusBodySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/pharmacy.routes.ts</code> — 8 literal declarations</summary>
+
+```text
+L35 GET /api/inventory/batches | requirePermission('inventory.read')
+L78 GET /api/inventory/expiry-summary | requirePermission('inventory.read')
+L113 POST /api/inventory/:id/batches | requirePermission('inventory.manage')
+L152 GET /api/inventory | requirePermission('inventory.read')
+L170 POST /api/inventory | requirePermission('inventory.manage'); validateBody(createInventoryItemBodySchema)
+L202 PUT /api/inventory/:id/selling-price | requirePermission('inventory.manage', 'billing.update')
+L231 POST /api/pharmacy/dispense/status | requirePermission('pharmacy.dispense')
+L254 POST /api/pharmacy/dispense | requirePermission('pharmacy.dispense')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/platform/facilities.routes.ts</code> — 4 literal declarations</summary>
+
+```text
+L40 POST /facilities | requireSuperAdminMiddleware; validateBody(createFacilitySchema)
+L152 GET /facilities/:id/onboarding | requireSuperAdminMiddleware; validateParams(facilityIdParamSchema)
+L208 PATCH /facilities/:id | requireSuperAdminMiddleware; validateParams(facilityIdParamSchema); validateBody(updateFacilitySchema, { fallbackMessage: 'No valid fields supplied to update.' })
+L279 POST /facilities/:id/onboarding | requireSuperAdminMiddleware; validateParams(facilityIdParamSchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/platform/invitations.routes.ts</code> — 4 literal declarations</summary>
+
+```text
+L28 POST /facility-admin-invitations | requireSuperAdminMiddleware; validateBody(createFacilityAdminInvitationSchema)
+L201 GET /facility-admin-invitations | requireSuperAdminMiddleware
+L253 POST /facility-admin-invitations/:id/revoke | requireSuperAdminMiddleware; validateParams(invitationIdParamSchema)
+L309 POST /facility-admin-invitations/:id/reissue | requireSuperAdminMiddleware; validateParams(invitationIdParamSchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/platform/rbac.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L39 GET /rbac/roles | requireRbacAdminMiddleware('You are not authorized to view role permissions.'); validateQuery(rbacRolesQuerySchema, { code: 'INVALID_FACILITY_ID' })
+L262 POST /rbac/catalogue/apply | requireRbacAdminMiddleware('You are not authorized to manage role permissions.'); validateBody(applyRbacCatalogueSchema, { code: (issue) => (issue.path[0] === 'roleNames' ? 'INVALID_ROLE_NAMES' : 'INVALID_FACILITY_ID'), })
+L471 PUT /rbac/roles/:id/permissions | requireRbacAdminMiddleware('You are not authorized to edit role permissions.'); validateParams(roleIdParamSchema, { code: 'INVALID_ROLE_ID' }); validateBody(updateRolePermissionsBodySchema, { code: (issue) => issue.message.includes('only be selected once') ? 'DUPLICATE_PERMISSION_IDS' : issue.path[0] === 'permissionIds' ? 'INVALID_PERMISSION_IDS' : 'INVALID_FACILITY_ID', })
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/platform/subscriptions.routes.ts</code> — 8 literal declarations</summary>
+
+```text
+L41 GET /subscription-periods
+L99 POST /subscription-periods
+L214 GET /subscription-periods/:id/payments
+L247 POST /subscription-periods/:id/payments
+L335 POST /subscription-payments/:paymentId/verify
+L464 POST /subscription-periods/:id/suspend
+L634 POST /subscription-periods/:id/reactivate
+L819 POST /subscription-periods/:id/price-changes
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/platform/tenants.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L109 POST /tenants | requireSuperAdminMiddleware; validateBody(createTenantSchema)
+L248 PATCH /tenants/:id | requireSuperAdminMiddleware; validateParams(tenantIdParamSchema); validateBody(updateTenantSchema, { fallbackMessage: 'No valid fields supplied to update.' })
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/private-insurance.routes.ts</code> — 42 literal declarations</summary>
+
+```text
+L185 GET /dashboard | requirePermission('insurance.read')
+L202 GET /diagnostics | requireAnyPermission('insurance.payers.read', 'audit.read')
+L230 GET /payers | requireAnyPermission('insurance.payers.read', 'insurance.read')
+L248 POST /payers | requirePermission('insurance.payers.manage'); requireFacilityIntegrationAdministrator
+L266 GET /payers/:payerId | requireAnyPermission('insurance.payers.read', 'insurance.read')
+L285 PATCH /payers/:payerId | requirePermission('insurance.payers.manage'); requireFacilityIntegrationAdministrator
+L305 GET /payers/:payerId/capabilities | requireAnyPermission('insurance.payers.read', 'insurance.read')
+L324 GET /payers/:payerId/connection-status | requireAnyPermission('insurance.payers.read', 'insurance.read')
+L347 GET /members | requireAnyPermission('insurance.members.read', 'insurance.read')
+L371 POST /members | requirePermission('insurance.members.manage')
+L388 GET /members/:memberId | requireAnyPermission('insurance.members.read', 'insurance.read')
+L407 PATCH /members/:memberId | requirePermission('insurance.members.manage')
+L426 GET /eligibility | requireAnyPermission('insurance.members.read', 'insurance.eligibility.check', 'insurance.read')
+L448 POST /eligibility/check | requirePermission('insurance.eligibility.check')
+L465 GET /eligibility/:verificationId | requireAnyPermission('insurance.members.read', 'insurance.eligibility.check', 'insurance.read')
+L484 GET /patients/:patientId/eligibility-history | requireAnyPermission('insurance.members.read', 'insurance.eligibility.check', 'insurance.read')
+L509 GET /benefits | requireAnyPermission('insurance.benefits.validate', 'insurance.payers.read', 'insurance.read')
+L530 POST /benefits | requirePermission('insurance.mappings.manage')
+L547 PATCH /benefits/:ruleId | requirePermission('insurance.mappings.manage')
+L577 POST /benefits/validate | requirePermission('insurance.benefits.validate')
+L594 GET /mappings | requireAnyPermission('insurance.payers.read', 'insurance.benefits.validate', 'insurance.read')
+L614 POST /mappings | requirePermission('insurance.mappings.manage')
+L631 PATCH /mappings/:mappingId | requirePermission('insurance.mappings.manage')
+L654 GET /preauthorizations | requireAnyPermission( 'insurance.preauthorization.manage', 'insurance.payers.read', 'insurance.read', )
+L680 POST /preauthorizations | requirePermission('insurance.preauthorization.manage')
+L697 GET /preauthorizations/:id | requireAnyPermission( 'insurance.preauthorization.manage', 'insurance.payers.read', 'insurance.read', )
+L720 PATCH /preauthorizations/:id | requirePermission('insurance.preauthorization.manage')
+L739 POST /preauthorizations/:id/submit | requirePermission('insurance.preauthorization.manage')
+L758 POST /preauthorizations/:id/attachments | requirePermission('insurance.preauthorization.manage')
+L781 GET /claims | requireAnyPermission( 'insurance.private.claims.prepare', 'insurance.private.claims.submit', 'insurance.read', )
+L824 POST /claims/prepare | requirePermission('insurance.private.claims.prepare', 'clinical.read', 'billing.read')
+L841 GET /claims/:claimId | requireAnyPermission( 'insurance.private.claims.prepare', 'insurance.private.claims.submit', 'insurance.read', ); requirePermission('clinical.read', 'billing.read')
+L877 PATCH /claims/:claimId | requirePermission('insurance.private.claims.prepare', 'clinical.read', 'billing.read')
+L896 POST /claims/:claimId/validate | requirePermission('insurance.private.claims.prepare', 'clinical.read', 'billing.read'); validateBody(facilityActionBodySchema)
+L915 POST /claims/:claimId/submit | requirePermission('insurance.private.claims.submit', 'clinical.read', 'billing.read')
+L935 POST /claims/:claimId/resubmit | requirePermission('insurance.private.claims.submit', 'clinical.read', 'billing.read')
+L955 POST /claims/:claimId/decision | requirePermission('insurance.private.claims.submit', 'clinical.read', 'billing.read')
+L974 GET /claims/:claimId/status | requireAnyPermission( 'insurance.private.claims.prepare', 'insurance.private.claims.submit', 'insurance.read', ); requirePermission('clinical.read', 'billing.read')
+L1003 GET /remittances | requireAnyPermission('insurance.private.remittance.reconcile', 'insurance.read')
+L1022 POST /remittances/import | requirePermission('insurance.private.remittance.reconcile')
+L1039 POST /remittances/:id/reconcile | requirePermission('insurance.private.remittance.reconcile')
+L1058 GET /reconciliation | requireAnyPermission('insurance.private.remittance.reconcile', 'insurance.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/procurement.routes.ts</code> — 9 literal declarations</summary>
+
+```text
+L61 GET /api/suppliers | requirePermission('procurement.read')
+L90 POST /api/suppliers | requirePermission('procurement.create')
+L104 PUT /api/suppliers/:id | requirePermission('procurement.read', 'procurement.update')
+L120 DELETE /api/suppliers/:id | requirePermission('procurement.read', 'procurement.delete')
+L137 GET /api/purchase-orders | requirePermission('procurement.read')
+L150 GET /api/purchase-orders/:id | requirePermission('procurement.read')
+L165 POST /api/purchase-orders | requirePermission('procurement.create')
+L209 PUT /api/purchase-orders/:id | requirePermission('procurement.read', 'procurement.update')
+L243 DELETE /api/purchase-orders/:id | requirePermission('procurement.read', 'procurement.delete')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/queues.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L27 GET /api/queues | requirePermission('appointments.read')
+L62 POST /api/queues | requirePermission('appointments.create'); validateBody(createQueueEntryBodySchema)
+L82 PUT /api/queues/:id/status | requirePermission('appointments.update'); validateBody(updateQueueStatusBodySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/radiology.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L32 GET /api/radiology-orders | requireAnyPermission('clinical.read', 'laboratory.read')
+L52 POST /api/radiology-orders | requirePermission('clinical.create'); validateBody(createRadiologyOrderBodySchema)
+L121 PUT /api/radiology-orders/:id/report | requireAnyPermission('clinical.update', 'laboratory.results.enter'); validateBody(radiologyReportBodySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/service-tariffs.routes.ts</code> — 7 literal declarations</summary>
+
+```text
+L47 GET /api/service-tariffs | requirePermission('tariffs.read')
+L92 POST /api/service-tariffs/import/validate | requirePermission('tariffs.manage')
+L107 POST /api/service-tariffs/import/status | requirePermission('tariffs.manage')
+L122 POST /api/service-tariffs/import | requirePermission('tariffs.manage')
+L141 POST /api/service-tariffs | requirePermission('tariffs.manage')
+L244 PUT /api/service-tariffs/:id | requirePermission('tariffs.manage')
+L404 PATCH /api/service-tariffs/:id/deactivate | requirePermission('tariffs.manage')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/sha-eclaims.routes.ts</code> — 42 literal declarations</summary>
+
+```text
+L274 GET /connection-status | requireAnyPermission('insurance.sha.read', 'insurance.read')
+L317 GET /configuration | requireAnyPermission('insurance.sha.read', 'insurance.sha.configuration.manage')
+L349 PUT /configuration | requirePermission('insurance.sha.configuration.manage'); requireFacilityIntegrationAdministrator
+L406 GET /service-mappings | requireAnyPermission( 'insurance.sha.read', 'insurance.sha.claims.prepare', 'insurance.sha.configuration.manage', )
+L424 POST /service-mappings | requirePermission('insurance.sha.configuration.manage')
+L468 GET /benefit-rules | requireAnyPermission( 'insurance.sha.read', 'insurance.sha.benefits.validate', 'insurance.sha.configuration.manage', )
+L486 POST /benefit-rules | requirePermission('insurance.sha.configuration.manage')
+L523 POST /benefit-rules/:ruleId/review | requirePermission('insurance.sha.configuration.manage')
+L552 POST /registry/patient-search | requirePermission('insurance.sha.eligibility.check')
+L587 GET /eligibility | requireAnyPermission('insurance.sha.read', 'insurance.sha.eligibility.check')
+L601 POST /eligibility/check | requirePermission('insurance.sha.eligibility.check')
+L641 GET /eligibility/:verificationId | requireAnyPermission('insurance.sha.read', 'insurance.sha.eligibility.check')
+L656 GET /patients/:patientId/eligibility-history | requireAnyPermission('insurance.sha.read', 'insurance.sha.eligibility.check')
+L675 POST /benefits/validate | requirePermission('insurance.sha.benefits.validate')
+L715 GET /patients/:patientId/benefits | requireAnyPermission('insurance.sha.read', 'insurance.sha.benefits.validate')
+L730 POST /benefits/hie-lookup | requirePermission('insurance.sha.benefits.validate')
+L762 GET /authorizations | requireAnyPermission( 'insurance.sha.read', 'insurance.sha.preauthorization.create', 'insurance.sha.claims.prepare', )
+L788 POST /authorizations/consent | requirePermission('insurance.sha.preauthorization.create')
+L852 GET /preauthorizations | requireAnyPermission( 'insurance.sha.read', 'insurance.sha.preauthorization.create', 'insurance.sha.claims.read', )
+L880 POST /preauthorizations | requirePermission('insurance.sha.preauthorization.create')
+L930 GET /preauthorizations/:id | requireAnyPermission( 'insurance.sha.read', 'insurance.sha.preauthorization.create', 'insurance.sha.claims.read', )
+L953 PATCH /preauthorizations/:id | requirePermission('insurance.sha.preauthorization.create')
+L999 POST /preauthorizations/:id/submit | requirePermission('insurance.sha.preauthorization.create')
+L1027 GET /preauthorizations/:id/status | requireAnyPermission('insurance.sha.read', 'insurance.sha.preauthorization.create')
+L1045 POST /preauthorizations/:id/cancel | requirePermission('insurance.sha.preauthorization.create')
+L1069 GET /claims | requireAnyPermission('insurance.sha.claims.read', 'insurance.sha.read')
+L1104 POST /claims/prepare | requirePermission('insurance.sha.claims.prepare', 'clinical.read', 'billing.read')
+L1168 GET /claims/:claimId | requireAnyPermission('insurance.sha.claims.read', 'insurance.sha.read'); requirePermission('clinical.read', 'billing.read')
+L1196 POST /claims/:claimId/validate | requirePermission('insurance.sha.claims.prepare', 'clinical.read', 'billing.read'); validateBody(facilityActionBodySchema)
+L1212 POST /claims/:claimId/submit | requirePermission('insurance.sha.claims.submit', 'clinical.read', 'billing.read'); validateBody(facilityActionBodySchema)
+L1228 POST /claims/:claimId/resubmit | requirePermission('insurance.sha.claims.resubmit', 'clinical.read', 'billing.read')
+L1282 GET /claims/:claimId/status | requireAnyPermission('insurance.sha.claims.read', 'insurance.sha.read'); requirePermission('clinical.read', 'billing.read')
+L1298 POST /claims/:claimId/adjudicate | requirePermission('insurance.sha.reconciliation.manage', 'clinical.read', 'billing.read')
+L1341 GET /remittances | requireAnyPermission('insurance.sha.remittance.read', 'insurance.sha.reconciliation.manage')
+L1355 POST /remittances | requirePermission('insurance.sha.reconciliation.manage')
+L1385 POST /remittances/:id/reconcile | requirePermission('insurance.sha.reconciliation.manage')
+L1422 POST /remittances/sync | requirePermission('insurance.sha.reconciliation.manage')
+L1445 GET /remittances/:id/claims | requireAnyPermission('insurance.sha.remittance.read', 'insurance.sha.reconciliation.manage')
+L1464 POST /callbacks/register | requirePermission('insurance.sha.configuration.manage'); requireFacilityIntegrationAdministrator
+L1548 GET /callbacks | requireAnyPermission('insurance.sha.read', 'insurance.sha.configuration.manage')
+L1562 GET /operational-report | requireAnyPermission( 'insurance.sha.read', 'insurance.sha.claims.read', 'insurance.sha.remittance.read', )
+L1588 POST /status [webhookRouter]
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/system.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L71 GET /health
+L82 GET /ready
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/theatre-scheduling.routes.ts</code> — 12 literal declarations</summary>
+
+```text
+L64 GET /api/theatre/reports/schedule | requirePermission('theatre.reports.read'); validateQuery(theatreReportQuerySchema)
+L80 GET /api/theatre/rooms | requirePermission('theatre.read')
+L93 POST /api/theatre/rooms | requirePermission('theatre.rooms.manage'); validateBody(theatreRoomCreateSchema)
+L108 PATCH /api/theatre/rooms/:id | requirePermission('theatre.rooms.manage'); validateBody(theatreRoomStateSchema)
+L125 GET /api/theatre/practitioners | requirePermission('theatre.read')
+L138 GET /api/theatre/cases | requirePermission('theatre.read')
+L151 POST /api/theatre/cases | requirePermission('theatre.schedule.create'); validateBody(theatreBookingCreateSchema)
+L167 POST /api/theatre/cases/:id/reschedule | requirePermission('theatre.schedule.manage'); validateBody(theatreRescheduleSchema)
+L184 POST /api/theatre/cases/:id/cancel | requirePermission('theatre.schedule.manage'); validateBody(theatreCancelSchema)
+L201 POST /api/theatre/cases/:id/legacy-review | requirePermission('theatre.schedule.reconcile'); validateBody(theatreLegacyReviewSchema)
+L218 GET /api/theatre/cases/:id/legacy-reviews | requirePermission('theatre.read')
+L233 GET /api/theatre/cases/:id/history | requirePermission('theatre.read')
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/theatre.routes.ts</code> — 3 literal declarations</summary>
+
+```text
+L16 GET /api/theatre-cases | requirePermission('theatre.read', 'clinical.read')
+L34 POST /api/theatre-cases | requirePermission('theatre.schedule.create'); validateBody(createTheatreCaseBodySchema)
+L50 PUT /api/theatre-cases/:id | requirePermission('theatre.schedule.manage'); validateBody(updateTheatreCaseBodySchema)
+```
+
+</details>
+
+<details>
+<summary><code>src/routes/vitals.routes.ts</code> — 2 literal declarations</summary>
+
+```text
+L22 GET /api/observations | requirePermission('clinical.read')
+L57 POST /api/observations | requirePermission('clinical.create')
+```
+
+</details>
+
+---
+
+## Appendix 6 — declared Drizzle foreign-key reference index
+
+This is a **source declaration index**, not an introspection of a deployed database or a complete constraint/authorization proof. The parser inspected all 36 `src/db/schema/*.ts` files: **188 literal `pgTable` definitions**, **331 inline `.references(...)` calls** within their column objects and **one `foreignKey(...)` composite declaration** inside a table callback; no parse errors. The 56 declarations marked “none inline” may have relationships supplied by SQL migrations, relation helpers, non-FK join columns or application code. SQL migrations contain additional historical, altered, composite and/or `NOT VALID` constraints; verify the actual deployed schema and data before relying on any link. SQL-only `website_booking_reminders` remains outside this Drizzle scan (M0027); Appendix 2 lists all 71 migration tags and notes that distinction.
+
+Below the left field is the TypeScript property, the target is the Drizzle variable and property (SQL table in parentheses), and the source line is on the table declaration in the named file. Drizzle relations helpers in `relations-tenancy-auth.ts`, `relations-clinical.ts` and `relations-operations.ts` describe navigation separately; they do not by themselves prove a database constraint. Tenant/facility IDs and ordinary single-column foreign keys alone do **not** prove that referenced rows belong to the same tenant/facility; J20–J21 and M0070 illustrate why request-time scope and composite constraints must also be tested.
+
+| Table / source                                                                        | Inline column references                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `accounting_billing_postings` — `src/db/schema/billing-ledger-posting.ts:18`          | — none inline                                                                                                                                                                                                                                                         |
+| `admission_transfers` — `src/db/schema/inpatient.ts:382`                              | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `admissionId → admissions.id (admissions)`; `patientId → patients.id (patients)`; `toWardId → wards.id (wards)`; `toBedId → beds.id (beds)`                                             |
+| `admissions` — `src/db/schema/inpatient.ts:155`                                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`; `wardId → wards.id (wards)`; `bedId → beds.id (beds)`                                                                                             |
+| `anc_visits` — `src/db/schema/maternity.ts:110`                                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `pregnancyId → maternityPregnancies.id (maternity_pregnancies)`; `patientId → patients.id (patients)`                                                                                   |
+| `appointment_categories` — `src/db/schema/appointment-booking.ts:17`                  | — none inline                                                                                                                                                                                                                                                         |
+| `appointment_events` — `src/db/schema/appointment-booking.ts:43`                      | — none inline                                                                                                                                                                                                                                                         |
+| `appointment_requests` — `src/db/schema/appointment-booking.ts:78`                    | — none inline                                                                                                                                                                                                                                                         |
+| `appointments` — `src/db/schema/clinical.ts:138`                                      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `audit_logs` — `src/db/schema/public-health.ts:50`                                    | — none inline                                                                                                                                                                                                                                                         |
+| `bank_accounts` — `src/db/schema/banking.ts:29`                                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `glAccountId → chartOfAccounts.id (chart_of_accounts)`                                                                                                                                  |
+| `bank_reconciliations` — `src/db/schema/banking.ts:185`                               | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `bankAccountId → bankAccounts.id (bank_accounts)`; `statementImportId → bankStatementImports.id (bank_statement_imports)`                                                               |
+| `bank_statement_imports` — `src/db/schema/banking.ts:108`                             | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `bankAccountId → bankAccounts.id (bank_accounts)`                                                                                                                                       |
+| `bank_transactions` — `src/db/schema/banking.ts:140`                                  | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `bankAccountId → bankAccounts.id (bank_accounts)`                                                                                                                                       |
+| `beds` — `src/db/schema/inpatient.ts:118`                                             | `wardId → wards.id (wards)`                                                                                                                                                                                                                                           |
+| `billing_charge_attempts` — `src/db/schema/billing.ts:325`                            | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `billing_invoice_finalizations` — `src/db/schema/billing.ts:461`                      | — none inline                                                                                                                                                                                                                                                         |
+| `billing_invoices` — `src/db/schema/billing.ts:109`                                   | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `billing_items` — `src/db/schema/billing.ts:178`                                      | `invoiceId → billingInvoices.id (billing_invoices)`                                                                                                                                                                                                                   |
+| `billing_payment_attributions` — `src/db/schema/billing.ts:485`                       | — none inline                                                                                                                                                                                                                                                         |
+| `billing_payment_request_cancellations` — `src/db/schema/billing.ts:555`              | — none inline                                                                                                                                                                                                                                                         |
+| `billing_payment_requests` — `src/db/schema/billing.ts:519`                           | — none inline                                                                                                                                                                                                                                                         |
+| `billing_payments` — `src/db/schema/billing.ts:421`                                   | `invoiceId → billingInvoices.id (billing_invoices)`                                                                                                                                                                                                                   |
+| `billing_refunds` — `src/db/schema/billing.ts:584`                                    | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `invoiceId → billingInvoices.id (billing_invoices)`; `paymentId → billingPayments.id (billing_payments)`; `actorUserId → users.id (users)`                                              |
+| `chart_of_accounts` — `src/db/schema/financial-ledger.ts:54`                          | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `deliveries` — `src/db/schema/maternity.ts:308`                                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `pregnancyId → maternityPregnancies.id (maternity_pregnancies)`; `patientId → patients.id (patients)`                                                                                   |
+| `delivery_babies` — `src/db/schema/maternity.ts:367`                                  | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `deliveryId → deliveries.id (deliveries)`                                                                                                                                               |
+| `departments` — `src/db/schema/tenancy.ts:276`                                        | `facilityId → facilities.id (facilities)`                                                                                                                                                                                                                             |
+| `dha_api_calls` — `src/db/schema/platform.ts:146`                                     | — none inline                                                                                                                                                                                                                                                         |
+| `dha_service_mappings` — `src/db/schema/platform.ts:122`                              | — none inline                                                                                                                                                                                                                                                         |
+| `diagnoses` — `src/db/schema/clinical.ts:277`                                         | `encounterId → encounters.id (encounters)`; `patientId → patients.id (patients)`                                                                                                                                                                                      |
+| `dialysis_adverse_events` — `src/db/schema/dialysis.ts:261`                           | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `sessionId → dialysisSessions.id (dialysis_sessions)`; `patientId → patients.id (patients)`                                                                                             |
+| `dialysis_consumable_usages` — `src/db/schema/dialysis.ts:231`                        | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `sessionId → dialysisSessions.id (dialysis_sessions)`; `inventoryItemId → inventoryItems.id (inventory_items)`                                                                          |
+| `dialysis_machines` — `src/db/schema/dialysis.ts:25`                                  | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `dialysis_patient_assessments` — `src/db/schema/dialysis.ts:57`                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `dialysis_schedules` — `src/db/schema/dialysis.ts:140`                                | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `dialysis_sessions` — `src/db/schema/dialysis.ts:168`                                 | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `treatmentPlanId → dialysisTreatmentPlans.id (dialysis_treatment_plans)`; `patientId → patients.id (patients)`; `machineId → dialysisMachines.id (dialysis_machines)`                   |
+| `dialysis_treatment_plans` — `src/db/schema/dialysis.ts:93`                           | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `encounter_creation_requests` — `src/db/schema/clinical.ts:360`                       | — none inline                                                                                                                                                                                                                                                         |
+| `encounters` — `src/db/schema/clinical.ts:34`                                         | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `expense_requests` — `src/db/schema/financial-ledger.ts:149`                          | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `expenseAccountId → chartOfAccounts.id (chart_of_accounts)`                                                                                                                             |
+| `external_bookings` — `src/db/schema/website-booking.ts:70`                           | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `bookingClientId → websiteBookingClients.id (website_booking_clients)`; `slotId → websiteBookingSlots.id (website_booking_slots)`                                                       |
+| `facilities` — `src/db/schema/tenancy.ts:77`                                          | `tenantId → tenants.id (tenants)`                                                                                                                                                                                                                                     |
+| `facility_admin_invitations` — `src/db/schema/auth.ts:421`                            | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `facility_documents` — `src/db/schema/tenancy.ts:215`                                 | `facilityId → facilities.id (facilities)`                                                                                                                                                                                                                             |
+| `facility_onboarding` — `src/db/schema/tenancy.ts:149`                                | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `facility_payment_accounts` — `src/db/schema/payment-hub.ts:161`                      | — none inline                                                                                                                                                                                                                                                         |
+| `facility_payment_integrations` — `src/db/schema/payment-hub.ts:108`                  | — none inline                                                                                                                                                                                                                                                         |
+| `facility_payment_secrets` — `src/db/schema/payment-hub.ts:147`                       | — none inline                                                                                                                                                                                                                                                         |
+| `facility_role_permission_override_permissions` — `src/db/schema/auth.ts:134`         | `overrideId → facilityRolePermissionOverrides.id (facility_role_permission_overrides)`; `permissionId → permissions.id (permissions)`                                                                                                                                 |
+| `facility_role_permission_overrides` — `src/db/schema/auth.ts:106`                    | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `roleId → roles.id (roles)`                                                                                                                                                             |
+| `facility_service_tariffs` — `src/db/schema/billing.ts:40`                            | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `facility_services` — `src/db/schema/facility-services.ts:14`                         | — none inline                                                                                                                                                                                                                                                         |
+| `facility_subscription_access` — `src/db/schema/tenancy.ts:302`                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `facility_subscription_payments` — `src/db/schema/tenancy.ts:367`                     | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `subscriptionPeriodId → facilitySubscriptionPeriods.id (facility_subscription_periods)`                                                                                                 |
+| `facility_subscription_periods` — `src/db/schema/tenancy.ts:332`                      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `facility_subscription_price_changes` — `src/db/schema/tenancy.ts:406`                | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `subscriptionPeriodId → facilitySubscriptionPeriods.id (facility_subscription_periods)`                                                                                                 |
+| `facility_tariff_import_batches` — `src/db/schema/billing-tariff-import.ts:6`         | — none inline                                                                                                                                                                                                                                                         |
+| `financial_periods` — `src/db/schema/financial-ledger.ts:26`                          | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `fixed_asset_movements` — `src/db/schema/financial-ledger.ts:254`                     | `assetId → fixedAssets.id (fixed_assets)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                  |
+| `fixed_assets` — `src/db/schema/financial-ledger.ts:199`                              | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `assetAccountId → chartOfAccounts.id (chart_of_accounts)`; `accumDepAccountId → chartOfAccounts.id (chart_of_accounts)`; `depExpenseAccountId → chartOfAccounts.id (chart_of_accounts)` |
+| `health_record_exports` — `src/db/schema/referrals.ts:234`                            | `patientId → patients.id (patients)`; `requestedByUserId → users.id (users)`                                                                                                                                                                                          |
+| `health_record_imports` — `src/db/schema/referrals.ts:294`                            | `targetTenantId → tenants.id (tenants)`; `targetFacilityId → facilities.id (facilities)`; `uploadedByUserId → users.id (users)`                                                                                                                                       |
+| `icd10_to_icd11_mappings` — `src/db/schema/icd.ts:46`                                 | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `icd11_catalogue_entries` — `src/db/schema/icd.ts:19`                                 | — none inline                                                                                                                                                                                                                                                         |
+| `immunisation_records` — `src/db/schema/maternity.ts:520`                             | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `inpatient_bed_billing_policies` — `src/db/schema/inpatient.ts:235`                   | `facilityId → facilities.id (facilities)`                                                                                                                                                                                                                             |
+| `inpatient_bed_billing_reviews` — `src/db/schema/inpatient.ts:289`                    | `admissionId → admissions.id (admissions)`                                                                                                                                                                                                                            |
+| `inpatient_bed_billing_work` — `src/db/schema/inpatient.ts:214`                       | — none inline                                                                                                                                                                                                                                                         |
+| `inpatient_bed_nights` — `src/db/schema/inpatient.ts:352`                             | — none inline                                                                                                                                                                                                                                                         |
+| `inpatient_bed_occupancies` — `src/db/schema/inpatient.ts:316`                        | — none inline                                                                                                                                                                                                                                                         |
+| `inpatient_bed_stay_snapshots` — `src/db/schema/inpatient.ts:259`                     | `admissionId → admissions.id (admissions)`                                                                                                                                                                                                                            |
+| `insurance_benefit_validations` — `src/db/schema/insurance-benefits.ts:99`            | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `insurance_claim_dispatch_guards` — `src/db/schema/claim-dispatch.ts:6`               | — none inline                                                                                                                                                                                                                                                         |
+| `insurance_claim_items` — `src/db/schema/billing.ts:696`                              | `claimId → insuranceClaims.id (insurance_claims)`                                                                                                                                                                                                                     |
+| `insurance_claims` — `src/db/schema/billing.ts:628`                                   | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`; `invoiceId → billingInvoices.id (billing_invoices)`                                                                                               |
+| `insurance_eligibility_verifications` — `src/db/schema/insurance-benefits.ts:29`      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `insurance_integration_diagnostics` — `src/db/schema/insurance-payers.ts:331`         | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `insurance_member_policies` — `src/db/schema/insurance-payers.ts:168`                 | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `insurance_payer_access_requests` — `src/db/schema/insurance-payers.ts:150`           | — none inline                                                                                                                                                                                                                                                         |
+| `insurance_payer_assignments` — `src/db/schema/insurance-payers.ts:106`               | — none inline                                                                                                                                                                                                                                                         |
+| `insurance_payer_capability_policies` — `src/db/schema/insurance-payers.ts:97`        | — none inline                                                                                                                                                                                                                                                         |
+| `insurance_payer_configs` — `src/db/schema/insurance-payers.ts:24`                    | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `insurance_payer_definitions` — `src/db/schema/insurance-payers.ts:84`                | — none inline                                                                                                                                                                                                                                                         |
+| `insurance_payer_environment_configs` — `src/db/schema/insurance-payers.ts:130`       | — none inline                                                                                                                                                                                                                                                         |
+| `insurance_preauthorization_attachments` — `src/db/schema/insurance-benefits.ts:358`  | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `preauthorizationId → insurancePreauthorizations.id (insurance_preauthorizations)`                                                                                                      |
+| `insurance_preauthorizations` — `src/db/schema/insurance-benefits.ts:264`             | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `insurance_reconciliation_entries` — `src/db/schema/insurance-remittances.ts:73`      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `remittanceId → insuranceRemittances.id (insurance_remittances)`; `eclaimId → shaEclaims.id (sha_eclaims)`; `invoiceId → billingInvoices.id (billing_invoices)`                         |
+| `insurance_remittances` — `src/db/schema/insurance-remittances.ts:24`                 | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `inventory_batches` — `src/db/schema/inventory.ts:94`                                 | `itemId → inventoryItems.id (inventory_items)`                                                                                                                                                                                                                        |
+| `inventory_items` — `src/db/schema/inventory.ts:35`                                   | `facilityId → facilities.id (facilities)`                                                                                                                                                                                                                             |
+| `journal_entries` — `src/db/schema/financial-ledger.ts:83`                            | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `journal_lines` — `src/db/schema/financial-ledger.ts:123`                             | `journalEntryId → journalEntries.id (journal_entries)`; `accountId → chartOfAccounts.id (chart_of_accounts)`                                                                                                                                                          |
+| `lab_order_batches` — `src/db/schema/laboratory.ts:100`                               | — none inline                                                                                                                                                                                                                                                         |
+| `lab_orders` — `src/db/schema/laboratory.ts:135`                                      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `lab_results` — `src/db/schema/laboratory.ts:206`                                     | `orderId → labOrders.id (lab_orders)`; `patientId → patients.id (patients)`                                                                                                                                                                                           |
+| `lab_specimen_orders` — `src/db/schema/lab-specimens.ts:36`                           | — none inline                                                                                                                                                                                                                                                         |
+| `lab_specimens` — `src/db/schema/lab-specimens.ts:9`                                  | — none inline                                                                                                                                                                                                                                                         |
+| `lab_test_specimen_options` — `src/db/schema/laboratory.ts:70`                        | — none inline                                                                                                                                                                                                                                                         |
+| `lab_tests` — `src/db/schema/laboratory.ts:34`                                        | `facilityId → facilities.id (facilities)`                                                                                                                                                                                                                             |
+| `labour_records` — `src/db/schema/maternity.ts:180`                                   | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `pregnancyId → maternityPregnancies.id (maternity_pregnancies)`; `patientId → patients.id (patients)`                                                                                   |
+| `login_attempts` — `src/db/schema/auth.ts:356`                                        | — none inline                                                                                                                                                                                                                                                         |
+| `master_service_aliases` — `src/db/schema/master-services.ts:68`                      | — none inline                                                                                                                                                                                                                                                         |
+| `master_service_sources` — `src/db/schema/master-services.ts:40`                      | — none inline                                                                                                                                                                                                                                                         |
+| `master_services` — `src/db/schema/master-services.ts:16`                             | — none inline                                                                                                                                                                                                                                                         |
+| `maternity_pregnancies` — `src/db/schema/maternity.ts:34`                             | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `medication_status_events` — `src/db/schema/pharmacy-workflow.ts:70`                  | — none inline                                                                                                                                                                                                                                                         |
+| `medications` — `src/db/schema/inpatient.ts:35`                                       | `encounterId → encounters.id (encounters)`; `patientId → patients.id (patients)`                                                                                                                                                                                      |
+| `notification_alert_states` — `src/db/schema/notifications.ts:15`                     | — none inline                                                                                                                                                                                                                                                         |
+| `notification_read_receipts` — `src/db/schema/notifications.ts:39`                    | — none inline                                                                                                                                                                                                                                                         |
+| `nursing_notes` — `src/db/schema/inpatient.ts:434`                                    | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `observations` — `src/db/schema/clinical.ts:222`                                      | `encounterId → encounters.id (encounters)`; `patientId → patients.id (patients)`                                                                                                                                                                                      |
+| `partograph_entries` — `src/db/schema/maternity.ts:230`                               | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `labourRecordId → labourRecords.id (labour_records)`; `patientId → patients.id (patients)`                                                                                              |
+| `password_resets` — `src/db/schema/auth.ts:389`                                       | `userId → users.id (users)`                                                                                                                                                                                                                                           |
+| `patient_accounts` — `src/db/schema/patients.ts:421`                                  | `userId → users.id (users)`; `patientId → patients.id (patients)`                                                                                                                                                                                                     |
+| `patient_allergies` — `src/db/schema/patients.ts:281`                                 | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `patient_consents` — `src/db/schema/patients.ts:535`                                  | `patientId → patients.id (patients)`                                                                                                                                                                                                                                  |
+| `patient_facilities` — `src/db/schema/patients.ts:353`                                | `patientId → patients.id (patients)`; `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                    |
+| `patient_identifiers` — `src/db/schema/patients.ts:486`                               | `patientId → patients.id (patients)`                                                                                                                                                                                                                                  |
+| `patient_portal_accounts` — `src/db/schema/platform.ts:179`                           | `tenantId → tenants.id (tenants)`; `patientId → patients.id (patients)`                                                                                                                                                                                               |
+| `patient_portal_invitation_events` — `src/db/schema/platform.ts:321`                  | `invitationId → patientPortalInvitations.id (patient_portal_invitations)`                                                                                                                                                                                             |
+| `patient_portal_invitations` — `src/db/schema/platform.ts:252`                        | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `patient_portal_sessions` — `src/db/schema/platform.ts:348`                           | `accountId → patientPortalAccounts.id (patient_portal_accounts)`                                                                                                                                                                                                      |
+| `patient_portal_settings` — `src/db/schema/platform.ts:380`                           | `facilityId → facilities.id (facilities)`; `tenantId → tenants.id (tenants)`                                                                                                                                                                                          |
+| `patient_record_access_logs` — `src/db/schema/patients.ts:636`                        | `patientId → patients.id (patients)`                                                                                                                                                                                                                                  |
+| `patient_record_sharing_grants` — `src/db/schema/platform.ts:424`                     | `tenantId → tenants.id (tenants)`; `patientId → patients.id (patients)`; `createdByAccountId → patientPortalAccounts.id (patient_portal_accounts)`                                                                                                                    |
+| `patients` — `src/db/schema/patients.ts:116`                                          | `tenantId → tenants.id (tenants)`; `registrationFacilityId → facilities.id (facilities)`                                                                                                                                                                              |
+| `payer_benefit_rules` — `src/db/schema/insurance-payers.ts:273`                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `payer_service_code_mappings` — `src/db/schema/insurance-payers.ts:225`               | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `payment_hub_reconciliations` — `src/db/schema/payment-hub.ts:225`                    | — none inline                                                                                                                                                                                                                                                         |
+| `payment_hub_transactions` — `src/db/schema/payment-hub.ts:180`                       | — none inline                                                                                                                                                                                                                                                         |
+| `payment_hub_webhook_events` — `src/db/schema/payment-hub.ts:208`                     | — none inline                                                                                                                                                                                                                                                         |
+| `payment_provider_access_requests` — `src/db/schema/payment-hub.ts:86`                | — none inline                                                                                                                                                                                                                                                         |
+| `payment_provider_assignments` — `src/db/schema/payment-hub.ts:50`                    | — none inline                                                                                                                                                                                                                                                         |
+| `payment_provider_capability_policies` — `src/db/schema/payment-hub.ts:71`            | — none inline                                                                                                                                                                                                                                                         |
+| `payment_provider_definitions` — `src/db/schema/payment-hub.ts:22`                    | — none inline                                                                                                                                                                                                                                                         |
+| `payment_provider_environments` — `src/db/schema/payment-hub.ts:35`                   | — none inline                                                                                                                                                                                                                                                         |
+| `permissions` — `src/db/schema/auth.ts:69`                                            | — none inline                                                                                                                                                                                                                                                         |
+| `pharmacy_dispensations` — `src/db/schema/inventory.ts:128`                           | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `pharmacy_dispense_allocations` — `src/db/schema/pharmacy-workflow.ts:50`             | — none inline                                                                                                                                                                                                                                                         |
+| `pharmacy_dispense_requests` — `src/db/schema/pharmacy-workflow.ts:18`                | — none inline                                                                                                                                                                                                                                                         |
+| `postnatal_visits` — `src/db/schema/maternity.ts:428`                                 | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`; `pregnancyId → maternityPregnancies.id (maternity_pregnancies)`                                                                                   |
+| `practitioners` — `src/db/schema/patients.ts:29`                                      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `private_insurance_claim_lines` — `src/db/schema/private-insurance.ts:145`            | `claimId → privateInsuranceClaims.id (private_insurance_claims)`                                                                                                                                                                                                      |
+| `private_insurance_claim_status_history` — `src/db/schema/private-insurance.ts:212`   | `claimId → privateInsuranceClaims.id (private_insurance_claims)`                                                                                                                                                                                                      |
+| `private_insurance_claim_submissions` — `src/db/schema/private-insurance.ts:187`      | `claimId → privateInsuranceClaims.id (private_insurance_claims)`                                                                                                                                                                                                      |
+| `private_insurance_claims` — `src/db/schema/private-insurance.ts:36`                  | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`; `memberPolicyId → insuranceMemberPolicies.id (insurance_member_policies)`; `invoiceId → billingInvoices.id (billing_invoices)`                    |
+| `private_insurance_remittance_allocations` — `src/db/schema/private-insurance.ts:232` | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `remittanceId → insuranceRemittances.id (insurance_remittances)`; `claimId → privateInsuranceClaims.id (private_insurance_claims)`; `invoiceId → billingInvoices.id (billing_invoices)` |
+| `procedures` — `src/db/schema/clinical.ts:326`                                        | `encounterId → encounters.id (encounters)`; `patientId → patients.id (patients)`                                                                                                                                                                                      |
+| `professional_verification_events` — `src/db/schema/platform.ts:82`                   | — none inline                                                                                                                                                                                                                                                         |
+| `public_health_reports` — `src/db/schema/public-health.ts:16`                         | `facilityId → facilities.id (facilities)`                                                                                                                                                                                                                             |
+| `purchase_order_events` — `src/db/schema/inventory.ts:276`                            | `purchaseOrderId → purchaseOrders.id (purchase_orders)`                                                                                                                                                                                                               |
+| `purchase_order_items` — `src/db/schema/inventory.ts:249`                             | `purchaseOrderId → purchaseOrders.id (purchase_orders)`                                                                                                                                                                                                               |
+| `purchase_orders` — `src/db/schema/inventory.ts:203`                                  | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `supplierId → suppliers.id (suppliers)`                                                                                                                                                 |
+| `queues` — `src/db/schema/clinical.ts:188`                                            | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `radiology_order_requests` — `src/db/schema/laboratory.ts:285`                        | — none inline                                                                                                                                                                                                                                                         |
+| `radiology_orders` — `src/db/schema/laboratory.ts:239`                                | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `referral_access_logs` — `src/db/schema/referrals.ts:188`                             | `referralId → referrals.id (referrals)`; `patientId → patients.id (patients)`                                                                                                                                                                                         |
+| `referral_documents` — `src/db/schema/referrals.ts:142`                               | `referralId → referrals.id (referrals)`; `patientId → patients.id (patients)`                                                                                                                                                                                         |
+| `referrals` — `src/db/schema/referrals.ts:29`                                         | `patientId → patients.id (patients)`; `sourceTenantId → tenants.id (tenants)`; `sourceFacilityId → facilities.id (facilities)`                                                                                                                                        |
+| `role_permissions` — `src/db/schema/auth.ts:83`                                       | `roleId → roles.id (roles)`; `permissionId → permissions.id (permissions)`                                                                                                                                                                                            |
+| `roles` — `src/db/schema/auth.ts:39`                                                  | — none inline                                                                                                                                                                                                                                                         |
+| `service_tariff_links` — `src/db/schema/billing.ts:266`                               | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `sessions` — `src/db/schema/auth.ts:309`                                              | `userId → users.id (users)`                                                                                                                                                                                                                                           |
+| `sha_benefit_utilization_snapshots` — `src/db/schema/insurance-benefits.ts:213`       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `sha_callback_events` — `src/db/schema/sha-claims.ts:224`                             | — none inline                                                                                                                                                                                                                                                         |
+| `sha_eclaim_items` — `src/db/schema/sha-claims.ts:136`                                | `eclaimId → shaEclaims.id (sha_eclaims)`                                                                                                                                                                                                                              |
+| `sha_eclaim_status_history` — `src/db/schema/sha-claims.ts:204`                       | `eclaimId → shaEclaims.id (sha_eclaims)`                                                                                                                                                                                                                              |
+| `sha_eclaim_submissions` — `src/db/schema/sha-claims.ts:175`                          | `eclaimId → shaEclaims.id (sha_eclaims)`                                                                                                                                                                                                                              |
+| `sha_eclaims` — `src/db/schema/sha-claims.ts:34`                                      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`; `invoiceId → billingInvoices.id (billing_invoices)`                                                                                               |
+| `sha_patient_authorizations` — `src/db/schema/insurance-benefits.ts:167`              | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `staff_professional_credentials` — `src/db/schema/platform.ts:31`                     | — none inline                                                                                                                                                                                                                                                         |
+| `supplier_invoices` — `src/db/schema/financial-ledger.ts:286`                         | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `supplierId → suppliers.id (suppliers)`; `expenseAccountId → chartOfAccounts.id (chart_of_accounts)`; `apAccountId → chartOfAccounts.id (chart_of_accounts)`                            |
+| `supplier_payments` — `src/db/schema/banking.ts:73`                                   | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `supplierInvoiceId → supplierInvoices.id (supplier_invoices)`; `supplierId → suppliers.id (suppliers)`                                                                                  |
+| `suppliers` — `src/db/schema/inventory.ts:171`                                        | `tenantId → tenants.id (tenants)`                                                                                                                                                                                                                                     |
+| `tenants` — `src/db/schema/tenancy.ts:41`                                             | — none inline                                                                                                                                                                                                                                                         |
+| `theatre_bookings` — `src/db/schema/theatre-scheduling.ts:40`                         | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `roomId → theatreRooms.id (theatre_rooms)`; `patientId → patients.id (patients)`; `leadPractitionerId → practitioners.id (practitioners)`; `createdBy → users.id (users)`               |
+| `theatre_cases` — `src/db/schema/inpatient.ts:481`                                    | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `patientId → patients.id (patients)`                                                                                                                                                    |
+| `theatre_legacy_review_events` — `src/db/schema/theatre-scheduling.ts:113`            | `caseId → theatreCases.id (theatre_cases)`; `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `actorId → users.id (users)`                                                                                                                |
+| `theatre_rooms` — `src/db/schema/theatre-scheduling.ts:19`                            | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `createdBy → users.id (users)`                                                                                                                                                          |
+| `theatre_schedule_events` — `src/db/schema/theatre-scheduling.ts:83`                  | `caseId → theatreCases.id (theatre_cases)`; `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `actorId → users.id (users)`                                                                                                                |
+| `user_invitations` — `src/db/schema/auth.ts:470`                                      | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`; `roleId → roles.id (roles)`                                                                                                                                                             |
+| `user_roles` — `src/db/schema/auth.ts:279`                                            | `userId → users.id (users)`; `roleId → roles.id (roles)`                                                                                                                                                                                                              |
+| `users` — `src/db/schema/auth.ts:153`                                                 | — none inline                                                                                                                                                                                                                                                         |
+| `wards` — `src/db/schema/inpatient.ts:78`                                             | `facilityId → facilities.id (facilities)`                                                                                                                                                                                                                             |
+| `website_booking_clients` — `src/db/schema/website-booking.ts:23`                     | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+| `website_booking_events` — `src/db/schema/website-booking.ts:125`                     | `bookingId → externalBookings.id (external_bookings)`                                                                                                                                                                                                                 |
+| `website_booking_mutations` — `src/db/schema/website-booking.ts:138`                  | `clientId → websiteBookingClients.id (website_booking_clients)`; `bookingId → externalBookings.id (external_bookings)`                                                                                                                                                |
+| `website_booking_slots` — `src/db/schema/website-booking.ts:52`                       | `tenantId → tenants.id (tenants)`; `facilityId → facilities.id (facilities)`                                                                                                                                                                                          |
+
+**Explicit composite in this scan:** `src/db/schema/laboratory.ts:194–198`, `lab_orders_facility_service_scope_fk`, links `(facilityServiceId, facilityId, tenantId)` to `(facilityServices.id, facilityServices.facilityId, facilityServices.tenantId)`; the source comments that M0057 creates it `NOT VALID`, so legacy conflict review is necessary. Other SQL-only/altered/composite constraints, including M0070 journal scope guards, are outside this inline-Drizzle tally.
+
+---
+
+## Final concise disposition
+
+- **Existing:** scoped local registration and care paths, facility pricing, invoices and manually recorded receipts/refunds, reviewed journals, portal sessions, configuration and limited reports. Each remains subject to the detailed qualifications above.
+- **Partial:** theatre, specialty and dialysis; emergency/quality workflows; patient-portal release controls; financial recovery, payer workflows, purchasing/stores, security and reporting.
+- **Missing:** dedicated ambulance, mortuary and blood-bank lifecycles; complete theatre clinical care, payroll, full asset/AP and receiving, MOH 705/KHIS transmission, and most catalogue reports/printables.
+- **Fix before an appropriate release:** owner-led potential historical-data-incident response; wrong/stale patient selection and omitted-patient risks; portal result scope, cross-facility release policy and note minimization; encryption/session/MFA/recovery evidence; charge-review visibility; reminder/audit ambiguity and unknown-as-zero benefit estimates.
+- **Externally blocked:** authenticated provider callbacks and real bank/payment/payer operations; approved national exchange and statutory-output acceptance. Mock results, tokens and local acknowledgements do not establish settlement or certification.
+- **Roadmap:** incident response → security and portal containment → clinical/financial recovery → facility-approved domain and report completion → authorized provider acceptance → controlled, independently verified release.
