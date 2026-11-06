@@ -29,16 +29,20 @@ function fakeCommands(failAt?: string) {
       ? 'up'
       : args.includes('down')
         ? 'down'
-        : command.startsWith('npm')
-          ? args.join(' ')
-          : '';
+        : args.includes('psql')
+          ? 'attestation'
+          : command.startsWith('npm')
+            ? args.join(' ')
+            : '';
     const code = action && action === failAt ? 7 : 0;
     const stdout =
       args[0] === 'context'
         ? 'unix:///var/run/docker.sock\n'
         : args.includes('port')
           ? '127.0.0.1:49123\n'
-          : '';
+          : args.includes('psql')
+            ? '7539141296746153100\n'
+            : '';
     return { code, stdout, stderr: '', signal: null };
   };
   return { calls, run };
@@ -55,6 +59,7 @@ const inheritedEnv = {
   COMPOSE_FILE: 'docker-compose.yml',
   COMPOSE_PROJECT_NAME: 'jalicare',
   NODE_OPTIONS: '--require=some-real-config',
+  JALICARE_TEST_PG_SYSTEM_IDENTIFIER: '1',
   HTTP_PROXY: 'http://proxy.example.test:8080',
 };
 const silent = () => undefined;
@@ -68,6 +73,7 @@ describe('fresh Docker test bootstrap', () => {
     expect(compose).toMatch(/^\s+db:\s*$/m);
     expect(compose).toContain('image: postgres:16');
     expect(compose).toMatch(/^\s+POSTGRES_PASSWORD:\s*$/m);
+    expect(compose).toContain('POSTGRES_DB: jalicare_synthetic_test');
     expect(compose).toContain("'127.0.0.1::5432'");
     expect(compose).toContain('tmpfs:');
     expect(compose).not.toMatch(/^\s*volumes:/m);
@@ -89,13 +95,17 @@ describe('fresh Docker test bootstrap', () => {
     const up = calls.findIndex((call) => call.args.includes('up'));
     const install = calls.findIndex((call) => call.args.join(' ') === 'ci');
     const ready = calls.findIndex((call) => call.args.includes('pg_isready'));
+    const attestation = calls.findIndex((call) => call.args.includes('psql'));
     const migrate = calls.findIndex((call) => call.args.join(' ') === 'run db:migrate -- --yes');
     const test = calls.findIndex((call) => call.args.join(' ') === 'test');
     const down = calls.findIndex((call) => call.args.includes('down'));
-    expect([up, install, ready, migrate, test, down].every((index) => index >= 0)).toBe(true);
+    expect(
+      [up, install, ready, attestation, migrate, test, down].every((index) => index >= 0),
+    ).toBe(true);
     expect(up).toBeLessThan(install);
     expect(install).toBeLessThan(ready);
-    expect(ready).toBeLessThan(migrate);
+    expect(ready).toBeLessThan(attestation);
+    expect(attestation).toBeLessThan(migrate);
     expect(migrate).toBeLessThan(test);
     expect(test).toBeLessThan(down);
     expect(calls[up].args).toContain(TEST_COMPOSE_FILE);
@@ -106,15 +116,24 @@ describe('fresh Docker test bootstrap', () => {
     expect(env).toMatchObject({
       SQL_HOST: '127.0.0.1',
       SQL_PORT: '49123',
-      SQL_DB_NAME: 'jalicare_test',
+      SQL_DB_NAME: 'jalicare_synthetic_test',
       SQL_ADMIN_USER: 'jalicare_test',
       JALICARE_REQUIRE_DB: '1',
+      JALICARE_TEST_PG_SYSTEM_IDENTIFIER: '7539141296746153100',
       SHA_MODE: 'mock',
       DHA_MODE: 'mock',
       DHA_ALLOW_PRODUCTION: 'false',
     });
     expect(env.SQL_ADMIN_PASSWORD).not.toBe(inheritedEnv.SQL_ADMIN_PASSWORD);
     expect(calls[up].options.env.POSTGRES_PASSWORD).toBe(env.SQL_ADMIN_PASSWORD);
+    expect(calls[attestation].args).toContain(TEST_COMPOSE_FILE);
+    expect(calls[attestation].args[calls[attestation].args.indexOf('-p') + 1]).toBe(
+      calls[up].args[calls[up].args.indexOf('-p') + 1],
+    );
+    expect(calls[attestation].args.join(' ')).not.toContain(env.SQL_ADMIN_PASSWORD);
+    expect(env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER).not.toBe(
+      inheritedEnv.JALICARE_TEST_PG_SYSTEM_IDENTIFIER,
+    );
     expect(env.SHA_CLIENT_SECRET).toBeUndefined();
     expect(env.NODE_OPTIONS).toBeUndefined();
     expect(env.COMPOSE_FILE).toBeUndefined();
@@ -125,7 +144,7 @@ describe('fresh Docker test bootstrap', () => {
     expect(calls[up].options.env.COMPOSE_PROJECT_NAME).toBeUndefined();
   });
 
-  it.each(['up', 'ci', 'run db:migrate -- --yes', 'test', 'down'])(
+  it.each(['up', 'ci', 'attestation', 'run db:migrate -- --yes', 'test', 'down'])(
     'propagates %s failure and cleans up only the unique test project',
     async (failure) => {
       const { calls, run } = fakeCommands(failure);
@@ -138,6 +157,9 @@ describe('fresh Docker test bootstrap', () => {
       expect(down.args[down.args.indexOf('-p') + 1]).toBe(up.args[up.args.indexOf('-p') + 1]);
       if (failure !== 'test' && failure !== 'down') {
         expect(calls.some((call) => call.args.join(' ') === 'test')).toBe(false);
+      }
+      if (failure === 'attestation') {
+        expect(calls.some((call) => call.args.join(' ') === 'run db:migrate -- --yes')).toBe(false);
       }
     },
   );
@@ -163,6 +185,22 @@ describe('fresh Docker test bootstrap', () => {
     expect(isLocalDockerEndpoint('ssh://remote.example.test')).toBe(false);
     expect(parsePublishedPort('127.0.0.1:49123\n')).toBe('49123');
     expect(() => parsePublishedPort('0.0.0.0:5432')).toThrow(/refusing to migrate/);
+  });
+
+  it('refuses a malformed cluster attestation before migration or tests', async () => {
+    const fake = fakeCommands();
+    const run = async (command: string, args: string[], options: Call['options']) => {
+      const result = await fake.run(command, args, options);
+      return args.includes('psql') ? { ...result, stdout: 'not-a-cluster-identifier\n' } : result;
+    };
+    await expect(
+      runDockerBootstrap({ root: ROOT, parentEnv: inheritedEnv, run, log: silent, warn: silent }),
+    ).rejects.toThrow(/cluster identity was not valid/);
+    expect(fake.calls.some((call) => call.args.join(' ') === 'run db:migrate -- --yes')).toBe(
+      false,
+    );
+    expect(fake.calls.some((call) => call.args.join(' ') === 'test')).toBe(false);
+    expect(fake.calls.some((call) => call.args.includes('down'))).toBe(true);
   });
 
   it('does not start a project if its random name already owns Docker resources', async () => {

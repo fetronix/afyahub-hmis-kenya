@@ -10,6 +10,10 @@ import {
 } from '../../booking/website-booking.service.ts';
 import { pool } from '../../db/index.ts';
 import { describeDb } from '../vitest/support/db.ts';
+import {
+  assertSyntheticDatabaseIdentity,
+  assertSyntheticTarget,
+} from '../vitest/support/synthetic-db-identity.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
 describeDb('Staff appointments (synthetic PostgreSQL and authenticated HTTP)', () => {
@@ -88,18 +92,18 @@ describeDb('Staff appointments (synthetic PostgreSQL and authenticated HTTP)', (
     return { id, token: (await createSession({ userId: id, securityVersion: 1 })).sessionToken };
   }
   beforeAll(async () => {
-    const name = process.env.SQL_DB_NAME ?? '';
-    if (name !== 'jalicare_test' && !(name.includes('synthetic') && name.includes('test')))
-      throw new Error('A disposable synthetic test database is required.');
+    const target = {
+      host: process.env.SQL_HOST ?? '',
+      name: process.env.SQL_DB_NAME ?? '',
+      containerClusterIdentifier: process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER,
+    };
+    // Check the target before connecting. For container port forwarding, the
+    // harness additionally proves that this is its newly started cluster.
+    assertSyntheticTarget(target);
     const identity = await pool.query(
-      'SELECT current_database() AS name, inet_server_addr()::text AS address',
+      'SELECT current_database() AS name, inet_server_addr()::text AS address, system_identifier::text AS "clusterIdentifier" FROM pg_control_system()',
     );
-    if (
-      identity.rows[0].name !== name ||
-      !['127.0.0.1/32', '127.0.0.1', '::1/128', '::1'].includes(identity.rows[0].address)
-    ) {
-      throw new Error('Appointment fixtures require the selected local test database.');
-    }
+    assertSyntheticDatabaseIdentity(target, identity.rows[0]);
     [tenant, otherTenant] = (
       await pool.query(
         "INSERT INTO tenants(name,slug,timezone) VALUES($1,$2,'Africa/Nairobi'),($3,$4,'Africa/Nairobi') RETURNING id",

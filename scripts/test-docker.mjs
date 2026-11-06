@@ -12,7 +12,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const TEST_COMPOSE_FILE = 'docker-compose.test.yml';
-const TEST_DB = 'jalicare_test';
+const TEST_DB = 'jalicare_synthetic_test';
+const TEST_USER = 'jalicare_test';
 
 // Never pass application, payer, database, Node, npm or COMPOSE_* settings
 // through from the caller. Docker settings are used only by the Docker CLI.
@@ -226,7 +227,7 @@ export async function runDockerBootstrap({
     JALICARE_REQUIRE_DB: '1',
     SQL_HOST: '127.0.0.1',
     SQL_DB_NAME: TEST_DB,
-    SQL_ADMIN_USER: TEST_DB,
+    SQL_ADMIN_USER: TEST_USER,
     SQL_ADMIN_PASSWORD: password,
     SQL_SSL: 'false',
     SQL_SSL_REJECT_UNAUTHORIZED: 'true',
@@ -265,7 +266,7 @@ export async function runDockerBootstrap({
           '-h',
           '127.0.0.1',
           '-U',
-          TEST_DB,
+          TEST_USER,
           '-d',
           TEST_DB,
         ],
@@ -288,6 +289,41 @@ export async function runDockerBootstrap({
       'capture',
     );
     testEnv.SQL_PORT = parsePublishedPort(address.stdout);
+    // The public endpoint is loopback, but PostgreSQL sees Docker's private
+    // interface. Identify the fresh cluster from inside this exact project
+    // before any migration or fixture writes, without exposing its password.
+    const attestation = await checked(
+      'docker',
+      [
+        ...compose,
+        'exec',
+        '-T',
+        'db',
+        'sh',
+        '-c',
+        'export PGPASSWORD="$POSTGRES_PASSWORD"; exec "$@"',
+        'synthetic-attestation',
+        'psql',
+        '-X',
+        '-h',
+        '127.0.0.1',
+        '-U',
+        TEST_USER,
+        '-d',
+        TEST_DB,
+        '-At',
+        '-c',
+        'SELECT system_identifier::text FROM pg_control_system()',
+      ],
+      composeEnv,
+      'Synthetic PostgreSQL attestation',
+      'capture',
+    );
+    const clusterIdentifier = attestation.stdout.trim();
+    if (!/^[0-9]{1,20}$/.test(clusterIdentifier)) {
+      throw new Error('The isolated PostgreSQL cluster identity was not valid.');
+    }
+    testEnv.JALICARE_TEST_PG_SYSTEM_IDENTIFIER = clusterIdentifier;
     await checked(npmCommand, ['run', 'db:migrate', '--', '--yes'], testEnv, 'Database migrations');
     await checked(npmCommand, ['test'], testEnv, 'npm test');
   } catch (error) {

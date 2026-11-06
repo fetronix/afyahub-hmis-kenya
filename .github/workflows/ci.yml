@@ -105,16 +105,17 @@ jobs:
         env:
           POSTGRES_USER: jalicare_test
           POSTGRES_PASSWORD: jalicare_test_password
-          POSTGRES_DB: jalicare_test
+          POSTGRES_DB: jalicare_synthetic_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U jalicare_test -d jalicare_test"
+          --health-cmd "pg_isready -U jalicare_test -d jalicare_synthetic_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
       JALICARE_REQUIRE_DB: '1'
+      SQL_DB_NAME: jalicare_synthetic_test
     steps:
       - uses: actions/checkout@v4
 
@@ -130,6 +131,19 @@ jobs:
         # top of this workflow for why it is not a literal.
         run: |
           echo "FIELD_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> "$GITHUB_ENV"
+
+      - name: Attest the freshly created PostgreSQL service
+        # The TCP client connects to loopback, but Docker forwards to the
+        # container's private address. Read its cluster ID from this exact
+        # service container so the synthetic fixture guard can verify both ends.
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_CONTAINER"
+          identity="$(docker exec "$POSTGRES_CONTAINER" sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -X -h 127.0.0.1 -U jalicare_test -d jalicare_synthetic_test -At -c "SELECT system_identifier::text FROM pg_control_system()"')"
+          [[ "$identity" =~ ^[0-9]{1,20}$ ]] || { echo "Invalid synthetic PostgreSQL identity"; exit 1; }
+          echo "JALICARE_TEST_PG_SYSTEM_IDENTIFIER=$identity" >> "$GITHUB_ENV"
 
       - name: Apply migrations to the disposable coverage database
         run: npm run db:migrate -- --yes
