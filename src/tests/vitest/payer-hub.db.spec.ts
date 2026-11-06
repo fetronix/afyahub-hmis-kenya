@@ -32,6 +32,7 @@ const facilityGrants = [
   'insurance.sha.read',
   'insurance.sha.eligibility.check',
   'insurance.sha.reconciliation.manage',
+  'insurance.sha.configuration.manage',
 ];
 
 describeDb(
@@ -805,6 +806,77 @@ describeDb(
         ).status,
       ).toBe(403);
       expect((await call(null, 'POST', '/api/webhooks/sha/status', {})).status).toBe(503);
+    });
+
+    it('preserves SHA mapping notes when omitted and allows deliberate edits or clearing', async () => {
+      const sha = (await pool.query(`SELECT id FROM insurance_payer_definitions WHERE code='SHA'`))
+        .rows[0].id;
+      expect(
+        (
+          await call(suToken, 'PUT', `/api/payer-hub/platform/payers/${sha}/facilities/${facA}`, {
+            isAllowed: true,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await call(aToken, 'PUT', `/api/payer-hub/facility/payers/${sha}/activation`, {
+            isActive: true,
+          })
+        ).status,
+      ).toBe(200);
+      const mapping = {
+        localCode: `TEST-NOTES-${suffix}`,
+        localDescription: 'Synthetic mapping',
+        serviceArea: 'GENERAL',
+        payerServiceCode: 'SHA-19-152',
+        payerServiceName: 'Synthetic payer service',
+        fund: 'SHIF',
+        accessPoint: 'OP',
+        paymentMechanism: 'FEE_FOR_SERVICE',
+        reimbursementTariff: '100.00',
+      };
+      const endpoint = '/api/insurance/sha/service-mappings';
+      const created = await call(aToken, 'POST', endpoint, {
+        ...mapping,
+        notes: 'Synthetic initial mapping note',
+      });
+      expect(created.status).toBe(201);
+      expect(created.data.mapping.notes).toBe('Synthetic initial mapping note');
+      const id = created.data.mapping.id;
+
+      const omitted = await call(aToken, 'POST', endpoint, mapping);
+      expect(omitted.status).toBe(201);
+      expect(omitted.data.mapping.id).toBe(id);
+      expect(omitted.data.mapping.notes).toBe('Synthetic initial mapping note');
+      expect(
+        (await pool.query('SELECT notes FROM payer_service_code_mappings WHERE id=$1', [id]))
+          .rows[0].notes,
+      ).toBe('Synthetic initial mapping note');
+
+      const edited = await call(aToken, 'POST', endpoint, {
+        ...mapping,
+        notes: 'Synthetic revised mapping note',
+      });
+      expect(edited.status).toBe(201);
+      expect(edited.data.mapping.notes).toBe('Synthetic revised mapping note');
+      const sibling = await call(bToken, 'GET', endpoint);
+      expect(sibling.status).toBe(200);
+      expect(sibling.data.mappings.some((item: any) => item.id === id)).toBe(false);
+      const cleared = await call(aToken, 'POST', endpoint, { ...mapping, notes: null });
+      expect(cleared.status).toBe(201);
+      expect(cleared.data.mapping.notes).toBeNull();
+      expect(
+        (await pool.query('SELECT notes FROM payer_service_code_mappings WHERE id=$1', [id]))
+          .rows[0].notes,
+      ).toBeNull();
+      const audits = await pool.query(
+        `SELECT details FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND action LIKE 'SHA_SERVICE_MAPPING_%'`,
+        [tenant, facA],
+      );
+      expect(audits.rows.length).toBeGreaterThanOrEqual(4);
+      expect(JSON.stringify(audits.rows)).not.toContain('Synthetic initial mapping note');
+      expect(JSON.stringify(audits.rows)).not.toContain('Synthetic revised mapping note');
     });
   },
 );

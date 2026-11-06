@@ -454,7 +454,8 @@ router.post(
         effectiveFrom: typeof b.effectiveFrom === 'string' ? b.effectiveFrom : null,
         effectiveTo: typeof b.effectiveTo === 'string' ? b.effectiveTo : null,
         isActive: typeof b.isActive === 'boolean' ? b.isActive : true,
-        notes: typeof b.notes === 'string' ? b.notes : null,
+        // Omitted notes must preserve existing text; explicit null clears it.
+        notes: b.notes === undefined ? undefined : typeof b.notes === 'string' ? b.notes : null,
       });
 
       return res.status(201).json({ success: true, mapping: saved });
