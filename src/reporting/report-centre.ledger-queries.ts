@@ -31,6 +31,7 @@ export function ledgerQueryPlan(
   if (id === 'ledger-income') where.push("d.account_type IN ('REVENUE','EXPENSE')");
   if (id === 'ledger-balance-sheet')
     where.push("d.account_type IN ('ASSET','LIABILITY','EQUITY','REVENUE','EXPENSE')");
+  if (filters.accountIds) where.push(`d.id=ANY(${param(filters.accountIds)}::integer[])`);
   if (filters.search) {
     const q = param(pattern(filters.search));
     where.push(`(d.account_code ILIKE ${q} OR d.account_name ILIKE ${q})`);

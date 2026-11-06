@@ -5,6 +5,7 @@ import { requireAuthContext } from '../shared/request.ts';
 import { handleScopeError } from '../shared/errors.ts';
 import { exportReport } from '../../reporting/report-centre.export.ts';
 import { generateReport, ReportCentreError } from '../../reporting/report-centre.service.ts';
+import { listReportOptions } from '../../reporting/report-centre.selection.ts';
 
 const router = Router();
 router.use((_req, res, next) => {
@@ -31,6 +32,21 @@ function handleError(error: unknown, res: Response) {
   console.error('[api] report centre failed', { code });
   res.status(500).json({ error: 'The request could not be completed.' });
 }
+
+// Search terms are sent in the authenticated body, not a URL that proxies may log.
+router.post(
+  '/:reportId/options',
+  requirePermission('reports.read'),
+  async (req: AuthRequest, res) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    try {
+      return res.json(await listReportOptions(context, req.params.reportId, req.body));
+    } catch (error) {
+      handleError(error, res);
+    }
+  },
+);
 
 router.post(
   '/:reportId/generate',
@@ -64,8 +80,8 @@ router.post(
     if (!context) return;
     try {
       const { format, ...filters } = req.body ?? {};
-      if (format !== 'pdf' && format !== 'xlsx') {
-        throw new ReportCentreError('INVALID_REPORT_FORMAT', 'Select PDF or Excel.');
+      if (format !== 'pdf' && format !== 'xlsx' && format !== 'csv') {
+        throw new ReportCentreError('INVALID_REPORT_FORMAT', 'Select PDF, Excel or CSV.');
       }
       const report = await generateReport(context, req.params.reportId, filters, 'EXPORT_REQUEST');
       return res.json(await exportReport(report, format));

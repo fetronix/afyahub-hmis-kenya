@@ -13,10 +13,11 @@ const mocks = vi.hoisted(() => ({
   context: {} as any,
   generate: vi.fn(),
   exportReport: vi.fn(),
+  options: vi.fn(),
 }));
 vi.mock('../../context/HmisContext.tsx', () => ({ useHmis: () => mocks.context }));
 vi.mock('../../api/report-centre.client.ts', () => ({
-  reportCentreApi: { generate: mocks.generate, export: mocks.exportReport },
+  reportCentreApi: { generate: mocks.generate, export: mocks.exportReport, options: mocks.options },
 }));
 vi.mock('../../components/modules/ReportsModule.tsx', () => ({
   ReportsModule: () => <div>Legacy overview content</div>,
@@ -39,6 +40,7 @@ const permissions = [
   'patients.read',
   'billing.read',
   'clinical.read',
+  'users.read',
 ];
 const modules = ['analytics', 'inventory', 'procurement', 'inpatient', 'finance'];
 function result(
@@ -91,6 +93,22 @@ function setup() {
   };
   mocks.generate.mockReset();
   mocks.exportReport.mockReset();
+  mocks.options.mockReset();
+  mocks.options.mockImplementation(async (_id: string, request: any) => {
+    const values: Record<string, Array<{ id: number; label: string; detail: string | null }>> = {
+      patient: [{ id: 123, label: 'MRN-SYN — Synthetic Patient', detail: 'Registered 2026-04-01' }],
+      department: [{ id: 45, label: 'OPD — Synthetic OPD', detail: 'Active' }],
+      staff: [{ id: 67, label: 'Synthetic Staff', detail: 'Clinician · Active' }],
+      invoice: [{ id: 123, label: 'INV-SYN — Synthetic Patient', detail: 'Balance: 100.00' }],
+      item: [{ id: 8, label: 'IT-SYN — Synthetic Stock', detail: 'Stock: 7' }],
+    };
+    return {
+      options: values[request.kind] ?? [],
+      offset: request.offset,
+      limit: 20,
+      hasMore: false,
+    };
+  });
   mocks.generate.mockImplementation(async (id, filters) => result(id, filters));
   mocks.exportReport.mockResolvedValue({
     filename: 'synthetic.xlsx',
@@ -194,7 +212,11 @@ describe('Reporting Centre navigation and report workbench', () => {
       'inventory-category',
       expect.objectContaining({ facilityId: 10, search: 'Synthetic', offset: 0, limit: 25 }),
     );
-    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    fireEvent.click(
+      within(document.querySelector('#report-centre-print') as HTMLElement).getByRole('button', {
+        name: /Next/,
+      }),
+    );
     expect(await screen.findByText('PAGE-25')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Print page/ }));
     await waitFor(() => expect(print).toHaveBeenCalledOnce());
@@ -318,13 +340,9 @@ describe('Reporting Centre navigation and report workbench', () => {
     fireEvent.change(screen.getByLabelText('Recorded encounter start date to'), {
       target: { value: '2026-04-30' },
     });
-    fireEvent.change(screen.getByLabelText('Patient ID (optional)'), { target: { value: '123' } });
-    fireEvent.change(screen.getByLabelText('Department ID (optional)'), {
-      target: { value: '45' },
-    });
-    fireEvent.change(screen.getByLabelText('Staff user ID (optional)'), {
-      target: { value: '67' },
-    });
+    fireEvent.click(await screen.findByRole('radio', { name: /MRN-SYN — Synthetic Patient/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: /OPD — Synthetic OPD/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Synthetic Staff/ }));
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'COMPLETED' } });
     fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
     expect(await screen.findByText('No records match the selected filters.')).toBeInTheDocument();
@@ -389,13 +407,15 @@ describe('Reporting Centre navigation and report workbench', () => {
     expect(mocks.generate.mock.calls[0][1].from).toBeUndefined();
   });
 
-  it('reuses the scoped finalized-invoice panel and labels the legacy overview as unreconciled', () => {
+  it('reuses the scoped finalized-invoice panel and labels the legacy overview as unreconciled', async () => {
     render(<ReportCentre />);
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
       target: { value: 'Invoices' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^Invoices/ }));
-    fireEvent.change(screen.getByLabelText('Invoice ID'), { target: { value: '123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open invoice' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Select an invoice');
+    fireEvent.click(await screen.findByRole('radio', { name: /INV-SYN — Synthetic Patient/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Open invoice' }));
     expect(screen.getByText('Finalized invoice 123 report-only')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Existing analytics overview' }));
@@ -403,5 +423,160 @@ describe('Reporting Centre navigation and report workbench', () => {
     expect(screen.getByText('Legacy overview content')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Back to report catalogue' }));
     expect(screen.getByRole('searchbox', { name: 'Search reports' })).toBeInTheDocument();
+  });
+
+  it('browses immediately, retains multi-selections across pages, searches and clears to all', async () => {
+    mocks.options.mockImplementation(async (_id: string, request: any) => {
+      if (request.kind !== 'item')
+        return { options: [], offset: request.offset, limit: 20, hasMore: false };
+      if (request.search)
+        return {
+          options: [{ id: 9, label: 'SYN-9 — Search match', detail: 'Stock: 3' }],
+          offset: 0,
+          limit: 20,
+          hasMore: false,
+        };
+      return request.offset === 0
+        ? {
+            options: [{ id: 8, label: 'SYN-8 — Page one', detail: 'Stock: 7' }],
+            offset: 0,
+            limit: 20,
+            hasMore: true,
+          }
+        : {
+            options: [{ id: 9, label: 'SYN-9 — Page two', detail: 'Stock: 3' }],
+            offset: 20,
+            limit: 20,
+            hasMore: false,
+          };
+    });
+    render(<ReportCentre />);
+    openInventory();
+    const picker = screen.getByRole('group', { name: 'Item (optional)' });
+    fireEvent.click(await within(picker).findByRole('checkbox', { name: /SYN-8 — Page one/ }));
+    fireEvent.click(within(picker).getByRole('button', { name: 'Next' }));
+    fireEvent.click(await within(picker).findByRole('checkbox', { name: /SYN-9 — Page two/ }));
+    expect(within(picker).getByText('Selected:').parentElement).toHaveTextContent(
+      'SYN-8 — Page one, SYN-9 — Page two',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    await screen.findByText('Synthetic Item');
+    expect(mocks.generate).toHaveBeenLastCalledWith(
+      'inventory-category',
+      expect.objectContaining({ itemIds: [8, 9] }),
+    );
+    fireEvent.change(within(picker).getByRole('searchbox', { name: 'Search item (optional)' }), {
+      target: { value: 'match' },
+    });
+    expect(await within(picker).findByRole('checkbox', { name: /Search match/ })).toBeChecked();
+    expect(mocks.options).toHaveBeenCalledWith(
+      'inventory-category',
+      expect.objectContaining({ kind: 'item', search: 'match', offset: 0 }),
+      expect.any(AbortSignal),
+    );
+    fireEvent.click(within(picker).getByRole('button', { name: 'Clear selection' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    await waitFor(() =>
+      expect(mocks.generate).toHaveBeenLastCalledWith(
+        'inventory-category',
+        expect.not.objectContaining({ itemIds: expect.anything() }),
+      ),
+    );
+  });
+
+  it('refreshes dependent beds, clears a stale bed and submits labels instead of typed IDs', async () => {
+    mocks.options.mockImplementation(async (_id: string, request: any) => {
+      const opts =
+        request.kind === 'ward'
+          ? [
+              { id: 1, label: 'Ward A', detail: null },
+              { id: 2, label: 'Ward B', detail: null },
+            ]
+          : request.kind === 'bed'
+            ? request.wardId === 1
+              ? [{ id: 11, label: 'Ward A — Bed A1', detail: 'Occupied' }]
+              : request.wardId === 2
+                ? [{ id: 22, label: 'Ward B — Bed B1', detail: 'Reserved' }]
+                : []
+            : [];
+      return { options: opts, offset: 0, limit: 20, hasMore: false };
+    });
+    render(<ReportCentre />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
+      target: { value: 'Current inpatient list' },
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: /Current inpatient list/ })[0]);
+    fireEvent.click(await screen.findByRole('radio', { name: 'Ward A' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Ward A — Bed A1/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Ward B' }));
+    expect(await screen.findByRole('radio', { name: /Ward B — Bed B1/ })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    await waitFor(() =>
+      expect(mocks.generate).toHaveBeenLastCalledWith(
+        'current-inpatients',
+        expect.not.objectContaining({ bedId: expect.anything() }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Ward B — Bed B1/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    await waitFor(() =>
+      expect(mocks.generate).toHaveBeenLastCalledWith(
+        'current-inpatients',
+        expect.objectContaining({ wardId: 2, bedId: 22 }),
+      ),
+    );
+    expect(screen.queryByLabelText('Ward ID (optional)')).not.toBeInTheDocument();
+  });
+
+  it('shows selector errors and retries without pretending that a failed lookup is empty', async () => {
+    mocks.options
+      .mockRejectedValueOnce(new Error('Synthetic lookup unavailable'))
+      .mockResolvedValue({ options: [], offset: 0, limit: 20, hasMore: false });
+    render(<ReportCentre />);
+    openInventory();
+    const picker = screen.getByRole('group', { name: 'Item (optional)' });
+    expect(await within(picker).findByRole('alert')).toHaveTextContent(
+      'Synthetic lookup unavailable',
+    );
+    fireEvent.click(within(picker).getByRole('button', { name: 'Retry' }));
+    expect(
+      await within(picker).findByText('No matching options in this facility.'),
+    ).toBeInTheDocument();
+  });
+
+  it('never displays late selector data from a previously selected facility', async () => {
+    let resolveOld: (value: any) => void = () => {};
+    mocks.options.mockImplementation((_id: string, request: any) =>
+      request.facilityId === 10
+        ? new Promise((resolve) => {
+            resolveOld = resolve;
+          })
+        : Promise.resolve({
+            options: [{ id: 77, label: 'Facility B item', detail: null }],
+            offset: 0,
+            limit: 20,
+            hasMore: false,
+          }),
+    );
+    const view = render(<ReportCentre />);
+    openInventory();
+    mocks.context.currentFacility = {
+      id: 11,
+      name: 'Synthetic Facility B',
+      enabledModules: [...modules],
+      hiddenModules: [],
+    };
+    view.rerender(<ReportCentre />);
+    expect(await screen.findByRole('checkbox', { name: 'Facility B item' })).toBeInTheDocument();
+    await act(async () =>
+      resolveOld({
+        options: [{ id: 88, label: 'Facility A private item', detail: null }],
+        offset: 0,
+        limit: 20,
+        hasMore: false,
+      }),
+    );
+    expect(screen.queryByText('Facility A private item')).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Facility B item' })).toBeInTheDocument();
   });
 });

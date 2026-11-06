@@ -46,6 +46,7 @@ export const OPERATIONAL_REPORT_ENGINES = {
     ],
     searchLabel: 'Search item, code or batch',
     dateLabel: 'Recorded expiry date',
+    inventoryItemFilter: true,
     notes: [
       'This is a current batch snapshot, not a movement ledger or stock valuation. Quantities in different units are not added together.',
       'Only valid ISO calendar dates can be filtered; other recorded dates remain visible without a date range and are counted for review.',
@@ -102,6 +103,7 @@ export const OPERATIONAL_REPORT_ENGINES = {
     dateLabel: 'Recorded admission date',
     patientFilter: true,
     wardFilter: true,
+    bedFilter: true,
     notes: [
       'Ward and bed are the current recorded references, not a reconstructed admission-time transfer history.',
       'Only valid ISO date prefixes can be filtered; missing or invalid dates are counted and excluded when a range is applied.',
@@ -128,6 +130,7 @@ export const OPERATIONAL_REPORT_ENGINES = {
     dateLabel: 'Recorded discharge date',
     patientFilter: true,
     wardFilter: true,
+    bedFilter: true,
     notes: [
       'A recorded discharge time is shown alongside the status; it is not proof that all discharge work or billing is complete.',
       'Only valid ISO date prefixes can be filtered; invalid dates are counted and excluded when a range is applied.',
@@ -153,12 +156,15 @@ export const OPERATIONAL_REPORT_ENGINES = {
     ],
     searchLabel: 'Search patient, MRN or test',
     dateLabel: 'Recorded order date',
+    labTestFilter: true,
+    serviceFilter: true,
     patientFilter: true,
     statuses: ['Ordered', 'Sample Collected', 'Completed', 'Published'].map((value) => ({
       value,
       label: value,
     })),
     notes: [
+      'Test and service filters use recorded IDs only; historical or free-text orders with no matching link are not inferred.',
       'Orders are not verified results. Completion and release cannot be inferred from the order alone.',
       timeNote,
       patientNote,
@@ -182,9 +188,11 @@ export const OPERATIONAL_REPORT_ENGINES = {
     ],
     searchLabel: 'Search patient, MRN, procedure or modality',
     dateLabel: 'Recorded request date',
+    serviceFilter: true,
     patientFilter: true,
     statuses: ['Requested', 'Reported'].map((value) => ({ value, label: value })),
     notes: [
+      'The service filter uses recorded facility-service IDs only; unlinked historical or free-text requests remain excluded when selected.',
       'An imaging request is not proof of a performed procedure or an externally verified report.',
       timeNote,
       patientNote,
@@ -210,9 +218,11 @@ export const OPERATIONAL_REPORT_ENGINES = {
     ],
     searchLabel: 'Search patient, MRN, item snapshot or batch',
     dateLabel: 'Recorded dispensation date',
+    inventoryItemFilter: true,
     patientFilter: true,
     notes: [
       'This reports dispensation events, not prescribed quantity, a full stock movement ledger, returns, or reconciled charges.',
+      'The item filter uses the recorded inventory-item ID only; unlinked historical events are not guessed.',
       'Missing historical item snapshots are left unknown; current inventory is not substituted.',
       timeNote,
       patientNote,
@@ -235,9 +245,11 @@ export const OPERATIONAL_REPORT_ENGINES = {
     ],
     searchLabel: 'Search recorded cashier name or payment method',
     dateLabel: 'Recorded payment date',
+    receiptFilter: true,
     notes: [
       'Recorded receipts are not reconciled bank/provider settlements, recognized revenue or cash on hand. Refunds are not deducted here.',
       'Cashier is recorded free text, not a verified staff identity. Unknown, non-finite or non-positive amounts are excluded from the known total and counted.',
+      'Selecting a receipt narrows the grouped totals to that recorded payment; it is not provider reconciliation.',
       timeNote,
     ],
   },
@@ -282,6 +294,7 @@ export const OPERATIONAL_REPORT_ENGINES = {
     ],
     searchLabel: 'Search invoice, patient or MRN',
     dateLabel: 'Recorded invoice creation date',
+    invoiceFilter: true,
     patientFilter: true,
     notes: [
       'A current invoice-header snapshot, not a historical as-of balance, verified receivable, insurer balance or reconciled ledger.',

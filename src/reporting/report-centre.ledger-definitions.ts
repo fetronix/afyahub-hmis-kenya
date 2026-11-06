@@ -6,6 +6,7 @@ const common = {
   exportPermissions: ['accounting.reports.export'],
   fixedCurrency: 'KES',
   searchLabel: 'Search posted account code or name',
+  accountFilter: true,
 } as const;
 const ledgerNotes = [
   'Only posted, facility-scoped journal lines are included; reversals are separate posted entries. Out-of-scope or inconsistent references are excluded and require review.',

@@ -1,13 +1,18 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../db/index.ts';
-import { getFacilityByIdScoped } from '../db/queries/tenancy.ts';
-import { hasAllPermissions } from '../auth/authorization.service.ts';
-import { resolveFacilityScope } from '../auth/scope.service.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { validateRange } from '../dashboard/date-range.ts';
 import type { ReportEngineId } from './report-catalogue.ts';
 import { operationalQueryPlan } from './report-centre.operational-queries.ts';
 import { ledgerQueryPlan } from './report-centre.ledger-queries.ts';
+import {
+  authorizeReport,
+  authorizeReportFacility,
+  ReportCentreError,
+  type ReportIntent,
+} from './report-centre.auth.ts';
+import { validateSelectedFilters } from './report-centre.selection.ts';
+export { ReportCentreError } from './report-centre.auth.ts';
 import {
   REPORT_ENGINES,
   type ReportFilters,
@@ -18,20 +23,6 @@ import {
 export const MAX_REPORT_PAGE = 100;
 export const MAX_REPORT_EXPORT = 1000;
 const MAX_OFFSET = 1_000_000;
-type ReportIntent = 'VIEW' | 'PRINT_REQUEST' | 'EXPORT_REQUEST';
-
-// Intents describe audit requests, not proof of delivery.
-export class ReportCentreError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly status = 400,
-  ) {
-    super(message);
-    this.name = 'ReportCentreError';
-  }
-}
-
 function integer(value: unknown, name: string, min: number, max: number): number {
   const validString = typeof value === 'string' && /^\d+$/.test(value);
   const parsed = validString ? Number(value) : value;
@@ -44,6 +35,21 @@ function integer(value: unknown, name: string, min: number, max: number): number
 function optionalId(value: unknown, name: string): number | undefined {
   if (value === undefined || value === null || value === '') return undefined;
   return integer(value, name, 1, 2_147_483_647);
+}
+
+function optionalIds(value: unknown, name: string): number[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new ReportCentreError(
+      'INVALID_REPORT_FILTER',
+      `${name} must contain at most 20 selections.`,
+    );
+  }
+  const ids = value.map((item) => integer(item, name, 1, 2_147_483_647));
+  if (new Set(ids).size !== ids.length) {
+    throw new ReportCentreError('INVALID_REPORT_FILTER', `${name} contains duplicate selections.`);
+  }
+  return ids.length ? ids : undefined;
 }
 
 function optionalText(value: unknown, name: string, max: number): string | undefined {
@@ -69,6 +75,15 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
     'wardId',
     'departmentId',
     'staffId',
+    'bedId',
+    'itemIds',
+    'supplierId',
+    'purchaseOrderId',
+    'labTestId',
+    'serviceIds',
+    'invoiceId',
+    'receiptId',
+    'accountIds',
     'offset',
     'limit',
   ]);
@@ -107,11 +122,29 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
   const wardId = optionalId(input.wardId, 'Ward');
   const departmentId = optionalId(input.departmentId, 'Department');
   const staffId = optionalId(input.staffId, 'Staff user');
+  const bedId = optionalId(input.bedId, 'Bed');
+  const itemIds = optionalIds(input.itemIds, 'Items');
+  const supplierId = optionalId(input.supplierId, 'Supplier');
+  const purchaseOrderId = optionalId(input.purchaseOrderId, 'Purchase order');
+  const labTestId = optionalId(input.labTestId, 'Laboratory test');
+  const serviceIds = optionalIds(input.serviceIds, 'Services');
+  const invoiceId = optionalId(input.invoiceId, 'Invoice');
+  const receiptId = optionalId(input.receiptId, 'Receipt');
+  const accountIds = optionalIds(input.accountIds, 'Accounts');
   if (
     (patientId && !definition.patientFilter) ||
     (wardId && !definition.wardFilter) ||
     (departmentId && !definition.departmentFilter) ||
-    (staffId && !definition.staffFilter)
+    (staffId && !definition.staffFilter) ||
+    (bedId && !definition.bedFilter) ||
+    (itemIds && !definition.inventoryItemFilter) ||
+    (supplierId && !definition.supplierFilter) ||
+    (purchaseOrderId && !definition.purchaseOrderFilter) ||
+    (labTestId && !definition.labTestFilter) ||
+    (serviceIds && !definition.serviceFilter) ||
+    (invoiceId && !definition.invoiceFilter) ||
+    (receiptId && !definition.receiptFilter) ||
+    (accountIds && !definition.accountFilter)
   ) {
     throw new ReportCentreError(
       'INVALID_REPORT_FILTER',
@@ -131,16 +164,18 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
     wardId,
     departmentId,
     staffId,
+    bedId,
+    itemIds,
+    supplierId,
+    purchaseOrderId,
+    labTestId,
+    serviceIds,
+    invoiceId,
+    receiptId,
+    accountIds,
     offset,
     limit,
   };
-}
-
-function engineId(raw: string): ReportEngineId {
-  if (!Object.prototype.hasOwnProperty.call(REPORT_ENGINES, raw)) {
-    throw new ReportCentreError('REPORT_NOT_AVAILABLE', 'This report is not available.', 404);
-  }
-  return raw as ReportEngineId;
 }
 
 export interface QueryPlan {
@@ -183,6 +218,7 @@ function queryPlan(id: ReportEngineId, tenantId: number, filters: ReportFilters)
         `(i.item_code ILIKE ${p} OR i.name ILIKE ${p} OR i.category ILIKE ${p} OR i.store_location ILIKE ${p})`,
       );
     }
+    if (filters.itemIds) where.push(`i.id=ANY(${param(filters.itemIds)}::integer[])`);
     if (filters.status === 'active') where.push('i.is_active IS TRUE');
     if (filters.status === 'inactive') where.push('i.is_active IS FALSE');
     if (filters.status === 'unknown') where.push('i.is_active IS NULL');
@@ -205,6 +241,8 @@ function queryPlan(id: ReportEngineId, tenantId: number, filters: ReportFilters)
       const p = param(pattern(filters.search));
       where.push(`(o.po_number ILIKE ${p} OR s.name ILIKE ${p})`);
     }
+    if (filters.supplierId) where.push(`s.id=${param(filters.supplierId)}`);
+    if (filters.purchaseOrderId) where.push(`o.id=${param(filters.purchaseOrderId)}`);
     if (filters.status === '__unknown__') where.push('o.status IS NULL');
     else if (filters.status) where.push(`o.status=${param(filters.status)}`);
     const undatedWhere = [...where, 'o.expected_delivery_date IS NULL'];
@@ -234,7 +272,8 @@ function queryPlan(id: ReportEngineId, tenantId: number, filters: ReportFilters)
     );
   }
   if (filters.patientId) where.push(`p.id=${param(filters.patientId)}`);
-  if (filters.wardId) where.push(`a.ward_id=${param(filters.wardId)}`);
+  if (filters.wardId) where.push(`w.id=${param(filters.wardId)}`);
+  if (filters.bedId) where.push(`b.id=${param(filters.bedId)}`);
   return {
     from: `admissions a
       LEFT JOIN patients p ON p.id=a.patient_id AND p.tenant_id=a.tenant_id
@@ -286,6 +325,15 @@ async function audit(
           'wardId',
           'departmentId',
           'staffId',
+          'bedId',
+          'itemIds',
+          'supplierId',
+          'purchaseOrderId',
+          'labTestId',
+          'serviceIds',
+          'invoiceId',
+          'receiptId',
+          'accountIds',
         ].filter((key) => Boolean(filters[key as keyof ReportFilters])),
         // Search text and patient identifiers stay out of the general audit log.
         from: filters.from,
@@ -323,52 +371,20 @@ export async function generateReport(
   rawFilters: unknown,
   intent: ReportIntent = 'VIEW',
 ): Promise<ReportResult> {
-  const id = engineId(rawId);
-  const definition = REPORT_ENGINES[id];
-  if (context.isSuperAdmin || context.roles.includes('SUPER_ADMIN')) {
-    throw new ReportCentreError(
-      'FACILITY_ACCOUNT_REQUIRED',
-      'A facility account is required.',
-      403,
-    );
-  }
-  if (!hasAllPermissions(context, [...definition.permissions])) {
-    throw new ReportCentreError(
-      'FORBIDDEN',
-      'You do not have the required report and domain permissions.',
-      403,
-    );
-  }
-  if (
-    intent !== 'VIEW' &&
-    !hasAllPermissions(context, ['reports.export', ...(definition.exportPermissions ?? [])])
-  ) {
-    throw new ReportCentreError(
-      'FORBIDDEN',
-      'Report and source-domain export permissions are required.',
-      403,
-    );
-  }
+  const { id, definition } = authorizeReport(context, rawId, intent);
   const filters = validateFilters(id, rawFilters);
-  const facilityId = resolveFacilityScope(context, filters.facilityId);
-  const facility = await getFacilityByIdScoped(context, facilityId);
-  if (!facility) throw new ReportCentreError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
-  const enabled = Array.isArray(facility.enabledModules) ? facility.enabledModules : [];
-  const hidden = Array.isArray(facility.hiddenModules) ? facility.hiddenModules : [];
-  if (
-    !['analytics', definition.module].every(
-      (module) => enabled.includes(module) && !hidden.includes(module),
-    )
-  ) {
-    throw new ReportCentreError(
-      'FACILITY_MODULE_DISABLED',
-      'The report or its source module is unavailable for this facility.',
-      403,
-    );
-  }
+  const facility = await authorizeReportFacility(context, filters.facilityId, definition.module);
+  const facilityId = facility.id;
   const client = await pool.connect();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    const filterLabels = await validateSelectedFilters(
+      client,
+      context,
+      id,
+      facility.tenantId,
+      filters,
+    );
     const currencyRows = await client.query<{ currency: string | null }>(
       'SELECT currency FROM tenants WHERE id=$1',
       [facility.tenantId],
@@ -444,6 +460,7 @@ export async function generateReport(
       currency,
       generatedAt: new Date().toISOString(),
       filters: { ...filters, offset, limit },
+      filterLabels,
       columns: definition.columns,
       rows,
       ...(summaries.length

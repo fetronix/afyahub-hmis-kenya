@@ -38,6 +38,15 @@ export interface ReportEngineDefinition {
   wardFilter?: boolean;
   departmentFilter?: boolean;
   staffFilter?: boolean;
+  bedFilter?: boolean;
+  inventoryItemFilter?: boolean;
+  supplierFilter?: boolean;
+  purchaseOrderFilter?: boolean;
+  labTestFilter?: boolean;
+  serviceFilter?: boolean;
+  invoiceFilter?: boolean;
+  receiptFilter?: boolean;
+  accountFilter?: boolean;
   notes: readonly string[];
 }
 
@@ -69,6 +78,7 @@ export const REPORT_ENGINES: Record<ReportEngineId, ReportEngineDefinition> = {
     columns: inventoryColumns,
     searchLabel: 'Search item, code, category or location',
     statuses: inventoryStatuses,
+    inventoryItemFilter: true,
     notes: [
       'This is a current item snapshot, not a stock movement ledger or historical valuation.',
       'Blank values are not treated as zero. Quantities in different units are not added together.',
@@ -83,6 +93,7 @@ export const REPORT_ENGINES: Record<ReportEngineId, ReportEngineDefinition> = {
     columns: inventoryColumns,
     searchLabel: 'Search item, code, category or location',
     statuses: inventoryStatuses,
+    inventoryItemFilter: true,
     notes: [
       'Store location is free text on the inventory item, not a verified store master or transfer ledger.',
       'This is a current snapshot; quantities in different units are not added together.',
@@ -103,6 +114,8 @@ export const REPORT_ENGINES: Record<ReportEngineId, ReportEngineDefinition> = {
     ],
     searchLabel: 'Search order number or supplier',
     dateLabel: 'Expected delivery date',
+    supplierFilter: true,
+    purchaseOrderFilter: true,
     statuses: [
       { value: 'Pending Approval', label: 'Pending approval' },
       { value: 'Approved', label: 'Approved' },
@@ -134,6 +147,7 @@ export const REPORT_ENGINES: Record<ReportEngineId, ReportEngineDefinition> = {
     searchLabel: 'Search patient name or MRN',
     patientFilter: true,
     wardFilter: true,
+    bedFilter: true,
     notes: [
       'A live snapshot of records marked Admitted; it is not a historical admission or discharge register.',
       'Admission times are shown as recorded; historical timezone and manually corrected times require review.',
@@ -151,6 +165,15 @@ export interface ReportFilters {
   wardId?: number;
   departmentId?: number;
   staffId?: number;
+  bedId?: number;
+  itemIds?: number[];
+  supplierId?: number;
+  purchaseOrderId?: number;
+  labTestId?: number;
+  serviceIds?: number[];
+  invoiceId?: number;
+  receiptId?: number;
+  accountIds?: number[];
   offset?: number;
   limit?: number;
 }
@@ -173,6 +196,8 @@ export interface ReportResult {
   currency: string | null;
   generatedAt: string;
   filters: ReportFilters;
+  /** Server-resolved, scoped labels for the selected filters; IDs stay out of display/export. */
+  filterLabels?: Partial<Record<ReportSelectionKind, string>>;
   columns: readonly ReportColumn[];
   rows: ReportRow[];
   /** Aggregate of the entire filtered snapshot, never just the visible page. */
@@ -188,4 +213,46 @@ export interface ReportExport {
   contentType: string;
   /** Binary bytes encoded for the existing authenticated JSON client. */
   base64: string;
+}
+
+/** Selector kinds are limited to real relationships supported by each report. */
+export type ReportSelectionKind =
+  | 'patient'
+  | 'ward'
+  | 'bed'
+  | 'department'
+  | 'staff'
+  | 'item'
+  | 'supplier'
+  | 'purchaseOrder'
+  | 'labTest'
+  | 'service'
+  | 'invoice'
+  | 'receipt'
+  | 'account';
+
+export interface ReportSelectionOption {
+  id: number;
+  label: string;
+  detail: string | null;
+}
+
+export interface ReportSelectionRequest {
+  facilityId: number;
+  kind: ReportSelectionKind;
+  search?: string;
+  offset?: number;
+  limit?: number;
+  wardId?: number;
+  departmentId?: number;
+  supplierId?: number;
+  patientId?: number;
+  invoiceStatus?: 'outstanding' | 'all';
+}
+
+export interface ReportSelectionPage {
+  options: ReportSelectionOption[];
+  offset: number;
+  limit: number;
+  hasMore: boolean;
 }

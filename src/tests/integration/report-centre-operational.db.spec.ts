@@ -31,6 +31,7 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
     'laboratory.read',
     'pharmacy.read',
     'billing.read',
+    'users.read',
   ];
   let tenant: number,
     facility: number,
@@ -447,18 +448,18 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
     expect(report.body.total).toBe(1);
     expect(report.body.rows[0].status).toBe('COMPLETED');
     expect(
-      (await generate('outpatient-encounters', { departmentId: department + 999 })).body.total,
-    ).toBe(0);
-    expect((await generate('outpatient-encounters', { staffId: actor + 999 })).body.total).toBe(0);
+      (await generate('outpatient-encounters', { departmentId: department + 999 })).status,
+    ).toBe(400);
+    expect((await generate('outpatient-encounters', { staffId: actor + 999 })).status).toBe(400);
     expect(
       (await generate('laboratory-orders', { patientId: patient, status: 'Completed' })).body.total,
     ).toBe(1);
     expect(
       (await generate('radiology-requests', { patientId: patient, status: 'Reported' })).body.total,
     ).toBe(1);
-    expect(
-      (await generate('pharmacy-dispensations', { patientId: siblingPatient })).body.total,
-    ).toBe(0);
+    expect((await generate('pharmacy-dispensations', { patientId: siblingPatient })).status).toBe(
+      400,
+    );
     const access = await pool.query(
       "SELECT DISTINCT patient_id FROM patient_record_access_logs WHERE user_id=$1 AND record_type='REPORT_CENTRE'",
       [actor],

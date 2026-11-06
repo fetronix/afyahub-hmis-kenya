@@ -243,6 +243,9 @@ describeDb('Reporting Centre posted ledger subsets (synthetic PostgreSQL and HTT
       expect(
         (await post(id, 'export', { ...filters, format: 'xlsx' }, noDomainExport)).status,
       ).toBe(403);
+      expect((await post(id, 'export', { ...filters, format: 'csv' }, noDomainExport)).status).toBe(
+        403,
+      );
       const pdf = await post(id, 'export', { ...filters, format: 'pdf' });
       expect(pdf.status).toBe(200);
       const parser = new PDFParser(null, true);

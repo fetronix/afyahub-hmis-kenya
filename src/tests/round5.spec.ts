@@ -133,9 +133,13 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
 
     const reports = source('src/components/modules/ReportsModule.tsx');
     expect(
-      reports.includes('Money In by Payment Channel'),
-      'The revenue report renders the channel split',
+      reports.includes('Recorded Payment Methods on Invoice Cohort'),
+      'The report labels the channel split as payments on the selected invoice cohort',
     ).toBe(true);
+    expect(
+      reports.includes('Money In by Payment Channel'),
+      'The invoice-cohort view must not be mislabeled as all money received in the period',
+    ).toBe(false);
     expect(
       reports.includes('channelReconciliation.reconciled'),
       'The report states the reconciliation rather than assuming it',

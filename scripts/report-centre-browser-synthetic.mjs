@@ -72,9 +72,17 @@ try {
   ];
   const [facility, sibling] = (
     await pool.query(
-      `INSERT INTO facilities(tenant_id,code,name,enabled_modules,timezone) VALUES
-    ($1,$2,'Synthetic Reporting Browser Facility',$4::jsonb,'Africa/Nairobi'),($1,$3,'Synthetic Browser Sibling',$4::jsonb,'Africa/Nairobi') RETURNING id`,
-      [tenant, `BR-A-${suffix}`, `BR-B-${suffix}`, JSON.stringify(mods)],
+      `INSERT INTO facilities(tenant_id,code,name,mfl_code,address,county,phone,enabled_modules,timezone) VALUES
+    ($1,$2,'Synthetic Reporting Browser Facility',$5,'Synthetic Road','Synthetic County','0000000000',$4::jsonb,'Africa/Nairobi'),
+    ($1,$3,'Synthetic Browser Sibling',$6,'Other Synthetic Road','Synthetic County','0000000001',$4::jsonb,'Africa/Nairobi') RETURNING id`,
+      [
+        tenant,
+        `BR-A-${suffix}`,
+        `BR-B-${suffix}`,
+        JSON.stringify(mods),
+        `BR-MFL-A-${suffix}`,
+        `BR-MFL-B-${suffix}`,
+      ],
     )
   ).rows.map((r) => r.id);
   const hash = await argon2.hash(password, {
@@ -108,8 +116,10 @@ try {
     'laboratory.read',
     'pharmacy.read',
     'billing.read',
+    'billing.update',
     'accounting.read',
     'accounting.reports.export',
+    'users.read',
   ]) {
     await pool.query(
       "INSERT INTO permissions(code,name,module) VALUES($1,$1,'synthetic') ON CONFLICT(code) DO NOTHING",
@@ -149,6 +159,11 @@ try {
       [tenant, facility, `BR-MRN-${suffix}`],
     )
   ).rows[0].id;
+  await pool.query(
+    `INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender)
+     SELECT $1,$2,$3 || n::text,'Synthetic','PagedPatient','2000-01-01','Other' FROM generate_series(1,23) n`,
+    [tenant, facility, `BR-PAGE-${suffix}-`],
+  );
   const department = (
     await pool.query(
       "INSERT INTO departments(facility_id,name,code) VALUES($1,'Synthetic Browser Department',$2) RETURNING id",
@@ -168,6 +183,31 @@ try {
       [tenant, facility, patient, practitioner, department],
     )
   ).rows[0].id;
+  await pool.query(
+    `INSERT INTO diagnoses(encounter_id,patient_id,coding_system,icd10_code,icd10_description)
+     VALUES($1,$2,'ICD-10','Z00.0','Synthetic examination diagnosis')`,
+    [encounter, patient],
+  );
+  const finalizedTariff = (
+    await pool.query(
+      `INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee)
+       VALUES($1,$2,$3,'Synthetic consultation','OPD','Visit','50.00') RETURNING id`,
+      [tenant, facility, `BR-TARIFF-${suffix}`],
+    )
+  ).rows[0].id;
+  const finalizedInvoice = (
+    await pool.query(
+      `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,encounter_id,invoice_number,
+        total_amount,paid_amount,balance_amount,credit_balance,status)
+       VALUES($1,$2,$3,$4,$5,'100.00','0.00','100.00','0.00','Pending') RETURNING id`,
+      [tenant, facility, patient, encounter, `BR-FIN-${suffix}`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO billing_items(invoice_id,tariff_id,tariff_code,item_type,description,quantity,unit_price,total_amount)
+     VALUES($1,$2,$3,'Consultation','Synthetic consultation',2,'50.00','100.00')`,
+    [finalizedInvoice, finalizedTariff, `BR-TARIFF-${suffix}`],
+  );
   const ward = (
     await pool.query(
       "INSERT INTO wards(facility_id,name,code) VALUES($1,'Synthetic Browser Ward',$2) RETURNING id",
@@ -206,9 +246,23 @@ try {
     "INSERT INTO purchase_orders(tenant_id,facility_id,supplier_id,po_number,total_amount,status,expected_delivery_date) VALUES($1,$2,$3,$4,120,'Approved','2026-04-30')",
     [tenant, facility, supplier, `BR-PO-${suffix}`],
   );
+  const browserTest = (
+    await pool.query(
+      "INSERT INTO lab_tests(facility_id,code,name,category) VALUES($1,$2,'Synthetic Browser Lab Test','Chemistry') RETURNING id",
+      [facility, `BR-LT-${suffix}`],
+    )
+  ).rows[0].id;
+  const [browserLabService, browserRadService] = (
+    await pool.query(
+      `INSERT INTO facility_services(tenant_id,facility_id,code,name,description,department,category,unit) VALUES
+     ($1,$2,$3,'Synthetic Browser Lab Service','Synthetic','Laboratory','LABORATORY','Test'),
+     ($1,$2,$4,'Synthetic Browser Imaging Service','Synthetic','Radiology','RADIOLOGY','Scan') RETURNING id`,
+      [tenant, facility, `BR-LAB-${suffix}`.toUpperCase(), `BR-RAD-${suffix}`.toUpperCase()],
+    )
+  ).rows.map((row) => row.id);
   await pool.query(
-    "INSERT INTO lab_orders(tenant_id,facility_id,patient_id,encounter_id,test_name,status,ordered_at) VALUES($1,$2,$3,$4,'Synthetic Browser Test','Ordered','2026-04-01 09:00')",
-    [tenant, facility, patient, encounter],
+    "INSERT INTO lab_orders(tenant_id,facility_id,patient_id,encounter_id,test_id,facility_service_id,test_name,status,ordered_at) VALUES($1,$2,$3,$4,$5,$6,'Synthetic Browser Test','Ordered','2026-04-01 09:00')",
+    [tenant, facility, patient, encounter, browserTest, browserLabService],
   );
   await pool.query(
     `INSERT INTO lab_orders(tenant_id,facility_id,patient_id,test_name,status,ordered_at)
@@ -216,8 +270,8 @@ try {
     [tenant, facility, patient],
   );
   await pool.query(
-    "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,modality,procedure_name,status,created_at) VALUES($1,$2,$3,'X-ray','Synthetic Browser Imaging','Requested','2026-04-01 10:00')",
-    [tenant, facility, patient],
+    "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,facility_service_id,modality,procedure_name,status,created_at) VALUES($1,$2,$3,$4,'X-ray','Synthetic Browser Imaging','Requested','2026-04-01 10:00')",
+    [tenant, facility, patient, browserRadService],
   );
   await pool.query(
     `INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,item_id,item_code_snapshot,item_name_snapshot,item_unit_snapshot,batch_number,quantity_dispensed,dispensed_by,dispensed_at)
@@ -389,6 +443,47 @@ try {
       name,
     );
   }
+  async function chooseOption(target, legend, text) {
+    await target.waitForFunction(
+      (group, value) => {
+        const fieldset = [...document.querySelectorAll('fieldset')].find((element) =>
+          element.querySelector('legend')?.textContent?.startsWith(group + ' ('),
+        );
+        return [...(fieldset?.querySelectorAll('label') ?? [])].some(
+          (element) =>
+            element.textContent.includes(value) &&
+            element.querySelector('input[type=radio],input[type=checkbox]'),
+        );
+      },
+      { timeout: 15000 },
+      legend,
+      text,
+    );
+    const handle = await target.evaluateHandle(
+      (group, value) => {
+        const fieldset = [...document.querySelectorAll('fieldset')].find((element) =>
+          element.querySelector('legend')?.textContent?.startsWith(group + ' ('),
+        );
+        return [...fieldset.querySelectorAll('label')]
+          .find(
+            (element) =>
+              element.textContent.includes(value) &&
+              element.querySelector('input[type=radio],input[type=checkbox]'),
+          )
+          .querySelector('input');
+      },
+      legend,
+      text,
+    );
+    const input = handle.asElement();
+    await input.focus();
+    await target.keyboard.press('Space');
+    check(
+      await target.evaluate((element) => element.checked, input),
+      `${legend}: keyboard selection failed`,
+    );
+    await handle.dispose();
+  }
   for (const [category, name, engine, expected] of cases) {
     console.log(`Testing ${engine}`);
     await selectReport(page, category, name);
@@ -420,24 +515,61 @@ try {
           });
       });
     }
-    const optionalFields = { 'Patient ID': patient, 'Ward ID': ward };
-    if (engine === 'outpatient-encounters') {
-      optionalFields['Department ID'] = department;
-      optionalFields['Staff user ID'] = userId;
+    // The list is visible before typing; native radios and checkboxes also work by keyboard.
+    const selections = [];
+    if (
+      [
+        'current-inpatients',
+        'outpatient-encounters',
+        'inpatient-admissions',
+        'inpatient-discharges',
+        'laboratory-orders',
+        'radiology-requests',
+        'pharmacy-dispensations',
+        'invoice-balances',
+        'patient-registrations',
+      ].includes(engine)
+    )
+      selections.push(['Patient', 'Synthetic BrowserPatient']);
+    if (['current-inpatients', 'inpatient-admissions', 'inpatient-discharges'].includes(engine)) {
+      selections.push(['Ward', 'Synthetic Browser Ward']);
+      selections.push(['Bed', engine === 'inpatient-discharges' ? 'Bed 1' : 'Bed 2']);
     }
-    if (engine === 'recorded-refunds') optionalFields['Staff user ID'] = userId;
-    for (const [label, value] of Object.entries(optionalFields)) {
-      const handle = await page.evaluateHandle(
-        (text) =>
-          [...document.querySelectorAll('form[aria-label="Report filters"] label')]
-            .find((node) => node.textContent.trim().startsWith(text))
-            ?.querySelector('input'),
-        label,
+    if (engine === 'outpatient-encounters')
+      selections.push(
+        ['Department', 'Synthetic Browser Department'],
+        ['Staff', 'Synthetic Browser Staff'],
       );
-      const input = handle.asElement();
-      if (input) await input.type(String(value));
-      await handle.dispose();
-    }
+    if (engine === 'recorded-refunds') selections.push(['Staff', 'Synthetic Browser Staff']);
+    if (
+      [
+        'inventory-category',
+        'inventory-store',
+        'inventory-expiry',
+        'pharmacy-dispensations',
+      ].includes(engine)
+    )
+      selections.push(['Item', 'Synthetic Browser Item']);
+    if (engine === 'purchase-orders')
+      selections.push(
+        ['Supplier', 'Synthetic Browser Supplier'],
+        ['Purchase order', `BR-PO-${suffix}`],
+      );
+    if (engine === 'laboratory-orders')
+      selections.push(
+        ['Laboratory test', 'Synthetic Browser Lab Test'],
+        ['Laboratory service', 'Synthetic Browser Lab Service'],
+      );
+    if (engine === 'radiology-requests')
+      selections.push(['Radiology service', 'Synthetic Browser Imaging Service']);
+    if (engine === 'invoice-balances') selections.push(['Invoice', `BR-INV-${suffix}`]);
+    if (engine === 'cashier-receipts') selections.push(['Receipt', `BR-REC-${suffix}`]);
+    if (['ledger-trial-movements', 'ledger-income', 'ledger-balance-sheet'].includes(engine))
+      selections.push([
+        'Account',
+        engine === 'ledger-income' ? 'Synthetic Browser Revenue' : 'Synthetic Browser Cash',
+      ]);
+    for (const [label, value] of selections) await chooseOption(page, label, value);
     const generated = page.waitForResponse(
       (response) =>
         response.url().endsWith(`/api/reporting/centre/${engine}/generate`) &&
@@ -487,7 +619,7 @@ try {
       {},
       expected,
     );
-    for (const format of ['pdf', 'xlsx']) {
+    for (const format of ['pdf', 'xlsx', 'csv']) {
       const exported = page.waitForResponse(
         (response) =>
           response.url().endsWith(`/api/reporting/centre/${engine}/export`) &&
@@ -498,7 +630,7 @@ try {
           [...document.querySelectorAll('main[aria-label="Selected report"] button')]
             .find((button) => button.textContent.trim() === label)
             ?.click(),
-        format === 'pdf' ? 'PDF' : 'Excel',
+        format === 'pdf' ? 'PDF' : format === 'xlsx' ? 'Excel' : 'CSV',
       );
       const response = await exported;
       check(response.status() === 200, `${engine}: ${format} returned ${response.status()}`);
@@ -507,7 +639,9 @@ try {
       check(
         format === 'pdf'
           ? bytes.subarray(0, 5).toString() === '%PDF-'
-          : bytes.subarray(0, 2).toString() === 'PK',
+          : format === 'xlsx'
+            ? bytes.subarray(0, 2).toString() === 'PK'
+            : bytes.toString('utf8').includes(expected),
         `${engine}: invalid ${format} bytes`,
       );
       await page.waitForFunction(
@@ -555,8 +689,162 @@ try {
       window.__syntheticPrintRequested = false;
       window.dispatchEvent(new Event('afterprint'));
     });
-    console.log(`${engine}: browser generation, PDF, XLSX and print PASS`);
+    console.log(`${engine}: browser selection, generation, PDF, XLSX, CSV and print PASS`);
   }
+  // An invoice is opened by choosing a real invoice number, never by entering its database ID.
+  await selectReport(page, 'printables', 'Invoices');
+  await chooseOption(page, 'Invoice', `BR-INV-${suffix}`);
+  const invoiceOpen = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/invoices/${invoice}/`) && response.request().method() === 'GET',
+  );
+  await page.evaluate(() =>
+    [...document.querySelectorAll('main button')]
+      .find((button) => button.textContent.trim() === 'Open invoice')
+      ?.click(),
+  );
+  check(
+    (await invoiceOpen).status() === 200,
+    'Invoice selection did not open the scoped document workflow.',
+  );
+  await page.waitForFunction(() =>
+    document
+      .querySelector('section[aria-label="Finalized invoice"]')
+      ?.textContent?.includes('This invoice is not finalized.'),
+  );
+  check(
+    await page.evaluate(() => !document.querySelector('input[inputmode="numeric"]')),
+    'Invoice workflow still asks for a numeric ID.',
+  );
+  console.log('Scoped invoice browse and unfinalized state: PASS');
+
+  // Finalize a separate complete synthetic invoice through the real authorized workflow;
+  // never manufacture a finalized snapshot or imply insurer approval.
+  check(authHeader.startsWith('Bearer '), 'Authenticated browser session was not observed.');
+  const finalized = await page.evaluate(
+    async ({ authorization, invoiceId }) => {
+      const response = await fetch(`/api/invoices/${invoiceId}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: authorization },
+        body: JSON.stringify({
+          insurerResponsibility: '0.00',
+          copayment: '0.00',
+          allocationBasis: 'Synthetic self-pay allocation, not insurer approval',
+        }),
+      });
+      const data = await response.json();
+      return { status: response.status, error: data.error, replay: data.idempotentReplay };
+    },
+    { authorization: authHeader, invoiceId: finalizedInvoice },
+  );
+  check(
+    finalized.status === 201 && finalized.replay === false,
+    `Synthetic finalization failed: ${finalized.status} ${finalized.error ?? ''}`,
+  );
+  await chooseOption(page, 'Invoice', `BR-FIN-${suffix}`);
+  const finalizedOpen = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/invoices/${finalizedInvoice}/finalization`) &&
+      response.request().method() === 'GET',
+  );
+  await page.evaluate(() =>
+    [...document.querySelectorAll('main button')]
+      .find((button) => button.textContent.trim() === 'Open invoice')
+      ?.click(),
+  );
+  check((await finalizedOpen).status() === 200, 'Finalized document could not be opened.');
+  await page.waitForFunction(
+    (number) =>
+      document.querySelector('.invoice-print-area')?.textContent?.includes(number) &&
+      document
+        .querySelector('.invoice-print-area')
+        ?.textContent?.includes('Synthetic consultation'),
+    {},
+    `BR-FIN-${suffix}`,
+  );
+  check(
+    await page.evaluate(
+      () =>
+        ![...document.querySelectorAll('section[aria-label="Finalized invoice"] button')].some(
+          (button) => button.textContent.trim() === 'Finalize invoice',
+        ),
+    ),
+    'Report-only invoice unexpectedly exposed a finalization action.',
+  );
+  const invoicePrint = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/invoices/${finalizedInvoice}/print-access`) &&
+      response.request().method() === 'POST',
+  );
+  await page.evaluate(() =>
+    [...document.querySelectorAll('section[aria-label="Finalized invoice"] button')]
+      .find((button) => button.textContent.trim() === 'Print finalized invoice')
+      ?.click(),
+  );
+  check((await invoicePrint).status() === 200, 'Finalized invoice print was not audited.');
+  await page.waitForFunction(
+    () =>
+      window.__syntheticPrintRequested === true &&
+      document.body.classList.contains('print-finalized-invoice'),
+  );
+  await page.emulateMediaType('print');
+  const invoicePdf = await page.pdf({ format: 'A4', printBackground: true });
+  const invoiceParser = new PDFParser(null, true);
+  const invoiceText = await new Promise((resolve, reject) => {
+    invoiceParser.on('pdfParser_dataError', reject);
+    invoiceParser.on('pdfParser_dataReady', () => resolve(invoiceParser.getRawTextContent()));
+    invoiceParser.parseBuffer(Buffer.from(invoicePdf));
+  });
+  invoiceParser.destroy();
+  check(
+    invoiceText.replace(/\s+/g, '').includes(`BR-FIN-${suffix}`.replace(/\s+/g, '')) &&
+      invoiceText.replace(/\s+/g, '').includes('Syntheticconsultation'),
+    'Finalized invoice print output is missing its recorded reference or service.',
+  );
+  await page.emulateMediaType('screen');
+  await page.evaluate(() => {
+    window.__syntheticPrintRequested = false;
+    window.dispatchEvent(new Event('afterprint'));
+  });
+  const printAudits = await pool.query(
+    `SELECT count(*)::int AS n FROM patient_record_access_logs
+     WHERE patient_id=$1 AND user_id=$2 AND facility_id=$3 AND record_type='FinalizedInvoice' AND record_id=$4 AND action='PRINT'`,
+    [patient, userId, facility, finalizedInvoice],
+  );
+  check(
+    printAudits.rows[0].n === 1,
+    'Finalized invoice print access was not recorded exactly once.',
+  );
+  console.log('Finalized invoice selection, immutable snapshot and audited print: PASS');
+
+  // A real patient option list has more than one bounded page.
+  await selectReport(page, 'records', 'Patient reports');
+  await page.waitForFunction(() => {
+    const fieldset = [...document.querySelectorAll('fieldset')].find((element) =>
+      element.querySelector('legend')?.textContent?.startsWith('Patient ('),
+    );
+    return (
+      fieldset?.textContent.includes('Options 1–20') &&
+      [...fieldset.querySelectorAll('button')].some(
+        (button) => button.textContent.trim() === 'Next' && !button.disabled,
+      )
+    );
+  });
+  await page.evaluate(() => {
+    const fieldset = [...document.querySelectorAll('fieldset')].find((element) =>
+      element.querySelector('legend')?.textContent?.startsWith('Patient ('),
+    );
+    [...fieldset.querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Next')
+      .click();
+  });
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('fieldset')]
+      .find((element) => element.querySelector('legend')?.textContent?.startsWith('Patient ('))
+      ?.textContent.includes('Options 21–24'),
+  );
+  console.log('Patient selector pagination: PASS');
+
   // Exercise real browser pagination, empty-state and API-validation paths on a separate dataset.
   await selectReport(page, 'departmental', 'Test reports');
   await page.waitForSelector('form[aria-label="Report filters"]');
@@ -724,8 +1012,13 @@ try {
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     'Tablet page has horizontal document overflow.',
   );
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+  check(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    'Mobile page has horizontal document overflow.',
+  );
   check(errors.length === 0, `Browser reported ${errors.length} uncaught page error(s).`);
-  console.log('Scope denial, tablet layout, and browser console: PASS');
+  console.log('Scope denial, tablet/mobile layout, and browser console: PASS');
 } finally {
   if (browser) await browser.close();
   if (server) server.kill('SIGTERM');

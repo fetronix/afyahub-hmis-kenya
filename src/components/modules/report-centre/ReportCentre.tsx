@@ -25,6 +25,8 @@ import { REPORT_ENGINES } from '../../../reporting/report-centre.types.ts';
 import { FinalizedInvoicePanel } from '../FinalizedInvoicePanel.tsx';
 import { ReportsModule } from '../ReportsModule.tsx';
 import { ReportWorkbench } from './ReportWorkbench.tsx';
+import { ReportSelectionPicker } from './ReportSelectionPicker.tsx';
+import type { ReportSelectionOption } from '../../../reporting/report-centre.types.ts';
 
 const icons: Record<string, React.ElementType> = {
   printables: FileText,
@@ -36,8 +38,8 @@ const icons: Record<string, React.ElementType> = {
   activity: Activity,
 };
 
-function InvoiceDocument() {
-  const [value, setValue] = useState('');
+function InvoiceDocument({ facilityId }: { facilityId: number }) {
+  const [selected, setSelected] = useState<ReportSelectionOption[]>([]);
   const [invoiceId, setInvoiceId] = useState<number | null>(null);
   const [error, setError] = useState('');
   return (
@@ -45,34 +47,36 @@ function InvoiceDocument() {
       <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4 text-sm text-teal-950">
         <p className="font-semibold">Existing finalized-invoice workflow</p>
         <p className="mt-1 text-xs leading-relaxed text-teal-800">
-          Open an invoice from the selected facility by its internal ID. The existing statement and
-          audited print are reused; template approval and a full document catalogue remain
-          outstanding.
+          Browse invoices recorded at the selected facility. The existing statement and audited
+          print are reused; template approval and a full document catalogue remain outstanding.
         </p>
       </div>
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          const number = Number(value);
-          if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(number)) {
+          if (!selected[0]) {
             setInvoiceId(null);
-            setError('Enter a valid invoice ID.');
+            setError('Select an invoice to open.');
             return;
           }
           setError('');
-          setInvoiceId(number);
+          setInvoiceId(selected[0].id);
         }}
-        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+        className="space-y-3"
       >
-        <label className="flex-1 text-xs font-semibold text-slate-600">
-          Invoice ID
-          <input
-            className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            inputMode="numeric"
-          />
-        </label>
+        <ReportSelectionPicker
+          reportId="invoice-document"
+          facilityId={facilityId}
+          kind="invoice"
+          label="Invoice"
+          value={selected}
+          required
+          onChange={(next) => {
+            setSelected(next);
+            setInvoiceId(null);
+            setError('');
+          }}
+        />
         <button
           type="submit"
           className="rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800"
@@ -425,7 +429,7 @@ export const ReportCentre: React.FC = () => {
                     />
                   ) : availability(selected.report).allowed &&
                     selected.report.workflow === 'invoice' ? (
-                    <InvoiceDocument key={scopeKey} />
+                    <InvoiceDocument key={scopeKey} facilityId={currentFacility.id} />
                   ) : (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                       <div className="flex items-center gap-2 font-semibold">

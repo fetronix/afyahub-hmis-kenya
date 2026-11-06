@@ -387,9 +387,9 @@ describeDb('Reporting Centre (synthetic PostgreSQL and real HTTP)', () => {
     expect(
       (await generate('current-inpatients', { patientId: patient, wardId: ward })).body.total,
     ).toBe(1);
-    expect((await generate('current-inpatients', { patientId: foreignPatient })).body.total).toBe(
-      0,
-    );
+    const foreignSelection = await generate('current-inpatients', { patientId: foreignPatient });
+    expect(foreignSelection.status).toBe(400);
+    expect(foreignSelection.body.error).toBe('INVALID_REPORT_SELECTION');
     const searchText = 'Gathũri';
     expect((await generate('current-inpatients', { search: searchText })).body.total).toBe(1);
     const access = await pool.query(

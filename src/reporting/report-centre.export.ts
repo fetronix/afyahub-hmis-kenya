@@ -18,7 +18,7 @@ function reportFont() {
 const MAX_TEXT_BYTES = 4 * 1024 * 1024;
 const MAX_CELL_LENGTH = 32_000;
 
-type Format = 'pdf' | 'xlsx';
+type Format = 'pdf' | 'xlsx' | 'csv';
 
 function content(result: ReportResult): {
   metadata: string[];
@@ -37,7 +37,7 @@ function content(result: ReportResult): {
         (summary) =>
           `${summary.label}: ${reportValue(summary.value, { key: 'summary', label: summary.label, kind: summary.kind }, result.currency)}`,
       ),
-      ...reportFilterSummary(result.filters, definition.dateLabel),
+      ...reportFilterSummary(result.filters, definition.dateLabel, result.filterLabels),
       ...result.notes.map((note) => `Note: ${note}`),
     ],
     headers: result.columns.map((column) => column.label),
@@ -135,17 +135,33 @@ async function excel(data: ReturnType<typeof content>): Promise<Buffer> {
   return writeXlsxFile(sheet, { sheet: 'Report' }).toBuffer();
 }
 
+/** CSV is text-only. Protect spreadsheet users from formula injection in source data. */
+function csv(data: ReturnType<typeof content>): Buffer {
+  const cell = (value: string) => {
+    const safe = /^[\t\r\n]/u.test(value) || /^\s*[=+@-]/u.test(value) ? `'${value}` : value;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  const rows = [...data.metadata.map((line) => [line]), [], data.headers, ...data.rows];
+  return Buffer.from(
+    `\ufeff${rows.map((row) => row.map(cell).join(',')).join('\r\n')}\r\n`,
+    'utf8',
+  );
+}
+
 /** Exports the full filtered set up to the service's enforced limit. */
 export async function exportReport(result: ReportResult, format: Format): Promise<ReportExport> {
   const data = content(result);
   validateText([...data.metadata, ...data.headers, ...data.rows.flat()], format);
-  const bytes = format === 'pdf' ? await pdf(result, data) : await excel(data);
+  const bytes =
+    format === 'pdf' ? await pdf(result, data) : format === 'xlsx' ? await excel(data) : csv(data);
   return {
     filename: `jalicare-${result.reportId}-${result.generatedAt.slice(0, 10)}.${format}`,
     contentType:
       format === 'pdf'
         ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        : format === 'xlsx'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/csv; charset=utf-8',
     base64: bytes.toString('base64'),
   };
 }

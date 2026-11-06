@@ -72,6 +72,7 @@ export function operationalQueryPlan(
       const q = p(textPattern(filters.search));
       where.push(`(i.item_code ILIKE ${q} OR i.name ILIKE ${q} OR b.batch_number ILIKE ${q})`);
     }
+    if (filters.itemIds) where.push(`i.id=ANY(${p(filters.itemIds)}::integer[])`);
     const expiry = isoDate('b.expiry_date');
     dateRange(expiry, 'batch(es) with missing or invalid recorded expiry dates');
     return finish({
@@ -107,6 +108,7 @@ export function operationalQueryPlan(
     if (id === 'inpatient-discharges') where.push('a.discharge_date IS NOT NULL');
     patientFilters('');
     if (filters.wardId) where.push(`w.id=${p(filters.wardId)}`);
+    if (filters.bedId) where.push(`b.id=${p(filters.bedId)}`);
     const date = isoDate(id === 'inpatient-admissions' ? 'a.admission_date' : 'a.discharge_date');
     dateRange(date, 'admission(s) with missing or invalid recorded dates');
     return finish({
@@ -123,6 +125,9 @@ export function operationalQueryPlan(
   if (id === 'laboratory-orders') {
     where.push('o.tenant_id=$1', 'o.facility_id=$2');
     patientFilters(` OR o.test_name ILIKE $${params.length + 1}`);
+    if (filters.labTestId) where.push(`o.test_id=${p(filters.labTestId)}`);
+    if (filters.serviceIds)
+      where.push(`o.facility_service_id=ANY(${p(filters.serviceIds)}::integer[])`);
     if (filters.status) where.push(`o.status=${p(filters.status)}`);
     dateRange('o.ordered_at::date');
     return finish({
@@ -137,6 +142,8 @@ export function operationalQueryPlan(
     where.push('r.tenant_id=$1', 'r.facility_id=$2');
     const next = params.length + 1;
     patientFilters(` OR r.procedure_name ILIKE $${next} OR r.modality ILIKE $${next}`);
+    if (filters.serviceIds)
+      where.push(`r.facility_service_id=ANY(${p(filters.serviceIds)}::integer[])`);
     if (filters.status) where.push(`r.status=${p(filters.status)}`);
     dateRange('r.created_at::date');
     return finish({
@@ -153,6 +160,7 @@ export function operationalQueryPlan(
     patientFilters(
       ` OR d.item_name_snapshot ILIKE $${next} OR d.item_code_snapshot ILIKE $${next} OR d.batch_number ILIKE $${next}`,
     );
+    if (filters.itemIds) where.push(`d.item_id=ANY(${p(filters.itemIds)}::integer[])`);
     dateRange('d.dispensed_at::date');
     return finish({
       from: 'pharmacy_dispensations d LEFT JOIN patients p ON p.id=d.patient_id AND p.tenant_id=d.tenant_id',
@@ -166,6 +174,8 @@ export function operationalQueryPlan(
     });
   }
   if (id === 'cashier-receipts') {
+    // Filter before grouping so receipt counts and monetary totals remain exact.
+    const selectedReceipt = filters.receiptId ? ` AND bp.id=${p(filters.receiptId)}` : '';
     where.push('d.tenant_id=$1', 'd.facility_id=$2');
     if (filters.search) {
       const q = p(textPattern(filters.search));
@@ -178,7 +188,7 @@ export function operationalQueryPlan(
         sum(bp.amount) FILTER (WHERE ${positiveMoney('bp.amount')}) AS known_amount,
         count(*) FILTER (WHERE NOT ${positiveMoney('bp.amount')})::integer AS invalid_count
         FROM billing_payments bp JOIN billing_invoices i ON i.id=bp.invoice_id
-        WHERE i.tenant_id=$1 AND i.facility_id=$2
+        WHERE i.tenant_id=$1 AND i.facility_id=$2${selectedReceipt}
         GROUP BY i.tenant_id, i.facility_id, bp.payment_date::date, bp.cashier_name, bp.payment_method) d`,
       select: `d.recorded_date::text AS "recordedDate", d.cashier_name AS cashier, d.payment_method AS method,
         d.receipt_count AS "receiptCount", d.known_amount::text AS amount, d.invalid_count AS "unknownAmounts"`,
@@ -219,6 +229,7 @@ export function operationalQueryPlan(
     );
     const next = params.length + 1;
     patientFilters(` OR i.invoice_number ILIKE $${next}`);
+    if (filters.invoiceId) where.push(`i.id=${p(filters.invoiceId)}`);
     dateRange('i.created_at::date');
     return finish({
       from: 'billing_invoices i LEFT JOIN patients p ON p.id=i.patient_id AND p.tenant_id=i.tenant_id',
