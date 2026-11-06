@@ -71,6 +71,77 @@ const VALID_ADAPTER_KEYS = new Set<PayerAdapterKey>([
   'manual',
 ]);
 
+const CLAIM_BOOLEAN_KEYS = new Set([
+  'requireMemberNumber',
+  'requirePolicyNumber',
+  'requireDiagnosis',
+  'requireInvoiceAttachment',
+  'requireSignedClaimForm',
+  'codingPolicyVerified',
+]);
+const PREAUTH_BOOLEAN_KEYS = new Set([
+  'requirePreauthForInpatient',
+  'requirePreauthForImaging',
+  'requirePreauthForSurgery',
+  'requirePreauthForOptical',
+  'requirePreauthForDental',
+]);
+
+/** Only documented local policy fields are accepted; historical unknown JSON is never returned. */
+function validatedRequirements(
+  value: unknown,
+  kind: 'claim' | 'preauth',
+  strict = false,
+): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    if (strict)
+      throw new PrivateInsuranceError(
+        'INVALID_PAYER_REQUIREMENTS',
+        'Requirements must be an object containing only supported policy fields.',
+        400,
+      );
+    return {};
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const booleans = kind === 'claim' ? CLAIM_BOOLEAN_KEYS : PREAUTH_BOOLEAN_KEYS;
+    const valid = booleans.has(key)
+      ? typeof item === 'boolean'
+      : kind === 'claim' && key === 'maxSubmissionDays'
+        ? Number.isInteger(item) && (item as number) >= 1 && (item as number) <= 3650
+        : kind === 'claim' && key === 'allowedCodingSystems'
+          ? Array.isArray(item) &&
+            item.length <= 20 &&
+            item.every(
+              (entry) => typeof entry === 'string' && /^[A-Za-z][A-Za-z0-9_.:-]{0,39}$/.test(entry),
+            )
+          : kind === 'claim' && key === 'codingPolicyEvidence'
+            ? typeof item === 'string' &&
+              item.trim().length > 0 &&
+              item.length <= 500 &&
+              !/secret|password|bearer|api.?key|access.?token|private.?key/i.test(item)
+            : kind === 'preauth' && key === 'amountThresholdKes'
+              ? item === null ||
+                (typeof item === 'number' &&
+                  Number.isFinite(item) &&
+                  item >= 0 &&
+                  item <= 1000000000 &&
+                  Math.abs(item * 100 - Math.round(item * 100)) < 0.00001)
+              : false;
+    if (!valid) {
+      if (strict)
+        throw new PrivateInsuranceError(
+          'INVALID_PAYER_REQUIREMENTS',
+          'Requirements contain an unsupported field or invalid value; do not enter credentials.',
+          400,
+        );
+      continue;
+    }
+    result[key] = item;
+  }
+  return result;
+}
+
 export function toPayerRuntimeConfig(
   row: typeof schema.insurancePayerConfigs.$inferSelect,
 ): PayerRuntimeConfig {
@@ -88,18 +159,21 @@ export function toPayerRuntimeConfig(
     connectionStatus: (row.connectionStatus as PayerConnectionStatus) || 'NOT_CONFIGURED',
     apiBaseUrl: row.apiBaseUrl ?? null,
     authMethod: (row.authMethod as PayerAuthMethod) || 'NONE',
-    // Old shared prefixes are retained as data but cannot read another facility's secrets.
-    secretEnvPrefix: row.secretEnvPrefix?.startsWith(
-      `PAYER_HUB_T${row.tenantId}_F${row.facilityId}_${row.payerCode}_`,
-    )
-      ? row.secretEnvPrefix
-      : null,
+    // Historical unbound references cannot establish the facility/environment
+    // or revocation state of a credential. No live payer transport is enabled.
+    secretEnvPrefix: null,
     providerIdentifier: row.providerIdentifier ?? null,
     defaultCodingSystem: row.defaultCodingSystem || 'ICD-10',
     requireVerifiedEligibility: row.requireVerifiedEligibility,
     eligibilityMaxAgeHours: row.eligibilityMaxAgeHours,
-    claimRequirements: (row.claimRequirements ?? {}) as PayerClaimRequirements,
-    preauthRequirements: (row.preauthRequirements ?? {}) as PayerPreauthRequirements,
+    claimRequirements: validatedRequirements(
+      row.claimRequirements,
+      'claim',
+    ) as PayerClaimRequirements,
+    preauthRequirements: validatedRequirements(
+      row.preauthRequirements,
+      'preauth',
+    ) as PayerPreauthRequirements,
     isActive: row.isActive,
   };
 }
@@ -150,16 +224,17 @@ export function serializePayerConfig(row: typeof schema.insurancePayerConfigs.$i
     eligibilityMaxAgeHours: runtime.eligibilityMaxAgeHours,
     supportedOperations: capabilities.filter((c) => c.readyInCurrentConfig).map((c) => c.operation),
     capabilities: capabilities.filter((c) => c.supportedByContract && c.readyInCurrentConfig),
-    claimRequirements: runtime.claimRequirements,
+    // Evidence is used internally but free-text historical evidence is not echoed.
+    claimRequirements: { ...runtime.claimRequirements, codingPolicyEvidence: undefined },
+    codingPolicyEvidenceRecorded: Boolean(runtime.claimRequirements.codingPolicyEvidence),
     preauthRequirements: runtime.preauthRequirements,
-    missingRequirements:
-      row.missingRequirements && row.missingRequirements.length > 0
-        ? row.missingRequirements
-        : onboardingChecklist,
+    missingRequirements: onboardingChecklist,
     onboardingChecklist,
     lastConnectionCheckAt: row.lastConnectionCheckAt,
-    lastConnectionSummary: row.lastConnectionSummary,
-    notes: row.notes,
+    lastConnectionSummary: row.lastConnectionCheckAt
+      ? 'Provider details are withheld; external authorization is not established.'
+      : null,
+    notes: null, // Historical free-text notes may contain secrets; do not echo them.
     updatedAt: row.updatedAt,
   };
 }
@@ -238,6 +313,16 @@ export async function getPayerRowScoped(params: {
 }
 
 function validatePayerConfigMutation(input: Record<string, unknown>) {
+  if (input.claimRequirements !== undefined)
+    validatedRequirements(input.claimRequirements, 'claim', true);
+  if (input.preauthRequirements !== undefined)
+    validatedRequirements(input.preauthRequirements, 'preauth', true);
+  if (input.notes != null && String(input.notes).trim())
+    throw new PrivateInsuranceError(
+      'UNSAFE_FREE_TEXT',
+      'Configuration notes are not accepted; do not enter credentials in policy fields.',
+      400,
+    );
   if (input.integrationType !== undefined) {
     if (!VALID_INTEGRATION_TYPES.has(input.integrationType as PayerIntegrationType)) {
       throw new PrivateInsuranceError(
@@ -427,14 +512,14 @@ export async function createPrivatePayer(params: {
           : 24,
       claimRequirements:
         params.input.claimRequirements && typeof params.input.claimRequirements === 'object'
-          ? (params.input.claimRequirements as Record<string, unknown>)
+          ? validatedRequirements(params.input.claimRequirements, 'claim', true)
           : { requireMemberNumber: true, requireDiagnosis: true },
       preauthRequirements:
         params.input.preauthRequirements && typeof params.input.preauthRequirements === 'object'
-          ? (params.input.preauthRequirements as Record<string, unknown>)
+          ? validatedRequirements(params.input.preauthRequirements, 'preauth', true)
           : {},
       isActive: params.input.isActive === true,
-      notes: typeof params.input.notes === 'string' ? params.input.notes : null,
+      notes: null,
       updatedByUserId: params.actorUserId,
     })
     .returning();
@@ -570,17 +655,14 @@ export async function updatePrivatePayer(params: {
   if (params.input.claimRequirements && typeof params.input.claimRequirements === 'object') {
     updates.claimRequirements = {
       ...(existing.claimRequirements ?? {}),
-      ...(params.input.claimRequirements as Record<string, unknown>),
+      ...validatedRequirements(params.input.claimRequirements, 'claim', true),
     };
   }
   if (params.input.preauthRequirements && typeof params.input.preauthRequirements === 'object') {
     updates.preauthRequirements = {
       ...(existing.preauthRequirements ?? {}),
-      ...(params.input.preauthRequirements as Record<string, unknown>),
+      ...validatedRequirements(params.input.preauthRequirements, 'preauth', true),
     };
-  }
-  if (params.input.notes !== undefined) {
-    updates.notes = typeof params.input.notes === 'string' ? params.input.notes : null;
   }
 
   const [updated] = await db
@@ -648,11 +730,41 @@ export async function getPayerCapabilitiesScoped(params: {
     adapterDisplayName: adapter.displayName,
     isGatewayAdapter: adapter.isGatewayAdapter,
     environment: runtime.environment,
-    connectionStatus: runtime.connectionStatus,
+    connectionStatus:
+      runtime.integrationType === 'MANUAL' || runtime.integrationType === 'FILE_EXPORT'
+        ? 'NOT_CONFIGURED'
+        : 'AWAITING_DOCUMENTATION',
     capabilities: adapter
       .getCapabilities(runtime, secrets)
       .filter((c) => c.supportedByContract && c.readyInCurrentConfig),
     onboardingChecklist: adapter.getRequiredOnboardingChecklist(runtime),
+  };
+}
+
+/** Read-only, scoped status. A GET must not silently perform an integration test. */
+export async function getPayerConnectionStatusSnapshot(params: {
+  tenantId: number;
+  facilityId: number;
+  payerId: number;
+}) {
+  const row = await getPayerRowScoped(params);
+  const serialized = serializePayerConfig(row);
+  return {
+    payerId: row.id,
+    payerCode: row.payerCode,
+    payerName: row.payerName,
+    integrationType: serialized.integrationType,
+    adapterKey: serialized.adapterKey,
+    isGatewayAdapter: serialized.isGatewayAdapter,
+    environment: serialized.environment,
+    verified: false,
+    connectionStatus: serialized.connectionStatus,
+    httpStatus: null,
+    durationMs: 0,
+    checkedAt: row.lastConnectionCheckAt,
+    summary:
+      'No provider connection was tested by this request; external authorization is not established.',
+    missingRequirements: serialized.onboardingChecklist,
   };
 }
 

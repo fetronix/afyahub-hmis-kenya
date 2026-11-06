@@ -233,7 +233,7 @@ export async function authorizePatientVisitConsent(
   if (!authRes.authorized) {
     throw new InsuranceDomainError(
       'SHA_CONSENT_AUTHORIZATION_FAILED',
-      authRes.errorMessage ?? 'Beneficiary consent authorization was declined or unreachable.',
+      'Beneficiary consent authorization was declined or unavailable.',
       authRes.source === 'UNAVAILABLE' ? 502 : 400,
       { authorizationId: saved.id, authStatus: authRes.authStatus },
     );
@@ -1036,7 +1036,7 @@ export async function submitPreauthorization(
     ) {
       throw new InsuranceDomainError(
         'SHA_PREAUTH_SUBMISSION_FAILED',
-        hieRes.rejectionReason ?? 'DHA HIE /preauths rejected or failed preauthorization request.',
+        'DHA HIE preauthorization was rejected or unavailable.',
         502,
         { correlationId: hieRes.correlationId, errors: hieRes.errors },
       );
@@ -1131,7 +1131,7 @@ export async function submitPreauthorization(
   if (!gatewayRes.accepted && gatewayRes.outcome !== 'REJECTED') {
     throw new InsuranceDomainError(
       'SHA_PREAUTH_SUBMISSION_FAILED',
-      gatewayRes.rejectionReason ?? 'SHA gateway could not accept the preauthorization bundle.',
+      'SHA gateway could not accept the preauthorization bundle.',
       502,
       {
         correlationId: gatewayRes.correlationId,

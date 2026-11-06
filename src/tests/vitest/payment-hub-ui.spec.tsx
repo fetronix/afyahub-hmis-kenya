@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   access: vi.fn(),
   credentials: vi.fn(),
   reencryptCredentials: vi.fn(),
+  revokeCredentials: vi.fn(),
   platform: vi.fn(),
   facilities: vi.fn(),
   transactions: vi.fn(),
@@ -27,7 +28,7 @@ import { PaymentTransactions } from '../../components/modules/payment-hub/Paymen
 
 beforeEach(() => {
   vi.resetAllMocks();
-  state.user = { isSuperAdmin: false, roles: [], permissions: [] };
+  state.user = { isSuperAdmin: false, roles: ['FACILITY_ADMIN'], permissions: [] };
   state.facility = {
     id: 11,
     name: 'Synthetic facility',
@@ -143,6 +144,115 @@ describe('payment hub administration views', () => {
       }),
     );
     expect(screen.getByLabelText('Consumer secret')).toHaveValue('');
+  });
+  it('offers audited revocation only to an authorized facility administrator', async () => {
+    state.user.permissions = ['payment_hub.catalogue.read', 'payment_hub.credentials.manage'];
+    api.catalogue.mockResolvedValue({
+      providers: [
+        {
+          id: 3,
+          code: 'MPESA_DARAJA',
+          displayName: 'M-Pesa',
+          documentationUrl: 'https://example.test',
+          description: 'Sandbox only',
+          isAllowed: true,
+          requestStatus: 'GRANTED',
+          availableEnvironments: ['SANDBOX'],
+          adapter: {
+            key: 'MPESA_DARAJA',
+            implementedCapabilities: ['HEALTH'],
+            note: 'Callback delivery disabled',
+          },
+          integrations: [
+            {
+              id: 4,
+              providerId: 3,
+              environment: 'SANDBOX',
+              enabledCapabilities: ['HEALTH'],
+              isEnabled: false,
+              isEffective: false,
+              connectionStatus: 'NOT_TESTED',
+              lastHealthAt: null,
+              lastErrorCode: null,
+              productionApproval: 'NOT_REQUESTED',
+              credentialsConfigured: true,
+              credentialEnvName: null,
+              credentialSource: 'VAULT',
+              credentialsExpiresAt: null,
+              credentialsExpired: false,
+              credentialsRevoked: false,
+              credentialsRevokedAt: null,
+              credentials: 'Configured (secret hidden)',
+              accounts: [],
+            },
+          ],
+        },
+      ],
+      notice: '',
+    });
+    api.revokeCredentials.mockResolvedValue({ revoked: true });
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      const view = render(<FacilityPaymentIntegrations />);
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Revoke stored credentials' }),
+      );
+      await waitFor(() => expect(api.revokeCredentials).toHaveBeenCalledWith(4, 11));
+      state.user.roles = ['CLERK'];
+      view.rerender(<FacilityPaymentIntegrations />);
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: 'Revoke stored credentials' }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        screen.queryByText('Add or replace Daraja sandbox credentials'),
+      ).not.toBeInTheDocument();
+    } finally {
+      confirmation.mockRestore();
+    }
+  });
+  it('keeps restricted credential security maintenance available without exposing activation', async () => {
+    state.user.permissions = ['payment_hub.catalogue.read', 'payment_hub.credentials.manage'];
+    api.catalogue.mockResolvedValue({
+      providers: [
+        {
+          id: 3,
+          code: 'MPESA_DARAJA',
+          displayName: 'M-Pesa',
+          documentationUrl: 'https://example.test',
+          description: 'Sandbox only',
+          isAllowed: false,
+          status: 'DISABLED',
+          requestable: false,
+          requestStatus: 'NOT_REQUESTED',
+          availableEnvironments: [],
+          adapter: { key: 'MPESA_DARAJA', implementedCapabilities: [], note: 'Unavailable' },
+          integrations: [
+            {
+              id: 4,
+              environment: 'SANDBOX',
+              enabledCapabilities: [],
+              credentialsConfigured: true,
+              credentialsRevoked: false,
+            },
+          ],
+        },
+      ],
+      notice: '',
+    });
+    api.revokeCredentials.mockResolvedValue({ revoked: true });
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      render(<FacilityPaymentIntegrations />);
+      expect(await screen.findByText(/provider disabled or unassigned/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /enable sandbox/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Request access' })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Revoke stored credentials' }));
+      await waitFor(() => expect(api.revokeCredentials).toHaveBeenCalledWith(4, 11));
+    } finally {
+      confirmation.mockRestore();
+    }
   });
   it('does not show stale transaction data after switching facilities, even when requests resolve out of order', async () => {
     state.user.permissions = ['payment_hub.transactions.read'];

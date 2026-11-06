@@ -741,6 +741,40 @@ describeDb(
         },
       });
       expect(britamClaim.status).toBe('DRAFT');
+      await pool.query(
+        "UPDATE private_insurance_claims SET gross_invoice_amount='NaN' WHERE id=$1",
+        [britamClaim.id],
+      );
+      await expect(
+        validatePrivateInsuranceClaimById({ ...actorA, claimId: britamClaim.id }),
+      ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+      expect(
+        (
+          await pool.query('SELECT status FROM private_insurance_claims WHERE id=$1', [
+            britamClaim.id,
+          ])
+        ).rows[0].status,
+      ).toBe('DRAFT');
+      await pool.query('UPDATE private_insurance_claims SET gross_invoice_amount=$2 WHERE id=$1', [
+        britamClaim.id,
+        britamClaim.grossInvoiceAmount,
+      ]);
+      const line = (
+        await pool.query(
+          'SELECT id,gross_amount FROM private_insurance_claim_lines WHERE claim_id=$1 ORDER BY id LIMIT 1',
+          [britamClaim.id],
+        )
+      ).rows[0];
+      await pool.query("UPDATE private_insurance_claim_lines SET gross_amount='NaN' WHERE id=$1", [
+        line.id,
+      ]);
+      await expect(
+        validatePrivateInsuranceClaimById({ ...actorA, claimId: britamClaim.id }),
+      ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+      await pool.query('UPDATE private_insurance_claim_lines SET gross_amount=$2 WHERE id=$1', [
+        line.id,
+        line.gross_amount,
+      ]);
       const validatedClaim = await validatePrivateInsuranceClaimById({
         ...actorA,
         claimId: britamClaim.id,
@@ -892,6 +926,29 @@ describeDb(
           totalRemittedAmount: '2500.00',
         },
       });
+
+      // PostgreSQL numeric supports NaN despite NOT NULL. Never allocate it as zero.
+      await pool.query("UPDATE insurance_remittances SET allocated_amount='NaN' WHERE id=$1", [
+        remittance.id,
+      ]);
+      await expect(
+        reconcilePrivateRemittance({
+          ...actorA,
+          remittanceId: remittance.id,
+          input: { allocations: [{ claimId: britamClaim.id, remittedAmount: '2500.00' }] },
+        }),
+      ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+      expect(
+        (
+          await pool.query(
+            'SELECT count(*)::int AS count FROM insurance_reconciliation_entries WHERE remittance_id=$1',
+            [remittance.id],
+          )
+        ).rows[0].count,
+      ).toBe(0);
+      await pool.query("UPDATE insurance_remittances SET allocated_amount='0.00' WHERE id=$1", [
+        remittance.id,
+      ]);
 
       await expect(
         reconcilePrivateRemittance({

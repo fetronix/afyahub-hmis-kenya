@@ -41,7 +41,9 @@ describe('payment provider capability boundaries', () => {
     expect(daraja.descriptor).toMatchObject({ sandboxOnly: true, productionReady: false });
     expect(daraja.descriptor.implementedCapabilities).toContain('PAYMENT_COLLECTION');
     expect(daraja.descriptor.implementedCapabilities).not.toContain('TRANSFER');
-    expect(daraja.notifications?.authenticity).toBe('UNVERIFIED_HINT');
+    expect(daraja.descriptor.implementedCapabilities).not.toContain('NOTIFICATIONS');
+    expect(daraja.notifications).toBeUndefined();
+    expect(daraja.descriptor.note).toMatch(/callback verification is unavailable/i);
   });
   it('allows finance tasks to be explicitly delegated but not provider administration, credentials or transfers', () => {
     expect(

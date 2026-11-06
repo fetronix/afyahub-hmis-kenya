@@ -104,6 +104,7 @@ describeDb('private payer configuration safety', () => {
       [{ adapterKey: 'UNKNOWN' }, 'INVALID_ADAPTER_KEY'],
       [{ apiBaseUrl: 'http://example.invalid' }, 'INSECURE_API_BASE_URL'],
       [{ apiKey: randomUUID() }, 'RAW_SECRET_FORBIDDEN'],
+      [{ notes: 'synthetic secret-bearing free text' }, 'UNSAFE_FREE_TEXT'],
       [{ payerCode: 'x' }, 'INVALID_PAYER_CODE'],
       [{ payerName: ' ' }, 'INVALID_PAYER_NAME'],
     ];
@@ -160,7 +161,6 @@ describeDb('private payer configuration safety', () => {
         eligibilityMaxAgeHours: 0,
         claimRequirements: { requireDiagnosis: true },
         preauthRequirements: { requirePreauthForImaging: true },
-        notes: 'synthetic only',
       },
     });
     expect(result).toMatchObject({
@@ -176,6 +176,7 @@ describeDb('private payer configuration safety', () => {
       providerIdentifier: 'synthetic-local-reference',
     });
     expect(result.preauthRequirements).toMatchObject({ requirePreauthForImaging: true });
+    expect(result.notes).toBeNull();
     const audit = await pool.query(
       "SELECT action FROM audit_logs WHERE tenant_id=$1 AND resource='insurance_payer_config' AND resource_id=$2 ORDER BY id",
       [tenantId, String(payerId)],

@@ -303,7 +303,6 @@ describeDb('payer policy guard classification and isolation', () => {
       ['POST', `/preauthorizations/${preauthId}/submit`, { submissionMode: 'ADAPTER' }],
       ['POST', `/claims/${privateClaimId}/submit`, { submissionMode: 'API' }],
       ['GET', `/claims/${privateClaimId}/status`, {}],
-      ['GET', `/payers/${payerId}/connection-status`, {}],
     ];
     for (const [method, path, body] of operations) {
       const result = await guard(privatePolicyGuard, method, path, { body });
@@ -312,6 +311,15 @@ describeDb('payer policy guard classification and isolation', () => {
       });
       expect(result.next).not.toHaveBeenCalled();
     }
+    // The legacy connection-status GET is now a read-only, non-probing snapshot;
+    // the HTTP/database suite also proves it performs no diagnostic or network write.
+    const snapshot = await guard(
+      privatePolicyGuard,
+      'GET',
+      `/payers/${payerId}/connection-status`,
+      { body: {} },
+    );
+    expect(snapshot.next).toHaveBeenCalledOnce();
   });
 
   it('guards legacy claim creation and submission without modifying the invoice or sending a claim', async () => {

@@ -55,6 +55,108 @@ function darajaEnvironmentCredentials(name: string): Record<string, string> {
 function credentialFingerprint(credentials: Record<string, string>): string {
   return privateDigest(`daraja-material:${JSON.stringify(credentials)}`);
 }
+/** Revoked material is represented only by keyed hashes inside the encrypted envelope. */
+function credentialPartFingerprints(credentials: Record<string, string>): string[] {
+  return [
+    privateDigest(`daraja-revoked-consumer-secret:${credentials.consumerSecret}`),
+    privateDigest(`daraja-revoked-passkey:${credentials.passkey}`),
+  ];
+}
+function storedFingerprints(value: string | undefined): string[] {
+  if (value === undefined) return []; // Legacy records predate component history.
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some((item) => typeof item !== 'string' || !/^[a-f0-9]{64}$/.test(item))
+    )
+      throw new Error('invalid');
+    return parsed;
+  } catch {
+    throw new PaymentHubError(
+      'SECRET_UNAVAILABLE',
+      'Stored credential history is inconsistent.',
+      503,
+    );
+  }
+}
+function referenceFingerprint(value: string): string {
+  return privateDigest(`revoked-reference:${value}`);
+}
+function assertStoredCredentialMetadata(
+  stored: Record<string, string>,
+  row: {
+    credential_source: string | null;
+    expires_at: Date | null;
+    revoked_at: Date | null;
+    provider_id: number;
+    environment: string;
+  },
+): void {
+  const expires = row.expires_at ? row.expires_at.toISOString() : '';
+  const revoked = row.revoked_at ? row.revoked_at.toISOString() : '';
+  const consistent =
+    stored._metadataVersion === '2'
+      ? stored._credentialSource === (row.credential_source ?? '') &&
+        stored._expiresAt === expires &&
+        stored._providerId === String(row.provider_id) &&
+        stored._environment === row.environment &&
+        stored._revokedAt === revoked
+      : stored._metadataVersion === '1'
+        ? stored._credentialSource === row.credential_source &&
+          stored._expiresAt === expires &&
+          !revoked
+        : row.credential_source === null && row.expires_at === null && !revoked;
+  if (!consistent)
+    throw new PaymentHubError(
+      'SECRET_UNAVAILABLE',
+      'Stored credential metadata is inconsistent.',
+      503,
+    );
+}
+/** Do not allow a facility's sandbox and production credentials to share secrets. */
+async function assertDistinctEnvironmentSecrets(
+  c: PoolClient,
+  scope: HubScope,
+  integrationId: number,
+  providerId: number,
+  environment: string,
+  incoming: string[],
+): Promise<void> {
+  const others = await c.query(
+    `SELECT s.encrypted_value,s.credential_source,s.expires_at,s.revoked_at,
+      i.id AS integration_id,i.provider_id,i.environment
+    FROM facility_payment_secrets s
+    JOIN facility_payment_integrations i ON i.id=s.integration_id AND i.tenant_id=s.tenant_id AND i.facility_id=s.facility_id
+    WHERE s.tenant_id=$1 AND s.facility_id=$2 AND i.provider_id=$3 AND i.environment<>$4 AND i.id<>$5
+    FOR SHARE OF s`,
+    [scope.tenantId, scope.facilityId, providerId, environment, integrationId],
+  );
+  for (const row of others.rows) {
+    const other = decryptFacilitySecret(
+      { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId: row.integration_id },
+      row.encrypted_value,
+    );
+    assertStoredCredentialMetadata(other, row);
+    let fingerprints: string[];
+    if (other.kind === 'DARAJA_VAULT_V1')
+      fingerprints = credentialPartFingerprints({ ...validateDarajaCredentials(other) });
+    else if (other._credentialPartFingerprints !== undefined)
+      fingerprints = storedFingerprints(other._credentialPartFingerprints);
+    else
+      throw new PaymentHubError(
+        'CREDENTIAL_ISOLATION_REVIEW_REQUIRED',
+        'Existing credentials cannot establish environment separation. Review and replace them securely.',
+        409,
+      );
+    if (incoming.some((fingerprint) => fingerprints.includes(fingerprint)))
+      throw new PaymentHubError(
+        'CREDENTIAL_ENVIRONMENT_REUSE',
+        'Sandbox and production must use different provider secrets.',
+        409,
+      );
+  }
+}
 function numberId(value: unknown): number {
   const n = Number(value);
   if (!Number.isSafeInteger(n) || n <= 0)
@@ -468,30 +570,35 @@ async function integration(c: PoolClient, scope: HubScope, id: number, lock = fa
     throw new PaymentHubError('INTEGRATION_NOT_FOUND', 'Integration not found.', 404);
   return r.rows[0];
 }
-export async function facilityCatalogue(scope: HubScope, includeAccounts: boolean) {
+export async function facilityCatalogue(
+  scope: HubScope,
+  includeAccounts: boolean,
+  includeCredentialMaintenance = false,
+) {
   const [providers, configs, policies, accounts] = await Promise.all([
     pool.query(
-      `SELECT p.id,p.code,p.display_name AS "displayName",p.adapter_key AS "adapterKey",p.documentation_url AS "documentationUrl",p.description,
-      COALESCE(a.is_allowed,false) AS "isAllowed",COALESCE(r.status,'NOT_REQUESTED') AS "requestStatus",
+      `SELECT p.id,p.code,p.display_name AS "displayName",p.adapter_key AS "adapterKey",p.documentation_url AS "documentationUrl",p.description,p.status,p.requestable,
+      COALESCE(a.is_allowed AND p.status='ACTIVE',false) AS "isAllowed",COALESCE(r.status,'NOT_REQUESTED') AS "requestStatus",
       COALESCE((SELECT array_agg(e.environment ORDER BY e.environment) FROM payment_provider_environments e WHERE e.provider_id=p.id AND e.is_available),'{}') AS "availableEnvironments"
       FROM payment_provider_definitions p LEFT JOIN payment_provider_assignments a ON a.provider_id=p.id AND a.tenant_id=$1 AND a.facility_id=$2
       LEFT JOIN payment_provider_access_requests r ON r.provider_id=p.id AND r.tenant_id=$1 AND r.facility_id=$2
-      WHERE p.status='ACTIVE' AND (p.requestable OR a.is_allowed) ORDER BY p.display_name`,
-      [scope.tenantId, scope.facilityId],
+      WHERE (p.status='ACTIVE' AND (p.requestable OR a.is_allowed)) OR ($3 AND (a.id IS NOT NULL OR EXISTS(SELECT 1 FROM facility_payment_integrations i WHERE i.provider_id=p.id AND i.tenant_id=$1 AND i.facility_id=$2))) ORDER BY p.display_name`,
+      [scope.tenantId, scope.facilityId, includeCredentialMaintenance],
     ),
     pool.query(
       `SELECT i.id,i.provider_id AS "providerId",i.environment,i.enabled_capabilities AS "enabledCapabilities",i.is_enabled AS "isEnabled",i.connection_status AS "connectionStatus",i.last_health_at AS "lastHealthAt",i.last_error_code AS "lastErrorCode",i.production_approval AS "productionApproval",
       CASE WHEN p.adapter_key='MPESA_DARAJA' THEN 'PAYMENT_HUB_T'||i.tenant_id||'_F'||i.facility_id||'_I'||i.id||'_'||i.environment ELSE NULL END AS "credentialEnvName",
-      (i.is_enabled AND i.connection_status='HEALTHY' AND s.integration_id IS NOT NULL AND (s.expires_at IS NULL OR s.expires_at > now())
+      (p.status='ACTIVE' AND COALESCE(a.is_allowed,false) AND i.is_enabled AND i.connection_status='HEALTHY' AND s.integration_id IS NOT NULL AND (s.expires_at IS NULL OR s.expires_at > now()) AND s.revoked_at IS NULL
        AND EXISTS(SELECT 1 FROM payment_provider_environments e WHERE e.provider_id=i.provider_id AND e.environment=i.environment AND e.is_available)
        AND NOT EXISTS(SELECT 1 FROM unnest(i.enabled_capabilities) AS selected(capability) LEFT JOIN payment_provider_capability_policies pc ON pc.provider_id=i.provider_id AND pc.capability=selected.capability WHERE COALESCE(pc.is_allowed,false)=false)) AS "isEffective",
       (s.integration_id IS NOT NULL) AS "credentialsConfigured",s.credential_source AS "credentialSource",
-      s.expires_at AS "credentialsExpiresAt",COALESCE(s.expires_at <= now(),false) AS "credentialsExpired"
-      FROM facility_payment_integrations i JOIN payment_provider_definitions p ON p.id=i.provider_id AND p.status='ACTIVE'
-      JOIN payment_provider_assignments a ON a.provider_id=i.provider_id AND a.tenant_id=i.tenant_id AND a.facility_id=i.facility_id AND a.is_allowed
+      s.expires_at AS "credentialsExpiresAt",COALESCE(s.expires_at <= now(),false) AS "credentialsExpired",
+      (s.revoked_at IS NOT NULL) AS "credentialsRevoked",s.revoked_at AS "credentialsRevokedAt"
+      FROM facility_payment_integrations i JOIN payment_provider_definitions p ON p.id=i.provider_id
+      LEFT JOIN payment_provider_assignments a ON a.provider_id=i.provider_id AND a.tenant_id=i.tenant_id AND a.facility_id=i.facility_id
       LEFT JOIN facility_payment_secrets s ON s.integration_id=i.id AND s.tenant_id=i.tenant_id AND s.facility_id=i.facility_id
-      WHERE i.tenant_id=$1 AND i.facility_id=$2 ORDER BY i.id`,
-      [scope.tenantId, scope.facilityId],
+      WHERE i.tenant_id=$1 AND i.facility_id=$2 AND ((p.status='ACTIVE' AND a.is_allowed) OR $3) ORDER BY i.id`,
+      [scope.tenantId, scope.facilityId, includeCredentialMaintenance],
     ),
     pool.query(
       'SELECT provider_id AS "providerId",capability FROM payment_provider_capability_policies WHERE is_allowed',
@@ -525,6 +632,11 @@ export async function facilityCatalogue(scope: HubScope, includeAccounts: boolea
           ...i,
           isEffective:
             i.isEffective &&
+            i.enabledCapabilities.every((capability: string) =>
+              providerBoundary(p.adapterKey).descriptor.implementedCapabilities.includes(
+                capability as Capability,
+              ),
+            ) &&
             (i.environment !== 'PRODUCTION' ||
               providerBoundary(p.adapterKey).descriptor.productionReady),
           credentials: i.credentialsConfigured ? CREDENTIAL_MASK : 'Not configured',
@@ -600,11 +712,15 @@ export async function saveCredentials(
 ) {
   try {
     return await tx(async (c) => {
+      // Serialize credential changes for both environments of one facility.
+      await c.query('SELECT pg_advisory_xact_lock($1,$2)', [728681, scope.facilityId]);
       const i = await integration(c, scope, integrationId, true);
       await allowedProvider(c, scope, i.provider_id, i.environment);
       const expiresAt = credentialExpiry(input.expiresAt);
       let values: Record<string, string>;
       let identityHash: string | null = null;
+      let materialFingerprint: string | null = null;
+      let partFingerprints: string[] = [];
       let source: 'VAULT' | 'ENVIRONMENT' | 'REFERENCE';
       if (i.adapter_key === 'MPESA_DARAJA') {
         let credentials: Record<string, string>;
@@ -670,6 +786,18 @@ export async function saveCredentials(
         // A provider consumer credential cannot silently be shared by facilities
         // or environments, including across the old and new storage formats.
         identityHash = privateDigest(`daraja-consumer:${credentials.consumerKey}`);
+        materialFingerprint = credentialFingerprint(credentials);
+        partFingerprints = credentialPartFingerprints(credentials);
+        await assertDistinctEnvironmentSecrets(
+          c,
+          scope,
+          integrationId,
+          i.provider_id,
+          i.environment,
+          partFingerprints,
+        );
+        if (source === 'ENVIRONMENT')
+          values._credentialPartFingerprints = JSON.stringify(partFingerprints);
       } else {
         // No bank-specific credential format has been verified. Record only an
         // opaque facility reference; bank adapters never resolve or use it.
@@ -691,13 +819,67 @@ export async function saveCredentials(
         values = { secretReference: ref };
         source = 'REFERENCE';
       }
+      const prior = await c.query(
+        `SELECT encrypted_value,credential_source,expires_at,revoked_at FROM facility_payment_secrets
+         WHERE integration_id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE`,
+        [integrationId, scope.tenantId, scope.facilityId],
+      );
+      const revokedFingerprints = new Set<string>();
+      if (prior.rowCount) {
+        const previous = decryptFacilitySecret(
+          { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
+          prior.rows[0].encrypted_value,
+        );
+        assertStoredCredentialMetadata(previous, {
+          ...prior.rows[0],
+          provider_id: i.provider_id,
+          environment: i.environment,
+        });
+        for (const fingerprint of storedFingerprints(previous._revokedCredentialFingerprints))
+          revokedFingerprints.add(fingerprint);
+        if (prior.rows[0].revoked_at) {
+          if (previous.kind === 'DARAJA_VAULT_V1') {
+            const oldCredentials = { ...validateDarajaCredentials(previous) };
+            revokedFingerprints.add(credentialFingerprint(oldCredentials));
+            for (const fingerprint of credentialPartFingerprints(oldCredentials))
+              revokedFingerprints.add(fingerprint);
+          } else if (previous.valueFingerprint) {
+            if (!/^[a-f0-9]{64}$/.test(previous.valueFingerprint))
+              throw new PaymentHubError(
+                'SECRET_UNAVAILABLE',
+                'Stored credential history is inconsistent.',
+                503,
+              );
+            revokedFingerprints.add(previous.valueFingerprint);
+            for (const fingerprint of storedFingerprints(previous._credentialPartFingerprints))
+              revokedFingerprints.add(fingerprint);
+          } else if (previous.secretReference) {
+            revokedFingerprints.add(referenceFingerprint(previous.secretReference));
+          }
+        }
+      }
+      const incomingFingerprints = materialFingerprint
+        ? [materialFingerprint, ...partFingerprints]
+        : source === 'REFERENCE'
+          ? [referenceFingerprint(values.secretReference)]
+          : [];
+      if (incomingFingerprints.some((fingerprint) => revokedFingerprints.has(fingerprint)))
+        throw new PaymentHubError(
+          'REVOKED_CREDENTIAL_REUSE',
+          'Previously revoked credentials cannot be reused; provide a different replacement.',
+          409,
+        );
       // Keep non-secret metadata queryable while authenticating a copy inside
       // the ciphertext, so changing the source/expiry cannot extend use.
       values = {
         ...values,
-        _metadataVersion: '1',
+        _metadataVersion: '2',
         _credentialSource: source,
         _expiresAt: expiresAt ?? '',
+        _providerId: String(i.provider_id),
+        _environment: i.environment,
+        _revokedAt: '',
+        _revokedCredentialFingerprints: JSON.stringify([...revokedFingerprints].sort()),
       };
       const encrypted = encryptFacilitySecret(
         { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
@@ -705,7 +887,7 @@ export async function saveCredentials(
       );
       await c.query(
         `INSERT INTO facility_payment_secrets(integration_id,tenant_id,facility_id,encrypted_value,credential_identity_hash,credential_source,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)
-        ON CONFLICT(integration_id) DO UPDATE SET encrypted_value=EXCLUDED.encrypted_value,credential_identity_hash=EXCLUDED.credential_identity_hash,credential_source=EXCLUDED.credential_source,expires_at=EXCLUDED.expires_at,updated_at=now()`,
+        ON CONFLICT(integration_id) DO UPDATE SET encrypted_value=EXCLUDED.encrypted_value,credential_identity_hash=EXCLUDED.credential_identity_hash,credential_source=EXCLUDED.credential_source,expires_at=EXCLUDED.expires_at,revoked_at=NULL,updated_at=now()`,
         [
           integrationId,
           scope.tenantId,
@@ -739,6 +921,63 @@ export async function saveCredentials(
       );
     throw error;
   }
+}
+
+/** Revoke future use without revealing or deleting the encrypted credential. */
+export async function revokeCredentials(scope: HubScope, integrationId: number) {
+  return tx(async (c) => {
+    const i = await integration(c, scope, integrationId, true);
+    const result = await c.query(
+      `SELECT encrypted_value,credential_source,expires_at,revoked_at FROM facility_payment_secrets
+       WHERE integration_id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE`,
+      [integrationId, scope.tenantId, scope.facilityId],
+    );
+    if (!result.rowCount)
+      throw new PaymentHubError(
+        'CREDENTIALS_REQUIRED',
+        'Facility-owned credentials are required.',
+        409,
+      );
+    const row = result.rows[0];
+    if (row.revoked_at) return { revoked: true, alreadyRevoked: true };
+    const stored = decryptFacilitySecret(
+      { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
+      row.encrypted_value,
+    );
+    const time = (await c.query('SELECT clock_timestamp() AS revoked_at')).rows[0]
+      .revoked_at as Date;
+    const encrypted = encryptFacilitySecret(
+      { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
+      {
+        ...stored,
+        _metadataVersion: '2',
+        _credentialSource: row.credential_source ?? '',
+        _expiresAt: row.expires_at ? row.expires_at.toISOString() : '',
+        _providerId: String(i.provider_id),
+        _environment: i.environment,
+        _revokedAt: time.toISOString(),
+      },
+    );
+    await c.query(
+      `UPDATE facility_payment_secrets SET encrypted_value=$4,revoked_at=$5,updated_at=now()
+       WHERE integration_id=$1 AND tenant_id=$2 AND facility_id=$3`,
+      [integrationId, scope.tenantId, scope.facilityId, encrypted, time],
+    );
+    await c.query(
+      `UPDATE facility_payment_integrations SET is_enabled=false,connection_status='NOT_TESTED',last_health_at=NULL,last_error_code=NULL,
+       production_approval='NOT_REQUESTED',approval_reference=NULL,approved_by_user_id=NULL,approved_at=NULL,revision=revision+1,updated_at=now() WHERE id=$1`,
+      [integrationId],
+    );
+    await audit(c, scope.actorUserId, scope, 'REVOKE', 'credentials', integrationId, {
+      revoked: true,
+    });
+    return {
+      revoked: true,
+      alreadyRevoked: false,
+      message:
+        'Credentials revoked for future use. Requests already in flight require provider-side review.',
+    };
+  });
 }
 
 /** Re-encrypt one existing facility secret without returning or changing its contents. */
@@ -836,7 +1075,7 @@ export async function addFacilityAccount(
 }
 async function secretFor(c: PoolClient, scope: HubScope, integrationId: number) {
   const result = await c.query(
-    `SELECT s.encrypted_value,s.credential_source,s.expires_at,(s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,i.environment,p.adapter_key FROM facility_payment_secrets s
+    `SELECT s.encrypted_value,s.credential_source,s.expires_at,s.revoked_at,(s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,i.environment,i.provider_id,p.adapter_key FROM facility_payment_secrets s
     JOIN facility_payment_integrations i ON i.id=s.integration_id AND i.tenant_id=s.tenant_id AND i.facility_id=s.facility_id
     JOIN payment_provider_definitions p ON p.id=i.provider_id
     WHERE s.integration_id=$1 AND s.tenant_id=$2 AND s.facility_id=$3`,
@@ -849,6 +1088,12 @@ async function secretFor(c: PoolClient, scope: HubScope, integrationId: number) 
       409,
     );
   const row = result.rows[0];
+  if (row.revoked_at)
+    throw new PaymentHubError(
+      'CREDENTIALS_REVOKED',
+      'Credentials are revoked. Replace them and repeat the check.',
+      409,
+    );
   if (row.expired)
     throw new PaymentHubError(
       'CREDENTIALS_EXPIRED',
@@ -859,17 +1104,7 @@ async function secretFor(c: PoolClient, scope: HubScope, integrationId: number) 
     { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
     row.encrypted_value,
   );
-  if (
-    (stored._metadataVersion === '1' &&
-      (stored._credentialSource !== row.credential_source ||
-        stored._expiresAt !== (row.expires_at ? row.expires_at.toISOString() : ''))) ||
-    (stored._metadataVersion !== '1' && row.credential_source !== null)
-  )
-    throw new PaymentHubError(
-      'SECRET_UNAVAILABLE',
-      'Stored credential metadata is inconsistent.',
-      503,
-    );
+  assertStoredCredentialMetadata(stored, row);
   if (row.adapter_key !== 'MPESA_DARAJA') return stored; // Bank references are not resolved.
   if (row.credential_source === 'VAULT') {
     if (stored.kind !== 'DARAJA_VAULT_V1' || row.environment !== 'SANDBOX')
@@ -990,6 +1225,17 @@ export async function setIntegrationEnabled(
         throw new PaymentHubError(
           'CAPABILITY_UNAVAILABLE',
           'No implemented capability has been selected.',
+          409,
+        );
+      if (
+        i.enabled_capabilities.some(
+          (capability: string) =>
+            !descriptor.implementedCapabilities.includes(capability as Capability),
+        )
+      )
+        throw new PaymentHubError(
+          'CAPABILITY_UNAVAILABLE',
+          'Update the selected capabilities before enabling this integration.',
           409,
         );
       await requireAllowedCapabilities(c, i.provider_id, i.enabled_capabilities);
@@ -1169,7 +1415,7 @@ export async function listFacilityTransactions(scope: HubScope) {
     notifications: events.rows,
     reconciliations: reconciliations.rows,
     notice:
-      'A request or unverified notification is not payment. A sandbox confirmation never settles a real invoice.',
+      'Callback delivery is disabled until provider authentication is verified. Historical notifications are untrusted; sandbox status never settles an invoice.',
   };
 }
 export async function initiateCollection(scope: HubScope, input: Record<string, unknown>) {
@@ -1236,6 +1482,19 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
         'PRODUCTION_BLOCKED',
         'Only the reviewed sandbox path is available.',
         403,
+      );
+    if (
+      i.enabled_capabilities.some(
+        (capability: string) =>
+          !providerBoundary(i.adapter_key).descriptor.implementedCapabilities.includes(
+            capability as Capability,
+          ),
+      )
+    )
+      throw new PaymentHubError(
+        'CAPABILITY_UNAVAILABLE',
+        'Update the selected capabilities before starting a request.',
+        409,
       );
     await requireAllowedCapabilities(c, i.provider_id, i.enabled_capabilities);
     const f = await c.query(`SELECT enabled_modules FROM facilities WHERE id=$1 AND tenant_id=$2`, [
@@ -1472,63 +1731,6 @@ export async function queryTransaction(scope: HubScope, transactionId: number) {
   });
 }
 
-/** A callback is an untrusted hint, not an authenticated provider event. */
-export async function recordDarajaCallback(body: unknown) {
-  const root =
-    body && typeof body === 'object' && !Array.isArray(body)
-      ? (body as Record<string, unknown>)
-      : null;
-  const b =
-    root?.Body && typeof root.Body === 'object' && !Array.isArray(root.Body)
-      ? (root.Body as Record<string, unknown>)
-      : null;
-  const result =
-    b?.stkCallback && typeof b.stkCallback === 'object' && !Array.isArray(b.stkCallback)
-      ? (b.stkCallback as Record<string, unknown>)
-      : null;
-  const checkout = result?.CheckoutRequestID;
-  const resultCode =
-    typeof result?.ResultCode === 'number' || typeof result?.ResultCode === 'string'
-      ? String(result.ResultCode)
-      : '';
-  if (
-    typeof checkout !== 'string' ||
-    !/^[A-Za-z0-9_-]{1,128}$/.test(checkout) ||
-    !/^\d{1,8}$/.test(resultCode)
-  )
-    throw new PaymentHubError('INVALID_CALLBACK', 'Invalid callback.', 400);
-  // Only the stable outcome is deduplicated. Reordered fields, added metadata
-  // and replayed payloads cannot generate fresh events for the same outcome.
-  const hash = privateDigest(`${checkout}:${resultCode}`);
-  await tx(async (c) => {
-    const t = await c.query(
-      `SELECT t.id,t.tenant_id,t.facility_id FROM payment_hub_transactions t JOIN facility_payment_integrations i ON i.id=t.integration_id AND i.tenant_id=t.tenant_id AND i.facility_id=t.facility_id JOIN payment_provider_definitions p ON p.id=i.provider_id
-      WHERE t.provider_request_id=$1 AND p.adapter_key='MPESA_DARAJA' FOR UPDATE OF t`,
-      [checkout],
-    );
-    if (!t.rows.length) return; // Acknowledge unknown identifiers without exposing existence.
-    const count = await c.query(
-      'SELECT count(*)::int AS count FROM payment_hub_webhook_events WHERE transaction_id=$1',
-      [t.rows[0].id],
-    );
-    if (count.rows[0].count >= 20) return; // Bound untrusted event storage per transaction.
-    const r = await c.query(
-      `INSERT INTO payment_hub_webhook_events(transaction_id,tenant_id,facility_id,event_hash,result_code) VALUES($1,$2,$3,$4,$5) ON CONFLICT(transaction_id,event_hash) DO NOTHING RETURNING id`,
-      [t.rows[0].id, t.rows[0].tenant_id, t.rows[0].facility_id, hash, resultCode],
-    );
-    if (r.rows.length)
-      await c.query(
-        `INSERT INTO audit_logs(tenant_id,facility_id,action,resource,resource_id,details) VALUES($1,$2,'RECEIVE','payment_hub.webhook',$3,$4)`,
-        [
-          t.rows[0].tenant_id,
-          t.rows[0].facility_id,
-          String(r.rows[0].id),
-          JSON.stringify({ verification: 'UNVERIFIED' }),
-        ],
-      );
-  });
-  return { received: true };
-}
 export async function reconcileReceipt(
   scope: HubScope,
   transactionId: number,

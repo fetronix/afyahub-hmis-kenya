@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**PARTIALLY IMPLEMENTED; not production-ready.** The new facility marketplace brings the existing payment/banking and payer catalogues together. It adds a write-only API backed by AES-256-GCM storage for the existing **Daraja sandbox** adapter, credential-expiry enforcement, per-record key re-encryption, a sanitized scoped configuration audit, and a manual-only Jubilee listing. It does not make the existing application a complete universal live integration platform. No provider granted an API contract or credentials for this work; no live or real sandbox provider transaction was performed.
+**PARTIALLY IMPLEMENTED; not production-ready.** See the [security follow-up and 14-requirement matrix](integration-security-follow-up-2026-11-06.md) for subsequent fixes and outstanding limitations. The new facility marketplace brings the existing payment/banking and payer catalogues together. It adds a write-only API backed by AES-256-GCM storage for the existing **Daraja sandbox** adapter, credential-expiry enforcement, per-record key re-encryption, a sanitized scoped configuration audit, and a manual-only Jubilee listing. It does not make the existing application a complete universal live integration platform. No provider granted an API contract or credentials for this work; no live or real sandbox provider transaction was performed.
 
 Provider activation, live callback authentication, verified eligibility, claim submission, settlement, bank feeds and financial postings must not be inferred from a catalogue listing, saved credentials, an OAuth token, a manual payer workflow or a recorded approval. No patient, invoice, claim, account or historical transaction was fabricated or rewritten for this change.
 
@@ -10,7 +10,7 @@ Provider activation, live callback authentication, verified eligibility, claim s
 
 | Existing surface | Evidence and current role |
 | --- | --- |
-| `src/payment-hub/{service,routes,secrets,webhook.routes}.ts`; `adapters/{contracts,index,daraja,banks}.ts` | Facility/provider/environment assignment, policies, audit, OAuth/STK/status sandbox boundary, transaction references, sandbox unverified callback hints and manual receipt-link review. Production adapters remain blocked. |
+| `src/payment-hub/{service,routes,secrets,webhook.routes}.ts`; `adapters/{contracts,index,daraja,banks}.ts` | Facility/provider/environment assignment, policies, audit, OAuth/STK/status sandbox boundary, transaction references, disabled callback handling and manual receipt-link review. Production adapters remain blocked. |
 | `src/insurance/hub`, `src/insurance/core`, `src/insurance/payers` | Facility assignment and workflow policy; manual/private payer workflows and separate unsupported electronic boundaries. Payer secrets still use facility/environment-specific server references, **not** the new Daraja vault. |
 | `src/integrations/{sha,dha}`, `src/insurance/{eclaims,eligibility,claims,remittance}` | Separate SHA/DHA draft and manual workflows; live facility-isolated transport and authenticated callbacks remain blocked. SHA, AfyaLink and DHA are not interchangeable products. |
 | `src/accounting/bank-integration.service.ts`, `src/routes/accounting.routes.ts`, `src/db/schema/banking.ts` | Facility bank accounts, CSV statement import and manually reviewed matching. This is not an API feed, transfer or proof of bank payment. |
@@ -23,7 +23,7 @@ Provider activation, live callback authentication, verified eligibility, claim s
 
 | Provider/interface | Official information | Implemented boundary and remaining evidence |
 | --- | --- | --- |
-| Safaricom M-Pesa / Daraja | [Developer portal](https://developer.safaricom.co.ke/) and [Safaricom Node reference](https://github.com/safaricom/mpesa-node-library) | Sandbox OAuth, STK initiation and conservative status query exist. Automated tests mock transport; the public notification is an **unverified hint**. Production, authenticated callback, automatic receipt/settlement and GL posting remain blocked. Confirm current documentation, facility credentials, callback security and provider approval. |
+| Safaricom M-Pesa / Daraja | [Developer portal](https://developer.safaricom.co.ke/) and [Safaricom Node reference](https://github.com/safaricom/mpesa-node-library) | Sandbox OAuth, STK initiation and conservative status query exist. Automated tests mock transport; the public callback is disabled and returns **503**. Production, authenticated callback, automatic receipt/settlement and GL posting remain blocked. Confirm current documentation, facility credentials, callback security and provider approval. |
 | KCB / BUNI | [KCB BUNI](https://buni.kcbgroup.com/) | Separate adapter boundary; no implemented bank HTTP operations. Contract, facility-specific permissions and sandbox evidence are outstanding. |
 | Equity | [Equity Online for Business](https://equitygroupholdings.com/ke/pay-send-money/sme-small-business/payment-services/equity-online-for-business/) | Business product advertises API/host-to-host features; no facility contract or bank adapter operations are established here. |
 | NCBA | [NCBA](https://ncbagroup.com/) | Separate unavailable boundary; obtain official technical contract, authentication, permissions and sandbox details. |
@@ -49,12 +49,13 @@ No undocumented endpoint, bank password, customer PIN, OTP, provider success, cl
 
 1. A truly common adapter/registry, generic encrypted vault for banks and payers, environment switching for every domain, automated capability-to-module dispatch, token lifecycle management, comprehensive monitoring and bulk key rotation remain unimplemented.
 2. Equity, KCB, NCBA, Britam, PACIS, Jubilee, SHA, AfyaLink and DHA require official versioned contracts, facility authorization and reviewed implementations before electronic operations can be enabled. No automated transfers or web scraping are provided.
-3. Authenticated, provider-specific callbacks, durable retry/failure monitoring and their facility correlation require documented provider security schemes and authorized tests. Daraja callback events remain untrusted and never settle an invoice. SHA callback transport remains blocked.
-4. Insurance eligibility, benefit estimates, preauthorization, claim approval, remittance advice, bank settlement and cash receipt remain separate states. The existing private remittance service contains legacy `parseMoneyToCents(...) ?? 0` branches for some claimed/approved/paid values; review missing-data semantics before claiming complete or production-safe reconciliation. No affected historical record was rewritten here.
+3. Authenticated, provider-specific callbacks, durable retry/failure monitoring and their facility correlation require documented provider security schemes and authorized tests. Daraja and SHA callbacks return 503 and never apply an event. Historical events remain unverified.
+4. Insurance eligibility, benefit estimates, preauthorization, claim approval, remittance advice, bank settlement and cash receipt remain separate states. The affected remittance and claim-validation paths now reject missing or invalid recorded amounts; other legacy estimates and free-text fields still require review before claiming complete or production-safe reconciliation. No affected historical record was rewritten here.
 5. Approved account mappings, correct ledger automation, bank/receipt matching, provider authorization, independent security review, TLS/proxy configuration, recovery testing, operational monitoring and real-facility UAT are prerequisites for production. No production database or provider was accessed.
-6. The original request visible in this session ends mid-security requirement; omitted requirements cannot be assumed to have been implemented.
 
 ## Migration and verification
+
+The results in this section describe the **prior implementation**, before the security follow-up. See the linked follow-up report for the newer migration, tests and callback behaviour.
 
 Migration `0067_facility_integration_vault` is additive: nullable source/expiry columns on `facility_payment_secrets`, plus a conflict-safe manual Jubilee registry seed and policies only when that seed is newly inserted. It neither assigns providers to facilities nor changes existing clinical, financial or audit history. Existing rows retain unknown metadata rather than invented expiry/source values.
 
@@ -69,7 +70,9 @@ Migration `0067_facility_integration_vault` is additive: nullable source/expiry 
 - GitHub CI for implementation commit `50d5e83cac05631e5c9542cbd7ee8ab9d620a26f`: [run 42192698230](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/42192698230) passed all seven jobs, including the real fresh-checkout Docker bootstrap, PostgreSQL coverage and migration jobs. GitHub reported action-runtime deprecation and runner-image notices.
 - **Not performed:** real provider sandbox/UAT, production database migration/deployment, live certificate/proxy assessment, independent security review, authenticated provider callbacks, external settlement and live bank/payer integration.
 
-## Exact changed-file inventory
+## Prior implementation changed-file inventory
+
+The security follow-up inventory is recorded separately.
 
 - `.env.example`
 - `docs/integrations/payer-integration-hub.md`

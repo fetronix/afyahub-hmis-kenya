@@ -91,15 +91,14 @@ export class DarajaSandboxAdapter
 {
   readonly descriptor = {
     key: 'MPESA_DARAJA',
-    implementedCapabilities: ['PAYMENT_COLLECTION', 'PAYMENT_STATUS', 'NOTIFICATIONS', 'HEALTH'],
+    implementedCapabilities: ['PAYMENT_COLLECTION', 'PAYMENT_STATUS', 'HEALTH'],
     sandboxOnly: true,
     productionReady: false,
-    note: 'Sandbox reference implementation; callback is an unverified hint. Production use is blocked.',
+    note: 'Sandbox OAuth and status only; callback verification is unavailable and deliveries are rejected. Production is blocked.',
   } as const;
   readonly collection = this;
   readonly status = this;
   readonly health = this;
-  readonly notifications = { authenticity: 'UNVERIFIED_HINT' } as const;
   constructor(
     private readonly credentials: DarajaCredentials,
     private readonly fetcher: typeof fetch = fetch,

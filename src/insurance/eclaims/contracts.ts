@@ -171,6 +171,18 @@ export function requireMoneyCents(
   return cents;
 }
 
+/** Stored amounts must not be silently coerced to a zero-valued claim. */
+export function requireRecordedMoneyCents(value: string | number | null | undefined): number {
+  const cents = parseMoneyToCents(value);
+  if (cents === null || cents < 0)
+    throw new InsuranceDomainError(
+      'FINANCIAL_REVIEW_REQUIRED',
+      'Stored financial amounts are missing or invalid; review the record before continuing.',
+      409,
+    );
+  return cents;
+}
+
 export function multiplyMoneyCents(unitCents: number, quantity: number): number {
   if (!Number.isSafeInteger(quantity) || quantity <= 0) {
     throw new InsuranceDomainError(

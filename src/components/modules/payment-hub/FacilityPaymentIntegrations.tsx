@@ -18,14 +18,15 @@ export const FacilityPaymentIntegrations: React.FC<{
 }> = ({ category = 'all' }) => {
   const { currentFacility, authenticatedUser } = useHmis();
   const permissions = new Set(authenticatedUser?.permissions ?? []);
-  const canView = permissions.has('payment_hub.catalogue.read'),
-    canManage = permissions.has('payment_hub.facility.manage'),
-    canCredentials = permissions.has('payment_hub.credentials.manage'),
-    canRequestProduction = permissions.has('payment_hub.production.request'),
-    canAccounts = permissions.has('payment_hub.accounts.read');
   const isSuper = Boolean(
     authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
+  const isFacilityAdmin = Boolean(!isSuper && authenticatedUser?.roles?.includes('FACILITY_ADMIN'));
+  const canView = permissions.has('payment_hub.catalogue.read'),
+    canManage = isFacilityAdmin && permissions.has('payment_hub.facility.manage'),
+    canCredentials = isFacilityAdmin && permissions.has('payment_hub.credentials.manage'),
+    canRequestProduction = isFacilityAdmin && permissions.has('payment_hub.production.request'),
+    canAccounts = permissions.has('payment_hub.accounts.read');
   const [scopedData, setScopedData] = useState<{
     facilityId: number;
     data: { providers: FacilityProvider[]; notice: string };
@@ -184,20 +185,66 @@ function Provider({
       <p className="text-sm text-slate-600">{p.description}</p>
       <p className="text-xs text-amber-800">{p.adapter.note}</p>
       {!p.isAllowed ? (
-        canManage && (
-          <button
-            disabled={busy || p.requestStatus === 'PENDING'}
-            className={button}
-            onClick={() =>
-              void run(
-                () => paymentHubApi.access(p.id, facilityId),
-                'Access request sent to the platform administrator.',
-              )
-            }
-          >
-            {p.requestStatus === 'PENDING' ? 'Request pending' : 'Request access'}
-          </button>
-        )
+        <>
+          {canManage && p.status !== 'DISABLED' && p.requestable !== false && (
+            <button
+              disabled={busy || p.requestStatus === 'PENDING'}
+              className={button}
+              onClick={() =>
+                void run(
+                  () => paymentHubApi.access(p.id, facilityId),
+                  'Access request sent to the platform administrator.',
+                )
+              }
+            >
+              {p.requestStatus === 'PENDING' ? 'Request pending' : 'Request access'}
+            </button>
+          )}
+          {canCredentials &&
+            p.integrations
+              .filter((i) => i.credentialsConfigured)
+              .map((i) => (
+                <div key={i.id} className="rounded border border-amber-200 bg-amber-50 p-3 text-xs">
+                  <p>
+                    {i.environment} · configuration #{i.id} · provider disabled or unassigned ·{' '}
+                    {i.credentialsRevoked ? 'credentials revoked' : 'credentials retained'}
+                  </p>
+                  {!i.credentialsRevoked && (
+                    <button
+                      type="button"
+                      className={secondary}
+                      disabled={busy}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            'Revoke these credentials and disable this integration? Provider requests already in flight must be reviewed separately.',
+                          )
+                        )
+                          void run(
+                            () => paymentHubApi.revokeCredentials(i.id, facilityId),
+                            'Credentials revoked and integration disabled. Replace them before testing again.',
+                          );
+                      }}
+                    >
+                      Revoke stored credentials
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={secondary}
+                    disabled={busy}
+                    onClick={() =>
+                      void run(
+                        () => paymentHubApi.reencryptCredentials(i.id, facilityId),
+                        'Credentials re-encrypted with the active server vault key. Provider credentials were not changed.',
+                      )
+                    }
+                  >
+                    Re-encrypt with active vault key
+                  </button>
+                </div>
+              ))}
+        </>
       ) : (
         <>
           {canManage && (
@@ -251,7 +298,7 @@ function Provider({
                           )
                         }
                       />
-                      {cap === 'NOTIFICATIONS' ? 'NOTIFICATIONS (unverified hints)' : cap}
+                      {cap}
                     </label>
                   ))
                 )}
@@ -340,11 +387,13 @@ function Integration({
             ? i.environment === 'SANDBOX'
               ? 'Sandbox enabled'
               : 'Enabled'
-            : i.credentialsExpired
-              ? 'Credentials expired'
-              : i.isEnabled
-                ? 'Restricted or incomplete'
-                : 'Disconnected / disabled'}
+            : i.credentialsRevoked
+              ? 'Credentials revoked'
+              : i.credentialsExpired
+                ? 'Credentials expired'
+                : i.isEnabled
+                  ? 'Restricted or incomplete'
+                  : 'Disconnected / disabled'}
         </span>
         <span className="text-xs text-slate-600">
           Health: {i.connectionStatus.replaceAll('_', ' ')}
@@ -357,8 +406,11 @@ function Integration({
         {i.credentialsExpiresAt
           ? new Date(i.credentialsExpiresAt).toLocaleString()
           : 'not recorded'}
-        {i.credentialsExpired ? ' (expired)' : ''} · Production review:{' '}
-        {i.productionApproval.replaceAll('_', ' ')}
+        {i.credentialsExpired ? ' (expired)' : ''}
+        {i.credentialsRevoked
+          ? ` · Revoked: ${i.credentialsRevokedAt ? new Date(i.credentialsRevokedAt).toLocaleString() : 'yes'}`
+          : ''}{' '}
+        · Production review: {i.productionApproval.replaceAll('_', ' ')}
         {i.lastErrorCode ? ` · ${i.lastErrorCode}` : ''}
       </p>
       <p className="text-xs text-slate-500">
@@ -385,6 +437,27 @@ function Integration({
       )}
       {canCredentials && provider.code === 'MPESA_DARAJA' && i.environment === 'SANDBOX' && (
         <DarajaVaultForm integrationId={i.id} facilityId={facilityId} busy={busy} run={run} />
+      )}
+      {canCredentials && i.credentialsConfigured && !i.credentialsRevoked && (
+        <button
+          type="button"
+          className={secondary}
+          disabled={busy}
+          onClick={() => {
+            if (
+              !window.confirm(
+                'Revoke these credentials and disable this integration? Provider requests already in flight must be reviewed separately.',
+              )
+            )
+              return;
+            void run(
+              () => paymentHubApi.revokeCredentials(i.id, facilityId),
+              'Credentials revoked and integration disabled. Replace them before testing again.',
+            );
+          }}
+        >
+          Revoke stored credentials
+        </button>
       )}
       {canCredentials && i.credentialsConfigured && (
         <button
@@ -516,7 +589,7 @@ function Integration({
           i.environment === 'SANDBOX' &&
           provider.adapter.implementedCapabilities.includes('HEALTH') && (
             <button
-              disabled={busy || !i.credentialsConfigured}
+              disabled={busy || !i.credentialsConfigured || i.credentialsRevoked}
               className={secondary}
               onClick={() =>
                 void run(async () => {
@@ -532,7 +605,9 @@ function Integration({
         {canManage && (
           <button
             disabled={
-              busy || (!i.isEnabled && provider.adapter.implementedCapabilities.length === 0)
+              busy ||
+              (!i.isEnabled &&
+                (i.credentialsRevoked || provider.adapter.implementedCapabilities.length === 0))
             }
             className={secondary}
             onClick={() =>

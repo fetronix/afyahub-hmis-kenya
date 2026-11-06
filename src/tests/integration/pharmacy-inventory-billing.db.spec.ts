@@ -404,7 +404,13 @@ describeDb('Inventory-priced pharmacy billing (synthetic PostgreSQL)', () => {
       expect(first.status).toBe(201);
       const recorded = (
         await pool.query(
-          'SELECT dispensing_timezone_snapshot,dispensing_date_snapshot::text,dispensed_at FROM pharmacy_dispensations WHERE id=$1',
+          // The new dispense path writes a UTC instant into this legacy
+          // timestamp-without-time-zone column. Read that instant explicitly
+          // as UTC; node-postgres otherwise parses the wall time in process.TZ.
+          // This does not reinterpret or rewrite historical dispensations.
+          `SELECT dispensing_timezone_snapshot,dispensing_date_snapshot::text,
+             dispensed_at AT TIME ZONE 'UTC' AS dispensed_at
+           FROM pharmacy_dispensations WHERE id=$1`,
           [first.body.id],
         )
       ).rows[0];

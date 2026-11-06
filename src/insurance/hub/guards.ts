@@ -241,8 +241,7 @@ export async function privatePolicyGuard(req: AuthRequest, res: Response, next: 
       (/^\/claims\/\d+\/(submit|resubmit)$/.test(path) &&
         !!mode &&
         !['MANUAL', 'MANUAL_DISPATCH', 'FILE_EXPORT'].includes(mode)) ||
-      /^\/claims\/\d+\/status$/.test(path) ||
-      (method === 'GET' && /^\/payers\/\d+\/connection-status$/.test(path));
+      /^\/claims\/\d+\/status$/.test(path);
     await assertPayerAccess(scope, payer, workflow, { configuration, external });
     return next();
   } catch (error) {

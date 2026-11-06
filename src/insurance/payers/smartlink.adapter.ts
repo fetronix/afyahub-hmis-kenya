@@ -355,34 +355,46 @@ export class SmartLinkGatewayAdapter implements PayerIntegrationAdapter {
       };
     }
 
-    if (this.transport?.probeHealth) {
-      const res = await this.transport.probeHealth(config);
-      const ok = res.httpStatus >= 200 && res.httpStatus < 300;
+    if (!this.transport?.probeHealth) {
       return {
-        verified: ok,
-        connectionStatus: ok
-          ? config.environment === 'PRODUCTION'
-            ? 'PRODUCTION_AUTHORIZED'
-            : 'CONNECTION_VERIFIED'
-          : 'DEGRADED',
-        httpStatus: res.httpStatus,
-        durationMs: res.durationMs,
-        summary: ok
-          ? 'SmartLink third-party gateway connection verified.'
-          : `SmartLink gateway probe returned HTTP ${res.httpStatus}.`,
-        missingRequirements: [],
+        verified: false,
+        connectionStatus:
+          config.environment === 'SANDBOX' ? 'SANDBOX_CONFIGURED' : 'AWAITING_DOCUMENTATION',
+        httpStatus: null,
+        durationMs: 0,
+        summary: 'No documented provider health probe is available.',
+        missingRequirements: ['A provider-approved health and authorization contract is required.'],
       };
     }
 
-    return {
-      verified: true,
-      connectionStatus:
-        config.environment === 'PRODUCTION' ? 'PRODUCTION_AUTHORIZED' : 'CONNECTION_VERIFIED',
-      httpStatus: 200,
-      durationMs: 1,
-      summary: 'SmartLink gateway transport configured and verified.',
-      missingRequirements: [],
-    };
+    try {
+      const res = await this.transport.probeHealth(config);
+      const reachable = res.httpStatus >= 200 && res.httpStatus < 300;
+      return {
+        // HTTP reachability is not evidence of facility/provider authorization.
+        verified: false,
+        connectionStatus: reachable
+          ? config.environment === 'SANDBOX'
+            ? 'SANDBOX_CONFIGURED'
+            : 'AWAITING_DOCUMENTATION'
+          : 'DEGRADED',
+        httpStatus: res.httpStatus,
+        durationMs: res.durationMs,
+        summary: reachable
+          ? 'Gateway responded; provider authorization has not been verified.'
+          : 'Gateway probe failed; provider authorization has not been verified.',
+        missingRequirements: ['A provider-approved health and authorization contract is required.'],
+      };
+    } catch {
+      return {
+        verified: false,
+        connectionStatus: 'DEGRADED',
+        httpStatus: null,
+        durationMs: 0,
+        summary: 'Gateway probe failed; provider details were withheld.',
+        missingRequirements: ['A provider-approved health and authorization contract is required.'],
+      };
+    }
   }
 
   async verifyEligibility(

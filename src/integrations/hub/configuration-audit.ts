@@ -25,6 +25,7 @@ export async function listConfigurationAudit(
           'payer_hub.assignment',
           'payer_hub.facility_config',
           'payer_hub.environment',
+          'payer_hub.connection',
           'payer_hub.production_approval',
         ];
   const result = await pool.query(

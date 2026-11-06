@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { PaymentHubError } from './errors.ts';
-import { recordDarajaCallback } from './service.ts';
+
 const router = Router();
 router.use(
   rateLimit({
@@ -11,17 +10,13 @@ router.use(
     legacyHeaders: false,
   }),
 );
-router.post('/mpesa', async (req, res) => {
+
+// The existing Daraja reference does not establish a facility-specific,
+// provider-authenticated callback contract. A guessed signature or a shared
+// bearer secret would falsely imply verification. Reject every delivery until
+// a reviewed provider-specific verifier and replay/transaction checks exist.
+router.post('/mpesa', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  try {
-    await recordDarajaCallback(req.body);
-    res.status(200).json({ received: true });
-  } catch (error) {
-    if (error instanceof PaymentHubError && error.code === 'INVALID_CALLBACK') {
-      res.status(400).json({ received: false });
-      return;
-    }
-    res.status(503).json({ received: false });
-  }
+  res.status(503).json({ received: false, error: 'CALLBACK_VERIFICATION_UNAVAILABLE' });
 });
 export default router;

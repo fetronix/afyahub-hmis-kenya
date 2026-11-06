@@ -84,6 +84,12 @@ export async function upsertFacilityPayerConfig(
   input: UpsertPayerConfigInput,
 ) {
   const facility = await loadScopedFacility(scope);
+  if (input.notes?.trim())
+    throw new InsuranceDomainError(
+      'UNSAFE_FREE_TEXT',
+      'Configuration notes are not accepted; do not enter credentials in policy fields.',
+      400,
+    );
   const payerCode = (input.payerCode ?? 'SHA').trim().toUpperCase();
   if (!payerCode) {
     throw new InsuranceDomainError('INVALID_PAYER_CODE', 'payerCode is required.', 400);
@@ -134,7 +140,7 @@ export async function upsertFacilityPayerConfig(
           input.requireVerifiedEligibility ?? existing.requireVerifiedEligibility,
         eligibilityMaxAgeHours: maxAge,
         isActive: input.isActive ?? existing.isActive,
-        notes: input.notes !== undefined ? input.notes?.trim() || null : existing.notes,
+        notes: existing.notes, // Preserve historical values without echoing or editing them.
         updatedByUserId: scope.userId,
         updatedAt: new Date(),
       })
@@ -156,7 +162,7 @@ export async function upsertFacilityPayerConfig(
         requireVerifiedEligibility: input.requireVerifiedEligibility ?? true,
         eligibilityMaxAgeHours: maxAge,
         isActive: input.isActive ?? false,
-        notes: input.notes?.trim() || null,
+        notes: null,
         updatedByUserId: scope.userId,
       })
       .returning();
@@ -168,9 +174,9 @@ export async function upsertFacilityPayerConfig(
     resourceId: saved.id,
     summary: {
       payerCode,
-      facilityRegistryCode: saved.facilityRegistryCode,
-      accreditationLevel: saved.accreditationLevel,
-      contractedSchemes: saved.contractedSchemes,
+      facilityRegistryRecorded: Boolean(saved.facilityRegistryCode),
+      accreditationRecorded: Boolean(saved.accreditationLevel),
+      schemesCount: saved.contractedSchemes?.length ?? 0,
       requireVerifiedEligibility: saved.requireVerifiedEligibility,
     },
   });
@@ -347,7 +353,7 @@ export async function upsertServiceCodeMapping(
         effectiveFrom: input.effectiveFrom || null,
         effectiveTo: input.effectiveTo || null,
         isActive: input.isActive ?? existing.isActive,
-        notes: input.notes?.trim() || null,
+        notes: input.notes !== undefined ? input.notes?.trim() || null : existing.notes,
         updatedByUserId: scope.userId,
         updatedAt: new Date(),
       })

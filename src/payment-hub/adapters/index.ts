@@ -24,17 +24,11 @@ export function providerBoundary(
         return {
           descriptor: {
             key,
-            implementedCapabilities: [
-              'PAYMENT_COLLECTION',
-              'PAYMENT_STATUS',
-              'NOTIFICATIONS',
-              'HEALTH',
-            ],
+            implementedCapabilities: ['PAYMENT_COLLECTION', 'PAYMENT_STATUS', 'HEALTH'],
             sandboxOnly: true,
             productionReady: false,
-            note: 'Sandbox reference implementation; callback is an unverified hint. Production use is blocked.',
+            note: 'Sandbox OAuth and status only; callback verification is unavailable and deliveries are rejected. Production is blocked.',
           },
-          notifications: { authenticity: 'UNVERIFIED_HINT' },
         };
       return new DarajaSandboxAdapter(validateDarajaCredentials(credentials));
     default:

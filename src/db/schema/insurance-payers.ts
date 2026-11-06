@@ -143,6 +143,8 @@ export const insurancePayerEnvironmentConfigs = pgTable('insurance_payer_environ
   providerIdentifier: text('provider_identifier'),
   updatedByUserId: integer('updated_by_user_id').references(() => users.id),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  credentialGeneration: integer('credential_generation').notNull().default(1),
 });
 
 export const insurancePayerAccessRequests = pgTable('insurance_payer_access_requests', {

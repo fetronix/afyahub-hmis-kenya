@@ -9,6 +9,7 @@ import { resolveFacilityScope, ScopeAccessError } from '../../auth/scope.service
 import { getFacilityByIdScoped } from '../../db/queries.ts';
 import * as hub from './service.ts';
 import { listConfigurationAudit } from '../../integrations/hub/configuration-audit.ts';
+import { requireFacilityIntegrationAdministrator } from '../../integrations/hub/facility-authorization.ts';
 
 const router = Router();
 router.use((_req, res, next) => {
@@ -21,7 +22,7 @@ function body(req: AuthRequest): Record<string, unknown> {
 async function facilityScope(req: AuthRequest): Promise<hub.PayerScope> {
   const context = req.authContext;
   // Platform provider administration never confers facility clinical access.
-  if (!context || context.isSuperAdmin)
+  if (!context || context.isSuperAdmin || !context.tenantId || !context.facilityId)
     throw new ScopeAccessError('A facility-scoped account is required.');
   const queryId = req.query.facilityId;
   const bodyId = body(req).facilityId;
@@ -164,6 +165,7 @@ router.get(
 router.get(
   '/facility/configuration-audit',
   requirePermission('payer_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.json({
       success: true,
@@ -174,6 +176,7 @@ router.get(
 router.post(
   '/facility/payers/:id/access-request',
   requirePermission('payer_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.status(201).json({
       success: true,
@@ -184,6 +187,7 @@ router.post(
 router.put(
   '/facility/payers/:id/activation',
   requirePermission('payer_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.json({
       success: true,
@@ -198,6 +202,7 @@ router.put(
 router.put(
   '/facility/payers/:id/environments/:environment',
   requirePermission('payer_hub.credentials.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.json({
       success: true,
@@ -211,8 +216,24 @@ router.put(
   }),
 );
 router.post(
+  '/facility/payers/:id/environments/:environment/revoke',
+  requirePermission('payer_hub.credentials.manage'),
+  requireFacilityIntegrationAdministrator,
+  wrap(async (req, res) => {
+    res.json({
+      success: true,
+      ...(await hub.revokeEnvironmentReference(
+        await facilityScope(req),
+        Number(req.params.id),
+        req.params.environment,
+      )),
+    });
+  }),
+);
+router.post(
   '/facility/payers/:id/production-request',
   requirePermission('payer_hub.production.request'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.json({
       success: true,
@@ -223,20 +244,16 @@ router.post(
 router.post(
   '/facility/payers/:id/connection-test',
   requirePermission('payer_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     const scope = await facilityScope(req);
     const catalogue = await hub.facilityCatalogue(scope);
     const payer = catalogue.providers.find((p) => p.id === Number(req.params.id));
     if (!payer) throw new hub.PayerHubError('PAYER_NOT_FOUND', 'Payer not found.', 404);
     await hub.assertPayerAccess(scope, payer.code, 'CONFIGURE', { configuration: true });
-    // No authorized sandbox transport is available; a presence check is not a test.
     res.json({
       success: true,
-      tested: false,
-      verified: false,
-      status: 'NOT_TESTED',
-      message:
-        'No authorized, facility-isolated sandbox test is implemented. No external request was sent.',
+      ...(await hub.recordUnavailableConnectionTest(scope, Number(req.params.id))),
     });
   }),
 );

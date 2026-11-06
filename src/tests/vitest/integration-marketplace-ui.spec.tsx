@@ -17,6 +17,7 @@ const payer = vi.hoisted(() => ({
   catalogue: vi.fn(),
   requestAccess: vi.fn(),
   configurationAudit: vi.fn(),
+  revoke: vi.fn(),
 }));
 vi.mock('../../context/HmisContext.tsx', () => ({
   useHmis: () => ({ currentFacility: state.facility, authenticatedUser: state.user }),
@@ -60,7 +61,7 @@ const payerProvider = (id: number, type: string, name: string) => ({
 });
 beforeEach(() => {
   vi.resetAllMocks();
-  state.user = { isSuperAdmin: false, roles: [], permissions: [] };
+  state.user = { isSuperAdmin: false, roles: ['FACILITY_ADMIN'], permissions: [] };
   state.facility = { id: 11, name: 'Synthetic A' };
   payment.catalogue.mockResolvedValue({
     providers: [payProvider(1, 'MPESA_DARAJA', 'M-Pesa'), payProvider(2, 'KCB_BUNI', 'KCB')],
@@ -146,6 +147,58 @@ describe('facility integration marketplace', () => {
     );
     expect(screen.queryByText(/payment_hub.credentials #9/)).not.toBeInTheDocument();
     expect(payer.configurationAudit).not.toHaveBeenCalled();
+  });
+  it('does not expose administration to non-admins even when delegated management permissions are present', async () => {
+    state.user.roles = ['CLERK'];
+    state.user.permissions = [
+      'payment_hub.catalogue.read',
+      'payment_hub.facility.manage',
+      'payment_hub.credentials.manage',
+      'payer_hub.catalogue.read',
+      'payer_hub.facility.manage',
+      'payer_hub.credentials.manage',
+    ];
+    render(<FacilityIntegrationHub />);
+    expect(await screen.findByText('M-Pesa')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request access' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'View configuration activity' }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Private insurance' }));
+    expect(await screen.findByText('Britam')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request payer access' })).not.toBeInTheDocument();
+  });
+  it('allows a facility administrator to revoke a retained payer reference after unassignment', async () => {
+    state.user.permissions = ['payer_hub.catalogue.read', 'payer_hub.credentials.manage'];
+    const response = await payer.catalogue();
+    response.providers[0].environments = [
+      {
+        environment: 'SANDBOX',
+        secretReference: 'PAYER_SYNTHETIC',
+        revoked: false,
+        configured: true,
+        connectionVerified: false,
+      },
+    ];
+    payer.catalogue.mockResolvedValue(response);
+    payer.revoke.mockResolvedValue({ revoked: true });
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      render(<FacilityIntegrationHub />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Private insurance' }));
+      expect(
+        await screen.findByText(/retained references can still be revoked/i),
+      ).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Revoke sandbox reference' }));
+      await waitFor(() =>
+        expect(payer.revoke).toHaveBeenCalledWith(response.providers[0].id, 11, 'SANDBOX'),
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Activate accepted payer' }),
+      ).not.toBeInTheDocument();
+    } finally {
+      confirmation.mockRestore();
+    }
   });
   it('does not treat platform administration as facility authorization', () => {
     state.user = {

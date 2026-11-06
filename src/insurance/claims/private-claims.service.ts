@@ -37,6 +37,17 @@ import {
 import { isEffectiveOnDate } from '../mappings/mappings.service.ts';
 import { getPayerRowScoped, toPayerRuntimeConfig } from '../payers/payer-config.service.ts';
 
+function recordedClaimMoney(value: string | number | null | undefined): number {
+  const cents = parseMoneyToCents(value);
+  if (cents === null || cents < 0)
+    throw new PrivateInsuranceError(
+      'FINANCIAL_REVIEW_REQUIRED',
+      'Stored claim amounts are missing or invalid; review the record before continuing.',
+      409,
+    );
+  return cents;
+}
+
 export interface PrivateClaimValidationIssue {
   code: string;
   severity: 'ERROR' | 'WARNING';
@@ -1351,10 +1362,10 @@ export async function validatePrivateInsuranceClaimById(params: {
     preauthStatus,
     preauthReference: preauthRef,
     hasDuplicateActiveClaim: otherActive.length > 0,
-    grossCents: parseMoneyToCents(claim.grossInvoiceAmount) ?? 0,
-    discountCents: parseMoneyToCents(claim.discountAmount) ?? 0,
-    copayCents: parseMoneyToCents(claim.confirmedCopayAmount) ?? 0,
-    proposedClaimCents: parseMoneyToCents(claim.proposedClaimAmount) ?? 0,
+    grossCents: recordedClaimMoney(claim.grossInvoiceAmount),
+    discountCents: recordedClaimMoney(claim.discountAmount),
+    copayCents: recordedClaimMoney(claim.confirmedCopayAmount),
+    proposedClaimCents: recordedClaimMoney(claim.proposedClaimAmount),
     lines: claim.lines.map((l) => {
       const m = mappings.find((cand) => cand.id === l.mappingId);
       return {
@@ -1364,10 +1375,10 @@ export async function validatePrivateInsuranceClaimById(params: {
         mappingStatus: l.mappingStatus,
         payerServiceCode: l.payerServiceCode,
         requiresPreauth: Boolean(m?.requiresPreauth),
-        grossCents: parseMoneyToCents(l.grossAmount) ?? 0,
-        discountCents: parseMoneyToCents(l.discountAmount) ?? 0,
-        copayCents: parseMoneyToCents(l.copayAmount) ?? 0,
-        proposedClaimCents: parseMoneyToCents(l.proposedClaimAmount) ?? 0,
+        grossCents: recordedClaimMoney(l.grossAmount),
+        discountCents: recordedClaimMoney(l.discountAmount),
+        copayCents: recordedClaimMoney(l.copayAmount),
+        proposedClaimCents: recordedClaimMoney(l.proposedClaimAmount),
       };
     }),
   });

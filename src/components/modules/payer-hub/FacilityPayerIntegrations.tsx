@@ -20,10 +20,11 @@ export function FacilityPayerIntegrations({
   const isSuper = Boolean(
     authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
+  const isFacilityAdmin = Boolean(!isSuper && authenticatedUser?.roles?.includes('FACILITY_ADMIN'));
   const canView = permissions.has('payer_hub.catalogue.read');
-  const canManage = permissions.has('payer_hub.facility.manage');
-  const canCredentials = permissions.has('payer_hub.credentials.manage');
-  const canProduction = permissions.has('payer_hub.production.request');
+  const canManage = isFacilityAdmin && permissions.has('payer_hub.facility.manage');
+  const canCredentials = isFacilityAdmin && permissions.has('payer_hub.credentials.manage');
+  const canProduction = isFacilityAdmin && permissions.has('payer_hub.production.request');
   const facilityId = currentFacility?.id;
   const [loaded, setLoaded] = useState<{ facilityId: number; providers: FacilityPayer[] } | null>(
     null,
@@ -185,6 +186,39 @@ function Provider({
           operations.
         </p>
       )}
+      {!payer.isAssigned && canCredentials && payer.environments.length > 0 && (
+        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs">
+          <p>
+            Provider is unassigned; retained references can still be revoked. Provider-side rotation
+            is separate.
+          </p>
+          {payer.environments.map((entry) => (
+            <div key={entry.environment} className="mt-2 break-all">
+              {entry.environment}: {entry.revoked ? 'reference revoked' : 'reference retained'}
+              {!entry.revoked && (
+                <button
+                  type="button"
+                  className={secondary}
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        'Revoke this reference? Ask the provider and server operator to rotate the credentials separately.',
+                      )
+                    )
+                      void run(
+                        () => payerHubApi.revoke(payer.id, facilityId, entry.environment),
+                        'Reference revoked. Provider-side credential rotation is still required.',
+                      );
+                  }}
+                >
+                  Revoke {entry.environment.toLowerCase()} reference
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {!payer.isAssigned ? (
         canManage &&
         payer.status === 'ACTIVE' &&
@@ -306,10 +340,34 @@ function Provider({
                 </button>
               </form>
               {payer.environments.map((e) => (
-                <p key={e.environment} className="mt-2 break-all text-xs text-slate-600">
-                  {e.environment}: {e.secretReference} · credentials{' '}
-                  {e.configured ? 'present' : 'not provisioned'} · not tested
-                </p>
+                <div key={e.environment} className="mt-2 break-all text-xs text-slate-600">
+                  <p>
+                    {e.environment}: {e.secretReference} · credentials{' '}
+                    {e.revoked ? 'revoked' : e.configured ? 'present' : 'not provisioned'} · not
+                    tested
+                  </p>
+                  {!e.revoked && (
+                    <button
+                      type="button"
+                      className={secondary}
+                      disabled={busy}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            'Revoke this reference? Ask the provider and server operator to rotate the credentials separately.',
+                          )
+                        )
+                          return;
+                        void run(
+                          () => payerHubApi.revoke(payer.id, facilityId, e.environment),
+                          'Reference revoked. Provider-side credential rotation is still required.',
+                        );
+                      }}
+                    >
+                      Revoke {e.environment.toLowerCase()} reference
+                    </button>
+                  )}
+                </div>
               ))}
             </details>
           )}

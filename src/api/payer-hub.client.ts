@@ -54,6 +54,8 @@ export interface FacilityPayer {
     secretReference: string;
     providerIdentifier: string | null;
     configured: boolean;
+    revoked: boolean;
+    revokedAt: string | null;
     connectionVerified: boolean;
   }>;
 }
@@ -106,6 +108,8 @@ export const payerHubApi = {
       facilityId,
       providerIdentifier,
     }),
+  revoke: (id: number, facilityId: number, environment: string) =>
+    send(`/facility/payers/${id}/environments/${environment}/revoke`, 'POST', { facilityId }),
   test: (id: number, facilityId: number) =>
     send<{ tested: boolean; verified: boolean; message: string }>(
       `/facility/payers/${id}/connection-test`,

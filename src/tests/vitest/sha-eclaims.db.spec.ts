@@ -47,10 +47,12 @@ import {
 import {
   prepareShaClaim,
   processIncomingShaWebhookEvent,
+  listShaCallbackEvents,
   recordClaimAdjudicationDecision,
   refreshShaClaimStatus,
   resubmitShaClaim,
   submitShaClaim,
+  validateShaClaim,
 } from '../../insurance/eclaims/claims-workflow.service.ts';
 import {
   fetchRemittanceClaimBreakdown,
@@ -263,11 +265,35 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
 
   it('verifies eligibility, enforces tenant isolation, governs DRAFT->APPROVED rules, locks approved preauth scope, and reconciles eClaims to invoices', async () => {
     // 1. Configure facility payer settings & tariff mapping (preserving JaliCare tariff at 8500.00)
-    await upsertFacilityPayerConfig(scopeA, {
+    const payerConfiguration = await upsertFacilityPayerConfig(scopeA, {
       facilityRegistryCode,
       accreditationLevel: 'Level 4',
       contractedSchemes: ['SHIF', 'PHC', 'ECCIF'],
     });
+    const legacyConfigNote = 'synthetic-legacy-configuration-note';
+    await pool.query('UPDATE insurance_payer_configs SET notes=$2 WHERE id=$1', [
+      payerConfiguration.id,
+      legacyConfigNote,
+    ]);
+    await expect(
+      upsertFacilityPayerConfig(scopeA, { notes: legacyConfigNote }),
+    ).rejects.toMatchObject({ code: 'UNSAFE_FREE_TEXT' });
+    await upsertFacilityPayerConfig(scopeA, { isActive: payerConfiguration.isActive });
+    expect(
+      (
+        await pool.query('SELECT notes FROM insurance_payer_configs WHERE id=$1', [
+          payerConfiguration.id,
+        ])
+      ).rows[0].notes,
+    ).toBe(legacyConfigNote);
+    const configurationAudit = (
+      await pool.query(
+        "SELECT details FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND action LIKE 'SHA_PAYER_CONFIG_%' ORDER BY id DESC LIMIT 1",
+        [scopeA.tenantId, scopeA.facilityId],
+      )
+    ).rows[0].details;
+    expect(configurationAudit).not.toContain(legacyConfigNote);
+    expect(configurationAudit).not.toContain(facilityRegistryCode);
 
     const mapping = await upsertServiceCodeMapping(scopeA, {
       tariffId: tariffAId,
@@ -361,8 +387,35 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(unverifiedCheck.validation.decision).toBe('UNABLE_TO_VERIFY');
     expect(unverifiedCheck.validation.verificationSource).toBe('UNVERIFIED_DRAFT_RULE');
 
+    await expect(
+      validateServiceBenefits(scopeA, {
+        patientId: patientAId,
+        serviceDescription: 'Synthetic unpriced service',
+        benefitPackage: 'SHIF',
+        serviceDate: '2026-10-28',
+      }),
+    ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+
     // Approve rule -> now requires preauthorization (`AUTHORIZATION_REQUIRED`)
     await reviewBenefitRuleStatus(scopeA, draftRule.id, 'APPROVE');
+
+    await pool.query(
+      "UPDATE payer_service_code_mappings SET reimbursement_tariff='NaN' WHERE id=$1",
+      [mapping.id],
+    );
+    await expect(
+      validateServiceBenefits(scopeA, {
+        patientId: patientAId,
+        encounterId: encounterAId,
+        tariffId: tariffAId,
+        benefitPackage: 'SHIF',
+        serviceDate: '2026-10-28',
+      }),
+    ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+    await pool.query(
+      "UPDATE payer_service_code_mappings SET reimbursement_tariff='7000.00' WHERE id=$1",
+      [mapping.id],
+    );
 
     const authReqCheck = await validateServiceBenefits(scopeA, {
       patientId: patientAId,
@@ -436,6 +489,35 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     await expect(
       prepareShaClaim(scopeA, { invoiceId: invoiceAId, encounterId: encounterAId }),
     ).rejects.toMatchObject({ code: 'SCHEME_REQUIRED' });
+    const billingLine = (
+      await pool.query(
+        'SELECT id,unit_price,quantity FROM billing_items WHERE invoice_id=$1 ORDER BY id LIMIT 1',
+        [invoiceAId],
+      )
+    ).rows[0];
+    await pool.query("UPDATE billing_items SET unit_price='NaN' WHERE id=$1", [billingLine.id]);
+    await expect(
+      prepareShaClaim(scopeA, {
+        invoiceId: invoiceAId,
+        encounterId: encounterAId,
+        schemeCode: 'SHIF',
+      }),
+    ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+    await pool.query('UPDATE billing_items SET unit_price=$2,quantity=NULL WHERE id=$1', [
+      billingLine.id,
+      billingLine.unit_price,
+    ]);
+    await expect(
+      prepareShaClaim(scopeA, {
+        invoiceId: invoiceAId,
+        encounterId: encounterAId,
+        schemeCode: 'SHIF',
+      }),
+    ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+    await pool.query('UPDATE billing_items SET quantity=$2 WHERE id=$1', [
+      billingLine.id,
+      billingLine.quantity,
+    ]);
     const prepared = await prepareShaClaim(scopeA, {
       invoiceId: invoiceAId,
       encounterId: encounterAId,
@@ -446,6 +528,19 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(prepared.status).toBe('READY_FOR_SUBMISSION');
     expect(prepared.totalBilledAmount).toBe('8500.00');
     expect(prepared.totalClaimedAmount).toBe('7000.00');
+    await pool.query("UPDATE sha_eclaims SET total_claimed_amount='NaN' WHERE id=$1", [
+      prepared.id,
+    ]);
+    await expect(validateShaClaim(scopeA, prepared.id)).rejects.toMatchObject({
+      code: 'FINANCIAL_REVIEW_REQUIRED',
+    });
+    expect(
+      (await pool.query('SELECT status FROM sha_eclaims WHERE id=$1', [prepared.id])).rows[0]
+        .status,
+    ).toBe('READY_FOR_SUBMISSION');
+    await pool.query("UPDATE sha_eclaims SET total_claimed_amount='7000.00' WHERE id=$1", [
+      prepared.id,
+    ]);
 
     // Force an invoice change after the initial read but before the claim lock.
     const [changedInvoice] = await db
@@ -641,14 +736,29 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       correlationId: randomUUID(),
       actorUserId: scopeA.userId,
     });
-    const deferred = await processIncomingShaWebhookEvent({
-      entityType: 'claim',
+    const callbackEventsBefore = await db
+      .select()
+      .from(schema.shaCallbackEvents)
+      .where(eq(schema.shaCallbackEvents.tenantId, scopeA.tenantId));
+    const untrusted = {
+      entityType: 'claim' as const,
       externalEntityId: callbackFixture.claimUuid,
       externalEventId: randomUUID(),
       upstreamStatus: 'REJECTED',
       signatureVerified: true,
+    };
+    await expect(processIncomingShaWebhookEvent(untrusted)).rejects.toMatchObject({
+      code: 'SHA_CALLBACK_NOT_VERIFIED',
     });
-    expect(deferred.event.processingOutcome).toBe('DEFERRED_CLAIM_DISPATCH_REVIEW_REQUIRED');
+    await expect(processIncomingShaWebhookEvent(untrusted)).rejects.toMatchObject({
+      code: 'SHA_CALLBACK_NOT_VERIFIED',
+    });
+    expect(
+      await db
+        .select()
+        .from(schema.shaCallbackEvents)
+        .where(eq(schema.shaCallbackEvents.tenantId, scopeA.tenantId)),
+    ).toEqual(callbackEventsBefore);
     const [unchanged] = await db
       .select()
       .from(schema.shaEclaims)
@@ -726,6 +836,26 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       totalRemittedAmount: '7000.00',
     });
 
+    await pool.query("UPDATE insurance_remittances SET allocated_amount='NaN' WHERE id=$1", [
+      remittance.id,
+    ]);
+    await expect(
+      reconcileRemittance(scopeA, remittance.id, {
+        allocations: [{ eclaimId: prepared.id, remittedAmount: '7000.00' }],
+      }),
+    ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS count FROM insurance_reconciliation_entries WHERE remittance_id=$1',
+          [remittance.id],
+        )
+      ).rows[0].count,
+    ).toBe(0);
+    await pool.query("UPDATE insurance_remittances SET allocated_amount='0.00' WHERE id=$1", [
+      remittance.id,
+    ]);
+
     await expect(
       reconcileRemittance(scopeA, remittance.id, {
         allocations: [{ eclaimId: prepared.id, remittedAmount: '7000.00', postToInvoice: true }],
@@ -792,31 +922,89 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(afterMatch.paidAmount).toBe('7000.00');
     expect(afterMatch.balanceAmount).toBe('1500.00');
 
-    // 6. Verify 2-step HIE Remittance Sync, Idempotent Callback Event Processing & ATNA Operational Report
+    // 6. Verify 2-step HIE Remittance Sync, Fail-closed Callback Processing & ATNA Operational Report
     const syncedRems = await syncFacilityHieRemittances(scopeA, { facilityIdType: 'fr-code' });
     expect(syncedRems.imported.length).toBeGreaterThan(0);
     const breakdown = await fetchRemittanceClaimBreakdown(scopeA, syncedRems.imported[0].id);
     expect(breakdown.claims.length).toBeGreaterThan(0);
 
-    const cbFirst = await processIncomingShaWebhookEvent({
-      entityType: 'claim',
+    const cb = {
+      entityType: 'claim' as const,
       externalEntityId: prepared.claimUuid,
       externalEventId: `EVT-${randomUUID().slice(0, 8)}`,
       upstreamStatus: 'ADJUDICATED',
       signatureVerified: true,
-    });
-    expect(cbFirst.duplicate).toBe(false);
-    const cbDup = await processIncomingShaWebhookEvent({
-      entityType: 'claim',
-      externalEntityId: prepared.claimUuid,
-      externalEventId: cbFirst.event.correlationId,
-      upstreamStatus: 'ADJUDICATED',
-      signatureVerified: true,
-    });
-    expect(cbDup.duplicate).toBe(true);
+    };
+    const claimsBeforeCallbacks = await db
+      .select()
+      .from(schema.shaEclaims)
+      .where(eq(schema.shaEclaims.id, prepared.id));
+    const eventsBeforeCallbacks = await db
+      .select()
+      .from(schema.shaCallbackEvents)
+      .where(eq(schema.shaCallbackEvents.tenantId, scopeA.tenantId));
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 8 }, () => processIncomingShaWebhookEvent(cb)),
+    );
+    expect(
+      attempts.every(
+        (result) =>
+          result.status === 'rejected' && result.reason.code === 'SHA_CALLBACK_NOT_VERIFIED',
+      ),
+    ).toBe(true);
+    expect(
+      await db.select().from(schema.shaEclaims).where(eq(schema.shaEclaims.id, prepared.id)),
+    ).toEqual(claimsBeforeCallbacks);
+    expect(
+      await db
+        .select()
+        .from(schema.shaCallbackEvents)
+        .where(eq(schema.shaCallbackEvents.tenantId, scopeA.tenantId)),
+    ).toEqual(eventsBeforeCallbacks);
 
+    // Historical callback/audit bodies can contain arbitrary provider data.
+    const sentinel = 'synthetic-historical-secret';
+    const ownEvent = (
+      await pool.query(
+        `INSERT INTO sha_callback_events(tenant_id,facility_id,entity_type,external_reference,upstream_status,processing_outcome,payload_summary)
+      VALUES($1,$2,'claim','synthetic-ref','UNKNOWN','HISTORICAL',$3::jsonb) RETURNING id`,
+        [scopeA.tenantId, scopeA.facilityId, JSON.stringify({ token: sentinel })],
+      )
+    ).rows[0].id;
+    const otherEvent = (
+      await pool.query(
+        `INSERT INTO sha_callback_events(tenant_id,facility_id,entity_type,external_reference,upstream_status,processing_outcome,payload_summary)
+      VALUES($1,$2,'claim','synthetic-ref-other','UNKNOWN','HISTORICAL',$3::jsonb) RETURNING id`,
+        [scopeB.tenantId, scopeA.facilityId, JSON.stringify({ token: sentinel })],
+      )
+    ).rows[0].id;
+    const otherAudit = (
+      await pool.query(
+        `INSERT INTO audit_logs(tenant_id,facility_id,user_id,action,resource,resource_id,details)
+      VALUES($1,$2,'synthetic','SHA_SYNTHETIC','claim','1',$3) RETURNING id`,
+        [scopeB.tenantId, scopeA.facilityId, sentinel],
+      )
+    ).rows[0].id;
+    const ownAudit = (
+      await pool.query(
+        `INSERT INTO audit_logs(tenant_id,facility_id,user_id,action,resource,resource_id,details)
+      VALUES($1,$2,'synthetic','SHA_SYNTHETIC','claim','1',$3) RETURNING id`,
+        [scopeA.tenantId, scopeA.facilityId, sentinel],
+      )
+    ).rows[0].id;
+    const listed = await listShaCallbackEvents(scopeA);
+    expect(listed.some((event) => event.id === ownEvent)).toBe(true);
+    expect(listed.some((event) => event.id === otherEvent)).toBe(false);
+    expect(JSON.stringify(listed)).not.toContain(sentinel);
     const opReport = await getShaOperationalReport(scopeA);
     expect(opReport.metrics.claimsTotal).toBeGreaterThanOrEqual(1);
     expect(opReport.atnaAuditTrail.length).toBeGreaterThan(0);
+    expect(opReport.atnaAuditTrail.some((event) => event.eventId === ownAudit)).toBe(true);
+    expect(opReport.atnaAuditTrail.some((event) => event.eventId === otherAudit)).toBe(false);
+    expect(opReport.recentCallbacks.some((event) => event.id === otherEvent)).toBe(false);
+    expect(opReport.metrics.callbacksReceivedCount).toBe(1);
+    expect(opReport.gatewayStatus).toMatchObject({ enabled: false, verified: false });
+    expect(opReport.callbackVerification).toBe('NOT_ESTABLISHED');
+    expect(JSON.stringify(opReport)).not.toContain(sentinel);
   });
 });

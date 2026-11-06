@@ -428,11 +428,21 @@ describe('Decimal-safe benefit, copayment, deductible, and claim validation logi
     const scrubbed = sanitizeAuditMetadata({
       payerCode: 'BRITAM',
       client_secret: 'myTopSecret123',
-      nested: { bearerToken: 'eyJhbGciOiJIUzI1NiJ9', safeField: 'OK' },
+      nested: {
+        bearerToken: 'eyJhbGciOiJIUzI1NiJ9',
+        safeField: 'OK',
+        list: [{ clientSecret: 'synthetic-array-secret' }, [{ apiKey: 'synthetic-deep-key' }]],
+      },
     });
     expect(scrubbed.client_secret).toBe('[REDACTED]');
     expect((scrubbed.nested as Record<string, unknown>).bearerToken).toBe('[REDACTED]');
     expect((scrubbed.nested as Record<string, unknown>).safeField).toBe('OK');
+    expect((scrubbed.nested as any).list).toEqual([
+      { clientSecret: '[REDACTED]' },
+      [{ apiKey: '[REDACTED]' }],
+    ]);
+    expect(JSON.stringify(scrubbed)).not.toContain('synthetic-array-secret');
+    expect(JSON.stringify(scrubbed)).not.toContain('synthetic-deep-key');
 
     const envPresence = inspectSecretEnvPresence('NON_EXISTENT_PREFIX_XYZ', 'API_KEY_HEADER', {});
     expect(envPresence.allRequiredSecretsPresent).toBe(false);
@@ -656,7 +666,43 @@ describe('Decimal-safe benefit, copayment, deductible, and claim validation logi
 
     expect(slAdapter.getRequiredOnboardingChecklist(slReadyCfg)).toBeDefined();
     const slProbe = await slAdapter.probeConnection(slReadyCfg, fullSecrets);
-    expect(slProbe.verified).toBe(true);
+    expect(slProbe).toMatchObject({
+      verified: false,
+      connectionStatus: 'SANDBOX_CONFIGURED',
+      httpStatus: 200,
+    });
+    const productionProbe = await slAdapter.probeConnection(
+      { ...slReadyCfg, environment: 'PRODUCTION' },
+      fullSecrets,
+    );
+    expect(productionProbe).toMatchObject({
+      verified: false,
+      connectionStatus: 'AWAITING_DOCUMENTATION',
+      httpStatus: 200,
+    });
+
+    const noProbeAdapter = new SmartLinkGatewayAdapter({
+      async verifyMemberSession() {
+        throw new Error('not called');
+      },
+      async submitPreauth() {
+        throw new Error('not called');
+      },
+      async submitClaim() {
+        throw new Error('not called');
+      },
+      async fetchClaimStatus() {
+        throw new Error('not called');
+      },
+    });
+    const noProbe = await noProbeAdapter.probeConnection(slReadyCfg, fullSecrets);
+    expect(noProbe).toMatchObject({
+      verified: false,
+      connectionStatus: 'SANDBOX_CONFIGURED',
+      httpStatus: null,
+      durationMs: 0,
+    });
+    expect(noProbe.summary).toMatch(/no documented provider health probe/i);
 
     const slPa = await slAdapter.submitPreauthorization(
       {

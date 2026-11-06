@@ -32,6 +32,8 @@ export interface HubIntegration {
   credentialSource: 'VAULT' | 'ENVIRONMENT' | 'REFERENCE' | null;
   credentialsExpiresAt: string | null;
   credentialsExpired: boolean;
+  credentialsRevoked: boolean;
+  credentialsRevokedAt: string | null;
   credentials: string;
   accounts: HubAccount[];
 }
@@ -43,6 +45,8 @@ export interface FacilityProvider {
   documentationUrl: string;
   description: string;
   isAllowed: boolean;
+  status: string;
+  requestable: boolean;
   requestStatus: string;
   availableEnvironments: Array<'SANDBOX' | 'PRODUCTION'>;
   adapter: AdapterInfo;
@@ -173,6 +177,8 @@ export const paymentHubApi = {
     send<{ id: number }>(`/facility/providers/${id}/integrations`, 'POST', body),
   credentials: (id: number, body: unknown) =>
     send(`/facility/integrations/${id}/credentials`, 'PUT', body),
+  revokeCredentials: (id: number, facilityId: number) =>
+    send(`/facility/integrations/${id}/credentials/revoke`, 'POST', { facilityId }),
   reencryptCredentials: (id: number, facilityId: number) =>
     send(`/facility/integrations/${id}/credentials/reencrypt`, 'POST', { facilityId }),
   addAccount: (id: number, body: unknown) =>

@@ -7,7 +7,11 @@ import { describeDb } from './support/db.ts';
 import { pool } from '../../db/index.ts';
 import { createSession } from '../../auth/session.service.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
-import { decryptFacilitySecret, privateDigest } from '../../payment-hub/secrets.ts';
+import {
+  decryptFacilitySecret,
+  encryptFacilitySecret,
+  privateDigest,
+} from '../../payment-hub/secrets.ts';
 
 const codes = [
   'payment_hub.global.read',
@@ -58,7 +62,8 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     bToken: string,
     cToken: string,
     clerkToken: string,
-    tenantToken: string;
+    tenantToken: string,
+    delegatedToken: string;
   let queryResult = '4999',
     pushCount = 0,
     offline = false,
@@ -143,7 +148,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
         ],
       );
       const r = await pool.query(
-        `INSERT INTO roles(tenant_id,name,is_active) VALUES($1,$2,true) RETURNING id`,
+        `INSERT INTO roles(tenant_id,name,is_active) VALUES($1,$2,true) ON CONFLICT(tenant_id,name) DO UPDATE SET name=EXCLUDED.name RETURNING id`,
         [tenant, role],
       );
       await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [
@@ -159,15 +164,20 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       return { id: u.rows[0].id, token: session.sessionToken };
     };
     const su = await createActor('super', null, null, 'SUPER_ADMIN', codes),
-      a = await createActor('a', tenantA, facilityA, `HUB_A_${x}`, facilityCodes),
-      b = await createActor('b', tenantA, facilityB, `HUB_B_${x}`, facilityCodes),
-      c = await createActor('c', tenantB, facilityC, `HUB_C_${x}`, facilityCodes),
+      a = await createActor('a', tenantA, facilityA, 'FACILITY_ADMIN', facilityCodes),
+      b = await createActor('b', tenantA, facilityB, 'FACILITY_ADMIN', facilityCodes),
+      c = await createActor('c', tenantB, facilityC, 'FACILITY_ADMIN', facilityCodes),
       clerk = await createActor('clerk', tenantA, facilityA, `HUB_CLERK_${x}`, [
         'payment_hub.transactions.read',
       ]),
-      tenant = await createActor('tenant', tenantA, null, `HUB_TENANT_${x}`, [
-        'payment_hub.catalogue.read',
-      ]);
+      tenant = await createActor('tenant', tenantA, null, `HUB_TENANT_${x}`, facilityCodes),
+      delegated = await createActor(
+        'delegated',
+        tenantA,
+        facilityA,
+        `HUB_DELEGATED_${x}`,
+        facilityCodes,
+      );
     superUser = su.id;
     userA = a.id;
     userC = c.id;
@@ -177,6 +187,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     cToken = c.token;
     clerkToken = clerk.token;
     tenantToken = tenant.token;
+    delegatedToken = delegated.token;
     const patient = await pool.query(
       `INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender) VALUES($1,$2,$3,'Synthetic','Patient','2000-01-01','Unknown') RETURNING id`,
       [tenantA, facilityA, `hub-mrn-${x}`],
@@ -295,6 +306,42 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       (await call(aToken, 'GET', `/api/payment-hub/facility/catalogue?facilityId=${facilityB}`))
         .status,
     ).toBe(403);
+    expect(
+      (
+        await call(
+          tenantToken,
+          'GET',
+          `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await call(
+          delegatedToken,
+          'GET',
+          `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+        )
+      ).status,
+    ).toBe(200);
+    const delegated = await call(
+      delegatedToken,
+      'POST',
+      `/api/payment-hub/facility/providers/${providerId}/integrations`,
+      { facilityId: facilityA, environment: 'SANDBOX', capabilities: [] },
+    );
+    expect(delegated.status).toBe(403);
+    expect(delegated.data.error).toBe('FACILITY_ADMIN_REQUIRED');
+    expect(
+      (
+        await call(
+          tenantToken,
+          'POST',
+          `/api/payment-hub/facility/providers/${providerId}/access-request`,
+          { facilityId: facilityA },
+        )
+      ).status,
+    ).toBe(403);
   });
   it('requires platform assignment before facility configuration and supports access requests', async () => {
     const cat = await call(
@@ -359,7 +406,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       {
         facilityId: facilityA,
         environment: 'SANDBOX',
-        capabilities: ['PAYMENT_COLLECTION', 'PAYMENT_STATUS', 'NOTIFICATIONS', 'HEALTH'],
+        capabilities: ['PAYMENT_COLLECTION', 'PAYMENT_STATUS', 'HEALTH'],
       },
     );
     expect(conf.status).toBe(201);
@@ -597,16 +644,24 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     );
     expect(invoice.rows[0]).toMatchObject({ paid_amount: '0.00', status: 'Unpaid' });
   });
-  it('accepts only well-formed untrusted callbacks, deduplicates them and never settles on their content', async () => {
-    const txRow = (
-      await pool.query('SELECT provider_request_id FROM payment_hub_transactions WHERE id=$1', [
-        transactionId,
-      ])
+  it('rejects unauthenticated callback replays without recording or changing financial state', async () => {
+    const txBefore = (
+      await pool.query('SELECT * FROM payment_hub_transactions WHERE id=$1', [transactionId])
     ).rows[0];
+    const invoiceBefore = (
+      await pool.query('SELECT * FROM billing_invoices WHERE id=$1', [invoiceId])
+    ).rows[0];
+    const eventsBefore = await pool.query(
+      'SELECT id FROM payment_hub_webhook_events WHERE transaction_id=$1',
+      [transactionId],
+    );
+    const paymentsBefore = await pool.query('SELECT id FROM billing_payments WHERE invoice_id=$1', [
+      invoiceId,
+    ]);
     const callback = {
       Body: {
         stkCallback: {
-          CheckoutRequestID: txRow.provider_request_id,
+          CheckoutRequestID: txBefore.provider_request_id,
           ResultCode: 0,
           CallbackMetadata: {
             Item: [
@@ -616,42 +671,40 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
           },
         },
       },
+      credential: 'synthetic-callback-secret',
     };
-    expect((await call(undefined, 'POST', '/api/payment-hub/webhooks/mpesa', {})).status).toBe(400);
-    expect(
-      (await call(undefined, 'POST', '/api/payment-hub/webhooks/mpesa', callback)).status,
-    ).toBe(200);
-    expect(
-      (await call(undefined, 'POST', '/api/payment-hub/webhooks/mpesa', callback)).status,
-    ).toBe(200);
-    expect(
-      (
-        await call(undefined, 'POST', '/api/payment-hub/webhooks/mpesa', {
-          ...callback,
-          irrelevant: 'modified replay',
-        })
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await call(undefined, 'POST', '/api/payment-hub/webhooks/mpesa', {
-          Body: { stkCallback: { CheckoutRequestID: 'unknown_id', ResultCode: 0 } },
-        })
-      ).status,
-    ).toBe(200);
-    const events = await pool.query(
-      'SELECT verification_state FROM payment_hub_webhook_events WHERE transaction_id=$1',
-      [transactionId],
+    const bodies = [
+      {},
+      callback,
+      callback,
+      { ...callback, irrelevant: 'modified replay' },
+      { Body: { stkCallback: { CheckoutRequestID: 'unknown_id', ResultCode: 0 } } },
+    ];
+    const attempts = await Promise.all(
+      bodies.map((body) => call(undefined, 'POST', '/api/payment-hub/webhooks/mpesa', body)),
     );
-    expect(events.rows).toEqual([{ verification_state: 'UNVERIFIED' }]);
-    const tx = (
-      await pool.query('SELECT status FROM payment_hub_transactions WHERE id=$1', [transactionId])
-    ).rows[0];
-    expect(tx.status).toBe('PENDING');
-    const inv = (
-      await pool.query('SELECT paid_amount FROM billing_invoices WHERE id=$1', [invoiceId])
-    ).rows[0];
-    expect(inv.paid_amount).toBe('0.00');
+    for (const attempt of attempts) {
+      expect(attempt.status).toBe(503);
+      expect(attempt.data).toEqual({ received: false, error: 'CALLBACK_VERIFICATION_UNAVAILABLE' });
+      expect(JSON.stringify(attempt.data)).not.toContain('synthetic-callback-secret');
+    }
+    expect(
+      (
+        await pool.query('SELECT id FROM payment_hub_webhook_events WHERE transaction_id=$1', [
+          transactionId,
+        ])
+      ).rows,
+    ).toEqual(eventsBefore.rows);
+    expect(
+      (await pool.query('SELECT * FROM payment_hub_transactions WHERE id=$1', [transactionId]))
+        .rows[0],
+    ).toEqual(txBefore);
+    expect(
+      (await pool.query('SELECT * FROM billing_invoices WHERE id=$1', [invoiceId])).rows[0],
+    ).toEqual(invoiceBefore);
+    expect(
+      (await pool.query('SELECT id FROM billing_payments WHERE invoice_id=$1', [invoiceId])).rows,
+    ).toEqual(paymentsBefore.rows);
     expect(
       (
         await call(
@@ -782,10 +835,70 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     );
     expect(config.status).toBe(201);
     productionId = config.data.id;
-    provision(facilityA, tenantA, productionId, 'PRODUCTION', {
+    const productionSecretName = provision(facilityA, tenantA, productionId, 'PRODUCTION', {
       ...fakeCredentials,
       consumerKey: `${fakeCredentials.consumerKey}-production`,
     });
+    const sharedSecret = await call(
+      aToken,
+      'PUT',
+      `/api/payment-hub/facility/integrations/${productionId}/credentials`,
+      { facilityId: facilityA, source: 'ENVIRONMENT' },
+    );
+    expect(sharedSecret).toMatchObject({
+      status: 409,
+      data: { error: 'CREDENTIAL_ENVIRONMENT_REUSE' },
+    });
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS count FROM facility_payment_secrets WHERE integration_id=$1',
+          [productionId],
+        )
+      ).rows[0].count,
+    ).toBe(0);
+    process.env[productionSecretName] = JSON.stringify({
+      ...fakeCredentials,
+      consumerKey: `${fakeCredentials.consumerKey}-production`,
+      consumerSecret: `${fakeCredentials.consumerSecret}-production`,
+      passkey: `${fakeCredentials.passkey}-production`,
+    });
+    // A legacy environment reference without component evidence cannot prove separation.
+    const sandboxCipher = (
+      await pool.query(
+        'SELECT encrypted_value FROM facility_payment_secrets WHERE integration_id=$1',
+        [integrationId],
+      )
+    ).rows[0].encrypted_value;
+    const sandboxEnvelope = decryptFacilitySecret(
+      { tenantId: tenantA, facilityId: facilityA, integrationId },
+      sandboxCipher,
+    );
+    delete sandboxEnvelope._credentialPartFingerprints;
+    await pool.query(
+      'UPDATE facility_payment_secrets SET encrypted_value=$2 WHERE integration_id=$1',
+      [
+        integrationId,
+        encryptFacilitySecret(
+          { tenantId: tenantA, facilityId: facilityA, integrationId },
+          sandboxEnvelope,
+        ),
+      ],
+    );
+    const needsReview = await call(
+      aToken,
+      'PUT',
+      `/api/payment-hub/facility/integrations/${productionId}/credentials`,
+      { facilityId: facilityA, source: 'ENVIRONMENT' },
+    );
+    expect(needsReview).toMatchObject({
+      status: 409,
+      data: { error: 'CREDENTIAL_ISOLATION_REVIEW_REQUIRED' },
+    });
+    await pool.query(
+      'UPDATE facility_payment_secrets SET encrypted_value=$2 WHERE integration_id=$1',
+      [integrationId, sandboxCipher],
+    );
     expect(
       (
         await call(
@@ -1149,6 +1262,27 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
         )
       ).status,
     ).toBe(403);
+    const maintenance = await call(
+      aToken,
+      'GET',
+      `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+    );
+    const restricted = maintenance.data.providers.find(
+      (provider: any) => provider.id === providerId,
+    );
+    expect(restricted.isAllowed).toBe(false);
+    expect(restricted.integrations.find((item: any) => item.id === integrationId)).toMatchObject({
+      isEffective: false,
+      credentialsConfigured: true,
+    });
+    const delegatedView = await call(
+      delegatedToken,
+      'GET',
+      `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+    );
+    expect(
+      delegatedView.data.providers.find((provider: any) => provider.id === providerId).integrations,
+    ).toEqual([]);
     const history = await call(
       aToken,
       'GET',
@@ -1488,5 +1622,202 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       { facilityId: facilityA },
     );
     expect(disabled.status).toBe(403);
+  });
+  it('audits revocation, blocks tampering and reuse, and requires a distinct credential replacement', async () => {
+    const revoke = `/api/payment-hub/facility/integrations/${integrationId}/credentials/revoke`;
+    const path = `/api/payment-hub/facility/integrations/${integrationId}/credentials`;
+    const health = `/api/payment-hub/facility/integrations/${integrationId}/health`;
+    await pool.query(`UPDATE facility_payment_secrets SET expires_at=$2 WHERE integration_id=$1`, [
+      integrationId,
+      '2099-01-01T00:00:00.000Z',
+    ]);
+    expect((await call(undefined, 'POST', revoke, { facilityId: facilityA })).status).toBe(401);
+    expect((await call(clerkToken, 'POST', revoke, { facilityId: facilityA })).status).toBe(403);
+    expect((await call(delegatedToken, 'POST', revoke, { facilityId: facilityA })).status).toBe(
+      403,
+    );
+    expect((await call(bToken, 'POST', revoke, { facilityId: facilityB })).status).toBe(404);
+    const before = (
+      await pool.query(
+        'SELECT count(*)::int AS n FROM audit_logs WHERE facility_id=$1 AND resource=$2 AND action=$3 AND resource_id=$4',
+        [facilityA, 'payment_hub.credentials', 'REVOKE', String(integrationId)],
+      )
+    ).rows[0].n;
+    // Revocation remains possible even if the platform has disabled this provider.
+    const result = await call(aToken, 'POST', revoke, { facilityId: facilityA });
+    expect(result.status).toBe(200);
+    expect(result.data).toMatchObject({ revoked: true, alreadyRevoked: false });
+    expect(
+      (await call(aToken, 'POST', revoke, { facilityId: facilityA })).data.alreadyRevoked,
+    ).toBe(true);
+    const row = (
+      await pool.query(
+        `SELECT s.revoked_at,s.encrypted_value,i.is_enabled,i.connection_status FROM facility_payment_secrets s
+      JOIN facility_payment_integrations i ON i.id=s.integration_id WHERE s.integration_id=$1`,
+        [integrationId],
+      )
+    ).rows[0];
+    expect(row).toMatchObject({ is_enabled: false, connection_status: 'NOT_TESTED' });
+    expect(row.revoked_at).toBeInstanceOf(Date);
+    expect(
+      decryptFacilitySecret(
+        { tenantId: tenantA, facilityId: facilityA, integrationId },
+        row.encrypted_value,
+      )._revokedAt,
+    ).toBe(row.revoked_at.toISOString());
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS n FROM audit_logs WHERE facility_id=$1 AND resource=$2 AND action=$3 AND resource_id=$4',
+          [facilityA, 'payment_hub.credentials', 'REVOKE', String(integrationId)],
+        )
+      ).rows[0].n,
+    ).toBe(before + 1);
+    for (const secret of Object.values(fakeCredentials))
+      expect(JSON.stringify(result.data)).not.toContain(secret);
+    expect(
+      (
+        await call(
+          superToken,
+          'PUT',
+          `/api/payment-hub/platform/providers/${providerId}/facilities/${facilityA}`,
+          { isAllowed: true },
+        )
+      ).status,
+    ).toBe(200);
+    const callCount = vi.mocked(globalThis.fetch).mock.calls.length;
+    expect((await call(aToken, 'POST', health, { facilityId: facilityA })).data.error).toBe(
+      'CREDENTIALS_REVOKED',
+    );
+    await pool.query(
+      `UPDATE facility_payment_secrets SET revoked_at=NULL WHERE integration_id=$1`,
+      [integrationId],
+    );
+    expect((await call(aToken, 'POST', health, { facilityId: facilityA })).data.error).toBe(
+      'SECRET_UNAVAILABLE',
+    );
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(callCount);
+    const tamperedReplacement = await call(aToken, 'PUT', path, {
+      facilityId: facilityA,
+      source: 'VAULT',
+      credentials: {
+        ...fakeCredentials,
+        consumerSecret: 'synthetic-changed',
+        passkey: 'synthetic-changed-passkey',
+      },
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    expect(tamperedReplacement).toMatchObject({
+      status: 503,
+      data: { error: 'SECRET_UNAVAILABLE' },
+    });
+    await pool.query(`UPDATE facility_payment_secrets SET revoked_at=$2 WHERE integration_id=$1`, [
+      integrationId,
+      row.revoked_at,
+    ]);
+    const same = await call(aToken, 'PUT', path, {
+      facilityId: facilityA,
+      source: 'VAULT',
+      credentials: fakeCredentials,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    expect(same.status).toBe(409);
+    expect(same.data.error).toBe('REVOKED_CREDENTIAL_REUSE');
+    for (const partial of [
+      { ...fakeCredentials, consumerSecret: `${fakeCredentials.consumerSecret}-rotated` },
+      { ...fakeCredentials, passkey: `${fakeCredentials.passkey}-rotated` },
+      { ...fakeCredentials, shortcode: '999999' },
+    ]) {
+      const rejected = await call(aToken, 'PUT', path, {
+        facilityId: facilityA,
+        source: 'VAULT',
+        credentials: partial,
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      });
+      expect(rejected).toMatchObject({ status: 409, data: { error: 'REVOKED_CREDENTIAL_REUSE' } });
+    }
+    const replacement = {
+      ...fakeCredentials,
+      consumerSecret: `${fakeCredentials.consumerSecret}-rotated`,
+      passkey: `${fakeCredentials.passkey}-rotated`,
+    };
+    const saved = await call(aToken, 'PUT', path, {
+      facilityId: facilityA,
+      source: 'VAULT',
+      credentials: replacement,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    expect(saved.status).toBe(200);
+    expect(JSON.stringify(saved.data)).not.toContain(replacement.consumerSecret);
+    const historicalReuse = await call(aToken, 'PUT', path, {
+      facilityId: facilityA,
+      source: 'VAULT',
+      credentials: fakeCredentials,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    expect(historicalReuse).toMatchObject({
+      status: 409,
+      data: { error: 'REVOKED_CREDENTIAL_REUSE' },
+    });
+    const newRow = (
+      await pool.query(
+        `SELECT s.revoked_at,s.encrypted_value,i.is_enabled,i.connection_status FROM facility_payment_secrets s
+      JOIN facility_payment_integrations i ON i.id=s.integration_id WHERE s.integration_id=$1`,
+        [integrationId],
+      )
+    ).rows[0];
+    expect(newRow).toMatchObject({
+      revoked_at: null,
+      is_enabled: false,
+      connection_status: 'NOT_TESTED',
+    });
+    expect(newRow.encrypted_value).not.toContain(replacement.consumerSecret);
+    expect(
+      decryptFacilitySecret(
+        { tenantId: tenantA, facilityId: facilityA, integrationId },
+        newRow.encrypted_value,
+      ),
+    ).toMatchObject(replacement);
+  });
+  it('retains revoked server-reference component fingerprints across replacements', async () => {
+    const name = `PAYMENT_HUB_T${tenantA}_F${facilityA}_I${productionId}_PRODUCTION`;
+    const original = JSON.parse(process.env[name]!);
+    const path = `/api/payment-hub/facility/integrations/${productionId}/credentials`;
+    const revoke = await call(aToken, 'POST', `${path}/revoke`, { facilityId: facilityA });
+    expect(revoke.status).toBe(200);
+    const unchanged = await call(aToken, 'PUT', path, {
+      facilityId: facilityA,
+      source: 'ENVIRONMENT',
+    });
+    expect(unchanged).toMatchObject({ status: 409, data: { error: 'REVOKED_CREDENTIAL_REUSE' } });
+    process.env[name] = JSON.stringify({
+      ...original,
+      consumerSecret: `${original.consumerSecret}-rotated`,
+    });
+    expect(
+      (await call(aToken, 'PUT', path, { facilityId: facilityA, source: 'ENVIRONMENT' })).data
+        .error,
+    ).toBe('REVOKED_CREDENTIAL_REUSE');
+    process.env[name] = JSON.stringify({
+      ...original,
+      consumerSecret: `${original.consumerSecret}-rotated`,
+      passkey: `${original.passkey}-rotated`,
+    });
+    expect(
+      (await call(aToken, 'PUT', path, { facilityId: facilityA, source: 'ENVIRONMENT' })).status,
+    ).toBe(200);
+    process.env[name] = JSON.stringify(original);
+    expect(
+      (await call(aToken, 'PUT', path, { facilityId: facilityA, source: 'ENVIRONMENT' })).data
+        .error,
+    ).toBe('REVOKED_CREDENTIAL_REUSE');
+    const row = (
+      await pool.query(
+        'SELECT encrypted_value FROM facility_payment_secrets WHERE integration_id=$1',
+        [productionId],
+      )
+    ).rows[0];
+    for (const value of Object.values(original) as string[])
+      expect(row.encrypted_value).not.toContain(value);
   });
 });

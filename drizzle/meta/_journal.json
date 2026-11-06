@@ -477,6 +477,13 @@
             "when": 1792900000055,
             "tag": "0067_facility_integration_vault",
             "breakpoints": true
+        },
+        {
+            "idx": 68,
+            "version": "7",
+            "when": 1792900000056,
+            "tag": "0068_integration_credential_revocation",
+            "breakpoints": true
         }
     ]
 }

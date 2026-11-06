@@ -27,9 +27,9 @@ import {
   loadTenantPatient,
   multiplyMoneyCents,
   parseFacilityLevelRank,
-  parseMoneyToCents,
   recordInsuranceAuditEvent,
   requireMoneyCents,
+  requireRecordedMoneyCents,
   type BenefitDecision,
   type InsuranceActorScope,
 } from './contracts.ts';
@@ -173,7 +173,7 @@ export async function validateServiceBenefits(
       ? requireMoneyCents(input.facilityUnitAmount, 'facilityUnitAmount')
       : tariff
         ? requireMoneyCents(tariff.fee, 'tariff.fee')
-        : 0;
+        : requireRecordedMoneyCents(null);
   const totalFacilityCents = multiplyMoneyCents(unitFacilityCents, quantity);
 
   // 3. Resolve latest or specified eligibility verification
@@ -228,8 +228,14 @@ export async function validateServiceBenefits(
     input.benefitPackage?.trim() ||
     mapping?.fund ||
     eligibility?.schemes?.[0] ||
-    'SHIF'
+    ''
   ).toUpperCase();
+  if (!effectiveBenefitPackage)
+    throw new InsuranceDomainError(
+      'SCHEME_REQUIRED',
+      'Select the actual payer scheme for this benefit validation.',
+      400,
+    );
 
   // 5. Resolve matching benefit rules (distinguishing APPROVED vs unverified DRAFT!)
   const allRules = await db
@@ -373,24 +379,23 @@ export async function validateServiceBenefits(
       const indRemCents =
         latestUtil?.individualRemainingLimit !== null &&
         latestUtil?.individualRemainingLimit !== undefined
-          ? parseMoneyToCents(latestUtil.individualRemainingLimit)
+          ? requireRecordedMoneyCents(latestUtil.individualRemainingLimit)
           : null;
       const hhRemCents =
         latestUtil?.householdRemainingLimit !== null &&
         latestUtil?.householdRemainingLimit !== undefined
-          ? parseMoneyToCents(latestUtil.householdRemainingLimit)
+          ? requireRecordedMoneyCents(latestUtil.householdRemainingLimit)
           : null;
 
       if ((indRemCents !== null && indRemCents <= 0) || (hhRemCents !== null && hhRemCents <= 0)) {
         decision = 'NOT_COVERED';
-        reason = `SHA benefit utilization limit for ${mapping.payerServiceCode} is exhausted (individual remaining: KES ${latestUtil?.individualRemainingLimit ?? '0.00'}, household remaining: KES ${latestUtil?.householdRemainingLimit ?? '0.00'}${latestUtil?.nextAvailability ? `, next available: ${latestUtil.nextAvailability}` : ''}).`;
+        reason = `SHA benefit utilization limit for ${mapping.payerServiceCode} is exhausted (individual remaining: KES ${latestUtil?.individualRemainingLimit ?? 'not recorded'}, household remaining: KES ${latestUtil?.householdRemainingLimit ?? 'not recorded'}${latestUtil?.nextAvailability ? `, next available: ${latestUtil.nextAvailability}` : ''}).`;
       } else {
         // Compute payer tariff & copay using decimal-safe cents math
         if (mapping.isPhcZeroTariff) {
           payerTotalCents = 0;
         } else if (mapping.reimbursementTariff !== null) {
-          const unitPayerCents =
-            parseMoneyToCents(mapping.reimbursementTariff) ?? unitFacilityCents;
+          const unitPayerCents = requireRecordedMoneyCents(mapping.reimbursementTariff);
           payerTotalCents = multiplyMoneyCents(unitPayerCents, quantity);
         } else {
           payerTotalCents = totalFacilityCents;
@@ -398,14 +403,17 @@ export async function validateServiceBenefits(
 
         const perVisitLimitCents =
           approvedRule.perVisitLimit !== null
-            ? parseMoneyToCents(approvedRule.perVisitLimit)
+            ? requireRecordedMoneyCents(approvedRule.perVisitLimit)
             : null;
         const cappedBaseCents =
           perVisitLimitCents !== null
             ? Math.min(payerTotalCents, perVisitLimitCents)
             : payerTotalCents;
 
-        const ruleCopayValCents = parseMoneyToCents(approvedRule.copayValue) ?? 0;
+        const ruleCopayValCents =
+          approvedRule.copayType === 'NONE'
+            ? 0
+            : requireRecordedMoneyCents(approvedRule.copayValue);
         if (approvedRule.copayType === 'FIXED') {
           copayCents = Math.min(cappedBaseCents, ruleCopayValCents);
         } else if (approvedRule.copayType === 'PERCENTAGE') {

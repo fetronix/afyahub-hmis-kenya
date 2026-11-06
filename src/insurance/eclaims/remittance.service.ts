@@ -4,8 +4,8 @@
  *
  * Supports FHIR R4 `PaymentNotice` (Kenya eClaims IG T-06) and authorized
  * remittance advice entry, reconciling remitted funds against SHA eClaims
- * and JaliCare invoices with decimal-safe integer-cents math and additive
- * `billing_payments` receipts (`paymentMethod: 'SHA'`).
+ * and JaliCare invoices with decimal-safe integer-cents math. Receipt matching
+ * requires a separately recorded, evidenced billing payment; this service does not post one.
  */
 
 import { and, desc, eq, inArray, like, sql } from 'drizzle-orm';
@@ -30,6 +30,17 @@ import {
   type EclaimStatus,
   type InsuranceActorScope,
 } from './contracts.ts';
+
+function recordedMoneyToCents(value: string | number | null | undefined): number {
+  const cents = parseMoneyToCents(value);
+  if (cents === null || cents < 0)
+    throw new InsuranceDomainError(
+      'FINANCIAL_REVIEW_REQUIRED',
+      'Stored financial amounts are missing or invalid; review the record before continuing.',
+      409,
+    );
+  return cents;
+}
 
 async function nextRemittanceNumber(): Promise<string> {
   const res = await db.execute(sql`SELECT nextval('sha_remittance_number_seq') AS seq`);
@@ -272,7 +283,7 @@ export async function reconcileRemittance(
     remittance.totalRemittedAmount,
     'totalRemittedAmount',
   );
-  const previouslyAllocatedCents = parseMoneyToCents(remittance.allocatedAmount) ?? 0;
+  const previouslyAllocatedCents = recordedMoneyToCents(remittance.allocatedAmount);
 
   let batchAllocationCents = 0;
   for (const alloc of input.allocations) {
@@ -313,7 +324,8 @@ export async function reconcileRemittance(
         'Remittance has already been reconciled.',
         409,
       );
-    const previouslyAllocatedCents = parseMoneyToCents(lockedRemittance.allocatedAmount) ?? 0;
+    const totalRemittedCents = recordedMoneyToCents(lockedRemittance.totalRemittedAmount);
+    const previouslyAllocatedCents = recordedMoneyToCents(lockedRemittance.allocatedAmount);
     if (previouslyAllocatedCents + batchAllocationCents > totalRemittedCents)
       throw new InsuranceDomainError(
         'ALLOCATION_EXCEEDS_REMITTANCE',
@@ -408,16 +420,14 @@ export async function reconcileRemittance(
         );
       }
 
-      const claimedCents = parseMoneyToCents(claim.totalClaimedAmount) ?? 0;
+      const claimedCents = recordedMoneyToCents(claim.totalClaimedAmount);
       const remittedCents = requireMoneyCents(alloc.remittedAmount, 'remittedAmount');
       const approvedCents =
         alloc.approvedAmount !== undefined &&
         alloc.approvedAmount !== null &&
         alloc.approvedAmount !== ''
           ? requireMoneyCents(alloc.approvedAmount, 'approvedAmount')
-          : (parseMoneyToCents(claim.totalApprovedAmount) ?? 0) > 0
-            ? (parseMoneyToCents(claim.totalApprovedAmount) ?? remittedCents)
-            : 0;
+          : recordedMoneyToCents(claim.totalApprovedAmount);
 
       const varianceCents = claimedCents - remittedCents;
       const reconciliationStatus =
@@ -481,9 +491,9 @@ export async function reconcileRemittance(
 
       // A remittance advice is not itself a payer decision or a cash receipt.
       if (postedPaymentId !== null) {
-        const priorClaimPaidCents = parseMoneyToCents(claim.totalPaidAmount) ?? 0;
+        const priorClaimPaidCents = recordedMoneyToCents(claim.totalPaidAmount);
         const newClaimPaidCents = priorClaimPaidCents + appliedCents;
-        const recordedApproval = parseMoneyToCents(claim.totalApprovedAmount) ?? 0;
+        const recordedApproval = recordedMoneyToCents(claim.totalApprovedAmount);
         const targetClaimStatus: EclaimStatus =
           recordedApproval > 0 &&
           newClaimPaidCents >= recordedApproval &&
@@ -587,7 +597,7 @@ export async function syncFacilityHieRemittances(
   if (!gatewayRes.reachable) {
     throw new InsuranceDomainError(
       'SHA_REMITTANCES_UNAVAILABLE',
-      gatewayRes.errorMessage ?? 'DHA HIE Remittances endpoint could not be reached.',
+      'DHA HIE remittance synchronization is unavailable.',
       502,
       { correlationId: gatewayRes.correlationId },
     );
@@ -609,6 +619,12 @@ export async function syncFacilityHieRemittances(
 
     if (existing) continue;
 
+    if (!adv.paymentChannel?.trim())
+      throw new InsuranceDomainError(
+        'REMITTANCE_DETAILS_REQUIRED',
+        'The provider response did not supply a payment channel; review the advice.',
+        409,
+      );
     const remNum = await nextRemittanceNumber();
     const [created] = await db
       .insert(schema.insuranceRemittances)
@@ -621,14 +637,14 @@ export async function syncFacilityHieRemittances(
         bankReference: adv.bankReference,
         facilityIdType,
         paymentDate: adv.paymentDate,
-        paymentChannel: adv.paymentChannel || 'EFT',
+        paymentChannel: adv.paymentChannel,
         totalRemittedAmount: adv.totalAmountKes,
         allocatedAmount: '0.00',
         unallocatedAmount: adv.totalAmountKes,
         status: 'RECEIVED',
         source: gatewayRes.isSimulated ? 'SANDBOX_SIMULATION' : 'DHA_HIE_REMITTANCE_API',
         isSimulated: gatewayRes.isSimulated,
-        notes: `Synced via DHA HIE Get Remittances (bank_reference: ${adv.bankReference}, claimCount: ${adv.claimCount ?? 0})`,
+        notes: 'Synced via DHA HIE Get Remittances.',
         receivedByUserId: scope.userId,
       })
       .returning();
@@ -736,70 +752,104 @@ export async function fetchRemittanceClaimBreakdown(
  */
 export async function getShaOperationalReport(
   scope: Pick<InsuranceActorScope, 'tenantId' | 'facilityId'>,
-  adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
 ) {
   const facility = await loadScopedFacility(scope);
 
-  const [eligibilities, authorizations, preauths, claims, remittances, callbacks, auditRows] =
-    await Promise.all([
-      db
-        .select()
-        .from(schema.insuranceEligibilityVerifications)
-        .where(
-          and(
-            eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
-            eq(schema.insuranceEligibilityVerifications.payerCode, 'SHA'),
-          ),
+  const [
+    eligibilities,
+    authorizations,
+    preauths,
+    claims,
+    remittances,
+    callbacks,
+    callbackTotals,
+    auditRows,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(schema.insuranceEligibilityVerifications)
+      .where(
+        and(
+          eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
+          eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
+          eq(schema.insuranceEligibilityVerifications.payerCode, 'SHA'),
         ),
-      db
-        .select()
-        .from(schema.shaPatientAuthorizations)
-        .where(eq(schema.shaPatientAuthorizations.facilityId, scope.facilityId)),
-      db
-        .select()
-        .from(schema.insurancePreauthorizations)
-        .where(
-          and(
-            eq(schema.insurancePreauthorizations.facilityId, scope.facilityId),
-            eq(schema.insurancePreauthorizations.payerCode, 'SHA'),
-          ),
+      ),
+    db
+      .select()
+      .from(schema.shaPatientAuthorizations)
+      .where(
+        and(
+          eq(schema.shaPatientAuthorizations.tenantId, scope.tenantId),
+          eq(schema.shaPatientAuthorizations.facilityId, scope.facilityId),
         ),
-      db
-        .select()
-        .from(schema.shaEclaims)
-        .where(
-          and(
-            eq(schema.shaEclaims.facilityId, scope.facilityId),
-            eq(schema.shaEclaims.payerCode, 'SHA'),
-          ),
+      ),
+    db
+      .select()
+      .from(schema.insurancePreauthorizations)
+      .where(
+        and(
+          eq(schema.insurancePreauthorizations.tenantId, scope.tenantId),
+          eq(schema.insurancePreauthorizations.facilityId, scope.facilityId),
+          eq(schema.insurancePreauthorizations.payerCode, 'SHA'),
         ),
-      db
-        .select()
-        .from(schema.insuranceRemittances)
-        .where(
-          and(
-            eq(schema.insuranceRemittances.facilityId, scope.facilityId),
-            eq(schema.insuranceRemittances.payerCode, 'SHA'),
-          ),
+      ),
+    db
+      .select()
+      .from(schema.shaEclaims)
+      .where(
+        and(
+          eq(schema.shaEclaims.tenantId, scope.tenantId),
+          eq(schema.shaEclaims.facilityId, scope.facilityId),
+          eq(schema.shaEclaims.payerCode, 'SHA'),
         ),
-      db
-        .select()
-        .from(schema.shaCallbackEvents)
-        .where(eq(schema.shaCallbackEvents.facilityId, scope.facilityId))
-        .orderBy(desc(schema.shaCallbackEvents.receivedAt))
-        .limit(25),
-      db
-        .select()
-        .from(schema.auditLogs)
-        .where(
-          and(
-            eq(schema.auditLogs.facilityId, scope.facilityId),
-            like(schema.auditLogs.action, 'SHA_%'),
-          ),
-        )
-        .orderBy(desc(schema.auditLogs.timestamp))
-        .limit(50),
-    ]);
+      ),
+    db
+      .select()
+      .from(schema.insuranceRemittances)
+      .where(
+        and(
+          eq(schema.insuranceRemittances.tenantId, scope.tenantId),
+          eq(schema.insuranceRemittances.facilityId, scope.facilityId),
+          eq(schema.insuranceRemittances.payerCode, 'SHA'),
+        ),
+      ),
+    db
+      .select({
+        id: schema.shaCallbackEvents.id,
+        receivedAt: schema.shaCallbackEvents.receivedAt,
+      })
+      .from(schema.shaCallbackEvents)
+      .where(
+        and(
+          eq(schema.shaCallbackEvents.tenantId, scope.tenantId),
+          eq(schema.shaCallbackEvents.facilityId, scope.facilityId),
+        ),
+      )
+      .orderBy(desc(schema.shaCallbackEvents.receivedAt))
+      .limit(25),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.shaCallbackEvents)
+      .where(
+        and(
+          eq(schema.shaCallbackEvents.tenantId, scope.tenantId),
+          eq(schema.shaCallbackEvents.facilityId, scope.facilityId),
+        ),
+      ),
+    db
+      .select()
+      .from(schema.auditLogs)
+      .where(
+        and(
+          eq(schema.auditLogs.tenantId, scope.tenantId),
+          eq(schema.auditLogs.facilityId, scope.facilityId),
+          like(schema.auditLogs.action, 'SHA_%'),
+        ),
+      )
+      .orderBy(desc(schema.auditLogs.timestamp))
+      .limit(50),
+  ]);
 
   let totalBilledCents = 0;
   let totalClaimedCents = 0;
@@ -809,17 +859,17 @@ export async function getShaOperationalReport(
 
   for (const clm of claims) {
     claimsByStatus[clm.status] = (claimsByStatus[clm.status] ?? 0) + 1;
-    totalBilledCents += parseMoneyToCents(clm.totalBilledAmount) ?? 0;
-    totalClaimedCents += parseMoneyToCents(clm.totalClaimedAmount) ?? 0;
-    totalApprovedCents += parseMoneyToCents(clm.totalApprovedAmount) ?? 0;
-    totalPaidCents += parseMoneyToCents(clm.totalPaidAmount) ?? 0;
+    totalBilledCents += recordedMoneyToCents(clm.totalBilledAmount);
+    totalClaimedCents += recordedMoneyToCents(clm.totalClaimedAmount);
+    totalApprovedCents += recordedMoneyToCents(clm.totalApprovedAmount);
+    totalPaidCents += recordedMoneyToCents(clm.totalPaidAmount);
   }
 
   let totalRemittedCents = 0;
   let totalUnallocatedCents = 0;
   for (const rem of remittances) {
-    totalRemittedCents += parseMoneyToCents(rem.totalRemittedAmount) ?? 0;
-    totalUnallocatedCents += parseMoneyToCents(rem.unallocatedAmount) ?? 0;
+    totalRemittedCents += recordedMoneyToCents(rem.totalRemittedAmount);
+    totalUnallocatedCents += recordedMoneyToCents(rem.unallocatedAmount);
   }
 
   // Format recent SHA audit logs into IHE ATNA (RFC 3881 / DICOM AuditMessage) aligned descriptors
@@ -827,13 +877,12 @@ export async function getShaOperationalReport(
     eventId: row.id,
     eventActionCode: row.action.includes('CREATED') || row.action.includes('PREPARED') ? 'C' : 'U',
     eventDateTime: row.timestamp.toISOString(),
-    eventOutcomeIndicator: '0',
+    eventOutcomeIndicator: null, // Historical action codes do not establish an external outcome.
     eventTypeCode: row.action,
     activeParticipantUserId: row.userId ? `User/${row.userId}` : 'System/Webhook',
     auditSourceId: facility.mflCode || facility.code,
     participantObjectTypeCode: '2',
     participantObjectId: `${row.resource}/${row.resourceId ?? 'facility'}`,
-    details: row.details,
   }));
 
   return {
@@ -843,7 +892,11 @@ export async function getShaOperationalReport(
       code: facility.code,
       mflCode: facility.mflCode,
     },
-    gatewayStatus: adapter.getConnectionStatus(),
+    gatewayStatus: {
+      enabled: false,
+      verified: false,
+      notice: 'Facility-isolated SHA transport is not authorized.',
+    },
     metrics: {
       eligibilityChecksTotal: eligibilities.length,
       eligibleCount: eligibilities.filter((e) => e.outcome === 'Eligible').length,
@@ -868,9 +921,10 @@ export async function getShaOperationalReport(
         totalRemitted: formatCents(totalRemittedCents),
         unallocatedRemittance: formatCents(totalUnallocatedCents),
       },
-      callbacksReceivedCount: callbacks.length,
+      callbacksReceivedCount: callbackTotals[0].count,
     },
     recentCallbacks: callbacks,
+    callbackVerification: 'NOT_ESTABLISHED',
     atnaAuditTrail,
   };
 }

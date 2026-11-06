@@ -6,6 +6,7 @@ import { resolveFacilityScope, ScopeAccessError } from '../auth/scope.service.ts
 import { getFacilityByIdScoped } from '../db/queries.ts';
 import { PaymentHubError } from './errors.ts';
 import { listConfigurationAudit } from '../integrations/hub/configuration-audit.ts';
+import { requireFacilityIntegrationAdministrator } from '../integrations/hub/facility-authorization.ts';
 import * as hub from './service.ts';
 
 const router = Router();
@@ -32,7 +33,7 @@ async function scope(req: AuthRequest, finance = false): Promise<hub.HubScope> {
   const context = req.authContext;
   // A global provider administrator is not automatically a facility finance
   // operator. An explicitly assigned facility user must perform those actions.
-  if (!context || context.isSuperAdmin)
+  if (!context || context.isSuperAdmin || !context.tenantId || !context.facilityId)
     throw new ScopeAccessError('Facility-scoped authorization is required.');
   const query = req.query.facilityId,
     body = req.body?.facilityId;
@@ -182,6 +183,10 @@ router.get(
       ...(await hub.facilityCatalogue(
         s,
         hasPermission(req.authContext!, 'payment_hub.accounts.read'),
+        Boolean(
+          req.authContext?.roles.includes('FACILITY_ADMIN') &&
+          hasPermission(req.authContext, 'payment_hub.credentials.manage'),
+        ),
       )),
     });
   }),
@@ -189,6 +194,7 @@ router.get(
 router.get(
   '/facility/configuration-audit',
   requirePermission('payment_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.json({ success: true, events: await listConfigurationAudit(await scope(req), 'payment') });
   }),
@@ -196,6 +202,7 @@ router.get(
 router.post(
   '/facility/providers/:id/access-request',
   requirePermission('payment_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.status(201).json({
       success: true,
@@ -206,6 +213,7 @@ router.post(
 router.post(
   '/facility/providers/:id/integrations',
   requirePermission('payment_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.status(201).json({
       success: true,
@@ -216,6 +224,7 @@ router.post(
 router.put(
   '/facility/integrations/:id/credentials',
   requirePermission('payment_hub.credentials.manage'),
+  requireFacilityIntegrationAdministrator,
   secureCredentials,
   wrap(async (req, res) => {
     res.json({
@@ -225,8 +234,21 @@ router.put(
   }),
 );
 router.post(
+  '/facility/integrations/:id/credentials/revoke',
+  requirePermission('payment_hub.credentials.manage'),
+  requireFacilityIntegrationAdministrator,
+  secureCredentials,
+  wrap(async (req, res) => {
+    res.json({
+      success: true,
+      ...(await hub.revokeCredentials(await scope(req), Number(req.params.id))),
+    });
+  }),
+);
+router.post(
   '/facility/integrations/:id/credentials/reencrypt',
   requirePermission('payment_hub.credentials.manage'),
+  requireFacilityIntegrationAdministrator,
   secureCredentials,
   wrap(async (req, res) => {
     res.json({
@@ -238,6 +260,7 @@ router.post(
 router.post(
   '/facility/integrations/:id/accounts',
   requirePermission('payment_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.status(201).json({
       success: true,
@@ -252,6 +275,7 @@ router.post(
 router.post(
   '/facility/integrations/:id/health',
   requirePermission('payment_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.json({
       success: true,
@@ -262,6 +286,7 @@ router.post(
 router.put(
   '/facility/integrations/:id/enabled',
   requirePermission('payment_hub.facility.manage'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     if (typeof req.body?.enabled !== 'boolean')
       throw new PaymentHubError('INVALID_INPUT', 'Specify whether the integration is enabled.');
@@ -278,6 +303,7 @@ router.put(
 router.post(
   '/facility/integrations/:id/production-request',
   requirePermission('payment_hub.production.request'),
+  requireFacilityIntegrationAdministrator,
   wrap(async (req, res) => {
     res.json({
       success: true,

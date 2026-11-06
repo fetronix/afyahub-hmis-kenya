@@ -95,6 +95,7 @@ export function contractWithReviewedAdditions(name: string, original: unknown) {
     for (const [offset, name, type] of [
       [0, 'credential_source', 'text'],
       [1, 'expires_at', 'timestamp with time zone'],
+      [2, 'revoked_at', 'timestamp with time zone'],
     ] as const) {
       expected.columns.splice(position + offset, 0, {
         name,
@@ -107,6 +108,34 @@ export function contractWithReviewedAdditions(name: string, original: unknown) {
         uniqueName: null,
       });
     }
+    return expected;
+  }
+  if (name === 'insurancePayerEnvironmentConfigs') {
+    const expected = structuredClone(original) as {
+      columns: Array<{ name: string } & Record<string, unknown>>;
+    };
+    expected.columns.push(
+      {
+        name: 'revoked_at',
+        type: 'timestamp with time zone',
+        notNull: false,
+        primary: false,
+        hasDefault: false,
+        default: null,
+        unique: false,
+        uniqueName: null,
+      },
+      {
+        name: 'credential_generation',
+        type: 'integer',
+        notNull: true,
+        primary: false,
+        hasDefault: true,
+        default: 1,
+        unique: false,
+        uniqueName: null,
+      },
+    );
     return expected;
   }
   if (name !== 'shaEclaims' && name !== 'privateInsuranceClaims') return original;

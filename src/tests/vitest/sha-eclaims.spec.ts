@@ -19,7 +19,7 @@
  *      and SHA intervention combination rules)
  *   6. Pre-submission validation engine, state machines & decimal-safe cents arithmetic
  *   7. Granular RBAC permissions, delegation protections, Express route gates & `/api/webhooks/sha/status`
- *      constant-time secret verification
+ *      fail-closed callback verification
  */
 
 import { readFileSync } from 'node:fs';
@@ -1395,24 +1395,30 @@ describe('5. RBAC Policy, Webhook Secret Guard & Express Route Surface (Mocked U
     }
   });
 
-  it('refuses /api/webhooks/sha/status with 503 when SHA_WEBHOOK_SECRET is unset and 401 when credentials are invalid', async () => {
-    delete process.env.SHA_WEBHOOK_SECRET;
-    const unconfiguredRes = await fetch(`${baseUrl}/api/webhooks/sha/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entity_type: 'claim', entity_id: 'CLM-1' }),
-    });
-    expect(unconfiguredRes.status).toBe(503);
-
-    process.env.SHA_WEBHOOK_SECRET = SYNTHETIC_WEBHOOK_SECRET;
-    const unauthorizedRes = await fetch(`${baseUrl}/api/webhooks/sha/status`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer wrong-secret-token',
-      },
-      body: JSON.stringify({ entity_type: 'claim', entity_id: 'CLM-1' }),
-    });
-    expect(unauthorizedRes.status).toBe(401);
+  it('rejects every SHA callback without writes or a guessed bearer/HMAC verifier', async () => {
+    for (const secret of [undefined, SYNTHETIC_WEBHOOK_SECRET]) {
+      if (secret) process.env.SHA_WEBHOOK_SECRET = secret;
+      else delete process.env.SHA_WEBHOOK_SECRET;
+      for (const authorization of [
+        undefined,
+        'Bearer wrong-secret-token',
+        `Bearer ${SYNTHETIC_WEBHOOK_SECRET}`,
+      ]) {
+        const response = await fetch(`${baseUrl}/api/webhooks/sha/status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authorization ? { Authorization: authorization } : {}),
+          },
+          body: JSON.stringify({
+            entity_type: 'claim',
+            entity_id: 'synthetic',
+            token: SYNTHETIC_WEBHOOK_SECRET,
+          }),
+        });
+        expect(response.status).toBe(503);
+        expect(JSON.stringify(await response.json())).not.toContain(SYNTHETIC_WEBHOOK_SECRET);
+      }
+    }
   });
 });

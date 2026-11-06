@@ -13,6 +13,7 @@ export function FacilityIntegrationHub() {
   const isSuper = Boolean(
     authenticatedUser?.isSuperAdmin || authenticatedUser?.roles?.includes('SUPER_ADMIN'),
   );
+  const isFacilityAdmin = Boolean(!isSuper && authenticatedUser?.roles?.includes('FACILITY_ADMIN'));
   const payments = !isSuper && permissions.has('payment_hub.catalogue.read');
   const payers = !isSuper && permissions.has('payer_hub.catalogue.read');
   const [category, setCategory] = useState<Category>('all');
@@ -113,10 +114,12 @@ export function FacilityIntegrationHub() {
         </>
       )}
       <IntegrationConfigurationAudit
-        key={`${currentFacility.id}-${payments && permissions.has('payment_hub.facility.manage')}-${payers && permissions.has('payer_hub.facility.manage')}`}
+        key={`${currentFacility.id}-${payments && isFacilityAdmin && permissions.has('payment_hub.facility.manage')}-${payers && isFacilityAdmin && permissions.has('payer_hub.facility.manage')}`}
         facilityId={currentFacility.id}
-        canViewPayments={payments && permissions.has('payment_hub.facility.manage')}
-        canViewPayers={payers && permissions.has('payer_hub.facility.manage')}
+        canViewPayments={
+          payments && isFacilityAdmin && permissions.has('payment_hub.facility.manage')
+        }
+        canViewPayers={payers && isFacilityAdmin && permissions.has('payer_hub.facility.manage')}
       />
     </section>
   );

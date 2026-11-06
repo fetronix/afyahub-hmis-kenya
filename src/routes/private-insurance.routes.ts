@@ -1,3 +1,4 @@
+import { requireFacilityIntegrationAdministrator } from '../integrations/hub/facility-authorization.ts';
 /**
  * JaliCare HMIS — Private Insurance & Multi-Insurer Routes (`/api/insurance/*`)
  *
@@ -26,7 +27,7 @@ import {
   getPayerCapabilitiesScoped,
   getPayerRowScoped,
   listPrivatePayers,
-  probeAndPersistPayerConnectionStatus,
+  getPayerConnectionStatusSnapshot,
   serializePayerConfig,
   updatePrivatePayer,
 } from '../insurance/payers/payer-config.service.ts';
@@ -247,6 +248,7 @@ router.get(
 router.post(
   '/payers',
   requirePermission('insurance.payers.manage'),
+  requireFacilityIntegrationAdministrator,
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -283,6 +285,7 @@ router.get(
 router.patch(
   '/payers/:payerId',
   requirePermission('insurance.payers.manage'),
+  requireFacilityIntegrationAdministrator,
   async (req: AuthRequest, res: Response) => {
     try {
       const actor = await resolveActor(req);
@@ -325,11 +328,10 @@ router.get(
     try {
       const actor = await resolveActor(req);
       const payerId = parsePositiveInt(req.params.payerId, 'payerId');
-      const status = await probeAndPersistPayerConnectionStatus({
+      const status = await getPayerConnectionStatusSnapshot({
         tenantId: actor.tenantId,
         facilityId: actor.facilityId,
         payerId,
-        actorUserId: actor.actorUserId,
       });
       res.json(status);
     } catch (err) {

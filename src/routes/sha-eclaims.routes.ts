@@ -1,3 +1,4 @@
+import { requireFacilityIntegrationAdministrator } from '../integrations/hub/facility-authorization.ts';
 import { shaPolicyGuard } from '../insurance/hub/guards.ts';
 /**
  * JaliCare HMIS
@@ -13,8 +14,7 @@ import { shaPolicyGuard } from '../insurance/hub/guards.ts';
  *   - Zero leakage of credentials, tokens, or raw internal stack traces
  */
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { Router, type Request, type Response } from 'express';
+import { Router, type Response } from 'express';
 import { eq } from 'drizzle-orm';
 import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { requireAnyPermission, requirePermission } from '../auth/authorization.middleware.ts';
@@ -24,7 +24,6 @@ import * as schema from '../db/schema.ts';
 import { defaultShaGatewayAdapter } from '../integrations/sha/sha.adapter.ts';
 import { facilityActionBodySchema } from '../validation/schemas/index.ts';
 import { validateBody } from '../validation/validate.ts';
-import { loadShaConfig } from '../integrations/sha/sha.config.ts';
 import {
   InsuranceDomainError,
   type InsuranceActorScope,
@@ -69,7 +68,6 @@ import {
   listShaCallbackEvents,
   listShaClaims,
   prepareShaClaim,
-  processIncomingShaWebhookEvent,
   recordClaimAdjudicationDecision,
   refreshShaClaimStatus,
   resubmitShaClaim,
@@ -256,7 +254,8 @@ function respondShaError(res: Response, err: unknown, fallbackMessage: string): 
       success: false,
       error: err.code,
       message: err.message,
-      ...(err.details !== undefined ? { details: err.details } : {}),
+      // Provider error bodies can contain credentials or patient information.
+      ...(err.httpStatus < 500 && err.details !== undefined ? { details: err.details } : {}),
     });
   }
 
@@ -295,6 +294,7 @@ router.get(
           hasClientId: false,
           hasClientSecret: false,
           hasWebhookSecret: false,
+          facilityRegistryCode: payerConfig.facilityRegistryCode ?? facility.mflCode ?? null,
           capabilities: [], // No operational external capability has been authorized.
         },
         facilityConfig: {
@@ -337,7 +337,7 @@ router.get(
           requireVerifiedEligibility: config.requireVerifiedEligibility,
           eligibilityMaxAgeHours: config.eligibilityMaxAgeHours,
           isActive: config.isActive,
-          notes: config.notes,
+          notes: null, // Historical free text may contain secrets.
         },
       });
     } catch (err) {
@@ -349,6 +349,7 @@ router.get(
 router.put(
   '/configuration',
   requirePermission('insurance.sha.configuration.manage'),
+  requireFacilityIntegrationAdministrator,
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
@@ -389,7 +390,7 @@ router.put(
           requireVerifiedEligibility: saved.requireVerifiedEligibility,
           eligibilityMaxAgeHours: saved.eligibilityMaxAgeHours,
           isActive: saved.isActive,
-          notes: saved.notes,
+          notes: null,
         },
       });
     } catch (err) {
@@ -1462,6 +1463,7 @@ router.get(
 router.post(
   '/callbacks/register',
   requirePermission('insurance.sha.configuration.manage'),
+  requireFacilityIntegrationAdministrator,
   async (req: AuthRequest, res: Response) => {
     try {
       const scope = await resolveActorScope(req);
@@ -1575,137 +1577,21 @@ router.get(
 );
 
 /**
- * Secret-verified external DHA HIE / SHA webhook router mounted at `/api/webhooks/sha`
- * prior to the staff `requireAuth` gate. Refuses 503 when `SHA_WEBHOOK_SECRET` is
- * unconfigured and enforces constant-time token/HMAC verification.
+ * Public callback handling is unavailable until the documented provider
+ * mechanism authenticates the specific facility and environment and a
+ * reviewed, atomic replay/transaction boundary exists. Never test guessed
+ * bearer/HMAC schemes or trust process-wide legacy credentials here.
  */
-function isFacilityScopedCallbackVerificationImplemented(): boolean {
-  return false;
-}
-
 export function createShaWebhooksRouter(): Router {
   const webhookRouter = Router();
-
-  webhookRouter.post('/status', async (req: Request, res: Response) => {
-    const cfg = loadShaConfig();
-    if (!cfg.webhookSecret) {
-      return res.status(503).json({
-        success: false,
-        error: 'SHA_WEBHOOK_UNCONFIGURED',
-        message: 'SHA_WEBHOOK_SECRET is not configured on this server.',
-      });
-    }
-
-    const authHeader =
-      typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
-    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    const signatureHeader =
-      typeof req.headers['x-sha-signature'] === 'string'
-        ? req.headers['x-sha-signature'].trim()
-        : '';
-
-    const secretBuf = Buffer.from(cfg.webhookSecret, 'utf8');
-    let verified = false;
-
-    if (bearerToken) {
-      const tokenBuf = Buffer.from(bearerToken, 'utf8');
-      if (tokenBuf.length === secretBuf.length && timingSafeEqual(tokenBuf, secretBuf)) {
-        verified = true;
-      }
-    } else if (signatureHeader) {
-      const expectedHex = createHmac('sha256', cfg.webhookSecret)
-        .update(JSON.stringify(req.body ?? {}))
-        .digest('hex');
-      const sigClean = signatureHeader.replace(/^sha256=/i, '');
-      const sigBuf = Buffer.from(sigClean, 'utf8');
-      const expBuf = Buffer.from(expectedHex, 'utf8');
-      if (sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf)) {
-        verified = true;
-      }
-    }
-
-    if (!verified) {
-      return res.status(401).json({
-        success: false,
-        error: 'INVALID_WEBHOOK_CREDENTIALS',
-        message: 'Invalid or missing SHA callback authentication.',
-      });
-    }
-
-    // The legacy verifier uses a process-wide secret and cannot authenticate
-    // the sending facility. Never apply callbacks until the provider's
-    // facility-specific authentication and replay contract are verified.
-    if (!isFacilityScopedCallbackVerificationImplemented()) {
-      return res.status(503).json({
-        success: false,
-        error: 'SHA_CALLBACK_NOT_VERIFIED',
-        message: 'Facility-scoped callback verification is not yet available.',
-      });
-    }
-
-    /* Future facility-scoped callback processing is retained below. */
-    try {
-      const b =
-        typeof req.body === 'object' && req.body !== null && !Array.isArray(req.body)
-          ? (req.body as Record<string, unknown>)
-          : {};
-      const entityTypeRaw = String(b.entity_type ?? b.entityType ?? 'claim')
-        .trim()
-        .toLowerCase();
-      const entityType =
-        entityTypeRaw === 'preauth' ||
-        entityTypeRaw === 'authorization' ||
-        entityTypeRaw === 'payment_notice'
-          ? entityTypeRaw
-          : 'claim';
-      const externalEntityId = String(
-        b.entity_id ?? b.entityId ?? b.claim_id ?? b.guid ?? '',
-      ).trim();
-
-      if (!externalEntityId) {
-        return res.status(400).json({
-          success: false,
-          error: 'MISSING_ENTITY_ID',
-          message: 'Callback payload must include entity_id / claim_id / guid.',
-        });
-      }
-
-      const result = await processIncomingShaWebhookEvent({
-        entityType,
-        action: typeof b.action === 'string' ? b.action : 'status_changed',
-        externalEntityId,
-        externalEventId:
-          typeof b.event_id === 'string'
-            ? b.event_id
-            : typeof b.eventId === 'string'
-              ? b.eventId
-              : null,
-        upstreamStatus:
-          typeof b.status === 'string'
-            ? b.status
-            : typeof b.upstreamStatus === 'string'
-              ? b.upstreamStatus
-              : null,
-        approvedAmountKes:
-          typeof b.approved_amount === 'number' || typeof b.approved_amount === 'string'
-            ? String(b.approved_amount)
-            : null,
-        rejectionReason: typeof b.rejection_reason === 'string' ? b.rejection_reason : null,
-        environment: cfg.mode === 'production' ? 'production' : 'sandbox',
-        signatureVerified: true,
-        payloadSummary: {
-          entityType,
-          externalEntityId,
-          status: b.status ?? b.upstreamStatus ?? null,
-        },
-      });
-
-      return res.status(200).json({ success: true, ...result });
-    } catch (err) {
-      return respondShaError(res, err, 'Failed to process SHA status callback.');
-    }
+  webhookRouter.post('/status', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(503).json({
+      success: false,
+      error: 'SHA_CALLBACK_NOT_VERIFIED',
+      message: 'Facility-scoped provider callback verification is unavailable.',
+    });
   });
-
   return webhookRouter;
 }
 

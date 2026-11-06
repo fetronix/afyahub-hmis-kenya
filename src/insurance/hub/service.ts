@@ -288,7 +288,7 @@ export async function facilityCatalogue(scope: PayerScope) {
     [scope.tenantId, scope.facilityId],
   );
   const environments = await pool.query(
-    `SELECT provider_id AS "providerId",environment,secret_env_prefix AS "secretEnvPrefix",provider_identifier AS "providerIdentifier" FROM insurance_payer_environment_configs WHERE tenant_id=$1 AND facility_id=$2`,
+    `SELECT provider_id AS "providerId",environment,secret_env_prefix AS "secretEnvPrefix",provider_identifier AS "providerIdentifier",revoked_at AS "revokedAt" FROM insurance_payer_environment_configs WHERE tenant_id=$1 AND facility_id=$2`,
     [scope.tenantId, scope.facilityId],
   );
   return {
@@ -310,7 +310,10 @@ export async function facilityCatalogue(scope: PayerScope) {
           environment: e.environment,
           secretReference: e.secretEnvPrefix,
           providerIdentifier: e.providerIdentifier,
+          revoked: Boolean(e.revokedAt),
+          revokedAt: e.revokedAt,
           configured: Boolean(
+            !e.revokedAt &&
             process.env[`${e.secretEnvPrefix}_CLIENT_ID`] &&
             process.env[`${e.secretEnvPrefix}_CLIENT_SECRET`],
           ),
@@ -321,6 +324,32 @@ export async function facilityCatalogue(scope: PayerScope) {
       'Registration and manual processing do not mean a payer API is connected. Sandbox and production have not been verified.',
   };
 }
+/** Audit an attempted test without pretending that a provider was contacted. */
+export async function recordUnavailableConnectionTest(scope: PayerScope, providerId: number) {
+  return transaction(async (c) => {
+    const result = await c.query(
+      `SELECT p.id FROM insurance_payer_definitions p
+       JOIN insurance_payer_assignments a ON a.provider_id=p.id
+       JOIN insurance_payer_configs cfg ON cfg.tenant_id=a.tenant_id AND cfg.facility_id=a.facility_id AND cfg.payer_code=p.code
+       WHERE p.id=$1 AND p.status='ACTIVE' AND a.tenant_id=$2 AND a.facility_id=$3 AND a.is_allowed AND cfg.is_active`,
+      [id(providerId), scope.tenantId, scope.facilityId],
+    );
+    if (!result.rowCount)
+      throw new PayerHubError('PAYER_NOT_FOUND', 'An active assigned payer was not found.', 404);
+    await audit(c, scope.actorUserId, scope, 'TEST', 'connection', providerId, {
+      tested: false,
+      verified: false,
+    });
+    return {
+      tested: false,
+      verified: false,
+      status: 'NOT_TESTED',
+      message:
+        'No authorized, facility-isolated sandbox test is implemented. No external request was sent.',
+    };
+  });
+}
+
 export async function requestAccess(scope: PayerScope, providerId: number) {
   return transaction(async (c) => {
     const p = await c.query(
@@ -508,17 +537,30 @@ export async function configureEnvironment(
     ? reference(input.providerIdentifier, 'Provider identifier')
     : null;
   return transaction(async (c) => {
+    await c.query('SELECT pg_advisory_xact_lock($1,$2)', [id(providerId), scope.facilityId]);
+    const existing = await c.query(
+      `SELECT id,secret_env_prefix,credential_generation,revoked_at FROM insurance_payer_environment_configs
+       WHERE provider_id=$1 AND tenant_id=$2 AND facility_id=$3 AND environment=$4 FOR UPDATE`,
+      [providerId, scope.tenantId, scope.facilityId, environment],
+    );
+    const old = existing.rows[0];
+    const generation = old ? Number(old.credential_generation) + (old.revoked_at ? 1 : 0) : 1;
+    const nextPrefix = generation === 1 ? prefix : `${prefix}_V${generation}`;
     const r = await c.query(
-      `INSERT INTO insurance_payer_environment_configs(provider_id,tenant_id,facility_id,environment,secret_env_prefix,provider_identifier,updated_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7)
-      ON CONFLICT(provider_id,facility_id,environment) DO UPDATE SET provider_identifier=$6,updated_by_user_id=$7,updated_at=now() RETURNING id`,
+      `INSERT INTO insurance_payer_environment_configs(provider_id,tenant_id,facility_id,environment,secret_env_prefix,provider_identifier,updated_by_user_id,credential_generation)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT(provider_id,facility_id,environment) DO UPDATE SET secret_env_prefix=EXCLUDED.secret_env_prefix,
+       provider_identifier=EXCLUDED.provider_identifier,updated_by_user_id=EXCLUDED.updated_by_user_id,
+       credential_generation=EXCLUDED.credential_generation,revoked_at=NULL,updated_at=now() RETURNING id`,
       [
         providerId,
         scope.tenantId,
         scope.facilityId,
         environment,
-        prefix,
+        nextPrefix,
         identifier,
         scope.actorUserId,
+        generation,
       ],
     );
     await audit(c, scope.actorUserId, scope, 'CONFIGURE', 'environment', r.rows[0].id, {
@@ -527,12 +569,57 @@ export async function configureEnvironment(
     });
     return {
       environment,
-      secretReference: prefix,
+      secretReference: nextPrefix,
       connectionVerified: false,
       notice: 'Reference only; credentials have not been tested or authorized for use.',
     };
   });
 }
+/** Revoke this reference; manual payer workflows remain separate and no live transport exists. */
+export async function revokeEnvironmentReference(
+  scope: PayerScope,
+  providerId: number,
+  environment: string,
+) {
+  if (environment !== 'SANDBOX' && environment !== 'PRODUCTION')
+    throw new PayerHubError('INVALID_ENVIRONMENT', 'Choose SANDBOX or PRODUCTION.');
+  return transaction(async (c) => {
+    await c.query('SELECT pg_advisory_xact_lock($1,$2)', [id(providerId), scope.facilityId]);
+    const row = await c.query(
+      `SELECT id,revoked_at FROM insurance_payer_environment_configs
+       WHERE provider_id=$1 AND tenant_id=$2 AND facility_id=$3 AND environment=$4 FOR UPDATE`,
+      [id(providerId), scope.tenantId, scope.facilityId, environment],
+    );
+    if (!row.rowCount)
+      throw new PayerHubError(
+        'PAYER_REFERENCE_NOT_FOUND',
+        'Payer credential reference not found.',
+        404,
+      );
+    if (row.rows[0].revoked_at) return { revoked: true, alreadyRevoked: true };
+    await c.query(
+      `UPDATE insurance_payer_environment_configs SET revoked_at=now(),updated_by_user_id=$2,updated_at=now() WHERE id=$1`,
+      [row.rows[0].id, scope.actorUserId],
+    );
+    await c.query(
+      `UPDATE insurance_payer_assignments SET sandbox_status='NOT_TESTED',production_approval='NOT_REQUESTED',
+      production_decided_by_user_id=NULL,approval_reference=NULL,updated_at=now()
+      WHERE provider_id=$1 AND tenant_id=$2 AND facility_id=$3`,
+      [providerId, scope.tenantId, scope.facilityId],
+    );
+    await audit(c, scope.actorUserId, scope, 'REVOKE', 'environment', row.rows[0].id, {
+      providerId,
+      environment,
+    });
+    return {
+      revoked: true,
+      alreadyRevoked: false,
+      message:
+        'Reference revoked locally. Rotate credentials with the provider and server operator; no payer transport is enabled.',
+    };
+  });
+}
+
 export async function requestProduction(scope: PayerScope, providerId: number) {
   const p = await pool.query(`SELECT code FROM insurance_payer_definitions WHERE id=$1`, [
     id(providerId),

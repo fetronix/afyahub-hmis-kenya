@@ -6,6 +6,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { describeDb } from './support/db.ts';
 import { db, pool } from '../../db/index.ts';
 import { matchRecordedPayerPayment } from '../../insurance/hub/recorded-payment.ts';
+import { recordIntegrationDiagnostic } from '../../insurance/audit/diagnostics.service.ts';
 import { createSession } from '../../auth/session.service.ts';
 
 const platformGrants = [
@@ -22,6 +23,8 @@ const facilityGrants = [
   'patients.read',
   'billing.payments.record',
   'insurance.read',
+  'insurance.payers.read',
+  'insurance.payers.manage',
   'insurance.claims.create',
   'insurance.claims.manage',
   'insurance.members.manage',
@@ -46,7 +49,9 @@ describeDb(
       aToken: string,
       bToken: string,
       noPatientToken: string,
-      catalogueToken: string;
+      catalogueToken: string,
+      delegatedToken: string,
+      tenantToken: string;
     let provider: number, claim: number, assignment: number;
     const suffix = randomUUID().slice(0, 8);
     const payerCode = `TEST${suffix.toUpperCase()}`;
@@ -103,7 +108,7 @@ describeDb(
           ],
         );
         const r = await pool.query(
-          'INSERT INTO roles(tenant_id,name,is_active) VALUES($1,$2,true) RETURNING id',
+          'INSERT INTO roles(tenant_id,name,is_active) VALUES($1,$2,true) ON CONFLICT(tenant_id,name) DO UPDATE SET name=EXCLUDED.name RETURNING id',
           [global ? null : tenant, role],
         );
         await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [
@@ -118,8 +123,10 @@ describeDb(
         return (await createSession({ userId: u.rows[0].id, securityVersion: 1 })).sessionToken;
       };
       suToken = await actor('platform', null, 'SUPER_ADMIN', platformGrants, true);
-      aToken = await actor('a', facA, `PAYER_A_${suffix}`, facilityGrants);
-      bToken = await actor('b', facB, `PAYER_B_${suffix}`, facilityGrants);
+      aToken = await actor('a', facA, 'FACILITY_ADMIN', facilityGrants);
+      bToken = await actor('b', facB, 'FACILITY_ADMIN', facilityGrants);
+      delegatedToken = await actor('delegated', facA, `PAYER_DELEGATED_${suffix}`, facilityGrants);
+      tenantToken = await actor('tenant-wide', null, `PAYER_TENANT_${suffix}`, facilityGrants);
       catalogueToken = await actor('catalogue', facA, `PAYER_CATALOGUE_${suffix}`, [
         'payer_hub.catalogue.read',
       ]);
@@ -169,6 +176,22 @@ describeDb(
       });
       expect(registered.status).toBe(201);
       provider = registered.data.payer.id;
+      expect(
+        (await call(delegatedToken, 'GET', `/api/payer-hub/facility/catalogue?facilityId=${facA}`))
+          .status,
+      ).toBe(200);
+      expect(
+        (await call(tenantToken, 'GET', `/api/payer-hub/facility/catalogue?facilityId=${facA}`))
+          .status,
+      ).toBe(403);
+      const delegated = await call(
+        delegatedToken,
+        'PUT',
+        `/api/payer-hub/facility/payers/${provider}/activation`,
+        { facilityId: facA, isActive: true },
+      );
+      expect(delegated.status).toBe(403);
+      expect(delegated.data.error).toBe('FACILITY_ADMIN_REQUIRED');
       expect(
         (
           await call(aToken, 'PUT', `/api/payer-hub/facility/payers/${provider}/activation`, {
@@ -461,6 +484,233 @@ describeDb(
           ])
         ).rows[0],
       ).toMatchObject({ paid_amount: '100.00', balance_amount: '0.00' });
+    });
+
+    it('revokes payer references within the facility, audits attempts, and uses a new replacement namespace', async () => {
+      const root = `/api/payer-hub/facility/payers/${provider}/environments/SANDBOX`;
+      expect((await call(null, 'POST', `${root}/revoke`, { facilityId: facA })).status).toBe(401);
+      expect(
+        (await call(delegatedToken, 'POST', `${root}/revoke`, { facilityId: facA })).status,
+      ).toBe(403);
+      expect((await call(bToken, 'POST', `${root}/revoke`, { facilityId: facB })).status).toBe(404);
+      const before = (
+        await pool.query(
+          `SELECT id,secret_env_prefix,revoked_at FROM insurance_payer_environment_configs
+        WHERE provider_id=$1 AND facility_id=$2 AND environment='SANDBOX'`,
+          [provider, facA],
+        )
+      ).rows[0];
+      const revoked = await call(aToken, 'POST', `${root}/revoke`, { facilityId: facA });
+      expect(revoked.status).toBe(200);
+      expect(revoked.data).toMatchObject({ revoked: true, alreadyRevoked: false });
+      expect(
+        (await call(aToken, 'POST', `${root}/revoke`, { facilityId: facA })).data,
+      ).toMatchObject({ alreadyRevoked: true });
+      const catalogue = await call(
+        aToken,
+        'GET',
+        `/api/payer-hub/facility/catalogue?facilityId=${facA}`,
+      );
+      const payer = catalogue.data.providers.find((item: any) => item.id === provider);
+      expect(payer.environments.find((item: any) => item.environment === 'SANDBOX')).toMatchObject({
+        revoked: true,
+        configured: false,
+        connectionVerified: false,
+      });
+      // Manual facility workflows remain active; local revocation does not claim provider-side revocation.
+      expect(payer.isActive).toBe(true);
+      expect(revoked.data.message).toMatch(/provider and server operator/i);
+      const audit = await call(
+        aToken,
+        'GET',
+        `/api/payer-hub/facility/configuration-audit?facilityId=${facA}`,
+      );
+      expect(
+        audit.data.events.some(
+          (event: any) => event.action === 'REVOKE' && event.resource === 'payer_hub.environment',
+        ),
+      ).toBe(true);
+      expect(
+        audit.data.events.some(
+          (event: any) => event.action === 'TEST' && event.resource === 'payer_hub.connection',
+        ),
+      ).toBe(true);
+      const replacement = await call(aToken, 'PUT', root, {
+        facilityId: facA,
+        providerIdentifier: 'SYNTHETIC',
+      });
+      expect(replacement.status).toBe(200);
+      expect(replacement.data.secretReference).toBe(`${before.secret_env_prefix}_V2`);
+      const row = (
+        await pool.query(
+          'SELECT secret_env_prefix,credential_generation,revoked_at FROM insurance_payer_environment_configs WHERE id=$1',
+          [before.id],
+        )
+      ).rows[0];
+      expect(row).toMatchObject({
+        credential_generation: 2,
+        revoked_at: null,
+        secret_env_prefix: `${before.secret_env_prefix}_V2`,
+      });
+      expect(replacement.data.connectionVerified).toBe(false);
+    });
+
+    it('enforces administrator-only legacy configuration and masks untrusted historical metadata', async () => {
+      const id = (
+        await pool.query(
+          `SELECT id FROM insurance_payer_configs WHERE tenant_id=$1 AND facility_id=$2 AND payer_code=$3`,
+          [tenant, facA, payerCode],
+        )
+      ).rows[0].id;
+      const path = `/api/insurance/payers/${id}`;
+      const sentinel = 'synthetic-payer-nested-secret';
+      const legacyClaim = {
+        requireDiagnosis: true,
+        nested: [{ token: sentinel }],
+        apiKey: sentinel,
+      };
+      const legacyPreauth = { requirePreauthForImaging: false, amountThresholdKes: sentinel };
+      await pool.query(
+        `UPDATE insurance_payer_configs SET claim_requirements=$2::jsonb,preauth_requirements=$3::jsonb,
+        last_connection_summary=$4,missing_requirements=$5::jsonb,notes=$4 WHERE id=$1`,
+        [
+          id,
+          JSON.stringify(legacyClaim),
+          JSON.stringify(legacyPreauth),
+          sentinel,
+          JSON.stringify([sentinel]),
+        ],
+      );
+      const read = await call(aToken, 'GET', path);
+      expect(read.status).toBe(200);
+      expect(read.data.claimRequirements).toEqual({ requireDiagnosis: true });
+      expect(read.data.preauthRequirements).toEqual({ requirePreauthForImaging: false });
+      expect(JSON.stringify(read.data)).not.toContain(sentinel);
+      expect(
+        (
+          await call(delegatedToken, 'PATCH', path, {
+            claimRequirements: { requireDiagnosis: true },
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(tenantToken, 'PATCH', path, {
+            facilityId: facA,
+            claimRequirements: { requireDiagnosis: true },
+          })
+        ).status,
+      ).toBe(403);
+      for (const invalid of [
+        { claimRequirements: { requireDiagnosis: true, password: sentinel } },
+        { claimRequirements: [{ token: sentinel }] },
+        { claimRequirements: { allowedCodingSystems: [{ token: sentinel }] } },
+        { preauthRequirements: { amountThresholdKes: sentinel } },
+        { notes: sentinel },
+      ]) {
+        const rejected = await call(aToken, 'PATCH', path, invalid);
+        expect(rejected.status).toBe(400);
+        expect(JSON.stringify(rejected.data)).not.toContain(sentinel);
+      }
+      const after = (
+        await pool.query(
+          'SELECT claim_requirements,preauth_requirements,notes FROM insurance_payer_configs WHERE id=$1',
+          [id],
+        )
+      ).rows[0];
+      expect(after).toMatchObject({
+        claim_requirements: legacyClaim,
+        preauth_requirements: legacyPreauth,
+        notes: sentinel,
+      });
+      const updated = await call(aToken, 'PATCH', path, {
+        claimRequirements: { maxSubmissionDays: 30 },
+        preauthRequirements: { requirePreauthForImaging: true },
+      });
+      expect(updated.status).toBe(200);
+      expect(updated.data.claimRequirements).toMatchObject({
+        requireDiagnosis: true,
+        maxSubmissionDays: 30,
+      });
+      expect(JSON.stringify(updated.data)).not.toContain(sentinel);
+      const diagnosticsBefore = (
+        await pool.query(
+          'SELECT count(*)::int AS count FROM insurance_integration_diagnostics WHERE tenant_id=$1 AND facility_id=$2',
+          [tenant, facA],
+        )
+      ).rows[0].count;
+      const snapshot = await call(aToken, 'GET', `${path}/connection-status`);
+      expect(snapshot.status).toBe(200);
+      expect(snapshot.data.verified).toBe(false);
+      expect(snapshot.data.httpStatus).toBeNull();
+      expect(
+        (
+          await pool.query(
+            'SELECT count(*)::int AS count FROM insurance_integration_diagnostics WHERE tenant_id=$1 AND facility_id=$2',
+            [tenant, facA],
+          )
+        ).rows[0].count,
+      ).toBe(diagnosticsBefore);
+    });
+
+    it('scopes insurance diagnostic and audit histories to one facility and withholds historical provider text', async () => {
+      const sentinel = 'synthetic-diagnostic-secret';
+      const diagnostic = await pool.query(
+        `INSERT INTO insurance_integration_diagnostics(tenant_id,facility_id,payer_code,adapter_key,environment,operation,outcome,correlation_id,summary)
+        VALUES($1,$2,$4,'manual','SANDBOX','CONNECTION_STATUS_PROBE','SUCCESS','synthetic',$5),
+              ($1,$3,$4,'manual','SANDBOX','CONNECTION_STATUS_PROBE','SUCCESS','synthetic-other',$5) RETURNING id`,
+        [tenant, facA, facB, payerCode, sentinel],
+      );
+      const audits = await pool.query(
+        `INSERT INTO audit_logs(tenant_id,facility_id,user_id,action,resource,resource_id,details)
+        VALUES($1,$2,'synthetic','PRIVATE_INSURANCE_SYNTHETIC','insurance_payer_config','1',$4),
+              ($1,$3,'synthetic','PRIVATE_INSURANCE_SYNTHETIC','insurance_payer_config','1',$4) RETURNING id`,
+        [tenant, facA, facB, sentinel],
+      );
+      await recordIntegrationDiagnostic({
+        tenantId: tenant,
+        facilityId: facA,
+        payerCode,
+        adapterKey: 'manual',
+        environment: 'SANDBOX',
+        operation: 'CONNECTION_STATUS_PROBE',
+        outcome: sentinel,
+        summary: sentinel,
+        errorCode: sentinel,
+        correlationId: sentinel,
+      });
+      const written = (
+        await pool.query(
+          `SELECT summary,error_code,outcome,correlation_id FROM insurance_integration_diagnostics
+        WHERE tenant_id=$1 AND facility_id=$2 ORDER BY id DESC LIMIT 1`,
+          [tenant, facA],
+        )
+      ).rows[0];
+      expect(JSON.stringify(written)).not.toContain(sentinel);
+      expect(written).toMatchObject({ outcome: 'OTHER', error_code: null });
+      const response = await call(aToken, 'GET', `/api/insurance/diagnostics?facilityId=${facA}`);
+      expect(response.status).toBe(200);
+      expect(
+        response.data.diagnostics.some((event: any) => event.id === diagnostic.rows[0].id),
+      ).toBe(true);
+      expect(
+        response.data.diagnostics.some((event: any) => event.id === diagnostic.rows[1].id),
+      ).toBe(false);
+      expect(response.data.auditEvents.some((event: any) => event.id === audits.rows[0].id)).toBe(
+        true,
+      );
+      expect(response.data.auditEvents.some((event: any) => event.id === audits.rows[1].id)).toBe(
+        false,
+      );
+      expect(
+        response.data.auditEvents.every(
+          (event: any) => event.facilityId === facA && !('details' in event),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(response.data)).not.toContain(sentinel);
+      expect(
+        (await call(bToken, 'GET', `/api/insurance/diagnostics?facilityId=${facA}`)).status,
+      ).toBe(403);
     });
 
     it('shows Jubilee as unassigned manual metadata and restricts the configuration audit', async () => {

@@ -42,9 +42,9 @@ import {
   loadScopedFacility,
   loadTenantPatient,
   multiplyMoneyCents,
-  parseMoneyToCents,
   recordInsuranceAuditEvent,
   requireMoneyCents,
+  requireRecordedMoneyCents,
   type EclaimStatus,
   type InsuranceActorScope,
 } from './contracts.ts';
@@ -754,8 +754,14 @@ export async function prepareShaClaim(scope: InsuranceActorScope, input: Prepare
   let totalClaimedCents = 0;
 
   const preparedLines = invoiceItems.map((bi, index) => {
-    const qty = Math.max(1, bi.quantity ?? 1);
-    const facUnitCents = parseMoneyToCents(bi.unitPrice) ?? 0;
+    const qty = bi.quantity;
+    if (!Number.isSafeInteger(qty) || qty === null || qty <= 0)
+      throw new InsuranceDomainError(
+        'FINANCIAL_REVIEW_REQUIRED',
+        'Stored billing quantity is missing or invalid; review the record before continuing.',
+        409,
+      );
+    const facUnitCents = requireRecordedMoneyCents(bi.unitPrice);
     const facLineCents = multiplyMoneyCents(facUnitCents, qty);
     totalBilledCents += facLineCents;
 
@@ -769,7 +775,7 @@ export async function prepareShaClaim(scope: InsuranceActorScope, input: Prepare
         ? 0
         : matchedMapping?.reimbursementTariff !== null &&
             matchedMapping?.reimbursementTariff !== undefined
-          ? (parseMoneyToCents(matchedMapping.reimbursementTariff) ?? facUnitCents)
+          ? requireRecordedMoneyCents(matchedMapping.reimbursementTariff)
           : facUnitCents;
 
     const claimedNetCents = isPhcClaim ? 0 : multiplyMoneyCents(claimedUnitCents, qty);
@@ -1234,7 +1240,7 @@ export async function validateShaClaim(scope: InsuranceActorScope, claimId: numb
     diagnosesCount: detail.diagnosesSnapshot.length,
     diagnoses: detail.diagnosesSnapshot,
     isPhcClaim: detail.isPhcClaim,
-    totalClaimedCents: parseMoneyToCents(detail.totalClaimedAmount) ?? 0,
+    totalClaimedCents: requireRecordedMoneyCents(detail.totalClaimedAmount),
     hasDuplicateActiveInvoiceClaim: duplicateOthers.length > 0,
     items: detail.items.map((item) => {
       const mapping = item.payerServiceCode
@@ -1266,8 +1272,8 @@ export async function validateShaClaim(scope: InsuranceActorScope, claimId: numb
         servicedStart: item.servicedStart,
         servicedEnd: item.servicedEnd,
         quantity: item.quantity,
-        claimedUnitCents: parseMoneyToCents(item.claimedUnitPrice) ?? 0,
-        claimedNetCents: parseMoneyToCents(item.claimedNetAmount) ?? 0,
+        claimedUnitCents: requireRecordedMoneyCents(item.claimedUnitPrice),
+        claimedNetCents: requireRecordedMoneyCents(item.claimedNetAmount),
         requiresPreauth,
         preauthReference: item.preauthReference,
         preauthApprovedAndValid: Boolean(matchingPreauth),
@@ -1720,7 +1726,7 @@ export async function resubmitShaClaim(
         const nextUnitCents =
           patch.claimedUnitPrice !== undefined
             ? requireMoneyCents(patch.claimedUnitPrice, 'claimedUnitPrice')
-            : (parseMoneyToCents(existingItem.claimedUnitPrice) ?? 0);
+            : requireRecordedMoneyCents(existingItem.claimedUnitPrice);
         const nextNetCents = detail.isPhcClaim
           ? 0
           : multiplyMoneyCents(nextUnitCents, existingItem.quantity);
@@ -1750,9 +1756,16 @@ export async function resubmitShaClaim(
       .from(schema.shaEclaimItems)
       .where(eq(schema.shaEclaimItems.eclaimId, detail.id));
 
-    const recomputedClaimedCents = detail.isPhcClaim
-      ? 0
-      : updatedItems.reduce((sum, it) => sum + (parseMoneyToCents(it.claimedNetAmount) ?? 0), 0);
+    const recomputedClaimedCents = updatedItems.reduce(
+      (sum, it) => sum + requireRecordedMoneyCents(it.claimedNetAmount),
+      0,
+    );
+    if (detail.isPhcClaim && recomputedClaimedCents !== 0)
+      throw new InsuranceDomainError(
+        'FINANCIAL_REVIEW_REQUIRED',
+        'Stored PHC claim amounts require review.',
+        409,
+      );
 
     await tx
       .update(schema.shaEclaims)
@@ -2030,187 +2043,19 @@ export interface IncomingShaCallbackInput {
 }
 
 /**
- * Workflow 8b: Processes verified DHA HIE status callbacks (`claim`, `preauth`,
- * `authorization`) and FHIR `PaymentNotice` pushes idempotently via `sha_callback_events`.
+ * Retired fail-closed boundary. A caller-provided boolean is not evidence of
+ * provider authentication, facility/environment ownership, amount checks or
+ * atomic replay protection. No caller may apply such an event until a reviewed
+ * provider-specific verifier and transactional processing are implemented.
  */
-export async function processIncomingShaWebhookEvent(input: IncomingShaCallbackInput) {
-  if (!input.signatureVerified) {
-    throw new InsuranceDomainError(
-      'UNVERIFIED_SHA_CALLBACK',
-      'SHA callback signature/secret verification failed.',
-      401,
-    );
-  }
-
-  // Idempotency check on externalEventId (stored in correlationId) when provided
-  if (input.externalEventId) {
-    const [existingEvent] = await db
-      .select()
-      .from(schema.shaCallbackEvents)
-      .where(eq(schema.shaCallbackEvents.correlationId, input.externalEventId))
-      .limit(1);
-    if (existingEvent) {
-      return { duplicate: true, event: existingEvent };
-    }
-  }
-
-  let matchedTenantId: number | null = null;
-  let matchedFacilityId: number | null = null;
-  let mappedLocalStatus: string | null = null;
-  let processingOutcome = 'LOGGED_UNMATCHED';
-
-  const upperStatus = (input.upstreamStatus ?? '').trim().toUpperCase();
-
-  if (input.entityType === 'claim') {
-    const [claim] = await db
-      .select()
-      .from(schema.shaEclaims)
-      .where(eq(schema.shaEclaims.payerClaimReference, input.externalEntityId))
-      .limit(1);
-
-    const resolvedClaim =
-      claim ??
-      (
-        await db
-          .select()
-          .from(schema.shaEclaims)
-          .where(eq(schema.shaEclaims.claimUuid, input.externalEntityId))
-          .limit(1)
-      )[0] ??
-      null;
-
-    if (resolvedClaim) {
-      matchedTenantId = resolvedClaim.tenantId;
-      matchedFacilityId = resolvedClaim.facilityId;
-
-      let candidate: EclaimStatus | null = null;
-      if (upperStatus === 'APPROVED' || upperStatus === 'ADJUDICATED') candidate = 'ADJUDICATED';
-      else if (upperStatus === 'PARTIALLY_APPROVED' || upperStatus === 'PARTIAL')
-        candidate = 'PARTIALLY_ADJUDICATED';
-      else if (upperStatus === 'REJECTED' || upperStatus === 'DECLINED') candidate = 'REJECTED';
-      else if (upperStatus === 'IN_REVIEW' || upperStatus === 'UNDER_REVIEW')
-        candidate = 'ACKNOWLEDGED';
-
-      if (candidate && canTransitionEclaimStatus(resolvedClaim.status, candidate)) {
-        const now = new Date();
-        try {
-          await db.transaction(async (tx) => {
-            await lockMutableClaim(
-              tx,
-              {
-                workflow: 'SHA',
-                tenantId: resolvedClaim.tenantId,
-                facilityId: resolvedClaim.facilityId,
-                claimId: resolvedClaim.id,
-                status: resolvedClaim.status,
-                revision: resolvedClaim.dispatchRevision,
-              },
-              shaGuardError,
-            );
-            await tx
-              .update(schema.shaEclaims)
-              .set({
-                status: candidate,
-                ...(input.approvedAmountKes
-                  ? { totalApprovedAmount: input.approvedAmountKes }
-                  : {}),
-                ...(input.rejectionReason ? { rejectionReason: input.rejectionReason } : {}),
-                ...(candidate === 'ADJUDICATED' || candidate === 'PARTIALLY_ADJUDICATED'
-                  ? { adjudicatedAt: now }
-                  : {}),
-                updatedAt: now,
-              })
-              .where(eq(schema.shaEclaims.id, resolvedClaim.id));
-
-            await tx.insert(schema.shaEclaimStatusHistory).values({
-              eclaimId: resolvedClaim.id,
-              fromStatus: resolvedClaim.status,
-              toStatus: candidate,
-              source: 'HIE_CALLBACK',
-              reason:
-                input.rejectionReason ??
-                `DHA HIE callback transitioned claim status to ${candidate} (${upperStatus}).`,
-              metadata: { externalEntityId: input.externalEntityId },
-            });
-          });
-          mappedLocalStatus = candidate;
-          processingOutcome = `APPLIED_CLAIM_${candidate}`;
-        } catch (error) {
-          if (
-            !(error instanceof InsuranceDomainError) ||
-            !['CLAIM_DISPATCH_REVIEW_REQUIRED', 'CLAIM_CHANGED'].includes(error.code)
-          )
-            throw error;
-          processingOutcome = `DEFERRED_${error.code}`;
-        }
-      } else {
-        processingOutcome = `IGNORED_STATE_${resolvedClaim.status}_TO_${upperStatus || 'UNKNOWN'}`;
-      }
-    }
-  } else if (input.entityType === 'preauth') {
-    const [preauth] = await db
-      .select()
-      .from(schema.insurancePreauthorizations)
-      .where(eq(schema.insurancePreauthorizations.hiePreauthGuid, input.externalEntityId))
-      .limit(1);
-
-    const resolvedPreauth =
-      preauth ??
-      (
-        await db
-          .select()
-          .from(schema.insurancePreauthorizations)
-          .where(eq(schema.insurancePreauthorizations.payerAuthReference, input.externalEntityId))
-          .limit(1)
-      )[0] ??
-      null;
-
-    if (resolvedPreauth) {
-      matchedTenantId = resolvedPreauth.tenantId;
-      matchedFacilityId = resolvedPreauth.facilityId;
-      const nextPreauthStatus =
-        upperStatus === 'APPROVED' || upperStatus === 'FINALISED'
-          ? 'APPROVED'
-          : upperStatus === 'REJECTED' || upperStatus === 'DECLINED'
-            ? 'REJECTED'
-            : null;
-      if (nextPreauthStatus) {
-        mappedLocalStatus = nextPreauthStatus;
-        await db
-          .update(schema.insurancePreauthorizations)
-          .set({
-            status: nextPreauthStatus,
-            ...(input.approvedAmountKes ? { approvedAmount: input.approvedAmountKes } : {}),
-            ...(input.rejectionReason ? { rejectionReason: input.rejectionReason } : {}),
-            decidedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.insurancePreauthorizations.id, resolvedPreauth.id));
-        processingOutcome = `APPLIED_PREAUTH_${nextPreauthStatus}`;
-      } else {
-        processingOutcome = `LOGGED_PREAUTH_${upperStatus || 'STATUS'}`;
-      }
-    }
-  }
-
-  const [savedEvent] = await db
-    .insert(schema.shaCallbackEvents)
-    .values({
-      tenantId: matchedTenantId,
-      facilityId: matchedFacilityId,
-      facilityFrCode: input.facilityRegistryCode ?? null,
-      entityType: input.entityType,
-      externalReference: input.externalEntityId,
-      upstreamStatus: input.upstreamStatus ?? 'UNKNOWN',
-      mappedLocalStatus,
-      signatureVerified: input.signatureVerified,
-      processingOutcome,
-      payloadSummary: input.payloadSummary ?? {},
-      correlationId: input.externalEventId ?? null,
-    })
-    .returning();
-
-  return { duplicate: false, event: savedEvent };
+export async function processIncomingShaWebhookEvent(
+  _input: IncomingShaCallbackInput,
+): Promise<never> {
+  throw new InsuranceDomainError(
+    'SHA_CALLBACK_NOT_VERIFIED',
+    'Facility-scoped provider callback verification is unavailable.',
+    503,
+  );
 }
 
 export async function listShaCallbackEvents(
@@ -2218,9 +2063,14 @@ export async function listShaCallbackEvents(
 ) {
   await loadScopedFacility(scope);
   return db
-    .select()
+    .select({ id: schema.shaCallbackEvents.id, receivedAt: schema.shaCallbackEvents.receivedAt })
     .from(schema.shaCallbackEvents)
-    .where(eq(schema.shaCallbackEvents.facilityId, scope.facilityId))
+    .where(
+      and(
+        eq(schema.shaCallbackEvents.tenantId, scope.tenantId),
+        eq(schema.shaCallbackEvents.facilityId, scope.facilityId),
+      ),
+    )
     .orderBy(desc(schema.shaCallbackEvents.receivedAt))
     .limit(50);
 }

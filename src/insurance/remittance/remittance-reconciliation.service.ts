@@ -5,8 +5,8 @@
  * remitted amounts against `private_insurance_claims` and `billing_invoices`
  * inside a database transaction using decimal-safe cents arithmetic.
  *
- * Posts additive `billing_payments` receipts via `classifySettlement` so
- * original invoice lines and gross totals are never mutated.
+ * A separately recorded, evidenced billing payment may be matched; this service
+ * does not create a receipt or alter the original invoice lines and gross totals.
  */
 
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
@@ -18,6 +18,17 @@ import { matchRecordedPayerPayment, RecordedPaymentError } from '../hub/recorded
 import { moneyToCentsStrict, PrivateInsuranceError } from '../core/types.ts';
 import { recordPrivateInsuranceAudit } from '../audit/diagnostics.service.ts';
 import { getPayerRowScoped, listPrivatePayers } from '../payers/payer-config.service.ts';
+
+function recordedMoneyToCents(value: string | number | null | undefined, signed = false): number {
+  const cents = parseMoneyToCents(value);
+  if (cents === null || (!signed && cents < 0))
+    throw new PrivateInsuranceError(
+      'FINANCIAL_REVIEW_REQUIRED',
+      'Stored financial amounts are missing or invalid; review the record before continuing.',
+      409,
+    );
+  return cents;
+}
 
 async function nextPrivateRemittanceNumber(payerCode: string): Promise<string> {
   const res = await db.execute(
@@ -116,7 +127,7 @@ export async function importPrivateRemittance(params: {
   if (dup) {
     throw new PrivateInsuranceError(
       'DUPLICATE_REMITTANCE_REF',
-      `Remittance reference "${payerRemittanceRef}" is already recorded for ${payerRow.payerName}.`,
+      'A remittance with this reference is already recorded for this payer.',
       409,
     );
   }
@@ -232,8 +243,8 @@ export async function reconcilePrivateRemittance(params: {
     );
   }
 
-  const totalRemittedCents = parseMoneyToCents(remittance.totalRemittedAmount) ?? 0;
-  const priorAllocatedCents = parseMoneyToCents(remittance.allocatedAmount) ?? 0;
+  const totalRemittedCents = recordedMoneyToCents(remittance.totalRemittedAmount);
+  const priorAllocatedCents = recordedMoneyToCents(remittance.allocatedAmount);
   let batchAllocatedCents = 0;
 
   for (const a of allocations) {
@@ -276,7 +287,8 @@ export async function reconcilePrivateRemittance(params: {
         'Remittance has already been reconciled.',
         409,
       );
-    const priorAllocatedCents = parseMoneyToCents(lockedRemittance.allocatedAmount) ?? 0;
+    const totalRemittedCents = recordedMoneyToCents(lockedRemittance.totalRemittedAmount);
+    const priorAllocatedCents = recordedMoneyToCents(lockedRemittance.allocatedAmount);
     if (priorAllocatedCents + batchAllocatedCents > totalRemittedCents)
       throw new PrivateInsuranceError(
         'ALLOCATION_EXCEEDS_REMITTANCE',
@@ -371,7 +383,7 @@ export async function reconcilePrivateRemittance(params: {
         );
       }
 
-      const claimedCents = parseMoneyToCents(claim.proposedClaimAmount) ?? 0;
+      const claimedCents = recordedMoneyToCents(claim.proposedClaimAmount);
       const remittedCents = moneyToCentsStrict(
         alloc.remittedAmount as string | number,
         'Allocated remitted amount',
@@ -381,9 +393,7 @@ export async function reconcilePrivateRemittance(params: {
         alloc.approvedAmount !== null &&
         alloc.approvedAmount !== ''
           ? moneyToCentsStrict(alloc.approvedAmount as string | number, 'Approved amount')
-          : (parseMoneyToCents(claim.approvedAmount) ?? 0) > 0
-            ? (parseMoneyToCents(claim.approvedAmount) ?? remittedCents)
-            : 0;
+          : recordedMoneyToCents(claim.approvedAmount);
 
       const varianceCents = claimedCents - remittedCents;
       const reconciliationStatus =
@@ -455,9 +465,9 @@ export async function reconcilePrivateRemittance(params: {
 
       // Advice allocation alone is not a payer decision or proof of payment.
       if (postedPaymentId !== null) {
-        const priorClaimPaidCents = parseMoneyToCents(claim.paidAmount) ?? 0;
+        const priorClaimPaidCents = recordedMoneyToCents(claim.paidAmount);
         const newClaimPaidCents = priorClaimPaidCents + appliedCents;
-        const recordedApproval = parseMoneyToCents(claim.approvedAmount) ?? 0;
+        const recordedApproval = recordedMoneyToCents(claim.approvedAmount);
         const nextClaimStatus =
           recordedApproval > 0 &&
           newClaimPaidCents >= recordedApproval &&
@@ -575,9 +585,9 @@ export async function getPrivateReconciliationRegister(params: {
   let totalRemittedCents = 0;
   let totalVarianceCents = 0;
   for (const r of rows) {
-    totalClaimedCents += parseMoneyToCents(r.allocation.claimedAmount) ?? 0;
-    totalRemittedCents += parseMoneyToCents(r.allocation.remittedAmount) ?? 0;
-    totalVarianceCents += parseMoneyToCents(r.allocation.varianceAmount) ?? 0;
+    totalClaimedCents += recordedMoneyToCents(r.allocation.claimedAmount);
+    totalRemittedCents += recordedMoneyToCents(r.allocation.remittedAmount);
+    totalVarianceCents += recordedMoneyToCents(r.allocation.varianceAmount, true);
   }
 
   return {
@@ -656,8 +666,8 @@ export async function getPrivateInsuranceDashboardSummary(params: {
 
   for (const c of claims) {
     if (c.status !== 'CANCELLED') {
-      totalClaimedCents += parseMoneyToCents(c.proposedClaimAmount) ?? 0;
-      totalPaidCents += parseMoneyToCents(c.paidAmount) ?? 0;
+      totalClaimedCents += recordedMoneyToCents(c.proposedClaimAmount);
+      totalPaidCents += recordedMoneyToCents(c.paidAmount);
     }
     if (c.status === 'REJECTED') rejectedCount += 1;
     if (c.status === 'DRAFT' || c.status === 'READY' || c.status === 'VALIDATION_FAILED') {

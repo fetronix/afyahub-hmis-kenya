@@ -96,7 +96,7 @@ try {
   const role = (
     await pool.query(
       `INSERT INTO roles(tenant_id,name,is_active) VALUES($1,$2,true) RETURNING id`,
-      [tenant, `INTEGRATION_BROWSER_${suffix}`],
+      [tenant, 'FACILITY_ADMIN'],
     )
   ).rows[0].id;
   await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [user, role]);
@@ -242,13 +242,42 @@ try {
   await page.click('button[type="submit"]');
   await page.waitForSelector('aside button[title="System Configuration"]', { timeout: 30000 });
   await page.click('aside button[title="System Configuration"]');
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[aria-label="Facility Integration Hub"]')
-        ?.textContent?.includes('Safaricom M-Pesa'),
-    { timeout: 20000 },
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('button')].some(
+      (item) => item.textContent.trim() === 'Integration Hub',
+    ),
   );
+  await page.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .find((item) => item.textContent.trim() === 'Integration Hub')
+      .click(),
+  );
+  try {
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[aria-label="Facility Integration Hub"]')
+          ?.textContent?.includes('Safaricom M-Pesa'),
+      { timeout: 20000 },
+    );
+  } catch (error) {
+    // This script accepts only a synthetic database. Report the visible state,
+    // never password/input values, to make an authorization or loading failure actionable.
+    const state = await page.evaluate(() => ({
+      title: document.title,
+      headings: [...document.querySelectorAll('h1,h2,h3')]
+        .map((h) => h.textContent.trim())
+        .slice(0, 15),
+      alerts: [...document.querySelectorAll('[role="alert"]')]
+        .map((e) => e.textContent.trim())
+        .slice(0, 5),
+      hasHub: Boolean(document.querySelector('[aria-label="Facility Integration Hub"]')),
+      text: document.body.textContent.replace(/\s+/g, ' ').trim().slice(0, 1200),
+    }));
+    throw new Error(`Synthetic integration hub did not load: ${JSON.stringify(state)}`, {
+      cause: error,
+    });
+  }
   await page.waitForFunction(() => document.body.textContent.includes('Jubilee Health Insurance'), {
     timeout: 15000,
   });
@@ -262,7 +291,7 @@ try {
         const element = [...document.querySelectorAll(sel)].find(
           (item) => item.textContent.trim() === value,
         );
-        if (!element) return false;
+        if (!element || ('disabled' in element && element.disabled)) return false;
         element.click();
         return true;
       },
@@ -322,7 +351,11 @@ try {
     (response) => response.url().includes('/credentials') && response.request().method() === 'PUT',
   );
   await clickText('button', 'Save encrypted sandbox credentials');
-  check((await saveResponse).status() === 200, 'Synthetic HTTPS credential save failed.');
+  const savedResponse = await saveResponse;
+  check(savedResponse.status() === 200, 'Synthetic HTTPS credential save failed.');
+  const savedBody = JSON.stringify(await savedResponse.json());
+  for (const value of Object.values(credentials))
+    check(!savedBody.includes(value), 'Credential returned by save API.');
   await page.waitForFunction(
     () => document.body.textContent.includes('Credentials saved encrypted.'),
     { timeout: 15000 },
@@ -348,7 +381,7 @@ try {
   );
   await page.waitForFunction(() =>
     [...document.querySelectorAll('button')].some(
-      (b) => b.textContent.trim() === 'Re-encrypt with active vault key',
+      (b) => b.textContent.trim() === 'Re-encrypt with active vault key' && !b.disabled,
     ),
   );
   await clickText('button', 'Re-encrypt with active vault key');
@@ -363,17 +396,126 @@ try {
     after !== row.encrypted_value && after.startsWith('v2.BROWSER01.'),
     'Re-encryption did not persist new ciphertext.',
   );
+  // Local revocation is a real authenticated browser action. It does not revoke
+  // provider-side credentials or cancel provider requests already in flight.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('button')].some(
+      (b) => b.textContent.trim() === 'Revoke stored credentials' && !b.disabled,
+    ),
+  );
+  page.once('dialog', (dialog) => void dialog.accept());
+  const revokeResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/credentials/revoke') && response.request().method() === 'POST',
+  );
+  await clickText('button', 'Revoke stored credentials');
+  const revoked = await revokeResponse;
+  check(revoked.status() === 200, 'Synthetic revocation failed.');
+  const revokedBody = JSON.stringify(await revoked.json());
+  for (const value of Object.values(credentials))
+    check(!revokedBody.includes(value), 'Credential returned by revoke API.');
+  await page.waitForFunction(
+    () => document.body.textContent.includes('Credentials revoked and integration disabled.'),
+    { timeout: 15000 },
+  );
+  const revokedRow = (
+    await pool.query(
+      `SELECT s.revoked_at,i.is_enabled,i.connection_status FROM facility_payment_secrets s
+    JOIN facility_payment_integrations i ON i.id=s.integration_id WHERE s.integration_id=$1`,
+      [row.integration_id],
+    )
+  ).rows[0];
+  check(
+    revokedRow.revoked_at &&
+      !revokedRow.is_enabled &&
+      revokedRow.connection_status === 'NOT_TESTED',
+    'Revocation was not persisted safely.',
+  );
+  await page.waitForFunction(() => document.body.textContent.includes('Credentials revoked'));
+  const opened = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('summary')].find(
+        (item) => item.textContent.trim() === 'Add or replace Daraja sandbox credentials',
+      )?.parentElement?.open,
+  );
+  if (!opened) await clickText('summary', 'Add or replace Daraja sandbox credentials');
+  const replacement = {
+    ...credentials,
+    consumerSecret: `${credentials.consumerSecret}-rotated`,
+    passkey: `${credentials.passkey}-rotated`,
+  };
+  for (const [label, value] of [
+    ['Consumer key', replacement.consumerKey],
+    ['Consumer secret', replacement.consumerSecret],
+    ['STK passkey', replacement.passkey],
+    ['Sandbox shortcode', replacement.shortcode],
+  ]) {
+    const field = await page.evaluateHandle(
+      (name) =>
+        [...document.querySelectorAll('label')]
+          .find((item) => item.textContent.trim() === name)
+          ?.querySelector('input'),
+      label,
+    );
+    check(await field.asElement(), `Missing replacement field: ${label}`);
+    await field.asElement().type(value);
+    await field.dispose();
+  }
+  const selectAgain = await page.evaluateHandle(() =>
+    [...document.querySelectorAll('label')]
+      .find((item) => item.textContent.includes('Authorized transaction type'))
+      ?.querySelector('select'),
+  );
+  await selectAgain.asElement().select(replacement.transactionType);
+  await selectAgain.dispose();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('button')].some(
+      (b) => b.textContent.trim() === 'Save encrypted sandbox credentials' && !b.disabled,
+    ),
+  );
+  const replaceResponse = page.waitForResponse(
+    (response) => response.url().endsWith('/credentials') && response.request().method() === 'PUT',
+  );
+  await clickText('button', 'Save encrypted sandbox credentials');
+  const replaced = await replaceResponse;
+  check(replaced.status() === 200, 'Synthetic credential replacement failed.');
+  const replacedBody = JSON.stringify(await replaced.json());
+  for (const value of Object.values(replacement))
+    check(!replacedBody.includes(value), 'Credential returned by replacement API.');
+  await page.waitForFunction(
+    () => document.body.textContent.includes('Credentials saved encrypted.'),
+    { timeout: 15000 },
+  );
+  const finalRow = (
+    await pool.query(
+      `SELECT s.revoked_at,s.encrypted_value,i.is_enabled,i.connection_status FROM facility_payment_secrets s
+    JOIN facility_payment_integrations i ON i.id=s.integration_id WHERE s.integration_id=$1`,
+      [row.integration_id],
+    )
+  ).rows[0];
+  check(
+    !finalRow.revoked_at &&
+      finalRow.encrypted_value !== after &&
+      !finalRow.is_enabled &&
+      finalRow.connection_status === 'NOT_TESTED',
+    'Replacement did not reset security state.',
+  );
+  for (const value of Object.values(replacement))
+    check(!finalRow.encrypted_value.includes(value), 'Replacement was not encrypted.');
   await clickText('button', 'View configuration activity');
   await page.waitForFunction(
     () =>
       document
         .querySelector('[aria-label="Configuration audit history"]')
-        ?.textContent.includes('ROTATE_KEY'),
+        ?.textContent.includes('ROTATE_KEY') &&
+      document
+        .querySelector('[aria-label="Configuration audit history"]')
+        ?.textContent.includes('REVOKE'),
     { timeout: 15000 },
   );
   const rendered = await page.evaluate(() => document.body.textContent);
-  for (const value of Object.values(credentials))
-    check(!rendered.includes(value), 'Credential material was rendered after save.');
+  for (const value of [...Object.values(credentials), ...Object.values(replacement)])
+    check(!rendered.includes(value), 'Credential material was rendered after save or replacement.');
   check(auth.startsWith('Bearer '), 'Genuine authenticated browser session was not observed.');
   const denied = await page.evaluate(
     async ({ token, other }) =>
@@ -397,7 +539,7 @@ try {
   );
   check(errors.length === 0, `Browser reported ${errors.length} uncaught page error(s).`);
   console.log(
-    'Synthetic HTTPS browser: marketplace, scoped configuration, encrypted credential save, re-encryption, audit, cross-facility denial and responsive layout PASS.',
+    'Synthetic HTTPS browser: marketplace, scoped configuration, encrypted credential save, re-encryption, revocation, replacement, audit, cross-facility denial and responsive layout PASS.',
   );
   console.log('Provider OAuth, STK, callbacks and production were NOT contacted or verified.');
 } finally {

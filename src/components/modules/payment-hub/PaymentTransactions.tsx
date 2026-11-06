@@ -102,8 +102,9 @@ export const PaymentTransactions: React.FC = () => {
         </div>
       </PageHeader>
       <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
-        An accepted request and a callback are not proof of payment. Callbacks are unverified hints;
-        no payment request automatically creates a receipt or changes an invoice.
+        An accepted request is not proof of payment. Callback delivery is disabled pending verified
+        provider authentication; historical notifications are untrusted. No request automatically
+        creates a receipt or changes an invoice.
       </p>
       {error && (
         <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
