@@ -20,7 +20,8 @@ This demonstrates properties of the existing billing and reviewed journal primit
 
 | Check | Result and scope |
 | --- | --- |
-| Final full mandatory-PostgreSQL regression | **224 files passed; 2081 tests passed / 0 failed / 0 skipped.** `JALICARE_REQUIRE_DB=1 npx vitest run --maxWorkers=1` used the existing isolated synthetic PostgreSQL database. No final failing test names. This run did not collect coverage. |
+| Final full mandatory-PostgreSQL regression | **224 files passed; 2081 tests passed / 0 failed / 0 skipped.** `JALICARE_REQUIRE_DB=1 npx vitest run --maxWorkers=1` used the existing isolated synthetic PostgreSQL database. No final failing test names. This local run did not collect coverage. |
+| GitHub CI for implementation commit `2d4273c` | **All seven jobs passed:** typecheck/lint, PostgreSQL coverage, migrations/database specs, fresh-checkout Docker bootstrap, production build, dependency audit and formatting. See [CI run 42213535966](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/42213535966). Job conclusions were verified; detailed coverage percentages were not retrieved. |
 | Focused PostgreSQL payment hub and billing-to-ledger suites | **33 passed / 0 failed / 0 skipped** across 2 files, including 24 hub HTTP/PostgreSQL tests and 9 reviewed billing/ledger tests. Provider traffic is mocked. |
 | Focused latest UI, ledger and Docker-bootstrap suites | **33 passed / 0 failed / 0 skipped** across 3 files, including 11 collection UI tests and 13 bootstrap tests. |
 | Concurrent payment-hub and ledger test fixtures | **Three runs of 33 passed / 0 failed / 0 skipped** with two Vitest workers. The new fixture does not change global provider policy; the runs emitted the existing nonfatal Vite HMR port-collision message described below. |
