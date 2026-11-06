@@ -1,4 +1,5 @@
 import { fetchJson } from './client.ts';
+import type { IntegrationAuditEvent } from './integration-hub.types.ts';
 export interface AdapterInfo {
   key: string;
   implementedCapabilities: string[];
@@ -28,6 +29,9 @@ export interface HubIntegration {
   productionApproval: string;
   credentialsConfigured: boolean;
   credentialEnvName: string | null;
+  credentialSource: 'VAULT' | 'ENVIRONMENT' | 'REFERENCE' | null;
+  credentialsExpiresAt: string | null;
+  credentialsExpired: boolean;
   credentials: string;
   accounts: HubAccount[];
 }
@@ -159,12 +163,18 @@ export const paymentHubApi = {
     fetchJson<{ providers: FacilityProvider[]; notice: string }>(
       `${base}/facility/catalogue?facilityId=${facilityId}`,
     ),
+  configurationAudit: (facilityId: number) =>
+    fetchJson<{ events: IntegrationAuditEvent[] }>(
+      `${base}/facility/configuration-audit?facilityId=${facilityId}`,
+    ),
   access: (id: number, facilityId: number) =>
     send(`/facility/providers/${id}/access-request`, 'POST', { facilityId }),
   configure: (id: number, body: unknown) =>
     send<{ id: number }>(`/facility/providers/${id}/integrations`, 'POST', body),
   credentials: (id: number, body: unknown) =>
     send(`/facility/integrations/${id}/credentials`, 'PUT', body),
+  reencryptCredentials: (id: number, facilityId: number) =>
+    send(`/facility/integrations/${id}/credentials/reencrypt`, 'POST', { facilityId }),
   addAccount: (id: number, body: unknown) =>
     send(`/facility/integrations/${id}/accounts`, 'POST', body),
   health: (id: number, facilityId: number) =>

@@ -86,6 +86,29 @@ export function contractWithReviewedAdditions(name: string, original: unknown) {
     });
     return expected;
   }
+  if (name === 'facilityPaymentSecrets') {
+    const expected = structuredClone(original) as {
+      columns: Array<{ name: string } & Record<string, unknown>>;
+    };
+    const position = expected.columns.findIndex((column) => column.name === 'updated_at');
+    if (position < 0) throw new Error('Expected historical updated_at column not found');
+    for (const [offset, name, type] of [
+      [0, 'credential_source', 'text'],
+      [1, 'expires_at', 'timestamp with time zone'],
+    ] as const) {
+      expected.columns.splice(position + offset, 0, {
+        name,
+        type,
+        notNull: false,
+        primary: false,
+        hasDefault: false,
+        default: null,
+        unique: false,
+        uniqueName: null,
+      });
+    }
+    return expected;
+  }
   if (name !== 'shaEclaims' && name !== 'privateInsuranceClaims') return original;
   const expected = structuredClone(original) as {
     columns: Array<{ name: string } & Record<string, unknown>>;

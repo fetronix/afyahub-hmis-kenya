@@ -8,6 +8,7 @@ import {
 import { resolveFacilityScope, ScopeAccessError } from '../../auth/scope.service.ts';
 import { getFacilityByIdScoped } from '../../db/queries.ts';
 import * as hub from './service.ts';
+import { listConfigurationAudit } from '../../integrations/hub/configuration-audit.ts';
 
 const router = Router();
 router.use((_req, res, next) => {
@@ -158,6 +159,16 @@ router.get(
   ),
   wrap(async (req, res) => {
     res.json({ success: true, ...(await hub.facilityCatalogue(await facilityScope(req))) });
+  }),
+);
+router.get(
+  '/facility/configuration-audit',
+  requirePermission('payer_hub.facility.manage'),
+  wrap(async (req, res) => {
+    res.json({
+      success: true,
+      events: await listConfigurationAudit(await facilityScope(req), 'payer'),
+    });
   }),
 );
 router.post(

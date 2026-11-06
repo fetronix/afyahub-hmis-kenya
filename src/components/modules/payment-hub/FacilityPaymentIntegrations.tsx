@@ -13,7 +13,9 @@ const secondary =
 const card = 'rounded-xl border border-slate-200 bg-white p-4 space-y-3';
 type Run = (action: () => Promise<unknown>, message: string) => Promise<void>;
 
-export const FacilityPaymentIntegrations: React.FC = () => {
+export const FacilityPaymentIntegrations: React.FC<{
+  category?: 'all' | 'mobile' | 'banking';
+}> = ({ category = 'all' }) => {
   const { currentFacility, authenticatedUser } = useHmis();
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const canView = permissions.has('payment_hub.catalogue.read'),
@@ -63,7 +65,11 @@ export const FacilityPaymentIntegrations: React.FC = () => {
       setNotice(message);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Operation failed.');
+      const message = e instanceof Error ? e.message : 'Operation failed.';
+      // A failed OAuth check is persisted as UNAVAILABLE. Refresh that status
+      // even though the action is reported as an error.
+      await load();
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -79,6 +85,11 @@ export const FacilityPaymentIntegrations: React.FC = () => {
     return <div className={card}>You do not have permission to view payment integrations.</div>;
   if (!currentFacility)
     return <div className={card}>No authorized active facility is selected.</div>;
+  const providers = data?.providers.filter((provider) => {
+    if (category === 'all') return true;
+    if (category === 'mobile') return provider.adapterKey === 'MPESA_DARAJA';
+    return ['KCB_BUNI', 'NCBA', 'EQUITY'].includes(provider.adapterKey);
+  });
   return (
     <section className="space-y-4" aria-label="Facility payment and banking integrations">
       <div>
@@ -102,22 +113,26 @@ export const FacilityPaymentIntegrations: React.FC = () => {
         </p>
       )}
       {!data && !error && <p className="text-sm text-slate-500">Loading facility catalogue…</p>}
-      {data?.providers.length === 0 && (
-        <p className={card}>No providers are currently available or open for requests.</p>
+      {providers?.length === 0 && (
+        <p className={card}>
+          No providers in this category are currently available or open for requests.
+        </p>
       )}
-      {data?.providers.map((p) => (
-        <Provider
-          key={p.id}
-          provider={p}
-          facilityId={currentFacility.id}
-          canManage={canManage}
-          canCredentials={canCredentials}
-          canRequestProduction={canRequestProduction}
-          canAccounts={canAccounts}
-          busy={busy}
-          run={run}
-        />
-      ))}
+      <div className="grid gap-4 xl:grid-cols-2">
+        {providers?.map((p) => (
+          <Provider
+            key={p.id}
+            provider={p}
+            facilityId={currentFacility.id}
+            canManage={canManage}
+            canCredentials={canCredentials}
+            canRequestProduction={canRequestProduction}
+            canAccounts={canAccounts}
+            busy={busy}
+            run={run}
+          />
+        ))}
+      </div>
     </section>
   );
 };
@@ -142,13 +157,8 @@ function Provider({
 }) {
   const [env, setEnv] = useState<'SANDBOX' | 'PRODUCTION'>('SANDBOX');
   const [selected, setSelected] = useState<string[]>(
-    p.adapter.implementedCapabilities.filter(
-      (c) =>
-        c === 'PAYMENT_COLLECTION' ||
-        c === 'PAYMENT_STATUS' ||
-        c === 'HEALTH' ||
-        c === 'NOTIFICATIONS',
-    ),
+    p.integrations.find((integration) => integration.environment === 'SANDBOX')
+      ?.enabledCapabilities ?? [],
   );
   const capabilities = p.adapter.implementedCapabilities;
   return (
@@ -201,7 +211,14 @@ function Provider({
                   <select
                     className={field}
                     value={env}
-                    onChange={(e) => setEnv(e.target.value as 'SANDBOX' | 'PRODUCTION')}
+                    onChange={(e) => {
+                      const next = e.target.value as 'SANDBOX' | 'PRODUCTION';
+                      setEnv(next);
+                      setSelected(
+                        p.integrations.find((integration) => integration.environment === next)
+                          ?.enabledCapabilities ?? [],
+                      );
+                    }}
                   >
                     <option value="SANDBOX" disabled={!p.availableEnvironments.includes('SANDBOX')}>
                       Sandbox {p.availableEnvironments.includes('SANDBOX') ? '' : '(unavailable)'}
@@ -320,10 +337,14 @@ function Integration({
           className={`rounded px-2 py-1 text-xs ${i.isEffective ? 'bg-teal-50 text-teal-800' : 'bg-slate-100 text-slate-600'}`}
         >
           {i.isEffective
-            ? 'Enabled'
-            : i.isEnabled
-              ? 'Restricted by platform'
-              : 'Disconnected / disabled'}
+            ? i.environment === 'SANDBOX'
+              ? 'Sandbox enabled'
+              : 'Enabled'
+            : i.credentialsExpired
+              ? 'Credentials expired'
+              : i.isEnabled
+                ? 'Restricted or incomplete'
+                : 'Disconnected / disabled'}
         </span>
         <span className="text-xs text-slate-600">
           Health: {i.connectionStatus.replaceAll('_', ' ')}
@@ -331,7 +352,12 @@ function Integration({
         </span>
       </div>
       <p className="text-xs text-slate-500">
-        Credentials: {i.credentials} · Production review:{' '}
+        Credentials: {i.credentials} · Storage: {i.credentialSource ?? 'legacy or not recorded'} ·
+        Expiry:{' '}
+        {i.credentialsExpiresAt
+          ? new Date(i.credentialsExpiresAt).toLocaleString()
+          : 'not recorded'}
+        {i.credentialsExpired ? ' (expired)' : ''} · Production review:{' '}
         {i.productionApproval.replaceAll('_', ' ')}
         {i.lastErrorCode ? ` · ${i.lastErrorCode}` : ''}
       </p>
@@ -357,14 +383,32 @@ function Integration({
       ) : (
         <p className="text-xs text-slate-500">Account details require a separate permission.</p>
       )}
+      {canCredentials && provider.code === 'MPESA_DARAJA' && i.environment === 'SANDBOX' && (
+        <DarajaVaultForm integrationId={i.id} facilityId={facilityId} busy={busy} run={run} />
+      )}
+      {canCredentials && i.credentialsConfigured && (
+        <button
+          type="button"
+          className={secondary}
+          disabled={busy}
+          onClick={() =>
+            void run(
+              () => paymentHubApi.reencryptCredentials(i.id, facilityId),
+              'Credentials re-encrypted with the active server vault key. Provider credentials were not changed.',
+            )
+          }
+        >
+          Re-encrypt with active vault key
+        </button>
+      )}
       {canCredentials && (
         <details className="rounded bg-slate-50 p-2">
           <summary className="cursor-pointer text-xs font-semibold">
             {i.credentialsConfigured ? 'Replace' : 'Add'} facility credential reference
           </summary>
           <p className="my-2 text-xs text-slate-500">
-            Never enter credentials, online-banking passwords or OTPs here. The environment secret
-            is provisioned by an authorized server operator. Saving a reference disables this
+            Do not put credentials, online-banking passwords or OTPs in a reference. The environment
+            secret is provisioned by an authorized server operator. Saving a reference disables this
             integration and resets review.
           </p>
           <form
@@ -517,5 +561,134 @@ function Integration({
         )}
       </div>
     </div>
+  );
+}
+
+/** One-way credential entry. Values are never populated from an API response. */
+function DarajaVaultForm({
+  integrationId,
+  facilityId,
+  busy,
+  run,
+}: {
+  integrationId: number;
+  facilityId: number;
+  busy: boolean;
+  run: Run;
+}) {
+  const empty = {
+    consumerKey: '',
+    consumerSecret: '',
+    passkey: '',
+    shortcode: '',
+    transactionType: '',
+  };
+  const [credentials, setCredentials] = useState(empty);
+  const [expiry, setExpiry] = useState('');
+  return (
+    <details className="rounded bg-slate-50 p-2">
+      <summary className="cursor-pointer text-xs font-semibold">
+        Add or replace Daraja sandbox credentials
+      </summary>
+      <p className="my-2 text-xs text-slate-600">
+        Enter only provider-issued sandbox application credentials over HTTPS. They are encrypted
+        server-side and cannot be viewed again. Never enter a customer PIN, bank password or OTP.
+        Replacing credentials disables the integration and requires a new OAuth check.
+      </p>
+      <form
+        className="grid gap-2 sm:grid-cols-2"
+        autoComplete="off"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void run(async () => {
+            try {
+              await paymentHubApi.credentials(integrationId, {
+                facilityId,
+                source: 'VAULT',
+                credentials,
+                expiresAt: expiry ? new Date(expiry).toISOString() : null,
+              });
+            } finally {
+              // Do not keep entered secrets in the form after any submission.
+              setCredentials(empty);
+              setExpiry('');
+            }
+          }, 'Credentials saved encrypted. Test OAuth before enabling the sandbox.');
+        }}
+      >
+        <label className="text-xs">
+          Consumer key
+          <input
+            className={field}
+            type="password"
+            required
+            maxLength={256}
+            autoComplete="new-password"
+            value={credentials.consumerKey}
+            onChange={(e) => setCredentials({ ...credentials, consumerKey: e.target.value })}
+          />
+        </label>
+        <label className="text-xs">
+          Consumer secret
+          <input
+            className={field}
+            type="password"
+            required
+            maxLength={256}
+            autoComplete="new-password"
+            value={credentials.consumerSecret}
+            onChange={(e) => setCredentials({ ...credentials, consumerSecret: e.target.value })}
+          />
+        </label>
+        <label className="text-xs">
+          STK passkey
+          <input
+            className={field}
+            type="password"
+            required
+            maxLength={512}
+            autoComplete="new-password"
+            value={credentials.passkey}
+            onChange={(e) => setCredentials({ ...credentials, passkey: e.target.value })}
+          />
+        </label>
+        <label className="text-xs">
+          Sandbox shortcode
+          <input
+            className={field}
+            inputMode="numeric"
+            pattern="[0-9]{4,12}"
+            required
+            value={credentials.shortcode}
+            onChange={(e) => setCredentials({ ...credentials, shortcode: e.target.value })}
+          />
+        </label>
+        <label className="text-xs">
+          Authorized transaction type
+          <select
+            className={field}
+            required
+            value={credentials.transactionType}
+            onChange={(e) => setCredentials({ ...credentials, transactionType: e.target.value })}
+          >
+            <option value="">Select provider-authorized type</option>
+            <option value="CustomerPayBillOnline">Paybill</option>
+            <option value="CustomerBuyGoodsOnline">Buy goods</option>
+          </select>
+        </label>
+        <label className="text-xs">
+          Credential expiry (optional; your local time)
+          <input
+            className={field}
+            type="datetime-local"
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+          />
+        </label>
+        <button disabled={busy} className={button}>
+          Save encrypted sandbox credentials
+        </button>
+      </form>
+    </details>
   );
 }

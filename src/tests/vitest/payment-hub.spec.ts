@@ -4,6 +4,7 @@ import {
   decryptFacilitySecret,
   encryptFacilitySecret,
   privateDigest,
+  rotateFacilitySecret,
 } from '../../payment-hub/secrets.ts';
 import { providerBoundary } from '../../payment-hub/adapters/index.ts';
 import {
@@ -26,6 +27,9 @@ const fake = {
 };
 afterEach(() => {
   delete process.env.PAYMENT_HUB_ENCRYPTION_KEY;
+  delete process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID;
+  delete process.env.PAYMENT_HUB_VAULT_KEY_K1;
+  delete process.env.PAYMENT_HUB_VAULT_KEY_K2;
   vi.restoreAllMocks();
 });
 
@@ -72,6 +76,39 @@ describe('encrypted facility credentials', () => {
     parts[3] = Buffer.from('tampered ciphertext').toString('base64');
     expect(() => decryptFacilitySecret(scope, parts.join('.'))).toThrow(/cannot be accessed/i);
     expect(privateDigest('private value')).not.toContain('private value');
+  });
+  it('rotates versioned encryption keys without changing legacy identity digests or exposing plaintext', () => {
+    process.env.PAYMENT_HUB_ENCRYPTION_KEY = secretKey;
+    const legacy = encryptFacilitySecret(scope, { secret: 'synthetic-material' });
+    const digest = privateDigest('stable-identity');
+    expect(() => rotateFacilitySecret(scope, legacy)).toThrow(/active versioned vault key/i);
+    process.env.PAYMENT_HUB_VAULT_KEY_K1 = createHash('sha256')
+      .update('synthetic K1')
+      .digest('base64');
+    process.env.PAYMENT_HUB_VAULT_KEY_K2 = createHash('sha256')
+      .update('synthetic K2')
+      .digest('base64');
+    process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID = 'K1';
+    expect(decryptFacilitySecret(scope, legacy)).toEqual({ secret: 'synthetic-material' });
+    const first = rotateFacilitySecret(scope, legacy);
+    expect(first.startsWith('v2.K1.')).toBe(true);
+    expect(first).not.toContain('synthetic-material');
+    expect(() => decryptFacilitySecret({ ...scope, integrationId: 4 }, first)).toThrow(
+      /cannot be accessed/i,
+    );
+    process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID = 'K2';
+    const second = rotateFacilitySecret(scope, first);
+    expect(second.startsWith('v2.K2.')).toBe(true);
+    delete process.env.PAYMENT_HUB_VAULT_KEY_K1;
+    expect(() => decryptFacilitySecret(scope, first)).toThrow(/not configured/i);
+    expect(decryptFacilitySecret(scope, second)).toEqual({ secret: 'synthetic-material' });
+    expect(privateDigest('stable-identity')).toBe(digest);
+    const parts = second.split('.');
+    parts[1] = 'K1';
+    process.env.PAYMENT_HUB_VAULT_KEY_K1 = process.env.PAYMENT_HUB_VAULT_KEY_K2;
+    expect(() => decryptFacilitySecret(scope, parts.join('.'))).toThrow(/cannot be accessed/i);
+    process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID = '../invalid';
+    expect(() => encryptFacilitySecret(scope, { secret: 'synthetic' })).toThrow(/not configured/i);
   });
 });
 describe('Daraja sandbox reference adapter, mocked transport only', () => {

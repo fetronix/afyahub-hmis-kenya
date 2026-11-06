@@ -457,8 +457,12 @@ describe('Staff roles — contract tests', () => {
       'A staff-only account lands on the staff tab instead of an empty one',
     ).toBe(true);
     expect(
-      containsCode(configuration, "if (isFacilityAdmin) return tab.id !== 'payments'"),
-      'A facility administrator can reach the profile and module tabs',
+      containsCode(configuration, 'if (isFacilityAdmin) return true;') &&
+        containsCode(
+          configuration,
+          "if (tab.id === 'integrations') return canViewPaymentHub || canViewPayerHub;",
+        ),
+      'A facility administrator can reach profile and modules without bypassing integration permissions',
     ).toBe(true);
 
     expect(

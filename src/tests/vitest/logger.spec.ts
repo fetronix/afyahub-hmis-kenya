@@ -86,6 +86,12 @@ describe('the redaction list itself', () => {
       'authorization',
       'cookie',
       'clientSecret',
+      'consumerKey',
+      'consumerSecret',
+      'passkey',
+      'shortcode',
+      'credentials',
+      'PAYMENT_HUB_ENCRYPTION_KEY',
       'apiKey',
       'nationalId',
       'phone',
@@ -204,6 +210,37 @@ describe('redaction', () => {
     for (const secret of ['12345678', '254712345678', '1985-04-12', 'Wanjiku']) {
       expect(out).not.toContain(secret);
     }
+  });
+
+  it('redacts Daraja credentials in a nested request and individually named fields', () => {
+    const { log, lines } = capture();
+    log.info(
+      {
+        req: {
+          body: {
+            credentials: {
+              consumerKey: 'synthetic-key',
+              consumerSecret: 'synthetic-secret',
+              passkey: 'synthetic-passkey',
+              shortcode: '123456',
+            },
+          },
+        },
+        provider: { consumerSecret: 'synthetic-secret-again' },
+        PAYMENT_HUB_ENCRYPTION_KEY: 'synthetic-master-key',
+      },
+      'synthetic.integration',
+    );
+    const out = JSON.stringify(lines());
+    for (const value of [
+      'synthetic-key',
+      'synthetic-secret',
+      'synthetic-passkey',
+      '123456',
+      'synthetic-master-key',
+    ])
+      expect(out).not.toContain(value);
+    expect(out).toContain('[REDACTED]');
   });
 
   it('redacts a client secret nested inside a config object', () => {

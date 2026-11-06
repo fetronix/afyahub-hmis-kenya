@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   catalogue: vi.fn(),
   access: vi.fn(),
+  credentials: vi.fn(),
+  reencryptCredentials: vi.fn(),
   platform: vi.fn(),
   facilities: vi.fn(),
   transactions: vi.fn(),
@@ -65,7 +67,7 @@ describe('payment hub administration views', () => {
     await waitFor(() => expect(api.access).toHaveBeenCalledWith(3, 11));
     expect(await screen.findByText(/Access request sent/)).toBeInTheDocument();
   });
-  it('shows a server-side credential reference without a browser credential input', async () => {
+  it('supports a server-side reference and write-only, masked sandbox credential entry', async () => {
     state.user.permissions = ['payment_hub.catalogue.read', 'payment_hub.credentials.manage'];
     api.catalogue.mockResolvedValue({
       providers: [
@@ -108,8 +110,39 @@ describe('payment hub administration views', () => {
     render(<FacilityPaymentIntegrations />);
     await userEvent.click(await screen.findByText('Add facility credential reference'));
     expect(screen.getByText('PAYMENT_HUB_T1_F11_I4_SANDBOX')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Consumer key')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Consumer secret')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Consumer key')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Consumer secret')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('STK passkey')).toHaveAttribute('type', 'password');
+    expect(screen.queryByLabelText(/PIN/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Consumer secret')).toHaveValue('');
+    api.credentials.mockResolvedValue({});
+    await userEvent.click(screen.getByText('Add or replace Daraja sandbox credentials'));
+    await userEvent.type(screen.getByLabelText('Consumer key'), 'synthetic-key');
+    await userEvent.type(screen.getByLabelText('Consumer secret'), 'synthetic-secret');
+    await userEvent.type(screen.getByLabelText('STK passkey'), 'synthetic-passkey');
+    await userEvent.type(screen.getByLabelText('Sandbox shortcode'), '123456');
+    await userEvent.selectOptions(
+      screen.getByLabelText('Authorized transaction type'),
+      'CustomerPayBillOnline',
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Save encrypted sandbox credentials' }),
+    );
+    await waitFor(() =>
+      expect(api.credentials).toHaveBeenCalledWith(4, {
+        facilityId: 11,
+        source: 'VAULT',
+        credentials: {
+          consumerKey: 'synthetic-key',
+          consumerSecret: 'synthetic-secret',
+          passkey: 'synthetic-passkey',
+          shortcode: '123456',
+          transactionType: 'CustomerPayBillOnline',
+        },
+        expiresAt: null,
+      }),
+    );
+    expect(screen.getByLabelText('Consumer secret')).toHaveValue('');
   });
   it('does not show stale transaction data after switching facilities, even when requests resolve out of order', async () => {
     state.user.permissions = ['payment_hub.transactions.read'];

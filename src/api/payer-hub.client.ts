@@ -1,4 +1,5 @@
 import { fetchJson } from './client.ts';
+import type { IntegrationAuditEvent } from './integration-hub.types.ts';
 
 export interface PayerWorkflowPolicy {
   providerId: number;
@@ -91,6 +92,10 @@ export const payerHubApi = {
   catalogue: (facilityId: number) =>
     fetchJson<{ providers: FacilityPayer[]; notice: string }>(
       `${root}/facility/catalogue?facilityId=${facilityId}`,
+    ),
+  configurationAudit: (facilityId: number) =>
+    fetchJson<{ events: IntegrationAuditEvent[] }>(
+      `${root}/facility/configuration-audit?facilityId=${facilityId}`,
     ),
   requestAccess: (id: number, facilityId: number) =>
     send(`/facility/payers/${id}/access-request`, 'POST', { facilityId }),

@@ -5,14 +5,19 @@ import { PaymentHubError } from './errors.ts';
 import { providerBoundary } from './adapters/index.ts';
 import { validateDarajaCredentials } from './adapters/daraja.ts';
 import type { Capability } from './adapters/contracts.ts';
-import { decryptFacilitySecret, encryptFacilitySecret, privateDigest } from './secrets.ts';
+import {
+  decryptFacilitySecret,
+  encryptFacilitySecret,
+  privateDigest,
+  rotateFacilitySecret,
+} from './secrets.ts';
 
 export interface HubScope {
   tenantId: number;
   facilityId: number;
   actorUserId: number;
 }
-const CREDENTIAL_MASK = 'Reference configured (secret hidden)';
+const CREDENTIAL_MASK = 'Configured (secret hidden)';
 function credentialVariable(scope: HubScope, integrationId: number, env: string): string {
   return `PAYMENT_HUB_T${scope.tenantId}_F${scope.facilityId}_I${integrationId}_${env}`;
 }
@@ -26,7 +31,18 @@ function darajaEnvironmentCredentials(name: string): Record<string, string> {
     );
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid');
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      Object.keys(parsed).some(
+        (field) =>
+          !['consumerKey', 'consumerSecret', 'passkey', 'shortcode', 'transactionType'].includes(
+            field,
+          ),
+      )
+    )
+      throw new Error('invalid');
     return { ...validateDarajaCredentials(parsed as Record<string, unknown>) };
   } catch {
     throw new PaymentHubError(
@@ -75,6 +91,20 @@ function environment(value: unknown): 'SANDBOX' | 'PRODUCTION' {
 function bool(value: unknown): boolean {
   if (typeof value !== 'boolean')
     throw new PaymentHubError('INVALID_INPUT', 'A boolean setting is required.');
+  return value;
+}
+/** Explicit optional UTC expiry supplied by the facility; no expiry is inferred. */
+function credentialExpiry(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value))
+    throw new PaymentHubError('INVALID_EXPIRY', 'Supply a valid UTC credential expiry.');
+  const date = new Date(value);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.toISOString() !== value ||
+    date.getTime() <= Date.now()
+  )
+    throw new PaymentHubError('INVALID_EXPIRY', 'Credential expiry must be a valid future time.');
   return value;
 }
 async function tx<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -452,11 +482,14 @@ export async function facilityCatalogue(scope: HubScope, includeAccounts: boolea
     pool.query(
       `SELECT i.id,i.provider_id AS "providerId",i.environment,i.enabled_capabilities AS "enabledCapabilities",i.is_enabled AS "isEnabled",i.connection_status AS "connectionStatus",i.last_health_at AS "lastHealthAt",i.last_error_code AS "lastErrorCode",i.production_approval AS "productionApproval",
       CASE WHEN p.adapter_key='MPESA_DARAJA' THEN 'PAYMENT_HUB_T'||i.tenant_id||'_F'||i.facility_id||'_I'||i.id||'_'||i.environment ELSE NULL END AS "credentialEnvName",
-      (i.is_enabled AND EXISTS(SELECT 1 FROM payment_provider_environments e WHERE e.provider_id=i.provider_id AND e.environment=i.environment AND e.is_available)
+      (i.is_enabled AND i.connection_status='HEALTHY' AND s.integration_id IS NOT NULL AND (s.expires_at IS NULL OR s.expires_at > now())
+       AND EXISTS(SELECT 1 FROM payment_provider_environments e WHERE e.provider_id=i.provider_id AND e.environment=i.environment AND e.is_available)
        AND NOT EXISTS(SELECT 1 FROM unnest(i.enabled_capabilities) AS selected(capability) LEFT JOIN payment_provider_capability_policies pc ON pc.provider_id=i.provider_id AND pc.capability=selected.capability WHERE COALESCE(pc.is_allowed,false)=false)) AS "isEffective",
-      EXISTS(SELECT 1 FROM facility_payment_secrets s WHERE s.integration_id=i.id AND s.tenant_id=i.tenant_id AND s.facility_id=i.facility_id) AS "credentialsConfigured"
+      (s.integration_id IS NOT NULL) AS "credentialsConfigured",s.credential_source AS "credentialSource",
+      s.expires_at AS "credentialsExpiresAt",COALESCE(s.expires_at <= now(),false) AS "credentialsExpired"
       FROM facility_payment_integrations i JOIN payment_provider_definitions p ON p.id=i.provider_id AND p.status='ACTIVE'
       JOIN payment_provider_assignments a ON a.provider_id=i.provider_id AND a.tenant_id=i.tenant_id AND a.facility_id=i.facility_id AND a.is_allowed
+      LEFT JOIN facility_payment_secrets s ON s.integration_id=i.id AND s.tenant_id=i.tenant_id AND s.facility_id=i.facility_id
       WHERE i.tenant_id=$1 AND i.facility_id=$2 ORDER BY i.id`,
       [scope.tenantId, scope.facilityId],
     ),
@@ -490,6 +523,10 @@ export async function facilityCatalogue(scope: HubScope, includeAccounts: boolea
         .filter((i) => i.providerId === p.id)
         .map((i) => ({
           ...i,
+          isEffective:
+            i.isEffective &&
+            (i.environment !== 'PRODUCTION' ||
+              providerBoundary(p.adapterKey).descriptor.productionReady),
           credentials: i.credentialsConfigured ? CREDENTIAL_MASK : 'Not configured',
           accounts: accounts.rows.filter((a) => a.integrationId === i.id),
         })),
@@ -565,29 +602,86 @@ export async function saveCredentials(
     return await tx(async (c) => {
       const i = await integration(c, scope, integrationId, true);
       await allowedProvider(c, scope, i.provider_id, i.environment);
+      const expiresAt = credentialExpiry(input.expiresAt);
       let values: Record<string, string>;
       let identityHash: string | null = null;
+      let source: 'VAULT' | 'ENVIRONMENT' | 'REFERENCE';
       if (i.adapter_key === 'MPESA_DARAJA') {
-        // This application database is not assumed to be an approved secret
-        // store. The real secret is provisioned only in the server environment.
-        // The variable is fixed to this tenant, facility, integration and environment.
-        if (
-          input.source !== 'ENVIRONMENT' ||
-          ['consumerKey', 'consumerSecret', 'passkey', 'shortcode'].some((field) => field in input)
-        )
+        let credentials: Record<string, string>;
+        if (input.source === 'VAULT') {
+          // Production is deliberately not provisioned through this sandbox-only
+          // boundary. Never accept banking PINs or undocumented extra fields.
+          if (i.environment !== 'SANDBOX')
+            throw new PaymentHubError(
+              'PRODUCTION_BLOCKED',
+              'Production vault setup is not enabled.',
+              403,
+            );
+          if (
+            Object.keys(input).some(
+              (key) => !['facilityId', 'source', 'credentials', 'expiresAt'].includes(key),
+            )
+          )
+            throw new PaymentHubError(
+              'INVALID_INPUT',
+              'Only the required Daraja fields may be supplied.',
+            );
+          const raw = input.credentials;
+          if (
+            !raw ||
+            typeof raw !== 'object' ||
+            Array.isArray(raw) ||
+            Object.keys(raw).some(
+              (key) =>
+                ![
+                  'consumerKey',
+                  'consumerSecret',
+                  'passkey',
+                  'shortcode',
+                  'transactionType',
+                ].includes(key),
+            )
+          )
+            throw new PaymentHubError(
+              'INVALID_INPUT',
+              'Only the required Daraja fields may be supplied.',
+            );
+          credentials = { ...validateDarajaCredentials(raw as Record<string, unknown>) };
+          values = { kind: 'DARAJA_VAULT_V1', ...credentials };
+          source = 'VAULT';
+        } else if (input.source === 'ENVIRONMENT') {
+          if (
+            Object.keys(input).some((key) => !['facilityId', 'source', 'expiresAt'].includes(key))
+          )
+            throw new PaymentHubError(
+              'INVALID_INPUT',
+              'Only the facility environment reference may be supplied.',
+            );
+          const environmentReference = credentialVariable(scope, integrationId, i.environment);
+          credentials = darajaEnvironmentCredentials(environmentReference);
+          values = { environmentReference, valueFingerprint: credentialFingerprint(credentials) };
+          source = 'ENVIRONMENT';
+        } else {
           throw new PaymentHubError(
             'INVALID_INPUT',
-            'Configure the facility-specific server environment reference; do not send credentials in the request.',
+            'Choose the facility vault or server environment credential source.',
           );
-        const environmentReference = credentialVariable(scope, integrationId, i.environment);
-        const credentials = darajaEnvironmentCredentials(environmentReference);
-        values = { environmentReference, valueFingerprint: credentialFingerprint(credentials) };
-        // The same consumer credential cannot silently serve two integrations.
-        // Contractually approved shared credentials remain deliberately unsupported.
+        }
+        // A provider consumer credential cannot silently be shared by facilities
+        // or environments, including across the old and new storage formats.
         identityHash = privateDigest(`daraja-consumer:${credentials.consumerKey}`);
       } else {
         // No bank-specific credential format has been verified. Record only an
         // opaque facility reference; bank adapters never resolve or use it.
+        if (
+          Object.keys(input).some(
+            (key) => !['facilityId', 'secretReference', 'expiresAt'].includes(key),
+          )
+        )
+          throw new PaymentHubError(
+            'INVALID_INPUT',
+            'Only an opaque facility reference may be supplied.',
+          );
         const ref = stringField(input.secretReference, 'Secret reference', 160);
         if (!/^(secret|env):[A-Za-z0-9/_-]{3,140}$/.test(ref))
           throw new PaymentHubError(
@@ -595,15 +689,32 @@ export async function saveCredentials(
             'Use a facility-owned secret-manager or environment reference.',
           );
         values = { secretReference: ref };
+        source = 'REFERENCE';
       }
+      // Keep non-secret metadata queryable while authenticating a copy inside
+      // the ciphertext, so changing the source/expiry cannot extend use.
+      values = {
+        ...values,
+        _metadataVersion: '1',
+        _credentialSource: source,
+        _expiresAt: expiresAt ?? '',
+      };
       const encrypted = encryptFacilitySecret(
         { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
         values,
       );
       await c.query(
-        `INSERT INTO facility_payment_secrets(integration_id,tenant_id,facility_id,encrypted_value,credential_identity_hash) VALUES($1,$2,$3,$4,$5)
-        ON CONFLICT(integration_id) DO UPDATE SET encrypted_value=EXCLUDED.encrypted_value,credential_identity_hash=EXCLUDED.credential_identity_hash,updated_at=now()`,
-        [integrationId, scope.tenantId, scope.facilityId, encrypted, identityHash],
+        `INSERT INTO facility_payment_secrets(integration_id,tenant_id,facility_id,encrypted_value,credential_identity_hash,credential_source,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT(integration_id) DO UPDATE SET encrypted_value=EXCLUDED.encrypted_value,credential_identity_hash=EXCLUDED.credential_identity_hash,credential_source=EXCLUDED.credential_source,expires_at=EXCLUDED.expires_at,updated_at=now()`,
+        [
+          integrationId,
+          scope.tenantId,
+          scope.facilityId,
+          encrypted,
+          identityHash,
+          source,
+          expiresAt,
+        ],
       );
       await c.query(
         `UPDATE facility_payment_integrations SET is_enabled=false,connection_status='NOT_TESTED',last_health_at=NULL,last_error_code=NULL,production_approval='NOT_REQUESTED',approval_reference=NULL,approved_by_user_id=NULL,approved_at=NULL,revision=revision+1,updated_at=now() WHERE id=$1`,
@@ -611,11 +722,12 @@ export async function saveCredentials(
       );
       await audit(c, scope.actorUserId, scope, 'UPDATE', 'credentials', integrationId, {
         configured: true,
-        source: i.adapter_key === 'MPESA_DARAJA' ? 'ENVIRONMENT' : 'REFERENCE',
+        source,
+        expiryRecorded: Boolean(expiresAt),
       });
       return {
         configured: true,
-        message: 'Credential reference saved. The integration was disabled and must be rechecked.',
+        message: 'Credentials saved securely. The integration was disabled and must be rechecked.',
       };
     });
   } catch (error) {
@@ -627,6 +739,44 @@ export async function saveCredentials(
       );
     throw error;
   }
+}
+
+/** Re-encrypt one existing facility secret without returning or changing its contents. */
+export async function reencryptCredentials(scope: HubScope, integrationId: number) {
+  return tx(async (c) => {
+    // Security maintenance remains possible even if a provider was revoked.
+    await integration(c, scope, integrationId, true);
+    const row = await c.query(
+      `SELECT encrypted_value FROM facility_payment_secrets WHERE integration_id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE`,
+      [integrationId, scope.tenantId, scope.facilityId],
+    );
+    if (!row.rowCount)
+      throw new PaymentHubError(
+        'CREDENTIALS_REQUIRED',
+        'Facility-owned credentials are required.',
+        409,
+      );
+    const encrypted = rotateFacilitySecret(
+      { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
+      row.rows[0].encrypted_value,
+    );
+    await c.query(
+      `UPDATE facility_payment_secrets SET encrypted_value=$4,updated_at=now() WHERE integration_id=$1 AND tenant_id=$2 AND facility_id=$3`,
+      [integrationId, scope.tenantId, scope.facilityId, encrypted],
+    );
+    // A simultaneous health check must not report against an older snapshot.
+    await c.query(
+      `UPDATE facility_payment_integrations SET revision=revision+1,updated_at=now() WHERE id=$1`,
+      [integrationId],
+    );
+    await audit(c, scope.actorUserId, scope, 'ROTATE_KEY', 'credentials', integrationId, {
+      reencrypted: true,
+    });
+    return {
+      reencrypted: true,
+      message: 'Stored credentials re-encrypted with the active vault key.',
+    };
+  });
 }
 export async function addFacilityAccount(
   scope: HubScope,
@@ -686,7 +836,7 @@ export async function addFacilityAccount(
 }
 async function secretFor(c: PoolClient, scope: HubScope, integrationId: number) {
   const result = await c.query(
-    `SELECT s.encrypted_value,i.environment,p.adapter_key FROM facility_payment_secrets s
+    `SELECT s.encrypted_value,s.credential_source,s.expires_at,(s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,i.environment,p.adapter_key FROM facility_payment_secrets s
     JOIN facility_payment_integrations i ON i.id=s.integration_id AND i.tenant_id=s.tenant_id AND i.facility_id=s.facility_id
     JOIN payment_provider_definitions p ON p.id=i.provider_id
     WHERE s.integration_id=$1 AND s.tenant_id=$2 AND s.facility_id=$3`,
@@ -699,11 +849,37 @@ async function secretFor(c: PoolClient, scope: HubScope, integrationId: number) 
       409,
     );
   const row = result.rows[0];
+  if (row.expired)
+    throw new PaymentHubError(
+      'CREDENTIALS_EXPIRED',
+      'Credentials have expired. Replace them and repeat the check.',
+      409,
+    );
   const stored = decryptFacilitySecret(
     { tenantId: scope.tenantId, facilityId: scope.facilityId, integrationId },
     row.encrypted_value,
   );
+  if (
+    (stored._metadataVersion === '1' &&
+      (stored._credentialSource !== row.credential_source ||
+        stored._expiresAt !== (row.expires_at ? row.expires_at.toISOString() : ''))) ||
+    (stored._metadataVersion !== '1' && row.credential_source !== null)
+  )
+    throw new PaymentHubError(
+      'SECRET_UNAVAILABLE',
+      'Stored credential metadata is inconsistent.',
+      503,
+    );
   if (row.adapter_key !== 'MPESA_DARAJA') return stored; // Bank references are not resolved.
+  if (row.credential_source === 'VAULT') {
+    if (stored.kind !== 'DARAJA_VAULT_V1' || row.environment !== 'SANDBOX')
+      throw new PaymentHubError(
+        'SECRET_UNAVAILABLE',
+        'Stored credentials cannot be accessed.',
+        503,
+      );
+    return { ...validateDarajaCredentials(stored) };
+  }
   const expected = credentialVariable(scope, integrationId, row.environment);
   if (stored.environmentReference !== expected || !stored.valueFingerprint)
     throw new PaymentHubError('SECRET_UNAVAILABLE', 'Stored credential reference is invalid.', 503);
@@ -1048,6 +1224,12 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
         'CAPABILITY_UNAVAILABLE',
         'Payment collection is not enabled for this integration.',
         403,
+      );
+    if (i.connection_status !== 'HEALTHY')
+      throw new PaymentHubError(
+        'HEALTH_CHECK_REQUIRED',
+        'Repeat a successful sandbox OAuth check before starting a new request.',
+        409,
       );
     if (i.environment !== 'SANDBOX' || !providerBoundary(i.adapter_key).descriptor.sandboxOnly)
       throw new PaymentHubError(

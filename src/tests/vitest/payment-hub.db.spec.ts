@@ -259,6 +259,9 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     vi.unstubAllGlobals();
     for (const name of secretNames) delete process.env[name];
     delete process.env.PAYMENT_HUB_ENCRYPTION_KEY;
+    delete process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID;
+    delete process.env.PAYMENT_HUB_VAULT_KEY_K1;
+    delete process.env.PAYMENT_HUB_VAULT_KEY_K2;
     delete process.env.PAYMENT_HUB_CALLBACK_BASE_URL;
   });
 
@@ -1159,5 +1162,331 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     );
     expect(JSON.stringify(events.rows)).not.toContain(fakeCredentials.consumerSecret);
     expect(superUser).toBeGreaterThan(0);
+  });
+  it('stores only authenticated, facility-owned sandbox credentials in the encrypted database vault', async () => {
+    expect(
+      (
+        await call(
+          superToken,
+          'PUT',
+          `/api/payment-hub/platform/providers/${providerId}/facilities/${facilityA}`,
+          { isAllowed: true },
+        )
+      ).status,
+    ).toBe(200);
+    process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID = 'K1';
+    process.env.PAYMENT_HUB_VAULT_KEY_K1 = createHash('sha256')
+      .update('synthetic integration K1')
+      .digest('base64');
+    process.env.PAYMENT_HUB_VAULT_KEY_K2 = createHash('sha256')
+      .update('synthetic integration K2')
+      .digest('base64');
+    const path = `/api/payment-hub/facility/integrations/${integrationId}/credentials`;
+    const payload = {
+      facilityId: facilityA,
+      source: 'VAULT',
+      credentials: fakeCredentials,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    };
+    expect((await call(undefined, 'PUT', path, payload)).status).toBe(401);
+    expect((await call(clerkToken, 'PUT', path, payload)).status).toBe(403);
+    expect((await call(superToken, 'PUT', path, payload)).status).toBe(403);
+    expect((await call(bToken, 'PUT', path, { ...payload, facilityId: facilityB })).status).toBe(
+      404,
+    );
+    expect(
+      (
+        await call(aToken, 'PUT', path, {
+          ...payload,
+          credentials: { ...fakeCredentials, pin: '1234' },
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(aToken, 'PUT', path, {
+          ...payload,
+          credentials: { ...fakeCredentials, consumerSecret: '' },
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await call(aToken, 'PUT', path, { ...payload, expiresAt: '2000-01-01T00:00:00.000Z' }))
+        .status,
+    ).toBe(400);
+    const production = await call(
+      aToken,
+      'PUT',
+      `/api/payment-hub/facility/integrations/${productionId}/credentials`,
+      payload,
+    );
+    expect(production.status).toBe(403);
+    expect(production.data.error).toBe('PRODUCTION_BLOCKED');
+    const originalNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'production';
+      const insecure = await call(aToken, 'PUT', path, payload);
+      expect(insecure.status).toBe(403);
+      expect(insecure.data.error).toBe('HTTPS_REQUIRED');
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+    const saved = await call(aToken, 'PUT', path, payload);
+    expect(saved.status).toBe(200);
+    const row = (
+      await pool.query(
+        `SELECT encrypted_value,credential_source,expires_at FROM facility_payment_secrets WHERE integration_id=$1`,
+        [integrationId],
+      )
+    ).rows[0];
+    expect(row.credential_source).toBe('VAULT');
+    expect(row.encrypted_value.startsWith('v2.K1.')).toBe(true);
+    expect(row.expires_at.toISOString()).toBe('2099-01-01T00:00:00.000Z');
+    for (const secret of Object.values(fakeCredentials)) {
+      expect(row.encrypted_value).not.toContain(secret);
+      expect(JSON.stringify(saved.data)).not.toContain(secret);
+    }
+    expect(
+      decryptFacilitySecret(
+        { tenantId: tenantA, facilityId: facilityA, integrationId },
+        row.encrypted_value,
+      ),
+    ).toMatchObject(fakeCredentials);
+    expect(
+      (
+        await call(
+          superToken,
+          'PUT',
+          `/api/payment-hub/platform/providers/${providerId}/facilities/${facilityB}`,
+          { isAllowed: true },
+        )
+      ).status,
+    ).toBe(200);
+    const otherIntegration = (
+      await pool.query(
+        `SELECT id FROM facility_payment_integrations WHERE provider_id=$1 AND tenant_id=$2 AND facility_id=$3 AND environment='SANDBOX'`,
+        [providerId, tenantA, facilityB],
+      )
+    ).rows[0].id;
+    const duplicate = await call(
+      bToken,
+      'PUT',
+      `/api/payment-hub/facility/integrations/${otherIntegration}/credentials`,
+      { ...payload, facilityId: facilityB },
+    );
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.data.error).toBe('CREDENTIAL_ALREADY_ASSIGNED');
+    expect(
+      (
+        await call(
+          superToken,
+          'PUT',
+          `/api/payment-hub/platform/providers/${providerId}/facilities/${facilityB}`,
+          { isAllowed: false },
+        )
+      ).status,
+    ).toBe(200);
+    const catalogue = await call(
+      aToken,
+      'GET',
+      `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+    );
+    const current = catalogue.data.providers
+      .find((p: any) => p.id === providerId)
+      .integrations.find((i: any) => i.id === integrationId);
+    expect(current).toMatchObject({
+      credentialSource: 'VAULT',
+      credentialsExpired: false,
+      isEnabled: false,
+    });
+    for (const secret of Object.values(fakeCredentials))
+      expect(JSON.stringify(catalogue.data)).not.toContain(secret);
+    const healthPath = `/api/payment-hub/facility/integrations/${integrationId}/health`;
+    const requestsBeforeTampering = vi.mocked(globalThis.fetch).mock.calls.length;
+    await pool.query(
+      `UPDATE facility_payment_secrets SET expires_at=NULL WHERE integration_id=$1`,
+      [integrationId],
+    );
+    expect((await call(aToken, 'POST', healthPath, { facilityId: facilityA })).data.error).toBe(
+      'SECRET_UNAVAILABLE',
+    );
+    await pool.query(
+      `UPDATE facility_payment_secrets SET expires_at=$2,credential_source='ENVIRONMENT' WHERE integration_id=$1`,
+      [integrationId, payload.expiresAt],
+    );
+    expect((await call(aToken, 'POST', healthPath, { facilityId: facilityA })).data.error).toBe(
+      'SECRET_UNAVAILABLE',
+    );
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(requestsBeforeTampering);
+    await pool.query(
+      `UPDATE facility_payment_secrets SET credential_source='VAULT' WHERE integration_id=$1`,
+      [integrationId],
+    );
+    // The new path really supplies the sandbox adapter; it no longer depends on
+    // the legacy server credential reference. Transport is mocked only.
+    delete process.env[`PAYMENT_HUB_T${tenantA}_F${facilityA}_I${integrationId}_SANDBOX`];
+    const health = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/integrations/${integrationId}/health`,
+      { facilityId: facilityA },
+    );
+    expect(health.status).toBe(200);
+    expect(health.data.status).toBe('HEALTHY');
+    const mocked = vi.mocked(globalThis.fetch);
+    const oauthCalls = mocked.mock.calls.filter(([url]) =>
+      String(url).includes('/oauth/v1/generate'),
+    );
+    const authorization = (oauthCalls.at(-1)?.[1]?.headers as Record<string, string>).Authorization;
+    expect(authorization).toBe(
+      `Basic ${Buffer.from(`${fakeCredentials.consumerKey}:${fakeCredentials.consumerSecret}`).toString('base64')}`,
+    );
+    expect(
+      (
+        await call(
+          aToken,
+          'PUT',
+          `/api/payment-hub/facility/integrations/${integrationId}/enabled`,
+          { facilityId: facilityA, enabled: true },
+        )
+      ).status,
+    ).toBe(200);
+  });
+
+  it('reencrypts keys, rejects expired credentials and exposes only scoped sanitized configuration audit', async () => {
+    const reencrypt = `/api/payment-hub/facility/integrations/${integrationId}/credentials/reencrypt`;
+    expect((await call(bToken, 'POST', reencrypt, { facilityId: facilityB })).status).toBe(404);
+    expect((await call(clerkToken, 'POST', reencrypt, { facilityId: facilityA })).status).toBe(403);
+    process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID = 'K2';
+    const rotated = await call(aToken, 'POST', reencrypt, { facilityId: facilityA });
+    expect(rotated.status).toBe(200);
+    expect(rotated.data.reencrypted).toBe(true);
+    const row = (
+      await pool.query(
+        `SELECT encrypted_value FROM facility_payment_secrets WHERE integration_id=$1`,
+        [integrationId],
+      )
+    ).rows[0];
+    expect(row.encrypted_value.startsWith('v2.K2.')).toBe(true);
+    delete process.env.PAYMENT_HUB_VAULT_KEY_K1;
+    expect(
+      decryptFacilitySecret(
+        { tenantId: tenantA, facilityId: facilityA, integrationId },
+        row.encrypted_value,
+      ),
+    ).toMatchObject(fakeCredentials);
+    const savedKey = process.env.PAYMENT_HUB_VAULT_KEY_K2;
+    delete process.env.PAYMENT_HUB_VAULT_KEY_K2;
+    const unavailable = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/integrations/${integrationId}/health`,
+      { facilityId: facilityA },
+    );
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.data.error).toBe('SECRET_STORE_UNCONFIGURED');
+    process.env.PAYMENT_HUB_VAULT_KEY_K2 = savedKey;
+    offline = true;
+    const failedHealth = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/integrations/${integrationId}/health`,
+      { facilityId: facilityA },
+    );
+    expect(failedHealth.data.status).toBe('UNAVAILABLE');
+    const blocked = await call(
+      aToken,
+      'POST',
+      '/api/payment-hub/facility/collections',
+      {
+        facilityId: facilityA,
+        integrationId,
+        invoiceId,
+        amountKes: '5',
+        phone: '254700000003',
+      },
+      'synthetic-offline-health',
+    );
+    expect(blocked.status).toBe(409);
+    expect(blocked.data.error).toBe('HEALTH_CHECK_REQUIRED');
+    offline = false;
+    expect(
+      (
+        await call(
+          aToken,
+          'POST',
+          `/api/payment-hub/facility/integrations/${integrationId}/health`,
+          { facilityId: facilityA },
+        )
+      ).data.status,
+    ).toBe('HEALTHY');
+    await pool.query(
+      `UPDATE facility_payment_secrets SET expires_at=now()-interval '1 minute' WHERE integration_id=$1`,
+      [integrationId],
+    );
+    const before = vi.mocked(globalThis.fetch).mock.calls.length;
+    const expired = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/integrations/${integrationId}/health`,
+      { facilityId: facilityA },
+    );
+    expect(expired.status).toBe(409);
+    expect(expired.data.error).toBe('CREDENTIALS_EXPIRED');
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(before);
+    const catalogue = await call(
+      aToken,
+      'GET',
+      `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+    );
+    const current = catalogue.data.providers
+      .find((p: any) => p.id === providerId)
+      .integrations.find((i: any) => i.id === integrationId);
+    expect(current).toMatchObject({
+      isEnabled: true,
+      isEffective: false,
+      credentialsExpired: true,
+    });
+    const auditPath = `/api/payment-hub/facility/configuration-audit?facilityId=${facilityA}`;
+    expect((await call(undefined, 'GET', auditPath)).status).toBe(401);
+    expect((await call(clerkToken, 'GET', auditPath)).status).toBe(403);
+    expect((await call(bToken, 'GET', auditPath)).status).toBe(403);
+    const audit = await call(aToken, 'GET', auditPath);
+    expect(audit.status).toBe(200);
+    expect(
+      audit.data.events.some(
+        (event: any) => event.action === 'ROTATE_KEY' && event.resourceId === String(integrationId),
+      ),
+    ).toBe(true);
+    expect(audit.data.events.every((event: any) => !('details' in event))).toBe(true);
+    for (const secret of Object.values(fakeCredentials))
+      expect(JSON.stringify(audit.data)).not.toContain(secret);
+    const otherAudit = await call(
+      bToken,
+      'GET',
+      `/api/payment-hub/facility/configuration-audit?facilityId=${facilityB}`,
+    );
+    expect(otherAudit.status).toBe(200);
+    expect(otherAudit.data.events.some((event: any) => event.action === 'ROTATE_KEY')).toBe(false);
+    // Rekeying remains possible for facility-owned secrets even when the
+    // platform has revoked a provider; it does not reactivate the provider.
+    expect(
+      (
+        await call(
+          superToken,
+          'PUT',
+          `/api/payment-hub/platform/providers/${providerId}/facilities/${facilityA}`,
+          { isAllowed: false },
+        )
+      ).status,
+    ).toBe(200);
+    expect((await call(aToken, 'POST', reencrypt, { facilityId: facilityA })).status).toBe(200);
+    const disabled = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/integrations/${integrationId}/health`,
+      { facilityId: facilityA },
+    );
+    expect(disabled.status).toBe(403);
   });
 });

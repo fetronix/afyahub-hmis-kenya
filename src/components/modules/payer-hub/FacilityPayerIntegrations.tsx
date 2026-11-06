@@ -10,7 +10,11 @@ const secondary =
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';
 type Run = (fn: () => Promise<unknown>, message: string) => Promise<void>;
 
-export function FacilityPayerIntegrations() {
+export function FacilityPayerIntegrations({
+  category = 'all',
+}: {
+  category?: 'all' | 'insurance' | 'public';
+} = {}) {
   const { currentFacility, authenticatedUser } = useHmis();
   const permissions = new Set(authenticatedUser?.permissions ?? []);
   const isSuper = Boolean(
@@ -70,7 +74,16 @@ export function FacilityPayerIntegrations() {
   if (!canView)
     return <div className={card}>You do not have permission to view payer integrations.</div>;
   if (!currentFacility) return <div className={card}>Select an authorized facility.</div>;
-  const providers = loaded?.facilityId === currentFacility.id ? loaded.providers : null;
+  const providers =
+    loaded?.facilityId === currentFacility.id
+      ? loaded.providers.filter((payer) =>
+          category === 'all'
+            ? true
+            : category === 'public'
+              ? payer.payerType === 'PUBLIC_SCHEME'
+              : payer.payerType === 'PRIVATE_INSURER',
+        )
+      : null;
   return (
     <section aria-label="Facility payer integrations" className="space-y-4">
       <div>

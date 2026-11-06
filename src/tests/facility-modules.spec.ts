@@ -231,8 +231,11 @@ describe('Facility module provisioning — contract tests', () => {
       'No hard-coded module map remains in the screen',
     ).toBe(true);
     expect(
-      configuration.includes("if (isFacilityAdmin) return tab.id !== 'payments'"),
-      'A facility administrator can open the module tab',
+      configuration.includes('if (isFacilityAdmin) return true;') &&
+        configuration.includes(
+          "if (tab.id === 'integrations') return canViewPaymentHub || canViewPayerHub;",
+        ),
+      'A facility administrator can open the module tab while integrations retain their own permission gate',
     ).toBe(true);
     expect(
       configuration.includes('Antenatal register'),

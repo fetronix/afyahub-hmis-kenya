@@ -42,7 +42,11 @@ describeDb(
       patientA: number,
       patientB: number,
       invoice: number;
-    let suToken: string, aToken: string, bToken: string, noPatientToken: string;
+    let suToken: string,
+      aToken: string,
+      bToken: string,
+      noPatientToken: string,
+      catalogueToken: string;
     let provider: number, claim: number, assignment: number;
     const suffix = randomUUID().slice(0, 8);
     const payerCode = `TEST${suffix.toUpperCase()}`;
@@ -116,6 +120,9 @@ describeDb(
       suToken = await actor('platform', null, 'SUPER_ADMIN', platformGrants, true);
       aToken = await actor('a', facA, `PAYER_A_${suffix}`, facilityGrants);
       bToken = await actor('b', facB, `PAYER_B_${suffix}`, facilityGrants);
+      catalogueToken = await actor('catalogue', facA, `PAYER_CATALOGUE_${suffix}`, [
+        'payer_hub.catalogue.read',
+      ]);
       noPatientToken = await actor(
         'no-patient',
         facA,
@@ -454,6 +461,49 @@ describeDb(
           ])
         ).rows[0],
       ).toMatchObject({ paid_amount: '100.00', balance_amount: '0.00' });
+    });
+
+    it('shows Jubilee as unassigned manual metadata and restricts the configuration audit', async () => {
+      const catalogue = await call(
+        aToken,
+        'GET',
+        `/api/payer-hub/facility/catalogue?facilityId=${facA}`,
+      );
+      expect(catalogue.status).toBe(200);
+      const jubilee = catalogue.data.providers.find((payer: any) => payer.code === 'JUBILEE');
+      expect(jubilee).toMatchObject({
+        isAssigned: false,
+        isActive: false,
+        adapterKey: 'manual',
+        connectionStatus: 'NOT_VERIFIED',
+      });
+      expect(jubilee.processing).toContain('Manual internal processing');
+      expect(jubilee.workflows).toEqual([]);
+      const path = `/api/payer-hub/facility/configuration-audit?facilityId=${facA}`;
+      expect((await call(null, 'GET', path)).status).toBe(401);
+      expect((await call(catalogueToken, 'GET', path)).status).toBe(403);
+      expect((await call(suToken, 'GET', path)).status).toBe(403);
+      expect((await call(bToken, 'GET', path)).status).toBe(403);
+      const audit = await call(aToken, 'GET', path);
+      expect(audit.status).toBe(200);
+      expect(audit.data.events.length).toBeGreaterThan(0);
+      expect(
+        audit.data.events.every(
+          (event: any) => event.resource.startsWith('payer_hub.') && !('details' in event),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(audit.data)).not.toContain('Synthetic manual insurer');
+      const other = await call(
+        bToken,
+        'GET',
+        `/api/payer-hub/facility/configuration-audit?facilityId=${facB}`,
+      );
+      expect(other.status).toBe(200);
+      expect(
+        other.data.events.every(
+          (event: any) => !audit.data.events.some((a: any) => a.id === event.id),
+        ),
+      ).toBe(true);
     });
 
     it('enforces patient association and blocks legacy DHA/SHA transport and callbacks', async () => {

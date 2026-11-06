@@ -152,6 +152,8 @@ export const facilityPaymentSecrets = pgTable('facility_payment_secrets', {
   facilityId: integer('facility_id').notNull(),
   encryptedValue: text('encrypted_value').notNull(),
   credentialIdentityHash: text('credential_identity_hash').unique(),
+  credentialSource: text('credential_source'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 

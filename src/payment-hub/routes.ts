@@ -5,6 +5,7 @@ import { hasPermission } from '../auth/authorization.service.ts';
 import { resolveFacilityScope, ScopeAccessError } from '../auth/scope.service.ts';
 import { getFacilityByIdScoped } from '../db/queries.ts';
 import { PaymentHubError } from './errors.ts';
+import { listConfigurationAudit } from '../integrations/hub/configuration-audit.ts';
 import * as hub from './service.ts';
 
 const router = Router();
@@ -185,6 +186,13 @@ router.get(
     });
   }),
 );
+router.get(
+  '/facility/configuration-audit',
+  requirePermission('payment_hub.facility.manage'),
+  wrap(async (req, res) => {
+    res.json({ success: true, events: await listConfigurationAudit(await scope(req), 'payment') });
+  }),
+);
 router.post(
   '/facility/providers/:id/access-request',
   requirePermission('payment_hub.facility.manage'),
@@ -213,6 +221,17 @@ router.put(
     res.json({
       success: true,
       ...(await hub.saveCredentials(await scope(req), Number(req.params.id), req.body ?? {})),
+    });
+  }),
+);
+router.post(
+  '/facility/integrations/:id/credentials/reencrypt',
+  requirePermission('payment_hub.credentials.manage'),
+  secureCredentials,
+  wrap(async (req, res) => {
+    res.json({
+      success: true,
+      ...(await hub.reencryptCredentials(await scope(req), Number(req.params.id))),
     });
   }),
 );
