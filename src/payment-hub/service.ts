@@ -4,6 +4,7 @@ import { parseMoneyToCents } from '../billing/settlement.ts';
 import { PaymentHubError } from './errors.ts';
 import { providerBoundary } from './adapters/index.ts';
 import { validateDarajaCredentials } from './adapters/daraja.ts';
+import { validateEquityCredentials, validateKcbCredentials } from './adapters/banks.ts';
 import type { Capability, QueryOutcome } from './adapters/contracts.ts';
 import { queryState, requestStates, type RequestState } from './payment-lifecycle.ts';
 import {
@@ -650,7 +651,7 @@ export async function facilityCatalogue(
         })),
     })),
     notice:
-      'Sandbox status checks do not prove merchant approval. Bank adapters and transfers are not enabled. Production activation is blocked.',
+      'Sandbox authentication does not prove account or product approval. Bank transactions, transfers and production activation are blocked.',
   };
 }
 export async function requestAccess(scope: HubScope, providerId: number) {
@@ -811,9 +812,77 @@ export async function saveCredentials(
         );
         if (source === 'ENVIRONMENT')
           values._credentialPartFingerprints = JSON.stringify(partFingerprints);
+      } else if (
+        (i.adapter_key === 'KCB_BUNI' || i.adapter_key === 'EQUITY') &&
+        input.source === 'VAULT'
+      ) {
+        if (i.environment !== 'SANDBOX')
+          throw new PaymentHubError(
+            'PRODUCTION_BLOCKED',
+            'Production vault setup is not enabled.',
+            403,
+          );
+        if (
+          Object.keys(input).some(
+            (key) => !['facilityId', 'source', 'credentials', 'expiresAt'].includes(key),
+          )
+        )
+          throw new PaymentHubError(
+            'INVALID_INPUT',
+            'Only the documented application credential fields may be supplied.',
+          );
+        const raw = input.credentials;
+        const names =
+          i.adapter_key === 'KCB_BUNI'
+            ? ['consumerKey', 'consumerSecret']
+            : ['merchantCode', 'consumerSecret', 'apiKey'];
+        if (
+          !raw ||
+          typeof raw !== 'object' ||
+          Array.isArray(raw) ||
+          Object.keys(raw).some((key) => !names.includes(key))
+        )
+          throw new PaymentHubError(
+            'INVALID_INPUT',
+            'Only the documented application credential fields may be supplied.',
+          );
+        const credentials: Record<string, string> =
+          i.adapter_key === 'KCB_BUNI'
+            ? { ...validateKcbCredentials(raw as Record<string, unknown>) }
+            : { ...validateEquityCredentials(raw as Record<string, unknown>) };
+        const credentialIdentity =
+          i.adapter_key === 'KCB_BUNI' ? credentials.consumerKey : credentials.apiKey;
+        identityHash = privateDigest(
+          `bank-credential-identity:${i.adapter_key}:${credentialIdentity}`,
+        );
+        materialFingerprint = privateDigest(
+          `bank-credential-material:${i.adapter_key}:${JSON.stringify(credentials)}`,
+        );
+        const secretParts =
+          i.adapter_key === 'KCB_BUNI'
+            ? [credentials.consumerSecret]
+            : [credentials.consumerSecret, credentials.apiKey];
+        partFingerprints = secretParts.map((part) =>
+          privateDigest(`bank-credential-part:${i.adapter_key}:${part}`),
+        );
+        await assertDistinctEnvironmentSecrets(
+          c,
+          scope,
+          integrationId,
+          i.provider_id,
+          i.environment,
+          partFingerprints,
+        );
+        values = {
+          kind: i.adapter_key === 'KCB_BUNI' ? 'KCB_SANDBOX_VAULT_V1' : 'EQUITY_SANDBOX_VAULT_V1',
+          ...credentials,
+          valueFingerprint: materialFingerprint,
+          _credentialPartFingerprints: JSON.stringify(partFingerprints),
+        };
+        source = 'VAULT';
       } else {
-        // No bank-specific credential format has been verified. Record only an
-        // opaque facility reference; bank adapters never resolve or use it.
+        // Legacy and unsupported bank references are retained, but never
+        // resolved or used to call a provider.
         if (
           Object.keys(input).some(
             (key) => !['facilityId', 'secretReference', 'expiresAt'].includes(key),
@@ -1118,7 +1187,24 @@ async function secretFor(c: PoolClient, scope: HubScope, integrationId: number) 
     row.encrypted_value,
   );
   assertStoredCredentialMetadata(stored, row);
-  if (row.adapter_key !== 'MPESA_DARAJA') return stored; // Bank references are not resolved.
+  if (row.adapter_key === 'KCB_BUNI' || row.adapter_key === 'EQUITY') {
+    const expectedKind =
+      row.adapter_key === 'KCB_BUNI' ? 'KCB_SANDBOX_VAULT_V1' : 'EQUITY_SANDBOX_VAULT_V1';
+    if (
+      row.environment !== 'SANDBOX' ||
+      row.credential_source !== 'VAULT' ||
+      stored.kind !== expectedKind
+    )
+      throw new PaymentHubError(
+        'SECRET_UNAVAILABLE',
+        'A supported facility-owned sandbox credential is required.',
+        409,
+      );
+    return row.adapter_key === 'KCB_BUNI'
+      ? { ...validateKcbCredentials(stored) }
+      : { ...validateEquityCredentials(stored) };
+  }
+  if (row.adapter_key !== 'MPESA_DARAJA') return stored; // Unsupported bank references are not resolved.
   if (row.credential_source === 'VAULT') {
     if (stored.kind !== 'DARAJA_VAULT_V1' || row.environment !== 'SANDBOX')
       throw new PaymentHubError(
@@ -1152,7 +1238,11 @@ export async function testConnection(scope: HubScope, integrationId: number) {
       );
     await requireAllowedCapabilities(c, i.provider_id, ['HEALTH']);
     const secret = await secretFor(c, scope, integrationId);
-    return { adapter: providerBoundary(i.adapter_key, secret), revision: i.revision };
+    return {
+      adapter: providerBoundary(i.adapter_key, secret),
+      revision: i.revision,
+      adapterKey: i.adapter_key,
+    };
   });
   if (!prepared.adapter.health)
     throw new PaymentHubError(
@@ -1178,19 +1268,24 @@ export async function testConnection(scope: HubScope, integrationId: number) {
         'Configuration changed during the health check; test again.',
         409,
       );
+    // A credential can expire during the network request without a revision
+    // change; never record a healthy result against expired/revoked material.
+    await secretFor(c, scope, integrationId);
     await c.query(
       'UPDATE facility_payment_integrations SET connection_status=$1,last_health_at=now(),last_error_code=$2 WHERE id=$3',
       [status, errorCode, integrationId],
     );
     await audit(c, scope.actorUserId, scope, 'TEST', 'integration', integrationId, {
       status,
-      scope: 'OAUTH_ONLY',
+      scope: prepared.adapterKey === 'MPESA_DARAJA' ? 'OAUTH_ONLY' : 'AUTHENTICATION_ONLY',
     });
     return {
       status,
       lastErrorCode: errorCode,
       notice:
-        'OAuth test only; it does not verify merchant approval, callbacks, payment or settlement.',
+        prepared.adapterKey === 'MPESA_DARAJA'
+          ? 'OAuth test only; it does not verify merchant approval, callbacks, payment or settlement.'
+          : 'Sandbox authentication only; account access, product subscription, transactions and settlement are not verified.',
     };
   });
 }
@@ -1255,7 +1350,7 @@ export async function setIntegrationEnabled(
       if (i.connection_status !== 'HEALTHY')
         throw new PaymentHubError(
           'HEALTH_CHECK_REQUIRED',
-          'Run a successful sandbox OAuth check before enabling.',
+          'Run a successful sandbox authentication check before enabling.',
           409,
         );
       const secrets = await c.query(
@@ -1272,9 +1367,13 @@ export async function setIntegrationEnabled(
           'Add facility-owned credentials and a masked account alias before enabling.',
           409,
         );
-      if (i.adapter_key === 'MPESA_DARAJA') {
+      if (['MPESA_DARAJA', 'KCB_BUNI', 'EQUITY'].includes(i.adapter_key)) {
         await secretFor(c, scope, integrationId);
-        if (i.enabled_capabilities.includes('PAYMENT_COLLECTION')) callbackUrl();
+        if (
+          i.adapter_key === 'MPESA_DARAJA' &&
+          i.enabled_capabilities.includes('PAYMENT_COLLECTION')
+        )
+          callbackUrl();
       }
     }
     await c.query(

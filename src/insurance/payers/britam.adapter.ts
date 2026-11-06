@@ -32,12 +32,12 @@ import {
 } from '../core/types.ts';
 
 export const BRITAM_REQUIRED_ONBOARDING_ITEMS: readonly string[] = [
-  'Signed Britam Medical Provider Panel Agreement and assigned Britam Provider Code',
-  'Official Britam Direct Hospital Integration API Specification (OpenAPI / REST / FHIR schema)',
-  'Authorized Britam Sandbox & Production HTTPS Base URLs and OAuth2 / mTLS authentication contract',
-  'Server-side credentials provisioned via BRITAM_API_CLIENT_ID and BRITAM_API_CLIENT_SECRET (never stored in database)',
-  'Confirmed Britam tariff schedule, benefit scheme codes (e.g. Milele / Corporate / Bima ya Wafanyikazi), and preauthorization rules',
-  'Clarification whether facility claims route via direct Britam API or an approved third-party EDI gateway (e.g. SmartLink)',
+  'Britam facility onboarding and provider identification requirements, as supplied by Britam',
+  'Official Britam direct hospital electronic interface, request and response specifications',
+  'Provider-specified sandbox and production addresses, authentication and callback security contract',
+  'Facility-isolated server-side credential provisioning once the authentication contract is known',
+  'Confirmed facility tariff schedule, scheme codes, benefits and preauthorization rules',
+  'Written confirmation of direct versus provider-authorized gateway routing',
 ] as const;
 
 function buildBritamMissingList(
@@ -48,14 +48,16 @@ function buildBritamMissingList(
     'Official Britam direct hospital API endpoint & payload specification has not been supplied in this repository.',
   ];
   if (!config.providerIdentifier?.trim()) {
-    missing.push('Britam Provider Panel Identifier (providerIdentifier) is not configured.');
+    missing.push(
+      'Local providerIdentifier is not configured; Britam must confirm the required identifier.',
+    );
   }
   if (!isSecureHttpsEndpoint(config.apiBaseUrl)) {
     missing.push('Authorized Britam HTTPS API Base URL (apiBaseUrl) is not configured.');
   }
   if (config.authMethod === 'NONE' || !secrets.allRequiredSecretsPresent) {
     missing.push(
-      `Server-side Britam credentials (${config.secretEnvPrefix || 'BRITAM_API'}_*) are not provisioned.`,
+      'Provider-approved facility authentication and credential provisioning are not established.',
     );
   }
   return missing;
@@ -88,7 +90,7 @@ export class BritamInsuranceAdapter implements PayerIntegrationAdapter {
   getRequiredOnboardingChecklist(config: PayerRuntimeConfig): string[] {
     const items = [...BRITAM_REQUIRED_ONBOARDING_ITEMS];
     if (!config.providerIdentifier) {
-      items.unshift('Facility Britam Provider Panel Code is currently unset.');
+      items.unshift('Local provider identifier is unset; confirm requirements with Britam.');
     }
     return items;
   }

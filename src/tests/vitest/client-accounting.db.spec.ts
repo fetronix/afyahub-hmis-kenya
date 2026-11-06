@@ -105,6 +105,122 @@ describeDb('facility ledger against PostgreSQL', () => {
     });
   });
 
+  it('prevents draft journal/account scope changes and revalidates active accounts before posting', async () => {
+    const c = await pool.connect();
+    try {
+      await c.query('BEGIN');
+      const key = randomUUID().slice(0, 8);
+      const accounts = await c.query(
+        `INSERT INTO chart_of_accounts(tenant_id,facility_id,account_code,account_name,account_type,sub_type,normal_balance)
+         VALUES($1,$2,$3,'Synthetic asset','ASSET','TEST','DEBIT'),($1,$2,$4,'Synthetic revenue','REVENUE','TEST','CREDIT') RETURNING id`,
+        [a.tenantId, a.facilityId, `TEST-A-${key}`, `TEST-R-${key}`],
+      );
+      const journal = await c.query(
+        `INSERT INTO journal_entries(tenant_id,facility_id,period_id,journal_number,entry_date,idempotency_key,request_hash,description,total_debit_cents,total_credit_cents)
+         VALUES($1,$2,$3,$4,'2026-01-10',$4,$4,'Synthetic draft',100,100) RETURNING id`,
+        [a.tenantId, a.facilityId, periodJan.id, `TEST-${key}`],
+      );
+      const journalId = journal.rows[0].id;
+      await c.query(
+        'INSERT INTO journal_lines(journal_entry_id,account_id,debit_cents,credit_cents) VALUES($1,$2,100,0),($1,$3,0,100)',
+        [journalId, accounts.rows[0].id, accounts.rows[1].id],
+      );
+      await c.query('SAVEPOINT before_header_change');
+      await expect(
+        c.query('UPDATE journal_entries SET facility_id=$2 WHERE id=$1', [journalId, b.facilityId]),
+      ).rejects.toMatchObject({ code: '23514' });
+      await c.query('ROLLBACK TO SAVEPOINT before_header_change');
+      await c.query('SAVEPOINT before_account_change');
+      await expect(
+        c.query('UPDATE chart_of_accounts SET facility_id=$2 WHERE id=$1', [
+          accounts.rows[0].id,
+          b.facilityId,
+        ]),
+      ).rejects.toMatchObject({ code: '23514' });
+      await c.query('ROLLBACK TO SAVEPOINT before_account_change');
+      await c.query('UPDATE chart_of_accounts SET is_active=false WHERE id=$1', [
+        accounts.rows[0].id,
+      ]);
+      await c.query('SAVEPOINT before_post');
+      await expect(
+        c.query("UPDATE journal_entries SET status='POSTED' WHERE id=$1", [journalId]),
+      ).rejects.toMatchObject({ code: '23514' });
+      await c.query('ROLLBACK TO SAVEPOINT before_post');
+    } finally {
+      await c.query('ROLLBACK');
+      c.release();
+    }
+  });
+
+  it('serializes account deactivation against a concurrent synthetic draft posting', async () => {
+    const key = randomUUID().slice(0, 8);
+    const debit = await createAccountScoped(a, {
+      accountCode: `RACE-A-${key}`,
+      accountName: 'Synthetic race asset',
+      accountType: 'ASSET',
+      subType: 'TEST',
+      normalBalance: 'DEBIT',
+    });
+    const credit = await createAccountScoped(a, {
+      accountCode: `RACE-R-${key}`,
+      accountName: 'Synthetic race revenue',
+      accountType: 'REVENUE',
+      subType: 'TEST',
+      normalBalance: 'CREDIT',
+    });
+    const racePeriod = await createFinancialPeriodScoped(a, {
+      periodCode: 'RACE-2027',
+      name: 'Synthetic race period',
+      startDate: '2027-01-01',
+      endDate: '2027-01-31',
+    });
+    const journal = await pool.query(
+      `INSERT INTO journal_entries(tenant_id,facility_id,period_id,journal_number,entry_date,idempotency_key,request_hash,description,total_debit_cents,total_credit_cents)
+       VALUES($1,$2,$3,$4,'2027-01-10',$4,$4,'Synthetic race',100,100) RETURNING id`,
+      [a.tenantId, a.facilityId, racePeriod.id, `RACE-${key}`],
+    );
+    await pool.query(
+      'INSERT INTO journal_lines(journal_entry_id,account_id,debit_cents,credit_cents) VALUES($1,$2,100,0),($1,$3,0,100)',
+      [journal.rows[0].id, debit.id, credit.id],
+    );
+    const posting = await pool.connect();
+    const deactivation = await pool.connect();
+    try {
+      await posting.query('BEGIN');
+      await deactivation.query('BEGIN');
+      await posting.query("UPDATE journal_entries SET status='POSTED' WHERE id=$1", [
+        journal.rows[0].id,
+      ]);
+      let finished = false;
+      const change = deactivation
+        .query('UPDATE chart_of_accounts SET is_active=false WHERE id=$1', [debit.id])
+        .then(
+          () => {
+            finished = true;
+            return null;
+          },
+          (error: unknown) => {
+            finished = true;
+            return error;
+          },
+        );
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(finished).toBe(false);
+      await posting.query('COMMIT');
+      expect(await change).toMatchObject({ code: '23514' });
+      await deactivation.query('ROLLBACK');
+      const account = await pool.query('SELECT is_active FROM chart_of_accounts WHERE id=$1', [
+        debit.id,
+      ]);
+      expect(account.rows[0].is_active).toBe(true);
+    } finally {
+      await posting.query('ROLLBACK').catch(() => undefined);
+      await deactivation.query('ROLLBACK').catch(() => undefined);
+      posting.release();
+      deactivation.release();
+    }
+  });
+
   it('rejects overlapping periods and accounts from another facility', async () => {
     await expect(
       createFinancialPeriodScoped(a, {

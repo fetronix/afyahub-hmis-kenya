@@ -34,9 +34,19 @@ afterEach(() => {
 });
 
 describe('payment provider capability boundaries', () => {
-  it('keeps individual banks unavailable and never advertises transfers', () => {
-    for (const key of ['KCB_BUNI', 'NCBA', 'EQUITY', 'UNCONFIGURED'])
+  it('exposes only sandbox authentication for supported banks and never advertises bank transactions or transfers', () => {
+    for (const key of ['NCBA', 'UNCONFIGURED'])
       expect(providerBoundary(key).descriptor.implementedCapabilities).toEqual([]);
+    for (const key of ['KCB_BUNI', 'EQUITY']) {
+      const bank = providerBoundary(key);
+      expect(bank.descriptor.implementedCapabilities).toEqual(['HEALTH']);
+      expect(bank.descriptor.productionReady).toBe(false);
+      expect(bank.accountInformation).toBeUndefined();
+      expect(bank.collection).toBeUndefined();
+      expect(bank.transfer).toBeUndefined();
+      expect(bank.notifications).toBeUndefined();
+      expect(bank.health).toBeUndefined(); // Descriptor discovery has no credentials.
+    }
     const daraja = providerBoundary('MPESA_DARAJA');
     expect(daraja.descriptor).toMatchObject({ sandboxOnly: true, productionReady: false });
     expect(daraja.descriptor.implementedCapabilities).toContain('PAYMENT_COLLECTION');

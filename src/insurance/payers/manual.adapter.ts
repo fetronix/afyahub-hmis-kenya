@@ -2,7 +2,6 @@
  * JaliCare HMIS — Manual / File-Based Payer Adapter (`manual`) & SHA Bridge (`sha_afyalink`)
  */
 
-import { describeShaConnectionStatus, loadShaConfig } from '../../integrations/sha/sha.config.ts';
 import type { PayerIntegrationAdapter } from '../core/adapter-registry.ts';
 import {
   ALL_PAYER_OPERATIONS,
@@ -104,18 +103,20 @@ export class ManualFilePayerAdapter implements PayerIntegrationAdapter {
 
 export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
   public readonly adapterKey = 'sha_afyalink' as const;
-  public readonly displayName = 'Social Health Authority (SHA / AfyaLink FHIR R4)';
+  // The stored key is retained for compatibility; it does not mean SHA,
+  // AfyaLink and DHA HIE are the same interface.
+  public readonly displayName = 'SHA eClaims bridge — facility transport unavailable';
   public readonly isGatewayAdapter = true;
 
   getRequiredOnboardingChecklist(): string[] {
     return [
-      'DHA AfyaLink Facility Onboarding (FID-xx-xxxxxx-x)',
-      'SHA_BASE_URL, SHA_TOKEN_URL, SHA_CLIENT_ID, SHA_CLIENT_SECRET in server environment',
+      'Facility-specific SHA/DHA onboarding and an authorized interface contract',
+      'Facility-isolated sandbox authentication and provider-approved validation and callback requirements',
+      'Separate confirmation of any AfyaLink or DHA HIE interface the facility is authorized to use',
     ];
   }
 
   getCapabilities(): PayerCapabilityDescriptor[] {
-    const status = describeShaConnectionStatus(loadShaConfig());
     const supported = new Set<PayerOperation>([
       'AUTH_TOKEN',
       'ELIGIBILITY_VERIFY',
@@ -129,23 +130,19 @@ export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
       readyInCurrentConfig: false,
       mode: 'UNSUPPORTED',
       reason: supported.has(operation)
-        ? `Dedicated SHA workflow exists (${status.mode} mode); live facility transport is not verified or enabled.`
-        : 'Not part of the Kenya DHA eClaims FHIR R4 IG v0.1.0.',
+        ? 'Dedicated SHA internal workflow exists; external facility transport is not verified or enabled.'
+        : 'This bridge does not implement or verify the operation.',
     }));
   }
 
   async probeConnection(): Promise<AdapterConnectionProbeResult> {
-    const status = describeShaConnectionStatus(loadShaConfig());
     return {
       verified: false,
-      connectionStatus:
-        status.mode === 'sandbox' && status.enabled ? 'SANDBOX_CONFIGURED' : 'NOT_CONFIGURED',
+      connectionStatus: 'AWAITING_DOCUMENTATION',
       httpStatus: null,
       durationMs: 0,
-      summary:
-        status.disabledReason ??
-        `SHA settings present in ${status.mode} mode; connectivity and facility authorization have not been verified.`,
-      missingRequirements: status.missingSettings,
+      summary: 'No facility-specific SHA transport was contacted or verified.',
+      missingRequirements: this.getRequiredOnboardingChecklist(),
     };
   }
 
@@ -157,7 +154,7 @@ export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
       payerCode: request.payer.payerCode,
       adapterKey: 'sha_afyalink',
       message:
-        'Use the dedicated /api/insurance/sha/* FHIR R4 endpoints for SHA public scheme operations.',
+        'SHA internal workflows are separate; external facility eligibility transport is blocked.',
       requiredFromInsurer: [],
     };
   }
@@ -172,7 +169,7 @@ export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
       payerCode: request.payer.payerCode,
       adapterKey: 'sha_afyalink',
       message:
-        'Use the dedicated /api/insurance/sha/* FHIR R4 endpoints for SHA preauthorizations.',
+        'SHA internal preauthorization workflows are separate; external facility transport is blocked.',
       requiredFromInsurer: [],
     };
   }
@@ -184,7 +181,7 @@ export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
       operation: 'CLAIM_SUBMIT',
       payerCode: request.payer.payerCode,
       adapterKey: 'sha_afyalink',
-      message: 'Use the dedicated /api/insurance/sha/* FHIR R4 endpoints for SHA claims.',
+      message: 'SHA internal claim workflows are separate; external facility transport is blocked.',
       requiredFromInsurer: [],
     };
   }
@@ -196,7 +193,8 @@ export class ShaPayerBridgeAdapter implements PayerIntegrationAdapter {
       operation: 'CLAIM_STATUS',
       payerCode: config.payerCode,
       adapterKey: 'sha_afyalink',
-      message: 'Use the dedicated /api/insurance/sha/* FHIR R4 endpoints for SHA claim status.',
+      message:
+        'SHA internal claim workflows are separate; external facility status transport is blocked.',
       requiredFromInsurer: [],
     };
   }

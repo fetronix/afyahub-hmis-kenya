@@ -381,14 +381,14 @@ try {
   );
   await clickText('button', 'Add alias');
   check((await aliasResponse).status() === 201, 'Synthetic masked alias was not saved.');
-  await waitButton('Test OAuth connection');
+  await waitButton('Test sandbox authentication');
   const healthResponse = page.waitForResponse(
     (r) => r.url().endsWith('/health') && r.request().method() === 'POST',
   );
-  await clickText('button', 'Test OAuth connection');
+  await clickText('button', 'Test sandbox authentication');
   check((await healthResponse).status() === 200, 'Mock OAuth health check failed.');
   await page.waitForFunction(() =>
-    document.body.textContent.includes('OAuth connection check succeeded'),
+    document.body.textContent.includes('Sandbox authentication check succeeded'),
   );
   await waitButton('Enable integration');
   const enableResponse = page.waitForResponse(

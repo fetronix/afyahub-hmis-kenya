@@ -5,6 +5,7 @@ import { validateRange } from '../dashboard/date-range.ts';
 import type { ReportEngineId } from './report-catalogue.ts';
 import { operationalQueryPlan } from './report-centre.operational-queries.ts';
 import { ledgerQueryPlan } from './report-centre.ledger-queries.ts';
+import { hasPostedJournalScopeMismatch } from '../accounting/journal-scope-integrity.ts';
 import {
   authorizeReport,
   authorizeReportFacility,
@@ -378,6 +379,15 @@ export async function generateReport(
   const client = await pool.connect();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    if (
+      ['ledger-trial-movements', 'ledger-income', 'ledger-balance-sheet'].includes(id) &&
+      (await hasPostedJournalScopeMismatch(client, facility.tenantId, facilityId))
+    )
+      throw new ReportCentreError(
+        'LEDGER_SCOPE_INCONSISTENT',
+        'Posted journal account scope is inconsistent. Finance review is required before reporting.',
+        409,
+      );
     const filterLabels = await validateSelectedFilters(
       client,
       context,

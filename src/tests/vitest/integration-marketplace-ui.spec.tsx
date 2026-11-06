@@ -3,6 +3,7 @@ import React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HubIntegration } from '../../api/payment-hub.client.ts';
 
 const state = vi.hoisted(() => ({
   user: { isSuperAdmin: false, roles: [] as string[], permissions: [] as string[] },
@@ -11,6 +12,8 @@ const state = vi.hoisted(() => ({
 const payment = vi.hoisted(() => ({
   catalogue: vi.fn(),
   access: vi.fn(),
+  credentials: vi.fn(),
+  health: vi.fn(),
   configurationAudit: vi.fn(),
 }));
 const payer = vi.hoisted(() => ({
@@ -36,8 +39,8 @@ const payProvider = (id: number, key: string, name: string) => ({
   isAllowed: false,
   requestStatus: 'NOT_REQUESTED',
   availableEnvironments: ['SANDBOX'],
-  adapter: { key, implementedCapabilities: [], note: 'No verified live operation' },
-  integrations: [],
+  adapter: { key, implementedCapabilities: [] as string[], note: 'No verified live operation' },
+  integrations: [] as HubIntegration[],
 });
 const payerProvider = (id: number, type: string, name: string) => ({
   id,
@@ -200,6 +203,94 @@ describe('facility integration marketplace', () => {
       confirmation.mockRestore();
     }
   });
+  it.each([
+    [
+      'KCB_BUNI',
+      'KCB',
+      { 'KCB consumer key': 'synthetic-kcb-key', 'KCB consumer secret': 'synthetic-kcb-secret' },
+      { consumerKey: 'synthetic-kcb-key', consumerSecret: 'synthetic-kcb-secret' },
+    ],
+    [
+      'EQUITY',
+      'Jenga',
+      {
+        'Jenga merchant code': 'synthetic-merchant',
+        'Jenga consumer secret': 'synthetic-jenga-secret',
+        'Jenga API key': 'synthetic-jenga-key',
+      },
+      {
+        merchantCode: 'synthetic-merchant',
+        consumerSecret: 'synthetic-jenga-secret',
+        apiKey: 'synthetic-jenga-key',
+      },
+    ],
+  ])(
+    'configures the %s sandbox vault and describes the authentication-only check',
+    async (key, label, fields, expected) => {
+      state.user.permissions = [
+        'payment_hub.catalogue.read',
+        'payment_hub.facility.manage',
+        'payment_hub.credentials.manage',
+      ];
+      const provider = payProvider(2, key, label);
+      provider.isAllowed = true;
+      provider.adapter.implementedCapabilities = ['HEALTH'];
+      provider.integrations = [
+        {
+          id: 42,
+          providerId: 2,
+          environment: 'SANDBOX',
+          enabledCapabilities: ['HEALTH'],
+          isEnabled: false,
+          isEffective: false,
+          connectionStatus: 'NOT_TESTED',
+          lastHealthAt: null,
+          lastErrorCode: null,
+          productionApproval: 'NOT_REQUESTED',
+          credentialsConfigured: true,
+          credentialEnvName: null,
+          credentialSource: 'VAULT',
+          credentialsExpiresAt: null,
+          credentialsExpired: false,
+          credentialsRevoked: false,
+          credentialsRevokedAt: null,
+          credentials: 'Configured (secret hidden)',
+          accounts: [],
+        },
+      ] as typeof provider.integrations;
+      payment.catalogue.mockResolvedValue({ providers: [provider], notice: '' });
+      payment.credentials.mockResolvedValue({ configured: true });
+      payment.health.mockResolvedValue({ status: 'HEALTHY' });
+      render(<FacilityIntegrationHub />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Banking' }));
+      await userEvent.click(await screen.findByText(`Add or replace ${label} sandbox credentials`));
+      for (const [name, value] of Object.entries(fields))
+        await userEvent.type(screen.getByLabelText(name), value);
+      await userEvent.click(
+        screen.getByRole('button', { name: `Save encrypted ${label} credentials` }),
+      );
+      await waitFor(() =>
+        expect(payment.credentials).toHaveBeenCalledWith(42, {
+          facilityId: 11,
+          source: 'VAULT',
+          credentials: expected,
+          expiresAt: null,
+        }),
+      );
+      for (const name of Object.keys(fields)) expect(screen.getByLabelText(name)).toHaveValue('');
+      expect(
+        screen.getByText(/Configured · sandbox authentication not yet verified/),
+      ).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Test sandbox authentication' }));
+      await waitFor(() => expect(payment.health).toHaveBeenCalledWith(42, 11));
+      expect(
+        await screen.findByText(/account access and payments remain unverified/),
+      ).toBeInTheDocument();
+      for (const value of Object.values(fields))
+        expect(document.body.textContent).not.toContain(value);
+    },
+  );
+
   it('does not treat platform administration as facility authorization', () => {
     state.user = {
       isSuperAdmin: true,

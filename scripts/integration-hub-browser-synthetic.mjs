@@ -38,6 +38,27 @@ const credentials = {
   shortcode: '654321',
   transactionType: 'CustomerPayBillOnline',
 };
+const bankSpecs = [
+  {
+    key: 'KCB_BUNI',
+    label: 'KCB',
+    name: 'Synthetic KCB authentication',
+    fields: {
+      'KCB consumer key': `synthetic-kcb-key-${suffix}`,
+      'KCB consumer secret': `synthetic-kcb-secret-${suffix}`,
+    },
+  },
+  {
+    key: 'EQUITY',
+    label: 'Jenga',
+    name: 'Synthetic Jenga authentication',
+    fields: {
+      'Jenga merchant code': `synthetic-jenga-merchant-${suffix}`,
+      'Jenga consumer secret': `synthetic-jenga-secret-${suffix}`,
+      'Jenga API key': `synthetic-jenga-key-${suffix}`,
+    },
+  },
+];
 const pool = new pg.Pool({
   host,
   port: Number(process.env.SQL_PORT ?? 5432),
@@ -120,6 +141,29 @@ try {
     `INSERT INTO payment_provider_assignments(provider_id,tenant_id,facility_id,is_allowed,updated_by_user_id) VALUES($1,$2,$3,true,$4)`,
     [provider.rows[0].id, tenant, facility, user],
   );
+  // Independent synthetic provider definitions avoid changing real/global
+  // provider policies or assigning an existing facility.
+  for (const spec of bankSpecs) {
+    spec.providerId = (
+      await pool.query(
+        `INSERT INTO payment_provider_definitions(code,display_name,adapter_key,documentation_url,description)
+       VALUES($1,$2,$3,'https://example.test/','Synthetic bank authentication fixture') RETURNING id`,
+        [`BROWSER_${spec.key}_${suffix}`, spec.name, spec.key],
+      )
+    ).rows[0].id;
+    await pool.query(
+      `INSERT INTO payment_provider_environments(provider_id,environment,is_available) VALUES($1,'SANDBOX',true)`,
+      [spec.providerId],
+    );
+    await pool.query(
+      `INSERT INTO payment_provider_capability_policies(provider_id,capability,is_allowed) VALUES($1,'HEALTH',true)`,
+      [spec.providerId],
+    );
+    await pool.query(
+      `INSERT INTO payment_provider_assignments(provider_id,tenant_id,facility_id,is_allowed,updated_by_user_id) VALUES($1,$2,$3,true,$4)`,
+      [spec.providerId, tenant, facility, user],
+    );
+  }
 
   // Production-mode app behind a local TLS termination proxy. The self-signed
   // certificate is synthetic and Chromium ignores its trust chain ONLY here.
@@ -149,6 +193,7 @@ try {
     cwd: root,
     env: {
       ...process.env,
+      NODE_OPTIONS: `--import=${new URL('./synthetic-bank-browser-transport.mjs', import.meta.url).href}`,
       NODE_ENV: 'production',
       HOST: '127.0.0.1',
       PORT: String(backendPort),
@@ -516,6 +561,161 @@ try {
   const rendered = await page.evaluate(() => document.body.textContent);
   for (const value of [...Object.values(credentials), ...Object.values(replacement)])
     check(!rendered.includes(value), 'Credential material was rendered after save or replacement.');
+
+  // Real browser -> real authenticated app/service -> synthetic PostgreSQL.
+  // The preload above intercepts every provider request and accepts only
+  // synthetic credentials. A mocked token never proves bank connectivity.
+  await clickText('button', 'Banking');
+  const clickInBank = async (name, selector, text) => {
+    const clicked = await page.evaluate(
+      (bank, query, value) => {
+        const card = [...document.querySelectorAll('article')].find(
+          (a) => a.querySelector('h3')?.textContent.trim() === bank,
+        );
+        const element = [...(card?.querySelectorAll(query) ?? [])].find(
+          (item) => item.textContent.trim() === value,
+        );
+        if (!element || ('disabled' in element && element.disabled)) return false;
+        element.click();
+        return true;
+      },
+      name,
+      selector,
+      text,
+    );
+    check(clicked, `Missing synthetic bank control: ${text}`);
+  };
+  for (const spec of bankSpecs) {
+    await page.waitForFunction(
+      (name) => [...document.querySelectorAll('h3')].some((h) => h.textContent.trim() === name),
+      {},
+      spec.name,
+    );
+    await clickInBank(spec.name, 'summary', 'Configure an environment and capabilities');
+    const selected = await page.evaluate((name) => {
+      const card = [...document.querySelectorAll('article')].find(
+        (a) => a.querySelector('h3')?.textContent.trim() === name,
+      );
+      const input = [...(card?.querySelectorAll('label') ?? [])]
+        .find((item) => item.textContent.trim() === 'HEALTH')
+        ?.querySelector('input[type="checkbox"]');
+      if (!input) return false;
+      input.click();
+      return true;
+    }, spec.name);
+    check(selected, 'Synthetic bank HEALTH capability was not available.');
+    const configureResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/providers/${spec.providerId}/integrations`) &&
+        response.request().method() === 'POST',
+    );
+    await clickInBank(spec.name, 'button', 'Save environment');
+    check((await configureResponse).status() === 201, 'Synthetic bank environment setup failed.');
+    const summary = `Add or replace ${spec.label} sandbox credentials`;
+    await page.waitForFunction(
+      (name, text) => {
+        const card = [...document.querySelectorAll('article')].find(
+          (a) => a.querySelector('h3')?.textContent.trim() === name,
+        );
+        return [...(card?.querySelectorAll('summary') ?? [])].some(
+          (item) => item.textContent.trim() === text,
+        );
+      },
+      { timeout: 15000 },
+      spec.name,
+      summary,
+    );
+    await clickInBank(spec.name, 'summary', summary);
+    for (const [label, value] of Object.entries(spec.fields)) {
+      const input = await page.evaluateHandle(
+        (name, field) => {
+          const card = [...document.querySelectorAll('article')].find(
+            (a) => a.querySelector('h3')?.textContent.trim() === name,
+          );
+          return [...(card?.querySelectorAll('label') ?? [])]
+            .find((item) => item.textContent.trim() === field)
+            ?.querySelector('input');
+        },
+        spec.name,
+        label,
+      );
+      check(Boolean(input.asElement()), `Missing synthetic bank field: ${label}`);
+      await input.asElement().type(value);
+      await input.dispose();
+    }
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/credentials') && response.request().method() === 'PUT',
+    );
+    await clickInBank(spec.name, 'button', `Save encrypted ${spec.label} credentials`);
+    const save = await saved;
+    check(save.status() === 200, 'Synthetic bank vault save failed.');
+    const saveBody = JSON.stringify(await save.json());
+    for (const value of Object.values(spec.fields))
+      check(!saveBody.includes(value), 'Bank credential returned in API.');
+    await page.waitForFunction(
+      (name) => {
+        const card = [...document.querySelectorAll('article')].find(
+          (a) => a.querySelector('h3')?.textContent.trim() === name,
+        );
+        return [...(card?.querySelectorAll('button') ?? [])].some(
+          (b) => b.textContent.trim() === 'Test sandbox authentication' && !b.disabled,
+        );
+      },
+      { timeout: 15000 },
+      spec.name,
+    );
+    const healthResponse = page.waitForResponse(
+      (response) => response.url().endsWith('/health') && response.request().method() === 'POST',
+    );
+    await clickInBank(spec.name, 'button', 'Test sandbox authentication');
+    const health = await healthResponse;
+    const result = await health.json();
+    check(
+      health.status() === 200 &&
+        result.status === 'HEALTHY' &&
+        result.notice.includes('not verified'),
+      'Mocked bank authentication did not preserve the limited status.',
+    );
+    for (const value of Object.values(spec.fields))
+      check(!JSON.stringify(result).includes(value), 'Bank credential leaked in health response.');
+    await page.waitForFunction(
+      (name) => {
+        const card = [...document.querySelectorAll('article')].find(
+          (a) => a.querySelector('h3')?.textContent.trim() === name,
+        );
+        return card?.textContent.includes('Sandbox authentication connection verified only');
+      },
+      { timeout: 15000 },
+      spec.name,
+    );
+    const persisted = (
+      await pool.query(
+        `SELECT i.id,i.enabled_capabilities,i.connection_status,i.is_enabled,s.encrypted_value,s.credential_source FROM facility_payment_integrations i JOIN facility_payment_secrets s ON s.integration_id=i.id WHERE i.provider_id=$1 AND i.tenant_id=$2 AND i.facility_id=$3`,
+        [spec.providerId, tenant, facility],
+      )
+    ).rows[0];
+    check(
+      persisted?.connection_status === 'HEALTHY' &&
+        !persisted.is_enabled &&
+        JSON.stringify(persisted.enabled_capabilities) === '["HEALTH"]' &&
+        persisted.credential_source === 'VAULT' &&
+        persisted.encrypted_value.startsWith('v2.BROWSER01.'),
+      'Synthetic bank authentication state was not persisted correctly.',
+    );
+    for (const value of Object.values(spec.fields))
+      check(!persisted.encrypted_value.includes(value), 'Bank credential was not encrypted.');
+    const financialRows = (
+      await pool.query(
+        'SELECT count(*)::int AS n FROM payment_hub_transactions WHERE integration_id=$1',
+        [persisted.id],
+      )
+    ).rows[0].n;
+    check(financialRows === 0, 'Authentication unexpectedly created a payment transaction.');
+    const bankRendered = await page.evaluate(() => document.body.textContent);
+    for (const value of Object.values(spec.fields))
+      check(!bankRendered.includes(value), 'Bank credential was rendered after saving.');
+  }
   check(auth.startsWith('Bearer '), 'Genuine authenticated browser session was not observed.');
   const denied = await page.evaluate(
     async ({ token, other }) =>
@@ -539,9 +739,11 @@ try {
   );
   check(errors.length === 0, `Browser reported ${errors.length} uncaught page error(s).`);
   console.log(
-    'Synthetic HTTPS browser: marketplace, scoped configuration, encrypted credential save, re-encryption, revocation, replacement, audit, cross-facility denial and responsive layout PASS.',
+    'Synthetic HTTPS browser: marketplace, scoped configuration, encrypted credential save, re-encryption, revocation, replacement, audit, KCB/Jenga mocked authentication, cross-facility denial and responsive layout PASS.',
   );
-  console.log('Provider OAuth, STK, callbacks and production were NOT contacted or verified.');
+  console.log(
+    'All bank responses were intercepted synthetic mocks. No provider OAuth, STK, callbacks or production was contacted or verified.',
+  );
 } finally {
   if (browser) await browser.close();
   if (proxy) await new Promise((resolve) => proxy.close(resolve));

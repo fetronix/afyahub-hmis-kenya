@@ -8,6 +8,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { pool } from '../db/index.ts';
+import { hasPostedJournalScopeMismatch } from './journal-scope-integrity.ts';
 
 export class AccountingIntegrityError extends Error {
   constructor(
@@ -582,7 +583,8 @@ async function trialRows(
       a.account_type AS "accountType", a.sub_type AS "subType", a.normal_balance AS "normalBalance",
       COALESCE(SUM(l.debit_cents) FILTER (WHERE j.status='POSTED' AND j.entry_date <= $3::date AND ($4::date IS NULL OR j.entry_date >= $4::date)),0)::text AS "debitCents",
       COALESCE(SUM(l.credit_cents) FILTER (WHERE j.status='POSTED' AND j.entry_date <= $3::date AND ($4::date IS NULL OR j.entry_date >= $4::date)),0)::text AS "creditCents"
-     FROM chart_of_accounts a LEFT JOIN journal_lines l ON l.account_id=a.id LEFT JOIN journal_entries j ON j.id=l.journal_entry_id
+     FROM chart_of_accounts a LEFT JOIN journal_lines l ON l.account_id=a.id
+     LEFT JOIN journal_entries j ON j.id=l.journal_entry_id AND j.tenant_id=a.tenant_id AND j.facility_id=a.facility_id
      WHERE a.tenant_id=$1 AND a.facility_id=$2 GROUP BY a.id ORDER BY a.account_code`,
     [scope.tenantId, scope.facilityId, endDate, startDate],
   );
@@ -601,6 +603,12 @@ export async function getAccountingOverviewScoped(
     throw new AccountingIntegrityError('INVALID_RANGE', 'Start date must not be after end date.');
   return transaction(async (client) => {
     await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    if (await hasPostedJournalScopeMismatch(client, scope.tenantId, scope.facilityId))
+      throw new AccountingIntegrityError(
+        'LEDGER_SCOPE_INCONSISTENT',
+        'Posted journal account scope is inconsistent. Finance review is required before reporting.',
+        409,
+      );
     const periodRows = await trialRows(client, scope, startDate, endDate);
     const inceptionRows = await trialRows(client, scope, null, endDate);
     const periods = await client.query(

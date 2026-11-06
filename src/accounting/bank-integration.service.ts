@@ -6,6 +6,7 @@
  */
 import { createHash } from 'node:crypto';
 import { centsToKes, parseKesToCents, requireIsoDate } from './accounting.service.ts';
+import { hasPostedJournalScopeMismatch } from './journal-scope-integrity.ts';
 
 export interface BankConnector {
   readonly bankCode: string;
@@ -477,6 +478,12 @@ async function worksheet(
     throw new BankStatementError(
       'STATEMENT_NOT_FOUND',
       'Statement not found for this facility and bank account.',
+    );
+  if (await hasPostedJournalScopeMismatch(c, scope.tenantId, scope.facilityId))
+    throw new BankStatementError(
+      'LEDGER_SCOPE_INCONSISTENT',
+      'Posted journal account scope is inconsistent. Finance review is required before reconciliation.',
+      409,
     );
   const { gl_account_id: gl, statement_end_date: end, closing_balance_kes: closing } = row.rows[0];
   const ledger = await c.query(

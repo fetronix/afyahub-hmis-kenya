@@ -11,6 +11,13 @@ import { recordManualRefund } from '../../billing/refunds.service.ts';
 import { inspectBillingLedgerScoped } from '../../accounting/billing-ledger-diagnostics.service.ts';
 import { inspectBillingJournalExceptionsScoped } from '../../accounting/billing-journal-exceptions.service.ts';
 import { postBillingSourceScoped } from '../../accounting/billing-posting.service.ts';
+import {
+  createBankAccountScoped,
+  importStatementScoped,
+  matchBankTransactionScoped,
+  previewBankReconciliationScoped,
+  saveBankReconciliationScoped,
+} from '../../accounting/bank-integration.service.ts';
 import { inspectTariffConfiguration } from '../../billing/tariff-validation.service.ts';
 import {
   importTariffs,
@@ -286,6 +293,119 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
 
   afterAll(async () => {
     if (close) await close();
+  });
+
+  it('connects a synthetic invoice and manual receipt to reviewed GL posting and an imported bank worksheet', async () => {
+    // All data is synthetic. This is not a live bank feed or evidence of an external transfer.
+    const bankGl = await createAccountScoped(scope, {
+      accountCode: `TEST_BANK_${suffix}`,
+      accountName: 'Synthetic statement bank',
+      accountType: 'ASSET',
+      subType: 'BANK',
+      normalBalance: 'DEBIT',
+    });
+    const bankAccount = await createBankAccountScoped(scope, {
+      accountName: 'Synthetic statement account',
+      bankCode: 'TEST',
+      bankName: 'Synthetic bank',
+      accountLastFour: '1234',
+      glAccountId: bankGl.id,
+    });
+    const invoice = await makeInvoice();
+    await postBillingSourceScoped(scope, 'BILLING_INVOICE', invoice, invoiceInput());
+    const receipt = await pay(invoice, '35.00', 'PATIENT');
+    const postingInput = { ...paymentInput(), settlementAccountId: bankGl.id };
+    const posting = await postBillingSourceScoped(
+      scope,
+      'BILLING_PAYMENT',
+      receipt.payment.id,
+      postingInput,
+    );
+    expect(
+      (await postBillingSourceScoped(scope, 'BILLING_PAYMENT', receipt.payment.id, postingInput))
+        .idempotentReplay,
+    ).toBe(true);
+    expect(posting.allocation).toMatchObject({
+      party: 'PATIENT',
+      amountKes: '35.00',
+      receivableKes: '35.00',
+      liabilityKes: '0.00',
+    });
+    const invoiceBalance = await pool.query(
+      'SELECT balance_amount FROM billing_invoices WHERE id=$1',
+      [invoice],
+    );
+    expect(invoiceBalance.rows[0].balance_amount).toBe('65.00');
+    const line = await pool.query(
+      'SELECT id FROM journal_lines WHERE journal_entry_id=$1 AND account_id=$2',
+      [posting.journal.id, bankGl.id],
+    );
+    expect(line.rows).toHaveLength(1);
+    const statementInput = {
+      startDate: date,
+      endDate: date,
+      closingBalanceKes: '35.00',
+      csvText: `date,reference,description,direction,amount\n${date},SYNTHETIC-1,Manual receipt,INFLOW,35.00`,
+    };
+    const imported = await importStatementScoped(scope, bankAccount.id, statementInput);
+    expect(
+      (await importStatementScoped(scope, bankAccount.id, statementInput)).idempotentReplay,
+    ).toBe(true);
+    await expect(
+      importStatementScoped(foreignScope, bankAccount.id, statementInput),
+    ).rejects.toMatchObject({ code: 'BANK_ACCOUNT_NOT_FOUND' });
+    const bankTransaction = await pool.query(
+      'SELECT id,origin_classification FROM bank_transactions WHERE statement_import_id=$1',
+      [imported.statementImportId],
+    );
+    expect(bankTransaction.rows).toHaveLength(1);
+    expect(bankTransaction.rows[0].origin_classification).toBe('IMPORTED_STATEMENT');
+    expect(
+      (await matchBankTransactionScoped(scope, bankTransaction.rows[0].id, line.rows[0].id))
+        .idempotentReplay,
+    ).toBe(false);
+    expect(
+      (await matchBankTransactionScoped(scope, bankTransaction.rows[0].id, line.rows[0].id))
+        .idempotentReplay,
+    ).toBe(true);
+    const worksheet = await previewBankReconciliationScoped(
+      scope,
+      bankAccount.id,
+      imported.statementImportId,
+    );
+    expect(worksheet).toMatchObject({
+      worksheetBalanced: true,
+      differenceKes: '0.00',
+      bankConfirmed: false,
+    });
+    const reviewInput = {
+      idempotencyKey: 'synthetic-reviewed-import',
+      periodCode: 'SYN',
+      reviewNotes: 'Synthetic imported worksheet only',
+    };
+    const reviewed = await saveBankReconciliationScoped(
+      scope,
+      bankAccount.id,
+      imported.statementImportId,
+      reviewInput,
+    );
+    expect(
+      (
+        await saveBankReconciliationScoped(
+          scope,
+          bankAccount.id,
+          imported.statementImportId,
+          reviewInput,
+        )
+      ).idempotentReplay,
+    ).toBe(true);
+    const saved = await pool.query('SELECT status FROM bank_reconciliations WHERE id=$1', [
+      reviewed.reconciliationId,
+    ]);
+    expect(saved.rows[0].status).toBe('REVIEWED_IMPORT');
+    const overview = await getAccountingOverviewScoped(scope, date, date);
+    expect(overview.trialBalance.balanced).toBe(true);
+    expect(overview.balanceSheet.balanced).toBe(true);
   });
 
   it('posts split invoice, patient/insurer partial receipts, credit and reviewed manual refund once; reversals are ordered', async () => {

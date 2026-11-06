@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { strFromU8, unzipSync } from 'fflate';
 import PDFParser from 'pdf2json';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import * as journalIntegrity from '../../accounting/journal-scope-integrity.ts';
 import {
   createAccountScoped,
   createFinancialPeriodScoped,
@@ -163,6 +164,22 @@ describeDb('Reporting Centre posted ledger subsets (synthetic PostgreSQL and HTT
   }, 20000);
   afterAll(async () => {
     if (close) await close();
+  });
+
+  it('blocks authenticated ledger reports when scope integrity requires review', async () => {
+    const check = vi
+      .spyOn(journalIntegrity, 'hasPostedJournalScopeMismatch')
+      .mockResolvedValue(true);
+    try {
+      const result = await post('ledger-trial-movements', 'generate', {
+        from: '2026-04-01',
+        to: '2026-04-30',
+      });
+      expect(result.status).toBe(409);
+      expect(result.body).toMatchObject({ error: 'LEDGER_SCOPE_INCONSISTENT' });
+    } finally {
+      check.mockRestore();
+    }
   });
 
   it('uses exact posted movements, respects period dates, and retains reversals as separate postings', async () => {

@@ -88,6 +88,7 @@ describe('the redaction list itself', () => {
       'clientSecret',
       'consumerKey',
       'consumerSecret',
+      'merchantCode',
       'passkey',
       'shortcode',
       'credentials',
@@ -120,6 +121,20 @@ describe('the redaction list itself', () => {
   it('names the Authorization header paths explicitly', () => {
     expect(REDACT_PATHS).toContain('req.headers.authorization');
     expect(REDACT_PATHS).toContain('req.headers.cookie');
+  });
+
+  it('redacts Jenga API-key header variants and merchant identifiers from serialized logs', () => {
+    const { log, lines } = capture();
+    log.info({
+      merchantCode: 'synthetic-merchant-sensitive',
+      req: { headers: { 'api-key': 'synthetic-lower-sensitive' } },
+      config: { headers: { 'Api-Key': 'synthetic-upper-sensitive' } },
+    });
+    const output = JSON.stringify(lines());
+    expect(output).not.toContain('synthetic-merchant-sensitive');
+    expect(output).not.toContain('synthetic-lower-sensitive');
+    expect(output).not.toContain('synthetic-upper-sensitive');
+    expect(output).toContain('[REDACTED]');
   });
 
   it('has no duplicate paths', () => {

@@ -9,7 +9,7 @@ const common = {
   accountFilter: true,
 } as const;
 const ledgerNotes = [
-  'Only posted, facility-scoped journal lines are included; reversals are separate posted entries. Out-of-scope or inconsistent references are excluded and require review.',
+  'Only posted, facility-scoped journal lines are included; reversals are separate posted entries. Posted journal/account scope mismatches block the report for finance review; other inconsistent references are flagged.',
   'Billing, payments, claims and costs may not be posted or reconciled. These views are not complete, certified financial statements.',
   'The underlying journal service records KES cents. Summaries follow the selected account search; a filtered subset is not a complete statement.',
 ] as const;

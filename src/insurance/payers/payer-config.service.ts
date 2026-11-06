@@ -36,11 +36,13 @@ import { ManualFilePayerAdapter, ShaPayerBridgeAdapter } from './manual.adapter.
 import { PacisInsuranceAdapter } from './pacis.adapter.ts';
 import { SmartLinkGatewayAdapter } from './smartlink.adapter.ts';
 import { CicInsuranceAdapter } from './cic.adapter.ts';
+import { JubileeInsuranceAdapter } from './jubilee.adapter.ts';
 
 // Register standard independent adapters once at module load
 registerPayerAdapter(new BritamInsuranceAdapter());
 registerPayerAdapter(new PacisInsuranceAdapter());
 registerPayerAdapter(new CicInsuranceAdapter());
+registerPayerAdapter(new JubileeInsuranceAdapter());
 registerPayerAdapter(new SmartLinkGatewayAdapter());
 registerPayerAdapter(new ManualFilePayerAdapter());
 registerPayerAdapter(new ShaPayerBridgeAdapter());
@@ -66,6 +68,7 @@ const VALID_ADAPTER_KEYS = new Set<PayerAdapterKey>([
   'britam_direct',
   'pacis_direct',
   'cic_direct',
+  'jubilee_direct',
   'smartlink_gateway',
   'sha_afyalink',
   'manual',
@@ -350,7 +353,7 @@ function validatePayerConfigMutation(input: Record<string, unknown>) {
     if (!VALID_ADAPTER_KEYS.has(input.adapterKey as PayerAdapterKey)) {
       throw new PrivateInsuranceError(
         'INVALID_ADAPTER_KEY',
-        'adapterKey must be britam_direct, pacis_direct, smartlink_gateway, sha_afyalink, or manual.',
+        'adapterKey must be one of the registered payer adapter keys.',
         400,
       );
     }

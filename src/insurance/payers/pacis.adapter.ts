@@ -4,9 +4,8 @@
  * Safeguards enforced:
  * - Completely independent of Britam and SmartLink assumptions.
  * - Never guesses PACIS API endpoints, credentials, copayment rules, or claim formats.
- * - Reflects PACIS operational requirements (PACIS medical card verification,
- *   provider panel tier checks, signed claim/invoice attachments where manual/portal
- *   submission is used, or explicit electronic claims aggregator configuration).
+ * - Requires facility-specific rules and attachment requirements to be confirmed
+ *   by PACIS rather than assuming generic plan or gateway rules.
  * - Never fabricates live API verification or approval references.
  */
 
@@ -29,12 +28,12 @@ import {
 } from '../core/types.ts';
 
 export const PACIS_REQUIRED_ONBOARDING_ITEMS: readonly string[] = [
-  'Signed PACIS Insurance Company Ltd Preferred Provider Panel Agreement and assigned PACIS Provider Code',
-  'Official PACIS Medical Claims API Specification (or written confirmation of PACIS-designated Electronic Claims Aggregator)',
-  'Authorized PACIS Sandbox & Production HTTPS Base URLs and authentication credentials specification',
-  'Server-side credentials provisioned via PACIS_API_CLIENT_ID and PACIS_API_CLIENT_SECRET (never stored in database)',
-  'Confirmed PACIS scheme panel restrictions (e.g. inpatient cover tier hospital panel rules, outpatient consultation copayments, waiting periods)',
-  'Confirmed PACIS preauthorization & claim attachment checklist (e.g. signed outpatient claim form, itemized invoice, lab/imaging/prescription breakdown)',
+  'PACIS facility onboarding and provider identification requirements, as supplied by PACIS',
+  'Official PACIS electronic interface specification or written confirmation of a provider-authorized gateway',
+  'Provider-specified sandbox and production addresses, authentication and callback security contract',
+  'Facility-isolated server-side credential provisioning once the authentication contract is known',
+  'Confirmed facility scheme, benefit, tariff and preauthorization rules',
+  'Provider-approved preauthorization and claim attachment requirements',
 ] as const;
 
 function buildPacisMissingList(config: PayerRuntimeConfig, secrets: PayerSecretPresence): string[] {
@@ -42,14 +41,16 @@ function buildPacisMissingList(config: PayerRuntimeConfig, secrets: PayerSecretP
     'Official PACIS direct hospital API endpoint & payload specification has not been supplied in this repository.',
   ];
   if (!config.providerIdentifier?.trim()) {
-    missing.push('PACIS Preferred Provider Panel Code (providerIdentifier) is not configured.');
+    missing.push(
+      'Local providerIdentifier is not configured; PACIS must confirm the required identifier.',
+    );
   }
   if (!isSecureHttpsEndpoint(config.apiBaseUrl)) {
     missing.push('Authorized PACIS HTTPS API Base URL (apiBaseUrl) is not configured.');
   }
   if (config.authMethod === 'NONE' || !secrets.allRequiredSecretsPresent) {
     missing.push(
-      `Server-side PACIS credentials (${config.secretEnvPrefix || 'PACIS_API'}_*) are not provisioned.`,
+      'Provider-approved facility authentication and credential provisioning are not established.',
     );
   }
   return missing;
@@ -82,7 +83,7 @@ export class PacisInsuranceAdapter implements PayerIntegrationAdapter {
   getRequiredOnboardingChecklist(config: PayerRuntimeConfig): string[] {
     const items = [...PACIS_REQUIRED_ONBOARDING_ITEMS];
     if (!config.providerIdentifier) {
-      items.unshift('Facility PACIS Preferred Provider Panel Code is currently unset.');
+      items.unshift('Local provider identifier is unset; confirm requirements with PACIS.');
     }
     return items;
   }

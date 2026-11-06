@@ -176,6 +176,12 @@ function Provider({
         Provider information ↗
       </a>
       <p className="text-xs text-slate-700">{payer.processing}</p>
+      <p className="text-xs font-semibold text-amber-800">
+        Readiness:{' '}
+        {payer.code === 'SHA'
+          ? 'Implementation incomplete · facility-specific transport and authorization required'
+          : 'Awaiting direct provider documentation · electronic implementation incomplete'}
+      </p>
       <p className="text-xs text-slate-500">
         Connection: {payer.connectionStatus} · Sandbox: {payer.sandboxStatus} · Production:{' '}
         {payer.productionApproval}
@@ -343,8 +349,12 @@ function Provider({
                 <div key={e.environment} className="mt-2 break-all text-xs text-slate-600">
                   <p>
                     {e.environment}: {e.secretReference} · credentials{' '}
-                    {e.revoked ? 'revoked' : e.configured ? 'present' : 'not provisioned'} · not
-                    tested
+                    {e.revoked
+                      ? 'reference revoked'
+                      : e.configured
+                        ? 'client ID/secret reference values present (provider format unverified)'
+                        : 'reference values not provisioned or incomplete'}{' '}
+                    · not tested
                   </p>
                   {!e.revoked && (
                     <button

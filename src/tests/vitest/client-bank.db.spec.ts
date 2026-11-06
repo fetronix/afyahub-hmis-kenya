@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { beforeAll, expect, it } from 'vitest';
+import { beforeAll, expect, it, vi } from 'vitest';
+import * as journalIntegrity from '../../accounting/journal-scope-integrity.ts';
 import { pool } from '../../db/index.ts';
 import { describeDb } from './support/db.ts';
 import {
@@ -128,6 +129,21 @@ describeDb('imported bank statement reconciliation against PostgreSQL', () => {
     );
     bankTxId = txs.rows[0].id;
     expect(txs.rows[0].origin_classification).toBe('IMPORTED_STATEMENT');
+  });
+  it('blocks reconciliation when posted journal scope requires finance review', async () => {
+    const check = vi
+      .spyOn(journalIntegrity, 'hasPostedJournalScopeMismatch')
+      .mockResolvedValue(true);
+    try {
+      await expect(
+        previewBankReconciliationScoped(a, bankAccountId, statementId),
+      ).rejects.toMatchObject({
+        code: 'LEDGER_SCOPE_INCONSISTENT',
+        status: 409,
+      });
+    } finally {
+      check.mockRestore();
+    }
   });
   it('matches the exact posted bank ledger line and requires review', async () => {
     const before = await previewBankReconciliationScoped(a, bankAccountId, statementId);

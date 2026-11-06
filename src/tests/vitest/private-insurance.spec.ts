@@ -82,6 +82,7 @@ describe('Private Insurance multi-payer adapter registry & Britam/PACIS separati
 
     expect(keys).toContain('britam_direct');
     expect(keys).toContain('pacis_direct');
+    expect(keys).toContain('jubilee_direct');
     expect(keys).toContain('smartlink_gateway');
     expect(keys).toContain('manual');
     expect(keys).toContain('sha_afyalink');
@@ -93,6 +94,42 @@ describe('Private Insurance multi-payer adapter registry & Britam/PACIS separati
     expect(smartlink?.isGatewayAdapter).toBe(true);
     expect(britam?.isGatewayAdapter).toBe(false);
     expect(pacis?.isGatewayAdapter).toBe(false);
+  });
+
+  it('keeps the separate Jubilee direct interface unavailable while preserving the manual adapter', async () => {
+    const adapter = getPayerAdapter('jubilee_direct');
+    expect(adapter).toBeDefined();
+    const config = makeRuntimeConfig({ payerCode: 'JUBILEE', adapterKey: 'jubilee_direct' });
+    const secrets = inspectSecretEnvPresence(null, 'NONE', {});
+    expect(await adapter!.probeConnection(config, secrets)).toMatchObject({
+      verified: false,
+      connectionStatus: 'AWAITING_DOCUMENTATION',
+      httpStatus: null,
+    });
+    expect(
+      adapter!
+        .getCapabilities(config, secrets)
+        .every((entry) => !entry.supportedByContract && !entry.readyInCurrentConfig),
+    ).toBe(true);
+    expect(
+      await adapter!.verifyEligibility(
+        {
+          correlationId: 'synthetic',
+          payer: config,
+          memberNumber: 'synthetic',
+          serviceDate: '2026-11-06',
+        },
+        secrets,
+      ),
+    ).toMatchObject({
+      supported: false,
+      code: 'AWAITING_DOCUMENTATION',
+      adapterKey: 'jubilee_direct',
+    });
+    expect(
+      await adapter!.queryClaimStatus(config, 'synthetic-claim', 'synthetic', secrets),
+    ).toMatchObject({ supported: false, code: 'AWAITING_DOCUMENTATION' });
+    expect(getPayerAdapter('manual')).toBeDefined();
   });
 
   it('defaults unprovisioned Britam and PACIS direct adapters to honest AWAITING_DOCUMENTATION and CAPABILITY_UNAVAILABLE without inventing URLs or fake approvals', async () => {
@@ -514,7 +551,12 @@ describe('Decimal-safe benefit, copayment, deductible, and claim validation logi
 
     expect(shaBridge.getRequiredOnboardingChecklist().length).toBeGreaterThanOrEqual(0);
     expect(shaBridge.getCapabilities().length).toBeGreaterThan(0);
-    expect((await shaBridge.probeConnection()).connectionStatus).toBeDefined();
+    expect(await shaBridge.probeConnection()).toMatchObject({
+      verified: false,
+      connectionStatus: 'AWAITING_DOCUMENTATION',
+      httpStatus: null,
+    });
+    expect(shaBridge.getCapabilities().every((item) => !item.readyInCurrentConfig)).toBe(true);
     expect(
       (
         await shaBridge.verifyEligibility({

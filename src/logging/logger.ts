@@ -99,6 +99,7 @@ const SECRET_KEYS = [
   'clientSecret',
   'consumerKey',
   'consumerSecret',
+  'merchantCode',
   'passkey',
   'shortcode',
   'credentials',
@@ -149,6 +150,12 @@ function buildRedactPaths(): string[] {
   paths.add('req.headers.authorization');
   paths.add('req.headers.cookie');
   paths.add('req.headers["x-api-key"]');
+  // Jenga uses Api-Key rather than X-API-Key; transports can retain the
+  // original case or normalize it to lowercase.
+  for (const parent of ['req.headers', 'headers', 'config.headers', 'err.config.headers']) {
+    paths.add(`${parent}["api-key"]`);
+    paths.add(`${parent}["Api-Key"]`);
+  }
   paths.add('req.headers["x-booking-api-key"]');
   paths.add('req.headers["x-booking-manage-token"]');
   paths.add('res.headers["set-cookie"]');

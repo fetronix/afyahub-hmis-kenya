@@ -25,7 +25,13 @@ export type PayerAuthMethod =
   'NONE' | 'OAUTH2_CLIENT_CREDENTIALS' | 'API_KEY_HEADER' | 'BEARER_TOKEN_REF' | 'MUTUAL_TLS';
 
 export type PayerAdapterKey =
-  'britam_direct' | 'pacis_direct' | 'cic_direct' | 'smartlink_gateway' | 'sha_afyalink' | 'manual';
+  | 'britam_direct'
+  | 'pacis_direct'
+  | 'cic_direct'
+  | 'jubilee_direct'
+  | 'smartlink_gateway'
+  | 'sha_afyalink'
+  | 'manual';
 
 /**
  * Internal insurance operations modelled from the hospital-to-insurer

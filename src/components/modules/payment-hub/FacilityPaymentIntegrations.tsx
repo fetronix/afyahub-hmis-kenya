@@ -101,7 +101,8 @@ export const FacilityPaymentIntegrations: React.FC<{
       </div>
       <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
         Production is blocked pending provider approvals, sandbox evidence and security review. An
-        OAuth check does not verify an account or payment. Bank APIs and transfers are unavailable.
+        authentication check does not verify an account or payment. Bank transactions and transfers
+        are unavailable.
       </p>
       {error && (
         <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
@@ -183,6 +184,12 @@ function Provider({
         </a>
       </div>
       <p className="text-sm text-slate-600">{p.description}</p>
+      <p className="text-xs font-semibold text-amber-800">
+        Readiness:{' '}
+        {['NCBA', 'UNCONFIGURED'].includes(p.adapterKey)
+          ? 'Awaiting provider documentation'
+          : 'Implementation incomplete · sandbox capabilities only'}
+      </p>
       <p className="text-xs text-amber-800">{p.adapter.note}</p>
       {!p.isAllowed ? (
         <>
@@ -325,7 +332,11 @@ function Provider({
             </details>
           )}
           {p.integrations.length === 0 && (
-            <p className="text-xs text-slate-500">Setup has not been started.</p>
+            <p className="text-xs text-slate-500">
+              {capabilities.length
+                ? 'Awaiting configuration and credentials. Implemented capabilities remain limited as described above.'
+                : 'Awaiting documentation or platform capability approval. Setup has not been started.'}
+            </p>
           )}
           {p.integrations.map((i) => (
             <Integration
@@ -346,6 +357,19 @@ function Provider({
     </article>
   );
 }
+function readiness(i: HubIntegration): string {
+  if (i.credentialsRevoked || i.credentialsExpired) return 'Awaiting replacement credentials';
+  if (i.environment === 'PRODUCTION')
+    return i.productionApproval === 'PENDING'
+      ? 'Production approval pending · implementation incomplete and activation blocked'
+      : 'Production implementation incomplete · activation blocked';
+  if (!i.credentialsConfigured) return 'Awaiting credentials';
+  if (i.connectionStatus === 'UNAVAILABLE') return 'Connection failed';
+  if (i.connectionStatus === 'HEALTHY')
+    return 'Sandbox authentication connection verified only · financial operations not verified';
+  return 'Configured · sandbox authentication not yet verified';
+}
+
 function Integration({
   integration: i,
   provider,
@@ -385,7 +409,9 @@ function Integration({
         >
           {i.isEffective
             ? i.environment === 'SANDBOX'
-              ? 'Sandbox enabled'
+              ? ['KCB_BUNI', 'EQUITY'].includes(provider.adapterKey)
+                ? 'Sandbox authentication enabled'
+                : 'Sandbox enabled'
               : 'Enabled'
             : i.credentialsRevoked
               ? 'Credentials revoked'
@@ -400,6 +426,7 @@ function Integration({
           {i.lastHealthAt ? ` · ${new Date(i.lastHealthAt).toLocaleString()}` : ''}
         </span>
       </div>
+      <p className="text-xs font-semibold text-slate-700">Readiness: {readiness(i)}</p>
       <p className="text-xs text-slate-500">
         Credentials: {i.credentials} · Storage: {i.credentialSource ?? 'legacy or not recorded'} ·
         Expiry:{' '}
@@ -435,9 +462,20 @@ function Integration({
       ) : (
         <p className="text-xs text-slate-500">Account details require a separate permission.</p>
       )}
-      {canCredentials && provider.code === 'MPESA_DARAJA' && i.environment === 'SANDBOX' && (
+      {canCredentials && provider.adapterKey === 'MPESA_DARAJA' && i.environment === 'SANDBOX' && (
         <DarajaVaultForm integrationId={i.id} facilityId={facilityId} busy={busy} run={run} />
       )}
+      {canCredentials &&
+        i.environment === 'SANDBOX' &&
+        (provider.adapterKey === 'KCB_BUNI' || provider.adapterKey === 'EQUITY') && (
+          <BankSandboxVaultForm
+            integrationId={i.id}
+            facilityId={facilityId}
+            adapterKey={provider.adapterKey}
+            busy={busy}
+            run={run}
+          />
+        )}
       {canCredentials && i.credentialsConfigured && !i.credentialsRevoked && (
         <button
           type="button"
@@ -474,54 +512,55 @@ function Integration({
           Re-encrypt with active vault key
         </button>
       )}
-      {canCredentials && (
-        <details className="rounded bg-slate-50 p-2">
-          <summary className="cursor-pointer text-xs font-semibold">
-            {i.credentialsConfigured ? 'Replace' : 'Add'} facility credential reference
-          </summary>
-          <p className="my-2 text-xs text-slate-500">
-            Do not put credentials, online-banking passwords or OTPs in a reference. The environment
-            secret is provisioned by an authorized server operator. Saving a reference disables this
-            integration and resets review.
-          </p>
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const payload =
-                provider.code === 'MPESA_DARAJA'
-                  ? { facilityId, source: 'ENVIRONMENT' }
-                  : { facilityId, secretReference };
-              void run(async () => {
-                await paymentHubApi.credentials(i.id, payload);
-                setSecretReference('');
-              }, 'Credential reference recorded. Run the applicable check again.');
-            }}
-          >
-            {provider.code === 'MPESA_DARAJA' ? (
-              <p className="text-xs text-slate-600 sm:col-span-2">
-                Ask the server operator to provision the facility-specific variable{' '}
-                <code className="break-all font-semibold">{i.credentialEnvName}</code> using the
-                documented secret format. Its value is never sent to or returned by this browser.
-              </p>
-            ) : (
-              <label className="text-xs">
-                Facility-owned secret reference (not resolved by an adapter)
-                <input
-                  className={field}
-                  required
-                  placeholder="secret:your-facility-reference"
-                  value={secretReference}
-                  onChange={(e) => setSecretReference(e.target.value)}
-                />
-              </label>
-            )}
-            <button disabled={busy} className={button}>
-              Save reference
-            </button>
-          </form>
-        </details>
-      )}
+      {canCredentials &&
+        !(i.environment === 'SANDBOX' && ['KCB_BUNI', 'EQUITY'].includes(provider.adapterKey)) && (
+          <details className="rounded bg-slate-50 p-2">
+            <summary className="cursor-pointer text-xs font-semibold">
+              {i.credentialsConfigured ? 'Replace' : 'Add'} facility credential reference
+            </summary>
+            <p className="my-2 text-xs text-slate-500">
+              Do not put credentials, online-banking passwords or OTPs in a reference. The
+              environment secret is provisioned by an authorized server operator. Saving a reference
+              disables this integration and resets review.
+            </p>
+            <form
+              className="grid gap-2 sm:grid-cols-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const payload =
+                  provider.code === 'MPESA_DARAJA'
+                    ? { facilityId, source: 'ENVIRONMENT' }
+                    : { facilityId, secretReference };
+                void run(async () => {
+                  await paymentHubApi.credentials(i.id, payload);
+                  setSecretReference('');
+                }, 'Credential reference recorded. Run the applicable check again.');
+              }}
+            >
+              {provider.code === 'MPESA_DARAJA' ? (
+                <p className="text-xs text-slate-600 sm:col-span-2">
+                  Ask the server operator to provision the facility-specific variable{' '}
+                  <code className="break-all font-semibold">{i.credentialEnvName}</code> using the
+                  documented secret format. Its value is never sent to or returned by this browser.
+                </p>
+              ) : (
+                <label className="text-xs">
+                  Facility-owned secret reference (not resolved by an adapter)
+                  <input
+                    className={field}
+                    required
+                    placeholder="secret:your-facility-reference"
+                    value={secretReference}
+                    onChange={(e) => setSecretReference(e.target.value)}
+                  />
+                </label>
+              )}
+              <button disabled={busy} className={button}>
+                Save reference
+              </button>
+            </form>
+          </details>
+        )}
       {canManage && (
         <details className="rounded bg-slate-50 p-2">
           <summary className="cursor-pointer text-xs font-semibold">
@@ -596,10 +635,10 @@ function Integration({
                   const result = await paymentHubApi.health(i.id, facilityId);
                   if (result.status !== 'HEALTHY')
                     throw new Error('Provider unavailable or authentication failed.');
-                }, 'OAuth connection check succeeded; merchant approval and payment remain unverified.')
+                }, 'Sandbox authentication check succeeded; account access and payments remain unverified.')
               }
             >
-              Test OAuth connection
+              Test sandbox authentication
             </button>
           )}
         {canManage && (
@@ -785,6 +824,105 @@ function DarajaVaultForm({
         </label>
         <button disabled={busy} className={button}>
           Save encrypted sandbox credentials
+        </button>
+      </form>
+    </details>
+  );
+}
+
+/** One-way, sandbox-only entry; application credentials never come back from the API. */
+function BankSandboxVaultForm({
+  integrationId,
+  facilityId,
+  adapterKey,
+  busy,
+  run,
+}: {
+  integrationId: number;
+  facilityId: number;
+  adapterKey: 'KCB_BUNI' | 'EQUITY';
+  busy: boolean;
+  run: Run;
+}) {
+  const empty = { consumerKey: '', consumerSecret: '', merchantCode: '', apiKey: '' };
+  const [credentials, setCredentials] = useState(empty);
+  const [expiry, setExpiry] = useState('');
+  const kcb = adapterKey === 'KCB_BUNI';
+  const fields = kcb
+    ? ([
+        ['consumerKey', 'KCB consumer key'],
+        ['consumerSecret', 'KCB consumer secret'],
+      ] as const)
+    : ([
+        ['merchantCode', 'Jenga merchant code'],
+        ['consumerSecret', 'Jenga consumer secret'],
+        ['apiKey', 'Jenga API key'],
+      ] as const);
+  return (
+    <details className="rounded bg-slate-50 p-2">
+      <summary className="cursor-pointer text-xs font-semibold">
+        Add or replace {kcb ? 'KCB' : 'Jenga'} sandbox credentials
+      </summary>
+      <p className="my-2 text-xs text-slate-600">
+        Enter only provider-issued sandbox application credentials over HTTPS. They are encrypted
+        server-side and cannot be viewed again. Do not enter a bank login, password, PIN or OTP.
+        This enables an authentication test only, not bank transactions.
+      </p>
+      <form
+        className="grid gap-2 sm:grid-cols-2"
+        autoComplete="off"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void run(async () => {
+            try {
+              const payload = kcb
+                ? {
+                    consumerKey: credentials.consumerKey,
+                    consumerSecret: credentials.consumerSecret,
+                  }
+                : {
+                    merchantCode: credentials.merchantCode,
+                    consumerSecret: credentials.consumerSecret,
+                    apiKey: credentials.apiKey,
+                  };
+              await paymentHubApi.credentials(integrationId, {
+                facilityId,
+                source: 'VAULT',
+                credentials: payload,
+                expiresAt: expiry ? new Date(expiry).toISOString() : null,
+              });
+            } finally {
+              setCredentials(empty);
+              setExpiry('');
+            }
+          }, 'Sandbox credentials saved encrypted. Test authentication before enabling.');
+        }}
+      >
+        {fields.map(([name, label]) => (
+          <label className="text-xs" key={name}>
+            {label}
+            <input
+              className={field}
+              type="password"
+              required
+              maxLength={512}
+              autoComplete="new-password"
+              value={credentials[name]}
+              onChange={(event) => setCredentials({ ...credentials, [name]: event.target.value })}
+            />
+          </label>
+        ))}
+        <label className="text-xs">
+          Credential expiry (optional; your local time)
+          <input
+            className={field}
+            type="datetime-local"
+            value={expiry}
+            onChange={(event) => setExpiry(event.target.value)}
+          />
+        </label>
+        <button disabled={busy} className={button}>
+          Save encrypted {kcb ? 'KCB' : 'Jenga'} credentials
         </button>
       </form>
     </details>

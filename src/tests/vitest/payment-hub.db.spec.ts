@@ -240,6 +240,23 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const target = String(input);
+        if (
+          target === 'https://uat.buni.kcbgroup.com/token' ||
+          target === 'https://uat.finserve.africa/authentication/api/v3/authenticate/merchant'
+        ) {
+          if (offline) throw new Error('synthetic bank network timeout');
+          return new Response(
+            JSON.stringify(
+              target.includes('buni.kcbgroup.com')
+                ? { access_token: 'synthetic-bank-access-token' }
+                : {
+                    accessToken: 'synthetic-bank-access-token',
+                    refreshToken: 'synthetic-bank-refresh-token',
+                  },
+            ),
+            { status: 200 },
+          );
+        }
         if (!target.startsWith('https://sandbox.safaricom.co.ke/'))
           throw new Error('Unexpected external request in synthetic test');
         if (offline) throw new Error('synthetic network timeout');
@@ -2435,4 +2452,273 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
         .rows,
     ).toEqual([]);
   });
+
+  for (const adapterKey of ['KCB_BUNI', 'EQUITY'] as const) {
+    it(`${adapterKey}: scopes encrypted sandbox authentication and never creates a financial transaction`, async () => {
+      const x = randomUUID().slice(0, 8);
+      const credentials =
+        adapterKey === 'KCB_BUNI'
+          ? { consumerKey: `synthetic-kcb-key-${x}`, consumerSecret: `synthetic-kcb-secret-${x}` }
+          : {
+              merchantCode: `synthetic-jenga-merchant-${x}`,
+              consumerSecret: `synthetic-jenga-secret-${x}`,
+              apiKey: `synthetic-jenga-api-${x}`,
+            };
+      const rotated = {
+        ...credentials,
+        consumerSecret: `${credentials.consumerSecret}-rotated`,
+        ...(adapterKey === 'EQUITY' && 'apiKey' in credentials
+          ? { apiKey: `${credentials.apiKey}-rotated` }
+          : {}),
+      };
+      const provider = (
+        await pool.query(
+          `INSERT INTO payment_provider_definitions(code,display_name,adapter_key,documentation_url,description)
+         VALUES($1,$2,$3,'https://example.test/','Synthetic provider for mocked transport') RETURNING id`,
+          [`TEST_${adapterKey}_${x}`, `Synthetic ${adapterKey} ${x}`, adapterKey],
+        )
+      ).rows[0].id;
+      await pool.query(
+        `INSERT INTO payment_provider_environments(provider_id,environment,is_available)
+         VALUES($1,'SANDBOX',true),($1,'PRODUCTION',true)`,
+        [provider],
+      );
+      const assigned = await call(
+        superToken,
+        'PUT',
+        `/api/payment-hub/platform/providers/${provider}/facilities/${facilityA}`,
+        { isAllowed: true },
+      );
+      expect(assigned.status).toBe(200);
+      const configurePath = `/api/payment-hub/facility/providers/${provider}/integrations`;
+      const blocked = await call(aToken, 'POST', configurePath, {
+        facilityId: facilityA,
+        environment: 'SANDBOX',
+        capabilities: ['HEALTH'],
+      });
+      expect(blocked.status).toBe(403); // A platform administrator must allow HEALTH first.
+      expect(
+        (
+          await call(
+            superToken,
+            'PUT',
+            `/api/payment-hub/platform/providers/${provider}/capabilities/TRANSFER`,
+            { isAllowed: true },
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            superToken,
+            'PUT',
+            `/api/payment-hub/platform/providers/${provider}/capabilities/HEALTH`,
+            { isAllowed: true },
+          )
+        ).status,
+      ).toBe(200);
+      const configured = await call(aToken, 'POST', configurePath, {
+        facilityId: facilityA,
+        environment: 'SANDBOX',
+        capabilities: ['HEALTH'],
+      });
+      expect(configured.status).toBe(201);
+      const id = configured.data.id as number;
+      const root = `/api/payment-hub/facility/integrations/${id}`;
+      const payload = { facilityId: facilityA, source: 'VAULT', credentials };
+      expect((await call(delegatedToken, 'PUT', `${root}/credentials`, payload)).status).toBe(403);
+      expect(
+        (await call(bToken, 'PUT', `${root}/credentials`, { ...payload, facilityId: facilityB }))
+          .status,
+      ).toBe(404);
+      expect(
+        (
+          await call(aToken, 'PUT', `${root}/credentials`, {
+            ...payload,
+            credentials: { ...credentials, password: 'must-not-be-stored' },
+          })
+        ).status,
+      ).toBe(400);
+      expect((await call(aToken, 'PUT', `${root}/credentials`, payload)).status).toBe(200);
+      const secret = (
+        await pool.query(
+          'SELECT encrypted_value,credential_identity_hash,credential_source FROM facility_payment_secrets WHERE integration_id=$1',
+          [id],
+        )
+      ).rows[0];
+      expect(secret.credential_source).toBe('VAULT');
+      for (const value of Object.values(credentials))
+        expect(JSON.stringify(secret)).not.toContain(value);
+      expect(
+        decryptFacilitySecret(
+          { tenantId: tenantA, facilityId: facilityA, integrationId: id },
+          secret.encrypted_value,
+        ),
+      ).toMatchObject(credentials);
+      expect(() =>
+        decryptFacilitySecret(
+          { tenantId: tenantA, facilityId: facilityB, integrationId: id },
+          secret.encrypted_value,
+        ),
+      ).toThrow();
+      const priorPaymentCount = (
+        await pool.query(
+          'SELECT count(*)::int AS n FROM billing_payments p JOIN billing_invoices i ON i.id=p.invoice_id WHERE i.facility_id=$1',
+          [facilityA],
+        )
+      ).rows[0].n;
+      const priorInvoice = (
+        await pool.query('SELECT paid_amount,balance_amount FROM billing_invoices WHERE id=$1', [
+          invoiceId,
+        ])
+      ).rows[0];
+      const health = await call(aToken, 'POST', `${root}/health`, { facilityId: facilityA });
+      expect(health.status).toBe(200);
+      expect(health.data).toMatchObject({ status: 'HEALTHY' });
+      expect(health.data.notice).toContain('authentication only');
+      expect(health.data.notice).toContain('not verified');
+      expect(
+        (await call(aToken, 'PUT', `${root}/enabled`, { facilityId: facilityA, enabled: true }))
+          .status,
+      ).toBe(409);
+      expect(
+        (
+          await call(aToken, 'POST', `${root}/accounts`, {
+            facilityId: facilityA,
+            alias: 'Synthetic bank alias',
+            accountType: 'BANK',
+            lastFour: '1234',
+          })
+        ).status,
+      ).toBe(201);
+      expect(
+        (await call(aToken, 'PUT', `${root}/enabled`, { facilityId: facilityA, enabled: true }))
+          .status,
+      ).toBe(200);
+      let catalogue = await call(
+        aToken,
+        'GET',
+        `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+      );
+      const visible = catalogue.data.providers.find((item: any) => item.id === provider);
+      expect(visible.adapter.implementedCapabilities).toEqual(['HEALTH']);
+      expect(visible.integrations[0]).toMatchObject({
+        isEffective: true,
+        connectionStatus: 'HEALTHY',
+      });
+      for (const value of Object.values(credentials))
+        expect(JSON.stringify(catalogue.data)).not.toContain(value);
+      expect(JSON.stringify(catalogue.data)).not.toContain('synthetic-bank-access-token');
+      expect(
+        (
+          await pool.query(
+            'SELECT count(*)::int AS n FROM billing_payments p JOIN billing_invoices i ON i.id=p.invoice_id WHERE i.facility_id=$1',
+            [facilityA],
+          )
+        ).rows[0].n,
+      ).toBe(priorPaymentCount);
+      expect(
+        (
+          await pool.query('SELECT paid_amount,balance_amount FROM billing_invoices WHERE id=$1', [
+            invoiceId,
+          ])
+        ).rows[0],
+      ).toEqual(priorInvoice);
+      const prod = await call(aToken, 'POST', configurePath, {
+        facilityId: facilityA,
+        environment: 'PRODUCTION',
+        capabilities: ['HEALTH'],
+      });
+      expect(prod.status).toBe(201);
+      const prodRoot = `/api/payment-hub/facility/integrations/${prod.data.id}`;
+      const prodSave = await call(aToken, 'PUT', `${prodRoot}/credentials`, payload);
+      expect(prodSave.status).toBe(403);
+      expect(prodSave.data.error).toBe('PRODUCTION_BLOCKED');
+      expect(
+        (await call(aToken, 'POST', `${prodRoot}/health`, { facilityId: facilityA })).status,
+      ).toBe(403);
+      expect(
+        (await call(aToken, 'PUT', `${prodRoot}/enabled`, { facilityId: facilityA, enabled: true }))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            superToken,
+            'PUT',
+            `/api/payment-hub/platform/providers/${provider}/facilities/${facilityB}`,
+            { isAllowed: true },
+          )
+        ).status,
+      ).toBe(200);
+      const bConfig = await call(bToken, 'POST', configurePath, {
+        facilityId: facilityB,
+        environment: 'SANDBOX',
+        capabilities: ['HEALTH'],
+      });
+      expect(bConfig.status).toBe(201);
+      const duplicate = await call(
+        bToken,
+        'PUT',
+        `/api/payment-hub/facility/integrations/${bConfig.data.id}/credentials`,
+        { facilityId: facilityB, source: 'VAULT', credentials },
+      );
+      expect(duplicate.status).toBe(409);
+      expect(duplicate.data.error).toBe('CREDENTIAL_ALREADY_ASSIGNED');
+      try {
+        offline = true;
+        const failed = await call(aToken, 'POST', `${root}/health`, { facilityId: facilityA });
+        expect(failed.data.status).toBe('UNAVAILABLE');
+        expect(JSON.stringify(failed.data)).not.toContain(credentials.consumerSecret);
+        catalogue = await call(
+          aToken,
+          'GET',
+          `/api/payment-hub/facility/catalogue?facilityId=${facilityA}`,
+        );
+        expect(
+          catalogue.data.providers.find((item: any) => item.id === provider).integrations[0]
+            .isEffective,
+        ).toBe(false);
+      } finally {
+        offline = false;
+      }
+      expect(
+        (await call(aToken, 'POST', `${root}/credentials/revoke`, { facilityId: facilityA }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await call(aToken, 'POST', `${root}/health`, { facilityId: facilityA })).data.error,
+      ).toBe('CREDENTIALS_REVOKED');
+      const reuse = await call(aToken, 'PUT', `${root}/credentials`, payload);
+      expect(reuse.status).toBe(409);
+      expect(reuse.data.error).toBe('REVOKED_CREDENTIAL_REUSE');
+      expect(
+        (await call(aToken, 'PUT', `${root}/credentials`, { ...payload, credentials: rotated }))
+          .status,
+      ).toBe(200);
+      // An opaque legacy production reference cannot establish secret
+      // separation. Do not silently accept a replacement while it exists.
+      expect(
+        (
+          await call(aToken, 'PUT', `${prodRoot}/credentials`, {
+            facilityId: facilityA,
+            secretReference: 'secret:synthetic-production-reference',
+          })
+        ).status,
+      ).toBe(200);
+      const isolation = await call(aToken, 'PUT', `${root}/credentials`, {
+        ...payload,
+        credentials: { ...rotated, consumerSecret: `${rotated.consumerSecret}-again` },
+      });
+      expect(isolation.status).toBe(409);
+      expect(isolation.data.error).toBe('CREDENTIAL_ISOLATION_REVIEW_REQUIRED');
+      const audits = await pool.query(
+        `SELECT action,resource,details FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND resource LIKE 'payment_hub.%'`,
+        [tenantA, facilityA],
+      );
+      for (const value of [...Object.values(credentials), ...Object.values(rotated)])
+        expect(JSON.stringify(audits.rows)).not.toContain(value);
+      expect(JSON.stringify(audits.rows)).not.toContain('synthetic-bank-access-token');
+    }, 30000);
+  }
 });

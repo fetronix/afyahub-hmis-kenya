@@ -4,6 +4,9 @@ import {
   NcbaAdapter,
   EquityAdapter,
   UnconfiguredProviderAdapter,
+  bankDescriptor,
+  validateKcbCredentials,
+  validateEquityCredentials,
 } from './banks.ts';
 import { DarajaSandboxAdapter, validateDarajaCredentials } from './daraja.ts';
 
@@ -13,11 +16,15 @@ export function providerBoundary(
 ): ProviderBoundary {
   switch (key) {
     case 'KCB_BUNI':
-      return new KcbBuniAdapter();
+      return credentials
+        ? new KcbBuniAdapter(validateKcbCredentials(credentials))
+        : { descriptor: bankDescriptor('KCB_BUNI') };
     case 'NCBA':
       return new NcbaAdapter();
     case 'EQUITY':
-      return new EquityAdapter();
+      return credentials
+        ? new EquityAdapter(validateEquityCredentials(credentials))
+        : { descriptor: bankDescriptor('EQUITY') };
     case 'MPESA_DARAJA':
       // Descriptor discovery does not require or inspect credentials.
       if (!credentials)

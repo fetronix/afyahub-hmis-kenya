@@ -44,6 +44,7 @@ describe('payment hub administration views', () => {
         {
           id: 3,
           code: 'MPESA_DARAJA',
+          adapterKey: 'MPESA_DARAJA',
           displayName: 'M-Pesa',
           documentationUrl: 'https://example.test',
           description: 'Sandbox only',
@@ -75,6 +76,7 @@ describe('payment hub administration views', () => {
         {
           id: 3,
           code: 'MPESA_DARAJA',
+          adapterKey: 'MPESA_DARAJA',
           displayName: 'M-Pesa',
           documentationUrl: 'https://example.test',
           description: 'Sandbox only',
@@ -192,6 +194,7 @@ describe('payment hub administration views', () => {
         {
           id: 3,
           code: 'MPESA_DARAJA',
+          adapterKey: 'MPESA_DARAJA',
           displayName: 'M-Pesa',
           documentationUrl: 'https://example.test',
           description: 'Sandbox only',
@@ -259,6 +262,7 @@ describe('payment hub administration views', () => {
         {
           id: 3,
           code: 'MPESA_DARAJA',
+          adapterKey: 'MPESA_DARAJA',
           displayName: 'M-Pesa',
           documentationUrl: 'https://example.test',
           description: 'Sandbox only',
