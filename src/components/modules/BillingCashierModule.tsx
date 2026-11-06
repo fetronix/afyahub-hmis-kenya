@@ -5,6 +5,7 @@ import { api } from '../../api/client.ts';
 import { RefundsPanel } from './RefundsPanel.tsx';
 import { InvoiceFinancialSummary } from './InvoiceFinancialSummary.tsx';
 import { FinalizedInvoicePanel } from './FinalizedInvoicePanel.tsx';
+import { SandboxCollectionForm } from './payment-hub/SandboxCollectionForm.tsx';
 import {
   clearPendingPayment,
   readPendingPayment,
@@ -783,6 +784,11 @@ export const BillingCashierModule: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              <SandboxCollectionForm
+                key={`${currentFacility?.id}:${selectedInvoice.id}`}
+                selectedInvoice={selectedInvoice}
+              />
 
               <FinalizedInvoicePanel invoiceId={selectedInvoice.id} />
 

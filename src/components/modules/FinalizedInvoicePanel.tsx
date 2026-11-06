@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../api/client.ts';
 import { paymentHubApi, type HubTransaction } from '../../api/payment-hub.client.ts';
+import { collectionStatusLabel } from '../../payment-hub/collection-status.ts';
 import type { FinalizedInvoiceView, PaymentParty } from '../../billing/finalized-invoice.types.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 
@@ -498,8 +499,11 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number; reportCentre?:
             <ul>
               {hubTransactions.map((t) => (
                 <li key={t.id}>
-                  Request #{t.id} · {t.environment} · {t.status} · {t.unverifiedNotifications}{' '}
-                  unverified notification(s)
+                  Request #{t.id} · {t.environment} ·{' '}
+                  {t.environment === 'SANDBOX'
+                    ? collectionStatusLabel(t.status, t.resultCode)
+                    : t.status}{' '}
+                  · {t.unverifiedNotifications} unverified notification(s)
                 </li>
               ))}
             </ul>

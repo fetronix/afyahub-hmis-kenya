@@ -119,6 +119,7 @@ describe('Daraja sandbox reference adapter, mocked transport only', () => {
       { ResponseCode: '0' },
       { ResponseCode: '0', ResultCode: '4999' },
       { ResponseCode: '0', ResultCode: 1032 },
+      { ResponseCode: '0', ResultCode: '0' }, // missing checkout reference
       { ResponseCode: '1', ResultCode: '0' },
       { ResponseCode: '0', ResultCode: '0', CheckoutRequestID: 'wrong' },
       null,
@@ -131,6 +132,18 @@ describe('Daraja sandbox reference adapter, mocked transport only', () => {
         'known',
       ).outcome,
     ).toBe('CONFIRMED');
+    expect(
+      normalizeDarajaQuery(
+        { ResponseCode: '0', ResultCode: 1032, CheckoutRequestID: 'known' },
+        'known',
+      ),
+    ).toEqual({ outcome: 'CANCELLED', resultCode: '1032' });
+    expect(
+      normalizeDarajaQuery(
+        { ResponseCode: '0', ResultCode: 1032, CheckoutRequestID: 'another' },
+        'known',
+      ),
+    ).toEqual({ outcome: 'UNKNOWN', resultCode: null });
   });
   it('makes the documented OAuth, STK push and query requests only through injected mocks', async () => {
     const transport = vi
@@ -179,6 +192,43 @@ describe('Daraja sandbox reference adapter, mocked transport only', () => {
     expect(String(transport.mock.calls[3][0])).toContain('/mpesa/stkpushquery/v1/query');
     expect(transport.mock.calls[0][1]?.redirect).toBe('error');
     expect(transport.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+  it('uses the provider-issued Buy Goods receiving till and never guesses it for legacy records', async () => {
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'mock-token' })))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ResponseCode: '0', CheckoutRequestID: 'ws_synthetic' })),
+      );
+    const request = {
+      phone: '254700000001',
+      amountKes: 20,
+      callbackUrl: 'https://example.test/api/payment-hub/webhooks/mpesa',
+      accountReference: 'I123',
+    };
+    const legacy = new DarajaSandboxAdapter(
+      { ...fake, transactionType: 'CustomerBuyGoodsOnline' },
+      transport,
+    );
+    await expect(legacy.initiate(request)).rejects.toMatchObject({
+      code: 'RECEIVING_TILL_REQUIRED',
+    });
+    expect(transport).not.toHaveBeenCalled();
+    const configured = new DarajaSandboxAdapter(
+      { ...fake, transactionType: 'CustomerBuyGoodsOnline', partyB: '654321' },
+      transport,
+    );
+    await configured.initiate(request);
+    expect(JSON.parse(String(transport.mock.calls[1][1]?.body))).toMatchObject({
+      BusinessShortCode: fake.shortcode,
+      PartyB: '654321',
+      TransactionType: 'CustomerBuyGoodsOnline',
+    });
+    expect(() => validateDarajaCredentials({ ...fake, partyB: 'not-a-till' })).toThrow();
+    expect(() => validateDarajaCredentials({ ...fake, partyB: '654321' })).toThrow();
+    expect(validateDarajaCredentials({ ...fake, partyB: fake.shortcode }).partyB).toBe(
+      fake.shortcode,
+    );
   });
   it('fails safely on timeouts, unexpected bodies, insecure callbacks and invalid credentials', async () => {
     const transport = vi

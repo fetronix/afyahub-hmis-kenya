@@ -1,6 +1,6 @@
 /** End-to-end accounting checks against isolated synthetic PostgreSQL data. */
-import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { createHash, randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { pool } from '../../db/index.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { createSession } from '../../auth/session.service.ts';
@@ -28,6 +28,15 @@ import {
   type AccountingScope,
 } from '../../accounting/accounting.service.ts';
 import { describeDb } from '../vitest/support/db.ts';
+import {
+  addFacilityAccount,
+  configureIntegration,
+  initiateCollection,
+  listCollectionInvoices,
+  saveCredentials,
+  setIntegrationEnabled,
+  testConnection,
+} from '../../payment-hub/service.ts';
 
 describeDb('Reviewed billing-to-ledger bridge', () => {
   const suffix = randomUUID().slice(0, 8);
@@ -77,7 +86,7 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
     insurerReceivableAccountId: insurerAr,
     revenueAccountId: revenue,
   });
-  const paymentInput = (key = randomUUID()) => ({
+  const paymentInput = (key: string = randomUUID()) => ({
     entryDate: date,
     description: 'Synthetic reviewed receipt',
     idempotencyKey: key,
@@ -879,6 +888,296 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
     } finally {
       await pool.query(`DROP TRIGGER ${triggerName} ON audit_logs`);
       await pool.query(`DROP FUNCTION ${functionName}()`);
+    }
+  });
+
+  it('simulates a verified sandbox delivery across real billing and ledger primitives without enabling the callback', async () => {
+    // TEST ONLY: the verification decision, callback data, transport, KES value and
+    // posting policy are synthetic. This is not a Safaricom authentication
+    // protocol or a production callback handler. In particular, billing and
+    // journal posting commit separately; the injected crash below makes that
+    // gap visible. The live callback must continue to reject deliveries.
+    const priorKey = process.env.PAYMENT_HUB_ENCRYPTION_KEY;
+    const priorActiveKey = process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID;
+    const priorCallback = process.env.PAYMENT_HUB_CALLBACK_BASE_URL;
+    const provider = await pool.query(
+      `SELECT p.id FROM payment_provider_definitions p
+       JOIN payment_provider_environments e ON e.provider_id=p.id AND e.environment='SANDBOX'
+       WHERE p.code='MPESA_DARAJA' AND p.status='ACTIVE' AND e.is_available`,
+    );
+    expect(provider.rowCount).toBe(1);
+    const providerId = Number(provider.rows[0].id);
+    process.env.PAYMENT_HUB_ENCRYPTION_KEY = createHash('sha256')
+      .update(`synthetic-payment-simulation-${suffix}`)
+      .digest('base64');
+    delete process.env.PAYMENT_HUB_ACTIVE_VAULT_KEY_ID;
+    process.env.PAYMENT_HUB_CALLBACK_BASE_URL = 'https://example.test';
+    const checkout = `synthetic-checkout-${suffix}`;
+    const merchant = `synthetic-merchant-${suffix}`;
+    const receiptCode = `SY${suffix.toUpperCase()}`;
+    const paymentKey = `synthetic-callback-payment-${suffix}`;
+    const postingKey = `synthetic-callback-journal-${suffix}`;
+    const transport = vi.fn(async (request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.includes('/oauth/'))
+        return Response.json({ access_token: 'synthetic-only-token', expires_in: '3600' });
+      if (url.includes('/mpesa/stkpush/v1/processrequest'))
+        return Response.json({
+          ResponseCode: '0',
+          MerchantRequestID: merchant,
+          CheckoutRequestID: checkout,
+          ResponseDescription: 'synthetic request accepted',
+        });
+      throw new Error(`Unexpected synthetic transport request: ${url}`);
+    });
+    vi.stubGlobal('fetch', transport);
+
+    type SimulatedDelivery = {
+      mockAuthenticated: boolean;
+      event: {
+        checkoutId: string;
+        facilityId: number;
+        invoiceId: number;
+        amountCents: number;
+        currency: string;
+        resultCode: number;
+        receiptCode: string;
+      };
+    };
+    // This fake merely supplies a pre-decided test outcome. No real signature,
+    // shared secret or provider-origin evidence is implemented or claimed.
+    const mockVerification = vi.fn((delivery: SimulatedDelivery) => {
+      if (!delivery.mockAuthenticated) throw new Error('mock verification rejected');
+      return delivery.event;
+    });
+
+    try {
+      // Never modify global provider policies: other synthetic suites can
+      // exercise platform policy changes concurrently in the same database.
+      await pool.query(
+        `INSERT INTO payment_provider_assignments(tenant_id,facility_id,provider_id,is_allowed,updated_by_user_id)
+         VALUES($1,$2,$3,true,$4) ON CONFLICT(facility_id,provider_id)
+         DO UPDATE SET is_allowed=true`,
+        [tenant, facility, providerId, actor],
+      );
+      const integration = await configureIntegration(scope, providerId, {
+        environment: 'SANDBOX',
+        capabilities: ['PAYMENT_COLLECTION', 'HEALTH'],
+      });
+      const integrationId = Number(integration.id);
+      await saveCredentials(scope, integrationId, {
+        facilityId: facility,
+        source: 'VAULT',
+        credentials: {
+          consumerKey: `synthetic-key-${suffix}`,
+          consumerSecret: `synthetic-secret-${suffix}`,
+          shortcode: '174379',
+          passkey: `synthetic-passkey-${suffix}`,
+          transactionType: 'CustomerPayBillOnline',
+        },
+      });
+      await addFacilityAccount(scope, integrationId, {
+        alias: 'Synthetic payment account',
+        accountType: 'MOBILE_MONEY',
+        lastFour: '4379',
+      });
+      await testConnection(scope, integrationId);
+      await setIntegrationEnabled(scope, integrationId, true);
+
+      const invoice = await makeInvoice();
+      const invoicePosting = await postBillingSourceScoped(
+        scope,
+        'BILLING_INVOICE',
+        invoice,
+        invoiceInput(),
+      );
+      const invoiceBalance = await pool.query(
+        `SELECT sum(debit_cents)::int AS debit,sum(credit_cents)::int AS credit
+         FROM journal_lines WHERE journal_entry_id=$1`,
+        [invoicePosting.journal.id],
+      );
+      expect(invoiceBalance.rows[0]).toMatchObject({ debit: 10000, credit: 10000 });
+      const outstanding = await listCollectionInvoices(
+        scope,
+        undefined,
+        `LEDGER-INV-${suffix}-${seq}`,
+      );
+      expect(outstanding.invoices.some((item) => Number(item.id) === invoice)).toBe(true);
+      const initiated = await initiateCollection(scope, {
+        integrationId,
+        invoiceId: invoice,
+        phone: '254700000001',
+        amountKes: '20.00',
+        idempotencyKey: `synthetic-stk-${suffix}`,
+      });
+      expect(initiated).toMatchObject({ status: 'PENDING', idempotentReplay: false });
+      expect(transport).toHaveBeenCalledTimes(3); // mocked health OAuth, STK OAuth and STK request
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM billing_payments WHERE invoice_id=$1', [
+            invoice,
+          ])
+        ).rows[0].n,
+      ).toBe(0); // provider acceptance is not a payment
+
+      const delivery: SimulatedDelivery = {
+        mockAuthenticated: true,
+        event: {
+          checkoutId: checkout,
+          facilityId: facility,
+          invoiceId: invoice,
+          amountCents: 2000,
+          currency: 'KES',
+          resultCode: 0,
+          receiptCode,
+        },
+      };
+      // A fresh test-only processor uses persisted identifiers and retry keys,
+      // not in-memory state. It deliberately does not update the hub status.
+      const simulatedProcessor = async (input: SimulatedDelivery, crashAfterReceipt = false) => {
+        const event = mockVerification(input);
+        const selected = await pool.query(
+          `SELECT t.invoice_id,t.amount_cents,t.status,i.environment
+           FROM payment_hub_transactions t
+           JOIN facility_payment_integrations i ON i.id=t.integration_id
+           JOIN billing_invoices b ON b.id=t.invoice_id AND b.facility_id=t.facility_id AND b.tenant_id=t.tenant_id
+           WHERE t.provider_request_id=$1 AND t.tenant_id=$2 AND t.facility_id=$3`,
+          [event.checkoutId, tenant, facility],
+        );
+        const row = selected.rows[0];
+        if (
+          !row ||
+          row.environment !== 'SANDBOX' ||
+          row.status !== 'PENDING' ||
+          event.facilityId !== facility ||
+          event.invoiceId !== Number(row.invoice_id) ||
+          event.amountCents !== Number(row.amount_cents) ||
+          event.currency !== 'KES' ||
+          event.resultCode !== 0 ||
+          !/^([A-Z]{2})([A-Z0-9]{8})$/.test(event.receiptCode)
+        )
+          throw new Error('synthetic callback validation rejected');
+        const payment = await recordSettledPayment(
+          context,
+          {
+            facilityId: facility,
+            invoiceId: invoice,
+            paymentMethod: 'M-Pesa',
+            amount: '20.00',
+            transactionCode: event.receiptCode,
+            payerParty: 'PATIENT',
+            idempotencyKey: paymentKey,
+          },
+          'Synthetic simulation',
+        );
+        if (crashAfterReceipt) throw new Error('simulated crash between receipt and journal');
+        const journal = await postBillingSourceScoped(
+          scope,
+          'BILLING_PAYMENT',
+          payment.payment.id,
+          paymentInput(postingKey),
+        );
+        return { payment, journal };
+      };
+
+      const altered = (event: Partial<SimulatedDelivery['event']>): SimulatedDelivery => ({
+        ...delivery,
+        event: { ...delivery.event, ...event },
+      });
+      await expect(simulatedProcessor({ ...delivery, mockAuthenticated: false })).rejects.toThrow(
+        'mock verification rejected',
+      );
+      for (const invalid of [
+        altered({ checkoutId: 'unknown-checkout' }),
+        altered({ facilityId: foreignFacility }),
+        altered({ invoiceId: invoice + 1 }),
+        altered({ amountCents: 2001 }),
+        altered({ currency: 'USD' }),
+        altered({ resultCode: 1 }),
+        altered({ receiptCode: 'invalid' }),
+      ])
+        await expect(simulatedProcessor(invalid)).rejects.toThrow(
+          'synthetic callback validation rejected',
+        );
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM billing_payments WHERE invoice_id=$1', [
+            invoice,
+          ])
+        ).rows[0].n,
+      ).toBe(0);
+
+      // Make the non-atomic boundary observable, then demonstrate recovery by
+      // replaying the same synthetic event with the same durable request keys.
+      await expect(simulatedProcessor(delivery, true)).rejects.toThrow(
+        'simulated crash between receipt and journal',
+      );
+      const beforeRecovery = await pool.query(
+        `SELECT p.id,p.receipt_number,b.paid_amount,b.balance_amount,
+         (SELECT count(*)::int FROM accounting_billing_postings s WHERE s.source_type='BILLING_PAYMENT' AND s.source_id=p.id) AS journals
+         FROM billing_payments p JOIN billing_invoices b ON b.id=p.invoice_id WHERE b.id=$1`,
+        [invoice],
+      );
+      expect(beforeRecovery.rows).toHaveLength(1);
+      expect(beforeRecovery.rows[0]).toMatchObject({
+        paid_amount: '20.00',
+        balance_amount: '80.00',
+        journals: 0,
+      });
+      expect(beforeRecovery.rows[0].receipt_number).toBeTruthy();
+      const recovered = await Promise.all([
+        simulatedProcessor(delivery),
+        simulatedProcessor(delivery),
+      ]);
+      expect(recovered.every((result) => result.payment.idempotentReplay)).toBe(true);
+      expect(recovered.filter((result) => result.journal.idempotentReplay)).toHaveLength(1);
+      expect(recovered.filter((result) => !result.journal.idempotentReplay)).toHaveLength(1);
+      expect(new Set(recovered.map((result) => result.payment.payment.id)).size).toBe(1);
+      expect(new Set(recovered.map((result) => result.journal.journal.id)).size).toBe(1);
+      const journalId = recovered[0].journal.journal.id;
+      const balanced = await pool.query(
+        `SELECT count(*)::int AS lines,sum(debit_cents)::int AS debit,sum(credit_cents)::int AS credit
+         FROM journal_lines WHERE journal_entry_id=$1`,
+        [journalId],
+      );
+      expect(balanced.rows[0]).toMatchObject({ lines: 2, debit: 2000, credit: 2000 });
+      const conflictingReceipt = `SY${suffix[0] === '0' ? '1' : '0'}${suffix.slice(1).toUpperCase()}`;
+      await expect(
+        simulatedProcessor(altered({ receiptCode: conflictingReceipt })),
+      ).rejects.toMatchObject({ code: 'PAYMENT_IDEMPOTENCY_CONFLICT' });
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM billing_payments WHERE invoice_id=$1', [
+            invoice,
+          ])
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        (
+          await pool.query(
+            `SELECT count(*)::int n FROM accounting_billing_postings WHERE source_type='BILLING_PAYMENT' AND source_id=$1`,
+            [beforeRecovery.rows[0].id],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+
+      // The application's actual unauthenticated webhook remains fail-closed;
+      // the test-only processor above is not reachable by a production route.
+      vi.unstubAllGlobals(); // only the local test server is contacted from here
+      const callback = await httpJson(base, 'POST', '/api/payment-hub/webhooks/mpesa', {
+        body: delivery.event,
+      });
+      expect(callback.status).toBe(503);
+    } finally {
+      vi.unstubAllGlobals();
+      for (const [name, value] of [
+        ['PAYMENT_HUB_ENCRYPTION_KEY', priorKey],
+        ['PAYMENT_HUB_ACTIVE_VAULT_KEY_ID', priorActiveKey],
+        ['PAYMENT_HUB_CALLBACK_BASE_URL', priorCallback],
+      ] as const) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
     }
   });
 

@@ -4,7 +4,7 @@ import { parseMoneyToCents } from '../billing/settlement.ts';
 import { PaymentHubError } from './errors.ts';
 import { providerBoundary } from './adapters/index.ts';
 import { validateDarajaCredentials } from './adapters/daraja.ts';
-import type { Capability } from './adapters/contracts.ts';
+import type { Capability, QueryOutcome } from './adapters/contracts.ts';
 import {
   decryptFacilitySecret,
   encryptFacilitySecret,
@@ -37,9 +37,14 @@ function darajaEnvironmentCredentials(name: string): Record<string, string> {
       Array.isArray(parsed) ||
       Object.keys(parsed).some(
         (field) =>
-          !['consumerKey', 'consumerSecret', 'passkey', 'shortcode', 'transactionType'].includes(
-            field,
-          ),
+          ![
+            'consumerKey',
+            'consumerSecret',
+            'passkey',
+            'shortcode',
+            'transactionType',
+            'partyB',
+          ].includes(field),
       )
     )
       throw new Error('invalid');
@@ -755,6 +760,7 @@ export async function saveCredentials(
                   'passkey',
                   'shortcode',
                   'transactionType',
+                  'partyB',
                 ].includes(key),
             )
           )
@@ -783,6 +789,12 @@ export async function saveCredentials(
             'Choose the facility vault or server environment credential source.',
           );
         }
+        if (credentials.transactionType === 'CustomerBuyGoodsOnline' && !credentials.partyB)
+          throw new PaymentHubError(
+            'RECEIVING_TILL_REQUIRED',
+            'Enter the provider-issued sandbox receiving till for Buy Goods.',
+            400,
+          );
         // A provider consumer credential cannot silently be shared by facilities
         // or environments, including across the old and new storage formats.
         identityHash = privateDigest(`daraja-consumer:${credentials.consumerKey}`);
@@ -1391,6 +1403,86 @@ export async function decideProduction(
   });
 }
 
+/** Browse actual scoped sandbox integrations without exposing credential metadata. */
+export async function listCollectionIntegrations(scope: HubScope, rawAfter: unknown) {
+  const after = rawAfter === undefined || rawAfter === '' ? 0 : numberId(rawAfter);
+  const limit = 25;
+  const result = await pool.query(
+    `SELECT i.id,p.display_name AS "providerName" FROM facility_payment_integrations i
+     JOIN payment_provider_definitions p ON p.id=i.provider_id AND p.status='ACTIVE' AND p.adapter_key='MPESA_DARAJA'
+     JOIN payment_provider_assignments a ON a.provider_id=i.provider_id AND a.tenant_id=i.tenant_id AND a.facility_id=i.facility_id AND a.is_allowed
+     JOIN payment_provider_environments e ON e.provider_id=i.provider_id AND e.environment=i.environment AND e.is_available
+     JOIN facility_payment_secrets s ON s.integration_id=i.id AND s.tenant_id=i.tenant_id AND s.facility_id=i.facility_id
+     WHERE i.tenant_id=$1 AND i.facility_id=$2 AND i.id>$3 AND i.environment='SANDBOX'
+       AND i.is_enabled AND i.connection_status='HEALTHY' AND 'PAYMENT_COLLECTION'=ANY(i.enabled_capabilities)
+       AND i.enabled_capabilities <@ ARRAY['PAYMENT_COLLECTION','PAYMENT_STATUS','HEALTH']::text[]
+       AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at>now())
+       AND NOT EXISTS (SELECT 1 FROM unnest(i.enabled_capabilities) AS selected(capability)
+         LEFT JOIN payment_provider_capability_policies pc ON pc.provider_id=i.provider_id AND pc.capability=selected.capability
+         WHERE COALESCE(pc.is_allowed,false)=false)
+     ORDER BY i.id LIMIT $4`,
+    [scope.tenantId, scope.facilityId, after, limit + 1],
+  );
+  const items = result.rows.slice(0, limit);
+  return { integrations: items, nextCursor: result.rows.length > limit ? items.at(-1)?.id : null };
+}
+
+/** Browse scoped, non-void invoice identifiers; initiation rechecks the locked invoice. */
+export async function listCollectionInvoices(
+  scope: HubScope,
+  rawAfter: unknown,
+  rawSearch: unknown,
+) {
+  const after = rawAfter === undefined || rawAfter === '' ? 0 : numberId(rawAfter);
+  const hasControlCharacters =
+    typeof rawSearch === 'string' &&
+    Array.from(rawSearch).some((character) => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127;
+    });
+  if (
+    rawSearch !== undefined &&
+    (typeof rawSearch !== 'string' || rawSearch.length > 80 || hasControlCharacters)
+  )
+    throw new PaymentHubError('INVALID_INPUT', 'The invoice search is invalid.');
+  const search = typeof rawSearch === 'string' ? rawSearch.trim() : '';
+  const limit = 25;
+  const result = await pool.query(
+    `SELECT id,invoice_number AS "invoiceNumber",balance_amount::text AS "balanceAmount"
+     FROM billing_invoices
+     WHERE tenant_id=$1 AND facility_id=$2 AND id>$3 AND voided_at IS NULL AND status<>'Void'
+       AND balance_amount>0 AND balance_amount<>'NaN'::numeric
+       AND ($4='' OR position(lower($4) IN lower(invoice_number))>0)
+     ORDER BY id LIMIT $5`,
+    [scope.tenantId, scope.facilityId, after, search, limit + 1],
+  );
+  const items = result.rows.slice(0, limit);
+  return { invoices: items, nextCursor: result.rows.length > limit ? items.at(-1)?.id : null };
+}
+
+/** Only the initiating actor may recover this opaque retry identity. NOT_FOUND
+ * does not prove that an in-flight submission can no longer arrive. */
+export async function recoverCollection(scope: HubScope, rawKey: unknown) {
+  const key = reference(rawKey, 'Idempotency key');
+  const result = await pool.query(
+    `SELECT t.id,t.invoice_id AS "invoiceId",t.integration_id AS "integrationId",
+      t.amount_cents::text AS "requestedAmountCents",t.status,t.result_code AS "resultCode",
+      (t.provider_request_id IS NOT NULL) AS "hasProviderReference"
+     FROM payment_hub_transactions t JOIN facility_payment_integrations i
+       ON i.id=t.integration_id AND i.tenant_id=t.tenant_id AND i.facility_id=t.facility_id
+     WHERE t.tenant_id=$1 AND t.facility_id=$2 AND t.idempotency_key=$3
+       AND t.initiated_by_user_id=$4 AND i.environment='SANDBOX'`,
+    [scope.tenantId, scope.facilityId, key, scope.actorUserId],
+  );
+  if (!result.rows.length)
+    return {
+      recovery: 'NOT_FOUND',
+      transaction: null,
+      notice: 'Not found does not prove that an in-flight request cannot still arrive.',
+    };
+  return { recovery: 'RECORDED', transaction: result.rows[0] };
+}
+
 export async function listFacilityTransactions(scope: HubScope) {
   const [transactions, events, reconciliations] = await Promise.all([
     pool.query(
@@ -1451,11 +1543,14 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
     stored === hash || (!confirmSeparateRequest && stored === legacyHash);
   const prepared = await tx(async (c) => {
     const existing = await c.query(
-      'SELECT id,status,request_hash FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
+      'SELECT id,status,request_hash,initiated_by_user_id FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
       [scope.facilityId, scope.tenantId, key],
     );
     if (existing.rows.length) {
-      if (!matchesRequest(existing.rows[0].request_hash))
+      if (
+        existing.rows[0].initiated_by_user_id !== scope.actorUserId ||
+        !matchesRequest(existing.rows[0].request_hash)
+      )
         throw new PaymentHubError(
           'IDEMPOTENCY_CONFLICT',
           'This idempotency key was used for a different request.',
@@ -1516,11 +1611,14 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
     // Another same-key request may have committed while this caller waited
     // for the invoice lock. Replay it before checking other active requests.
     const lockedReplay = await c.query(
-      'SELECT id,status,request_hash FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
+      'SELECT id,status,request_hash,initiated_by_user_id FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
       [scope.facilityId, scope.tenantId, key],
     );
     if (lockedReplay.rows.length) {
-      if (!matchesRequest(lockedReplay.rows[0].request_hash))
+      if (
+        lockedReplay.rows[0].initiated_by_user_id !== scope.actorUserId ||
+        !matchesRequest(lockedReplay.rows[0].request_hash)
+      )
         throw new PaymentHubError(
           'IDEMPOTENCY_CONFLICT',
           'This idempotency key was used for a different request.',
@@ -1553,6 +1651,16 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
         409,
       );
     const secret = await secretFor(c, scope, integrationId);
+    if (
+      i.adapter_key === 'MPESA_DARAJA' &&
+      secret.transactionType === 'CustomerBuyGoodsOnline' &&
+      !secret.partyB
+    )
+      throw new PaymentHubError(
+        'RECEIVING_TILL_REQUIRED',
+        'Reconfigure this sandbox integration with its provider-issued receiving till.',
+        409,
+      );
     const adapter = providerBoundary(i.adapter_key, secret);
     if (!adapter.collection)
       throw new PaymentHubError(
@@ -1577,10 +1685,14 @@ export async function initiateCollection(scope: HubScope, input: Record<string, 
     );
     if (!row.rows.length) {
       const retry = await c.query(
-        'SELECT id,status,request_hash FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
+        'SELECT id,status,request_hash,initiated_by_user_id FROM payment_hub_transactions WHERE facility_id=$1 AND tenant_id=$2 AND idempotency_key=$3',
         [scope.facilityId, scope.tenantId, key],
       );
-      if (!retry.rows.length || !matchesRequest(retry.rows[0].request_hash))
+      if (
+        !retry.rows.length ||
+        retry.rows[0].initiated_by_user_id !== scope.actorUserId ||
+        !matchesRequest(retry.rows[0].request_hash)
+      )
         throw new PaymentHubError(
           'IDEMPOTENCY_CONFLICT',
           'This idempotency key was used for a different request.',
@@ -1674,7 +1786,7 @@ export async function queryTransaction(scope: HubScope, transactionId: number) {
       throw new PaymentHubError('CAPABILITY_UNAVAILABLE', 'Status query is not implemented.', 409);
     return { adapter, reference: t.provider_request_id, integrationId: i.id, revision: i.revision };
   });
-  let outcome: { outcome: 'CONFIRMED' | 'UNKNOWN'; resultCode: string | null };
+  let outcome: { outcome: QueryOutcome; resultCode: string | null };
   try {
     outcome = await prepared.adapter.status!.query(prepared.reference);
   } catch {
@@ -1695,7 +1807,7 @@ export async function queryTransaction(scope: HubScope, transactionId: number) {
         409,
       );
     const row = await c.query(
-      'SELECT status,provider_request_id FROM payment_hub_transactions WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE',
+      'SELECT status,result_code,provider_request_id FROM payment_hub_transactions WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE',
       [transactionId, scope.tenantId, scope.facilityId],
     );
     if (!row.rows.length || row.rows[0].provider_request_id !== prepared.reference)
@@ -1706,20 +1818,32 @@ export async function queryTransaction(scope: HubScope, transactionId: number) {
         status === 'FAILED' || status === 'REVIEW_REQUIRED'
           ? 'REVIEW_REQUIRED'
           : 'PROVIDER_CONFIRMED';
+    else if (outcome.outcome === 'CANCELLED')
+      // The existing FAILED state plus the documented result code identifies
+      // a cancelled request without changing historical rows or the schema.
+      status =
+        status === 'PROVIDER_CONFIRMED' || status === 'REVIEW_REQUIRED'
+          ? 'REVIEW_REQUIRED'
+          : 'FAILED';
     else if (
       status === 'PROVIDER_CONFIRMED' &&
       outcome.resultCode !== null &&
       outcome.resultCode !== '0'
     )
       status = 'REVIEW_REQUIRED';
-    // An inconclusive later query cannot erase an earlier provider-confirmed
-    // result or create a success from pending/failed/unknown.
+    // An inconclusive later query must not erase evidence of a cancellation or
+    // the last conflicting result. It never creates a payment or success.
+    const persistedCode =
+      outcome.outcome === 'UNKNOWN' && ['FAILED', 'REVIEW_REQUIRED'].includes(row.rows[0].status)
+        ? row.rows[0].result_code
+        : outcome.resultCode;
     await c.query(
       'UPDATE payment_hub_transactions SET status=$1,result_code=$2,last_query_at=now(),updated_at=now() WHERE id=$3',
-      [status, outcome.resultCode, transactionId],
+      [status, persistedCode, transactionId],
     );
     await audit(c, scope.actorUserId, scope, 'QUERY', 'transaction', transactionId, {
       status,
+      resultCode: outcome.resultCode,
       environment: i.environment,
     });
     return {

@@ -10,6 +10,7 @@ import type {
   CollectionCapability,
   HealthCapability,
   ProviderBoundary,
+  QueryOutcome,
   StatusCapability,
 } from './contracts.ts';
 
@@ -21,6 +22,8 @@ export interface DarajaCredentials {
   passkey: string;
   shortcode: string;
   transactionType: 'CustomerPayBillOnline' | 'CustomerBuyGoodsOnline';
+  /** Provider-issued receiving PayBill/till. Legacy PayBill records may omit it. */
+  partyB?: string;
 }
 export function validateDarajaCredentials(input: Record<string, unknown>): DarajaCredentials {
   const get = (name: string, max: number) => {
@@ -37,13 +40,17 @@ export function validateDarajaCredentials(input: Record<string, unknown>): Daraj
     passkey = get('passkey', 512),
     shortcode = get('shortcode', 20);
   const transactionType = get('transactionType', 40);
+  const partyB = typeof input.partyB === 'string' ? input.partyB.trim() : '';
   if (
     !/^\d{4,12}$/.test(shortcode) ||
-    !['CustomerPayBillOnline', 'CustomerBuyGoodsOnline'].includes(transactionType)
+    !['CustomerPayBillOnline', 'CustomerBuyGoodsOnline'].includes(transactionType) ||
+    (input.partyB !== undefined && typeof input.partyB !== 'string') ||
+    (partyB !== '' && !/^\d{4,12}$/.test(partyB)) ||
+    (transactionType === 'CustomerPayBillOnline' && partyB !== '' && partyB !== shortcode)
   ) {
     throw new PaymentHubError(
       'INVALID_CREDENTIALS',
-      'Use an approved shortcode and transaction type.',
+      'Use an approved shortcode, receiving account and transaction type.',
     );
   }
   return {
@@ -52,13 +59,14 @@ export function validateDarajaCredentials(input: Record<string, unknown>): Daraj
     passkey,
     shortcode,
     transactionType: transactionType as DarajaCredentials['transactionType'],
+    ...(partyB ? { partyB } : {}),
   };
 }
 
 export function normalizeDarajaQuery(
   value: unknown,
   expectedCheckoutId: string,
-): { outcome: 'CONFIRMED' | 'UNKNOWN'; resultCode: string | null } {
+): { outcome: QueryOutcome; resultCode: string | null } {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return { outcome: 'UNKNOWN', resultCode: null };
   const data = value as Record<string, unknown>;
@@ -70,13 +78,20 @@ export function normalizeDarajaQuery(
     typeof data.ResponseCode === 'string' || typeof data.ResponseCode === 'number'
       ? String(data.ResponseCode)
       : null;
-  // If returned, the provider's identifier must agree. A mere HTTP 200,
-  // a ResponseCode of 0, a callback, or an unknown result is never success.
-  if (data.CheckoutRequestID !== undefined && data.CheckoutRequestID !== expectedCheckoutId)
+  // The documented query response includes the checkout identifier. Missing or
+  // mismatched references, a request acknowledgement or HTTP 200 prove nothing.
+  if (
+    data.CheckoutRequestID !== expectedCheckoutId ||
+    responseCode !== '0' ||
+    !code ||
+    !/^\d{1,8}$/.test(code)
+  )
     return { outcome: 'UNKNOWN', resultCode: null };
+  // Safaricom explicitly documents 1032 as cancellation by the user. Other
+  // nonzero codes remain unclassified until their status semantics are verified.
   return {
-    outcome: responseCode === '0' && code === '0' ? 'CONFIRMED' : 'UNKNOWN',
-    resultCode: code && /^\d{1,8}$/.test(code) ? code : null,
+    outcome: code === '0' ? 'CONFIRMED' : code === '1032' ? 'CANCELLED' : 'UNKNOWN',
+    resultCode: code,
   };
 }
 function timestamp(): string {
@@ -197,6 +212,14 @@ export class DarajaSandboxAdapter
         'INVALID_COLLECTION',
         'Use a Kenyan phone number, whole KES amount and valid reference.',
       );
+    // Safaricom documents the Buy Goods receiving till separately from the
+    // business shortcode. Do not guess it for older credential records.
+    if (this.credentials.transactionType === 'CustomerBuyGoodsOnline' && !this.credentials.partyB)
+      throw new PaymentHubError(
+        'RECEIVING_TILL_REQUIRED',
+        'Reconfigure the sandbox integration with its provider-issued receiving till.',
+        409,
+      );
     const url = new URL(input.callbackUrl);
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash)
       throw new PaymentHubError(
@@ -209,7 +232,7 @@ export class DarajaSandboxAdapter
       TransactionType: this.credentials.transactionType,
       Amount: input.amountKes,
       PartyA: input.phone,
-      PartyB: this.credentials.shortcode,
+      PartyB: this.credentials.partyB ?? this.credentials.shortcode,
       PhoneNumber: input.phone,
       CallBackURL: input.callbackUrl,
       AccountReference: input.accountReference,

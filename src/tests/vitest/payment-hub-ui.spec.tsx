@@ -144,6 +144,46 @@ describe('payment hub administration views', () => {
       }),
     );
     expect(screen.getByLabelText('Consumer secret')).toHaveValue('');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save encrypted sandbox credentials' }),
+      ).toBeEnabled(),
+    );
+    await userEvent.type(screen.getByLabelText('Consumer key'), 'synthetic-key-buy');
+    await userEvent.type(screen.getByLabelText('Consumer secret'), 'synthetic-secret-buy');
+    await userEvent.type(screen.getByLabelText('STK passkey'), 'synthetic-passkey-buy');
+    await userEvent.type(screen.getByLabelText('Sandbox shortcode'), '123456');
+    await userEvent.selectOptions(
+      screen.getByLabelText('Authorized transaction type'),
+      'CustomerBuyGoodsOnline',
+    );
+    const till = screen.getByLabelText(/Sandbox receiving till/);
+    expect(till).toHaveAttribute('type', 'password');
+    expect(till).toBeRequired();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Save encrypted sandbox credentials' }),
+    );
+    expect(api.credentials).toHaveBeenCalledTimes(1);
+    await userEvent.type(till, '654321');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Save encrypted sandbox credentials' }),
+    );
+    await waitFor(() =>
+      expect(api.credentials).toHaveBeenLastCalledWith(4, {
+        facilityId: 11,
+        source: 'VAULT',
+        credentials: {
+          consumerKey: 'synthetic-key-buy',
+          consumerSecret: 'synthetic-secret-buy',
+          passkey: 'synthetic-passkey-buy',
+          shortcode: '123456',
+          transactionType: 'CustomerBuyGoodsOnline',
+          partyB: '654321',
+        },
+        expiresAt: null,
+      }),
+    );
+    expect(screen.getByLabelText('Consumer secret')).toHaveValue('');
   });
   it('offers audited revocation only to an authorized facility administrator', async () => {
     state.user.permissions = ['payment_hub.catalogue.read', 'payment_hub.credentials.manage'];
@@ -411,7 +451,10 @@ describe('payment hub administration views', () => {
     render(<PaymentTransactions />);
     expect(await screen.findByText('PENDING')).toBeInTheDocument();
     expect(screen.getByText(/UNVERIFIED/)).toBeInTheDocument();
-    expect(screen.getByText(/not proof of payment/)).toBeInTheDocument();
+    expect(screen.getByText(/An accepted request is not proof of payment/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/The request was accepted for processing; this is not proof of payment/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Query provider status' })).not.toBeInTheDocument();
   });
 });

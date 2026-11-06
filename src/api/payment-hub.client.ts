@@ -104,6 +104,28 @@ export interface HubTransaction {
   lastQueryAt: string | null;
   unverifiedNotifications: number;
 }
+export interface CollectionIntegration {
+  id: number;
+  providerName: string;
+}
+export interface CollectionInvoice {
+  id: number;
+  invoiceNumber: string;
+  balanceAmount: string;
+}
+export interface CollectionRecovery {
+  recovery: 'RECORDED' | 'NOT_FOUND';
+  transaction: {
+    id: number;
+    invoiceId: number;
+    integrationId: number;
+    requestedAmountCents: string;
+    status: string;
+    resultCode: string | null;
+    hasProviderReference: boolean;
+  } | null;
+  notice?: string;
+}
 export interface HubReconciliation {
   id: number;
   transactionId: number;
@@ -198,6 +220,26 @@ export const paymentHubApi = {
       reconciliations: HubReconciliation[];
       notice: string;
     }>(`${base}/facility/transactions?facilityId=${facilityId}`),
+  collectionIntegrations: (facilityId: number, after?: number | null) => {
+    const query = new URLSearchParams({ facilityId: String(facilityId) });
+    if (after) query.set('after', String(after));
+    return fetchJson<{ integrations: CollectionIntegration[]; nextCursor: number | null }>(
+      `${base}/facility/collections/integrations?${query}`,
+    );
+  },
+  collectionInvoices: (facilityId: number, search = '', after?: number | null) => {
+    const query = new URLSearchParams({ facilityId: String(facilityId) });
+    if (search) query.set('q', search);
+    if (after) query.set('after', String(after));
+    return fetchJson<{ invoices: CollectionInvoice[]; nextCursor: number | null }>(
+      `${base}/facility/collections/invoices?${query}`,
+    );
+  },
+  recoverCollection: (facilityId: number, idempotencyKey: string) =>
+    send<CollectionRecovery>('/facility/collections/recovery', 'POST', {
+      facilityId,
+      idempotencyKey,
+    }),
   collect: (body: unknown, key: string) =>
     send<{ transactionId: number; status: string; notice: string }>(
       '/facility/collections',

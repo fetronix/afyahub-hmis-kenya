@@ -319,9 +319,39 @@ router.get(
     res.json({ success: true, ...(await hub.listFacilityTransactions(await scope(req, true))) });
   }),
 );
+router.get(
+  '/facility/collections/integrations',
+  requirePermission('payment_hub.collection.initiate', 'billing.read'),
+  wrap(async (req, res) => {
+    res.json({
+      success: true,
+      ...(await hub.listCollectionIntegrations(await scope(req, true), req.query.after)),
+    });
+  }),
+);
+router.get(
+  '/facility/collections/invoices',
+  requirePermission('payment_hub.collection.initiate', 'billing.read'),
+  wrap(async (req, res) => {
+    res.json({
+      success: true,
+      ...(await hub.listCollectionInvoices(await scope(req, true), req.query.after, req.query.q)),
+    });
+  }),
+);
+router.post(
+  '/facility/collections/recovery',
+  requirePermission('payment_hub.collection.initiate', 'billing.read'),
+  wrap(async (req, res) => {
+    res.json({
+      success: true,
+      ...(await hub.recoverCollection(await scope(req, true), req.body?.idempotencyKey)),
+    });
+  }),
+);
 router.post(
   '/facility/collections',
-  requirePermission('payment_hub.collection.initiate'),
+  requirePermission('payment_hub.collection.initiate', 'billing.read'),
   wrap(async (req, res) => {
     const r = await hub.initiateCollection(await scope(req, true), {
       ...req.body,

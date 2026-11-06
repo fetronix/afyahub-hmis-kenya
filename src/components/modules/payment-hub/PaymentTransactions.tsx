@@ -2,6 +2,11 @@ import { PageHeader } from '../../ui/layout.tsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { paymentHubApi, type HubTransaction } from '../../../api/payment-hub.client.ts';
 import { useHmis } from '../../../context/HmisContext.tsx';
+import {
+  collectionStatusLabel,
+  collectionStatusNotice,
+} from '../../../payment-hub/collection-status.ts';
+import { SandboxCollectionForm } from './SandboxCollectionForm.tsx';
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';
 const button =
   'rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50';
@@ -32,16 +37,6 @@ export const PaymentTransactions: React.FC = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({
-    integrationId: '',
-    invoiceId: '',
-    amountKes: '',
-    phone: '',
-    allowOverpayment: false,
-  });
-  const [key, setKey] = useState(() => crypto.randomUUID());
-  const [submitted, setSubmitted] = useState(false);
-  const [separateReviewed, setSeparateReviewed] = useState(false);
   const load = useCallback(async () => {
     if (!activeFacilityId || !canRead) return;
     const version = ++requestVersion.current;
@@ -58,16 +53,6 @@ export const PaymentTransactions: React.FC = () => {
   useEffect(() => {
     setScopedData(null);
     setNotice('');
-    setForm({
-      integrationId: '',
-      invoiceId: '',
-      amountKes: '',
-      phone: '',
-      allowOverpayment: false,
-    });
-    setKey(crypto.randomUUID());
-    setSubmitted(false);
-    setSeparateReviewed(false);
     void load();
     return () => {
       requestVersion.current += 1;
@@ -116,112 +101,7 @@ export const PaymentTransactions: React.FC = () => {
           {notice}
         </p>
       )}
-      {canInitiate && (
-        <details className={card}>
-          <summary className="cursor-pointer font-semibold">
-            Initiate a Daraja sandbox request
-          </summary>
-          <p className="text-xs text-slate-500">
-            Use an enabled sandbox integration ID and an invoice in this facility. Only whole KES is
-            supported. An uncertain request must be reviewed before attempting a new one.
-          </p>
-          <form
-            className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                const result = await paymentHubApi.collect(
-                  { ...form, facilityId, confirmSeparateRequest: separateReviewed },
-                  key,
-                );
-                setSubmitted(true);
-                setForm((f) => ({ ...f, phone: '' }));
-                setNotice(result.notice);
-              }, 'Request recorded. Check its status below; no invoice was paid.');
-            }}
-          >
-            <label className="text-xs">
-              Integration ID
-              <input
-                className={field}
-                required
-                inputMode="numeric"
-                value={form.integrationId}
-                onChange={(e) => setForm({ ...form, integrationId: e.target.value })}
-              />
-            </label>
-            <label className="text-xs">
-              Invoice ID
-              <input
-                className={field}
-                required
-                inputMode="numeric"
-                value={form.invoiceId}
-                onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
-              />
-            </label>
-            <label className="text-xs">
-              Amount (whole KES)
-              <input
-                className={field}
-                required
-                inputMode="numeric"
-                value={form.amountKes}
-                onChange={(e) => setForm({ ...form, amountKes: e.target.value })}
-              />
-            </label>
-            <label className="text-xs">
-              Phone (254 format)
-              <input
-                className={field}
-                required
-                autoComplete="off"
-                inputMode="numeric"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              />
-            </label>
-            <label className="flex items-center gap-1 text-xs">
-              <input
-                type="checkbox"
-                checked={form.allowOverpayment}
-                onChange={(e) => setForm({ ...form, allowOverpayment: e.target.checked })}
-              />
-              Explicitly allow overpayment
-            </label>
-            <label className="flex items-center gap-1 text-xs">
-              <input
-                type="checkbox"
-                checked={separateReviewed}
-                onChange={(e) => setSeparateReviewed(e.target.checked)}
-              />
-              I reviewed any earlier request and intend a separate request
-            </label>
-            <button className={button} disabled={busy || submitted}>
-              Request sandbox STK
-            </button>
-            {submitted && (
-              <button
-                type="button"
-                className={secondary}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      'Review the previous request first. Start a separate request with a new idempotency key?',
-                    )
-                  ) {
-                    setSubmitted(false);
-                    setSeparateReviewed(true);
-                    setKey(crypto.randomUUID());
-                  }
-                }}
-              >
-                Start a separate request
-              </button>
-            )}
-          </form>
-        </details>
-      )}
+      {canInitiate && <SandboxCollectionForm onChanged={load} />}
       {!data && !error && <p className="text-sm text-slate-500">Loading transactions…</p>}
       {data?.transactions.length === 0 && (
         <p className={card}>No provider transactions recorded for this facility.</p>
@@ -325,9 +205,14 @@ function Transaction({
           </p>
         </div>
         <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold">
-          {t.status.replaceAll('_', ' ')}
+          {t.environment === 'SANDBOX'
+            ? collectionStatusLabel(t.status, t.resultCode)
+            : t.status.replaceAll('_', ' ')}
         </span>
       </div>
+      {t.environment === 'SANDBOX' && (
+        <p className="text-xs text-slate-600">{collectionStatusNotice(t.status, t.resultCode)}</p>
+      )}
       <p className="text-xs text-slate-600">
         Provider request: {t.providerRequestId ?? 'not available'} · Unverified notifications:{' '}
         {t.unverifiedNotifications} · Last query:{' '}
@@ -339,10 +224,8 @@ function Transaction({
           disabled={busy || !t.providerRequestId}
           onClick={() =>
             void run(async () => {
-              const result = await paymentHubApi.query(t.id, facilityId);
-              if (result.status === 'REVIEW_REQUIRED')
-                throw new Error('Conflicting status requires manual review.');
-            }, 'Status query completed; no receipt or invoice was changed.')
+              await paymentHubApi.query(t.id, facilityId);
+            }, 'Status query completed; review the updated status. No receipt or invoice was changed.')
           }
         >
           Query provider status

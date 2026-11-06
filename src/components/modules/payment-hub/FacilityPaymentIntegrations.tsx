@@ -657,6 +657,7 @@ function DarajaVaultForm({
     passkey: '',
     shortcode: '',
     transactionType: '',
+    partyB: '',
   };
   const [credentials, setCredentials] = useState(empty);
   const [expiry, setExpiry] = useState('');
@@ -677,10 +678,14 @@ function DarajaVaultForm({
           event.preventDefault();
           void run(async () => {
             try {
+              const { partyB, ...common } = credentials;
               await paymentHubApi.credentials(integrationId, {
                 facilityId,
                 source: 'VAULT',
-                credentials,
+                credentials:
+                  credentials.transactionType === 'CustomerBuyGoodsOnline'
+                    ? { ...common, partyB }
+                    : common,
                 expiresAt: expiry ? new Date(expiry).toISOString() : null,
               });
             } finally {
@@ -751,6 +756,24 @@ function DarajaVaultForm({
             <option value="CustomerBuyGoodsOnline">Buy goods</option>
           </select>
         </label>
+        {credentials.transactionType === 'CustomerBuyGoodsOnline' && (
+          <label className="text-xs">
+            Sandbox receiving till (PartyB)
+            <input
+              className={field}
+              type="password"
+              autoComplete="new-password"
+              inputMode="numeric"
+              pattern="[0-9]{4,12}"
+              required
+              value={credentials.partyB}
+              onChange={(e) => setCredentials({ ...credentials, partyB: e.target.value })}
+            />
+            <span className="block text-slate-500">
+              Use the provider-issued receiving till, which may differ from the business shortcode.
+            </span>
+          </label>
+        )}
         <label className="text-xs">
           Credential expiry (optional; your local time)
           <input

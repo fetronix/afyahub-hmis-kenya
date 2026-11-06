@@ -27,6 +27,7 @@ const codes = [
   'payment_hub.collection.initiate',
   'payment_hub.payments.verify',
   'payment_hub.reconciliation.manage',
+  'billing.read',
 ];
 const facilityCodes = codes.filter(
   (x) =>
@@ -63,11 +64,15 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     cToken: string,
     clerkToken: string,
     tenantToken: string,
-    delegatedToken: string;
+    delegatedToken: string,
+    initiatorOnlyToken: string,
+    billingOnlyToken: string;
   let queryResult = '4999',
     pushCount = 0,
     offline = false,
     failPush = false;
+  let lastPushBody: Record<string, unknown> | null = null;
+  let duplicateCheckoutId: string | null = null;
   const realFetch = globalThis.fetch;
   const secretNames: string[] = [];
   const provision = (
@@ -177,7 +182,13 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
         facilityA,
         `HUB_DELEGATED_${x}`,
         facilityCodes,
-      );
+      ),
+      initiatorOnly = await createActor('init-only', tenantA, facilityA, `HUB_INIT_${x}`, [
+        'payment_hub.collection.initiate',
+      ]),
+      billingOnly = await createActor('billing-only', tenantA, facilityA, `HUB_BILL_${x}`, [
+        'billing.read',
+      ]);
     superUser = su.id;
     userA = a.id;
     userC = c.id;
@@ -188,6 +199,8 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     clerkToken = clerk.token;
     tenantToken = tenant.token;
     delegatedToken = delegated.token;
+    initiatorOnlyToken = initiatorOnly.token;
+    billingOnlyToken = billingOnly.token;
     const patient = await pool.query(
       `INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender) VALUES($1,$2,$3,'Synthetic','Patient','2000-01-01','Unknown') RETURNING id`,
       [tenantA, facilityA, `hub-mrn-${x}`],
@@ -235,12 +248,13 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
             status: 200,
           });
         if (target.includes('/mpesa/stkpush/v1/processrequest')) {
+          lastPushBody = JSON.parse(String(init?.body));
           pushCount++;
           if (failPush) throw new Error('synthetic timeout after dispatch');
           return new Response(
             JSON.stringify({
               ResponseCode: '0',
-              CheckoutRequestID: `ws_synthetic_${x}_${pushCount}`,
+              CheckoutRequestID: duplicateCheckoutId ?? `ws_synthetic_${x}_${pushCount}`,
             }),
             { status: 200 },
           );
@@ -644,6 +658,226 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     );
     expect(invoice.rows[0]).toMatchObject({ paid_amount: '0.00', status: 'Unpaid' });
   });
+  it('browses bounded, scoped sandbox integrations and invoices with both finance permissions', async () => {
+    const basePath = '/api/payment-hub/facility/collections';
+    for (const token of [initiatorOnlyToken, billingOnlyToken, clerkToken, superToken]) {
+      expect(
+        (await call(token, 'GET', `${basePath}/integrations?facilityId=${facilityA}`)).status,
+      ).toBe(403);
+      expect(
+        (await call(token, 'GET', `${basePath}/invoices?facilityId=${facilityA}`)).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(token, 'POST', `${basePath}/recovery`, {
+            facilityId: facilityA,
+            idempotencyKey: 'synthetic-request-1',
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await call(
+            token,
+            'POST',
+            basePath,
+            {
+              facilityId: facilityA,
+              integrationId,
+              invoiceId,
+              amountKes: '20',
+              phone: '254700000001',
+            },
+            'synthetic-permission-test',
+          )
+        ).status,
+      ).toBe(403);
+    }
+    expect((await call(aToken, 'GET', `${basePath}/invoices?facilityId=${facilityB}`)).status).toBe(
+      403,
+    );
+    expect(
+      (await call(cToken, 'GET', `${basePath}/integrations?facilityId=${facilityA}`)).status,
+    ).toBe(403);
+    expect(
+      (await call(aToken, 'GET', `${basePath}/invoices?facilityId=${facilityA}&after=-1`)).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          aToken,
+          'GET',
+          `${basePath}/invoices?facilityId=${facilityA}&q=${'x'.repeat(81)}`,
+        )
+      ).status,
+    ).toBe(400);
+    for (const control of ['%00', '%1F', '%7F'])
+      expect(
+        (await call(aToken, 'GET', `${basePath}/invoices?facilityId=${facilityA}&q=${control}`))
+          .status,
+      ).toBe(400);
+
+    const available = await call(aToken, 'GET', `${basePath}/integrations?facilityId=${facilityA}`);
+    expect(available.status).toBe(200);
+    expect(available.data.integrations).toEqual([
+      { id: integrationId, providerName: 'Safaricom M-Pesa · Daraja' },
+    ]);
+    expect(available.data.nextCursor).toBeNull();
+    expect(JSON.stringify(available.data)).not.toContain(fakeCredentials.consumerSecret);
+    expect(
+      (await call(bToken, 'GET', `${basePath}/integrations?facilityId=${facilityB}`)).data
+        .integrations,
+    ).toEqual([]);
+
+    const patientId = (
+      await pool.query('SELECT patient_id FROM billing_invoices WHERE id=$1', [invoiceId])
+    ).rows[0].patient_id;
+    const prefix = `SYN-PAGE-${invoiceId}-`;
+    await pool.query(
+      `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,status)
+       SELECT $1,$2,$3,$4||n::text,100,0,100,'Unpaid' FROM generate_series(1,30) n`,
+      [tenantA, facilityA, patientId, prefix],
+    );
+    await pool.query(
+      `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,status)
+       VALUES($1,$2,$3,$4,100,100,0,'Paid'),($1,$2,$3,$5,100,0,100,'Void')`,
+      [tenantA, facilityA, patientId, `${prefix}paid`, `${prefix}void`],
+    );
+    const first = await call(
+      aToken,
+      'GET',
+      `${basePath}/invoices?facilityId=${facilityA}&q=${prefix}`,
+    );
+    expect(first.status).toBe(200);
+    expect(first.data.invoices).toHaveLength(25);
+    expect(first.data.nextCursor).toBe(first.data.invoices[24].id);
+    const second = await call(
+      aToken,
+      'GET',
+      `${basePath}/invoices?facilityId=${facilityA}&q=${prefix}&after=${first.data.nextCursor}`,
+    );
+    expect(second.data.invoices).toHaveLength(5);
+    expect(second.data.nextCursor).toBeNull();
+    expect(
+      new Set([...first.data.invoices, ...second.data.invoices].map((item: any) => item.id)).size,
+    ).toBe(30);
+    expect(
+      first.data.invoices.every(
+        (item: any) => item.invoiceNumber.startsWith(prefix) && item.balanceAmount === '100.00',
+      ),
+    ).toBe(true);
+    expect(
+      (await call(cToken, 'GET', `${basePath}/invoices?facilityId=${facilityC}&q=${prefix}`)).data
+        .invoices,
+    ).toEqual([]);
+    expect(
+      (await call(aToken, 'GET', `${basePath}/invoices?facilityId=${facilityA}&q=%25`)).data
+        .invoices,
+    ).toEqual([]);
+  });
+  it('recovers only the initiating actor’s opaque key and never redispatches on replay', async () => {
+    const basePath = '/api/payment-hub/facility/collections';
+    const key = 'synthetic-request-1';
+    const found = await call(aToken, 'POST', `${basePath}/recovery`, {
+      facilityId: facilityA,
+      idempotencyKey: key,
+    });
+    expect(found.status).toBe(200);
+    expect(found.data).toMatchObject({
+      recovery: 'RECORDED',
+      transaction: {
+        id: transactionId,
+        invoiceId,
+        integrationId,
+        status: 'PENDING',
+        hasProviderReference: true,
+      },
+    });
+    expect(JSON.stringify(found.data)).not.toContain('254700000001');
+    expect(JSON.stringify(found.data)).not.toContain(fakeCredentials.consumerSecret);
+    const peer = await call(delegatedToken, 'POST', `${basePath}/recovery`, {
+      facilityId: facilityA,
+      idempotencyKey: key,
+    });
+    expect(peer.data).toMatchObject({ recovery: 'NOT_FOUND', transaction: null });
+    const missing = await call(aToken, 'POST', `${basePath}/recovery`, {
+      facilityId: facilityA,
+      idempotencyKey: 'synthetic-missing',
+    });
+    expect(missing.data.recovery).toBe('NOT_FOUND');
+    expect(missing.data.notice).toMatch(/in-flight/);
+    expect(
+      (
+        await call(bToken, 'POST', `${basePath}/recovery`, {
+          facilityId: facilityB,
+          idempotencyKey: key,
+        })
+      ).data.recovery,
+    ).toBe('NOT_FOUND');
+    expect(
+      (
+        await call(cToken, 'POST', `${basePath}/recovery`, {
+          facilityId: facilityA,
+          idempotencyKey: key,
+        })
+      ).status,
+    ).toBe(403);
+    const before = pushCount;
+    const replayByPeer = await call(
+      delegatedToken,
+      'POST',
+      basePath,
+      { facilityId: facilityA, integrationId, invoiceId, amountKes: '20', phone: '254700000001' },
+      key,
+    );
+    expect(replayByPeer).toMatchObject({ status: 409, data: { error: 'IDEMPOTENCY_CONFLICT' } });
+    expect(pushCount).toBe(before);
+  });
+  it('treats a duplicate provider checkout identifier as an unknown dispatch, not acceptance', async () => {
+    duplicateCheckoutId = (
+      await pool.query('SELECT provider_request_id FROM payment_hub_transactions WHERE id=$1', [
+        transactionId,
+      ])
+    ).rows[0].provider_request_id;
+    const before = pushCount;
+    try {
+      const result = await call(
+        aToken,
+        'POST',
+        '/api/payment-hub/facility/collections',
+        {
+          facilityId: facilityA,
+          integrationId,
+          invoiceId,
+          amountKes: '10',
+          phone: '254700000005',
+          confirmSeparateRequest: true,
+        },
+        'synthetic-duplicate-provider-reference',
+      );
+      expect(result.data.status).toBe('UNKNOWN');
+      expect(pushCount).toBe(before + 1);
+      const stored = (
+        await pool.query(
+          'SELECT status,provider_request_id FROM payment_hub_transactions WHERE id=$1',
+          [result.data.transactionId],
+        )
+      ).rows[0];
+      expect(stored).toEqual({ status: 'UNKNOWN', provider_request_id: null });
+      expect(
+        (
+          await pool.query('SELECT paid_amount,balance_amount FROM billing_invoices WHERE id=$1', [
+            invoiceId,
+          ])
+        ).rows[0],
+      ).toEqual({ paid_amount: '0.00', balance_amount: '100.00' });
+      expect(
+        (await pool.query('SELECT id FROM billing_payments WHERE invoice_id=$1', [invoiceId])).rows,
+      ).toEqual([]);
+    } finally {
+      duplicateCheckoutId = null;
+    }
+  });
   it('rejects unauthenticated callback replays without recording or changing financial state', async () => {
     const txBefore = (
       await pool.query('SELECT * FROM payment_hub_transactions WHERE id=$1', [transactionId])
@@ -658,6 +892,10 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     const paymentsBefore = await pool.query('SELECT id FROM billing_payments WHERE invoice_id=$1', [
       invoiceId,
     ]);
+    const journalsBefore = await pool.query(
+      'SELECT id FROM journal_entries WHERE tenant_id=$1 AND facility_id=$2',
+      [tenantA, facilityA],
+    );
     const callback = {
       Body: {
         stkCallback: {
@@ -678,6 +916,20 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       callback,
       callback,
       { ...callback, irrelevant: 'modified replay' },
+      {
+        Body: {
+          stkCallback: {
+            CheckoutRequestID: txBefore.provider_request_id,
+            ResultCode: 0,
+            CallbackMetadata: {
+              Item: [
+                { Name: 'Amount', Value: 99 },
+                { Name: 'Currency', Value: 'USD' },
+              ],
+            },
+          },
+        },
+      },
       { Body: { stkCallback: { CheckoutRequestID: 'unknown_id', ResultCode: 0 } } },
     ];
     const attempts = await Promise.all(
@@ -707,6 +959,14 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     ).toEqual(paymentsBefore.rows);
     expect(
       (
+        await pool.query('SELECT id FROM journal_entries WHERE tenant_id=$1 AND facility_id=$2', [
+          tenantA,
+          facilityA,
+        ])
+      ).rows,
+    ).toEqual(journalsBefore.rows);
+    expect(
+      (
         await call(
           bToken,
           'POST',
@@ -723,7 +983,7 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     expect(other.data.transactions).toEqual([]);
   });
   it('never promotes pending, failed, ambiguous or unavailable results to a payment', async () => {
-    for (const code of ['4999', '1032']) {
+    for (const code of ['4999']) {
       queryResult = code;
       const r = await call(
         aToken,
@@ -780,6 +1040,70 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
       { facilityId: facilityA },
     );
     expect(conflict.data.status).toBe('REVIEW_REQUIRED');
+  });
+  it('records a documented cancellation from the scoped status query without creating a receipt', async () => {
+    const invoiceBefore = (
+      await pool.query('SELECT * FROM billing_invoices WHERE id=$1', [invoiceId])
+    ).rows[0];
+    const paymentsBefore = await pool.query('SELECT id FROM billing_payments WHERE invoice_id=$1', [
+      invoiceId,
+    ]);
+    const started = await call(
+      aToken,
+      'POST',
+      '/api/payment-hub/facility/collections',
+      {
+        facilityId: facilityA,
+        integrationId,
+        invoiceId,
+        amountKes: '10',
+        phone: '254700000002',
+        confirmSeparateRequest: true,
+      },
+      'synthetic-cancelled-query',
+    );
+    expect(started.data.status).toBe('PENDING');
+    const id = started.data.transactionId;
+    queryResult = '1032';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const cancelled = await call(
+        aToken,
+        'POST',
+        `/api/payment-hub/facility/transactions/${id}/query`,
+        { facilityId: facilityA },
+      );
+      expect(cancelled.status).toBe(200);
+      expect(cancelled.data.status).toBe('FAILED');
+    }
+    queryResult = '4999';
+    const inconclusive = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/transactions/${id}/query`,
+      { facilityId: facilityA },
+    );
+    expect(inconclusive.data.status).toBe('FAILED');
+    expect(
+      (
+        await pool.query('SELECT status,result_code FROM payment_hub_transactions WHERE id=$1', [
+          id,
+        ])
+      ).rows[0],
+    ).toEqual({ status: 'FAILED', result_code: '1032' });
+    expect(
+      (await pool.query('SELECT * FROM billing_invoices WHERE id=$1', [invoiceId])).rows[0],
+    ).toEqual(invoiceBefore);
+    expect(
+      (await pool.query('SELECT id FROM billing_payments WHERE invoice_id=$1', [invoiceId])).rows,
+    ).toEqual(paymentsBefore.rows);
+    queryResult = '0';
+    const conflicting = await call(
+      aToken,
+      'POST',
+      `/api/payment-hub/facility/transactions/${id}/query`,
+      { facilityId: facilityA },
+    );
+    expect(conflicting.data.status).toBe('REVIEW_REQUIRED');
   });
   it('records ambiguous dispatch once and refuses automatic retries', async () => {
     failPush = true;
@@ -1290,6 +1614,13 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     );
     expect(history.status).toBe(200);
     expect(history.data.transactions.some((t: any) => t.id === transactionId)).toBe(true);
+    const selectable = await call(
+      aToken,
+      'GET',
+      `/api/payment-hub/facility/collections/integrations?facilityId=${facilityA}`,
+    );
+    expect(selectable.status).toBe(200);
+    expect(selectable.data.integrations).toEqual([]);
     const events = await pool.query(
       `SELECT details FROM audit_logs WHERE resource LIKE 'payment_hub.%' AND facility_id=$1`,
       [facilityA],
@@ -1819,5 +2150,153 @@ describeDb('payment hub authenticated HTTP and PostgreSQL (mocked provider only)
     ).rows[0];
     for (const value of Object.values(original) as string[])
       expect(row.encrypted_value).not.toContain(value);
+  });
+  it('requires the Buy Goods till on save and fails before dispatch for legacy incomplete credentials', async () => {
+    expect(
+      (
+        await call(
+          superToken,
+          'PUT',
+          `/api/payment-hub/platform/providers/${providerId}/facilities/${facilityB}`,
+          { isAllowed: true },
+        )
+      ).status,
+    ).toBe(200);
+    const otherId = (
+      await pool.query(
+        `SELECT id FROM facility_payment_integrations WHERE provider_id=$1 AND facility_id=$2 AND environment='SANDBOX'`,
+        [providerId, facilityB],
+      )
+    ).rows[0].id;
+    const path = `/api/payment-hub/facility/integrations/${otherId}/credentials`;
+    const credentials = {
+      consumerKey: `${fakeCredentials.consumerKey}-buygoods`,
+      consumerSecret: `${fakeCredentials.consumerSecret}-buygoods`,
+      passkey: `${fakeCredentials.passkey}-buygoods`,
+      shortcode: '123456',
+      transactionType: 'CustomerBuyGoodsOnline',
+    };
+    const incomplete = await call(bToken, 'PUT', path, {
+      facilityId: facilityB,
+      source: 'VAULT',
+      credentials,
+    });
+    expect(incomplete).toMatchObject({ status: 400, data: { error: 'RECEIVING_TILL_REQUIRED' } });
+    const saved = await call(bToken, 'PUT', path, {
+      facilityId: facilityB,
+      source: 'VAULT',
+      credentials: { ...credentials, partyB: '654321' },
+    });
+    expect(saved.status).toBe(200);
+    expect(JSON.stringify(saved.data)).not.toContain('654321');
+    const encrypted = (
+      await pool.query(
+        'SELECT encrypted_value FROM facility_payment_secrets WHERE integration_id=$1',
+        [otherId],
+      )
+    ).rows[0].encrypted_value;
+    expect(encrypted).not.toContain('654321');
+    const secretScope = { tenantId: tenantA, facilityId: facilityB, integrationId: otherId };
+    const stored = decryptFacilitySecret(secretScope, encrypted);
+    expect(stored.partyB).toBe('654321');
+    expect(
+      (
+        await call(bToken, 'POST', `/api/payment-hub/facility/integrations/${otherId}/accounts`, {
+          facilityId: facilityB,
+          alias: 'Synthetic Buy Goods',
+          accountType: 'MOBILE_MONEY',
+          lastFour: '4321',
+        })
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await call(bToken, 'POST', `/api/payment-hub/facility/integrations/${otherId}/health`, {
+          facilityId: facilityB,
+        })
+      ).data.status,
+    ).toBe('HEALTHY');
+    expect(
+      (
+        await call(bToken, 'PUT', `/api/payment-hub/facility/integrations/${otherId}/enabled`, {
+          facilityId: facilityB,
+          enabled: true,
+        })
+      ).status,
+    ).toBe(200);
+    const suffix = randomUUID().slice(0, 8);
+    const patient = (
+      await pool.query(
+        `INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender) VALUES($1,$2,$3,'Synthetic','Buy Goods','2000-01-01','Unknown') RETURNING id`,
+        [tenantA, facilityB, `buygoods-${suffix}`],
+      )
+    ).rows[0].id;
+    const otherInvoiceId = (
+      await pool.query(
+        `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,status) VALUES($1,$2,$3,$4,30,0,30,'Unpaid') RETURNING id`,
+        [tenantA, facilityB, patient, `BUY-GOODS-${suffix}`],
+      )
+    ).rows[0].id;
+    const body = {
+      facilityId: facilityB,
+      integrationId: otherId,
+      invoiceId: otherInvoiceId,
+      amountKes: '10',
+      phone: '254700000004',
+    };
+    delete stored.partyB;
+    await pool.query(
+      'UPDATE facility_payment_secrets SET encrypted_value=$2 WHERE integration_id=$1',
+      [otherId, encryptFacilitySecret(secretScope, stored)],
+    );
+    const before = pushCount;
+    try {
+      const legacy = await call(
+        bToken,
+        'POST',
+        '/api/payment-hub/facility/collections',
+        body,
+        'synthetic-buygoods-legacy',
+      );
+      expect(legacy).toMatchObject({ status: 409, data: { error: 'RECEIVING_TILL_REQUIRED' } });
+      expect(pushCount).toBe(before);
+      expect(
+        (
+          await pool.query('SELECT id FROM payment_hub_transactions WHERE invoice_id=$1', [
+            otherInvoiceId,
+          ])
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      await pool.query(
+        'UPDATE facility_payment_secrets SET encrypted_value=$2 WHERE integration_id=$1',
+        [otherId, encrypted],
+      );
+    }
+    const started = await call(
+      bToken,
+      'POST',
+      '/api/payment-hub/facility/collections',
+      body,
+      'synthetic-buygoods-ok',
+    );
+    expect(started.data.status).toBe('PENDING');
+    expect(pushCount).toBe(before + 1);
+    expect(lastPushBody).toMatchObject({
+      BusinessShortCode: '123456',
+      PartyB: '654321',
+      TransactionType: 'CustomerBuyGoodsOnline',
+    });
+    expect(
+      (
+        await pool.query('SELECT paid_amount,balance_amount FROM billing_invoices WHERE id=$1', [
+          otherInvoiceId,
+        ])
+      ).rows[0],
+    ).toEqual({ paid_amount: '0.00', balance_amount: '30.00' });
+    expect(
+      (await pool.query('SELECT id FROM billing_payments WHERE invoice_id=$1', [otherInvoiceId]))
+        .rows,
+    ).toEqual([]);
   });
 });

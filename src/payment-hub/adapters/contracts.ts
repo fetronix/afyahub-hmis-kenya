@@ -6,7 +6,7 @@ export type Capability =
   | 'TRANSFER'
   | 'NOTIFICATIONS'
   | 'HEALTH';
-export type QueryOutcome = 'CONFIRMED' | 'UNKNOWN';
+export type QueryOutcome = 'CONFIRMED' | 'CANCELLED' | 'UNKNOWN';
 export interface AccountInformationCapability {
   getAccountInformation(): Promise<unknown>;
   getStatement(): Promise<unknown>;
