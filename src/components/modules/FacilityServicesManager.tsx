@@ -5,6 +5,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import type { FacilityService, ServiceTariff } from '../../types/index.ts';
 import type { FacilityServiceExpectedState } from '../../api/clients/billing.client.ts';
 import { FacilityServicesTable, FacilityTariffsTable } from './FacilityPricingTables.tsx';
+import { FacilityTariffHistory } from './FacilityTariffHistory.tsx';
 
 const departments = [
   ['opd', 'OPD'],
@@ -80,6 +81,11 @@ export const FacilityServicesManager: React.FC<{
   const [serviceExpected, setServiceExpected] = useState<FacilityServiceExpectedState | null>(null);
   const [service, setService] = useState(blankService);
   const [tariffOpen, setTariffOpen] = useState(false);
+  const [historyTariff, setHistoryTariff] = useState<{
+    id: number;
+    code: string;
+    facilityId: number;
+  } | null>(null);
   const [tariffEdit, setTariffEdit] = useState<number | null>(null);
   const [tariffRevision, setTariffRevision] = useState<number | null>(null);
   const [tariff, setTariff] = useState(blankTariff);
@@ -684,6 +690,7 @@ export const FacilityServicesManager: React.FC<{
         canManage={canManage}
         busy={busy || needsVerification || serviceOpen || tariffOpen}
         onEdit={editTariff}
+        onHistory={(row) => setHistoryTariff({ id: row.id, code: row.code, facilityId })}
         onToggle={(row) =>
           void run(
             () => api.setFacilityTariffStatus(row.id, facilityId, !row.isActive),
@@ -710,6 +717,15 @@ export const FacilityServicesManager: React.FC<{
             }, `Tariff ${row.code} was permanently deleted.`);
         }}
       />
+      {historyTariff && historyTariff.facilityId === facilityId && (
+        <FacilityTariffHistory
+          key={`${facilityId}:${historyTariff.id}`}
+          facilityId={facilityId}
+          tariffId={historyTariff.id}
+          tariffCode={historyTariff.code}
+          onClose={() => setHistoryTariff(null)}
+        />
+      )}
     </section>
   );
 };

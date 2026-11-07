@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const mocks = vi.hoisted(() => ({
   api: {
     getFacilityServices: vi.fn(),
     getFacilityTariffs: vi.fn(),
+    getFacilityTariffHistory: vi.fn(),
     createFacilityService: vi.fn(),
     updateFacilityService: vi.fn(),
     createFacilityTariff: vi.fn(),
@@ -77,6 +78,12 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.api.getFacilityServices.mockResolvedValue([consultation, pharmacy]);
   mocks.api.getFacilityTariffs.mockResolvedValue([tariff]);
+  mocks.api.getFacilityTariffHistory.mockResolvedValue({
+    events: [],
+    nextCursor: null,
+    coverage: 'RECORDED_EVENTS_ONLY',
+    timestampTimezone: 'NOT_RECORDED',
+  });
   mocks.api.getChargeAttempts.mockResolvedValue({
     facilityId: 5,
     pending: 1,
@@ -104,6 +111,164 @@ describe('Facility services and tariff tables', () => {
     expect(mocks.api.retryChargeAttempts).not.toHaveBeenCalled();
   });
 
+  it('does not offer price history for master-only legacy tariffs', async () => {
+    mocks.api.getFacilityTariffs.mockResolvedValue([
+      tariff,
+      {
+        ...tariff,
+        id: 21,
+        code: 'PRICE-LEGACY',
+        facilityServiceId: null,
+        masterServiceId: 42,
+      },
+      {
+        ...tariff,
+        id: 22,
+        code: 'PRICE-LINKED',
+        facilityServiceId: 10,
+        masterServiceId: 42,
+      },
+    ]);
+    renderManager();
+    expect(
+      await screen.findByRole('button', { name: 'View price history for PRICE-OPD' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'View price history for PRICE-LINKED' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'View price history for PRICE-LEGACY' }),
+    ).not.toBeInTheDocument();
+    expect(mocks.api.getFacilityTariffHistory).not.toHaveBeenCalled();
+  });
+
+  it('shows only recorded facility price events and paginates without changing a tariff', async () => {
+    mocks.api.getFacilityTariffHistory.mockImplementation(
+      async (_facility: number, _tariff: number, beforeId?: number) => ({
+        events: beforeId
+          ? [
+              {
+                id: 1,
+                action: 'CREATE',
+                recordedTime: '2026-01-01 08:00:00.000',
+                actorUserId: null,
+                actorKind: 'SYSTEM',
+                before: null,
+                after: { fee: '0.00' },
+              },
+            ]
+          : [
+              {
+                id: 2,
+                action: 'UPDATE',
+                recordedTime: '2026-01-02 09:00:00.000',
+                actorUserId: '2',
+                actorKind: 'USER',
+                before: { fee: '0.00' },
+                after: { fee: '123.45', effectiveFrom: '2026-01-01', effectiveTo: null },
+              },
+            ],
+        nextCursor: beforeId ? null : 2,
+        coverage: 'RECORDED_EVENTS_ONLY',
+        timestampTimezone: 'NOT_RECORDED',
+      }),
+    );
+    const user = userEvent.setup();
+    renderManager();
+    await user.click(
+      await screen.findByRole('button', { name: 'View price history for PRICE-OPD' }),
+    );
+    const region = screen.getByRole('region', { name: 'Price history for PRICE-OPD' });
+    expect(await within(region).findByText(/KES 123.45.*from 2026-01-01/)).toBeInTheDocument();
+    expect(within(region).getByText(/missing history is not proof/)).toBeInTheDocument();
+    await user.click(within(region).getByRole('button', { name: 'Next history page' }));
+    expect(await within(region).findByText('CREATE')).toBeInTheDocument();
+    expect(within(region).getByText('System')).toBeInTheDocument();
+    expect(mocks.api.getFacilityTariffHistory).toHaveBeenCalledWith(5, 20, 2);
+    await user.click(within(region).getByRole('button', { name: 'Previous history page' }));
+    expect(await within(region).findByText('UPDATE')).toBeInTheDocument();
+    expect(mocks.api.updateFacilityTariff).not.toHaveBeenCalled();
+    expect(mocks.api.retryChargeAttempts).not.toHaveBeenCalled();
+    await user.click(within(region).getByRole('button', { name: 'Close history' }));
+    expect(
+      screen.queryByRole('region', { name: 'Price history for PRICE-OPD' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reports history failure and retries rather than claiming there are no changes', async () => {
+    mocks.api.getFacilityTariffHistory.mockRejectedValueOnce(new Error('synthetic failure'));
+    const user = userEvent.setup();
+    renderManager();
+    await user.click(
+      await screen.findByRole('button', { name: 'View price history for PRICE-OPD' }),
+    );
+    const region = screen.getByRole('region', { name: 'Price history for PRICE-OPD' });
+    expect(await within(region).findByRole('alert')).toHaveTextContent('could not be loaded');
+    expect(within(region).queryByText('No recorded events were found.')).not.toBeInTheDocument();
+    await user.click(within(region).getByRole('button', { name: 'Retry history' }));
+    expect(await within(region).findByText('No recorded events were found.')).toBeInTheDocument();
+  });
+
+  it('does not display a late price-history response after switching facilities', async () => {
+    let finish: (value: unknown) => void = () => {};
+    mocks.api.getFacilityTariffHistory.mockImplementation((facilityId: number) =>
+      facilityId === 5
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve({
+            events: [
+              {
+                id: 8,
+                action: 'CREATE',
+                recordedTime: '2026-01-02 00:00:00.000',
+                actorUserId: '2',
+                actorKind: 'USER',
+                before: null,
+                after: { fee: '99.00' },
+              },
+            ],
+            nextCursor: null,
+          }),
+    );
+    const user = userEvent.setup();
+    const view = renderManager();
+    await user.click(
+      await screen.findByRole('button', { name: 'View price history for PRICE-OPD' }),
+    );
+    await waitFor(() =>
+      expect(mocks.api.getFacilityTariffHistory).toHaveBeenCalledWith(5, 20, undefined),
+    );
+    mocks.api.getFacilityServices.mockResolvedValue([{ ...consultation, id: 11, facilityId: 6 }]);
+    mocks.api.getFacilityTariffs.mockResolvedValue([
+      { ...tariff, id: 21, facilityId: 6, facilityServiceId: 11, code: 'PRICE-OTHER' },
+    ]);
+    view.rerender(<FacilityServicesManager facilityId={6} enabledModules={['opd']} canManage />);
+    await user.click(
+      await screen.findByRole('button', { name: 'View price history for PRICE-OTHER' }),
+    );
+    const region = screen.getByRole('region', { name: 'Price history for PRICE-OTHER' });
+    expect(await within(region).findByText('KES 99.00')).toBeInTheDocument();
+    await act(async () =>
+      finish({
+        events: [
+          {
+            id: 9,
+            action: 'UPDATE',
+            recordedTime: '2026-01-01 00:00:00.000',
+            actorUserId: '1',
+            actorKind: 'USER',
+            before: null,
+            after: { fee: '876.00' },
+          },
+        ],
+        nextCursor: null,
+      }),
+    );
+    expect(within(region).queryByText('KES 876.00')).not.toBeInTheDocument();
+    expect(within(region).getByText('KES 99.00')).toBeInTheDocument();
+  });
+
   it('renders real table headers, precise prices and dates, and filters without changing records', async () => {
     const user = userEvent.setup();
     renderManager();
@@ -115,7 +280,7 @@ describe('Facility services and tariff tables', () => {
     expect(
       within(tariffTable).getByRole('columnheader', { name: 'Effective dates' }),
     ).toBeInTheDocument();
-    expect(within(tariffTable).getByText('KES 123.45')).toBeInTheDocument();
+    expect(await within(tariffTable).findByText('KES 123.45')).toBeInTheDocument();
     expect(within(tariffTable).getByText('From: 2026-01-01')).toBeInTheDocument();
     expect(within(tariffTable).getByText('To: 2026-12-31')).toBeInTheDocument();
     expect(within(tariffTable).getByText('Synthetic consultation')).toBeInTheDocument();

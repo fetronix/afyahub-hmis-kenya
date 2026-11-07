@@ -58,6 +58,30 @@ export interface FacilityTariffInput {
   autoBill: boolean;
 }
 
+export interface FacilityTariffHistorySnapshot {
+  code?: string;
+  fee?: string;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  isActive?: boolean;
+  autoBill?: boolean;
+  revision?: number;
+}
+export interface FacilityTariffHistoryPage {
+  events: Array<{
+    id: number;
+    action: string;
+    recordedTime: string;
+    actorUserId: string | null;
+    actorKind: 'USER' | 'SYSTEM' | 'UNKNOWN';
+    before: FacilityTariffHistorySnapshot | null;
+    after: FacilityTariffHistorySnapshot | null;
+  }>;
+  nextCursor: number | null;
+  coverage: 'RECORDED_EVENTS_ONLY';
+  timestampTimezone: 'NOT_RECORDED';
+}
+
 export const billingClient = {
   getFacilityServices: (facilityId: number) =>
     fetchJson<FacilityService[]>(
@@ -101,6 +125,13 @@ export const billingClient = {
     fetchJson<ServiceTariff[]>(
       `${API_BASE}/facility-tariffs?facilityId=${encodeURIComponent(facilityId)}`,
     ),
+  getFacilityTariffHistory: (facilityId: number, tariffId: number, beforeId?: number) => {
+    const query = new URLSearchParams({ facilityId: String(facilityId) });
+    if (beforeId !== undefined) query.set('beforeId', String(beforeId));
+    return fetchJson<FacilityTariffHistoryPage>(
+      `${API_BASE}/facility-tariffs/${tariffId}/history?${query}`,
+    );
+  },
   createFacilityTariff: (input: FacilityTariffInput) =>
     fetchJson<ServiceTariff>(`${API_BASE}/facility-tariffs`, {
       method: 'POST',

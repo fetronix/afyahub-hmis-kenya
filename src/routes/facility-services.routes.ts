@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { requireAnyPermission, requirePermission } from '../auth/authorization.middleware.ts';
@@ -14,7 +14,7 @@ import {
   type FacilityDeleteTransaction,
 } from '../billing/facility-delete-safety.ts';
 import { calendarDateInZone, validTimezone } from '../dashboard/timezone.ts';
-import { parseMoneyToCents } from '../billing/settlement.ts';
+import { formatCents, parseMoneyToCents } from '../billing/settlement.ts';
 import { handleScopeError } from './shared/errors.ts';
 import {
   facilityHasTariffModule,
@@ -209,6 +209,55 @@ function tariffAuditSnapshot(row: FacilityTariffRow) {
     autoBill: row.autoBill,
     archivedAt: row.archivedAt,
     revision: row.revision,
+  };
+}
+
+// Audit details can contain free text from older writers. Return only validated
+// tariff fields, never raw details, names, addresses, or arbitrary strings.
+function historySnapshot(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  const snapshot: {
+    code?: string;
+    fee?: string;
+    effectiveFrom?: string | null;
+    effectiveTo?: string | null;
+    isActive?: boolean;
+    autoBill?: boolean;
+    revision?: number;
+  } = {};
+  const parsedCode = code.safeParse(data.code);
+  if (parsedCode.success) snapshot.code = parsedCode.data;
+  const fee =
+    typeof data.fee === 'string' || typeof data.fee === 'number'
+      ? parseMoneyToCents(data.fee)
+      : null;
+  if (fee !== null && fee >= 0) snapshot.fee = formatCents(fee);
+  for (const key of ['effectiveFrom', 'effectiveTo'] as const) {
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      const parsed = day.safeParse(data[key]);
+      if (parsed.success && parsed.data !== undefined) snapshot[key] = parsed.data;
+    }
+  }
+  if (typeof data.isActive === 'boolean') snapshot.isActive = data.isActive;
+  if (typeof data.autoBill === 'boolean') snapshot.autoBill = data.autoBill;
+  if (Number.isSafeInteger(data.revision) && Number(data.revision) > 0)
+    snapshot.revision = Number(data.revision);
+  return Object.keys(snapshot).length ? snapshot : null;
+}
+
+function historyDetails(details: string | null, action: string) {
+  let data: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = details ? JSON.parse(details) : {};
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      data = parsed as Record<string, unknown>;
+  } catch {
+    // Incomplete historical data remains unavailable; never infer a price.
+  }
+  return {
+    before: historySnapshot(data.before),
+    after: historySnapshot(action === 'CREATE' ? data : data.after),
   };
 }
 
@@ -702,6 +751,106 @@ router.get(
           )
           .orderBy(asc(schema.facilityServiceTariffs.code)),
       );
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+
+// This is the audit trail for one facility-owned tariff, not the retired
+// master catalogue history. It reads only recorded events and cannot reprice.
+router.get(
+  '/api/facility-tariffs/:id/history',
+  requirePermission('tariffs.read'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.query.facilityId);
+      if (!facility || !req.authContext) return;
+      const tariffId = id(req.params.id);
+      const rawCursor = req.query.beforeId;
+      if (
+        rawCursor !== undefined &&
+        (typeof rawCursor !== 'string' ||
+          !/^[1-9]\d*$/.test(rawCursor) ||
+          !Number.isSafeInteger(Number(rawCursor)))
+      )
+        throw new FacilityServiceError(
+          'INVALID_HISTORY_CURSOR',
+          'A valid history cursor is required.',
+        );
+      const beforeId = rawCursor === undefined ? undefined : Number(rawCursor);
+      const actor = req.authContext.userId;
+      const result = await db.transaction(async (tx) => {
+        const [tariff] = await tx
+          .select({
+            id: schema.facilityServiceTariffs.id,
+            facilityServiceId: schema.facilityServiceTariffs.facilityServiceId,
+            masterServiceId: schema.facilityServiceTariffs.masterServiceId,
+          })
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .limit(1)
+          .for('share');
+        if (!tariff || (tariff.masterServiceId !== null && tariff.facilityServiceId === null))
+          throw new FacilityServiceError('TARIFF_NOT_FOUND', 'Facility tariff not found.', 404);
+        const rows = await tx
+          .select({
+            id: schema.auditLogs.id,
+            action: schema.auditLogs.action,
+            actor: schema.auditLogs.userId,
+            // Audit timestamps are stored without a timezone. Return the recorded
+            // wall clock without inventing an offset or UTC interpretation.
+            recordedTime: sql<string>`to_char(${schema.auditLogs.timestamp}, 'YYYY-MM-DD HH24:MI:SS.MS')`,
+            details: schema.auditLogs.details,
+          })
+          .from(schema.auditLogs)
+          .where(
+            and(
+              eq(schema.auditLogs.tenantId, facility.tenantId),
+              eq(schema.auditLogs.facilityId, facility.id),
+              eq(schema.auditLogs.resource, 'FACILITY_SERVICE_TARIFF'),
+              eq(schema.auditLogs.resourceId, String(tariffId)),
+              ...(beforeId === undefined ? [] : [lt(schema.auditLogs.id, beforeId)]),
+            ),
+          )
+          .orderBy(desc(schema.auditLogs.id))
+          .limit(26);
+        const page = rows.slice(0, 25);
+        const events = page.map((row) => ({
+          id: row.id,
+          action: ['CREATE', 'UPDATE', 'ACTIVATE', 'DEACTIVATE', 'ARCHIVE', 'DELETE'].includes(
+            row.action,
+          )
+            ? row.action
+            : 'OTHER',
+          recordedTime: row.recordedTime,
+          actorUserId: row.actor && /^[1-9]\d*$/.test(row.actor) ? row.actor : null,
+          actorKind:
+            row.actor === 'SYSTEM'
+              ? 'SYSTEM'
+              : row.actor && /^[1-9]\d*$/.test(row.actor)
+                ? 'USER'
+                : 'UNKNOWN',
+          ...historyDetails(row.details, row.action),
+        }));
+        await audit(tx, facility, actor, 'VIEW', 'FACILITY_SERVICE_TARIFF_HISTORY', tariffId, {
+          returnedCount: events.length,
+        });
+        return { events, nextCursor: rows.length > 25 ? page[page.length - 1].id : null };
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({
+        ...result,
+        coverage: 'RECORDED_EVENTS_ONLY',
+        timestampTimezone: 'NOT_RECORDED',
+      });
     } catch (error) {
       return failure(res, error);
     }

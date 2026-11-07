@@ -243,6 +243,7 @@ type TariffTableProps = TableState & {
   services: FacilityService[];
   onEdit: (row: ServiceTariff) => void;
   onToggle: (row: ServiceTariff) => void;
+  onHistory: (row: ServiceTariff) => void;
   onArchive: (row: ServiceTariff) => void;
   onDelete: (row: ServiceTariff) => void;
 };
@@ -256,6 +257,7 @@ export function FacilityTariffsTable({
   busy,
   onEdit,
   onToggle,
+  onHistory,
   onArchive,
   onDelete,
 }: TariffTableProps) {
@@ -383,6 +385,16 @@ export function FacilityTariffsTable({
                   </td>
                   <td className={cellClass}>
                     <div className="flex flex-wrap gap-1.5">
+                      {!(row.masterServiceId != null && row.facilityServiceId == null) && (
+                        <button
+                          type="button"
+                          className={actionClass}
+                          aria-label={`View price history for ${row.code}`}
+                          onClick={() => onHistory(row)}
+                        >
+                          Price history
+                        </button>
+                      )}
                       {!row.archivedAt && (
                         <>
                           <button
