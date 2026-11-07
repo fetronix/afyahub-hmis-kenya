@@ -9,8 +9,6 @@
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import * as billing from '../billing/billing.service.ts';
-import { billingServiceKeys } from '../billing/tariff-codes.ts';
-import { codesForFamily } from '../billing/tariff-matching.ts';
 import { Icd11Error } from '../clinical/icd11/icd11.service.ts';
 import * as queries from '../db/queries.ts';
 import { chargeSafely } from './shared/charges.ts';
@@ -130,38 +128,10 @@ router.post(
     if (!context) return;
 
     try {
-      const proc = await queries.recordProcedureScoped(context, req.body);
-
+      const { billingRequest, billingOutboxAttemptId, ...proc } =
+        await queries.recordProcedureScoped(context, req.body);
       let charge: billing.ChargeResult | null = null;
-
-      if (proc && req.authContext && proc.status?.trim().toUpperCase() === 'COMPLETED') {
-        charge = await chargeSafely({
-          tenantId: req.authContext.tenantId ?? 0,
-          facilityId: req.authContext.facilityId ?? 0,
-          patientId: (proc as { patientId?: number }).patientId ?? 0,
-          encounterId: (proc as { encounterId?: number }).encounterId ?? null,
-          /*
-           * The procedure's own code first (PROC-004), then the
-           * name-derived code (PROC-WOUND-DRESSING), then the generic
-           * fallbacks — the same order laboratory orders use.
-           */
-          codes: codesForFamily({
-            family: 'PROCEDURE',
-            code: (proc as { procedureCode?: string }).procedureCode ?? null,
-            name: (proc as { procedureName?: string }).procedureName ?? null,
-          }),
-          serviceKeys: billingServiceKeys('PROCEDURE', [
-            (proc as { procedureCode?: string }).procedureCode ?? null,
-            (proc as { procedureName?: string }).procedureName ?? null,
-          ]),
-          family: 'PROCEDURE',
-          serviceName: (proc as { procedureName?: string }).procedureName ?? null,
-          sourceType: 'PROCEDURE',
-          sourceId: (proc as { id?: number }).id ?? 0,
-          itemType: 'Procedure',
-          description: (proc as { procedureName?: string }).procedureName,
-        });
-      }
+      if (billingRequest) charge = await chargeSafely(billingRequest, billingOutboxAttemptId);
 
       res.status(201).json({ ...proc, billing: charge });
     } catch (err: unknown) {

@@ -58,6 +58,52 @@ export interface FacilityTariffInput {
   autoBill: boolean;
 }
 
+export interface FacilityCatalogueImportRow {
+  code: string;
+  name: string;
+  description: string;
+  department: string;
+  category: string;
+  unit: string;
+  isActive: boolean;
+  autoBill: boolean;
+  initialPrice: string;
+  initialTariffCode: string;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+}
+export interface FacilityCatalogueImportIssue {
+  row: number;
+  reasons: string[];
+}
+export interface FacilityCataloguePreview {
+  valid: boolean;
+  rowCount: number;
+  rows: FacilityCatalogueImportRow[];
+  issues: FacilityCatalogueImportIssue[];
+}
+export interface FacilityCatalogueImportResult {
+  idempotentReplay: boolean;
+  batchId: number;
+  rowCount: number;
+  services: Array<{
+    serviceId: number;
+    tariffId: number;
+    serviceCode: string;
+    tariffCode: string;
+  }>;
+}
+export type FacilityCatalogueImportStatus =
+  | { status: 'NOT_FOUND' | 'KEY_IN_USE' }
+  | { status: 'RECORDED'; batchId: number; rowCount: number; requestMatched: boolean };
+export interface FacilityCatalogueExport {
+  filename: string;
+  contentType: string;
+  base64: string;
+  rowCount: number;
+  coverage: 'FACILITY_SERVICES_AND_LINKED_TARIFFS';
+}
+
 export interface FacilityTariffHistorySnapshot {
   code?: string;
   fee?: string;
@@ -83,6 +129,35 @@ export interface FacilityTariffHistoryPage {
 }
 
 export const billingClient = {
+  previewFacilityCatalogueImport: (facilityId: number, rows: unknown[]) =>
+    fetchJson<FacilityCataloguePreview>(`${API_BASE}/facility-services/import/validate`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, rows }),
+    }),
+  importFacilityCatalogue: (input: {
+    facilityId: number;
+    rows: FacilityCatalogueImportRow[];
+    idempotencyKey: string;
+    approvalReference: string;
+    confirmed: true;
+  }) =>
+    fetchJson<FacilityCatalogueImportResult>(`${API_BASE}/facility-services/import`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getFacilityCatalogueImportStatus: (
+    facilityId: number,
+    idempotencyKey: string,
+    expected?: { rows: unknown[]; approvalReference: string },
+  ) =>
+    fetchJson<FacilityCatalogueImportStatus>(`${API_BASE}/facility-services/import/status`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, idempotencyKey, ...expected }),
+    }),
+  exportFacilityCatalogue: (facilityId: number) =>
+    fetchJson<FacilityCatalogueExport>(
+      `${API_BASE}/facility-services/export?facilityId=${encodeURIComponent(facilityId)}`,
+    ),
   getFacilityServices: (facilityId: number) =>
     fetchJson<FacilityService[]>(
       `${API_BASE}/facility-services?facilityId=${encodeURIComponent(facilityId)}`,

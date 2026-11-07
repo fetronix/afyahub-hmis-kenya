@@ -218,7 +218,12 @@ try {
   };
   const fill = async (formTitle, label, value) => {
     const input = await field(formTitle, label);
-    await input.click({ clickCount: 3 });
+    // Triple-click selects only a word/decimal segment in Chromium, which can
+    // append to an existing price. Replace the entire value as a user would.
+    await input.click();
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyA');
+    await page.keyboard.up('Control');
     await page.keyboard.press('Backspace');
     await input.type(value);
   };
@@ -307,9 +312,208 @@ try {
     history.some((row) => row.action === 'UPDATE') && history.some((row) => row.action === 'VIEW'),
     'Synthetic tariff and access audit rows were not persisted.',
   );
+  phase = 'catalogue import preview';
+  await clickText('Close history');
+  await clickText('Import / export');
+  await page.waitForSelector('section[aria-label="Catalogue import and export"]');
+  const transferField = async (labelText) => {
+    const handle = await page.evaluateHandle((label) => {
+      const section = document.querySelector('section[aria-label="Catalogue import and export"]');
+      return (
+        [...(section?.querySelectorAll('label') ?? [])]
+          .find((item) => item.textContent.trim().startsWith(label))
+          ?.querySelector('input,textarea') ?? null
+      );
+    }, labelText);
+    const element = handle.asElement();
+    check(element, `Synthetic transfer field ${labelText} was not found.`);
+    return element;
+  };
+  const importedCode = `P3I-${suffix.toUpperCase()}`;
+  const zeroCode = `P3Z-${suffix.toUpperCase()}`;
+  const importedRows = [
+    {
+      code: importedCode,
+      name: 'Synthetic imported service',
+      description: 'Synthetic reviewed import',
+      department: 'opd',
+      category: 'CONSULTATION',
+      unit: 'Visit',
+      isActive: true,
+      autoBill: true,
+      initialPrice: '87.65',
+      effectiveFrom: '2000-01-01',
+      effectiveTo: '2099-12-31',
+    },
+    {
+      code: zeroCode,
+      name: 'Synthetic unpriced service',
+      description: 'Synthetic zero default',
+      department: 'opd',
+      category: 'CONSULTATION',
+      unit: 'Visit',
+      isActive: true,
+      autoBill: true,
+    },
+  ];
+  await (await transferField('Or paste JSON rows')).type(JSON.stringify(importedRows));
+  await clickText('Validate batch');
+  await page.waitForFunction(
+    (priced, zero) => {
+      const table = document.querySelector('table[aria-label="Import review"]');
+      return (
+        table?.textContent.includes(priced) &&
+        table.textContent.includes(zero) &&
+        table.textContent.includes('87.65') &&
+        table.textContent.includes('0.00')
+      );
+    },
+    { timeout: 30000 },
+    importedCode,
+    zeroCode,
+  );
+  const beforeImport = (
+    await pool.query(
+      'SELECT count(*)::int n FROM facility_services WHERE tenant_id=$1 AND facility_id=$2 AND code=ANY($3::text[])',
+      [tenant, facility, [importedCode, zeroCode]],
+    )
+  ).rows[0].n;
+  check(beforeImport === 0, 'A preview unexpectedly created synthetic services.');
+  await (
+    await transferField('Documented facility approval reference')
+  ).type('Synthetic facility review');
+  await (await transferField('I reviewed all rows')).click();
+  await clickText('Prepare approved batch');
+  await page.waitForSelector('[aria-label="Retry identity"]');
+  const retryKey = await page.$eval('[aria-label="Retry identity"]', (node) =>
+    node.textContent.trim(),
+  );
+  check(
+    /^facility-catalogue-[0-9a-f]{32}$/.test(retryKey),
+    'Synthetic retry identity was not visible.',
+  );
+  await (await transferField('I have securely retained')).click();
+  phase = 'catalogue import commit';
+  await clickText('Send approved batch');
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('section[aria-label="Catalogue import and export"]')
+        ?.textContent.includes('2 services recorded'),
+    { timeout: 30000 },
+  );
+  const imported = (
+    await pool.query(
+      `SELECT s.code,t.code AS tariff_code,t.facility_service_id,t.fee::text,t.effective_from::text,t.effective_to::text
+       FROM facility_services s JOIN facility_service_tariffs t ON t.facility_service_id=s.id
+       WHERE s.tenant_id=$1 AND s.facility_id=$2 AND s.code=ANY($3::text[]) ORDER BY s.code`,
+      [tenant, facility, [importedCode, zeroCode]],
+    )
+  ).rows;
+  check(imported.length === 2, 'Synthetic import did not persist two linked services.');
+  const priced = imported.find((row) => row.code === importedCode);
+  const zero = imported.find((row) => row.code === zeroCode);
+  check(
+    priced?.tariff_code === importedCode &&
+      priced.fee === '87.65' &&
+      priced.effective_from === '2000-01-01' &&
+      priced.effective_to === '2099-12-31' &&
+      zero?.fee === '0.00',
+    'Synthetic imported prices or effective dates were not persisted correctly.',
+  );
+  const batch = (
+    await pool.query(
+      `SELECT b.id, b.row_count, count(a.id)::int audit_count FROM facility_tariff_import_batches b
+       LEFT JOIN audit_logs a ON a.tenant_id=b.tenant_id AND a.facility_id=b.facility_id
+         AND a.resource='FACILITY_SERVICE_IMPORT' AND a.resource_id=b.id::text AND a.action='IMPORT'
+       WHERE b.tenant_id=$1 AND b.facility_id=$2 AND b.idempotency_key=$3 GROUP BY b.id`,
+      [tenant, facility, retryKey],
+    )
+  ).rows[0];
+  check(
+    batch?.row_count === 2 && batch.audit_count === 1,
+    'Synthetic import audit was not persisted.',
+  );
+  phase = 'catalogue recovery after closing';
+  await clickText('Close transfer');
+  await page.waitForFunction(
+    () =>
+      !document.querySelector('section[aria-label="Catalogue import and export"]') &&
+      [...document.querySelectorAll('button')].some(
+        (button) => button.textContent.trim() === 'Import / export' && !button.disabled,
+      ),
+    { timeout: 30000 },
+  );
+  await clickText('Import / export');
+  await page.waitForSelector('section[aria-label="Catalogue import and export"]');
+  await (await transferField('Or paste JSON rows')).type(JSON.stringify(importedRows));
+  const recoveredApproval = await transferField('Documented facility approval reference');
+  await recoveredApproval.type('Synthetic incorrect reference');
+  await (await transferField('Original retry identity')).type(retryKey);
+  await clickText('Validate batch');
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('section[aria-label="Catalogue import and export"] [role="alert"]')
+        ?.textContent.includes('different request'),
+    { timeout: 30000 },
+  );
+  await recoveredApproval.focus();
+  await page.keyboard.down('Control');
+  await page.keyboard.press('KeyA');
+  await page.keyboard.up('Control');
+  await recoveredApproval.type('Synthetic facility review');
+  await clickText('Validate batch');
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('section[aria-label="Catalogue import and export"]')
+        ?.textContent.includes('2 services recorded (existing result)'),
+    { timeout: 30000 },
+  );
+  check(
+    (
+      await pool.query(
+        'SELECT count(*)::int n FROM facility_services WHERE tenant_id=$1 AND facility_id=$2 AND code=ANY($3::text[])',
+        [tenant, facility, [importedCode, zeroCode]],
+      )
+    ).rows[0].n === 2,
+    'Synthetic recovery duplicated catalogue rows.',
+  );
+
+  phase = 'catalogue CSV export';
+  const exportedResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/facility-services/export?') &&
+      response.request().method() === 'GET',
+    { timeout: 30000 },
+  );
+  await clickText('Export catalogue CSV');
+  const response = await exportedResponse;
+  check(response.status() === 200, 'Synthetic catalogue export failed.');
+  const exported = await response.json();
+  const csv = Buffer.from(exported.base64, 'base64').toString('utf8');
+  check(
+    exported.coverage === 'FACILITY_SERVICES_AND_LINKED_TARIFFS' &&
+      csv.includes(importedCode) &&
+      csv.includes(zeroCode) &&
+      csv.includes('87.65'),
+    'Synthetic exported catalogue did not contain the linked prices.',
+  );
+  await waitText('Exported 3 catalogue rows.');
+  const exportAudit = (
+    await pool.query(
+      "SELECT count(*)::int n FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND resource='FACILITY_SERVICE_CATALOGUE' AND action='EXPORT'",
+      [tenant, facility],
+    )
+  ).rows[0].n;
+  check(exportAudit === 1, 'Synthetic catalogue export audit was not persisted.');
   check(errors.length === 0, 'A browser runtime error occurred.');
   console.log(
     'Synthetic Chromium: facility service creation, zero price, tariff edit, recorded before/after history and scoped access audit: PASS',
+  );
+  console.log(
+    'Synthetic Chromium: reviewed create-only import, linked tariffs, zero default, effective dates, request-matched recovery after closing, audited CSV response and PostgreSQL persistence: PASS',
   );
 } catch (error) {
   console.error(

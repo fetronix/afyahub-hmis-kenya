@@ -1,6 +1,5 @@
 import { Router, type Response } from 'express';
 import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm';
-import { z } from 'zod';
 import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { requireAnyPermission, requirePermission } from '../auth/authorization.middleware.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
@@ -8,6 +7,29 @@ import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import * as queries from '../db/queries.ts';
 import { dateVerdict } from '../billing/tariff-resolver.ts';
+import {
+  FacilityServiceImportError,
+  previewFacilityServiceImport,
+  importFacilityServices,
+  facilityServiceImportStatus,
+} from '../billing/facility-service-import.service.ts';
+import { exportFacilityServiceCatalogue } from '../billing/facility-service-export.service.ts';
+import {
+  facilityServiceCode as code,
+  facilityServiceDay as day,
+  facilityServiceCategories as categories,
+  createFacilityServiceInput as createServiceInput,
+  updateFacilityServiceInput as updateServiceInput,
+  facilityTariffInput as tariffInput,
+  FacilityServiceError,
+  requireFacilityServiceModule as requireModule,
+  type FacilityServiceScope as Facility,
+} from '../billing/facility-service-input.ts';
+import {
+  auditFacilityService as audit,
+  createFacilityServiceWithTariff,
+  tariffAuditSnapshot,
+} from '../billing/facility-service-operations.ts';
 import {
   hasProtectedReferences,
   hasCodeBasedClinicalHistory,
@@ -24,92 +46,13 @@ import {
 } from './shared/tariffs.ts';
 
 const router = Router();
-const code = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[A-Z0-9][A-Z0-9._/-]{0,49}$/);
-const money = z
-  .union([z.string(), z.number()])
-  .transform(String)
-  .refine((value) => /^\d{1,8}(\.\d{1,2})?$/.test(value));
-const day = z
-  .union([
-    z.string().refine((value) => {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-      const date = new Date(`${value}T00:00:00Z`);
-      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-    }),
-    z.null(),
-  ])
-  .optional();
-const categories = z.enum([
-  'CONSULTATION',
-  'LABORATORY',
-  'RADIOLOGY',
-  'PHARMACY',
-  'PROCEDURE',
-  'ADMISSION',
-  'BED_DAY',
-  'DELIVERY',
-  'OTHER',
-]);
-const serviceInput = z.object({
-  code,
-  name: z.string().trim().min(1).max(200),
-  description: z.string().trim().min(1).max(500),
-  department: z.string().trim().min(1).max(100),
-  category: categories,
-  unit: z.string().trim().min(1).max(50),
-  isActive: z.boolean(),
-  autoBill: z.boolean(),
-});
-const createServiceInput = serviceInput.extend({
-  // A new unpriced catalogue entry defaults to zero; zero is explicitly not
-  // billable unless a separately supported free-service workflow is added.
-  initialPrice: money.default('0.00'),
-  initialTariffCode: code.optional(),
-});
-// Service identity is immutable; compare every editable value under the row
-// lock so two open forms cannot silently overwrite one another.
-const updateServiceInput = serviceInput.extend({
-  expectedState: z.object({
-    name: z.string(),
-    description: z.string(),
-    isActive: z.boolean(),
-    autoBill: z.boolean(),
-  }),
-});
-const tariffInput = z
-  .object({
-    serviceId: z.number().int().positive(),
-    code,
-    description: z.string().trim().min(1).max(500),
-    department: z.string().trim().min(1).max(100),
-    unit: z.string().trim().min(1).max(50),
-    fee: money,
-    effectiveFrom: day,
-    effectiveTo: day,
-    isActive: z.boolean(),
-    autoBill: z.boolean(),
-    expectedRevision: z.number().int().positive().optional(),
-  })
-  .refine(
-    (x) => !x.effectiveFrom || !x.effectiveTo || x.effectiveFrom <= x.effectiveTo,
-    'Invalid effective dates.',
-  );
-
-type Facility = { id: number; tenantId: number; enabledModules: unknown; timezone?: string | null };
-class FacilityServiceError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly status = 400,
-  ) {
-    super(message);
-  }
-}
 function failure(res: Response, error: unknown) {
+  if (error instanceof FacilityServiceImportError)
+    return res.status(error.status).json({
+      error: error.code,
+      message: error.message,
+      ...(error.issues ? { detail: { issues: error.issues } } : {}),
+    });
   if (error instanceof FacilityServiceError)
     return res.status(error.status).json({ error: error.code, message: error.message });
   if (handleScopeError(error, res)) return;
@@ -137,30 +80,6 @@ function id(value: unknown): number {
     throw new FacilityServiceError('INVALID_ID', 'A valid identifier is required.');
   return n;
 }
-function requireModule(facility: Facility, department: string, category?: string) {
-  const module = tariffModuleForDepartment(department);
-  if (!module || !facilityHasTariffModule(facility, module))
-    throw new FacilityServiceError(
-      'DEPARTMENT_UNAVAILABLE',
-      'Enable the service department before configuring it.',
-    );
-  const familyDepartment: Record<string, string> = {
-    CONSULTATION: 'opd',
-    LABORATORY: 'laboratory',
-    RADIOLOGY: 'radiology',
-    PHARMACY: 'pharmacy',
-    ADMISSION: 'inpatient',
-    BED_DAY: 'inpatient',
-    // Delivery can be configured under maternity or inpatient at the facility.
-    DELIVERY: module === 'maternity' ? 'maternity' : 'inpatient',
-  };
-  if (category && familyDepartment[category] && familyDepartment[category] !== module)
-    throw new FacilityServiceError(
-      'CATEGORY_DEPARTMENT_MISMATCH',
-      'The category must belong to its clinical department.',
-    );
-  return module;
-}
 async function clinicalFacility(req: AuthRequest): Promise<Facility> {
   if (!req.authContext || req.authContext.isSuperAdmin)
     throw new FacilityServiceError(
@@ -173,44 +92,7 @@ async function clinicalFacility(req: AuthRequest): Promise<Facility> {
   if (!facility) throw new FacilityServiceError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
   return facility;
 }
-async function audit(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  facility: Facility,
-  actor: number,
-  action: string,
-  resource: string,
-  resourceId: number,
-  details: unknown,
-) {
-  await tx.insert(schema.auditLogs).values({
-    tenantId: facility.tenantId,
-    facilityId: facility.id,
-    userId: String(actor),
-    action,
-    resource,
-    resourceId: String(resourceId),
-    details: JSON.stringify(details),
-  });
-}
-
 type FacilityTariffRow = typeof schema.facilityServiceTariffs.$inferSelect;
-
-function tariffAuditSnapshot(row: FacilityTariffRow) {
-  return {
-    code: row.code,
-    description: row.description,
-    serviceId: row.facilityServiceId,
-    fee: row.fee,
-    unit: row.unit,
-    department: row.department,
-    effectiveFrom: row.effectiveFrom,
-    effectiveTo: row.effectiveTo,
-    isActive: row.isActive,
-    autoBill: row.autoBill,
-    archivedAt: row.archivedAt,
-    revision: row.revision,
-  };
-}
 
 // Audit details can contain free text from older writers. Return only validated
 // tariff fields, never raw details, names, addresses, or arbitrary strings.
@@ -402,6 +284,79 @@ router.get(
   },
 );
 
+// Facility-owned catalogue transfer is create-only. It does not re-enable the
+// retired master tariff endpoints or overwrite existing or historical prices.
+router.post(
+  '/api/facility-services/import/validate',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility) return;
+      return res.json(await previewFacilityServiceImport(facility, req.body?.rows));
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+router.post(
+  '/api/facility-services/import',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility || !req.authContext) return;
+      const result = await importFacilityServices(facility, req.authContext.userId, req.body ?? {});
+      return res.status(result.idempotentReplay ? 200 : 201).json(result);
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+router.post(
+  '/api/facility-services/import/status',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility) return;
+      const hasExpected = req.body?.rows !== undefined || req.body?.approvalReference !== undefined;
+      return res.json(
+        await facilityServiceImportStatus(
+          facility,
+          req.body?.idempotencyKey,
+          hasExpected
+            ? { rows: req.body?.rows, approvalReference: req.body?.approvalReference }
+            : undefined,
+        ),
+      );
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+router.get(
+  '/api/facility-services/export',
+  requirePermission('tariffs.read'),
+  async (req: AuthRequest, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.query.facilityId);
+      if (!facility || !req.authContext) return;
+      return res.json(await exportFacilityServiceCatalogue(facility, req.authContext.userId));
+    } catch (error) {
+      return failure(res, error);
+    }
+  },
+);
+
 router.get(
   '/api/facility-services',
   requirePermission('tariffs.read'),
@@ -441,54 +396,10 @@ router.post(
           'INVALID_SERVICE',
           'Provide a valid service, category, unit, price and status.',
         );
-      const data = input.data;
-      const department = requireModule(facility, data.department, data.category);
       const actor = req.authContext.userId;
-      const created = await db.transaction(async (tx) => {
-        const [service] = await tx
-          .insert(schema.facilityServices)
-          .values({
-            tenantId: facility.tenantId,
-            facilityId: facility.id,
-            code: data.code,
-            name: data.name,
-            description: data.description,
-            department,
-            category: data.category,
-            unit: data.unit,
-            isActive: data.isActive,
-            autoBill: data.autoBill,
-          })
-          .returning();
-        const [tariff] = await tx
-          .insert(schema.facilityServiceTariffs)
-          .values({
-            tenantId: facility.tenantId,
-            facilityId: facility.id,
-            facilityServiceId: service.id,
-            code: data.initialTariffCode ?? data.code,
-            description: data.description,
-            department,
-            unit: data.unit,
-            fee: data.initialPrice,
-            isActive: true,
-            autoBill: data.autoBill,
-          })
-          .returning();
-        await audit(tx, facility, actor, 'CREATE', 'FACILITY_SERVICE', service.id, {
-          code: service.code,
-          department,
-          category: service.category,
-          initialTariffId: tariff.id,
-          fee: tariff.fee,
-        });
-        await audit(tx, facility, actor, 'CREATE', 'FACILITY_SERVICE_TARIFF', tariff.id, {
-          serviceId: service.id,
-          code: tariff.code,
-          fee: tariff.fee,
-        });
-        return { service, tariff };
-      });
+      const created = await db.transaction((tx) =>
+        createFacilityServiceWithTariff(tx, facility, actor, input.data),
+      );
       return res.status(201).json(created);
     } catch (error) {
       return failure(res, error);

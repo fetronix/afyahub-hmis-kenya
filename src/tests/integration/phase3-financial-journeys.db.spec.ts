@@ -46,7 +46,16 @@ describeDb('Phase 3 clinical-to-reviewed-ledger journeys (synthetic PostgreSQL)'
           tenant,
           `P3J-${suffix}`,
           `MFL-${suffix}`,
-          JSON.stringify(['registration', 'finance', 'accounting', 'opd', 'laboratory']),
+          JSON.stringify([
+            'registration',
+            'finance',
+            'accounting',
+            'opd',
+            'laboratory',
+            'pharmacy',
+            'inventory',
+            'inpatient',
+          ]),
         ],
       )
     ).rows[0].id;
@@ -72,6 +81,11 @@ describeDb('Phase 3 clinical-to-reviewed-ledger journeys (synthetic PostgreSQL)'
       'laboratory.orders.create',
       'laboratory.results.enter',
       'laboratory.results.verify',
+      'pharmacy.read',
+      'pharmacy.dispense',
+      'inventory.read',
+      'inpatient.read',
+      'inpatient.discharge',
       'billing.read',
       'billing.create',
       'billing.update',
@@ -336,6 +350,198 @@ describeDb('Phase 3 clinical-to-reviewed-ledger journeys (synthetic PostgreSQL)'
     await finalizePayAndPost(completed.body.billing.invoiceId, '456.00');
   });
 
+  it('C: links an actual synthetic FEFO dispensing and inventory price through cash receipt and reviewed journals', async () => {
+    const patient = await newPatient('MED');
+    const visit = await encounter(patient);
+    const product = (
+      await pool.query(
+        "INSERT INTO inventory_items(facility_id,item_code,name,unit,current_stock,selling_price,is_active) VALUES($1,$2,'Synthetic medicine','Tablet',10,7.50,true) RETURNING id",
+        [facility, `P3-MED-${suffix}`],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO inventory_batches(item_id,batch_number,expiry_date,quantity_remaining) VALUES($1,'SYNTHETIC-LOT','2099-12-31',10)",
+      [product],
+    );
+    const prescription = await call('POST', '/api/medications', {
+      encounterId: visit,
+      patientId: patient,
+      drugName: 'Synthetic prescribed medicine',
+      dosage: 'Synthetic',
+      frequency: 'Synthetic',
+      duration: 'Synthetic',
+      quantity: 3,
+    });
+    expect(prescription.status).toBe(201);
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [product])).rows[0]
+        .current_stock,
+    ).toBe(10);
+    expect(
+      (await pool.query('SELECT id FROM billing_invoices WHERE patient_id=$1', [patient])).rows,
+    ).toHaveLength(0);
+    const request = {
+      facilityId: facility,
+      patientId: patient,
+      prescriptionId: prescription.body.id,
+      itemId: product,
+      quantityDispensed: 3,
+      idempotencyKey: randomUUID(),
+      // Client price must not override the inventory snapshot.
+      unitPrice: '999.00',
+    };
+    const attempts = await Promise.all([
+      call('POST', '/api/pharmacy/dispense', request),
+      call('POST', '/api/pharmacy/dispense', request),
+    ]);
+    expect(attempts.map((attempt) => attempt.status)).toEqual([201, 201]);
+    expect(new Set(attempts.map((attempt) => attempt.body.id)).size).toBe(1);
+    expect(attempts.filter((attempt) => attempt.body.replayed === false)).toHaveLength(1);
+    const charged = attempts.find((attempt) => attempt.body.billing.charged)!;
+    expect(charged.body.billing).toMatchObject({
+      quantity: 3,
+      unitPrice: '7.50',
+      totalAmount: '22.50',
+      matchRule: 'INVENTORY_SNAPSHOT',
+    });
+    expect(
+      (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [product])).rows[0]
+        .current_stock,
+    ).toBe(7);
+    expect(
+      (
+        await pool.query('SELECT quantity_remaining FROM inventory_batches WHERE item_id=$1', [
+          product,
+        ])
+      ).rows[0].quantity_remaining,
+    ).toBe(7);
+    const lines = (
+      await pool.query(
+        "SELECT inventory_item_id,prescription_id,tariff_id,quantity,unit_price::text,total_amount::text FROM billing_items WHERE source_type='PHARMACY' AND source_id=$1",
+        [charged.body.id],
+      )
+    ).rows;
+    expect(lines).toEqual([
+      {
+        inventory_item_id: product,
+        prescription_id: prescription.body.id,
+        tariff_id: null,
+        quantity: 3,
+        unit_price: '7.50',
+        total_amount: '22.50',
+      },
+    ]);
+    await finalizePayAndPost(charged.body.billing.invoiceId, '22.50');
+  });
+
+  it('D: estimates an active synthetic stay, then bills three recorded cutoffs after discharge through cash and reviewed journals', async () => {
+    const patient = await newPatient('BED');
+    const start = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    // The past stay and explicit rate/policy are synthetic setup, not an
+    // assertion of a facility's approved price or a real nightly scheduler.
+    const ward = (
+      await pool.query(
+        "INSERT INTO wards(facility_id,name,code) VALUES($1,'Synthetic ward',$2) RETURNING id",
+        [facility, `P3-WARD-${suffix}`],
+      )
+    ).rows[0].id;
+    const bed = (
+      await pool.query(
+        "INSERT INTO beds(ward_id,bed_number,bed_type,status,daily_charge) VALUES($1,$2,'Standard','Occupied',40.00) RETURNING id",
+        [ward, `P3-BED-${suffix}`],
+      )
+    ).rows[0].id;
+    const visit = (
+      await pool.query(
+        "INSERT INTO encounters(tenant_id,facility_id,patient_id,encounter_type,status,department_id,practitioner_id) VALUES($1,$2,$3,'INPATIENT','ACTIVE',$4,$5) RETURNING id",
+        [tenant, facility, patient, department, practitioner],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO diagnoses(encounter_id,patient_id,coding_system,icd10_code,icd10_description) VALUES($1,$2,'ICD-10','Z00.0','Synthetic examination')",
+      [visit, patient],
+    );
+    const admission = (
+      await pool.query(
+        "INSERT INTO admissions(tenant_id,facility_id,patient_id,encounter_id,ward_id,bed_id,admission_date,status) VALUES($1,$2,$3,$4,$5,$6,$7,'Admitted') RETURNING id",
+        [tenant, facility, patient, visit, ward, bed, start.toISOString()],
+      )
+    ).rows[0].id;
+    await pool.query('UPDATE beds SET current_patient_id=$1 WHERE id=$2', [patient, bed]);
+    await pool.query(
+      "INSERT INTO inpatient_bed_stay_snapshots(admission_id,tenant_id,facility_id,patient_id,timezone_snapshot,cutoff_minutes,grace_minutes,same_day_rule,policy_revision) VALUES($1,$2,$3,$4,'Africa/Nairobi',0,0,'ONE',1)",
+      [admission, tenant, facility, patient],
+    );
+    await pool.query(
+      "INSERT INTO inpatient_bed_occupancies(admission_id,tenant_id,facility_id,patient_id,ward_id,bed_id,started_at,daily_rate_snapshot,rate_source_snapshot,price_revision_snapshot,bed_number_snapshot,bed_type_snapshot,ward_name_snapshot,recorded_by_user_id) SELECT $1,$2,$3,$4,$5,id,$6,40.00,'BED_OVERRIDE',1,bed_number,bed_type,'Synthetic ward',$7 FROM beds WHERE id=$8",
+      [admission, tenant, facility, patient, ward, start, actor, bed],
+    );
+    const estimated = await call('POST', `/api/admissions/${admission}/accrue-bed-days`, {});
+    expect(estimated.status).toBe(200);
+    expect(estimated.body).toMatchObject({ estimateOnly: true, charges: [] });
+    expect(
+      (
+        await pool.query(
+          "SELECT id FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1",
+          [admission],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    const discharged = await call('POST', `/api/admissions/${admission}/discharge`, {
+      dischargeType: 'Synthetic',
+    });
+    expect(discharged.status).toBe(200);
+    expect(discharged.body.billing.nights).toBe(3);
+    expect(
+      discharged.body.billing.bedDays.every(
+        (charge: { charged: boolean; totalAmount: string }) =>
+          charge.charged && charge.totalAmount === '40.00',
+      ),
+    ).toBe(true);
+    const nights = (
+      await pool.query(
+        `SELECT bi.invoice_id,bi.unit_price::text,bi.total_amount::text,bi.bed_night_id,n.rate_source_snapshot
+         FROM billing_items bi JOIN inpatient_bed_nights n ON n.id=bi.bed_night_id
+         WHERE bi.source_type='BED_DAY' AND bi.source_id=$1 ORDER BY n.billing_date`,
+        [admission],
+      )
+    ).rows;
+    expect(nights).toHaveLength(3);
+    expect(
+      nights.every(
+        (night) =>
+          night.unit_price === '40.00' &&
+          night.total_amount === '40.00' &&
+          night.rate_source_snapshot === 'BED_OVERRIDE',
+      ),
+    ).toBe(true);
+    expect(new Set(nights.map((night) => night.invoice_id)).size).toBe(1);
+    expect(
+      (await pool.query('SELECT status,current_patient_id FROM beds WHERE id=$1', [bed])).rows[0],
+    ).toEqual({ status: 'Cleaning', current_patient_id: null });
+    const retries = await Promise.all([
+      call('POST', `/api/admissions/${admission}/bed-billing-retry`, {}),
+      call('POST', `/api/admissions/${admission}/bed-billing-retry`, {}),
+    ]);
+    expect(
+      retries.every(
+        (retry) =>
+          retry.status === 200 &&
+          retry.body.charges.every((charge: { reason: string }) => charge.reason === 'DUPLICATE'),
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='BED_DAY' AND source_id=$1",
+          [admission],
+        )
+      ).rows[0].n,
+    ).toBe(3);
+    expect((await call('POST', `/api/admissions/${admission}/discharge`, {})).status).toBe(409);
+    await finalizePayAndPost(nights[0].invoice_id, '120.00');
+  });
+
   it('E/G: retains the original manual receipt, records a partial refund once, and reconciles posted statements', async () => {
     const input = {
       facilityId: facility,
@@ -390,19 +596,19 @@ describeDb('Phase 3 clinical-to-reviewed-ledger journeys (synthetic PostgreSQL)'
     ).toEqual({ paid_amount: '125.00', balance_amount: '25.00' });
     const report = await getAccountingOverviewScoped(scope, date, date);
     expect(report.trialBalance).toMatchObject({
-      debitKes: '1237.00',
-      creditKes: '1237.00',
+      debitKes: '1522.00',
+      creditKes: '1522.00',
       balanced: true,
     });
     expect(report.profitAndLoss).toMatchObject({
-      postedRevenueKes: '606.00',
+      postedRevenueKes: '748.50',
       postedExpensesKes: '0.00',
-      ledgerResultKes: '606.00',
+      ledgerResultKes: '748.50',
     });
     expect(report.balanceSheet).toMatchObject({
-      assetsKes: '606.00',
+      assetsKes: '748.50',
       liabilitiesKes: '0.00',
-      equityIncludingAccumulatedResultKes: '606.00',
+      equityIncludingAccumulatedResultKes: '748.50',
       balanced: true,
     });
     expect(report.limitations.billingReconciliation).toBe('NOT_IMPLEMENTED');

@@ -6,6 +6,7 @@ import type { FacilityService, ServiceTariff } from '../../types/index.ts';
 import type { FacilityServiceExpectedState } from '../../api/clients/billing.client.ts';
 import { FacilityServicesTable, FacilityTariffsTable } from './FacilityPricingTables.tsx';
 import { FacilityTariffHistory } from './FacilityTariffHistory.tsx';
+import { FacilityCatalogueTransfer } from './FacilityCatalogueTransfer.tsx';
 
 const departments = [
   ['opd', 'OPD'],
@@ -81,6 +82,7 @@ export const FacilityServicesManager: React.FC<{
   const [serviceExpected, setServiceExpected] = useState<FacilityServiceExpectedState | null>(null);
   const [service, setService] = useState(blankService);
   const [tariffOpen, setTariffOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [historyTariff, setHistoryTariff] = useState<{
     id: number;
     code: string;
@@ -301,7 +303,15 @@ export const FacilityServicesManager: React.FC<{
         <div className="flex gap-2">
           <button
             className={button}
-            disabled={!canManage || busy || loading || Boolean(error) || serviceOpen || tariffOpen}
+            disabled={
+              !canManage ||
+              busy ||
+              loading ||
+              Boolean(error) ||
+              serviceOpen ||
+              tariffOpen ||
+              transferOpen
+            }
             onClick={() => {
               setService(defaultService());
               setServiceEdit(null);
@@ -321,6 +331,7 @@ export const FacilityServicesManager: React.FC<{
               Boolean(error) ||
               serviceOpen ||
               tariffOpen ||
+              transferOpen ||
               !services.length
             }
             onClick={() => {
@@ -333,8 +344,27 @@ export const FacilityServicesManager: React.FC<{
           >
             Add tariff
           </button>
+          <button
+            type="button"
+            className={button}
+            disabled={busy || loading || serviceOpen || tariffOpen || transferOpen}
+            onClick={() => setTransferOpen(true)}
+          >
+            Import / export
+          </button>
         </div>
       </header>
+      {transferOpen && (
+        <FacilityCatalogueTransfer
+          facilityId={facilityId}
+          canManage={canManage}
+          onClose={() => setTransferOpen(false)}
+          onImported={() => {
+            void load();
+            triggerRefresh();
+          }}
+        />
+      )}
       {error && (
         <div
           role="alert"
@@ -655,7 +685,7 @@ export const FacilityServicesManager: React.FC<{
         loading={loading}
         hasError={Boolean(error)}
         canManage={canManage}
-        busy={busy || needsVerification || serviceOpen || tariffOpen}
+        busy={busy || needsVerification || serviceOpen || tariffOpen || transferOpen}
         onEdit={editService}
         onToggle={(row) =>
           void run(
@@ -688,7 +718,7 @@ export const FacilityServicesManager: React.FC<{
         loading={loading}
         hasError={Boolean(error)}
         canManage={canManage}
-        busy={busy || needsVerification || serviceOpen || tariffOpen}
+        busy={busy || needsVerification || serviceOpen || tariffOpen || transferOpen}
         onEdit={editTariff}
         onHistory={(row) => setHistoryTariff({ id: row.id, code: row.code, facilityId })}
         onToggle={(row) =>

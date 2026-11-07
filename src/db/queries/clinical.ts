@@ -13,6 +13,8 @@ import * as schema from '../schema.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { MedicationWorkflowError } from '../../clinical/medication-workflow-contracts.ts';
+import { stageClinicalBillingOutbox } from '../../billing/charge-attempts.ts';
+import { procedureChargeRequest } from '../../billing/service-charges.ts';
 import {
   normalizeNewDiagnosisCoding,
   presentPersistedDiagnosis,
@@ -243,17 +245,31 @@ export async function recordProcedureScoped(
     );
   }
 
-  const [created] = await db
-    .insert(schema.clinicalProcedures)
-    .values({
-      ...data,
-      status: data.status ?? 'Pending',
-      encounterId: encounter.id,
-      patientId: encounter.patientId,
-    })
-    .returning();
-
-  return created;
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(schema.clinicalProcedures)
+      .values({
+        ...data,
+        status: data.status ?? 'Pending',
+        encounterId: encounter.id,
+        patientId: encounter.patientId,
+      })
+      .returning();
+    const billingRequest =
+      created.status?.trim().toUpperCase() === 'COMPLETED'
+        ? procedureChargeRequest(created, encounter)
+        : null;
+    const billingOutboxAttemptId = billingRequest
+      ? await stageClinicalBillingOutbox(
+          tx,
+          billingRequest,
+          'Procedure completed; billing evaluation pending.',
+        )
+      : null;
+    if (billingRequest && billingOutboxAttemptId === null)
+      throw new Error('PROCEDURE_BILLING_QUEUE_UNAVAILABLE');
+    return { ...created, billingRequest, billingOutboxAttemptId };
+  });
 }
 
 // Clinical Procedures

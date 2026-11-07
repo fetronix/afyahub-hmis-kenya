@@ -166,6 +166,37 @@ export function radiologyChargeRequest(order: ChargeableRadiologyOrder): ChargeR
   };
 }
 
+/** A procedure is chargeable only when its own record is explicitly completed. */
+export function procedureChargeRequest(
+  procedure: Pick<
+    typeof schema.clinicalProcedures.$inferSelect,
+    'id' | 'patientId' | 'encounterId' | 'procedureCode' | 'procedureName'
+  >,
+  encounter: Pick<typeof schema.encounters.$inferSelect, 'tenantId' | 'facilityId'>,
+): ChargeRequest {
+  return {
+    tenantId: encounter.tenantId,
+    facilityId: encounter.facilityId,
+    patientId: procedure.patientId,
+    encounterId: procedure.encounterId,
+    codes: codesForFamily({
+      family: 'PROCEDURE',
+      code: procedure.procedureCode,
+      name: procedure.procedureName,
+    }),
+    serviceKeys: billingServiceKeys('PROCEDURE', [
+      procedure.procedureCode,
+      procedure.procedureName,
+    ]),
+    family: 'PROCEDURE',
+    serviceName: procedure.procedureName,
+    sourceType: 'PROCEDURE',
+    sourceId: procedure.id,
+    itemType: 'Procedure',
+    description: procedure.procedureName,
+  };
+}
+
 /** One consultation per explicitly completed OPD, follow-up or emergency encounter. */
 export function consultationChargeRequest(
   encounter: Pick<

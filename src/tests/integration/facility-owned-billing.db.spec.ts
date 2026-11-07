@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createSession } from '../../auth/session.service.ts';
 import { db, pool } from '../../db/index.ts';
-import { chargeAndRecord } from '../../billing/charge-attempts.ts';
+import { chargeAndRecord, retryChargeAttempt } from '../../billing/charge-attempts.ts';
+import { recordProcedureScoped } from '../../db/queries/clinical.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
@@ -1478,6 +1479,134 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       ).rows[0].n,
     ).toBe(0);
   });
+  it('retains completed-procedure billing work across interruption and requires a scoped price review', async () => {
+    const service = await createService('PROC-RECOVERY', 'PROCEDURE', 'opd', '67.50', 'Procedure');
+    const visit = await call('POST', '/api/encounters', {
+      facilityId: facility,
+      patientId: patient,
+      encounterType: 'Outpatient',
+      status: 'Active',
+    });
+    expect(visit.status).toBe(201);
+    const context = {
+      userId: actor,
+      tenantId: tenant,
+      facilityId: facility,
+      roles: ['FACILITY_ADMIN'],
+      permissions: ['clinical.create', 'clinical.read', 'billing.read', 'billing.update'],
+      isSuperAdmin: false,
+    };
+    const input = {
+      encounterId: visit.body.id,
+      patientId: patient,
+      procedureCode: 'PROC-RECOVERY',
+      procedureName: 'Synthetic interrupted procedure',
+    };
+    const pending = await recordProcedureScoped(context, { ...input, status: 'Pending' });
+    expect(pending.billingRequest).toBeNull();
+    expect(pending.billingOutboxAttemptId).toBeNull();
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_charge_attempts WHERE source_type='PROCEDURE' AND source_id=$1",
+          [pending.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+
+    // Only this synthetic facility is affected by the temporary fault injection.
+    const trigger = `synthetic_procedure_fault_${suffix}`;
+    await pool.query(`CREATE FUNCTION ${trigger}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.facility_id = ${facility} AND NEW.source_type = 'PROCEDURE' THEN RAISE EXCEPTION 'synthetic queue fault'; END IF;
+      RETURN NEW; END $$`);
+    try {
+      await pool.query(
+        `CREATE TRIGGER ${trigger} BEFORE INSERT ON billing_charge_attempts FOR EACH ROW EXECUTE FUNCTION ${trigger}()`,
+      );
+      await expect(
+        recordProcedureScoped(context, {
+          ...input,
+          procedureCode: 'PROC-ROLLBACK',
+          status: 'Completed',
+        }),
+      ).rejects.toThrow();
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int n FROM procedures WHERE encounter_id=$1 AND procedure_code='PROC-ROLLBACK'",
+            [visit.body.id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${trigger} ON billing_charge_attempts`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${trigger}()`);
+    }
+
+    // Simulate process loss immediately after the clinical transaction: no route-side charge runs.
+    const completed = await recordProcedureScoped(context, { ...input, status: 'Completed' });
+    expect(completed.billingOutboxAttemptId).toEqual(expect.any(Number));
+    expect(
+      (
+        await pool.query('SELECT status,diagnosis_code FROM billing_charge_attempts WHERE id=$1', [
+          completed.billingOutboxAttemptId,
+        ])
+      ).rows,
+    ).toEqual([{ status: 'PENDING', diagnosis_code: 'BILLING_EVALUATION_PENDING' }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='PROCEDURE' AND source_id=$1",
+          [completed.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    const attemptId = completed.billingOutboxAttemptId!;
+    expect(
+      await retryChargeAttempt(db, { tenantId: tenant, facilityId: other, attemptId }),
+    ).toBeNull();
+    expect(
+      await retryChargeAttempt(db, { tenantId: tenant, facilityId: facility, attemptId }),
+    ).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+    });
+    const results = await Promise.all(
+      [1, 2].map(() =>
+        retryChargeAttempt(db, {
+          tenantId: tenant,
+          facilityId: facility,
+          attemptId,
+          actorUserId: actor,
+          priceReview: {
+            tariffId: service.tariff.id,
+            revision: service.tariff.revision,
+            unitPrice: '67.50',
+            reason: 'Synthetic documented price review',
+          },
+        }),
+      ),
+    );
+    expect(results.filter((result) => result?.result.charged)).toHaveLength(1);
+    expect(results.some((result) => result?.result.reason === 'DUPLICATE')).toBe(true);
+    expect(
+      (
+        await pool.query(
+          "SELECT unit_price::text FROM billing_items WHERE source_type='PROCEDURE' AND source_id=$1",
+          [completed.id],
+        )
+      ).rows,
+    ).toEqual([{ unit_price: '67.50' }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM audit_logs WHERE facility_id=$1 AND resource='BILLING_TARIFF_PRICE_REVIEW' AND resource_id=$2",
+          [facility, String(attemptId)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
   it('permanently deletes an unused service and all its unused tariffs with scoped audit records', async () => {
     const created = await createService('DELETE-SERVICE', 'OTHER', 'finance', '15.00', 'Service');
     const extra = await call('POST', '/api/facility-tariffs', {
