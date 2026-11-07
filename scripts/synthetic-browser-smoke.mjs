@@ -861,9 +861,12 @@ try {
   await clickText('Admit Patient to Ward');
   await waitText('Inpatient Admission Workflow');
   await page.select('div.fixed form select', String(registered[0].id));
+  // Admission type is a required clinical input; do not rely on a prefilled default.
+  await page.select('#inpatient-admission-type', 'Elective');
   await page.type('input[placeholder="Enter the working diagnosis"]', 'Synthetic test diagnosis');
   await clickText('Confirm Admission');
-  await waitText('Patient admitted successfully and bed marked Occupied');
+  await waitText('Patient admitted; bed occupied.');
+  await waitText('Bed billing requires review:');
   const admission = (
     await pool.query(
       "SELECT a.patient_id,b.status FROM admissions a JOIN beds b ON b.id=a.bed_id WHERE a.facility_id=$1 AND a.bed_id=$2 AND a.status='Admitted'",

@@ -22,6 +22,7 @@ import {
   respondInternalError,
 } from '../../routes/shared/errors.ts';
 import { logPatientAccess } from '../../clinical/access-log.service.ts';
+import { resolveFacilityScope } from '../../auth/scope.service.ts';
 import * as queries from '../../db/queries.ts';
 import * as reporting from '../../reporting/reporting.service.ts';
 import {
@@ -58,9 +59,16 @@ router.get(
         });
       }
 
+      // The module gate validated this query value. Bind the resource itself
+      // to the same selected facility, including for tenant/platform users.
+      const requestedFacilityId =
+        typeof req.query.facilityId === 'string' && req.query.facilityId !== ''
+          ? Number(req.query.facilityId)
+          : undefined;
+      const facilityId = resolveFacilityScope(req.authContext, requestedFacilityId);
       const patient = await queries.getPatientByIdScoped(req.authContext, patientId);
 
-      if (!patient) {
+      if (!patient || patient.registrationFacilityId !== facilityId) {
         return res.status(404).json({
           success: false,
           error: 'PATIENT_NOT_FOUND',
@@ -170,7 +178,7 @@ router.get(
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
 
-      console.error('FHIR patient retrieval error:', err);
+      console.error('FHIR patient retrieval failed.');
       return res.status(500).json({
         success: false,
         error: 'FHIR_PATIENT_RETRIEVAL_FAILED',

@@ -99,7 +99,10 @@ export const platformClient = {
       `${API_BASE}/analytics/summary${facilityId ? `?facilityId=${facilityId}` : ''}`,
     ),
 
-  getFhirPatient: (id: number) => fetchJson<any>(`${API_BASE}/interop/fhir/patient/${id}`),
+  getFhirPatient: (id: number, facilityId?: number) =>
+    fetchJson<any>(
+      `${API_BASE}/interop/fhir/patient/${id}${facilityId ? `?facilityId=${facilityId}` : ''}`,
+    ),
 
   getMoh705Summary: (facilityId?: number) =>
     fetchJson<any>(
@@ -149,9 +152,9 @@ export const platformClient = {
       }>;
     }>(`${API_BASE}/compliance/dha`),
 
-  getDhaReadiness: (probe = false) =>
+  getDhaReadiness: (probe = false, facilityId?: number) =>
     fetchJson<DhaReadinessReport>(
-      `${API_BASE}/integrations/dha/readiness?probe=${probe ? 'true' : 'false'}`,
+      `${API_BASE}/integrations/dha/readiness?probe=${probe ? 'true' : 'false'}${facilityId ? `&facilityId=${facilityId}` : ''}`,
     ),
 
   getDhaCalls: (facilityId?: number, limit = 25) =>

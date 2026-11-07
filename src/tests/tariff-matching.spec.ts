@@ -542,7 +542,7 @@ describe("Tariff matching — the facility's own price list", () => {
     const charges = readFileSync(resolve(process.cwd(), 'src/routes/shared/charges.ts'), 'utf8');
 
     expect(
-      charges.includes('chargeAttempts.chargeAndRecord(db, request)'),
+      charges.includes('chargeAttempts.chargeAndRecord(db, request, initialAttemptId)'),
       'every charge site records what it could not price',
     ).toBe(true);
     const direct = readFileSync(

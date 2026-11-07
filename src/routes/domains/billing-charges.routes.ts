@@ -123,6 +123,7 @@ router.post(
         facilityId,
         attemptId,
         actorUserId: context.userId,
+        priceReview: req.body?.priceReview,
       });
 
       if (!outcome) {
@@ -136,6 +137,8 @@ router.post(
       return res.json(outcome);
     } catch (error: unknown) {
       if (handleScopeError(error, res)) return;
+      if (error instanceof chargeAttempts.ChargePriceReviewError)
+        return res.status(400).json({ error: 'INVALID_PRICE_REVIEW', message: error.message });
 
       console.error('Charge attempt retry failed.');
       return res.status(500).json({

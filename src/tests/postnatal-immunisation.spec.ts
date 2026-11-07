@@ -540,12 +540,14 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
        below are checked against it in its new home. */
     const deliveryCharge = routesSource.slice(
       routesSource.indexOf('const created = await maternity.recordDelivery'),
-      routesSource.indexOf('res.status(201).json({ ...created, billing: charge });'),
+      routesSource.indexOf('res.status(201).json({ ...result, billing: charge });'),
     );
 
     expect(deliveryCharge.length > 100, 'the delivery route has a billing block').toBe(true);
 
-    expect(deliveryCharge).toContain('chargeSafely(deliveryChargeRequest(created.delivery))');
+    expect(deliveryCharge).toContain('deliveryChargeRequest(result.delivery)');
+    expect(deliveryCharge).toContain('chargeSafely(');
+    expect(deliveryCharge).toContain('billingOutboxAttemptId');
     const requestSource = read('src/billing/service-charges.ts');
     const request = requestSource.slice(
       requestSource.indexOf('export function deliveryChargeRequest'),
@@ -554,8 +556,24 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
     expect(request).toContain('sourceId: delivery.id');
     expect(request).not.toContain('babies');
     const service = read('src/maternity/services/delivery.service.ts');
-    expect(service).toContain('recordChargeAttempt(tx, deliveryChargeRequest(delivery)');
-    expect(service).toContain('deliveryChargeRequest(delivery)');
+    const transaction = service.slice(
+      service.indexOf('const result = await db.transaction(async (tx) =>'),
+      service.indexOf('return result;'),
+    );
+    expect(transaction).toMatch(
+      /stageClinicalBillingOutbox\(\s*tx,\s*deliveryChargeRequest\(delivery\)/,
+    );
+    expect(transaction).toContain(
+      "if (attempt === null) throw new Error('DELIVERY_BILLING_QUEUE_UNAVAILABLE')",
+    );
+    expect(transaction).toContain('billingOutboxAttemptId: attempt');
+    const attempts = read('src/billing/charge-attempts.ts');
+    const stageOutbox = attempts.slice(
+      attempts.indexOf('export function stageClinicalBillingOutbox('),
+      attempts.indexOf('export async function lockChargeIdentity('),
+    );
+    expect(stageOutbox).toMatch(/recordChargeAttempt\(\s*executor,\s*request,/);
+    expect(stageOutbox).toContain('preserveExisting: true');
 
     expect(
       !deliveryCharge.includes('fallbackUnitPrice'),

@@ -81,6 +81,19 @@ export const patientsClinicalClient = {
     return fetchJson<Patient[]>(`${API_BASE}/patients${query ? `?${query}` : ''}`);
   },
 
+  getPatientDirectoryPage: (options: {
+    tenantId: number;
+    facilityId: number;
+    search?: string;
+    beforeId?: number;
+    patientId?: number;
+    exactMatch?: 'nationalId' | 'phone';
+  }) =>
+    fetchJson<{ items: Patient[]; nextCursor: number | null }>(
+      `${API_BASE}/patients/directory-page`,
+      { method: 'POST', body: JSON.stringify(options) },
+    ),
+
   getPatient: (id: number) => fetchJson<Patient>(`${API_BASE}/patients/${id}`),
 
   createPatient: (patient: Partial<Patient> & { registrationFacilityId: number }) =>

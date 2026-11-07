@@ -6,7 +6,7 @@
  * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
  * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
  */
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, lt, or, sql } from 'drizzle-orm';
 import { db } from '../index.ts';
 import * as schema from '../schema.ts';
 
@@ -282,7 +282,7 @@ export async function getPatientByIdScoped(context: AuthorizationContext, patien
  * A facility user's facility assignment takes precedence
  * over any facility ID supplied by the frontend.
  */
-export async function getPatientsScoped(
+async function scopedPatientConditions(
   context: AuthorizationContext,
   requestedTenantId?: number,
   requestedFacilityId?: number,
@@ -352,15 +352,41 @@ export async function getPatientsScoped(
         ilike(schema.patients.mrn, term),
         ilike(schema.patients.phone, term),
         ...(nationalIdToken
-          ? [eq(schema.patients.nationalIdBlindIndex, nationalIdToken)]
+          ? [
+              or(
+                eq(schema.patients.nationalIdBlindIndex, nationalIdToken),
+                // Legacy plaintext rows may not have a blind index yet.
+                eq(schema.patients.nationalId, search.trim()),
+              )!,
+            ]
           : [ilike(schema.patients.nationalId, term)]),
         ...(shaToken
-          ? [eq(schema.patients.shaNumberBlindIndex, shaToken)]
+          ? [
+              or(
+                eq(schema.patients.shaNumberBlindIndex, shaToken),
+                eq(schema.patients.shaNumber, search.trim()),
+              )!,
+            ]
           : [ilike(schema.patients.shaNumber, term)]),
       )!,
     );
   }
 
+  return conditions;
+}
+
+export async function getPatientsScoped(
+  context: AuthorizationContext,
+  requestedTenantId?: number,
+  requestedFacilityId?: number,
+  search?: string,
+) {
+  const conditions = await scopedPatientConditions(
+    context,
+    requestedTenantId,
+    requestedFacilityId,
+    search,
+  );
   const rows = await db
     .select()
     .from(schema.patients)
@@ -369,6 +395,81 @@ export async function getPatientsScoped(
     .limit(50);
 
   return openPatientRows(rows);
+}
+
+/**
+ * Keyset pagination is bounded per request, but can traverse every record in
+ * the authorized registration facility. Existing list callers retain their
+ * original response and ordering. No patient names or identifiers are logged.
+ */
+export async function getPatientDirectoryPageScoped(
+  context: AuthorizationContext,
+  tenantId: number,
+  facilityId: number,
+  search?: string,
+  beforeId?: number,
+  exactMatch?: 'nationalId' | 'phone',
+  patientId?: number,
+) {
+  if (
+    !Number.isSafeInteger(tenantId) ||
+    tenantId <= 0 ||
+    !Number.isSafeInteger(facilityId) ||
+    facilityId <= 0
+  ) {
+    throw new ScopeAccessError('A valid tenant and facility are required.', 'INVALID_SCOPE_ID');
+  }
+  if (beforeId !== undefined && (!Number.isSafeInteger(beforeId) || beforeId <= 0)) {
+    throw new ScopeAccessError('A valid patient cursor is required.', 'INVALID_PATIENT_CURSOR');
+  }
+  if (patientId !== undefined && (!Number.isSafeInteger(patientId) || patientId <= 0)) {
+    throw new ScopeAccessError('A valid patient ID is required.', 'INVALID_PATIENT_ID');
+  }
+  requireTenantScope(context, tenantId);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+  if (!facility || facility.tenantId !== tenantId) {
+    throw new ScopeAccessError(
+      'The selected facility is not in this tenant.',
+      'FACILITY_SCOPE_MISMATCH',
+    );
+  }
+  if (exactMatch && !search?.trim()) {
+    throw new ScopeAccessError('An identifier is required for an exact match.', 'INVALID_SEARCH');
+  }
+  const conditions = await scopedPatientConditions(
+    context,
+    tenantId,
+    facilityId,
+    exactMatch ? undefined : search,
+  );
+  if (exactMatch === 'phone') {
+    conditions.push(eq(schema.patients.phone, search!.trim()));
+  } else if (exactMatch === 'nationalId') {
+    const value = search!.trim();
+    const token = identifierLookup(value, 'nationalId');
+    conditions.push(
+      token
+        ? or(
+            eq(schema.patients.nationalIdBlindIndex, token),
+            eq(schema.patients.nationalId, value),
+          )!
+        : eq(schema.patients.nationalId, value),
+    );
+  }
+  if (patientId !== undefined) conditions.push(eq(schema.patients.id, patientId));
+  if (beforeId !== undefined) conditions.push(lt(schema.patients.id, beforeId));
+  const pageSize = 25;
+  const rows = await db
+    .select()
+    .from(schema.patients)
+    .where(and(...conditions))
+    .orderBy(desc(schema.patients.id))
+    .limit(pageSize + 1);
+  const items = openPatientRows(rows.slice(0, pageSize));
+  return {
+    items,
+    nextCursor: rows.length > pageSize ? (items[items.length - 1]?.id ?? null) : null,
+  };
 }
 
 /**

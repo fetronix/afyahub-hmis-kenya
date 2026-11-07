@@ -17,6 +17,7 @@ import {
 import { NursingPanel } from './NursingPanel.tsx';
 import { BedBillingPolicyPanel } from './BedBillingPolicyPanel.tsx';
 import { BedBillingRecovery } from './BedBillingRecovery.tsx';
+import { PatientDirectoryPicker } from '../patient/PatientDirectoryPicker.tsx';
 import { isFacilityFinancialPermission } from '../../auth/permission-boundaries.ts';
 import { selectBedRate } from '../../inpatient/bed-rate.ts';
 
@@ -124,6 +125,8 @@ export const InpatientModule: React.FC = () => {
 
   // New Admission Modal
   const [isAdmitModalOpen, setIsAdmitModalOpen] = useState(false);
+  const [admissionPatientSearchOpen, setAdmissionPatientSearchOpen] = useState(false);
+  const [admissionPatient, setAdmissionPatient] = useState<Patient | null>(null);
   const [admitForm, setAdmitForm] = useState({
     patientId: '',
     wardId: '',
@@ -709,6 +712,8 @@ export const InpatientModule: React.FC = () => {
           {canAdmit && (
             <PrimaryButton
               onClick={() => {
+                setAdmissionPatient(null);
+                setAdmissionPatientSearchOpen(false);
                 const activeWards = wards.filter((w) => w.isActive !== false);
 
                 if (activeWards.length > 0) {
@@ -1223,16 +1228,55 @@ export const InpatientModule: React.FC = () => {
                   id="inpatient-patient"
                   required
                   value={admitForm.patientId}
-                  onChange={(e) => setAdmitForm({ ...admitForm, patientId: e.target.value })}
+                  onChange={(e) => {
+                    if (String(admissionPatient?.id ?? '') !== e.target.value)
+                      setAdmissionPatient(null);
+                    setAdmitForm({ ...admitForm, patientId: e.target.value, encounterId: '' });
+                  }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
                   <option value="">Select the patient</option>
+                  {admissionPatient &&
+                    !patients.some((patient) => patient.id === admissionPatient.id) && (
+                      <option value={admissionPatient.id}>
+                        {admissionPatient.firstName} {admissionPatient.lastName} (
+                        {admissionPatient.mrn})
+                      </option>
+                    )}
                   {patients.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.firstName} {p.lastName} ({p.mrn} · {p.payerType})
                     </option>
                   ))}
                 </select>
+                <button
+                  type="button"
+                  className="mt-2 text-teal-800 underline"
+                  aria-expanded={admissionPatientSearchOpen}
+                  onClick={() => setAdmissionPatientSearchOpen((open) => !open)}
+                >
+                  {admissionPatientSearchOpen
+                    ? 'Close patient search'
+                    : 'Find another facility patient'}
+                </button>
+                {admissionPatientSearchOpen && (
+                  <div className="mt-2">
+                    <PatientDirectoryPicker
+                      tenantId={currentTenant?.id}
+                      facilityId={currentFacility?.id}
+                      refreshKey={refreshKey}
+                      onSelect={(patient) => {
+                        setAdmissionPatient(patient);
+                        setAdmitForm((previous) => ({
+                          ...previous,
+                          patientId: String(patient.id),
+                          encounterId: '',
+                        }));
+                        setAdmissionPatientSearchOpen(false);
+                      }}
+                    />
+                  </div>
+                )}
               </div>
               <div>
                 <label

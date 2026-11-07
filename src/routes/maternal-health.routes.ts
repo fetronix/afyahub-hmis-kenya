@@ -401,9 +401,13 @@ router.post(
     try {
       const created = await maternity.recordDelivery(context, req.body ?? {});
 
-      const charge = await chargeSafely(deliveryChargeRequest(created.delivery));
+      const { billingOutboxAttemptId, ...result } = created;
+      const charge = await chargeSafely(
+        deliveryChargeRequest(result.delivery),
+        billingOutboxAttemptId,
+      );
 
-      res.status(201).json({ ...created, billing: charge });
+      res.status(201).json({ ...result, billing: charge });
     } catch (err: unknown) {
       if (handleMaternityError(err, res)) return;
 

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BirthDatePicker } from '../../components/modules/patient-registration/BirthDatePicker.tsx';
 
 const mocks = vi.hoisted(() => ({
-  getPatients: vi.fn(),
+  getPatientDirectoryPage: vi.fn(),
   createPatient: vi.fn(),
   createQueueItem: vi.fn(),
   showToast: vi.fn(),
@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../api/client.ts', () => ({
   api: {
-    getPatients: mocks.getPatients,
+    getPatientDirectoryPage: mocks.getPatientDirectoryPage,
     createPatient: mocks.createPatient,
     createQueueItem: mocks.createQueueItem,
   },
@@ -81,7 +81,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(2026, 9, 29, 12));
   vi.clearAllMocks();
-  mocks.getPatients.mockResolvedValue([]);
+  mocks.getPatientDirectoryPage.mockResolvedValue({ items: [], nextCursor: null });
   mocks.createPatient.mockResolvedValue({
     id: 42,
     firstName: 'Test',
@@ -354,13 +354,13 @@ describe('patient registration compatibility', () => {
   });
 
   it('shows a directory outage instead of an empty patient list and supports retry', async () => {
-    mocks.getPatients.mockRejectedValueOnce(new Error('synthetic outage'));
+    mocks.getPatientDirectoryPage.mockRejectedValueOnce(new Error('synthetic outage'));
     render(<PatientRegistrationModule />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Do not assume no patients exist');
     expect(screen.queryByText(/No patients found matching/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry patient directory' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-    expect(mocks.getPatients).toHaveBeenCalledTimes(2);
+    expect(mocks.getPatientDirectoryPage).toHaveBeenCalledTimes(2);
   });
 
   it('does not submit a manually entered future birth date', () => {

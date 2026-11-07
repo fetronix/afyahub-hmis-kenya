@@ -88,7 +88,9 @@ describe('The outpatient journey — contract tests', () => {
     expect(complete).toContain('completeLabInvestigation');
     expect(complete).toContain('chargeSafely(labOrderChargeRequest');
     const queries = source('src/db/queries/laboratory.ts');
-    expect(queries).toContain('recordChargeAttempt(tx, labOrderChargeRequest');
+    expect(queries).toContain('stageClinicalBillingOutbox(');
+    expect(queries).toContain('labOrderChargeRequest(completed)');
+    expect(complete).toContain('billingOutboxAttemptId');
     expect(queries).toContain("status !== 'Verified'");
   });
 
@@ -110,7 +112,9 @@ describe('The outpatient journey — contract tests', () => {
     const order = routeBody(routes, 'router.post', '/api/radiology-orders')!;
     const report = routeBody(routes, 'router.put', '/api/radiology-orders/:id/report')!;
     expect(order).not.toContain('chargeSafely');
-    expect(report).toContain('chargeSafely(radiologyChargeRequest(order))');
+    expect(report).toContain(
+      'chargeSafely(radiologyChargeRequest(reported), billingOutboxAttemptId)',
+    );
     const resolver = source('src/billing/facility-charge-resolver.ts');
     expect(resolver).toContain('row.facilityServiceId');
     expect(resolver).toContain("row.status !== 'Reported'");
@@ -124,10 +128,19 @@ describe('The outpatient journey — contract tests', () => {
     const inpatient = source('src/db/queries/inpatient.ts');
     const resolver = source('src/billing/facility-charge-resolver.ts');
     const billing = source('src/billing/billing.service.ts');
-    expect(encounterQueries).toContain('recordChargeAttempt(tx, consultationChargeRequest');
-    expect(radiologyQueries).toContain('recordChargeAttempt(tx, radiologyChargeRequest');
+    for (const [queries, request] of [
+      [encounterQueries, 'consultationChargeRequest(updated)'],
+      [radiologyQueries, 'radiologyChargeRequest(updated)'],
+      [inpatient, 'admissionChargeRequest(created)'],
+    ]) {
+      expect(queries).toContain('stageClinicalBillingOutbox(');
+      expect(queries).toContain(request);
+    }
+    const attempts = source('src/billing/charge-attempts.ts');
+    expect(attempts).toContain('recordChargeAttempt(');
+    expect(attempts).toContain('preserveExisting: true');
+    expect(attempts).toContain('BILLING_EVALUATION_PENDING');
     expect(inventory).toContain("sourceType: 'PHARMACY'");
-    expect(inpatient).toContain('recordChargeAttempt(tx, admissionChargeRequest');
     expect(resolver).toContain('schema.facilityServices');
     expect(resolver).toContain('schema.facilityServiceTariffs');
     expect(resolver).not.toContain('schema.masterServiceSources');

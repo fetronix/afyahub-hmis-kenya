@@ -30,7 +30,7 @@ import { hasAllPermissions } from '../../auth/authorization.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 
 import type { ChargeResult } from '../../billing/billing.service.ts';
-import { chargeAndRecord, recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { chargeAndRecord, stageClinicalBillingOutbox } from '../../billing/charge-attempts.ts';
 import { admissionChargeRequest } from '../../billing/service-charges.ts';
 import { databaseNow } from '../../inpatient/bed-evidence.ts';
 import { selectBedRate } from '../../inpatient/bed-rate.ts';
@@ -634,15 +634,16 @@ export async function createAdmissionScoped(
         })
         .where(eq(schema.beds.id, bed.id));
 
-      const attempt = await recordChargeAttempt(tx, admissionChargeRequest(created), {
-        charged: false,
-        reason: 'TARIFF_NOT_CONFIGURED',
-        message: 'Admission recorded; billing evaluation pending.',
-      });
+      const attempt = await stageClinicalBillingOutbox(
+        tx,
+        admissionChargeRequest(created),
+        'Admission recorded; billing evaluation pending.',
+      );
       if (attempt === null) throw new Error('ADMISSION_BILLING_QUEUE_UNAVAILABLE');
       await auditAdmission(tx, context, created, 'CREATE', 'Admission created.');
       return {
         ...created,
+        billingOutboxAttemptId: attempt,
         bedBillingReadiness: { ready: bedBillingIssues.length === 0, issues: bedBillingIssues },
       };
     });

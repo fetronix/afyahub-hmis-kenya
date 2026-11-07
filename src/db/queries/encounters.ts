@@ -17,7 +17,7 @@ import {
   resolveFacilityScope,
 } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
-import { lockChargeIdentity, recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { lockChargeIdentity, stageClinicalBillingOutbox } from '../../billing/charge-attempts.ts';
 import { consultationChargeRequest } from '../../billing/service-charges.ts';
 
 import { pickEncounterWritableFields, validateEncounterReferences } from './shared.ts';
@@ -585,19 +585,21 @@ export async function updateEncounterScoped(
       .set({ ...safeData, updatedAt: new Date() } as Partial<typeof schema.encounters.$inferInsert>)
       .where(eq(schema.encounters.id, encounterId))
       .returning();
+    let billingOutboxAttemptId: number | null = null;
     if (
       updated &&
       locked.status.trim().toUpperCase() !== 'COMPLETED' &&
       updated.status === 'Completed' &&
       updated.encounterType.trim().toUpperCase() !== 'INPATIENT'
     ) {
-      const attempt = await recordChargeAttempt(tx, consultationChargeRequest(updated), {
-        charged: false,
-        reason: 'TARIFF_NOT_CONFIGURED',
-        message: 'Consultation completed; billing evaluation pending.',
-      });
-      if (attempt === null) throw new Error('CONSULTATION_BILLING_QUEUE_UNAVAILABLE');
+      billingOutboxAttemptId = await stageClinicalBillingOutbox(
+        tx,
+        consultationChargeRequest(updated),
+        'Consultation completed; billing evaluation pending.',
+      );
+      if (billingOutboxAttemptId === null)
+        throw new Error('CONSULTATION_BILLING_QUEUE_UNAVAILABLE');
     }
-    return updated ?? null;
+    return updated ? { ...updated, billingOutboxAttemptId } : null;
   });
 }

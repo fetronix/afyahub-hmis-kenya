@@ -8,6 +8,7 @@ import { AppointmentCategoryManager } from './AppointmentCategoryManager.tsx';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
+import { usePatientDirectory } from '../patient/usePatientDirectory.ts';
 import type { QueueItem, AppointmentCategory, Patient } from '../../types/index.ts';
 import {
   Users,
@@ -43,9 +44,9 @@ const ReceptionQueueWorkspace: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loadedFacilityId, setLoadedFacilityId] = useState<number | undefined>();
   const [configFacilityId, setConfigFacilityId] = useState<number | undefined>();
-  const [bookingPatients, setBookingPatients] = useState<Patient[]>([]);
   const [patientSearch, setPatientSearch] = useState('');
-  const [patientSearchError, setPatientSearchError] = useState('');
+  const [bookingPatient, setBookingPatient] = useState<Patient | null>(null);
+  const [bookingDirectoryVersion, setBookingDirectoryVersion] = useState(0);
   const [categories, setCategories] = useState<AppointmentCategory[]>([]);
   const [resources, setResources] = useState<{
     departments: Array<{ id: number; name: string }>;
@@ -54,7 +55,6 @@ const ReceptionQueueWorkspace: React.FC = () => {
   const [configurationError, setConfigurationError] = useState('');
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [bookingError, setBookingError] = useState('');
-  const [searchingPatients, setSearchingPatients] = useState(false);
   const bookingKey = useRef('');
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -70,6 +70,16 @@ const ReceptionQueueWorkspace: React.FC = () => {
 
   // New Appointment Form Modal
   const [isApptModalOpen, setIsApptModalOpen] = useState(false);
+  const bookingDirectory = usePatientDirectory({
+    tenantId: isApptModalOpen ? currentTenant?.id : undefined,
+    facilityId: isApptModalOpen ? currentFacility?.id : undefined,
+    search: patientSearch,
+    refreshKey: bookingDirectoryVersion,
+  });
+  const bookingPatients =
+    bookingPatient && !bookingDirectory.items.some((patient) => patient.id === bookingPatient.id)
+      ? [bookingPatient, ...bookingDirectory.items]
+      : bookingDirectory.items;
 
   /*
    * Portal invitation state lives next to the queue it is triggered from.
@@ -171,33 +181,12 @@ const ReceptionQueueWorkspace: React.FC = () => {
 
   const openAppointmentModal = () => {
     bookingKey.current = crypto.randomUUID();
-    setBookingPatients(visiblePatients);
+    setBookingPatient(null);
+    setApptForm((old) => ({ ...old, patientId: '' }));
     setPatientSearch('');
-    setPatientSearchError('');
+    setBookingDirectoryVersion((version) => version + 1);
     setBookingError('');
     setIsApptModalOpen(true);
-  };
-  const searchPatients = async () => {
-    if (!currentFacility?.id || !currentTenant?.id) return;
-    const selectedFacility = currentFacility.id;
-    setSearchingPatients(true);
-    setPatientSearchError('');
-    try {
-      const found = await api.getPatients(currentTenant.id, selectedFacility, patientSearch);
-      if (!mountedRef.current) return;
-      setBookingPatients(found);
-      setApptForm((old) => ({
-        ...old,
-        patientId: found.some((p) => String(p.id) === old.patientId) ? old.patientId : '',
-      }));
-    } catch (error: unknown) {
-      if (mountedRef.current)
-        setPatientSearchError(
-          error instanceof Error ? error.message : 'Patient search unavailable.',
-        );
-    } finally {
-      if (mountedRef.current) setSearchingPatients(false);
-    }
   };
 
   const updateStatus = async (id: number, status: string) => {
@@ -212,7 +201,20 @@ const ReceptionQueueWorkspace: React.FC = () => {
 
   const handleCreateAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apptForm.patientId) return;
+    if (
+      !apptForm.patientId ||
+      !bookingPatient ||
+      String(bookingPatient.id) !== apptForm.patientId
+    ) {
+      showToast('Select a patient from the current facility directory before booking.', {
+        tone: 'warning',
+      });
+      return;
+    }
+    if (bookingDirectory.error || bookingDirectory.loading) {
+      showToast('Wait for the patient directory to load before booking.', { tone: 'warning' });
+      return;
+    }
 
     if (!currentFacility?.id) {
       showToast('Select a facility before saving this record.', { tone: 'warning' });
@@ -549,7 +551,7 @@ const ReceptionQueueWorkspace: React.FC = () => {
           <FormField
             label="Search registered patients"
             htmlFor="appointment-patient-search"
-            hint="Search within this facility, then select the matching patient. Search returns up to 50 results."
+            hint="Search within this facility, browse the result pages, then select the matching patient."
           >
             <div className="flex gap-2">
               <input
@@ -560,18 +562,43 @@ const ReceptionQueueWorkspace: React.FC = () => {
               />
               <SecondaryButton
                 type="button"
-                disabled={searchingPatients}
-                onClick={() => void searchPatients()}
+                disabled={bookingDirectory.loading}
+                onClick={bookingDirectory.retry}
               >
-                {searchingPatients ? 'Searching…' : 'Search'}
+                {bookingDirectory.loading ? 'Searching…' : 'Search'}
               </SecondaryButton>
             </div>
           </FormField>
-          {patientSearchError && (
+          {bookingDirectory.error && (
             <p role="alert" className="text-rose-700">
-              {patientSearchError}
+              {bookingDirectory.error}
+              <button type="button" className="ml-2 underline" onClick={bookingDirectory.retry}>
+                Retry directory
+              </button>
             </p>
           )}
+          <nav
+            aria-label="Appointment patient pages"
+            className="flex items-center justify-between gap-3 text-xs"
+          >
+            <button
+              type="button"
+              disabled={!bookingDirectory.canPrevious}
+              onClick={bookingDirectory.previous}
+              className="rounded border px-3 py-1 disabled:opacity-50"
+            >
+              Previous page
+            </button>
+            <span>Page {bookingDirectory.page}</span>
+            <button
+              type="button"
+              disabled={!bookingDirectory.canNext}
+              onClick={bookingDirectory.next}
+              className="rounded border px-3 py-1 disabled:opacity-50"
+            >
+              Next page
+            </button>
+          </nav>
           <button
             type="button"
             className="text-xs text-blue-800 underline"
@@ -587,7 +614,12 @@ const ReceptionQueueWorkspace: React.FC = () => {
               id="appointment-patient"
               required
               value={apptForm.patientId}
-              onChange={(e) => setApptForm({ ...apptForm, patientId: e.target.value })}
+              onChange={(e) => {
+                const selected =
+                  bookingPatients.find((patient) => String(patient.id) === e.target.value) ?? null;
+                setBookingPatient(selected);
+                setApptForm({ ...apptForm, patientId: selected ? String(selected.id) : '' });
+              }}
               className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
             >
               <option value="">Select a patient</option>

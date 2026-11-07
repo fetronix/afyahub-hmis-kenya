@@ -1,5 +1,5 @@
 import { DataTable, PageHeader } from '../ui/layout.tsx';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { Patient } from '../../types/index.ts';
@@ -34,147 +34,240 @@ import {
 export const InteroperabilityModule: React.FC = () => {
   const { currentTenant, currentFacility, showToast, refreshKey } = useHmis();
 
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
+  const currentFacilityId = currentFacility?.id;
+  const scopeKey = `${currentTenant?.id ?? 'none'}:${currentFacilityId ?? 'none'}`;
+  const scopeRef = useRef(scopeKey);
+  useLayoutEffect(() => {
+    scopeRef.current = scopeKey;
+  }, [scopeKey]);
 
-  const [readiness, setReadiness] = useState<DhaReadinessReport | null>(null);
+  const [patientList, setPatientList] = useState<{ scope: string; rows: Patient[] } | null>(null);
+  const [selection, setSelection] = useState<{ scope: string; id: string } | null>(null);
+  const patients = patientList?.scope === scopeKey ? patientList.rows : [];
+  const selectedPatientId = selection?.scope === scopeKey ? selection.id : '';
+  const [patientsError, setPatientsError] = useState('');
+
+  const [readinessState, setReadinessState] = useState<{
+    scope: string;
+    report: DhaReadinessReport;
+  } | null>(null);
+  const readiness = readinessState?.scope === scopeKey ? readinessState.report : null;
   const [readinessError, setReadinessError] = useState('');
   const [readinessLoading, setReadinessLoading] = useState(false);
+  const readinessRequest = useRef(0);
 
-  const [calls, setCalls] = useState<DhaCallLog[]>([]);
+  const [callState, setCallState] = useState<{
+    scope: string;
+    rows: DhaCallLog[];
+    status: 'loading' | 'ready' | 'error';
+  } | null>(null);
+  const calls = callState?.scope === scopeKey ? callState.rows : [];
 
-  const [eligibility, setEligibility] = useState<DhaEligibilityResult | null>(null);
+  const [eligibilityState, setEligibilityState] = useState<{
+    scope: string;
+    patientId: string;
+    result: DhaEligibilityResult;
+  } | null>(null);
+  const eligibility =
+    eligibilityState?.scope === scopeKey && eligibilityState.patientId === selectedPatientId
+      ? eligibilityState.result
+      : null;
   const [eligibilityError, setEligibilityError] = useState('');
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const eligibilityRequest = useRef(0);
 
   const [identificationType, setIdentificationType] = useState('');
   const [identificationNumber, setIdentificationNumber] = useState('');
 
-  const [fhirData, setFhirData] = useState<any>(null);
+  const [fhirState, setFhirState] = useState<{
+    scope: string;
+    patientId: string;
+    data: any;
+  } | null>(null);
+  const fhirData =
+    fhirState?.scope === scopeKey && fhirState.patientId === selectedPatientId
+      ? fhirState.data
+      : null;
   const [fhirLoading, setFhirLoading] = useState(false);
+  const [fhirError, setFhirError] = useState('');
+  const [fhirRetry, setFhirRetry] = useState(0);
 
   const loadReadiness = useCallback(
     async (probe: boolean) => {
-      /*
-       * Both the connection report and the eligibility/FHIR calls are
-       * facility scoped. A platform owner with no facility selected has
-       * nothing to ask about yet, and asking would produce
-       * FACILITY_REQUIRED dressed up as a failure.
-       */
-      if (!currentFacility?.id) {
-        setReadiness(null);
-        setReadinessError('');
+      const request = ++readinessRequest.current;
+      setReadinessState(null);
+      setReadinessError('');
+      if (!currentFacilityId) {
         setReadinessLoading(false);
         return;
       }
 
       setReadinessLoading(true);
-      setReadinessError('');
-
       try {
-        const report = await api.getDhaReadiness(probe);
-        setReadiness(report);
+        const report = await api.getDhaReadiness(probe, currentFacilityId);
+        if (request === readinessRequest.current && scopeRef.current === scopeKey) {
+          setReadinessState({ scope: scopeKey, report });
+        }
       } catch (err) {
-        setReadinessError(err instanceof Error ? err.message : 'Failed to read DHA readiness.');
+        if (request === readinessRequest.current && scopeRef.current === scopeKey) {
+          setReadinessError(err instanceof Error ? err.message : 'Failed to read DHA readiness.');
+        }
       } finally {
-        setReadinessLoading(false);
+        if (request === readinessRequest.current && scopeRef.current === scopeKey) {
+          setReadinessLoading(false);
+        }
       }
     },
-    [currentFacility?.id],
+    [currentFacilityId, scopeKey],
   );
 
   useEffect(() => {
     void loadReadiness(false);
-  }, [loadReadiness, currentFacility?.id]);
+    return () => {
+      readinessRequest.current += 1;
+    };
+  }, [loadReadiness]);
 
   useEffect(() => {
-    async function loadPatients() {
-      if (!currentFacility?.id) {
-        setPatients([]);
-        setSelectedPatientId('');
-        return;
-      }
+    let active = true;
+    eligibilityRequest.current += 1;
+    setPatientList(null);
+    setSelection(null);
+    setPatientsError('');
+    setEligibilityState(null);
+    setEligibilityError('');
+    setEligibilityLoading(false);
+    setIdentificationType('');
+    setIdentificationNumber('');
 
-      try {
-        const pList = await api.getPatients(currentTenant?.id, currentFacility?.id);
-        setPatients(pList);
-
-        if (pList.length > 0) {
-          setSelectedPatientId(pList[0].id.toString());
-          void loadFhir(pList[0].id);
-        }
-      } catch (err) {
-        console.error('Failed to load patients for FHIR:', err);
-      }
+    if (currentFacility?.id) {
+      void api
+        .getPatients(currentTenant?.id, currentFacility.id)
+        .then((rows) => {
+          if (!active || scopeRef.current !== scopeKey) return;
+          setPatientList({ scope: scopeKey, rows });
+          setSelection({ scope: scopeKey, id: rows[0]?.id.toString() ?? '' });
+        })
+        .catch(() => {
+          if (active && scopeRef.current === scopeKey) {
+            setPatientsError('Patients could not be loaded for this facility.');
+          }
+        });
     }
-
-    void loadPatients();
-  }, [currentTenant, currentFacility, refreshKey]);
+    return () => {
+      active = false;
+    };
+  }, [scopeKey, currentTenant?.id, currentFacility?.id, refreshKey]);
 
   useEffect(() => {
-    async function loadCalls() {
-      if (!currentFacility?.id) {
-        setCalls([]);
-        return;
-      }
-
-      try {
-        setCalls(await api.getDhaCalls(currentFacility?.id, 25));
-      } catch {
-        /* The call log is diagnostic; a failure here must not break the page. */
-        setCalls([]);
-      }
+    let active = true;
+    setCallState({ scope: scopeKey, rows: [], status: 'loading' });
+    if (currentFacility?.id) {
+      void api
+        .getDhaCalls(currentFacility.id, 25)
+        .then((rows) => {
+          if (active && scopeRef.current === scopeKey)
+            setCallState({ scope: scopeKey, rows, status: 'ready' });
+        })
+        .catch(() => {
+          if (active && scopeRef.current === scopeKey)
+            setCallState({ scope: scopeKey, rows: [], status: 'error' });
+        });
     }
+    return () => {
+      active = false;
+    };
+  }, [scopeKey, currentFacility?.id, refreshKey]);
 
-    void loadCalls();
-  }, [currentFacility?.id, refreshKey]);
-
-  const loadFhir = async (id: number) => {
-    setFhirLoading(true);
-
-    try {
-      setFhirData(await api.getFhirPatient(id));
-    } catch (err) {
-      console.error('Failed to fetch FHIR structure:', err);
-    } finally {
+  useEffect(() => {
+    let active = true;
+    setFhirState(null);
+    setFhirError('');
+    if (!selectedPatientId || !currentFacility?.id) {
       setFhirLoading(false);
+      return () => {
+        active = false;
+      };
     }
+
+    setFhirLoading(true);
+    void api
+      .getFhirPatient(Number(selectedPatientId), currentFacility.id)
+      .then((data) => {
+        if (!active || scopeRef.current !== scopeKey) return;
+        if (data?.resourceType !== 'Patient' || data?.id !== `ke-hmis-${selectedPatientId}`) {
+          throw new Error('Patient resource identity mismatch.');
+        }
+        setFhirState({ scope: scopeKey, patientId: selectedPatientId, data });
+      })
+      .catch(() => {
+        if (active && scopeRef.current === scopeKey) {
+          setFhirError('The selected patient resource could not be verified or loaded.');
+        }
+      })
+      .finally(() => {
+        if (active && scopeRef.current === scopeKey) setFhirLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [scopeKey, selectedPatientId, currentFacility?.id, fhirRetry]);
+
+  const selectPatient = (id: string) => {
+    if (id && !patients.some((patient) => patient.id.toString() === id)) return;
+    eligibilityRequest.current += 1;
+    setEligibilityState(null);
+    setEligibilityError('');
+    setEligibilityLoading(false);
+    setIdentificationType('');
+    setIdentificationNumber('');
+    setFhirState(null);
+    setSelection({ scope: scopeKey, id });
   };
 
   const runEligibilityCheck = async () => {
-    if (!selectedPatientId) return;
+    if (!selectedPatientId || !currentFacility?.id) return;
 
+    const request = ++eligibilityRequest.current;
+    const patientId = selectedPatientId;
+    const identifier = identificationNumber;
+    const identifierType = identificationType;
     setEligibilityLoading(true);
     setEligibilityError('');
-    setEligibility(null);
+    setEligibilityState(null);
+    // An override entered for one patient must not linger across a switch.
+    setIdentificationNumber('');
 
     try {
-      const result = await api.checkDhaEligibility(Number(selectedPatientId), {
-        identificationType: identificationType || undefined,
-        identificationNumber: identificationNumber || undefined,
-        facilityId: currentFacility?.id,
+      const result = await api.checkDhaEligibility(Number(patientId), {
+        identificationType: identifierType || undefined,
+        identificationNumber: identifier || undefined,
+        facilityId: currentFacility.id,
       });
 
-      setEligibility(result);
-
-      /* Never leave an identifier in the form after it has been used. */
-      setIdentificationNumber('');
+      if (request === eligibilityRequest.current && scopeRef.current === scopeKey) {
+        setEligibilityState({ scope: scopeKey, patientId, result });
+      }
     } catch (err) {
-      setEligibilityError(err instanceof Error ? err.message : 'The eligibility check failed.');
+      if (request === eligibilityRequest.current && scopeRef.current === scopeKey) {
+        setEligibilityError(err instanceof Error ? err.message : 'The eligibility check failed.');
+      }
     } finally {
-      setEligibilityLoading(false);
+      if (request === eligibilityRequest.current && scopeRef.current === scopeKey) {
+        setEligibilityLoading(false);
+      }
     }
   };
 
   const copyFhirJson = () => {
-    if (!fhirData) return;
+    if (!fhirData || fhirLoading) return;
 
     navigator.clipboard.writeText(JSON.stringify(fhirData, null, 2));
     showToast('Copied HL7 FHIR R4 JSON to clipboard.');
   };
 
   const downloadFhirJson = () => {
-    if (!fhirData) return;
+    if (!fhirData || fhirLoading) return;
 
     const blob = new Blob([JSON.stringify(fhirData, null, 2)], {
       type: 'application/fhir+json',
@@ -453,13 +546,12 @@ export const InteroperabilityModule: React.FC = () => {
             <label className="block text-2xs font-semibold text-slate-600 mb-1">Patient</label>
             <select
               value={selectedPatientId}
-              onChange={(event) => {
-                setSelectedPatientId(event.target.value);
-                setEligibility(null);
-                setEligibilityError('');
-              }}
+              onChange={(event) => selectPatient(event.target.value)}
+              disabled={patients.length === 0}
+              aria-label="Eligibility patient"
               className="w-full px-3 py-2 border border-slate-200 rounded-md text-xs"
             >
+              {patients.length === 0 && <option value="">No patient selected</option>}
               {patients.map((patient) => (
                 <option key={patient.id} value={patient.id}>
                   {patient.firstName} {patient.lastName} (MRN: {patient.mrn})
@@ -510,6 +602,15 @@ export const InteroperabilityModule: React.FC = () => {
             <span>{eligibilityLoading ? 'Checking…' : 'Check eligibility'}</span>
           </button>
         </div>
+
+        {patientsError && (
+          <div
+            role="alert"
+            className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3"
+          >
+            {patientsError}
+          </div>
+        )}
 
         {eligibilityError && (
           <div className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3 flex items-start gap-2">
@@ -620,7 +721,17 @@ export const InteroperabilityModule: React.FC = () => {
           </span>
         </div>
 
-        {calls.length === 0 ? (
+        {!currentFacility?.id ? (
+          <p className="text-2xs text-slate-500 py-2">
+            Select a facility to view its call history.
+          </p>
+        ) : callState?.scope !== scopeKey || callState.status === 'loading' ? (
+          <p className="text-2xs text-slate-500 py-2">Loading call history…</p>
+        ) : callState.status === 'error' ? (
+          <p role="alert" className="text-2xs text-red-800 py-2">
+            Call history could not be loaded. Do not assume there were no calls.
+          </p>
+        ) : calls.length === 0 ? (
           <p className="text-2xs text-slate-500 py-2">No calls recorded for this facility yet.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -672,12 +783,12 @@ export const InteroperabilityModule: React.FC = () => {
             <span className="text-xs font-semibold text-slate-700">Inspect patient resource:</span>
             <select
               value={selectedPatientId}
-              onChange={(event) => {
-                setSelectedPatientId(event.target.value);
-                void loadFhir(Number(event.target.value));
-              }}
+              onChange={(event) => selectPatient(event.target.value)}
+              disabled={patients.length === 0}
+              aria-label="FHIR patient"
               className="px-3 py-1.5 border border-slate-200 rounded-md text-xs font-medium"
             >
+              {patients.length === 0 && <option value="">No patient selected</option>}
               {patients.map((patient) => (
                 <option key={patient.id} value={patient.id}>
                   {patient.firstName} {patient.lastName} (MRN: {patient.mrn})
@@ -689,20 +800,38 @@ export const InteroperabilityModule: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={copyFhirJson}
-              className="px-3 py-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1"
+              disabled={!fhirData || fhirLoading}
+              className="px-3 py-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-md transition-colors flex items-center gap-1"
             >
               <Copy className="w-3.5 h-3.5" />
               <span>Copy JSON</span>
             </button>
             <button
               onClick={downloadFhirJson}
-              className="px-3 py-1.5 text-xs text-white bg-teal-700 hover:bg-teal-800 rounded-md transition-colors shadow-xs flex items-center gap-1"
+              disabled={!fhirData || fhirLoading}
+              className="px-3 py-1.5 text-xs text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50 rounded-md transition-colors shadow-xs flex items-center gap-1"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Download schema</span>
             </button>
           </div>
         </div>
+
+        {fhirError && (
+          <div
+            role="alert"
+            className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg p-3"
+          >
+            {fhirError}{' '}
+            <button
+              type="button"
+              onClick={() => setFhirRetry((value) => value + 1)}
+              className="font-semibold underline"
+            >
+              Retry FHIR
+            </button>
+          </div>
+        )}
 
         <div className="relative">
           {fhirLoading ? (

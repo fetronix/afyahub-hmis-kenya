@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   },
   api: {
     getPatients: vi.fn(),
+    getPatientDirectoryPage: vi.fn(),
+    updateQueueStatus: vi.fn(),
     getLabTests: vi.fn(),
     getClinicalCatalogue: vi.fn(),
     getAvailableFacilityServices: vi.fn(),
@@ -56,6 +58,8 @@ describe('Outpatient worklist and patient isolation', () => {
     mocks.context.currentFacility = { id: 2 };
     mocks.context.authenticatedUser = null;
     mocks.api.getPatients.mockResolvedValue(patients);
+    mocks.api.getPatientDirectoryPage.mockResolvedValue({ items: [], nextCursor: null });
+    mocks.api.updateQueueStatus.mockResolvedValue({});
     mocks.api.getLabTests.mockResolvedValue([]);
     mocks.api.getClinicalCatalogue.mockResolvedValue([]);
     mocks.api.getAvailableFacilityServices.mockResolvedValue([]);
@@ -155,6 +159,123 @@ describe('Outpatient worklist and patient isolation', () => {
     await waitFor(() => expect(mocks.api.getObservations).toHaveBeenCalledWith(122));
     expect(mocks.api.getObservations).not.toHaveBeenCalledWith(111);
     expect(screen.getByText('Allergies:').textContent).toContain('Not recorded');
+  });
+
+  it('browses beyond the first directory page and selects the older patient for care', async () => {
+    const older = {
+      id: 7,
+      firstName: 'Synthetic',
+      lastName: 'Older',
+      mrn: 'P-7',
+      dateOfBirth: '2000-01-01',
+    };
+    mocks.api.getPatientDirectoryPage.mockImplementation(
+      async ({ beforeId }: { beforeId?: number }) =>
+        beforeId
+          ? { items: [older], nextCursor: null }
+          : { items: [{ ...patients[0], dateOfBirth: '2000-01-01' }], nextCursor: 11 },
+    );
+    const user = userEvent.setup();
+    render(<OutpatientModule />);
+    await screen.findByRole('button', { name: /Synthetic One/ });
+    await user.click(screen.getByRole('button', { name: 'Find another facility patient' }));
+    await screen.findByRole('button', { name: /Synthetic One.*DOB/ });
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await user.click(await screen.findByRole('button', { name: /Synthetic Older.*P-7/ }));
+    await waitFor(() => expect(mocks.api.getEncounters).toHaveBeenCalledWith(7, 2));
+    expect(mocks.api.getPatientDirectoryPage).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 1, facilityId: 2, beforeId: 11 }),
+    );
+    expect(
+      screen.queryByRole('region', { name: 'Find a facility patient' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('resolves a queued patient absent from the carousel through the scoped audited directory', async () => {
+    const older = {
+      id: 7,
+      firstName: 'Synthetic',
+      lastName: 'Older',
+      mrn: 'P-7',
+      dateOfBirth: '2000-01-01',
+    };
+    mocks.api.getQueues.mockResolvedValue([
+      { id: 9, patientId: 7, tokenNumber: 'TRG-7', status: 'Waiting' },
+    ]);
+    mocks.api.getPatientDirectoryPage.mockResolvedValue({ items: [older], nextCursor: null });
+    const user = userEvent.setup();
+    render(<OutpatientModule />);
+    await user.click(await screen.findByRole('button', { name: /TRG-7/ }));
+    await waitFor(() => expect(mocks.api.getEncounters).toHaveBeenCalledWith(7, 2));
+    expect(mocks.api.getPatientDirectoryPage).toHaveBeenCalledWith({
+      tenantId: 1,
+      facilityId: 2,
+      patientId: 7,
+    });
+  });
+
+  it('does not select a queued patient not found in the scoped facility directory', async () => {
+    mocks.api.getQueues.mockResolvedValue([
+      { id: 9, patientId: 7, tokenNumber: 'TRG-7', status: 'Waiting' },
+    ]);
+    const user = userEvent.setup();
+    render(<OutpatientModule />);
+    await user.click(await screen.findByRole('button', { name: /TRG-7/ }));
+    await waitFor(() =>
+      expect(mocks.context.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('could not be resolved'),
+      ),
+    );
+    expect(mocks.api.getEncounters).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed queued-patient lookup after another patient is selected', async () => {
+    let finish: (value: unknown) => void = () => {};
+    mocks.api.getQueues.mockResolvedValue([
+      { id: 9, patientId: 7, tokenNumber: 'TRG-7', status: 'Waiting' },
+    ]);
+    mocks.api.getPatientDirectoryPage.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<OutpatientModule />);
+    await user.click(await screen.findByRole('button', { name: /TRG-7/ }));
+    await user.click(screen.getByRole('button', { name: /Synthetic Two/ }));
+    await screen.findByText('Triage Vital Signs');
+    await act(async () =>
+      finish({ items: [{ id: 7, firstName: 'Synthetic', lastName: 'Old' }], nextCursor: null }),
+    );
+    expect(mocks.api.getEncounters).toHaveBeenCalledWith(22, 2);
+    expect(mocks.api.getEncounters).not.toHaveBeenCalledWith(7, 2);
+  });
+
+  it('does not clear the next patient’s notes when an earlier visit’s queue update returns late', async () => {
+    let finish: (value: unknown) => void = () => {};
+    mocks.api.getQueues.mockResolvedValue([
+      { id: 9, patientId: 11, tokenNumber: 'TRG-1', status: 'Waiting' },
+    ]);
+    mocks.api.getEncounters.mockImplementation(async (id: number) =>
+      id === 11 ? [] : [{ ...encounter(id), clinicalNotes: 'Second patient notes' }],
+    );
+    mocks.api.updateQueueStatus.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<OutpatientModule />);
+    await user.click(await screen.findByRole('button', { name: /^Synthetic\s+One\s*P-11$/ }));
+    await user.click(await screen.findByRole('button', { name: 'Start outpatient visit' }));
+    await waitFor(() => expect(mocks.api.updateQueueStatus).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: /Synthetic Two/ }));
+    const notes = await screen.findByPlaceholderText(
+      'Impression, clinical advice, lifestyle counseling...',
+    );
+    expect(notes).toHaveValue('Second patient notes');
+    await act(async () => finish({}));
+    expect(notes).toHaveValue('Second patient notes');
   });
 
   it('clears a prescription draft on patient change', async () => {

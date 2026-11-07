@@ -82,6 +82,16 @@ export function requirePermission(...requiredPermissions: string[]) {
         return;
       }
 
+      if (requiredPermissions.length === 0 || requiredPermissions.some((code) => !code.trim())) {
+        res.status(500).json({
+          success: false,
+          error: 'AUTHORIZATION_CONFIGURATION_ERROR',
+          message: 'Authorization is not configured for this action.',
+        });
+
+        return;
+      }
+
       if (!req.authContext) {
         const context = await loadAuthorizationContext(req.user.id);
 

@@ -215,9 +215,15 @@ export async function getPortalOverview(
             verifiedAt: schema.labResults.verifiedAt,
           })
           .from(schema.labResults)
+          .innerJoin(schema.labOrders, eq(schema.labResults.orderId, schema.labOrders.id))
+          .innerJoin(schema.facilities, eq(schema.labOrders.facilityId, schema.facilities.id))
           .where(
             and(
               eq(schema.labResults.patientId, session.patientId),
+              eq(schema.labOrders.patientId, session.patientId),
+              eq(schema.labOrders.tenantId, session.tenantId),
+              eq(schema.facilities.tenantId, session.tenantId),
+              inArray(schema.labOrders.facilityId, facilities),
               eq(schema.labResults.status, 'Verified'),
             ),
           )
@@ -397,9 +403,12 @@ export async function listPortalLabResults(
       facilityId: schema.labOrders.facilityId,
     })
     .from(schema.labOrders)
+    .innerJoin(schema.facilities, eq(schema.labOrders.facilityId, schema.facilities.id))
     .where(
       and(
         eq(schema.labOrders.patientId, session.patientId),
+        eq(schema.labOrders.tenantId, session.tenantId),
+        eq(schema.facilities.tenantId, session.tenantId),
         inArray(schema.labOrders.facilityId, facilities),
       ),
     )
@@ -422,7 +431,13 @@ export async function listPortalLabResults(
           verifiedBy: schema.labResults.verifiedBy,
         })
         .from(schema.labResults)
-        .where(inArray(schema.labResults.orderId, orderIds))
+        .where(
+          and(
+            inArray(schema.labResults.orderId, orderIds),
+            eq(schema.labResults.patientId, session.patientId),
+            eq(schema.labResults.status, 'Verified'),
+          ),
+        )
     : [];
 
   const releasedByOrder = new Map<number, typeof results>();

@@ -20,7 +20,7 @@ import {
   handleScopeError,
   respondInternalError,
 } from '../../routes/shared/errors.ts';
-import { logPatientAccess } from '../../clinical/access-log.service.ts';
+import { logPatientAccess, logPatientDirectoryAccess } from '../../clinical/access-log.service.ts';
 import * as queries from '../../db/queries.ts';
 import {
   requireAuthorization,
@@ -31,6 +31,7 @@ import {
 import { resolveLocation } from '../../constants/kenya-locations.ts';
 import {
   createPatientBodySchema,
+  patientDirectoryPageBodySchema,
   patientIdParamSchema,
   scopedCollectionQuerySchema,
   updatePatientBodySchema,
@@ -88,6 +89,44 @@ router.get(
         success: false,
         error: 'PATIENT_LIST_FAILED',
       });
+    }
+  },
+);
+
+// Search data stays in the request body rather than a URL. Each bounded page
+// is facility-scoped and access entries must be durable before it is returned.
+router.post(
+  '/api/patients/directory-page',
+  requirePermission('patients.read'),
+  validateBody(patientDirectoryPageBodySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext) {
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      }
+      const body = req.body as {
+        tenantId: number | string;
+        facilityId: number | string;
+        search?: string;
+        beforeId?: number | string;
+        patientId?: number | string;
+        exactMatch?: 'nationalId' | 'phone';
+      };
+      const page = await queries.getPatientDirectoryPageScoped(
+        req.authContext,
+        Number(body.tenantId),
+        Number(body.facilityId),
+        body.search,
+        body.beforeId === undefined || body.beforeId === '' ? undefined : Number(body.beforeId),
+        body.exactMatch,
+        body.patientId === undefined || body.patientId === '' ? undefined : Number(body.patientId),
+      );
+      await logPatientDirectoryAccess(req.authContext, page.items);
+      return res.json(page);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      console.error('Patient directory page failed.');
+      return res.status(500).json({ success: false, error: 'PATIENT_DIRECTORY_FAILED' });
     }
   },
 );

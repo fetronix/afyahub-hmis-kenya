@@ -28,7 +28,9 @@ import {
   chargeForService,
   type ChargeRequest,
   type ChargeResult,
+  type ReviewedTariffPrice,
 } from './billing.service.ts';
+import { formatCents, parseMoneyToCents } from './settlement.ts';
 
 /** Anything that can run a query: the pool, a transaction, a test double. */
 type Executor = any;
@@ -96,6 +98,7 @@ export async function recordChargeAttempt(
   executor: Executor,
   request: ChargeRequest,
   result: ChargeResult,
+  options: { preserveExisting?: boolean } = {},
 ): Promise<number | null> {
   if (result.charged) return null;
 
@@ -205,6 +208,8 @@ export async function recordChargeAttempt(
    * An explicit lookup is two statements and no inference.
    */
   const bumpExisting = async (id: number): Promise<number> => {
+    // Staging a clinical outbox must not erase an earlier resolver failure.
+    if (options.preserveExisting) return id;
     await executor
       .update(schema.billingChargeAttempts)
       .set({
@@ -274,7 +279,7 @@ export async function recordChargeAttempt(
         'Billing: billing_charge_attempts has no bed-night identity columns. Run `npm run db:migrate` (migration 0022) so each unbilled night can be reprocessed separately. Recording the skip without it for now.',
       );
 
-      return recordChargeAttempt(executor, request, result);
+      return recordChargeAttempt(executor, request, result, options);
     }
 
     if (postgresCode(error) === '42703') {
@@ -300,6 +305,25 @@ export async function recordChargeAttempt(
 
     return null;
   }
+}
+
+/** Stage a durable clinical-event outbox without overwriting an existing diagnosis. */
+export function stageClinicalBillingOutbox(
+  executor: Executor,
+  request: ChargeRequest,
+  message: string,
+) {
+  return recordChargeAttempt(
+    executor,
+    request,
+    {
+      charged: false,
+      reason: 'TARIFF_NOT_CONFIGURED',
+      diagnosis: { code: 'BILLING_EVALUATION_PENDING', label: 'Billing evaluation pending' },
+      message,
+    },
+    { preserveExisting: true },
+  );
 }
 
 /**
@@ -357,9 +381,20 @@ const chargeReviewRequired = (): ChargeResult => ({
   message: 'The service was recorded but billing needs manual reconciliation.',
 });
 
+// A clinical transaction can return the ID it just staged, internally, to
+// the immediate evaluator. A later replay has no such capability and must be
+// reviewed. Legacy or already-price-evaluated markers are never presumed new.
+function freshClinicalOutbox(row: ChargeAttemptRow, initialAttemptId?: number | null): boolean {
+  return (
+    initialAttemptId === row.id &&
+    ['BILLING_EVALUATION_PENDING', 'SOURCE_NOT_COMPLETED'].includes(row.diagnosisCode ?? '')
+  );
+}
+
 export async function chargeAndRecord(
   executor: Executor,
   request: ChargeRequest,
+  initialAttemptId?: number | null,
 ): Promise<ChargeResult> {
   try {
     return await executor.transaction(async (tx: Executor) => {
@@ -455,7 +490,17 @@ export async function chargeAndRecord(
         };
       }
 
-      let result: ChargeResult = await chargeForService(tx, request);
+      let result: ChargeResult = await chargeForService(tx, request, {
+        // A replay cannot turn a previously unpriced clinical event into a
+        // current-price charge without an explicit, auditable price review.
+        // Pharmacy and bed nights instead use their own immutable snapshots.
+        requireTariffReview: Boolean(
+          pending[0] &&
+          !freshClinicalOutbox(pending[0], initialAttemptId) &&
+          request.sourceType !== 'PHARMACY' &&
+          request.sourceType !== 'BED_DAY',
+        ),
+      });
       const verifiedDuplicate =
         result.reason === 'DUPLICATE' && result.itemId != null && result.invoiceId != null;
       if (result.reason === 'DUPLICATE' && !verifiedDuplicate) result = chargeReviewRequired();
@@ -904,10 +949,46 @@ async function lockAttemptIdentity(
   return locked as ChargeAttemptRow;
 }
 
+export type TariffPriceReview = ReviewedTariffPrice & { reason: string };
+export class ChargePriceReviewError extends Error {}
+
 export async function retryChargeAttempt(
   executor: Executor,
-  input: { tenantId: number; facilityId: number; attemptId: number; actorUserId?: number },
+  input: {
+    tenantId: number;
+    facilityId: number;
+    attemptId: number;
+    actorUserId?: number;
+    priceReview?: TariffPriceReview;
+  },
 ): Promise<RetryOutcome | null> {
+  let priceReview: TariffPriceReview | undefined;
+  if (input.priceReview !== undefined) {
+    const value = input.priceReview;
+    const cents = typeof value?.unitPrice === 'string' ? parseMoneyToCents(value.unitPrice) : null;
+    const reason = typeof value?.reason === 'string' ? value.reason.trim() : '';
+    if (
+      !Number.isSafeInteger(input.actorUserId) ||
+      (input.actorUserId ?? 0) <= 0 ||
+      !Number.isSafeInteger(value?.tariffId) ||
+      value.tariffId <= 0 ||
+      !Number.isSafeInteger(value?.revision) ||
+      value.revision <= 0 ||
+      cents === null ||
+      cents <= 0 ||
+      reason.length < 10 ||
+      reason.length > 500
+    )
+      throw new ChargePriceReviewError(
+        'A valid tariff, revision, positive price and review reason are required.',
+      );
+    priceReview = {
+      tariffId: value.tariffId,
+      revision: value.revision,
+      unitPrice: formatCents(cents),
+      reason,
+    };
+  }
   return executor.transaction(async (tx: Executor) => {
     const row = await lockAttemptIdentity(tx, input);
     if (!row) return null;
@@ -942,6 +1023,10 @@ export async function retryChargeAttempt(
     if (row.sourceId == null) {
       return { attemptId: row.id, status: 'PENDING', result: chargeReviewRequired() };
     }
+    if (priceReview && (row.sourceType === 'PHARMACY' || row.sourceType === 'BED_DAY'))
+      throw new ChargePriceReviewError(
+        'Inventory and bed-night prices must use their recorded snapshots, not a tariff review.',
+      );
     // Stay-level review rows and legacy dated attempts without a recorded
     // bed night are not billable nights. Do not overwrite their original
     // diagnoses while probing the resolver; an authorized admission-specific
@@ -1003,7 +1088,10 @@ export async function retryChargeAttempt(
     let result: ChargeResult;
 
     try {
-      result = await chargeForService(tx, await enrichFromSource(tx, request));
+      result = await chargeForService(tx, await enrichFromSource(tx, request), {
+        requireTariffReview: row.sourceType !== 'PHARMACY' && row.sourceType !== 'BED_DAY',
+        reviewedTariff: priceReview,
+      });
     } catch {
       /*
        * A fault in the engine leaves the row exactly as it is: still
@@ -1067,6 +1155,31 @@ export async function retryChargeAttempt(
       })
       .where(eq(schema.billingChargeAttempts.id, row.id));
 
+    if (
+      result.charged &&
+      priceReview &&
+      row.sourceType !== 'PHARMACY' &&
+      row.sourceType !== 'BED_DAY'
+    ) {
+      await tx.insert(schema.auditLogs).values({
+        tenantId: input.tenantId,
+        facilityId: input.facilityId,
+        userId: String(input.actorUserId),
+        action: 'APPROVE',
+        resource: 'BILLING_TARIFF_PRICE_REVIEW',
+        resourceId: String(row.id),
+        details: JSON.stringify({
+          tariffId: priceReview.tariffId,
+          tariffRevision: priceReview.revision,
+          reviewedUnitPrice: priceReview.unitPrice,
+          reason: priceReview.reason,
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          invoiceId: result.invoiceId,
+          itemId: result.itemId,
+        }),
+      });
+    }
     await tx.insert(schema.auditLogs).values({
       tenantId: input.tenantId,
       facilityId: input.facilityId,

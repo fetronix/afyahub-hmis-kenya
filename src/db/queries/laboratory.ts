@@ -14,7 +14,7 @@ import * as schema from '../schema.ts';
 import { resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { LaboratoryDomainError } from '../../clinical/laboratory-contracts.ts';
-import { recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { stageClinicalBillingOutbox } from '../../billing/charge-attempts.ts';
 import { labOrderChargeRequest, radiologyChargeRequest } from '../../billing/service-charges.ts';
 
 import { resolveQueueOrLabScope } from './shared.ts';
@@ -718,7 +718,8 @@ export async function completeLabInvestigation(context: AuthorizationContext, id
       .for('update');
     if (!order)
       throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
-    if (order.status === 'Completed' && order.completedAt && order.completedByUserId) return order;
+    if (order.status === 'Completed' && order.completedAt && order.completedByUserId)
+      return { ...order, billingOutboxAttemptId: null };
     if (order.status !== 'Sample Collected')
       throw new LaboratoryDomainError(
         'LAB_SPECIMEN_NOT_COLLECTED',
@@ -748,11 +749,11 @@ export async function completeLabInvestigation(context: AuthorizationContext, id
       .set({ status: 'Completed', completedAt: new Date(), completedByUserId: context.userId })
       .where(eq(schema.labOrders.id, id))
       .returning();
-    const attempt = await recordChargeAttempt(tx, labOrderChargeRequest(completed), {
-      charged: false,
-      reason: 'TARIFF_NOT_CONFIGURED',
-      message: 'Investigation completed; billing evaluation pending.',
-    });
+    const attempt = await stageClinicalBillingOutbox(
+      tx,
+      labOrderChargeRequest(completed),
+      'Investigation completed; billing evaluation pending.',
+    );
     if (attempt === null) throw new Error('LAB_BILLING_QUEUE_UNAVAILABLE');
     await tx.insert(schema.auditLogs).values({
       tenantId: facility.tenantId,
@@ -764,7 +765,7 @@ export async function completeLabInvestigation(context: AuthorizationContext, id
       details:
         'Investigation explicitly confirmed complete after review of verified results; billing work recorded.',
     });
-    return completed;
+    return { ...completed, billingOutboxAttemptId: attempt };
   });
 }
 
@@ -952,13 +953,14 @@ export async function updateRadiologyReport(
       })
       .where(eq(schema.radiologyOrders.id, id))
       .returning();
+    let billingOutboxAttemptId: number | null = null;
     if (existing.status !== 'Reported') {
-      const attempt = await recordChargeAttempt(tx, radiologyChargeRequest(updated), {
-        charged: false,
-        reason: 'TARIFF_NOT_CONFIGURED',
-        message: 'Imaging report recorded; billing evaluation pending.',
-      });
-      if (attempt === null) throw new Error('IMAGING_BILLING_QUEUE_UNAVAILABLE');
+      billingOutboxAttemptId = await stageClinicalBillingOutbox(
+        tx,
+        radiologyChargeRequest(updated),
+        'Imaging report recorded; billing evaluation pending.',
+      );
+      if (billingOutboxAttemptId === null) throw new Error('IMAGING_BILLING_QUEUE_UNAVAILABLE');
     }
     await tx.insert(schema.auditLogs).values({
       tenantId: updated.tenantId,
@@ -972,7 +974,7 @@ export async function updateRadiologyReport(
           ? 'Radiology report updated; the original billing occurrence is unchanged.'
           : 'Radiology report recorded; billing work recorded.',
     });
-    return updated;
+    return { ...updated, billingOutboxAttemptId };
   });
 }
 

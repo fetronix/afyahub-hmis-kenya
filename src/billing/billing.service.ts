@@ -925,18 +925,33 @@ export async function recalculateInvoiceTotals(executor: Executor, invoiceId: nu
  * as `charged: false` with a reason. Throws only for genuine faults
  * (database errors), so the caller can decide whether to surface them.
  */
+export interface ReviewedTariffPrice {
+  tariffId: number;
+  revision: number;
+  unitPrice: string;
+}
+
+type ChargeSafety = {
+  // A pending clinical tariff failure has no reliable historical price. A
+  // deliberate, scoped review must agree with the locked current tariff.
+  requireTariffReview?: boolean;
+  reviewedTariff?: ReviewedTariffPrice;
+};
+
 export async function chargeForService(
   executor: Executor,
   request: ChargeRequest,
+  safety: ChargeSafety = {},
 ): Promise<ChargeResult> {
   // The pool creates a transaction; an existing Drizzle transaction uses a
   // savepoint. Never fall back to a sequence of independent pool statements.
-  return executor.transaction((tx) => chargeForServiceInTransaction(tx, request));
+  return executor.transaction((tx) => chargeForServiceInTransaction(tx, request, safety));
 }
 
 async function chargeForServiceInTransaction(
   executor: Executor,
   request: ChargeRequest,
+  safety: ChargeSafety,
 ): Promise<ChargeResult> {
   if (
     !Number.isSafeInteger(request.tenantId) ||
@@ -1068,6 +1083,26 @@ async function chargeForServiceInTransaction(
   const bedNight = 'nightId' in resolution ? resolution : null;
   const service = 'service' in resolution ? resolution.service : null;
   const tariff = 'tariff' in resolution ? resolution.tariff : null;
+  if (tariff && safety.requireTariffReview) {
+    const review = safety.reviewedTariff;
+    if (
+      !review ||
+      review.tariffId !== tariff.id ||
+      review.revision !== tariff.revision ||
+      parseMoneyToCents(review.unitPrice) !== parseMoneyToCents(tariff.fee)
+    ) {
+      return {
+        charged: false,
+        reason: 'TARIFF_NOT_CONFIGURED',
+        diagnosis: {
+          code: 'HISTORICAL_PRICE_REVIEW_REQUIRED',
+          label: 'Historical price review required',
+        },
+        message:
+          'This service was previously unpriced. An authorized reviewer must verify the applicable price and confirm the current tariff revision before billing; audit history may be incomplete.',
+      };
+    }
+  }
   const unitPriceCents = parseMoneyToCents(pharmacy?.price ?? bedNight?.price ?? tariff?.fee);
   if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('FACILITY_PRICE_INVALID');
   const description = pharmacy?.name ?? bedNight?.name ?? service!.name;

@@ -3,6 +3,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api, ApiError } from '../../api/client.ts';
 import type { ServiceCharge } from '../../api/client.ts';
 import { EncounterBillingView } from './EncounterBillingView.tsx';
+import { PatientDirectoryPicker } from '../patient/PatientDirectoryPicker.tsx';
 import {
   Patient,
   Encounter,
@@ -55,6 +56,7 @@ export const OutpatientModule: React.FC = () => {
     triggerRefresh,
   } = useHmis();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [activeEncounter, setActiveEncounter] = useState<Encounter | null>(null);
   const [triageQueue, setTriageQueue] = useState<QueueItem[]>([]);
@@ -387,6 +389,51 @@ export const OutpatientModule: React.FC = () => {
     }
   };
 
+  // A queued patient may not be in the legacy 50-row carousel. Resolve them
+  // through the audited directory in this exact facility rather than guessing.
+  const selectQueuedPatient = async (token: QueueItem) => {
+    const known = patients.find((patient) => patient.id === token.patientId);
+    if (known) {
+      await selectPatient(known);
+      return;
+    }
+    if (!currentTenant?.id || !currentFacility?.id) {
+      showToast('Select an authorized facility before opening the queued patient.');
+      return;
+    }
+    const version = ++selectionVersion.current;
+    setActivePatient(null);
+    setActiveEncounter(null);
+    setSelectionLoading(true);
+    setSelectionError('');
+    try {
+      const page = await api.getPatientDirectoryPage({
+        tenantId: currentTenant.id,
+        facilityId: currentFacility.id,
+        patientId: token.patientId,
+      });
+      if (version !== selectionVersion.current) return;
+      if (
+        !Array.isArray(page.items) ||
+        page.items.length !== 1 ||
+        page.items[0].id !== token.patientId
+      ) {
+        showToast(
+          'This queued patient could not be resolved in the selected facility directory. Review the queue and patient identity.',
+        );
+        return;
+      }
+      await selectPatient(page.items[0]);
+    } catch {
+      if (version === selectionVersion.current)
+        showToast(
+          'Could not load the queued patient. Review the queue and patient identity before proceeding.',
+        );
+    } finally {
+      if (version === selectionVersion.current) setSelectionLoading(false);
+    }
+  };
+
   const startVisit = async () => {
     if (startingVisitRef.current) return;
     if (!activePatient || !currentFacility || selectionLoading || selectionError) {
@@ -442,6 +489,10 @@ export const OutpatientModule: React.FC = () => {
         await api.updateQueueStatus(waitingToken.id, 'In-Progress').catch((error: unknown) => {
           console.error('Could not move the triage token:', error);
         });
+      }
+      if (version !== selectionVersion.current) {
+        showToast('Visit started for the previously selected patient. Review their record.');
+        return;
       }
       setNotes({
         triageCategory: '',
@@ -1095,6 +1146,28 @@ export const OutpatientModule: React.FC = () => {
           ))}
         </div>
 
+        <button
+          type="button"
+          onClick={() => setDirectoryOpen((open) => !open)}
+          aria-expanded={directoryOpen}
+          className="mt-3 rounded border border-teal-700 px-3 py-1.5 text-xs font-semibold text-teal-800"
+        >
+          {directoryOpen ? 'Close patient search' : 'Find another facility patient'}
+        </button>
+        {directoryOpen && (
+          <div className="mt-2">
+            <PatientDirectoryPicker
+              tenantId={currentTenant?.id}
+              facilityId={currentFacility?.id}
+              refreshKey={refreshKey}
+              onSelect={(patient) => {
+                setDirectoryOpen(false);
+                void selectPatient(patient);
+              }}
+            />
+          </div>
+        )}
+
         {/*
           Who the reception desk has actually sent. Selecting from here
           is the same as selecting from the carousel, but it tells the
@@ -1114,7 +1187,7 @@ export const OutpatientModule: React.FC = () => {
                 return (
                   <button
                     key={token.id}
-                    onClick={() => queuedPatient && selectPatient(queuedPatient)}
+                    onClick={() => void selectQueuedPatient(token)}
                     className="px-2.5 py-1 rounded-md border border-amber-200 bg-amber-50 text-amber-900 text-2xs font-medium hover:bg-amber-100 transition-colors flex items-center gap-1.5"
                   >
                     <Clock className="w-3 h-3" />
@@ -1132,7 +1205,7 @@ export const OutpatientModule: React.FC = () => {
         )}
       </div>
 
-      {activePatient && selectionLoading ? (
+      {selectionLoading ? (
         <div role="status">Loading this patient’s visit...</div>
       ) : activePatient && selectionError ? (
         <div role="alert" className="rounded border border-rose-300 bg-rose-50 p-4 text-rose-900">

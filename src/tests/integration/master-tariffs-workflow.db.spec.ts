@@ -15,7 +15,7 @@ import {
   retireMasterAlias,
   setMasterSourceMapping,
 } from '../../billing/master-catalogue.service.ts';
-import { chargeAndRecord } from '../../billing/charge-attempts.ts';
+import { chargeAndRecord, retryChargeAttempt } from '../../billing/charge-attempts.ts';
 import { addReviewedSpecimen } from '../../billing/lab-specimen-config.service.ts';
 import {
   consultationChargeRequest,
@@ -429,7 +429,10 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     const done = await updateEncounterScoped(ctx, encounter.id, { status: 'Completed' });
     expect(done).toBeTruthy();
     const request = consultationChargeRequest(done!);
-    const results = await Promise.all([chargeAndRecord(db, request), chargeAndRecord(db, request)]);
+    const results = await Promise.all([
+      chargeAndRecord(db, request, done!.billingOutboxAttemptId),
+      chargeAndRecord(db, request, done!.billingOutboxAttemptId),
+    ]);
     expect(results.filter((x) => x.charged)).toHaveLength(1);
     expect(results.some((x) => x.reason === 'DUPLICATE')).toBe(true);
     invoiceId = results.find((x) => x.charged)!.invoiceId!;
@@ -500,7 +503,11 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     await expect(completeLabInvestigation(ctx, order!.id)).rejects.toThrow(/all recorded results/i);
     await verifyLabResult(ctx, second.id, 'Synthetic verifier');
     const completed = await completeLabInvestigation(ctx, order!.id);
-    const billed = await chargeAndRecord(db, labOrderChargeRequest(completed));
+    const billed = await chargeAndRecord(
+      db,
+      labOrderChargeRequest(completed),
+      completed.billingOutboxAttemptId,
+    );
     expect(billed).toMatchObject({ charged: true, totalAmount: '800.00', invoiceId });
     const state = (
       await pool.query(
@@ -578,7 +585,11 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       'Synthetic reporter',
       actor,
     );
-    const billed = await chargeAndRecord(db, radiologyChargeRequest(reported!));
+    const billed = await chargeAndRecord(
+      db,
+      radiologyChargeRequest(reported!),
+      reported!.billingOutboxAttemptId,
+    );
     expect(billed).toMatchObject({ charged: true, totalAmount: '300.00', invoiceId });
   });
 
@@ -654,7 +665,11 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       facilityServiceId: directAdmission.service.id,
     });
     admissionId = admission.id;
-    const billed = await chargeAndRecord(db, admissionChargeRequest(admission));
+    const billed = await chargeAndRecord(
+      db,
+      admissionChargeRequest(admission),
+      admission.billingOutboxAttemptId,
+    );
     expect(billed).toMatchObject({ charged: true, totalAmount: '60.00' });
     const emergency = await createEncounterScoped(ctx, {
       tenantId: tenant,
@@ -804,7 +819,9 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       return completeLabInvestigation(ctx, order!.id);
     };
     const first = await complete();
-    expect(await chargeAndRecord(db, labOrderChargeRequest(first))).toMatchObject({
+    expect(
+      await chargeAndRecord(db, labOrderChargeRequest(first), first.billingOutboxAttemptId),
+    ).toMatchObject({
       charged: true,
       totalAmount: '11.00',
     });
@@ -823,7 +840,9 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       ).rows[0].n,
     ).toBe(0);
     const second = await complete();
-    expect(await chargeAndRecord(db, labOrderChargeRequest(second))).toMatchObject({
+    expect(
+      await chargeAndRecord(db, labOrderChargeRequest(second), second.billingOutboxAttemptId),
+    ).toMatchObject({
       charged: true,
       totalAmount: '11.00',
     });
@@ -832,7 +851,9 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     ).rejects.toMatchObject({ code: 'ALIAS_NOT_FOUND' });
     await retireMasterAlias(facilityRow, actor, alias.id, 'synthetic reason');
     const third = await complete();
-    expect(await chargeAndRecord(db, labOrderChargeRequest(third))).toMatchObject({
+    expect(
+      await chargeAndRecord(db, labOrderChargeRequest(third), third.billingOutboxAttemptId),
+    ).toMatchObject({
       charged: true,
       totalAmount: '11.00',
     });
@@ -959,10 +980,31 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       autoBill: true,
     });
     expect(configured.status, JSON.stringify(configured.body)).toBe(201);
+    // Configuring a tariff later does not establish what the older event cost.
     expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
-      charged: true,
-      totalAmount: '44.00',
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
     });
+    const attempt = (
+      await pool.query(
+        "SELECT id FROM billing_charge_attempts WHERE facility_id=$1 AND source_type='LAB_ORDER' AND source_id=$2 AND status='PENDING'",
+        [facility, order!.id],
+      )
+    ).rows[0].id;
+    expect(
+      await retryChargeAttempt(db, {
+        tenantId: tenant,
+        facilityId: facility,
+        attemptId: attempt,
+        actorUserId: actor,
+        priceReview: {
+          tariffId: configured.body.tariff.id,
+          revision: configured.body.tariff.revision,
+          unitPrice: '44.00',
+          reason: 'Reviewed documented synthetic price',
+        },
+      }),
+    ).toMatchObject({ status: 'BILLED', result: { charged: true, totalAmount: '44.00' } });
     expect(await chargeAndRecord(db, labOrderChargeRequest(completed))).toMatchObject({
       charged: false,
       reason: 'DUPLICATE',
@@ -1278,7 +1320,11 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       consultationFacilityServiceId: otherOpd.service.id,
     });
     const done = await updateEncounterScoped(otherCtx, enc.id, { status: 'Completed' });
-    const billed = await chargeAndRecord(db, consultationChargeRequest(done!));
+    const billed = await chargeAndRecord(
+      db,
+      consultationChargeRequest(done!),
+      done!.billingOutboxAttemptId,
+    );
     expect(billed).toMatchObject({ charged: true, totalAmount: '999.00' });
     await expect(
       createEncounterScoped(otherCtx, {

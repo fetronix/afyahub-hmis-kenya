@@ -651,9 +651,13 @@ router.post(
         facilityId: requestedAdmissionFacility(req),
       });
 
-      const charge = await chargeSafely(admissionChargeRequest(admission));
+      const { billingOutboxAttemptId, ...createdAdmission } = admission;
+      const charge = await chargeSafely(
+        admissionChargeRequest(createdAdmission),
+        billingOutboxAttemptId,
+      );
 
-      res.status(201).json({ ...admission, billing: charge });
+      res.status(201).json({ ...createdAdmission, billing: charge });
     } catch (err: unknown) {
       if (handleInpatientError(err, res)) return;
 

@@ -14,6 +14,7 @@ const mock = vi.hoisted(() => ({
     getWards: vi.fn(),
     getAdmissions: vi.fn(),
     getPatients: vi.fn(),
+    getPatientDirectoryPage: vi.fn(),
     getBeds: vi.fn(),
     getInpatientBoard: vi.fn(),
     getBedBillingPolicy: vi.fn(),
@@ -82,6 +83,34 @@ describe('Admission bed-billing readiness', () => {
     mock.api.getPatients.mockResolvedValue([
       { id: 7, firstName: 'Synthetic', lastName: 'Patient', mrn: 'SYN-7', payerType: 'Cash' },
     ]);
+    mock.api.getPatientDirectoryPage.mockImplementation(
+      async ({ beforeId }: { beforeId?: number }) =>
+        beforeId
+          ? {
+              items: [
+                {
+                  id: 3,
+                  firstName: 'Synthetic',
+                  lastName: 'Older',
+                  mrn: 'SYN-3',
+                  dateOfBirth: '2000-01-01',
+                },
+              ],
+              nextCursor: null,
+            }
+          : {
+              items: [
+                {
+                  id: 7,
+                  firstName: 'Synthetic',
+                  lastName: 'Patient',
+                  mrn: 'SYN-7',
+                  dateOfBirth: '2000-01-01',
+                },
+              ],
+              nextCursor: 7,
+            },
+    );
     mock.api.getAdmissions.mockResolvedValue([]);
     mock.api.getInpatientBoard.mockResolvedValue(null);
     mock.api.getBedBillingPolicy.mockResolvedValue(null);
@@ -128,6 +157,30 @@ describe('Admission bed-billing readiness', () => {
     expect(mock.showToast).toHaveBeenCalledWith(
       expect.stringContaining(
         'Bed billing requires review: No facility bed billing policy is configured.',
+      ),
+    );
+  });
+
+  it('selects an older facility patient outside the initial list for admission', async () => {
+    const user = userEvent.setup();
+    render(<InpatientModule />);
+    await screen.findByText('Synthetic ward — Live Bed Board');
+    await user.click(screen.getByRole('button', { name: /Admit Patient to Ward/ }));
+    await user.click(screen.getByRole('button', { name: 'Find another facility patient' }));
+    await screen.findByRole('button', { name: /Synthetic Patient.*DOB/ });
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await user.click(await screen.findByRole('button', { name: /Synthetic Older.*SYN-3/ }));
+    expect(screen.getByLabelText('Select Patient *')).toHaveValue('3');
+    await waitFor(() => expect(mock.api.getEncounters).toHaveBeenCalledWith(3, 2));
+    await user.selectOptions(screen.getByLabelText('Admission Type'), 'Elective');
+    await user.type(
+      screen.getByPlaceholderText('Enter the working diagnosis'),
+      'Synthetic diagnosis',
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm Admission' }));
+    await waitFor(() =>
+      expect(mock.api.createAdmission).toHaveBeenCalledWith(
+        expect.objectContaining({ patientId: 3, facilityId: 2 }),
       ),
     );
   });

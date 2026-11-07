@@ -13,6 +13,21 @@ export const scopedCollectionQuerySchema = paginationQuerySchema.extend({
   search: z.string().trim().max(200, 'Search query must not exceed 200 characters.').optional(),
 });
 
+export const patientDirectoryPageBodySchema = z
+  .object({
+    tenantId: positiveIntField('A valid tenant ID is required.'),
+    facilityId: positiveIntField('A valid facility ID is required.'),
+    search: z.string().trim().max(200, 'Search query must not exceed 200 characters.').optional(),
+    beforeId: optionalPositiveIntField('A valid patient cursor is required.'),
+    patientId: optionalPositiveIntField('A valid patient ID is required.'),
+    exactMatch: z.enum(['nationalId', 'phone']).optional(),
+  })
+  .strict()
+  .refine((value) => !value.exactMatch || Boolean(value.search?.trim()), {
+    path: ['search'],
+    message: 'An identifier is required for an exact match.',
+  });
+
 export const patientIdParamSchema = idParamSchema('Invalid patient ID.');
 export const invoiceIdParamSchema = idParamSchema('Invalid invoice ID.');
 export const claimIdParamSchema = idParamSchema('Invalid claim ID.');

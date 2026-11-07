@@ -167,6 +167,9 @@ export function createApiRoutes(): Router {
   api.use('/reporting', requireFacilityModule('analytics'));
   api.use('/reporting/centre', reportCentreRoutes);
   api.use('/interoperability', requireFacilityModule('interoperability'));
+  // FHIR is mounted under /interop, while MOH routes under that prefix have
+  // separate reporting permissions. Do not gate the entire prefix as FHIR.
+  api.use('/interop/fhir', requireFacilityModule('interoperability'));
   api.use('/audit-logs', requireFacilityModule('audit'));
 
   /*

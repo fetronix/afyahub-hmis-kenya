@@ -956,11 +956,15 @@ function PortalSharing() {
   return (
     <div className="space-y-4">
       <Panel
-        title="Share your record for a limited time"
-        subtitle="Create a one-time code for a named clinician. You choose what is shared and for how long."
+        title="Create a limited-time sharing request"
+        subtitle="A one-time code lets authorized staff in your tenant view this request. It does not automatically deliver your clinical record."
         icon={<Share2 className="h-5 w-5" />}
       >
         <form className="space-y-3" onSubmit={create}>
+          <p className="text-xs text-ink-soft">
+            The name is not verified: any authorized staff member in your tenant with the code can
+            redeem it. Keep the code private.
+          </p>
           {error ? <Notice tone="danger">{error}</Notice> : null}
 
           {created ? (
@@ -968,8 +972,9 @@ function PortalSharing() {
               <p className="font-semibold">Share this code with the recipient:</p>
               <p className="mt-1 break-all font-mono text-sm tracking-wide">{created.code}</p>
               <p className="mt-1">
-                It works once, for that person only, and stops working at{' '}
-                {formatDate(created.expiresAt, true)}.
+                It works once and stops working at {formatDate(created.expiresAt, true)}. Any
+                authorized staff member in your tenant who has the code can redeem it; the name
+                entered below is not verified against the staff member.
               </p>
             </Notice>
           ) : null}
@@ -995,7 +1000,7 @@ function PortalSharing() {
           </Field>
 
           <fieldset>
-            <legend className="field-label">What may they see?</legend>
+            <legend className="field-label">Which record categories are requested?</legend>
 
             <div className="grid grid-cols-2 gap-1.5">
               {categories.map((category) => (
@@ -1093,7 +1098,13 @@ function PortalSharing() {
    Account
    ============================================================ */
 
-function PortalAccount({ me, onSignedOut }: { me: PortalMe; onSignedOut: () => void }) {
+function PortalAccount({
+  me,
+  onSignedOut,
+}: {
+  me: PortalMe;
+  onSignedOut: (message?: string) => void;
+}) {
   const [card, setCard] = useState<{ svg: string; issuedAt: string | null } | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
   const [cardBusy, setCardBusy] = useState(false);
@@ -1203,8 +1214,9 @@ function PortalAccount({ me, onSignedOut }: { me: PortalMe; onSignedOut: () => v
 
     try {
       const result = await portalApi.changePassword(password);
-      setNotice({ tone: 'ok', text: result.message });
       setPassword({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      clearPortalToken();
+      onSignedOut(result.message);
     } catch (caught) {
       setNotice({ tone: 'danger', text: messageOf(caught) });
     }
@@ -1411,7 +1423,7 @@ function PortalAccount({ me, onSignedOut }: { me: PortalMe; onSignedOut: () => v
           </button>
 
           <p className="text-2xs text-slate-500">
-            Changing your password signs out every other device.
+            Changing your password signs out all devices, including this one.
           </p>
         </form>
       </Panel>
@@ -1445,7 +1457,7 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
   { id: 'account', label: 'Account', icon: UserRound },
 ];
 
-function PortalDashboard({ onSignedOut }: { onSignedOut: () => void }) {
+function PortalDashboard({ onSignedOut }: { onSignedOut: (message?: string) => void }) {
   const [me, setMe] = useState<PortalMe | null>(null);
   const [overview, setOverview] = useState<PortalOverview | null>(null);
   const [tab, setTab] = useState<TabId>('home');
@@ -1615,6 +1627,7 @@ function PortalDashboard({ onSignedOut }: { onSignedOut: () => void }) {
 export const PatientPortalApp: React.FC = () => {
   const path = window.location.pathname;
   const [hasSession, setHasSession] = useState(() => Boolean(getPortalToken()));
+  const [signedOutMessage, setSignedOutMessage] = useState('');
 
   if (path === '/portal/activate') {
     return (
@@ -1631,9 +1644,22 @@ export const PatientPortalApp: React.FC = () => {
   return (
     <PortalFrame>
       {hasSession ? (
-        <PortalDashboard onSignedOut={() => setHasSession(false)} />
+        <PortalDashboard
+          onSignedOut={(message) => {
+            setSignedOutMessage(message ?? '');
+            setHasSession(false);
+          }}
+        />
       ) : (
-        <PortalLogin onSignedIn={() => setHasSession(true)} />
+        <>
+          {signedOutMessage && <Notice tone="ok">{signedOutMessage}</Notice>}
+          <PortalLogin
+            onSignedIn={() => {
+              setSignedOutMessage('');
+              setHasSession(true);
+            }}
+          />
+        </>
       )}
     </PortalFrame>
   );

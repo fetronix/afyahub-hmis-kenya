@@ -966,8 +966,21 @@ describeDb('Laboratory facility identity and invoice (synthetic PostgreSQL)', ()
       expectedRevision: disabled.body.revision,
     });
     expect(configured.status, JSON.stringify(configured.body)).toBe(200);
+    const unreviewed = await call('POST', `/api/billing/charge-attempts/${attempt.id}/retry`, {
+      facilityId: facility,
+    });
+    expect(unreviewed.body).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+    });
     const billed = await call('POST', `/api/billing/charge-attempts/${attempt.id}/retry`, {
       facilityId: facility,
+      priceReview: {
+        tariffId: service.tariff.id,
+        revision: configured.body.revision,
+        unitPrice: '456.00',
+        reason: 'Synthetic reviewed applicable laboratory price',
+      },
     });
     expect(billed.body).toMatchObject({
       status: 'BILLED',

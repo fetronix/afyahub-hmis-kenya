@@ -1086,18 +1086,18 @@ export const HmisProvider: React.FC<{
           ? rawFacilities.filter((facility) => facility.tenantId === tenant.id)
           : [];
 
-        setCurrentTenantState(tenant);
-
-        setFacilities(facilityList);
-
-        if (authenticatedUser.facilityId !== null) {
-          const assignedFacility =
-            facilityList.find((facility) => facility.id === authenticatedUser.facilityId) ?? null;
-
-          setCurrentFacilityState(assignedFacility);
-        } else {
-          setCurrentFacilityState(facilityList[0] ?? null);
+        const nextFacility =
+          authenticatedUser.facilityId !== null
+            ? (facilityList.find((facility) => facility.id === authenticatedUser.facilityId) ??
+              null)
+            : (facilityList[0] ?? null);
+        if (currentTenant?.id !== tenant.id || currentFacility?.id !== nextFacility?.id) {
+          setSelectedPatient(null);
+          setIsJourneyModalOpen(false);
         }
+        setCurrentTenantState(tenant);
+        setFacilities(facilityList);
+        setCurrentFacilityState(nextFacility);
 
         triggerRefresh();
       } catch (error) {
@@ -1131,32 +1131,19 @@ export const HmisProvider: React.FC<{
         ? rawFacilities.filter((facility) => facility.tenantId === tenant.id)
         : [];
 
-      setCurrentTenantState(tenant);
-
-      /*
-        |--------------------------------------------------------------------------
-        | Facility-bound tenant user
-        |--------------------------------------------------------------------------
-        */
-
-      if (authenticatedUser.facilityId !== null) {
-        const authorizedFacility =
-          facilityList.find((facility) => facility.id === authenticatedUser.facilityId) ?? null;
-
-        setFacilities(authorizedFacility ? [authorizedFacility] : []);
-
-        setCurrentFacilityState(authorizedFacility);
-      } else {
-        /*
-          |--------------------------------------------------------------------------
-          | Tenant-level user
-          |--------------------------------------------------------------------------
-          */
-
-        setFacilities(facilityList);
-
-        setCurrentFacilityState(facilityList[0] ?? null);
+      const nextFacility =
+        authenticatedUser.facilityId !== null
+          ? (facilityList.find((facility) => facility.id === authenticatedUser.facilityId) ?? null)
+          : (facilityList[0] ?? null);
+      if (currentTenant?.id !== tenant.id || currentFacility?.id !== nextFacility?.id) {
+        setSelectedPatient(null);
+        setIsJourneyModalOpen(false);
       }
+      setCurrentTenantState(tenant);
+      setFacilities(
+        authenticatedUser.facilityId !== null ? (nextFacility ? [nextFacility] : []) : facilityList,
+      );
+      setCurrentFacilityState(nextFacility);
 
       triggerRefresh();
     } catch (error) {
@@ -1205,6 +1192,10 @@ export const HmisProvider: React.FC<{
       return;
     }
 
+    if (currentFacility?.id !== facility.id) {
+      setSelectedPatient(null);
+      setIsJourneyModalOpen(false);
+    }
     setCurrentFacilityState(facility);
     setDirectorySearch('');
 

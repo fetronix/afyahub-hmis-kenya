@@ -195,15 +195,19 @@ router.put(
         });
       }
 
+      const { billingOutboxAttemptId, ...updatedEncounter } = encounter;
       let charge: billing.ChargeResult | null = null;
       if (
         typeof req.body.status === 'string' &&
         req.body.status.trim().toUpperCase() === 'COMPLETED' &&
-        encounter.encounterType.trim().toUpperCase() !== 'INPATIENT'
+        updatedEncounter.encounterType.trim().toUpperCase() !== 'INPATIENT'
       ) {
-        charge = await chargeSafely(consultationChargeRequest(encounter));
+        charge = await chargeSafely(
+          consultationChargeRequest(updatedEncounter),
+          billingOutboxAttemptId,
+        );
       }
-      return res.json({ ...encounter, billing: charge });
+      return res.json({ ...updatedEncounter, billing: charge });
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
       if (handleEncounterValidationError(err, res)) return;

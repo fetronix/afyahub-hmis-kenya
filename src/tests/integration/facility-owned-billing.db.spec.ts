@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createSession } from '../../auth/session.service.ts';
-import { pool } from '../../db/index.ts';
+import { db, pool } from '../../db/index.ts';
+import { chargeAndRecord } from '../../billing/charge-attempts.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
@@ -759,12 +760,109 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       autoBill: true,
     });
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
-    const retry = await call('POST', `/api/billing/charge-attempts/${attempt}/retry`, {
-      facilityId: facility,
+    const path = `/api/billing/charge-attempts/${attempt}/retry`;
+    const review = {
+      tariffId: unpriced.tariff.id,
+      revision: updated.body.revision,
+      unitPrice: '45.00',
+      reason: 'Reviewed documented applicable synthetic price',
+    };
+    const notReviewed = await call('POST', path, { facilityId: facility });
+    expect(notReviewed.body).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
     });
-    expect(retry.body, JSON.stringify(retry.body)).toMatchObject({
+    const directReplay = await chargeAndRecord(db, {
+      tenantId: tenant,
+      facilityId: facility,
+      patientId: patient,
+      encounterId: visit.body.id,
+      sourceType: 'LAB_ORDER',
+      sourceId: labOrder.id,
+      itemType: 'Laboratory',
+      codes: [],
+    });
+    expect(directReplay).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(
+      (await call('POST', path, { facilityId: facility, priceReview: { ...review, reason: '' } }))
+        .status,
+    ).toBe(400);
+    expect([403, 404]).toContain(
+      (await call('POST', path, { facilityId: facility, priceReview: review }, otherToken)).status,
+    );
+    for (const wrong of [
+      { ...review, revision: review.revision - 1 },
+      { ...review, unitPrice: '45.01' },
+      { ...review, tariffId: review.tariffId + 100000 },
+    ]) {
+      const rejected = await call('POST', path, { facilityId: facility, priceReview: wrong });
+      expect(rejected.body).toMatchObject({
+        status: 'PENDING',
+        result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+      });
+    }
+    expect(
+      (
+        await pool.query(
+          "SELECT id FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [labOrder.id],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    const safeSuffix = suffix.replaceAll('-', '');
+    const fn = `p3_review_audit_${safeSuffix}`,
+      trigger = `p3_review_trigger_${safeSuffix}`;
+    await pool.query(
+      `CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.facility_id=${facility} AND NEW.resource='BILLING_TARIFF_PRICE_REVIEW' THEN RAISE EXCEPTION 'Synthetic review audit failure'; END IF; RETURN NEW; END $$`,
+    );
+    await pool.query(
+      `CREATE TRIGGER ${trigger} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+    );
+    try {
+      expect((await call('POST', path, { facilityId: facility, priceReview: review })).status).toBe(
+        500,
+      );
+      expect(
+        (
+          await pool.query(
+            "SELECT id FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+            [labOrder.id],
+          )
+        ).rows,
+      ).toHaveLength(0);
+      expect(
+        (await pool.query('SELECT status FROM billing_charge_attempts WHERE id=$1', [attempt]))
+          .rows[0].status,
+      ).toBe('PENDING');
+    } finally {
+      await pool.query(`DROP TRIGGER ${trigger} ON audit_logs`);
+      await pool.query(`DROP FUNCTION ${fn}()`);
+    }
+    const outcomes = await Promise.all([
+      call('POST', path, { facilityId: facility, priceReview: review }),
+      call('POST', path, { facilityId: facility, priceReview: review }),
+    ]);
+    const retry = outcomes.find((outcome) => outcome.body.result?.charged);
+    expect(retry?.body, JSON.stringify(outcomes.map((r) => r.body))).toMatchObject({
       status: 'BILLED',
       result: { charged: true, totalAmount: '45.00' },
+    });
+    expect(outcomes.filter((outcome) => outcome.body.result?.charged)).toHaveLength(1);
+    const reviews = (
+      await pool.query(
+        "SELECT user_id,details FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND resource='BILLING_TARIFF_PRICE_REVIEW' AND resource_id=$3",
+        [tenant, facility, String(attempt)],
+      )
+    ).rows;
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0].user_id).toBe(String(actor));
+    expect(JSON.parse(reviews[0].details)).toMatchObject({
+      reviewedUnitPrice: '45.00',
+      tariffRevision: review.revision,
+      reason: review.reason,
     });
     const retryAgain = await call('POST', `/api/billing/charge-attempts/${attempt}/retry`, {
       facilityId: facility,
@@ -779,6 +877,92 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
       ).rows[0].n,
     ).toBe(1);
   });
+  it('does not turn an interrupted clinical outbox into a silent later-price charge', async () => {
+    const lab = await createService('LAB-INTERRUPT', 'LABORATORY', 'laboratory', '18.00', 'Test');
+    const visit = await call('POST', '/api/encounters', {
+      facilityId: facility,
+      patientId: patient,
+      encounterType: 'Outpatient',
+      status: 'Active',
+    });
+    const order = await call('POST', '/api/lab-orders/batch', {
+      patientId: patient,
+      encounterId: visit.body.id,
+      facilityServiceId: lab.service.id,
+      specimenType: 'Synthetic',
+      clinicalIndication: 'Synthetic',
+      priority: 'Routine',
+      idempotencyKey: randomUUID(),
+    });
+    const orderId = order.body.orders[0].id;
+    await call('PUT', `/api/lab-orders/${orderId}/status`, { status: 'Sample Collected' });
+    const result = await call('POST', '/api/lab-results', {
+      orderId,
+      patientId: patient,
+      parameterName: 'Synthetic',
+      measuredValue: '1',
+    });
+    await call('POST', `/api/lab-results/${result.body.id}/verify`, {});
+    const safeSuffix = suffix.replaceAll('-', '');
+    const fn = `p3_outbox_fault_${safeSuffix}`,
+      trigger = `p3_outbox_trigger_${safeSuffix}`;
+    await pool.query(
+      `CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_type='LAB_ORDER' AND NEW.source_id=${orderId} THEN RAISE EXCEPTION 'Synthetic billing interruption'; END IF; RETURN NEW; END $$`,
+    );
+    await pool.query(
+      `CREATE TRIGGER ${trigger} BEFORE INSERT ON billing_items FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+    );
+    try {
+      const completed = await call('POST', `/api/lab-orders/${orderId}/complete`, {});
+      expect(completed.status).toBe(200);
+      expect(completed.body.billing.charged).toBe(false);
+      expect(
+        (await pool.query('SELECT status FROM lab_orders WHERE id=$1', [orderId])).rows[0].status,
+      ).toBe('Completed');
+    } finally {
+      await pool.query(`DROP TRIGGER ${trigger} ON billing_items`);
+      await pool.query(`DROP FUNCTION ${fn}()`);
+    }
+    const changed = await call('PUT', `/api/facility-tariffs/${lab.tariff.id}`, {
+      facilityId: facility,
+      serviceId: lab.service.id,
+      expectedRevision: lab.tariff.revision,
+      code: lab.tariff.code,
+      description: 'Synthetic changed price',
+      department: 'laboratory',
+      unit: 'Test',
+      fee: '99.00',
+      effectiveFrom: null,
+      effectiveTo: null,
+      isActive: true,
+      autoBill: true,
+    });
+    expect(changed.status).toBe(200);
+    const replay = await call('POST', `/api/lab-orders/${orderId}/complete`, {});
+    expect(replay.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT id FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [orderId],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    const pending = (
+      await pool.query(
+        "SELECT id,status,diagnosis_code FROM billing_charge_attempts WHERE facility_id=$1 AND source_type='LAB_ORDER' AND source_id=$2",
+        [facility, orderId],
+      )
+    ).rows[0];
+    expect(pending).toMatchObject({
+      status: 'PENDING',
+      diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED',
+    });
+  });
+
   it('creates a manual invoice against a direct service tariff using server-side prices', async () => {
     const service = await createService('MANUAL-SYN', 'OTHER', 'finance', '21.75', 'Service');
     const input = {

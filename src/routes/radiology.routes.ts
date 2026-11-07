@@ -166,8 +166,10 @@ router.put(
         reportedBy,
         req.authContext!.userId,
       );
-      const charge = order ? await chargeSafely(radiologyChargeRequest(order)) : null;
-      res.json({ ...order, billing: charge });
+      if (!order) return res.status(404).json({ error: 'RADIOLOGY_ORDER_NOT_FOUND' });
+      const { billingOutboxAttemptId, ...reported } = order;
+      const charge = await chargeSafely(radiologyChargeRequest(reported), billingOutboxAttemptId);
+      res.json({ ...reported, billing: charge });
     } catch (err: any) {
       respondInternalError(res, err, 'PUT /api/radiology-orders/:id/report');
     }

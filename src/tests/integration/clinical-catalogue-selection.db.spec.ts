@@ -623,7 +623,29 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       facilityServiceId: directOpd.service.id,
       reviewReason: 'synthetic identity review',
     });
-    expect(selected.body.billing).toMatchObject({ charged: true, totalAmount: '100.00' });
+    expect(selected.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    const attempt = (
+      await pool.query(
+        "SELECT id FROM billing_charge_attempts WHERE facility_id=$1 AND source_type='CONSULTATION' AND source_id=$2 AND status='PENDING'",
+        [facility, visit.body.id],
+      )
+    ).rows[0].id;
+    const priced = await call('POST', `/api/billing/charge-attempts/${attempt}/retry`, {
+      facilityId: facility,
+      priceReview: {
+        tariffId: directOpd.tariff.id,
+        revision: directOpd.tariff.revision,
+        unitPrice: '100.00',
+        reason: 'Synthetic reviewed applicable consultation price',
+      },
+    });
+    expect(priced.body).toMatchObject({
+      status: 'BILLED',
+      result: { charged: true, totalAmount: '100.00' },
+    });
     const replay = await call('POST', `/api/encounters/${visit.body.id}/consultation-selection`, {
       facilityServiceId: directOpd.service.id,
       reviewReason: 'synthetic identity review',
@@ -849,8 +871,21 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
     ).rows[0];
     expect(pending).toBeTruthy();
     await updatePrice('46.00');
+    const unreviewed = await call('POST', `/api/billing/charge-attempts/${pending.id}/retry`, {
+      facilityId: facility,
+    });
+    expect(unreviewed.body).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+    });
     const retry = await call('POST', `/api/billing/charge-attempts/${pending.id}/retry`, {
       facilityId: facility,
+      priceReview: {
+        tariffId: directLabB.tariff.id,
+        revision: directLabB.tariff.revision,
+        unitPrice: '46.00',
+        reason: 'Synthetic reviewed applicable investigation price',
+      },
     });
     expect(retry.status, JSON.stringify(retry.body)).toBe(200);
     expect(retry.body).toMatchObject({
@@ -1168,7 +1203,29 @@ describeDb('Clinical catalogue, selection and unified billing (synthetic Postgre
       facilityServiceId: directOpd.service.id,
       reviewReason: 'synthetic old uncharged visit review',
     });
-    expect(selection.body.billing).toMatchObject({ charged: true, totalAmount: '100.00' });
+    expect(selection.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    const attempt = (
+      await pool.query(
+        "SELECT id FROM billing_charge_attempts WHERE facility_id=$1 AND source_type='CONSULTATION' AND source_id=$2 AND status='PENDING'",
+        [facility, legacy.id],
+      )
+    ).rows[0].id;
+    const reviewed = await call('POST', `/api/billing/charge-attempts/${attempt}/retry`, {
+      facilityId: facility,
+      priceReview: {
+        tariffId: directOpd.tariff.id,
+        revision: directOpd.tariff.revision,
+        unitPrice: '100.00',
+        reason: 'Synthetic reviewed historical consultation price',
+      },
+    });
+    expect(reviewed.body).toMatchObject({
+      status: 'BILLED',
+      result: { charged: true, totalAmount: '100.00' },
+    });
     expect(
       (
         await pool.query(

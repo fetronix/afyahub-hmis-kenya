@@ -5,6 +5,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { PortalInviteDialog } from '../portal/PortalInviteDialog.tsx';
 import { BirthDatePicker } from './patient-registration/BirthDatePicker.tsx';
+import { usePatientDirectory } from '../patient/usePatientDirectory.ts';
 import { Patient } from '../../types/index.ts';
 import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
 import {
@@ -80,18 +81,17 @@ export const PatientRegistrationModule: React.FC = () => {
   const canInviteToPortal = Boolean(
     authenticatedUser?.permissions?.includes('portal.invite') || authenticatedUser?.isSuperAdmin,
   );
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [directoryError, setDirectoryError] = useState('');
-  const [loadedDirectoryScope, setLoadedDirectoryScope] = useState<string | null>(null);
-  const [directoryRetry, setDirectoryRetry] = useState(0);
-  const directoryScope =
-    currentTenant?.id && currentFacility?.id
-      ? `${currentTenant.id}:${currentFacility.id}:${search}`
-      : null;
+  const directory = usePatientDirectory({
+    tenantId: currentTenant?.id,
+    facilityId: currentFacility?.id,
+    search,
+    refreshKey,
+  });
+  const patients = directory.items;
+  const directoryError = directory.error;
 
   // Form State
   const [formData, setFormData] = useState({
@@ -124,7 +124,14 @@ export const PatientRegistrationModule: React.FC = () => {
     policyNumber: '',
   });
 
-  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [duplicateCheck, setDuplicateCheck] = useState<{
+    key: string;
+    status: 'checking' | 'clear' | 'match' | 'error';
+    warning?: string;
+  } | null>(null);
+  const [duplicateAcknowledgement, setDuplicateAcknowledgement] = useState<string | null>(null);
+  const duplicateKey = `${currentTenant?.id ?? ''}:${currentFacility?.id ?? ''}:${formData.nationalId.trim()}:${formData.phone.trim()}`;
+  const currentDuplicateCheck = duplicateCheck?.key === duplicateKey ? duplicateCheck : null;
   const patientAge = calculatePatientAge(formData.dateOfBirth);
   const isMinor = patientAge !== null && patientAge < 18;
 
@@ -136,37 +143,56 @@ export const PatientRegistrationModule: React.FC = () => {
   }, [directorySearch, setDirectorySearch]);
 
   useEffect(() => {
-    let cancelled = false;
-    async function loadPatients() {
-      setLoading(true);
-      setDirectoryError('');
-      setLoadedDirectoryScope(null);
-      setPatients([]);
-      if (!currentTenant?.id || !currentFacility?.id || !directoryScope) {
-        setDirectoryError('Select an authorized facility to load the patient directory.');
-        setLoading(false);
-        return;
-      }
+    if (!isRegistering || !currentTenant?.id || !currentFacility?.id) return;
+    const nationalId = formData.nationalId.trim();
+    const phone = formData.phone.trim();
+    const candidates: Array<{ exactMatch: 'nationalId' | 'phone'; search: string }> = [];
+    if (nationalId.length > 4) candidates.push({ exactMatch: 'nationalId', search: nationalId });
+    if (phone.length > 8) candidates.push({ exactMatch: 'phone', search: phone });
+    if (!candidates.length) return;
+    let active = true;
+    setDuplicateCheck({ key: duplicateKey, status: 'checking' });
+    const tenantId = currentTenant.id;
+    const facilityId = currentFacility.id;
+    const timer = window.setTimeout(async () => {
       try {
-        const list = await api.getPatients(currentTenant.id, currentFacility.id, search);
-        if (cancelled) return;
-        if (!Array.isArray(list)) throw new Error('Invalid directory response');
-        setPatients(list);
-        setLoadedDirectoryScope(directoryScope);
+        const pages = await Promise.all(
+          candidates.map((candidate) =>
+            api.getPatientDirectoryPage({ tenantId, facilityId, ...candidate }),
+          ),
+        );
+        if (!active) return;
+        if (pages.some((page) => !Array.isArray(page.items)))
+          throw new Error('Invalid directory response');
+        const matchIndex = pages.findIndex((page) => page.items.length > 0);
+        if (matchIndex >= 0) {
+          const match = pages[matchIndex].items[0];
+          const type =
+            candidates[matchIndex].exactMatch === 'phone' ? 'phone number' : 'national ID';
+          setDuplicateCheck({
+            key: duplicateKey,
+            status: 'match',
+            warning: `Possible existing record: ${match.firstName} ${match.lastName} (${match.mrn}) has the same ${type}. Confirm the identity; a shared phone does not prove a duplicate.`,
+          });
+        } else {
+          setDuplicateCheck({ key: duplicateKey, status: 'clear' });
+        }
       } catch {
-        if (!cancelled)
-          setDirectoryError(
-            'Patient directory could not be loaded. Do not assume no patients exist; duplicate hints are unavailable.',
-          );
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (active) setDuplicateCheck({ key: duplicateKey, status: 'error' });
       }
-    }
-    void loadPatients();
+    }, 300);
     return () => {
-      cancelled = true;
+      active = false;
+      window.clearTimeout(timer);
     };
-  }, [currentTenant?.id, currentFacility?.id, directoryScope, search, refreshKey, directoryRetry]);
+  }, [
+    isRegistering,
+    currentTenant?.id,
+    currentFacility?.id,
+    formData.nationalId,
+    formData.phone,
+    duplicateKey,
+  ]);
 
   // A sub-county only means something inside its county, so changing the
   // county clears the one already chosen. Without this, "Nyeri" could keep a
@@ -175,29 +201,12 @@ export const PatientRegistrationModule: React.FC = () => {
     setFormData((prev) => ({ ...prev, county, subCounty: '' }));
   };
 
-  // Duplicate Check logic
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-
-    if (field === 'nationalId' && value.trim().length > 4) {
-      const match = patients.find((p) => p.nationalId === value.trim());
-      if (match) {
-        setDuplicateWarning(
-          `Potential Duplicate! Patient "${match.firstName} ${match.lastName}" (MRN: ${match.mrn}) already registered with National ID ${value}`,
-        );
-      } else {
-        setDuplicateWarning(null);
-      }
-    } else if (field === 'phone' && value.trim().length > 8) {
-      const match = patients.find((p) => p.phone === value.trim());
-      if (match) {
-        setDuplicateWarning(
-          `Potential Duplicate! Patient "${match.firstName} ${match.lastName}" (MRN: ${match.mrn}) shares phone number ${value}`,
-        );
-      } else {
-        setDuplicateWarning(null);
-      }
+    if (field === 'nationalId' || field === 'phone') {
+      setDuplicateCheck(null);
+      setDuplicateAcknowledgement(null);
     }
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
@@ -219,6 +228,22 @@ export const PatientRegistrationModule: React.FC = () => {
       return;
     }
 
+    const identifiersNeedCheck =
+      formData.nationalId.trim().length > 4 || formData.phone.trim().length > 8;
+    if (
+      identifiersNeedCheck &&
+      (!currentDuplicateCheck || currentDuplicateCheck.status === 'checking')
+    ) {
+      showToast('Wait for the existing-patient check before registering.');
+      return;
+    }
+    if (
+      (currentDuplicateCheck?.status === 'match' || currentDuplicateCheck?.status === 'error') &&
+      duplicateAcknowledgement !== duplicateKey
+    ) {
+      showToast('Review and acknowledge the existing-patient warning before registering.');
+      return;
+    }
     if (saving) return;
     setSaving(true);
     let newPatient: Patient;
@@ -245,6 +270,8 @@ export const PatientRegistrationModule: React.FC = () => {
       // A lost response may follow a successful write; do not tell the user to
       // retry blindly. Patient creation does not yet have an idempotency key.
       setIsRegistering(false);
+      setDuplicateCheck(null);
+      setDuplicateAcknowledgement(null);
       triggerRefresh();
       showToast(
         'Registration could not be confirmed. The patient may have been saved; search the directory before trying again.',
@@ -254,6 +281,8 @@ export const PatientRegistrationModule: React.FC = () => {
     }
 
     setIsRegistering(false);
+    setDuplicateCheck(null);
+    setDuplicateAcknowledgement(null);
     triggerRefresh();
     try {
       const triageEntry = await api.createQueueItem({
@@ -283,10 +312,14 @@ export const PatientRegistrationModule: React.FC = () => {
   };
 
   const sendToQueue = async (patient: Patient, queueType: string) => {
+    if (!currentTenant?.id || !currentFacility?.id || !directory.ready) {
+      showToast('Select an authorized facility and reload the directory before queueing.');
+      return;
+    }
     try {
       const entry = await api.createQueueItem({
-        tenantId: patient.tenantId,
-        facilityId: patient.facilityId,
+        tenantId: currentTenant.id,
+        facilityId: currentFacility.id,
         patientId: patient.id,
         queueType,
         priority: 'Normal',
@@ -344,10 +377,46 @@ export const PatientRegistrationModule: React.FC = () => {
               {directoryError}
             </p>
           )}
-          {duplicateWarning && (
-            <div className="mb-5 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{duplicateWarning}</span>
+          <p className="mb-3 text-xs text-slate-600">
+            Exact national ID and phone matches are checked in this registration facility only.
+            Other duplicates may exist; confirm the patient’s identity before registering.
+          </p>
+          {currentDuplicateCheck?.status === 'checking' && (
+            <p role="status" className="mb-3 text-xs text-slate-600">
+              Checking for an existing record…
+            </p>
+          )}
+          {currentDuplicateCheck?.status === 'clear' && (
+            <p role="status" className="mb-3 text-xs text-slate-600">
+              No exact match found in this facility. Other duplicates may exist.
+            </p>
+          )}
+          {(currentDuplicateCheck?.status === 'match' ||
+            currentDuplicateCheck?.status === 'error') && (
+            <div
+              role="alert"
+              className="mb-5 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800"
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>
+                  {currentDuplicateCheck.status === 'match'
+                    ? currentDuplicateCheck.warning
+                    : 'The existing-patient check is unavailable. Do not assume no matching patient exists.'}
+                </span>
+              </div>
+              <label className="mt-3 flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={duplicateAcknowledgement === duplicateKey}
+                  onChange={(event) =>
+                    setDuplicateAcknowledgement(event.target.checked ? duplicateKey : null)
+                  }
+                />
+                <span>
+                  I reviewed this warning and will verify the patient’s identity before proceeding.
+                </span>
+              </label>
             </div>
           )}
 
@@ -447,10 +516,14 @@ export const PatientRegistrationModule: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">
+                  <label
+                    htmlFor="registration-national-id"
+                    className="block text-slate-700 font-medium mb-1"
+                  >
                     Kenya National ID / Passport
                   </label>
                   <input
+                    id="registration-national-id"
                     type="text"
                     value={formData.nationalId}
                     onChange={(e) => handleInputChange('nationalId', e.target.value)}
@@ -471,10 +544,14 @@ export const PatientRegistrationModule: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">
+                  <label
+                    htmlFor="registration-phone"
+                    className="block text-slate-700 font-medium mb-1"
+                  >
                     Phone Number (optional)
                   </label>
                   <input
+                    id="registration-phone"
                     type="text"
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
@@ -753,28 +830,21 @@ export const PatientRegistrationModule: React.FC = () => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search patient name, MRN, National ID, Phone, SHA #..."
+                aria-label="Search patient directory"
                 className="w-full pl-9 pr-4 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-600 bg-white"
               />
             </div>
 
             <div className="text-xs text-slate-500 font-mono">
               Displayed records:{' '}
-              <strong>
-                {loadedDirectoryScope === directoryScope && !directoryError
-                  ? patients.length
-                  : 'Unavailable'}
-              </strong>
+              <strong>{directory.ready ? patients.length : 'Unavailable'}</strong>
             </div>
           </div>
 
           {directoryError && (
             <div role="alert" className="p-4 text-xs text-rose-800">
               {directoryError}{' '}
-              <button
-                type="button"
-                className="underline"
-                onClick={() => setDirectoryRetry((n) => n + 1)}
-              >
+              <button type="button" className="underline" onClick={directory.retry}>
                 Retry patient directory
               </button>
             </div>
@@ -795,7 +865,7 @@ export const PatientRegistrationModule: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
-                  {loading || loadedDirectoryScope !== directoryScope ? (
+                  {!directory.ready ? (
                     <tr>
                       <td colSpan={7} className="text-center py-10 text-slate-400 font-sans">
                         Loading patient master index...
@@ -912,6 +982,28 @@ export const PatientRegistrationModule: React.FC = () => {
               </DataTable>
             </div>
           )}
+          <nav
+            aria-label="Patient directory pages"
+            className="flex items-center justify-between gap-3 border-t border-slate-200 p-4 text-xs"
+          >
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-3 py-1.5 disabled:opacity-50"
+              disabled={!directory.canPrevious}
+              onClick={directory.previous}
+            >
+              Previous page
+            </button>
+            <span>Page {directory.page}</span>
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-3 py-1.5 disabled:opacity-50"
+              disabled={!directory.canNext}
+              onClick={directory.next}
+            >
+              Next page
+            </button>
+          </nav>
         </div>
       )}
 

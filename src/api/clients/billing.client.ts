@@ -375,10 +375,17 @@ export const billingClient = {
       )}${status ? `&status=${encodeURIComponent(status)}` : ''}`,
     ),
 
-  retryChargeAttempt: (id: number, facilityId: number) =>
+  retryChargeAttempt: (
+    id: number,
+    facilityId: number,
+    priceReview?: { tariffId: number; revision: number; unitPrice: string; reason: string },
+  ) =>
     fetchJson<BillingChargeAttemptOutcome>(
       `${API_BASE}/billing/charge-attempts/${encodeURIComponent(String(id))}/retry`,
-      { method: 'POST', body: JSON.stringify({ facilityId }) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ facilityId, ...(priceReview ? { priceReview } : {}) }),
+      },
     ),
 
   retryChargeAttempts: (facilityId: number) =>
