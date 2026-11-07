@@ -30,6 +30,7 @@ import { getPayerAdapter, registerPayerAdapter } from '../../insurance/core/adap
 import { createPayerServiceMapping } from '../../insurance/mappings/mappings.service.ts';
 import {
   createOrApprovePayerBenefitRule,
+  listPayerBenefitRulesAndValidations,
   validatePrivateServiceBenefit,
 } from '../../insurance/benefits/benefits.service.ts';
 import {
@@ -500,6 +501,81 @@ describeDb(
       expect(benefitVal.decision).toBe('COVERED');
       expect(benefitVal.estimatedCopayAmount).toBe('500.00');
       expect(benefitVal.estimatedCoveredAmount).toBe('2500.00');
+
+      await expect(
+        validatePrivateServiceBenefit({
+          ...actorA,
+          input: {
+            patientId: patientAId,
+            payerCode: 'BRITAM',
+            localCode: 'SYN-UNMAPPED',
+            serviceDescription: 'Synthetic unmapped service',
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'SERVICE_PRICE_REQUIRED' });
+      const unmapped = await validatePrivateServiceBenefit({
+        ...actorA,
+        input: {
+          patientId: patientAId,
+          payerCode: 'BRITAM',
+          localCode: 'SYN-UNMAPPED',
+          serviceDescription: 'Synthetic unmapped service',
+          unitPrice: '100.00',
+        },
+      });
+      expect(unmapped).toMatchObject({
+        decision: 'INCOMPLETE_INFORMATION',
+        deductibleEstimate: null,
+        estimatedCopayAmount: null,
+        estimatedCoveredAmount: null,
+      });
+      // Simulate the old database defaults; reads must mask ambiguity without
+      // rewriting a historical validation or converting unknown to zero.
+      await pool.query(
+        "UPDATE insurance_benefit_validations SET deductible_estimate='0.00',estimated_copay_amount='0.00' WHERE id=$1",
+        [unmapped.id],
+      );
+      const history = await listPayerBenefitRulesAndValidations({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        payerCode: 'BRITAM',
+        patientId: patientAId,
+      });
+      expect(history.validations.find((entry) => entry.id === unmapped.id)).toMatchObject({
+        deductibleEstimate: null,
+        estimatedCopayAmount: null,
+      });
+      expect(
+        (
+          await pool.query(
+            'SELECT estimated_copay_amount FROM insurance_benefit_validations WHERE id=$1',
+            [unmapped.id],
+          )
+        ).rows[0].estimated_copay_amount,
+      ).toBe('0.00');
+      await pool.query(
+        "UPDATE payer_service_code_mappings SET reimbursement_tariff=NULL WHERE tenant_id=$1 AND facility_id=$2 AND payer_code='BRITAM' AND tariff_id=$3",
+        [actorA.tenantId, actorA.facilityId, tariffConsultId],
+      );
+      try {
+        const missingRate = await validatePrivateServiceBenefit({
+          ...actorA,
+          input: { patientId: patientAId, payerCode: 'BRITAM', tariffId: tariffConsultId },
+        });
+        expect(missingRate).toMatchObject({
+          decision: 'UNABLE_TO_VERIFY',
+          verificationSource: 'PAYER_RATE_NOT_RECORDED',
+          payerTariffAmount: null,
+          deductibleEstimate: null,
+          estimatedCopayAmount: null,
+          estimatedCoveredAmount: null,
+        });
+      } finally {
+        await pool.query(
+          "UPDATE payer_service_code_mappings SET reimbursement_tariff='3000.00' WHERE tenant_id=$1 AND facility_id=$2 AND payer_code='BRITAM' AND tariff_id=$3",
+          [actorA.tenantId, actorA.facilityId, tariffConsultId],
+        );
+      }
 
       // 5. PACIS Preauthorization workflow (Draft -> Attachment -> Submit -> Approved)
       const pacisPreauth = await createPrivatePreauthorization({

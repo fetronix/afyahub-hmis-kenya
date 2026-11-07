@@ -8,7 +8,7 @@
  * requires a separately recorded, evidenced billing payment; this service does not post one.
  */
 
-import { and, desc, eq, inArray, like, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
 import { lockMutableClaim } from '../claims/claim-dispatch-guard.ts';
@@ -86,7 +86,17 @@ export async function listRemittances(
       schema.billingInvoices,
       eq(schema.billingInvoices.id, schema.insuranceReconciliationEntries.invoiceId),
     )
-    .where(inArray(schema.insuranceReconciliationEntries.remittanceId, remIds));
+    .where(
+      and(
+        inArray(schema.insuranceReconciliationEntries.remittanceId, remIds),
+        eq(schema.insuranceReconciliationEntries.tenantId, scope.tenantId),
+        eq(schema.insuranceReconciliationEntries.facilityId, scope.facilityId),
+        eq(schema.shaEclaims.tenantId, scope.tenantId),
+        eq(schema.shaEclaims.facilityId, scope.facilityId),
+        eq(schema.billingInvoices.tenantId, scope.tenantId),
+        eq(schema.billingInvoices.facilityId, scope.facilityId),
+      ),
+    );
 
   return remittances.map((rem) => ({
     ...rem,
@@ -449,6 +459,22 @@ export async function reconcileRemittance(
             'Simulated claims or advice cannot be matched to a real payment.',
             409,
           );
+        if (!['ADJUDICATED', 'PARTIALLY_ADJUDICATED', 'DISPUTED'].includes(claim.status))
+          throw new InsuranceDomainError(
+            'ADJUDICATION_REQUIRED',
+            'Recorded adjudication is required before matching a receipt to the claim.',
+            409,
+          );
+        if (
+          recordedMoneyToCents(claim.totalApprovedAmount) <= 0 ||
+          recordedMoneyToCents(claim.totalPaidAmount) + remittedCents >
+            recordedMoneyToCents(claim.totalApprovedAmount)
+        )
+          throw new InsuranceDomainError(
+            'CLAIM_RECEIPT_EXCEEDS_APPROVAL',
+            'Receipt would exceed the recorded approved amount; financial review is required.',
+            409,
+          );
         try {
           const payment = await matchRecordedPayerPayment(tx, {
             paymentId: alloc.billingPaymentId,
@@ -526,7 +552,22 @@ export async function reconcileRemittance(
 
     const nextAllocatedCents = previouslyAllocatedCents + batchAllocationCents;
     const nextUnallocatedCents = Math.max(0, totalRemittedCents - nextAllocatedCents);
-    const nextRemStatus = nextUnallocatedCents === 0 ? 'RECONCILED' : 'PARTIALLY_RECONCILED';
+    const [awaitingReceipt] = await tx
+      .select({ id: schema.insuranceReconciliationEntries.id })
+      .from(schema.insuranceReconciliationEntries)
+      .where(
+        and(
+          eq(schema.insuranceReconciliationEntries.remittanceId, remittance.id),
+          isNull(schema.insuranceReconciliationEntries.postedPaymentId),
+        ),
+      )
+      .limit(1);
+    const nextRemStatus =
+      nextUnallocatedCents > 0
+        ? 'PARTIALLY_RECONCILED'
+        : awaitingReceipt
+          ? 'AWAITING_RECEIPT'
+          : 'RECONCILED';
 
     const [updatedRemittance] = await tx
       .update(schema.insuranceRemittances)
@@ -541,23 +582,256 @@ export async function reconcileRemittance(
       .where(eq(schema.insuranceRemittances.id, remittance.id))
       .returning();
 
+    await tx.insert(schema.auditLogs).values({
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      userId: scope.userUid,
+      action: 'SHA_REMITTANCE_RECONCILED',
+      resource: 'insurance_remittances',
+      resourceId: String(remittance.id),
+      details: JSON.stringify({
+        remittanceNumber: remittance.remittanceNumber,
+        status: updatedRemittance.status,
+        allocatedAmount: updatedRemittance.allocatedAmount,
+        unallocatedAmount: updatedRemittance.unallocatedAmount,
+        reconciledClaimsCount: createdEntries.length,
+      }),
+      ipAddress: scope.ipAddress ?? null,
+      userAgent: scope.userAgent ?? null,
+    });
     return { remittance: updatedRemittance, entries: createdEntries };
   });
 
-  await recordInsuranceAuditEvent(scope, {
-    action: 'SHA_REMITTANCE_RECONCILED',
-    resource: 'insurance_remittances',
-    resourceId: remittance.id,
-    summary: {
-      remittanceNumber: remittance.remittanceNumber,
-      status: result.remittance.status,
-      allocatedAmount: result.remittance.allocatedAmount,
-      unallocatedAmount: result.remittance.unallocatedAmount,
-      reconciledClaimsCount: result.entries.length,
-    },
-  });
-
   return result;
+}
+
+/**
+ * Match a separately recorded receipt to an already allocated advice line.
+ * This also supports legacy advice-only allocations marked RECONCILED by the
+ * old implementation. It never creates or edits a billing payment or invoice.
+ */
+export async function matchRemittanceReceipt(
+  scope: InsuranceActorScope,
+  remittanceId: number,
+  entryId: number,
+  billingPaymentId: number,
+) {
+  await loadScopedFacility(scope);
+  return db.transaction(async (tx) => {
+    const [remittance] = await tx
+      .select()
+      .from(schema.insuranceRemittances)
+      .where(
+        and(
+          eq(schema.insuranceRemittances.id, remittanceId),
+          eq(schema.insuranceRemittances.tenantId, scope.tenantId),
+          eq(schema.insuranceRemittances.facilityId, scope.facilityId),
+        ),
+      )
+      .for('update');
+    if (!remittance)
+      throw new InsuranceDomainError('REMITTANCE_NOT_FOUND', 'Remittance advice not found.', 404);
+
+    const [entry] = await tx
+      .select()
+      .from(schema.insuranceReconciliationEntries)
+      .where(
+        and(
+          eq(schema.insuranceReconciliationEntries.id, entryId),
+          eq(schema.insuranceReconciliationEntries.remittanceId, remittance.id),
+          eq(schema.insuranceReconciliationEntries.tenantId, scope.tenantId),
+          eq(schema.insuranceReconciliationEntries.facilityId, scope.facilityId),
+        ),
+      )
+      .for('update');
+    if (!entry)
+      throw new InsuranceDomainError(
+        'RECONCILIATION_ENTRY_NOT_FOUND',
+        'Advice allocation not found in this facility.',
+        404,
+      );
+
+    const [claim] = await tx
+      .select()
+      .from(schema.shaEclaims)
+      .where(
+        and(
+          eq(schema.shaEclaims.id, entry.eclaimId),
+          eq(schema.shaEclaims.tenantId, scope.tenantId),
+          eq(schema.shaEclaims.facilityId, scope.facilityId),
+          eq(schema.shaEclaims.payerCode, remittance.payerCode),
+        ),
+      )
+      .for('update');
+    if (!claim || claim.invoiceId !== entry.invoiceId)
+      throw new InsuranceDomainError(
+        'CLAIM_NOT_IN_SCOPE',
+        'The allocation claim and invoice do not match this facility and payer.',
+        404,
+      );
+    if (remittance.isSimulated || claim.isSimulated)
+      throw new InsuranceDomainError(
+        'SIMULATED_REMITTANCE',
+        'Simulated claims or advice cannot be matched to a real payment.',
+        409,
+      );
+    const remittedCents = recordedMoneyToCents(entry.remittedAmount);
+    const appliedCents = recordedMoneyToCents(entry.appliedToInvoiceAmount);
+    if (entry.postedPaymentId !== null) {
+      if (entry.postedPaymentId !== billingPaymentId)
+        throw new InsuranceDomainError(
+          'ALLOCATION_ALREADY_MATCHED',
+          'This advice allocation is already matched to a different receipt.',
+          409,
+        );
+      if (appliedCents !== remittedCents)
+        throw new InsuranceDomainError(
+          'FINANCIAL_REVIEW_REQUIRED',
+          'The recorded advice and receipt amounts are inconsistent; review the allocation.',
+          409,
+        );
+      return { remittance, entry, idempotentReplay: true };
+    }
+    if (appliedCents !== 0)
+      throw new InsuranceDomainError(
+        'FINANCIAL_REVIEW_REQUIRED',
+        'The allocation has an applied amount but no matched receipt; review before continuing.',
+        409,
+      );
+    await lockMutableClaim(
+      tx,
+      {
+        workflow: 'SHA',
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        claimId: claim.id,
+        status: claim.status,
+        revision: claim.dispatchRevision,
+      },
+      (code, message, status) => new InsuranceDomainError(code, message, status),
+    );
+    if (!['ADJUDICATED', 'PARTIALLY_ADJUDICATED', 'DISPUTED'].includes(claim.status))
+      throw new InsuranceDomainError(
+        'ADJUDICATION_REQUIRED',
+        'Recorded adjudication is required before matching a receipt to the claim.',
+        409,
+      );
+    const priorClaimPaidCents = recordedMoneyToCents(claim.totalPaidAmount);
+    const recordedApproval = recordedMoneyToCents(claim.totalApprovedAmount);
+    if (
+      remittedCents <= 0 ||
+      recordedApproval <= 0 ||
+      priorClaimPaidCents + remittedCents > recordedApproval
+    )
+      throw new InsuranceDomainError(
+        'CLAIM_RECEIPT_EXCEEDS_APPROVAL',
+        'Receipt would exceed the recorded approved amount; financial review is required.',
+        409,
+      );
+    const [invoice] = await tx
+      .select({ id: schema.billingInvoices.id })
+      .from(schema.billingInvoices)
+      .where(
+        and(
+          eq(schema.billingInvoices.id, entry.invoiceId),
+          eq(schema.billingInvoices.tenantId, scope.tenantId),
+          eq(schema.billingInvoices.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!invoice)
+      throw new InsuranceDomainError('INVOICE_NOT_FOUND', 'Linked invoice not found.', 404);
+    try {
+      await matchRecordedPayerPayment(tx, {
+        paymentId: billingPaymentId,
+        invoiceId: invoice.id,
+        payerCode: remittance.payerCode,
+        remittanceReference: remittance.payerRemittanceRef,
+        bankReference: remittance.bankReference,
+        amountCents: remittedCents,
+      });
+    } catch (error) {
+      if (error instanceof RecordedPaymentError)
+        throw new InsuranceDomainError(error.code, error.message, 409);
+      throw error;
+    }
+    const [updatedEntry] = await tx
+      .update(schema.insuranceReconciliationEntries)
+      .set({
+        postedPaymentId: billingPaymentId,
+        appliedToInvoiceAmount: formatCents(remittedCents),
+        reconciledByUserId: scope.userId,
+        reconciledAt: new Date(),
+      })
+      .where(eq(schema.insuranceReconciliationEntries.id, entry.id))
+      .returning();
+    const newClaimPaidCents = priorClaimPaidCents + remittedCents;
+    const targetClaimStatus: EclaimStatus =
+      newClaimPaidCents >= recordedApproval &&
+      ['ADJUDICATED', 'PARTIALLY_ADJUDICATED'].includes(claim.status) &&
+      canTransitionEclaimStatus(claim.status, 'PAID')
+        ? 'PAID'
+        : (claim.status as EclaimStatus);
+    await tx
+      .update(schema.shaEclaims)
+      .set({
+        totalPaidAmount: formatCents(newClaimPaidCents),
+        settledPaymentId: billingPaymentId,
+        status: targetClaimStatus,
+        paidAt: targetClaimStatus === 'PAID' ? new Date() : claim.paidAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.shaEclaims.id, claim.id));
+    if (targetClaimStatus !== claim.status)
+      await tx.insert(schema.shaEclaimStatusHistory).values({
+        eclaimId: claim.id,
+        fromStatus: claim.status,
+        toStatus: targetClaimStatus,
+        source: 'REMITTANCE_RECONCILIATION',
+        actorUserId: scope.userId,
+        reason: 'Matched an existing billing receipt to remittance advice.',
+        metadata: { remittanceId: remittance.id, postedPaymentId: billingPaymentId },
+      });
+    const [awaitingReceipt] = await tx
+      .select({ id: schema.insuranceReconciliationEntries.id })
+      .from(schema.insuranceReconciliationEntries)
+      .where(
+        and(
+          eq(schema.insuranceReconciliationEntries.remittanceId, remittance.id),
+          isNull(schema.insuranceReconciliationEntries.postedPaymentId),
+        ),
+      )
+      .limit(1);
+    const unallocated = recordedMoneyToCents(remittance.unallocatedAmount);
+    const status =
+      unallocated > 0
+        ? 'PARTIALLY_RECONCILED'
+        : awaitingReceipt
+          ? 'AWAITING_RECEIPT'
+          : 'RECONCILED';
+    const [updatedRemittance] = await tx
+      .update(schema.insuranceRemittances)
+      .set({
+        status,
+        reconciledByUserId: scope.userId,
+        reconciledAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.insuranceRemittances.id, remittance.id))
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      userId: scope.userUid,
+      action: 'SHA_REMITTANCE_RECEIPT_MATCHED',
+      resource: 'insurance_reconciliation_entries',
+      resourceId: String(entry.id),
+      details: JSON.stringify({ remittanceId: remittance.id, claimId: claim.id, billingPaymentId }),
+      ipAddress: scope.ipAddress ?? null,
+      userAgent: scope.userAgent ?? null,
+    });
+    return { remittance: updatedRemittance, entry: updatedEntry, idempotentReplay: false };
+  });
 }
 
 /**

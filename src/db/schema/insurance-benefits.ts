@@ -136,12 +136,9 @@ export const insuranceBenefitValidations = pgTable(
     quantity: integer('quantity').default(1).notNull(),
     facilityTariffAmount: numeric('facility_tariff_amount', { precision: 12, scale: 2 }).notNull(),
     payerTariffAmount: numeric('payer_tariff_amount', { precision: 12, scale: 2 }),
-    deductibleEstimate: numeric('deductible_estimate', { precision: 12, scale: 2 })
-      .default('0.00')
-      .notNull(),
-    estimatedCopayAmount: numeric('estimated_copay_amount', { precision: 12, scale: 2 })
-      .default('0.00')
-      .notNull(),
+    // Null means there was not enough recorded evidence to calculate an estimate.
+    deductibleEstimate: numeric('deductible_estimate', { precision: 12, scale: 2 }),
+    estimatedCopayAmount: numeric('estimated_copay_amount', { precision: 12, scale: 2 }),
     estimatedCoveredAmount: numeric('estimated_covered_amount', { precision: 12, scale: 2 }),
     decision: text('decision').notNull(),
     verificationSource: text('verification_source').notNull(),

@@ -195,8 +195,8 @@ export interface PrivateBenefitValidationResult {
   quantity: number;
   facilityTariffAmount: string;
   payerTariffAmount: string | null;
-  deductibleEstimate: string;
-  estimatedCopayAmount: string;
+  deductibleEstimate: string | null;
+  estimatedCopayAmount: string | null;
   estimatedCoveredAmount: string | null;
   patientContributionEstimate?: string | null;
   decision: string;

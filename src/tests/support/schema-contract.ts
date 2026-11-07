@@ -68,6 +68,19 @@ export function tableContract(table: PgTable) {
 /** Exact metadata changes introduced by reviewed additive migrations. The original
  * extraction fixture remains unchanged; all other columns and indexes still match it. */
 export function contractWithReviewedAdditions(name: string, original: unknown) {
+  if (name === 'insuranceBenefitValidations') {
+    const expected = structuredClone(original) as {
+      columns: Array<{ name: string } & Record<string, unknown>>;
+    };
+    // Migration 0071 intentionally preserves history while allowing an unknown
+    // deductible/copay estimate to remain null rather than defaulting to zero.
+    for (const name of ['deductible_estimate', 'estimated_copay_amount']) {
+      const column = expected.columns.find((item) => item.name === name);
+      if (!column) throw new Error(`Expected historical ${name} column not found`);
+      Object.assign(column, { notNull: false, hasDefault: false, default: null });
+    }
+    return expected;
+  }
   if (name === 'facilities') {
     const expected = structuredClone(original) as {
       columns: Array<{ name: string } & Record<string, unknown>>;

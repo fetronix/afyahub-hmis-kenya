@@ -13,6 +13,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import * as schema from '../../db/schema.ts';
+import { parseCalendarDate } from '../../dashboard/date-range.ts';
 import {
   defaultShaGatewayAdapter,
   type PayerGatewayAdapter,
@@ -62,10 +63,10 @@ export async function validateServiceBenefits(
   const serviceDate = (input.serviceDate ?? new Date().toISOString().slice(0, 10)).trim();
   const quantity = input.quantity ?? 1;
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+  if (!parseCalendarDate(serviceDate)) {
     throw new InsuranceDomainError(
       'INVALID_SERVICE_DATE',
-      'serviceDate must be formatted as YYYY-MM-DD.',
+      'serviceDate must be a valid calendar date formatted as YYYY-MM-DD.',
       400,
     );
   }
@@ -116,12 +117,29 @@ export async function validateServiceBenefits(
     const encDiagnoses = await db
       .select()
       .from(schema.diagnoses)
-      .where(eq(schema.diagnoses.encounterId, enc.id))
+      .where(
+        and(eq(schema.diagnoses.encounterId, enc.id), eq(schema.diagnoses.patientId, patient.id)),
+      )
       .limit(5);
-    if (encDiagnoses.length > 0) {
-      hasCodedDiagnosis = true;
-      hasClinicalNotes = true;
-    }
+    hasCodedDiagnosis = encDiagnoses.some((diagnosis) => {
+      const code =
+        diagnosis.codingSystem === 'ICD-11'
+          ? diagnosis.icd11Code
+          : diagnosis.codingSystem === 'ICD-10'
+            ? diagnosis.icd10Code
+            : null;
+      const display =
+        diagnosis.codingSystem === 'ICD-11'
+          ? diagnosis.icd11Title
+          : diagnosis.codingSystem === 'ICD-10'
+            ? diagnosis.icd10Description
+            : null;
+      const type = diagnosis.diagnosisType?.trim().toLowerCase();
+      return Boolean(
+        code?.trim() && display?.trim() && ['primary', 'secondary'].includes(type ?? ''),
+      );
+    });
+    if (hasCodedDiagnosis) hasClinicalNotes = true;
   }
 
   // 2. Resolve JaliCare facility tariff (without modifying it)
@@ -185,18 +203,27 @@ export async function validateServiceBenefits(
       .where(
         and(
           eq(schema.insuranceEligibilityVerifications.id, input.eligibilityVerificationId),
+          eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
           eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
           eq(schema.insuranceEligibilityVerifications.patientId, patient.id),
+          eq(schema.insuranceEligibilityVerifications.payerCode, payerCode),
         ),
       )
       .limit(1);
-    eligibility = ver ?? null;
+    if (!ver)
+      throw new InsuranceDomainError(
+        'ELIGIBILITY_NOT_FOUND',
+        'Eligibility record does not belong to this patient, payer, and facility.',
+        404,
+      );
+    eligibility = ver;
   } else {
     const [latest] = await db
       .select()
       .from(schema.insuranceEligibilityVerifications)
       .where(
         and(
+          eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
           eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
           eq(schema.insuranceEligibilityVerifications.patientId, patient.id),
           eq(schema.insuranceEligibilityVerifications.payerCode, payerCode),
@@ -213,6 +240,7 @@ export async function validateServiceBenefits(
     .from(schema.payerServiceCodeMappings)
     .where(
       and(
+        eq(schema.payerServiceCodeMappings.tenantId, scope.tenantId),
         eq(schema.payerServiceCodeMappings.facilityId, scope.facilityId),
         eq(schema.payerServiceCodeMappings.payerCode, payerCode),
         eq(schema.payerServiceCodeMappings.isActive, true),
@@ -243,6 +271,7 @@ export async function validateServiceBenefits(
     .from(schema.payerBenefitRules)
     .where(
       and(
+        eq(schema.payerBenefitRules.tenantId, scope.tenantId),
         eq(schema.payerBenefitRules.facilityId, scope.facilityId),
         eq(schema.payerBenefitRules.payerCode, payerCode),
       ),
@@ -285,7 +314,7 @@ export async function validateServiceBenefits(
   const requiresPreauth = Boolean(mapping?.requiresPreauth || approvedRule?.requiresPreauth);
   let resolvedPreauthRef = input.preauthReference?.trim() || null;
   let payerTotalCents: number | null = null;
-  let copayCents = 0;
+  let copayCents: number | null = null;
   let coveredCents: number | null = null;
 
   if (eligibility?.isSimulated) {
@@ -299,14 +328,31 @@ export async function validateServiceBenefits(
     missingRequirements.push('Verified SHA patient eligibility check');
     reason =
       'Patient SHA membership eligibility has not been verified yet. Run SHA Eligibility Check first.';
+  } else if (
+    eligibility &&
+    eligibility.source !== 'AUTHORITATIVE_PAYER' &&
+    !eligibility.source.startsWith('MANUAL_VERIFICATION:')
+  ) {
+    decision = 'UNABLE_TO_VERIFY';
+    verificationSource = 'UNVERIFIED_ELIGIBILITY_SOURCE';
+    missingRequirements.push('A non-simulated payer or documented manual eligibility check');
+    reason = 'The recorded eligibility source does not establish a verified payer or manual check.';
+  } else if (
+    eligibility &&
+    !isDateWithinWindow(serviceDate, eligibility.coverageStartDate, eligibility.coverageEndDate)
+  ) {
+    decision = 'UNABLE_TO_VERIFY';
+    verificationSource = 'ELIGIBILITY_OUTSIDE_RECORDED_WINDOW';
+    missingRequirements.push('Eligibility evidence applicable to the service date');
+    reason = 'The service date is outside the recorded eligibility coverage dates.';
   } else if (eligibility && eligibility.isAlive === false) {
     decision = 'NOT_COVERED';
-    verificationSource = eligibility.isSimulated ? 'SANDBOX_SIMULATION' : 'AUTHORITATIVE_PAYER';
+    verificationSource = eligibility.source;
     reason =
-      'Beneficiary is marked deceased in DHA Client Registry (isAlive=false); SHA service coverage and billing are blocked.';
+      'The recorded eligibility evidence marks the beneficiary as deceased; SHA service coverage and billing are blocked.';
   } else if (eligibility && eligibility.outcome === 'Ineligible') {
     decision = 'NOT_COVERED';
-    verificationSource = eligibility.isSimulated ? 'SANDBOX_SIMULATION' : 'AUTHORITATIVE_PAYER';
+    verificationSource = eligibility.source;
     reason = `Patient SHA eligibility outcome is Ineligible (${eligibility.reason ?? 'inactive membership'}).`;
   } else if (
     eligibility &&
@@ -337,6 +383,25 @@ export async function validateServiceBenefits(
     reason = matchingDraftRule
       ? `Local benefit rule ${matchingDraftRule.ruleCode} v${matchingDraftRule.version} is still in DRAFT (unverified) and cannot be applied until approved by an authorized administrator.`
       : `No approved effective-dated SHA benefit rule exists for package ${effectiveBenefitPackage} and service area ${mapping.serviceArea}.`;
+  } else if (!mapping.isPhcZeroTariff && mapping.reimbursementTariff === null) {
+    decision = 'UNABLE_TO_VERIFY';
+    verificationSource = 'PAYER_RATE_NOT_RECORDED';
+    missingRequirements.push('A documented payer reimbursement tariff');
+    reason =
+      'The payer reimbursement tariff is not recorded; the facility price cannot replace it.';
+  } else if (
+    !['NONE', 'FIXED', 'PERCENTAGE'].includes(approvedRule.copayType) ||
+    (approvedRule.copayType === 'PERCENTAGE' &&
+      requireRecordedMoneyCents(approvedRule.copayValue) > 10_000) ||
+    requireRecordedMoneyCents(approvedRule.deductibleAmount) !== 0 ||
+    requireRecordedMoneyCents(approvedRule.coinsurancePercent) !== 0 ||
+    approvedRule.annualLimit !== null
+  ) {
+    decision = 'UNABLE_TO_VERIFY';
+    verificationSource = 'UNSUPPORTED_RULE_FINANCIAL_TERMS';
+    missingRequirements.push('Reviewed copay, deductible, coinsurance and annual-limit terms');
+    reason =
+      'The configured financial terms cannot be calculated safely by this SHA estimate; payer review is required.';
   } else {
     verificationSource = isSimulated
       ? 'APPROVED_FACILITY_RULE_WITH_SIMULATED_ELIGIBILITY'
@@ -368,37 +433,44 @@ export async function validateServiceBenefits(
         .from(schema.shaBenefitUtilizationSnapshots)
         .where(
           and(
+            eq(schema.shaBenefitUtilizationSnapshots.tenantId, scope.tenantId),
             eq(schema.shaBenefitUtilizationSnapshots.facilityId, scope.facilityId),
             eq(schema.shaBenefitUtilizationSnapshots.patientId, patient.id),
+            eq(schema.shaBenefitUtilizationSnapshots.payerCode, payerCode),
             eq(schema.shaBenefitUtilizationSnapshots.interventionCode, mapping.payerServiceCode),
           ),
         )
         .orderBy(desc(schema.shaBenefitUtilizationSnapshots.checkedAt))
         .limit(1);
 
+      // A mock or unavailable snapshot is not evidence of an exhausted (or
+      // available) payer limit. Do not fall back to an older snapshot when the
+      // latest one is unverified; the result below remains a local estimate.
+      const usableUtil =
+        latestUtil && !latestUtil.isSimulated && latestUtil.source === 'AUTHORITATIVE_PAYER'
+          ? latestUtil
+          : null;
       const indRemCents =
-        latestUtil?.individualRemainingLimit !== null &&
-        latestUtil?.individualRemainingLimit !== undefined
-          ? requireRecordedMoneyCents(latestUtil.individualRemainingLimit)
+        usableUtil?.individualRemainingLimit !== null &&
+        usableUtil?.individualRemainingLimit !== undefined
+          ? requireRecordedMoneyCents(usableUtil.individualRemainingLimit)
           : null;
       const hhRemCents =
-        latestUtil?.householdRemainingLimit !== null &&
-        latestUtil?.householdRemainingLimit !== undefined
-          ? requireRecordedMoneyCents(latestUtil.householdRemainingLimit)
+        usableUtil?.householdRemainingLimit !== null &&
+        usableUtil?.householdRemainingLimit !== undefined
+          ? requireRecordedMoneyCents(usableUtil.householdRemainingLimit)
           : null;
 
       if ((indRemCents !== null && indRemCents <= 0) || (hhRemCents !== null && hhRemCents <= 0)) {
         decision = 'NOT_COVERED';
-        reason = `SHA benefit utilization limit for ${mapping.payerServiceCode} is exhausted (individual remaining: KES ${latestUtil?.individualRemainingLimit ?? 'not recorded'}, household remaining: KES ${latestUtil?.householdRemainingLimit ?? 'not recorded'}${latestUtil?.nextAvailability ? `, next available: ${latestUtil.nextAvailability}` : ''}).`;
+        reason = `SHA benefit utilization limit for ${mapping.payerServiceCode} is exhausted (individual remaining: KES ${usableUtil?.individualRemainingLimit ?? 'not recorded'}, household remaining: KES ${usableUtil?.householdRemainingLimit ?? 'not recorded'}${usableUtil?.nextAvailability ? `, next available: ${usableUtil.nextAvailability}` : ''}).`;
       } else {
         // Compute payer tariff & copay using decimal-safe cents math
         if (mapping.isPhcZeroTariff) {
           payerTotalCents = 0;
-        } else if (mapping.reimbursementTariff !== null) {
+        } else {
           const unitPayerCents = requireRecordedMoneyCents(mapping.reimbursementTariff);
           payerTotalCents = multiplyMoneyCents(unitPayerCents, quantity);
-        } else {
-          payerTotalCents = totalFacilityCents;
         }
 
         const perVisitLimitCents =
@@ -452,6 +524,7 @@ export async function validateServiceBenefits(
             .from(schema.insurancePreauthorizations)
             .where(
               and(
+                eq(schema.insurancePreauthorizations.tenantId, scope.tenantId),
                 eq(schema.insurancePreauthorizations.facilityId, scope.facilityId),
                 eq(schema.insurancePreauthorizations.patientId, patient.id),
                 eq(schema.insurancePreauthorizations.payerCode, payerCode),
@@ -467,6 +540,14 @@ export async function validateServiceBenefits(
 
             if (
               matchesRef &&
+              !pa.isSimulated &&
+              (pa.source === 'AUTHORITATIVE_PAYER' || pa.source === 'MANUAL_PAYER_DECISION') &&
+              Boolean(pa.payerAuthReference?.trim()) &&
+              pa.requestedServiceCode === mapping.payerServiceCode &&
+              (!pa.encounterId || pa.encounterId === encounter?.id) &&
+              // This validation has no invoice input: an invoice-specific
+              // authorization cannot be matched without that context.
+              !pa.invoiceId &&
               (pa.status === 'APPROVED' || pa.status === 'PARTIALLY_APPROVED') &&
               isDateWithinWindow(serviceDate, pa.validFrom, pa.validUntil)
             ) {
@@ -523,7 +604,9 @@ export async function validateServiceBenefits(
       quantity,
       facilityTariffAmount: formatCents(totalFacilityCents),
       payerTariffAmount: payerTotalCents !== null ? formatCents(payerTotalCents) : null,
-      estimatedCopayAmount: formatCents(copayCents),
+      // SHA deductible calculation is not implemented; do not imply none.
+      deductibleEstimate: null,
+      estimatedCopayAmount: copayCents !== null ? formatCents(copayCents) : null,
       estimatedCoveredAmount: coveredCents !== null ? formatCents(coveredCents) : null,
       decision,
       verificationSource,
@@ -557,7 +640,7 @@ export async function validateServiceBenefits(
   return {
     validation: saved,
     advisoryDisclaimer:
-      'Coverage validation reflects verified SHA eligibility and administrator-approved facility rules. Final reimbursement is determined solely by SHA adjudication.',
+      'This is a local estimate from recorded evidence and facility rules; it does not itself verify eligibility or confirm coverage, adjudication or payment. Review the decision and evidence source.',
   };
 }
 
@@ -575,6 +658,7 @@ export async function getPatientBenefitsSummary(
     .from(schema.insuranceEligibilityVerifications)
     .where(
       and(
+        eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
         eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
         eq(schema.insuranceEligibilityVerifications.patientId, patient.id),
         eq(schema.insuranceEligibilityVerifications.payerCode, payerCode),
@@ -588,6 +672,7 @@ export async function getPatientBenefitsSummary(
     .from(schema.insuranceBenefitValidations)
     .where(
       and(
+        eq(schema.insuranceBenefitValidations.tenantId, scope.tenantId),
         eq(schema.insuranceBenefitValidations.facilityId, scope.facilityId),
         eq(schema.insuranceBenefitValidations.patientId, patient.id),
         eq(schema.insuranceBenefitValidations.payerCode, payerCode),
@@ -601,6 +686,7 @@ export async function getPatientBenefitsSummary(
     .from(schema.payerBenefitRules)
     .where(
       and(
+        eq(schema.payerBenefitRules.tenantId, scope.tenantId),
         eq(schema.payerBenefitRules.facilityId, scope.facilityId),
         eq(schema.payerBenefitRules.payerCode, payerCode),
         eq(schema.payerBenefitRules.status, 'APPROVED'),
@@ -612,8 +698,10 @@ export async function getPatientBenefitsSummary(
     .from(schema.shaBenefitUtilizationSnapshots)
     .where(
       and(
+        eq(schema.shaBenefitUtilizationSnapshots.tenantId, scope.tenantId),
         eq(schema.shaBenefitUtilizationSnapshots.facilityId, scope.facilityId),
         eq(schema.shaBenefitUtilizationSnapshots.patientId, patient.id),
+        eq(schema.shaBenefitUtilizationSnapshots.payerCode, payerCode),
       ),
     )
     .orderBy(desc(schema.shaBenefitUtilizationSnapshots.checkedAt))
@@ -630,7 +718,14 @@ export async function getPatientBenefitsSummary(
     facilityAccreditationLevel: payerConfig.accreditationLevel,
     latestEligibility: latestEligibility ?? null,
     approvedBenefitRulesCount: activeApprovedRules.length,
-    recentValidations: validations,
+    // Older rows stored default zero even where no estimate was possible. Do
+    // not rewrite that history, or expose the ambiguous default as evidence.
+    recentValidations: validations.map((validation) => ({
+      ...validation,
+      deductibleEstimate: null,
+      estimatedCopayAmount:
+        validation.estimatedCoveredAmount === null ? null : validation.estimatedCopayAmount,
+    })),
     recentUtilizationSnapshots: utilizationSnapshots,
   };
 }
@@ -666,6 +761,7 @@ export async function lookupPatientHieCoverageAndUtilization(
     .from(schema.insuranceEligibilityVerifications)
     .where(
       and(
+        eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
         eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
         eq(schema.insuranceEligibilityVerifications.patientId, patient.id),
         eq(schema.insuranceEligibilityVerifications.payerCode, 'SHA'),

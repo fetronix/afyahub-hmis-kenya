@@ -73,6 +73,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
   const [allocAmount, setAllocAmount] = useState('');
   const [varianceReason, setVarianceReason] = useState('');
   const [billingPaymentId, setBillingPaymentId] = useState('');
+  const [receiptForEntry, setReceiptForEntry] = useState<Record<number, string>>({});
+  const [matchingEntryId, setMatchingEntryId] = useState<number | null>(null);
 
   // Admin: Facility payer config
   const [facilityRegCode, setFacilityRegCode] = useState('');
@@ -246,6 +248,34 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
       await loadSectionData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Reconciliation failed.', 'error');
+    }
+  };
+
+  const handleMatchReceipt = async (remittanceId: number, entryId: number) => {
+    const paymentId = Number(receiptForEntry[entryId]);
+    if (!Number.isSafeInteger(paymentId) || paymentId <= 0) {
+      showToast('Enter the ID of an existing billing receipt.', 'warning');
+      return;
+    }
+    setMatchingEntryId(entryId);
+    try {
+      const result = await shaEclaimsApi.matchRemittanceReceipt(
+        remittanceId,
+        entryId,
+        facilityId,
+        paymentId,
+      );
+      showToast(
+        result.idempotentReplay
+          ? 'This receipt was already matched to the advice allocation.'
+          : 'Existing receipt matched; no payment was created or changed.',
+        'success',
+      );
+      await loadSectionData();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Receipt matching failed.', 'error');
+    } finally {
+      setMatchingEntryId(null);
     }
   };
 
@@ -591,8 +621,9 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                   Allocate Remittance to SHA eClaim
                 </h3>
                 <p className="text-xs text-slate-600">
-                  Allocates advice only. Optionally match an existing billing receipt; this does not
-                  create a payment or change an invoice.
+                  Match a separately recorded billing receipt while allocating advice. This does not
+                  create a payment or change an invoice. Previously allocated advice can be matched
+                  to its receipt in the register below.
                 </p>
               </div>
               <div>
@@ -609,7 +640,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                 >
                   <option value="">— Select Remittance —</option>
                   {remittances
-                    .filter((r) => r.status !== 'RECONCILED')
+                    .filter((r) => r.status !== 'RECONCILED' && Number(r.unallocatedAmount) > 0)
                     .map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.remittanceNumber} ({r.payerRemittanceRef}) · Unallocated KES{' '}
@@ -758,7 +789,10 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                       </span>
                     </div>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200">
-                      {rem.status}
+                      {rem.entries.some((entry) => entry.postedPaymentId === null)
+                        ? `${rem.status} · receipt pending`
+                        : rem.status}
+                      {rem.isSimulated ? ' · simulated' : ''}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
@@ -787,7 +821,8 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                           <th>Claimed</th>
                           <th>Remitted</th>
                           <th>Variance</th>
-                          <th>Status</th>
+                          <th>Amount comparison</th>
+                          <th>Billing receipt</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -803,6 +838,39 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                               KES {Number(en.varianceAmount).toLocaleString()}
                             </td>
                             <td>{en.reconciliationStatus}</td>
+                            <td>
+                              {en.postedPaymentId !== null ? (
+                                <span>Matched receipt #{en.postedPaymentId}</span>
+                              ) : rem.isSimulated ? (
+                                <span>Simulated; no real receipt match</span>
+                              ) : canReconcile ? (
+                                <div className="flex flex-wrap gap-1">
+                                  <input
+                                    aria-label={`Existing billing receipt ID for allocation ${en.id}`}
+                                    type="number"
+                                    min="1"
+                                    value={receiptForEntry[en.id] ?? ''}
+                                    onChange={(event) =>
+                                      setReceiptForEntry((current) => ({
+                                        ...current,
+                                        [en.id]: event.target.value,
+                                      }))
+                                    }
+                                    className="field-input w-24"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn-quiet text-xs"
+                                    disabled={matchingEntryId === en.id}
+                                    onClick={() => void handleMatchReceipt(rem.id, en.id)}
+                                  >
+                                    Match receipt
+                                  </button>
+                                </div>
+                              ) : (
+                                <span>Receipt pending</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

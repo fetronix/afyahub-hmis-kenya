@@ -21,6 +21,14 @@ import { describeDb } from './support/db.ts';
 import { db, pool } from '../../db/index.ts';
 import { defaultShaGatewayAdapter } from '../../integrations/sha/sha.adapter.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
+import { finalizeInvoice, getFinalizedInvoice } from '../../billing/finalized-invoice.service.ts';
+import { postBillingSourceScoped } from '../../accounting/billing-posting.service.ts';
+import {
+  createAccountScoped,
+  createFinancialPeriodScoped,
+  getAccountingOverviewScoped,
+} from '../../accounting/accounting.service.ts';
+import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import * as schema from '../../db/schema.ts';
 import type { InsuranceActorScope } from '../../insurance/eclaims/contracts.ts';
 import {
@@ -45,6 +53,7 @@ import {
   updatePreauthorization,
 } from '../../insurance/eclaims/preauthorization.service.ts';
 import {
+  getShaClaimDetail,
   prepareShaClaim,
   processIncomingShaWebhookEvent,
   listShaCallbackEvents,
@@ -57,6 +66,7 @@ import {
 import {
   fetchRemittanceClaimBreakdown,
   getShaOperationalReport,
+  matchRemittanceReceipt,
   reconcileRemittance,
   recordRemittanceAdvice,
   syncFacilityHieRemittances,
@@ -127,6 +137,10 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         name: 'Nyeri Test Hospital A',
         level: 'Level 4',
         mflCode: facilityRegistryCode,
+        address: 'Synthetic address',
+        county: 'Nairobi',
+        phone: '0000000000',
+        enabledModules: ['finance', 'accounting', 'insurance'],
       })
       .returning();
 
@@ -199,12 +213,22 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       .returning();
     patientAId = patient.id;
 
+    const [department] = await db
+      .insert(schema.departments)
+      .values({ facilityId: facilityA.id, name: 'Synthetic imaging', code: `IMG-${suffix}` })
+      .returning();
+    const [practitioner] = await db
+      .insert(schema.practitioners)
+      .values({ tenantId: tenantA.id, facilityId: facilityA.id, fullName: 'Synthetic clinician' })
+      .returning();
     const [encounter] = await db
       .insert(schema.encounters)
       .values({
         tenantId: tenantA.id,
         facilityId: facilityA.id,
         patientId: patient.id,
+        departmentId: department.id,
+        practitionerId: practitioner.id,
         encounterType: 'OUTPATIENT',
         status: 'COMPLETED',
         chiefComplaint: 'Severe headache requiring CT imaging',
@@ -216,8 +240,9 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     await db.insert(schema.diagnoses).values({
       encounterId: encounter.id,
       patientId: patient.id,
-      icd10Code: '8B20',
-      icd10Description: 'Acute stroke evaluation',
+      codingSystem: 'ICD-11',
+      icd11Code: '8B20',
+      icd11Title: 'Acute stroke evaluation',
     });
 
     const [tariff] = await db
@@ -332,11 +357,26 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     });
     expect(eligRes.verification.outcome).toBe('Eligible');
     expect(eligRes.verification.isSimulated).toBe(true);
-    // Synthetic test-only manual evidence, not a sandbox or production result.
-    await db
-      .update(schema.insuranceEligibilityVerifications)
-      .set({ isSimulated: false, source: 'MANUAL_VERIFICATION:TEST_EVIDENCE' })
-      .where(eq(schema.insuranceEligibilityVerifications.id, eligRes.verification.id));
+    // A separate pre-existing, synthetic manual-evidence fixture is used for
+    // the remaining local workflow. The mock result remains simulated; this is
+    // not evidence of a real payer check or of a SHA manual-entry UI.
+    await db.insert(schema.insuranceEligibilityVerifications).values({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      patientId: patientAId,
+      encounterId: encounterAId,
+      payerCode: 'SHA',
+      identificationType: 'SHA_NUMBER',
+      identificationHint: 'synthetic',
+      outcome: 'Eligible',
+      source: 'MANUAL_VERIFICATION:TEST_EVIDENCE',
+      isSimulated: false,
+      manualReference: 'SYNTHETIC-MANUAL-ELIGIBILITY',
+      memberCrNumber: 'CR-SYNTHETIC-TEST',
+      schemes: ['SHIF'],
+      responseClassification: 'MANUAL_SYNTHETIC',
+      checkedByUserId: scopeA.userId,
+    });
 
     // 2b. Query DHA HIE benefits & utilization matrix + authorize beneficiary OTP consent
     const hieMatrix = await lookupPatientHieCoverageAndUtilization(scopeA, {
@@ -461,13 +501,91 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       validUntil: '2027-01-01',
     });
     expect(approvedPa.status).toBe('APPROVED');
+    expect(approvedPa.isSimulated).toBe(true);
 
     // Unauthorized edit to approved scope without amendmentReason must fail with 409!
     await expect(
       updatePreauthorization(scopeA, preauth.id, { estimatedAmount: '9500.00' }),
     ).rejects.toThrow(/amendmentReason/i);
 
-    // Benefits validation now returns COVERED!
+    // A simulated approval is not a real authorization, even after a local
+    // status update. A separate invoice demonstrates the claim-side guard.
+    const simulatedPreauthBenefit = await validateServiceBenefits(scopeA, {
+      patientId: patientAId,
+      encounterId: encounterAId,
+      tariffId: tariffAId,
+      benefitPackage: 'SHIF',
+      serviceDate: '2026-10-28',
+    });
+    expect(simulatedPreauthBenefit.validation.decision).toBe('AUTHORIZATION_REQUIRED');
+    const [simulationInvoice] = await db
+      .insert(schema.billingInvoices)
+      .values({
+        tenantId: scopeA.tenantId,
+        facilityId: scopeA.facilityId,
+        patientId: patientAId,
+        encounterId: encounterAId,
+        invoiceNumber: `INV-SYN-PREAUTH-${randomUUID()}`,
+        totalAmount: '8500.00',
+        paidAmount: '0.00',
+        balanceAmount: '8500.00',
+        status: 'Unpaid',
+        payerType: 'SHA',
+      })
+      .returning();
+    const [simulationTariff] = await db
+      .select()
+      .from(schema.facilityServiceTariffs)
+      .where(eq(schema.facilityServiceTariffs.id, tariffAId));
+    await db.insert(schema.billingItems).values({
+      invoiceId: simulationInvoice.id,
+      tariffId: tariffAId,
+      tariffCode: simulationTariff.code,
+      sourceType: 'RADIOLOGY',
+      itemType: 'Radiology',
+      description: 'Synthetic CT test',
+      quantity: 1,
+      unitPrice: '8500.00',
+      totalAmount: '8500.00',
+    });
+    const simulatedPreauthClaim = await prepareShaClaim(scopeA, {
+      invoiceId: simulationInvoice.id,
+      encounterId: encounterAId,
+      preauthorizationId: preauth.id,
+      schemeCode: 'SHIF',
+      subType: 'op',
+    });
+    expect(simulatedPreauthClaim.status).toBe('VALIDATION_FAILED');
+    expect(simulatedPreauthClaim.validationIssues.map((issue) => issue.code)).toContain(
+      'MISSING_OR_INVALID_PREAUTH',
+    );
+
+    // Independently record a synthetic staff-attested manual preauthorization
+    // through the existing service. This is not a provider decision.
+    const manualPreauth = await createPreauthorization(scopeA, {
+      patientId: patientAId,
+      encounterId: encounterAId,
+      tariffId: tariffAId,
+      category: 'IMAGING',
+      clinicalIndication: 'Synthetic test indication',
+      primaryDiagnosisCode: '8B20',
+      primaryDiagnosisDisplay: 'Synthetic test diagnosis',
+      codingSystem: 'ICD-11',
+      requestedServiceCode: 'SHA-IMG-010',
+      requestedServiceName: 'Synthetic imaging',
+      quantity: 1,
+      estimatedAmount: '7000.00',
+    });
+    const manualDecision = await updatePreauthorization(scopeA, manualPreauth.id, {
+      status: 'APPROVED',
+      payerAuthReference: 'SYNTHETIC-MANUAL-REFERENCE',
+      approvedAmount: '7000.00',
+      validFrom: '2026-01-01',
+      validUntil: '2027-01-01',
+    });
+    expect(manualDecision).toMatchObject({ source: 'MANUAL_PAYER_DECISION', isSimulated: false });
+
+    // This is only an estimate based on synthetic manual evidence and rules.
     const coveredCheck = await validateServiceBenefits(scopeA, {
       patientId: patientAId,
       encounterId: encounterAId,
@@ -521,13 +639,48 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     const prepared = await prepareShaClaim(scopeA, {
       invoiceId: invoiceAId,
       encounterId: encounterAId,
-      preauthorizationId: preauth.id,
+      preauthorizationId: manualPreauth.id,
       schemeCode: 'SHIF',
       subType: 'op',
     });
     expect(prepared.status).toBe('READY_FOR_SUBMISSION');
     expect(prepared.totalBilledAmount).toBe('8500.00');
     expect(prepared.totalClaimedAmount).toBe('7000.00');
+    // Corrupt a synthetic approval in-place to model historical inconsistency;
+    // a matching reference alone must not authorize a different service.
+    await pool.query(
+      "UPDATE insurance_preauthorizations SET requested_service_code='SHA-OTHER' WHERE id=$1",
+      [manualPreauth.id],
+    );
+    try {
+      const wrongService = await validateShaClaim(scopeA, prepared.id);
+      expect(wrongService.status).toBe('VALIDATION_FAILED');
+      expect(
+        wrongService.validationIssues.some((issue) => issue.code === 'MISSING_OR_INVALID_PREAUTH'),
+      ).toBe(true);
+    } finally {
+      await pool.query(
+        "UPDATE insurance_preauthorizations SET requested_service_code='SHA-IMG-010' WHERE id=$1",
+        [manualPreauth.id],
+      );
+    }
+    await pool.query("UPDATE sha_eclaim_items SET serviced_end='2028-01-01' WHERE eclaim_id=$1", [
+      prepared.id,
+    ]);
+    try {
+      const outsideAuthorization = await validateShaClaim(scopeA, prepared.id);
+      expect(outsideAuthorization.status).toBe('VALIDATION_FAILED');
+      expect(
+        outsideAuthorization.validationIssues.some(
+          (issue) => issue.code === 'MISSING_OR_INVALID_PREAUTH',
+        ),
+      ).toBe(true);
+    } finally {
+      await pool.query("UPDATE sha_eclaim_items SET serviced_end='2026-10-28' WHERE eclaim_id=$1", [
+        prepared.id,
+      ]);
+    }
+    expect((await validateShaClaim(scopeA, prepared.id)).status).toBe('READY_FOR_SUBMISSION');
     await pool.query("UPDATE sha_eclaims SET total_claimed_amount='NaN' WHERE id=$1", [
       prepared.id,
     ]);
@@ -583,7 +736,7 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       const pending = prepareShaClaim(scopeA, {
         invoiceId: changedInvoice.id,
         encounterId: encounterAId,
-        preauthorizationId: preauth.id,
+        preauthorizationId: manualPreauth.id,
         schemeCode: 'SHIF',
         subType: 'op',
       }).then(
@@ -662,7 +815,7 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       prepareShaClaim(scopeA, {
         invoiceId: retryInvoice.id,
         encounterId: encounterAId,
-        preauthorizationId: preauth.id,
+        preauthorizationId: manualPreauth.id,
         schemeCode: 'SHIF',
         subType: 'op',
       });
@@ -870,8 +1023,13 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     const recon = await reconcileRemittance(scopeA, remittance.id, {
       allocations: [{ eclaimId: prepared.id, remittedAmount: '7000.00', postToInvoice: false }],
     });
-    expect(recon.remittance.status).toBe('RECONCILED');
+    expect(recon.remittance.status).toBe('AWAITING_RECEIPT');
     expect(recon.entries[0].reconciliationStatus).toBe('MATCHED');
+    await expect(
+      matchRemittanceReceipt(scopeA, remittance.id, recon.entries[0].id, 2147483647),
+    ).rejects.toMatchObject({
+      code: 'SIMULATED_REMITTANCE',
+    });
     expect(recon.entries[0].postedPaymentId).toBeNull();
 
     // Advice allocation alone must not change the invoice or mark money received.
@@ -884,43 +1042,323 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(updatedInvoice.balanceAmount).toBe('8500.00');
     expect(updatedInvoice.status).toBe('Unpaid');
 
-    // Synthetic local fixture only: prove a real billing record can be matched
-    // without creating another receipt; this is not a verified payer result.
-    await db
-      .update(schema.shaEclaims)
-      .set({ isSimulated: false })
-      .where(eq(schema.shaEclaims.id, prepared.id));
-    const reference = `SYNTHETIC-SHA-${randomUUID().slice(0, 8)}`;
-    const receipt = await recordSettledPayment(
-      {
-        userId: scopeA.userId,
+    // Separately model a pre-existing, staff-attested synthetic adjudication.
+    // Do not change the simulated claim's provenance or match its advice to a
+    // receipt. The fixture is not an external payer response or real money.
+    const [manualInvoice] = await db
+      .insert(schema.billingInvoices)
+      .values({
         tenantId: scopeA.tenantId,
         facilityId: scopeA.facilityId,
-        roles: ['BILLING_CLERK'],
-        permissions: ['billing.payments.record'],
-        isSuperAdmin: false,
-      },
-      { invoiceId: invoiceAId, amount: '7000.00', paymentMethod: 'SHA', referenceCode: reference },
-      'Synthetic cashier',
-    );
-    const secondAdvice = await recordRemittanceAdvice(scopeA, {
+        patientId: patientAId,
+        encounterId: encounterAId,
+        invoiceNumber: `INV-SYN-MANUAL-${randomUUID()}`,
+        totalAmount: '8500.00',
+        paidAmount: '0.00',
+        balanceAmount: '8500.00',
+        status: 'Unpaid',
+        payerType: 'SHA',
+        payerName: 'Synthetic SHA payer',
+        memberNumber: 'SYNTHETIC-MEMBER',
+      })
+      .returning();
+    await db.insert(schema.billingItems).values({
+      invoiceId: manualInvoice.id,
+      tariffId: tariffAId,
+      tariffCode: simulationTariff.code,
+      sourceType: 'RADIOLOGY',
+      itemType: 'Radiology',
+      description: 'Synthetic manually recorded imaging line',
+      quantity: 1,
+      unitPrice: '8500.00',
+      totalAmount: '8500.00',
+    });
+    const [manualClaimFixture] = await db
+      .insert(schema.shaEclaims)
+      .values({
+        tenantId: scopeA.tenantId,
+        facilityId: scopeA.facilityId,
+        patientId: patientAId,
+        encounterId: encounterAId,
+        invoiceId: manualInvoice.id,
+        claimNumber: `SYN-MANUAL-CLAIM-${randomUUID()}`,
+        claimUuid: randomUUID(),
+        environmentMode: 'SYNTHETIC_TEST_FIXTURE',
+        isSimulated: false,
+        status: 'ADJUDICATED',
+        billableStart: '2026-10-28',
+        billableEnd: '2026-10-28',
+        totalBilledAmount: '8500.00',
+        totalClaimedAmount: '7000.00',
+        totalApprovedAmount: '7000.00',
+      })
+      .returning();
+    const financeContext: AuthorizationContext = {
+      userId: scopeA.userId,
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      roles: ['BILLING_CLERK'],
+      permissions: ['billing.read', 'billing.update', 'billing.payments.record', 'clinical.read'],
+      isSuperAdmin: false,
+    };
+    const accountingScope = {
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      actorUserId: scopeA.userId,
+    };
+    const account = async (code: string, type: 'ASSET' | 'REVENUE') =>
+      (
+        await createAccountScoped(accountingScope, {
+          accountCode: code,
+          accountName: `Synthetic ${code}`,
+          accountType: type,
+          subType: code,
+          normalBalance: type === 'ASSET' ? 'DEBIT' : 'CREDIT',
+        })
+      ).id;
+    const patientAr = await account('SYN_PATIENT_AR', 'ASSET');
+    const insurerAr = await account('SYN_INSURER_AR', 'ASSET');
+    const clearing = await account('SYN_CLEARING', 'ASSET');
+    const revenue = await account('SYN_REVENUE', 'REVENUE');
+    await createFinancialPeriodScoped(accountingScope, {
+      periodCode: 'SYN-SHA',
+      name: 'Synthetic SHA period',
+      startDate: '2000-01-01',
+      endDate: '2099-12-31',
+    });
+    const date = (await pool.query('SELECT current_date::text AS date')).rows[0].date as string;
+    await finalizeInvoice(financeContext, manualInvoice.id, {
+      insurerResponsibility: '7000.00',
+      copayment: '0.00',
+      allocationBasis: 'Synthetic manual test allocation',
+    });
+    const invoicePosting = {
+      entryDate: date,
+      description: 'Synthetic reviewed invoice split',
+      idempotencyKey: randomUUID(),
+      patientReceivableAccountId: patientAr,
+      insurerReceivableAccountId: insurerAr,
+      revenueAccountId: revenue,
+    };
+    await expect(
+      postBillingSourceScoped(
+        { tenantId: scopeB.tenantId, facilityId: scopeB.facilityId, actorUserId: scopeB.userId },
+        'BILLING_INVOICE',
+        manualInvoice.id,
+        invoicePosting,
+      ),
+    ).rejects.toMatchObject({ code: 'SOURCE_NOT_FOUND' });
+    const invoiceJournals = await Promise.all([
+      postBillingSourceScoped(accountingScope, 'BILLING_INVOICE', manualInvoice.id, invoicePosting),
+      postBillingSourceScoped(accountingScope, 'BILLING_INVOICE', manualInvoice.id, invoicePosting),
+    ]);
+    expect(invoiceJournals[0].journal.id).toBe(invoiceJournals[1].journal.id);
+    expect(invoiceJournals.filter((journal) => journal.idempotentReplay)).toHaveLength(1);
+    const beforeReceipt = await getFinalizedInvoice(financeContext, manualInvoice.id);
+    if (!beforeReceipt.finalized) throw new Error('Synthetic invoice was not finalized.');
+    expect(beforeReceipt.financial).toMatchObject({
+      netReceipts: '0.00',
+      patientBalance: '1500.00',
+      insurerBalance: '7000.00',
+    });
+
+    const reference = `SYNTHETIC-SHA-${randomUUID().slice(0, 8)}`;
+    const manualAdvice = await recordRemittanceAdvice(scopeA, {
       payerRemittanceRef: reference,
       paymentChannel: 'EFT',
       paymentDate: '2026-10-28',
       totalRemittedAmount: '7000.00',
     });
-    const matched = await reconcileRemittance(scopeA, secondAdvice.id, {
-      allocations: [
-        { eclaimId: prepared.id, remittedAmount: '7000.00', billingPaymentId: receipt.payment.id },
-      ],
+    const adviceOnly = await reconcileRemittance(scopeA, manualAdvice.id, {
+      allocations: [{ eclaimId: manualClaimFixture.id, remittedAmount: '7000.00' }],
     });
-    expect(matched.entries[0].postedPaymentId).toBe(receipt.payment.id);
-    const [afterMatch] = await db
-      .select()
-      .from(schema.billingInvoices)
-      .where(eq(schema.billingInvoices.id, invoiceAId));
-    expect(afterMatch.paidAmount).toBe('7000.00');
-    expect(afterMatch.balanceAmount).toBe('1500.00');
+    expect(adviceOnly.remittance.status).toBe('AWAITING_RECEIPT');
+    expect(adviceOnly.entries[0].postedPaymentId).toBeNull();
+    expect((await getShaClaimDetail(scopeA, manualClaimFixture.id)).totalPaidAmount).toBe('0.00');
+    const stillUnpaid = await getFinalizedInvoice(financeContext, manualInvoice.id);
+    if (!stillUnpaid.finalized) throw new Error('Synthetic invoice was not finalized.');
+    expect(stillUnpaid.financial.netReceipts).toBe('0.00');
+    const paymentInput = {
+      invoiceId: manualInvoice.id,
+      amount: '7000.00',
+      paymentMethod: 'SHA',
+      referenceCode: reference,
+      payerParty: 'INSURER' as const,
+      idempotencyKey: randomUUID(),
+    };
+    const receipts = await Promise.all([
+      recordSettledPayment(financeContext, paymentInput, 'Synthetic cashier'),
+      recordSettledPayment(financeContext, paymentInput, 'Synthetic cashier'),
+    ]);
+    expect(receipts[0].payment.id).toBe(receipts[1].payment.id);
+    expect(receipts.filter((item) => item.idempotentReplay)).toHaveLength(1);
+    const receipt = receipts[0];
+    const entryId = adviceOnly.entries[0].id;
+    await expect(
+      matchRemittanceReceipt(scopeB, manualAdvice.id, entryId, receipt.payment.id),
+    ).rejects.toMatchObject({
+      code: 'REMITTANCE_NOT_FOUND',
+    });
+    await pool.query("UPDATE sha_eclaims SET status='ACKNOWLEDGED' WHERE id=$1", [
+      manualClaimFixture.id,
+    ]);
+    try {
+      await expect(
+        matchRemittanceReceipt(scopeA, manualAdvice.id, entryId, receipt.payment.id),
+      ).rejects.toMatchObject({
+        code: 'ADJUDICATION_REQUIRED',
+      });
+    } finally {
+      await pool.query("UPDATE sha_eclaims SET status='ADJUDICATED' WHERE id=$1", [
+        manualClaimFixture.id,
+      ]);
+    }
+    await pool.query("UPDATE sha_eclaims SET total_approved_amount='6500.00' WHERE id=$1", [
+      manualClaimFixture.id,
+    ]);
+    try {
+      await expect(
+        matchRemittanceReceipt(scopeA, manualAdvice.id, entryId, receipt.payment.id),
+      ).rejects.toMatchObject({
+        code: 'CLAIM_RECEIPT_EXCEEDS_APPROVAL',
+      });
+    } finally {
+      await pool.query("UPDATE sha_eclaims SET total_approved_amount='7000.00' WHERE id=$1", [
+        manualClaimFixture.id,
+      ]);
+    }
+
+    await pool.query(
+      "UPDATE insurance_reconciliation_entries SET applied_to_invoice_amount='1.00' WHERE id=$1",
+      [entryId],
+    );
+    try {
+      await expect(
+        matchRemittanceReceipt(scopeA, manualAdvice.id, entryId, receipt.payment.id),
+      ).rejects.toMatchObject({
+        code: 'FINANCIAL_REVIEW_REQUIRED',
+      });
+    } finally {
+      await pool.query(
+        "UPDATE insurance_reconciliation_entries SET applied_to_invoice_amount='0.00' WHERE id=$1",
+        [entryId],
+      );
+    }
+
+    const faultId = randomUUID().replaceAll('-', '');
+    const trigger = `sha_receipt_audit_${faultId}`;
+    const fault = `sha_receipt_fault_${faultId}`;
+    await pool.query(`CREATE FUNCTION ${fault}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.facility_id=${scopeA.facilityId} AND NEW.action='SHA_REMITTANCE_RECEIPT_MATCHED' THEN
+        RAISE EXCEPTION 'Synthetic match audit failure';
+      END IF; RETURN NEW; END $$`);
+    await pool.query(
+      `CREATE TRIGGER ${trigger} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${fault}()`,
+    );
+    try {
+      await expect(
+        matchRemittanceReceipt(scopeA, manualAdvice.id, entryId, receipt.payment.id),
+      ).rejects.toThrow();
+    } finally {
+      await pool.query(`DROP TRIGGER ${trigger} ON audit_logs`);
+      await pool.query(`DROP FUNCTION ${fault}()`);
+    }
+    const unmodifiedEntry = (
+      await pool.query(
+        'SELECT posted_payment_id,applied_to_invoice_amount FROM insurance_reconciliation_entries WHERE id=$1',
+        [entryId],
+      )
+    ).rows[0];
+    expect(unmodifiedEntry).toEqual({ posted_payment_id: null, applied_to_invoice_amount: '0.00' });
+    expect((await getShaClaimDetail(scopeA, manualClaimFixture.id)).totalPaidAmount).toBe('0.00');
+    // Model the old advice-only status in this separate synthetic fixture;
+    // matching must also recover legacy entries without a second advice.
+    await pool.query("UPDATE insurance_remittances SET status='RECONCILED' WHERE id=$1", [
+      manualAdvice.id,
+    ]);
+
+    const matches = await Promise.all([
+      matchRemittanceReceipt(scopeA, manualAdvice.id, entryId, receipt.payment.id),
+      matchRemittanceReceipt(scopeA, manualAdvice.id, entryId, receipt.payment.id),
+    ]);
+    expect(matches[0].entry.postedPaymentId).toBe(receipt.payment.id);
+    expect(matches[0].remittance.status).toBe('RECONCILED');
+    expect(matches.filter((item) => item.idempotentReplay)).toHaveLength(1);
+    await expect(
+      matchRemittanceReceipt(scopeA, manualAdvice.id, entryId, 2147483647),
+    ).rejects.toMatchObject({
+      code: 'ALLOCATION_ALREADY_MATCHED',
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM audit_logs WHERE facility_id=$1 AND action='SHA_REMITTANCE_RECEIPT_MATCHED' AND resource_id=$2",
+          [scopeA.facilityId, String(entryId)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    const paymentPosting = {
+      entryDate: date,
+      description: 'Synthetic reviewed insurer receipt',
+      idempotencyKey: randomUUID(),
+      settlementAccountId: clearing,
+    };
+    const receiptJournal = await postBillingSourceScoped(
+      accountingScope,
+      'BILLING_PAYMENT',
+      receipt.payment.id,
+      paymentPosting,
+    );
+    expect(
+      (
+        await postBillingSourceScoped(
+          accountingScope,
+          'BILLING_PAYMENT',
+          receipt.payment.id,
+          paymentPosting,
+        )
+      ).idempotentReplay,
+    ).toBe(true);
+    const financial = await getFinalizedInvoice(financeContext, manualInvoice.id);
+    if (!financial.finalized) throw new Error('Synthetic invoice was not finalized.');
+    expect(financial.financial).toMatchObject({
+      netReceipts: '7000.00',
+      patientBalance: '1500.00',
+      insurerBalance: '0.00',
+      invoiceBalance: '1500.00',
+    });
+    const accountBalances = (
+      await pool.query(
+        `SELECT l.account_id,(sum(l.debit_cents)-sum(l.credit_cents))::text AS net
+         FROM journal_entries j JOIN journal_lines l ON l.journal_entry_id=j.id
+         WHERE j.tenant_id=$1 AND j.facility_id=$2 AND j.id=ANY($3::int[]) AND j.status='POSTED'
+         GROUP BY l.account_id`,
+        [
+          scopeA.tenantId,
+          scopeA.facilityId,
+          [invoiceJournals[0].journal.id, receiptJournal.journal.id],
+        ],
+      )
+    ).rows;
+    expect(new Map(accountBalances.map((row) => [row.account_id, row.net]))).toEqual(
+      new Map([
+        [patientAr, '150000'],
+        [insurerAr, '0'],
+        [clearing, '700000'],
+        [revenue, '-850000'],
+      ]),
+    );
+    const statements = await getAccountingOverviewScoped(accountingScope, date, date);
+    expect(statements.trialBalance).toMatchObject({
+      debitKes: '15500.00',
+      creditKes: '15500.00',
+      balanced: true,
+    });
+    expect(statements.profitAndLoss).toMatchObject({ postedRevenueKes: '8500.00' });
+    expect(statements.balanceSheet).toMatchObject({ assetsKes: '8500.00', balanced: true });
+    expect(statements.limitations.billingReconciliation).toBe('NOT_IMPLEMENTED');
+    const originalSimulated = await getShaClaimDetail(scopeA, prepared.id);
+    expect(originalSimulated).toMatchObject({ isSimulated: true, totalPaidAmount: '0.00' });
 
     // 6. Verify 2-step HIE Remittance Sync, Fail-closed Callback Processing & ATNA Operational Report
     const syncedRems = await syncFacilityHieRemittances(scopeA, { facilityIdType: 'fr-code' });

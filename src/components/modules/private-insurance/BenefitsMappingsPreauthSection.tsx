@@ -664,7 +664,9 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                     <td className="px-4 py-2.5 font-semibold">
                       {v.estimatedCoveredAmount ? `KES ${v.estimatedCoveredAmount}` : '—'}
                     </td>
-                    <td className="px-4 py-2.5">KES {v.estimatedCopayAmount}</td>
+                    <td className="px-4 py-2.5">
+                      {v.estimatedCopayAmount !== null ? `KES ${v.estimatedCopayAmount}` : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

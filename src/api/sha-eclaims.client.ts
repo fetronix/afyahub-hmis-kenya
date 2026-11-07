@@ -107,7 +107,7 @@ export interface ShaBenefitValidationRecord {
   quantity: number;
   facilityTariffAmount: string;
   payerTariffAmount: string | null;
-  estimatedCopayAmount: string;
+  estimatedCopayAmount: string | null;
   estimatedCoveredAmount: string | null;
   decision:
     | 'COVERED'
@@ -328,7 +328,7 @@ export interface ShaRemittanceRecord {
   totalRemittedAmount: string;
   allocatedAmount: string;
   unallocatedAmount: string;
-  status: 'RECEIVED' | 'PARTIALLY_RECONCILED' | 'RECONCILED' | 'DISPUTED';
+  status: 'RECEIVED' | 'PARTIALLY_RECONCILED' | 'AWAITING_RECEIPT' | 'RECONCILED' | 'DISPUTED';
   source: string;
   notes: string | null;
   createdAt: string;
@@ -728,6 +728,18 @@ export const shaEclaimsApi = {
       `/remittances/${remittanceId}/reconcile`,
       facilityId,
       { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  matchRemittanceReceipt: (
+    remittanceId: number,
+    entryId: number,
+    facilityId: number | null | undefined,
+    billingPaymentId: number,
+  ) =>
+    shaRequest<{ success: boolean; idempotentReplay: boolean }>(
+      `/remittances/${remittanceId}/entries/${entryId}/match-receipt`,
+      facilityId,
+      { method: 'POST', body: JSON.stringify({ billingPaymentId }) },
     ),
 
   syncRemittances: (facilityId: number | null | undefined, body?: Record<string, unknown>) =>

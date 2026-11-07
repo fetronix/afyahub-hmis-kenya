@@ -1171,6 +1171,7 @@ export async function validateShaClaim(scope: InsuranceActorScope, claimId: numb
     .from(schema.payerServiceCodeMappings)
     .where(
       and(
+        eq(schema.payerServiceCodeMappings.tenantId, scope.tenantId),
         eq(schema.payerServiceCodeMappings.facilityId, scope.facilityId),
         eq(schema.payerServiceCodeMappings.payerCode, detail.payerCode),
         eq(schema.payerServiceCodeMappings.isActive, true),
@@ -1182,6 +1183,7 @@ export async function validateShaClaim(scope: InsuranceActorScope, claimId: numb
     .from(schema.payerBenefitRules)
     .where(
       and(
+        eq(schema.payerBenefitRules.tenantId, scope.tenantId),
         eq(schema.payerBenefitRules.facilityId, scope.facilityId),
         eq(schema.payerBenefitRules.payerCode, detail.payerCode),
         eq(schema.payerBenefitRules.status, 'APPROVED'),
@@ -1193,6 +1195,7 @@ export async function validateShaClaim(scope: InsuranceActorScope, claimId: numb
     .from(schema.insurancePreauthorizations)
     .where(
       and(
+        eq(schema.insurancePreauthorizations.tenantId, scope.tenantId),
         eq(schema.insurancePreauthorizations.facilityId, scope.facilityId),
         eq(schema.insurancePreauthorizations.patientId, detail.patientId),
         eq(schema.insurancePreauthorizations.payerCode, detail.payerCode),
@@ -1216,21 +1219,33 @@ export async function validateShaClaim(scope: InsuranceActorScope, claimId: numb
           .limit(1)
       : [];
 
+  const trustedEligibility =
+    eligibility &&
+    !eligibility.isSimulated &&
+    (eligibility.source === 'AUTHORITATIVE_PAYER' ||
+      eligibility.source.startsWith('MANUAL_VERIFICATION:')) &&
+    isDateWithinWindow(
+      detail.billableStart,
+      eligibility.coverageStartDate,
+      eligibility.coverageEndDate,
+    ) &&
+    isDateWithinWindow(
+      detail.billableEnd,
+      eligibility.coverageStartDate,
+      eligibility.coverageEndDate,
+    )
+      ? eligibility
+      : null;
+
   const issues = evaluateClaimValidationRules({
     hasPatientShaOrNationalId: Boolean(
       patient.shaNumber || patient.nationalId || patient.dhaClientRegistryId,
     ),
     facilityRegistryCode: payerConfig.facilityRegistryCode ?? facility.mflCode ?? null,
     requireVerifiedEligibility: payerConfig.requireVerifiedEligibility,
-    eligibilityOutcome:
-      eligibility &&
-      !eligibility.isSimulated &&
-      (eligibility.source === 'AUTHORITATIVE_PAYER' ||
-        eligibility.source.startsWith('MANUAL_VERIFICATION:'))
-        ? eligibility.outcome
-        : null,
-    isBeneficiaryAlive: eligibility?.isAlive ?? null,
-    eligibilityCheckedAt: eligibility?.checkedAt ?? null,
+    eligibilityOutcome: trustedEligibility?.outcome ?? null,
+    isBeneficiaryAlive: trustedEligibility?.isAlive ?? null,
+    eligibilityCheckedAt: trustedEligibility?.checkedAt ?? null,
     eligibilityMaxAgeHours: payerConfig.eligibilityMaxAgeHours,
     billableStart: detail.billableStart,
     billableEnd: detail.billableEnd,
@@ -1256,12 +1271,17 @@ export async function validateShaClaim(scope: InsuranceActorScope, claimId: numb
             (pa) =>
               pa.id === detail.preauthorizationId &&
               pa.tenantId === scope.tenantId &&
+              !pa.isSimulated &&
+              (pa.source === 'AUTHORITATIVE_PAYER' || pa.source === 'MANUAL_PAYER_DECISION') &&
+              Boolean(pa.payerAuthReference?.trim()) &&
+              pa.requestedServiceCode === item.payerServiceCode &&
               (!pa.invoiceId || pa.invoiceId === detail.invoiceId) &&
               (!pa.encounterId || pa.encounterId === detail.encounterId) &&
               (pa.payerAuthReference === item.preauthReference ||
                 pa.preauthNumber === item.preauthReference) &&
               (pa.status === 'APPROVED' || pa.status === 'PARTIALLY_APPROVED') &&
-              isDateWithinWindow(item.servicedStart, pa.validFrom, pa.validUntil),
+              isDateWithinWindow(item.servicedStart, pa.validFrom, pa.validUntil) &&
+              isDateWithinWindow(item.servicedEnd, pa.validFrom, pa.validUntil),
           )
         : undefined;
 

@@ -67,7 +67,16 @@ export async function listPayerBenefitRulesAndValidations(params: {
       .limit(100),
   ]);
 
-  return { rules, validations };
+  return {
+    rules,
+    // Before nullable estimates, unevaluated rows received a default zero.
+    // Preserve the stored record, but do not present that default as a fact.
+    validations: validations.map((validation) =>
+      validation.estimatedCoveredAmount === null
+        ? { ...validation, deductibleEstimate: null, estimatedCopayAmount: null }
+        : validation,
+    ),
+  };
 }
 
 export async function createOrApprovePayerBenefitRule(params: {
@@ -375,7 +384,14 @@ export async function validatePrivateServiceBenefit(params: {
     params.input.unitPrice !== null &&
     params.input.unitPrice !== ''
       ? (params.input.unitPrice as string | number)
-      : (tariff?.fee ?? '0.00');
+      : tariff?.fee;
+  if (unitPriceRaw === undefined || unitPriceRaw === null) {
+    throw new PrivateInsuranceError(
+      'SERVICE_PRICE_REQUIRED',
+      'A recorded service price is required; an unknown price is not zero.',
+      400,
+    );
+  }
   const unitPriceCents = moneyToCentsStrict(unitPriceRaw, 'Service unit price');
   const facilityTariffAmount = formatCents(unitPriceCents * quantity);
 
@@ -531,8 +547,8 @@ export async function validatePrivateServiceBenefit(params: {
   let verificationSource = 'UNVERIFIED_NO_RULE';
   let reason = '';
   let payerTariffAmount: string | null = null;
-  let deductibleEstimate = '0.00';
-  let estimatedCopayAmount = '0.00';
+  let deductibleEstimate: string | null = null;
+  let estimatedCopayAmount: string | null = null;
   let estimatedCoveredAmount: string | null = null;
 
   if (mappingStatus !== 'MAPPED') {
@@ -550,19 +566,22 @@ export async function validatePrivateServiceBenefit(params: {
     reason = `Excluded under ${payerRow.payerName} rule ${matchedRule.ruleCode}: ${matchedRule.exclusionNotes}`;
     estimatedCoveredAmount = '0.00';
     estimatedCopayAmount = facilityTariffAmount;
+  } else if (!matchingMapping || matchingMapping.reimbursementTariff === null) {
+    decision = 'UNABLE_TO_VERIFY';
+    verificationSource = 'PAYER_RATE_NOT_RECORDED';
+    missingRequirements.push('A documented payer reimbursement tariff');
+    reason =
+      'The payer reimbursement tariff is not recorded; the facility price cannot replace it.';
   } else {
     verificationSource = `APPROVED_RULE:${matchedRule.ruleCode}:v${matchedRule.version}`;
-    const basisUnitAmount = matchingMapping?.reimbursementTariff ?? unitPriceRaw;
-    if (matchingMapping?.reimbursementTariff) {
-      const reimbUnitCents = moneyToCentsStrict(
-        matchingMapping.reimbursementTariff,
-        'Payer reimbursement tariff',
-      );
-      payerTariffAmount = formatCents(reimbUnitCents * quantity);
-    }
+    const reimbUnitCents = moneyToCentsStrict(
+      matchingMapping.reimbursementTariff,
+      'Payer reimbursement tariff',
+    );
+    payerTariffAmount = formatCents(reimbUnitCents * quantity);
 
     const fin = computeBenefitFinancialsCents({
-      unitAmountKes: basisUnitAmount,
+      unitAmountKes: matchingMapping.reimbursementTariff,
       quantity,
       copayType: matchedRule.copayType,
       copayValueKesOrPercent: matchedRule.copayValue,

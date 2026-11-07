@@ -78,6 +78,7 @@ import {
   fetchRemittanceClaimBreakdown,
   getShaOperationalReport,
   listRemittances,
+  matchRemittanceReceipt,
   reconcileRemittance,
   recordRemittanceAdvice,
   syncFacilityHieRemittances,
@@ -1415,6 +1416,23 @@ router.post(
       return res.json({ success: true, ...result });
     } catch (err) {
       return respondShaError(res, err, 'Failed to reconcile SHA remittance.');
+    }
+  },
+);
+
+router.post(
+  '/remittances/:id/entries/:entryId/match-receipt',
+  requirePermission('insurance.sha.reconciliation.manage'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const scope = await resolveActorScope(req);
+      const remittanceId = parsePositiveInt(req.params.id, 'id');
+      const entryId = parsePositiveInt(req.params.entryId, 'entryId');
+      const paymentId = parsePositiveInt(bodyObject(req).billingPaymentId, 'billingPaymentId');
+      const result = await matchRemittanceReceipt(scope, remittanceId, entryId, paymentId);
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      return respondShaError(res, err, 'Failed to match the recorded receipt.');
     }
   },
 );
