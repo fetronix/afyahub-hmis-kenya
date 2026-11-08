@@ -28,6 +28,7 @@ import {
   chargeForService,
   type ChargeRequest,
   type ChargeResult,
+  type InitialClinicalTariff,
   type ReviewedTariffPrice,
 } from './billing.service.ts';
 import { formatCents, parseMoneyToCents } from './settlement.ts';
@@ -381,13 +382,54 @@ const chargeReviewRequired = (): ChargeResult => ({
   message: 'The service was recorded but billing needs manual reconciliation.',
 });
 
+function isUnevaluatedClinicalOutbox(row: ChargeAttemptRow): boolean {
+  return ['BILLING_EVALUATION_PENDING', 'SOURCE_NOT_COMPLETED'].includes(row.diagnosisCode ?? '');
+}
+
 // A clinical transaction can return the ID it just staged, internally, to
 // the immediate evaluator. A later replay has no such capability and must be
 // reviewed. Legacy or already-price-evaluated markers are never presumed new.
 function freshClinicalOutbox(row: ChargeAttemptRow, initialAttemptId?: number | null): boolean {
-  return (
-    initialAttemptId === row.id &&
-    ['BILLING_EVALUATION_PENDING', 'SOURCE_NOT_COMPLETED'].includes(row.diagnosisCode ?? '')
+  return initialAttemptId === row.id && isUnevaluatedClinicalOutbox(row);
+}
+
+// An idempotency key alone does not establish that a legacy invoice line
+// belongs to the same laboratory order and encounter. Lock the evidence until
+// the attempt's outcome commits; never move or rewrite an inconsistent line.
+async function verifiedLabDuplicate(
+  executor: Executor,
+  request: ChargeRequest,
+  expectedItemId?: number | null,
+  expectedInvoiceId?: number | null,
+): Promise<boolean> {
+  if (request.sourceType !== 'LAB_ORDER' || typeof request.sourceId !== 'number') return false;
+  const encounterId = request.encounterId ?? null;
+  const [line] = await executor
+    .select({ itemId: schema.billingItems.id, invoiceId: schema.billingInvoices.id })
+    .from(schema.billingItems)
+    .innerJoin(schema.billingInvoices, eq(schema.billingItems.invoiceId, schema.billingInvoices.id))
+    .innerJoin(schema.labOrders, eq(schema.billingItems.sourceId, schema.labOrders.id))
+    .where(
+      and(
+        eq(schema.billingItems.idempotencyKey, buildIdempotencyKey(request)),
+        eq(schema.billingItems.sourceType, 'LAB_ORDER'),
+        eq(schema.billingItems.sourceId, request.sourceId),
+        eq(schema.labOrders.tenantId, request.tenantId),
+        eq(schema.labOrders.facilityId, request.facilityId),
+        eq(schema.labOrders.patientId, request.patientId),
+        sql`${schema.labOrders.encounterId} IS NOT DISTINCT FROM ${encounterId}`,
+        eq(schema.billingInvoices.tenantId, request.tenantId),
+        eq(schema.billingInvoices.facilityId, request.facilityId),
+        eq(schema.billingInvoices.patientId, request.patientId),
+        sql`${schema.billingInvoices.encounterId} IS NOT DISTINCT FROM ${encounterId}`,
+      ),
+    )
+    .limit(1)
+    .for('share');
+  return Boolean(
+    line &&
+    (expectedItemId == null || line.itemId === expectedItemId) &&
+    (expectedInvoiceId == null || line.invoiceId === expectedInvoiceId),
   );
 }
 
@@ -395,6 +437,7 @@ export async function chargeAndRecord(
   executor: Executor,
   request: ChargeRequest,
   initialAttemptId?: number | null,
+  initialClinicalTariff?: InitialClinicalTariff | null,
 ): Promise<ChargeResult> {
   try {
     return await executor.transaction(async (tx: Executor) => {
@@ -419,7 +462,11 @@ export async function chargeAndRecord(
       ).filter((row: ChargeAttemptRow) => row.status !== 'SUPERSEDED');
       if (
         attempts.some(
-          (row) => row.patientId !== request.patientId || row.itemType !== request.itemType,
+          (row) =>
+            row.patientId !== request.patientId ||
+            row.itemType !== request.itemType ||
+            (request.sourceType === 'LAB_ORDER' &&
+              row.encounterId !== (request.encounterId ?? null)),
         )
       ) {
         return chargeReviewRequired();
@@ -464,6 +511,11 @@ export async function chargeAndRecord(
         ) {
           return chargeReviewRequired();
         }
+        if (
+          request.sourceType === 'LAB_ORDER' &&
+          !(await verifiedLabDuplicate(tx, request, line.itemId, line.invoiceId))
+        )
+          return chargeReviewRequired();
         return {
           charged: false,
           reason: 'DUPLICATE',
@@ -490,19 +542,59 @@ export async function chargeAndRecord(
         };
       }
 
+      const initialClinicalEvaluation = Boolean(
+        pending[0] && freshClinicalOutbox(pending[0], initialAttemptId),
+      );
       let result: ChargeResult = await chargeForService(tx, request, {
         // A replay cannot turn a previously unpriced clinical event into a
         // current-price charge without an explicit, auditable price review.
         // Pharmacy and bed nights instead use their own immutable snapshots.
         requireTariffReview: Boolean(
           pending[0] &&
-          !freshClinicalOutbox(pending[0], initialAttemptId) &&
+          !initialClinicalEvaluation &&
           request.sourceType !== 'PHARMACY' &&
           request.sourceType !== 'BED_DAY',
         ),
+        ...(request.sourceType === 'LAB_ORDER' && initialClinicalEvaluation
+          ? { initialClinicalTariff: initialClinicalTariff ?? null }
+          : {}),
       });
+      // A lab replay can reach billing after the clinical commit but before
+      // its original evaluator. It has no capability to charge, and must not
+      // overwrite the marker that capability needs. This is also safe after a
+      // crash: pending is not proof that an evaluator is still running, and
+      // an authorized retry still requires an explicit historical-price review.
+      // Run the ordinary resolver first so scope, completion, tariff and any
+      // already-existing invoice line are still checked.
+      if (
+        request.sourceType === 'LAB_ORDER' &&
+        pending[0] &&
+        !initialClinicalEvaluation &&
+        isUnevaluatedClinicalOutbox(pending[0]) &&
+        result.diagnosis?.code === 'HISTORICAL_PRICE_REVIEW_REQUIRED'
+      ) {
+        await tx
+          .update(schema.billingChargeAttempts)
+          .set({
+            attempts: sql`${schema.billingChargeAttempts.attempts} + 1`,
+            lastAttemptAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.billingChargeAttempts.id, pending[0].id));
+        return {
+          charged: false,
+          reason: 'BILLING_EVALUATION_PENDING',
+          diagnosis: { code: 'BILLING_EVALUATION_PENDING', label: 'Billing evaluation pending' },
+          message:
+            'Billing is pending and is not confirmed. If it remains unresolved, an authorized reviewer must verify the applicable price before retrying.',
+        };
+      }
       const verifiedDuplicate =
-        result.reason === 'DUPLICATE' && result.itemId != null && result.invoiceId != null;
+        result.reason === 'DUPLICATE' &&
+        result.itemId != null &&
+        result.invoiceId != null &&
+        (request.sourceType !== 'LAB_ORDER' ||
+          (await verifiedLabDuplicate(tx, request, result.itemId, result.invoiceId)));
       if (result.reason === 'DUPLICATE' && !verifiedDuplicate) result = chargeReviewRequired();
 
       if (pending[0] && (result.charged || verifiedDuplicate)) {
@@ -519,7 +611,9 @@ export async function chargeAndRecord(
             resolvedTariffCode: result.tariffCode ?? null,
             resolvedUnitPrice: result.unitPrice ?? null,
             detail: result.charged
-              ? 'Billed during a replay of the clinical event.'
+              ? initialClinicalEvaluation
+                ? 'Billed during the initial clinical billing evaluation.'
+                : 'Billed during a replay of the clinical event.'
               : result.message,
           })
           .where(eq(schema.billingChargeAttempts.id, pending[0].id));
@@ -530,7 +624,9 @@ export async function chargeAndRecord(
           action: 'UPDATE',
           resource: 'BillingChargeAttempt',
           resourceId: String(pending[0].id),
-          details: 'Charge attempt resolved by replay of the clinical event.',
+          details: initialClinicalEvaluation
+            ? 'Charge attempt resolved during the initial clinical billing evaluation.'
+            : 'Charge attempt resolved by replay of the clinical event.',
         });
       } else if (
         !result.charged &&
@@ -545,6 +641,21 @@ export async function chargeAndRecord(
             message:
               'The service was recorded but not billed. The unpriced charge could not be recorded in the retry queue; manual reconciliation is required.',
           };
+        } else if (
+          request.sourceType === 'LAB_ORDER' &&
+          initialClinicalEvaluation &&
+          result.diagnosis?.code === 'HISTORICAL_PRICE_REVIEW_REQUIRED'
+        ) {
+          await tx.insert(schema.auditLogs).values({
+            tenantId: request.tenantId,
+            facilityId: request.facilityId,
+            userId: 'SYSTEM',
+            action: 'UPDATE',
+            resource: 'BillingChargeAttempt',
+            resourceId: String(attemptId),
+            details:
+              'Initial laboratory tariff changed or was unavailable; authorized price review required.',
+          });
         }
       }
       return result;
@@ -834,6 +945,7 @@ async function enrichFromSource(
         facilityId: schema.labOrders.facilityId,
         tenantId: schema.labOrders.tenantId,
         patientId: schema.labOrders.patientId,
+        encounterId: schema.labOrders.encounterId,
       })
       .from(schema.labOrders)
       .where(eq(schema.labOrders.id, request.sourceId))
@@ -843,7 +955,8 @@ async function enrichFromSource(
       !order ||
       order.facilityId !== request.facilityId ||
       order.tenantId !== request.tenantId ||
-      order.patientId !== request.patientId
+      order.patientId !== request.patientId ||
+      (order.encounterId ?? null) !== (request.encounterId ?? null)
     ) {
       throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
     }
@@ -951,6 +1064,7 @@ async function lockAttemptIdentity(
 
 export type TariffPriceReview = ReviewedTariffPrice & { reason: string };
 export class ChargePriceReviewError extends Error {}
+export class ChargeAttemptReconciliationError extends Error {}
 
 export async function retryChargeAttempt(
   executor: Executor,
@@ -1006,6 +1120,20 @@ export async function retryChargeAttempt(
       };
     }
     if (row.status !== 'PENDING') {
+      if (
+        row.sourceType === 'LAB_ORDER' &&
+        ['BILLED', 'DUPLICATE'].includes(row.status) &&
+        !(await verifiedLabDuplicate(
+          tx,
+          toChargeRequest(row, input.tenantId),
+          row.resolvedItemId,
+          row.resolvedInvoiceId,
+        ))
+      ) {
+        throw new ChargeAttemptReconciliationError(
+          'The stored laboratory charge resolution could not be verified. Nothing was changed; manual reconciliation is required.',
+        );
+      }
       return {
         attemptId: row.id,
         status: row.status === 'BILLED' ? 'BILLED' : row.status === 'VOID' ? 'VOID' : 'DUPLICATE',
@@ -1112,8 +1240,17 @@ export async function retryChargeAttempt(
     }
 
     const verifiedDuplicate =
-      result.reason === 'DUPLICATE' && result.itemId != null && result.invoiceId != null;
-    if (result.reason === 'DUPLICATE' && !verifiedDuplicate) result = chargeReviewRequired();
+      result.reason === 'DUPLICATE' &&
+      result.itemId != null &&
+      result.invoiceId != null &&
+      (request.sourceType !== 'LAB_ORDER' ||
+        (await verifiedLabDuplicate(tx, request, result.itemId, result.invoiceId)));
+    if (result.reason === 'DUPLICATE' && !verifiedDuplicate) {
+      if (request.sourceType === 'LAB_ORDER') {
+        return { attemptId: row.id, status: 'PENDING', result: chargeReviewRequired() };
+      }
+      result = chargeReviewRequired();
+    }
     const status: RetryOutcome['status'] = result.charged
       ? 'BILLED'
       : verifiedDuplicate

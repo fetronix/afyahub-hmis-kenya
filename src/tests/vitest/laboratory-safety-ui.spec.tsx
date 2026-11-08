@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
     getLabResults: vi.fn(),
     addLabResult: vi.fn(),
     verifyLabResult: vi.fn(),
+    completeLabInvestigation: vi.fn(),
     updateLabOrderStatus: vi.fn(),
   },
 }));
@@ -94,6 +95,36 @@ describe('Laboratory worklist and result isolation', () => {
     await user.click(screen.getByText('Synthetic test two'));
     await waitFor(() => expect(screen.queryByText('Synthetic result one')).not.toBeInTheDocument());
     expect(screen.getByPlaceholderText('e.g. Haemoglobin / Creatinine')).toHaveValue('');
+  });
+  it('says billing is unconfirmed when a completion replay is still pending', async () => {
+    mocks.api.getLabResults.mockResolvedValue([{ ...results[0], status: 'Verified' }]);
+    mocks.api.completeLabInvestigation.mockResolvedValue({
+      ...orders[0],
+      status: 'Completed',
+      billing: {
+        charged: false,
+        reason: 'BILLING_EVALUATION_PENDING',
+        message: 'Billing is pending and is not confirmed.',
+      },
+    });
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      const user = userEvent.setup();
+      render(<LaboratoryModule />);
+      const complete = await screen.findByRole('button', {
+        name: 'Confirm investigation complete',
+      });
+      await waitFor(() => expect(complete).toBeEnabled());
+      await user.click(complete);
+      await waitFor(() =>
+        expect(mocks.context.showToast).toHaveBeenCalledWith(
+          'Investigation completed; billing not confirmed: Billing is pending and is not confirmed.',
+        ),
+      );
+      expect(mocks.api.completeLabInvestigation).toHaveBeenCalledExactlyOnceWith(11);
+    } finally {
+      confirmation.mockRestore();
+    }
   });
   it('does not append an old order result to a newly selected patient after a delayed save', async () => {
     let finish: (value: unknown) => void = () => {};

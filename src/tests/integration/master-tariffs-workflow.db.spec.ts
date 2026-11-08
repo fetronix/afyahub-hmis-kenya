@@ -507,6 +507,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       db,
       labOrderChargeRequest(completed),
       completed.billingOutboxAttemptId,
+      completed.billingInitialTariff,
     );
     expect(billed).toMatchObject({ charged: true, totalAmount: '800.00', invoiceId });
     const state = (
@@ -820,7 +821,12 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     };
     const first = await complete();
     expect(
-      await chargeAndRecord(db, labOrderChargeRequest(first), first.billingOutboxAttemptId),
+      await chargeAndRecord(
+        db,
+        labOrderChargeRequest(first),
+        first.billingOutboxAttemptId,
+        first.billingInitialTariff,
+      ),
     ).toMatchObject({
       charged: true,
       totalAmount: '11.00',
@@ -841,7 +847,12 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     ).toBe(0);
     const second = await complete();
     expect(
-      await chargeAndRecord(db, labOrderChargeRequest(second), second.billingOutboxAttemptId),
+      await chargeAndRecord(
+        db,
+        labOrderChargeRequest(second),
+        second.billingOutboxAttemptId,
+        second.billingInitialTariff,
+      ),
     ).toMatchObject({
       charged: true,
       totalAmount: '11.00',
@@ -852,7 +863,12 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
     await retireMasterAlias(facilityRow, actor, alias.id, 'synthetic reason');
     const third = await complete();
     expect(
-      await chargeAndRecord(db, labOrderChargeRequest(third), third.billingOutboxAttemptId),
+      await chargeAndRecord(
+        db,
+        labOrderChargeRequest(third),
+        third.billingOutboxAttemptId,
+        third.billingInitialTariff,
+      ),
     ).toMatchObject({
       charged: true,
       totalAmount: '11.00',

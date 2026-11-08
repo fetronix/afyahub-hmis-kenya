@@ -86,10 +86,13 @@ describe('The outpatient journey — contract tests', () => {
     expect(batch).not.toContain('chargeLabOrderBatch');
     const complete = routeBody(routes, 'router.post', '/api/lab-orders/:id/complete')!;
     expect(complete).toContain('completeLabInvestigation');
-    expect(complete).toContain('chargeSafely(labOrderChargeRequest');
+    expect(complete).toMatch(
+      /chargeSafely\(\s*labOrderChargeRequest\(order\),\s*billingOutboxAttemptId,\s*billingInitialTariff,\s*\)/,
+    );
     const queries = source('src/db/queries/laboratory.ts');
     expect(queries).toContain('stageClinicalBillingOutbox(');
     expect(queries).toContain('labOrderChargeRequest(completed)');
+    expect(queries).toContain('resolveFacilityCharge(snapshotTx, billingRequest)');
     expect(complete).toContain('billingOutboxAttemptId');
     expect(queries).toContain("status !== 'Verified'");
   });

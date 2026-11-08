@@ -251,11 +251,13 @@ router.post(
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) return res.status(401).json({ error: 'Authentication is required.' });
-      const { billingOutboxAttemptId, ...order } = await queries.completeLabInvestigation(
-        req.authContext,
-        Number(req.params.id),
+      const { billingOutboxAttemptId, billingInitialTariff, ...order } =
+        await queries.completeLabInvestigation(req.authContext, Number(req.params.id));
+      const charge = await chargeSafely(
+        labOrderChargeRequest(order),
+        billingOutboxAttemptId,
+        billingInitialTariff,
       );
-      const charge = await chargeSafely(labOrderChargeRequest(order), billingOutboxAttemptId);
       return res.json({ ...order, billing: charge });
     } catch (err: unknown) {
       if (handleLaboratoryError(err, res)) return;

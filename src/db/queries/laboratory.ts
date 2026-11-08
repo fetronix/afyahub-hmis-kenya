@@ -15,6 +15,8 @@ import { resolveFacilityScope } from '../../auth/scope.service.ts';
 import type { AuthorizationContext } from '../../auth/authorization.types.ts';
 import { LaboratoryDomainError } from '../../clinical/laboratory-contracts.ts';
 import { stageClinicalBillingOutbox } from '../../billing/charge-attempts.ts';
+import type { InitialClinicalTariff } from '../../billing/billing.service.ts';
+import { resolveFacilityCharge } from '../../billing/facility-charge-resolver.ts';
 import { labOrderChargeRequest, radiologyChargeRequest } from '../../billing/service-charges.ts';
 
 import { resolveQueueOrLabScope } from './shared.ts';
@@ -719,7 +721,7 @@ export async function completeLabInvestigation(context: AuthorizationContext, id
     if (!order)
       throw new LaboratoryDomainError('LAB_ORDER_NOT_FOUND', 'Laboratory order not found.', 404);
     if (order.status === 'Completed' && order.completedAt && order.completedByUserId)
-      return { ...order, billingOutboxAttemptId: null };
+      return { ...order, billingOutboxAttemptId: null, billingInitialTariff: null };
     if (order.status !== 'Sample Collected')
       throw new LaboratoryDomainError(
         'LAB_SPECIMEN_NOT_COLLECTED',
@@ -749,12 +751,36 @@ export async function completeLabInvestigation(context: AuthorizationContext, id
       .set({ status: 'Completed', completedAt: new Date(), completedByUserId: context.userId })
       .where(eq(schema.labOrders.id, id))
       .returning();
+    const billingRequest = labOrderChargeRequest(completed);
     const attempt = await stageClinicalBillingOutbox(
       tx,
-      labOrderChargeRequest(completed),
+      billingRequest,
       'Investigation completed; billing evaluation pending.',
     );
     if (attempt === null) throw new Error('LAB_BILLING_QUEUE_UNAVAILABLE');
+    // Capture the actual eligible facility tariff under the same transaction
+    // and row locks as completion. It is an in-memory capability for the first
+    // evaluator only, not a historical backfill or an approved price review.
+    // The savepoint keeps a resolver fault from discarding clinical care; a
+    // missing snapshot instead forces review if a price later becomes usable.
+    let billingInitialTariff: InitialClinicalTariff | null = null;
+    try {
+      billingInitialTariff = await tx.transaction(async (snapshotTx) => {
+        const resolution = await resolveFacilityCharge(snapshotTx, billingRequest);
+        if ('failure' in resolution) return null;
+        return {
+          facilityServiceId: resolution.service.id,
+          serviceCode: resolution.service.code,
+          tariffId: resolution.tariff.id,
+          tariffCode: resolution.tariff.code,
+          revision: resolution.tariff.revision,
+          unitPrice: resolution.tariff.fee,
+          serviceDate: resolution.serviceDate,
+        };
+      });
+    } catch {
+      log.warn('laboratory.billing_tariff_snapshot_unavailable');
+    }
     await tx.insert(schema.auditLogs).values({
       tenantId: facility.tenantId,
       facilityId: facility.id,
@@ -765,7 +791,7 @@ export async function completeLabInvestigation(context: AuthorizationContext, id
       details:
         'Investigation explicitly confirmed complete after review of verified results; billing work recorded.',
     });
-    return { ...completed, billingOutboxAttemptId: attempt };
+    return { ...completed, billingOutboxAttemptId: attempt, billingInitialTariff };
   });
 }
 

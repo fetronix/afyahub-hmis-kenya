@@ -76,6 +76,7 @@ export type BillingSourceType =
 
 export type ChargeSkipReason =
   | 'TARIFF_NOT_CONFIGURED'
+  | 'BILLING_EVALUATION_PENDING'
   | 'INVENTORY_PRICE_REVIEW'
   | 'BED_OCCUPANCY_REVIEW'
   | 'DUPLICATE'
@@ -931,11 +932,25 @@ export interface ReviewedTariffPrice {
   unitPrice: string;
 }
 
+/** In-memory evidence captured while the first laboratory completion commits. */
+export interface InitialClinicalTariff {
+  facilityServiceId: number;
+  serviceCode: string;
+  tariffId: number;
+  tariffCode: string;
+  revision: number;
+  unitPrice: string;
+  serviceDate: string;
+}
+
 type ChargeSafety = {
   // A pending clinical tariff failure has no reliable historical price. A
   // deliberate, scoped review must agree with the locked current tariff.
   requireTariffReview?: boolean;
   reviewedTariff?: ReviewedTariffPrice;
+  // Undefined means this check is not requested. Null is an explicitly
+  // unavailable first-completion snapshot and must fail closed.
+  initialClinicalTariff?: InitialClinicalTariff | null;
 };
 
 export async function chargeForService(
@@ -1083,6 +1098,31 @@ async function chargeForServiceInTransaction(
   const bedNight = 'nightId' in resolution ? resolution : null;
   const service = 'service' in resolution ? resolution.service : null;
   const tariff = 'tariff' in resolution ? resolution.tariff : null;
+  if (tariff && safety.initialClinicalTariff !== undefined) {
+    const initial = safety.initialClinicalTariff;
+    if (
+      !initial ||
+      !service ||
+      initial.facilityServiceId !== service.id ||
+      initial.serviceCode !== service.code ||
+      initial.tariffId !== tariff.id ||
+      initial.tariffCode !== tariff.code ||
+      initial.revision !== tariff.revision ||
+      parseMoneyToCents(initial.unitPrice) !== parseMoneyToCents(tariff.fee) ||
+      initial.serviceDate !== resolution.serviceDate
+    ) {
+      return {
+        charged: false,
+        reason: 'TARIFF_NOT_CONFIGURED',
+        diagnosis: {
+          code: 'HISTORICAL_PRICE_REVIEW_REQUIRED',
+          label: 'Historical price review required',
+        },
+        message:
+          'The laboratory service or tariff changed, or its price was not verified at completion. An authorized reviewer must verify the applicable price before billing.',
+      };
+    }
+  }
   if (tariff && safety.requireTariffReview) {
     const review = safety.reviewedTariff;
     if (

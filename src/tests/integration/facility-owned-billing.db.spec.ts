@@ -942,7 +942,8 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     const replay = await call('POST', `/api/lab-orders/${orderId}/complete`, {});
     expect(replay.body.billing).toMatchObject({
       charged: false,
-      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+      reason: 'BILLING_EVALUATION_PENDING',
+      diagnosis: { code: 'BILLING_EVALUATION_PENDING' },
     });
     expect(
       (
@@ -960,8 +961,48 @@ describeDb('Facility-owned services and clinical billing (synthetic PostgreSQL)'
     ).rows[0];
     expect(pending).toMatchObject({
       status: 'PENDING',
-      diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED',
+      diagnosis_code: 'BILLING_EVALUATION_PENDING',
     });
+    const path = `/api/billing/charge-attempts/${pending.id}/retry`;
+    expect([403, 404]).toContain(
+      (await call('POST', path, { facilityId: facility }, otherToken)).status,
+    );
+    const notReviewed = await call('POST', path, { facilityId: facility });
+    expect(notReviewed.body).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+    });
+    // The changed current price is not evidence of the historical price.
+    // A review that claims the old price against the new revision is rejected;
+    // the fixture deliberately stays pending rather than inventing a price.
+    const mismatched = await call('POST', path, {
+      facilityId: facility,
+      priceReview: {
+        tariffId: lab.tariff.id,
+        revision: changed.body.revision,
+        unitPrice: '18.00',
+        reason: 'Synthetic attempt to use the previous price',
+      },
+    });
+    expect(mismatched.body).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+    });
+    expect(
+      (
+        await pool.query('SELECT status,diagnosis_code FROM billing_charge_attempts WHERE id=$1', [
+          pending.id,
+        ])
+      ).rows,
+    ).toEqual([{ status: 'PENDING', diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [orderId],
+        )
+      ).rows[0].n,
+    ).toBe(0);
   });
 
   it('creates a manual invoice against a direct service tariff using server-side prices', async () => {

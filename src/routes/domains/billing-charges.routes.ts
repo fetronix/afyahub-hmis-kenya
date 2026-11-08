@@ -139,6 +139,10 @@ router.post(
       if (handleScopeError(error, res)) return;
       if (error instanceof chargeAttempts.ChargePriceReviewError)
         return res.status(400).json({ error: 'INVALID_PRICE_REVIEW', message: error.message });
+      if (error instanceof chargeAttempts.ChargeAttemptReconciliationError)
+        return res
+          .status(409)
+          .json({ error: 'CHARGE_ATTEMPT_REVIEW_REQUIRED', message: error.message });
 
       console.error('Charge attempt retry failed.');
       return res.status(500).json({

@@ -1,10 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { chargeAndRecord, recordChargeAttempt } from '../../billing/charge-attempts.ts';
+import { chargeForService } from '../../billing/billing.service.ts';
+import * as facilityResolver from '../../billing/facility-charge-resolver.ts';
+import { labOrderChargeRequest } from '../../billing/service-charges.ts';
 import { createSession } from '../../auth/session.service.ts';
-import { pool } from '../../db/index.ts';
+import { db, pool } from '../../db/index.ts';
+import * as sharedCharges from '../../routes/shared/charges.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 
@@ -96,6 +101,78 @@ describeDb('Laboratory facility identity and invoice (synthetic PostgreSQL)', ()
     priority: 'Routine',
     idempotencyKey: randomUUID(),
   });
+
+  const makeVerifiedOrder = async () => {
+    const visit = await makeEncounter();
+    const created = await call(
+      'POST',
+      '/api/lab-orders/batch',
+      batch(visit.id, [{ facilityServiceId: blood.service.id, specimenType: 'Synthetic blood' }]),
+    );
+    expect(created.status).toBe(201);
+    const order = created.body.orders[0];
+    await collectAndVerify(order.id);
+    return { visit, order };
+  };
+
+  // Pause only the original HTTP request between its committed clinical
+  // transaction and real billing call. Every request and database operation
+  // still executes the production path; no billing result is mocked.
+  const withPausedFirstEvaluation = async <T>(
+    orderId: number,
+    whilePaused: (
+      request: Parameters<typeof sharedCharges.chargeSafely>[0],
+      attemptId: number,
+    ) => Promise<T>,
+  ) => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let notify = () => {};
+    const arrived = new Promise<void>((resolve) => {
+      notify = resolve;
+    });
+    const captured: { request: Parameters<typeof sharedCharges.chargeSafely>[0]; id: number }[] =
+      [];
+    const realCharge = sharedCharges.chargeSafely;
+    const spy = vi
+      .spyOn(sharedCharges, 'chargeSafely')
+      .mockImplementation(async (request, id, initialTariff) => {
+        if (request.sourceType === 'LAB_ORDER' && request.sourceId === orderId && id != null) {
+          captured.push({ request, id });
+          notify();
+          await gate;
+        }
+        return realCharge(request, id, initialTariff);
+      });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let observation!: T;
+    let first!: Awaited<ReturnType<typeof call>>;
+    try {
+      const firstRequest = call('POST', `/api/lab-orders/${orderId}/complete`, {});
+      try {
+        await Promise.race([
+          arrived,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('Initial billing evaluator did not arrive')),
+              5000,
+            );
+          }),
+        ]);
+        if (captured.length !== 1) throw new Error('Expected one initial billing evaluator');
+        observation = await whilePaused(captured[0].request, captured[0].id);
+      } finally {
+        if (timer) clearTimeout(timer);
+        release();
+        first = await firstRequest;
+      }
+    } finally {
+      spy.mockRestore();
+    }
+    return { first, observation };
+  };
 
   beforeAll(async () => {
     if (
@@ -632,6 +709,110 @@ describeDb('Laboratory facility identity and invoice (synthetic PostgreSQL)', ()
     ).rejects.toMatchObject({ code: '23503' });
   });
 
+  it('preserves the initial evaluator when concurrent completion replays reach billing first', async () => {
+    const visit = await makeEncounter();
+    const created = await call(
+      'POST',
+      '/api/lab-orders/batch',
+      batch(visit.id, [{ facilityServiceId: blood.service.id, specimenType: 'Synthetic blood' }]),
+    );
+    expect(created.status).toBe(201);
+    const order = created.body.orders[0];
+    await collectAndVerify(order.id);
+
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async () => {
+      const replays = await Promise.all(
+        Array.from({ length: 3 }, () => call('POST', `/api/lab-orders/${order.id}/complete`, {})),
+      );
+      const attempts = (
+        await pool.query(
+          "SELECT status,diagnosis_code,attempts FROM billing_charge_attempts WHERE facility_id=$1 AND source_type='LAB_ORDER' AND source_id=$2",
+          [facility, order.id],
+        )
+      ).rows;
+      const lineCount = (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n;
+      return { replays, attempts, lineCount };
+    });
+    expect(first.status).toBe(200);
+    expect(first.body.billing).toMatchObject({
+      charged: true,
+      tariffCode: 'LB-BLD01',
+      unitPrice: '456.00',
+    });
+    expect(observation.replays.map((response) => response.status)).toEqual([200, 200, 200]);
+    for (const replay of observation.replays) {
+      expect(replay.body.billing).toMatchObject({
+        charged: false,
+        reason: 'BILLING_EVALUATION_PENDING',
+        diagnosis: { code: 'BILLING_EVALUATION_PENDING' },
+      });
+    }
+    expect(observation.attempts).toEqual([
+      { status: 'PENDING', diagnosis_code: 'BILLING_EVALUATION_PENDING', attempts: 4 },
+    ]);
+    expect(observation.lineCount).toBe(0);
+
+    const attempts = (
+      await pool.query(
+        "SELECT id,tenant_id,facility_id,patient_id,encounter_id,status,diagnosis_code,attempts,resolved_item_id,resolved_invoice_id,detail FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+        [order.id],
+      )
+    ).rows;
+    const lines = (
+      await pool.query(
+        "SELECT bi.id,bi.invoice_id,bi.facility_service_id,bi.tariff_id,bi.unit_price::text,bi.idempotency_key,inv.tenant_id,inv.facility_id,inv.patient_id,inv.encounter_id FROM billing_items bi JOIN billing_invoices inv ON inv.id=bi.invoice_id WHERE bi.source_type='LAB_ORDER' AND bi.source_id=$1",
+        [order.id],
+      )
+    ).rows;
+    expect(attempts).toHaveLength(1);
+    expect(lines).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      tenant_id: tenant,
+      facility_id: facility,
+      patient_id: patient,
+      encounter_id: visit.id,
+      status: 'BILLED',
+      diagnosis_code: 'BILLING_EVALUATION_PENDING',
+      attempts: 5,
+      resolved_item_id: lines[0].id,
+      resolved_invoice_id: lines[0].invoice_id,
+      detail: 'Billed during the initial clinical billing evaluation.',
+    });
+    expect(lines[0]).toMatchObject({
+      facility_service_id: blood.service.id,
+      tariff_id: blood.tariff.id,
+      unit_price: '456.00',
+      idempotency_key: `LAB_ORDER:${order.id}`,
+      tenant_id: tenant,
+      facility_id: facility,
+      patient_id: patient,
+      encounter_id: visit.id,
+    });
+    const audits = (
+      await pool.query(
+        `SELECT resource,action,resource_id,details FROM audit_logs
+         WHERE tenant_id=$1 AND facility_id=$2 AND (
+           (resource='LabOrder' AND resource_id=$3 AND action='UPDATE' AND details LIKE 'Investigation explicitly confirmed complete%') OR
+           (resource='BillingChargeAttempt' AND resource_id=$4 AND action='UPDATE') OR
+           (resource='BillingItem' AND resource_id=$5 AND action='CREATE') OR
+           (resource='BILLING_TARIFF_PRICE_REVIEW' AND resource_id=$4)
+         )`,
+        [tenant, facility, String(order.id), String(attempts[0].id), String(lines[0].id)],
+      )
+    ).rows;
+    expect(audits.filter((row) => row.resource === 'LabOrder')).toHaveLength(1);
+    expect(audits.filter((row) => row.resource === 'BillingItem')).toHaveLength(1);
+    expect(audits.filter((row) => row.resource === 'BILLING_TARIFF_PRICE_REVIEW')).toHaveLength(0);
+    expect(audits.filter((row) => row.resource === 'BillingChargeAttempt')).toMatchObject([
+      { details: 'Charge attempt resolved during the initial clinical billing evaluation.' },
+    ]);
+  });
+
   it('charges exactly once when initial completion requests arrive concurrently', async () => {
     const visit = await makeEncounter();
     const created = await call(
@@ -646,19 +827,737 @@ describeDb('Laboratory facility identity and invoice (synthetic PostgreSQL)', ()
       Array.from({ length: 4 }, () => call('POST', `/api/lab-orders/${order.id}/complete`, {})),
     );
     expect(replies.map((response) => response.status)).toEqual([200, 200, 200, 200]);
-    expect(replies.filter((response) => response.body.billing.charged)).toHaveLength(1);
-    expect(replies.filter((response) => response.body.billing.reason === 'DUPLICATE')).toHaveLength(
-      3,
-    );
+    const winners = replies.filter((response) => response.body.billing.charged);
+    const others = replies.filter((response) => !response.body.billing.charged);
+    expect(winners).toHaveLength(1);
+    expect(others).toHaveLength(3);
+    for (const response of others) {
+      // A replay that finishes before the original evaluator cannot truthfully
+      // claim a duplicate line exists; a later replay must identify that line.
+      if (response.body.billing.reason === 'DUPLICATE') {
+        expect(response.body.billing).toMatchObject({
+          itemId: winners[0].body.billing.itemId,
+          invoiceId: winners[0].body.billing.invoiceId,
+        });
+      } else {
+        expect(response.body.billing).toMatchObject({
+          charged: false,
+          reason: 'BILLING_EVALUATION_PENDING',
+          diagnosis: { code: 'BILLING_EVALUATION_PENDING' },
+        });
+        expect(response.body.billing.itemId).toBeUndefined();
+      }
+    }
     const items = (
       await pool.query(
-        "SELECT tariff_id,tariff_code,unit_price::text FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+        "SELECT id,invoice_id,tariff_id,tariff_code,unit_price::text FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
         [order.id],
       )
     ).rows;
     expect(items).toEqual([
-      { tariff_id: blood.tariff.id, tariff_code: 'LB-BLD01', unit_price: '456.00' },
+      {
+        id: winners[0].body.billing.itemId,
+        invoice_id: winners[0].body.billing.invoiceId,
+        tariff_id: blood.tariff.id,
+        tariff_code: 'LB-BLD01',
+        unit_price: '456.00',
+      },
     ]);
+    expect(
+      (
+        await pool.query(
+          "SELECT status,resolved_item_id,resolved_invoice_id FROM billing_charge_attempts WHERE facility_id=$1 AND source_type='LAB_ORDER' AND source_id=$2",
+          [facility, order.id],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        status: 'BILLED',
+        resolved_item_id: items[0].id,
+        resolved_invoice_id: items[0].invoice_id,
+      },
+    ]);
+  });
+
+  it('does not let a mismatched patient, encounter, facility or tenant disturb the staged charge', async () => {
+    const { visit, order } = await makeVerifiedOrder();
+    const wrongVisit = await makeEncounter();
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async (request) => {
+      const wrongPatient = await chargeAndRecord(db, { ...request, patientId: otherPatient });
+      const wrongEncounter = await chargeAndRecord(db, { ...request, encounterId: wrongVisit.id });
+      const wrongFacility = await call(
+        'POST',
+        `/api/lab-orders/${order.id}/complete`,
+        {},
+        otherToken,
+      );
+      const wrongTenant = await call(
+        'POST',
+        `/api/lab-orders/${order.id}/complete`,
+        {},
+        foreignToken,
+      );
+      const attempts = (
+        await pool.query(
+          "SELECT tenant_id,facility_id,patient_id,encounter_id,status,diagnosis_code,attempts FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows;
+      return { wrongPatient, wrongEncounter, wrongFacility, wrongTenant, attempts };
+    });
+    expect(observation.wrongPatient).toMatchObject({ charged: false, reason: 'INVALID_INPUT' });
+    expect(observation.wrongEncounter).toMatchObject({ charged: false, reason: 'INVALID_INPUT' });
+    expect([403, 404]).toContain(observation.wrongFacility.status);
+    expect([403, 404]).toContain(observation.wrongTenant.status);
+    expect(observation.attempts).toEqual([
+      {
+        tenant_id: tenant,
+        facility_id: facility,
+        patient_id: patient,
+        encounter_id: visit.id,
+        status: 'PENDING',
+        diagnosis_code: 'BILLING_EVALUATION_PENDING',
+        attempts: 1,
+      },
+    ]);
+    expect(first.body.billing.charged).toBe(true);
+    expect(
+      (
+        await pool.query(
+          "SELECT inv.tenant_id,inv.facility_id,inv.patient_id,inv.encounter_id FROM billing_items bi JOIN billing_invoices inv ON inv.id=bi.invoice_id WHERE bi.source_type='LAB_ORDER' AND bi.source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([
+      { tenant_id: tenant, facility_id: facility, patient_id: patient, encounter_id: visit.id },
+    ]);
+  });
+
+  it('preserves a pre-completion source marker when a replay races the first valid completion', async () => {
+    const { order } = await makeVerifiedOrder();
+    const premature = await chargeAndRecord(db, labOrderChargeRequest(order));
+    expect(premature).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'SOURCE_NOT_COMPLETED' },
+    });
+    const before = (
+      await pool.query(
+        "SELECT id FROM billing_charge_attempts WHERE facility_id=$1 AND source_type='LAB_ORDER' AND source_id=$2",
+        [facility, order.id],
+      )
+    ).rows;
+    expect(before).toHaveLength(1);
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async () => {
+      const replays = await Promise.all(
+        Array.from({ length: 2 }, () => call('POST', `/api/lab-orders/${order.id}/complete`, {})),
+      );
+      const pending = (
+        await pool.query(
+          'SELECT status,diagnosis_code,attempts FROM billing_charge_attempts WHERE id=$1',
+          [before[0].id],
+        )
+      ).rows;
+      return { replays, pending };
+    });
+    expect(observation.replays.every((response) => response.status === 200)).toBe(true);
+    expect(observation.replays.map((response) => response.body.billing.reason)).toEqual([
+      'BILLING_EVALUATION_PENDING',
+      'BILLING_EVALUATION_PENDING',
+    ]);
+    expect(observation.pending).toEqual([
+      { status: 'PENDING', diagnosis_code: 'SOURCE_NOT_COMPLETED', attempts: 3 },
+    ]);
+    expect(first.body.billing).toMatchObject({ charged: true, unitPrice: '456.00' });
+    expect(
+      (
+        await pool.query(
+          "SELECT id,status,resolved_item_id FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([
+      { id: before[0].id, status: 'BILLED', resolved_item_id: first.body.billing.itemId },
+    ]);
+  });
+
+  it('does not charge a changed tariff while the original evaluator is delayed', async () => {
+    const service = await createService('LAB-RACE-PRICE', 'LAB-RACE-PRICE-T', '18.00');
+    const visit = await makeEncounter();
+    const created = await call(
+      'POST',
+      '/api/lab-orders/batch',
+      batch(visit.id, [{ facilityServiceId: service.service.id, specimenType: 'Synthetic blood' }]),
+    );
+    expect(created.status).toBe(201);
+    const order = created.body.orders[0];
+    await collectAndVerify(order.id);
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async () => {
+      const replay = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+      const changed = await call('PUT', `/api/facility-tariffs/${service.tariff.id}`, {
+        facilityId: facility,
+        serviceId: service.service.id,
+        expectedRevision: service.tariff.revision,
+        code: service.tariff.code,
+        description: 'Synthetic later price',
+        department: 'laboratory',
+        unit: 'Service',
+        fee: '99.00',
+        effectiveFrom: null,
+        effectiveTo: null,
+        isActive: true,
+        autoBill: true,
+      });
+      return { replay, changed };
+    });
+    expect(observation.replay.body.billing).toMatchObject({
+      charged: false,
+      reason: 'BILLING_EVALUATION_PENDING',
+    });
+    expect(observation.changed.status).toBe(200);
+    expect(observation.changed.body.revision).toBe(service.tariff.revision + 1);
+    expect(first.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(first.body).not.toHaveProperty('billingInitialTariff');
+    expect(first.body).not.toHaveProperty('billingOutboxAttemptId');
+    expect(
+      (
+        await pool.query(
+          "SELECT status,diagnosis_code FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ status: 'PENDING', diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query(
+          `SELECT al.user_id,al.details FROM audit_logs al JOIN billing_charge_attempts a ON al.resource_id=a.id::text
+           WHERE al.tenant_id=$1 AND al.facility_id=$2 AND al.resource='BillingChargeAttempt' AND al.action='UPDATE'
+             AND a.source_type='LAB_ORDER' AND a.source_id=$3`,
+          [tenant, facility, order.id],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        user_id: 'SYSTEM',
+        details:
+          'Initial laboratory tariff changed or was unavailable; authorized price review required.',
+      },
+    ]);
+  });
+
+  it('does not turn a tariff configured after completion into an automatic historical price', async () => {
+    const service = await createService('LAB-RACE-UNPRICED', 'LAB-RACE-UNPRICED-T', '0.00');
+    const visit = await makeEncounter();
+    const created = await call(
+      'POST',
+      '/api/lab-orders/batch',
+      batch(visit.id, [{ facilityServiceId: service.service.id, specimenType: 'Synthetic blood' }]),
+    );
+    expect(created.status).toBe(201);
+    const order = created.body.orders[0];
+    await collectAndVerify(order.id);
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async () => {
+      const configured = await call('PUT', `/api/facility-tariffs/${service.tariff.id}`, {
+        facilityId: facility,
+        serviceId: service.service.id,
+        expectedRevision: service.tariff.revision,
+        code: service.tariff.code,
+        description: 'Synthetic price configured after completion',
+        department: 'laboratory',
+        unit: 'Service',
+        fee: '99.00',
+        effectiveFrom: null,
+        effectiveTo: null,
+        isActive: true,
+        autoBill: true,
+      });
+      const replay = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+      return { configured, replay };
+    });
+    expect(observation.configured.status).toBe(200);
+    expect(observation.replay.body.billing).toMatchObject({
+      charged: false,
+      reason: 'BILLING_EVALUATION_PENDING',
+    });
+    expect(first.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT status,diagnosis_code FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ status: 'PENDING', diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+
+  it('preserves clinical completion and requires review if the tariff snapshot savepoint fails', async () => {
+    const { order } = await makeVerifiedOrder();
+    // Inject an actual PostgreSQL error into the snapshot savepoint, not a
+    // fabricated successful billing result. The clinical/outbox transaction
+    // must survive, while an unknown initial price cannot be charged.
+    const fault = vi
+      .spyOn(facilityResolver, 'resolveFacilityCharge')
+      .mockImplementationOnce(async (tx) => {
+        await tx.execute(sql`SELECT 1 / 0`);
+        throw new Error('Synthetic snapshot fault did not fire');
+      });
+    let completed: Awaited<ReturnType<typeof call>>;
+    try {
+      completed = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+    } finally {
+      fault.mockRestore();
+    }
+    expect(completed.status).toBe(200);
+    expect(completed.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(
+      (
+        await pool.query(
+          'SELECT status,completed_at IS NOT NULL AS completed FROM lab_orders WHERE id=$1',
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ status: 'Completed', completed: true }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT status,diagnosis_code FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ status: 'PENDING', diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM audit_logs WHERE facility_id=$1 AND resource='LabOrder' AND resource_id=$2 AND action='UPDATE' AND details LIKE 'Investigation explicitly confirmed complete%'",
+          [facility, String(order.id)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await pool.query(
+          `SELECT count(*)::int n FROM audit_logs al JOIN billing_charge_attempts a ON al.resource_id=a.id::text
+           WHERE al.tenant_id=$1 AND al.facility_id=$2 AND al.resource='BillingChargeAttempt' AND al.action='UPDATE'
+             AND a.source_type='LAB_ORDER' AND a.source_id=$3
+             AND al.details='Initial laboratory tariff changed or was unavailable; authorized price review required.'`,
+          [tenant, facility, order.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('does not treat an initial attempt ID without its tariff snapshot as permission to charge', async () => {
+    const { order } = await makeVerifiedOrder();
+    const { first, observation } = await withPausedFirstEvaluation(
+      order.id,
+      async (request, id) => {
+        const withoutSnapshot = await chargeAndRecord(db, request, id);
+        return { withoutSnapshot };
+      },
+    );
+    expect(observation.withoutSnapshot).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(first.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT status,diagnosis_code FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ status: 'PENDING', diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+
+  it('does not resolve a lab replay to an existing line on a different encounter', async () => {
+    const { order } = await makeVerifiedOrder();
+    const otherVisit = await makeEncounter();
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async () => {
+      // An intentionally inconsistent synthetic legacy line belongs to the
+      // same patient/facility but to a different encounter. Do not move it,
+      // add a second line, or claim it is a verified duplicate of this order.
+      const invoice = (
+        await pool.query(
+          `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,encounter_id,invoice_number)
+           VALUES($1,$2,$3,$4,$5) RETURNING id`,
+          [tenant, facility, patient, otherVisit.id, `SYNTHETIC-WRONG-ENCOUNTER-${randomUUID()}`],
+        )
+      ).rows[0];
+      const line = (
+        await pool.query(
+          `INSERT INTO billing_items(invoice_id,item_type,description,quantity,unit_price,total_amount,source_type,source_id,idempotency_key)
+           VALUES($1,'LAB','Synthetic inconsistent legacy line',1,456,456,'LAB_ORDER',$2,$3) RETURNING id`,
+          [invoice.id, order.id, `LAB_ORDER:${order.id}`],
+        )
+      ).rows[0];
+      const pendingReplay = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+      const pending = (
+        await pool.query(
+          "SELECT id,status FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows;
+      expect(pendingReplay.body.billing).toMatchObject({ charged: false, reason: 'INVALID_INPUT' });
+      expect(pending).toHaveLength(1);
+      expect(pending[0].status).toBe('PENDING');
+      const retryPath = `/api/billing/charge-attempts/${pending[0].id}/retry`;
+      expect((await call('POST', retryPath, { facilityId: facility })).body).toMatchObject({
+        status: 'PENDING',
+        result: { charged: false, reason: 'INVALID_INPUT' },
+      });
+      // Also exercise the old resolved-attempt shortcut with inconsistent
+      // synthetic evidence. Historical rows remain untouched by the replay.
+      await pool.query(
+        "UPDATE billing_charge_attempts SET status='BILLED',resolved_item_id=$2,resolved_invoice_id=$3 WHERE id=$1",
+        [pending[0].id, line.id, invoice.id],
+      );
+      const resolvedReplay = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+      const resolvedRetry = await call('POST', retryPath, { facilityId: facility });
+      return { resolvedReplay, resolvedRetry, line, invoice };
+    });
+    expect(observation.resolvedReplay.body.billing).toMatchObject({
+      charged: false,
+      reason: 'INVALID_INPUT',
+    });
+    expect(observation.resolvedRetry.status).toBe(409);
+    expect(observation.resolvedRetry.body).toMatchObject({
+      error: 'CHARGE_ATTEMPT_REVIEW_REQUIRED',
+      message: expect.stringContaining('manual reconciliation is required'),
+    });
+    expect(first.body.billing).toMatchObject({ charged: false, reason: 'INVALID_INPUT' });
+    expect(
+      (
+        await pool.query(
+          "SELECT status,resolved_item_id,resolved_invoice_id FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        status: 'BILLED',
+        resolved_item_id: observation.line.id,
+        resolved_invoice_id: observation.invoice.id,
+      },
+    ]);
+    expect(
+      (
+        await pool.query(
+          "SELECT id,invoice_id FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ id: observation.line.id, invoice_id: observation.invoice.id }]);
+  });
+
+  it('does not trust a lab idempotency key attached to a different source order', async () => {
+    const { visit, order } = await makeVerifiedOrder();
+    const other = await makeVerifiedOrder();
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async () => {
+      const invoice = (
+        await pool.query(
+          `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,encounter_id,invoice_number)
+           VALUES($1,$2,$3,$4,$5) RETURNING id`,
+          [tenant, facility, patient, visit.id, `SYNTHETIC-WRONG-SOURCE-${randomUUID()}`],
+        )
+      ).rows[0];
+      await pool.query(
+        `INSERT INTO billing_items(invoice_id,item_type,description,quantity,unit_price,total_amount,source_type,source_id,idempotency_key)
+         VALUES($1,'LAB','Synthetic inconsistent source',1,456,456,'LAB_ORDER',$2,$3)`,
+        [invoice.id, other.order.id, `LAB_ORDER:${order.id}`],
+      );
+      const replay = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+      return { replay };
+    });
+    expect(observation.replay.body.billing).toMatchObject({
+      charged: false,
+      reason: 'INVALID_INPUT',
+    });
+    expect(first.body.billing).toMatchObject({ charged: false, reason: 'INVALID_INPUT' });
+    expect(
+      (
+        await pool.query(
+          "SELECT status,diagnosis_code FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ status: 'PENDING', diagnosis_code: 'BILLING_EVALUATION_PENDING' }]);
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM billing_items WHERE idempotency_key=$1', [
+          `LAB_ORDER:${order.id}`,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('recognizes an existing scoped invoice line before reporting a staged replay as pending', async () => {
+    const { order } = await makeVerifiedOrder();
+    const { first, observation } = await withPausedFirstEvaluation(order.id, async (request) => {
+      // Model a pre-existing, valid source-linked line independently of the
+      // outbox, as can occur in legacy data. This is real transactional billing.
+      const existing = await chargeForService(db, request);
+      const replay = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+      return { existing, replay };
+    });
+    expect(observation.existing.charged).toBe(true);
+    expect(observation.replay.body.billing).toMatchObject({
+      charged: false,
+      reason: 'DUPLICATE',
+      itemId: observation.existing.itemId,
+      invoiceId: observation.existing.invoiceId,
+    });
+    expect(first.body.billing).toMatchObject({
+      charged: false,
+      reason: 'DUPLICATE',
+      itemId: observation.existing.itemId,
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT status,resolved_item_id,resolved_invoice_id FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        status: 'DUPLICATE',
+        resolved_item_id: observation.existing.itemId,
+        resolved_invoice_id: observation.existing.invoiceId,
+      },
+    ]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('respects a concurrent authorized price review and bills only the reviewed tariff once', async () => {
+    const { order } = await makeVerifiedOrder();
+    const review = {
+      tariffId: blood.tariff.id,
+      revision: blood.tariff.revision,
+      unitPrice: '456.00',
+      reason: 'Reviewed the documented synthetic fixture price',
+    };
+    const { first, observation } = await withPausedFirstEvaluation(
+      order.id,
+      async (_request, id) => {
+        const path = `/api/billing/charge-attempts/${id}/retry`;
+        const unreviewed = await call('POST', path, { facilityId: facility });
+        const wrongFacility = await call(
+          'POST',
+          path,
+          { facilityId: facility, priceReview: review },
+          otherToken,
+        );
+        const stale = await call('POST', path, {
+          facilityId: facility,
+          priceReview: { ...review, revision: review.revision + 1 },
+        });
+        const pending = (
+          await pool.query(
+            'SELECT status,diagnosis_code FROM billing_charge_attempts WHERE id=$1',
+            [id],
+          )
+        ).rows;
+        return { id, path, unreviewed, wrongFacility, stale, pending };
+      },
+    );
+    expect(observation.unreviewed.body).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+    });
+    expect([403, 404]).toContain(observation.wrongFacility.status);
+    expect(observation.stale.body).toMatchObject({
+      status: 'PENDING',
+      result: { charged: false, diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' } },
+    });
+    expect(observation.pending).toEqual([
+      { status: 'PENDING', diagnosis_code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    ]);
+    expect(first.body.billing).toMatchObject({
+      charged: false,
+      diagnosis: { code: 'HISTORICAL_PRICE_REVIEW_REQUIRED' },
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        call('POST', observation.path, { facilityId: facility, priceReview: review }),
+      ),
+    );
+    expect(outcomes.every((response) => response.status === 200)).toBe(true);
+    expect(outcomes.filter((response) => response.body.result.charged)).toHaveLength(1);
+    expect(outcomes.filter((response) => response.body.result.reason === 'DUPLICATE')).toHaveLength(
+      1,
+    );
+    const lines = (
+      await pool.query(
+        "SELECT id,tariff_id,unit_price::text FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+        [order.id],
+      )
+    ).rows;
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ tariff_id: blood.tariff.id, unit_price: '456.00' });
+    const reviews = (
+      await pool.query(
+        "SELECT user_id,details FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2 AND resource='BILLING_TARIFF_PRICE_REVIEW' AND resource_id=$3",
+        [tenant, facility, String(observation.id)],
+      )
+    ).rows;
+    const actor = (
+      await pool.query('SELECT id FROM users WHERE uid=$1', [`synthetic-lab-a-${suffix}`])
+    ).rows[0].id;
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0].user_id).toBe(String(actor));
+    expect(JSON.parse(reviews[0].details)).toMatchObject({
+      tariffId: review.tariffId,
+      tariffRevision: review.revision,
+      reviewedUnitPrice: review.unitPrice,
+      reason: review.reason,
+      itemId: lines[0].id,
+    });
+    expect(
+      (await call('POST', `/api/lab-orders/${order.id}/complete`, {})).body.billing,
+    ).toMatchObject({
+      charged: false,
+      reason: 'DUPLICATE',
+      itemId: lines[0].id,
+    });
+  });
+
+  it('rolls back clinical completion if its outbox cannot be staged, then retries once safely', async () => {
+    const { order } = await makeVerifiedOrder();
+    const trigger = `synthetic_lab_outbox_${suffix.replaceAll('-', '')}_${order.id}`;
+    await pool.query(`CREATE FUNCTION ${trigger}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.facility_id=${facility} AND NEW.source_type='LAB_ORDER' AND NEW.source_id=${order.id} THEN
+        RAISE EXCEPTION 'Synthetic laboratory outbox failure';
+      END IF;
+      RETURN NEW; END $$`);
+    try {
+      await pool.query(
+        `CREATE TRIGGER ${trigger} BEFORE INSERT ON billing_charge_attempts FOR EACH ROW EXECUTE FUNCTION ${trigger}()`,
+      );
+      const failed = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+      expect(failed.status).toBe(500);
+      expect(
+        (
+          await pool.query(
+            'SELECT status,completed_at,completed_by_user_id FROM lab_orders WHERE id=$1',
+            [order.id],
+          )
+        ).rows,
+      ).toEqual([{ status: 'Sample Collected', completed_at: null, completed_by_user_id: null }]);
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int n FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+            [order.id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+            [order.id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int n FROM audit_logs WHERE facility_id=$1 AND resource='LabOrder' AND resource_id=$2 AND action='UPDATE' AND details LIKE 'Investigation explicitly confirmed complete%'",
+            [facility, String(order.id)],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${trigger} ON billing_charge_attempts`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${trigger}()`);
+    }
+    const retried = await call('POST', `/api/lab-orders/${order.id}/complete`, {});
+    expect(retried.status).toBe(200);
+    expect(retried.body.billing).toMatchObject({ charged: true, unitPrice: '456.00' });
+    expect(
+      (
+        await pool.query(
+          "SELECT status,resolved_item_id FROM billing_charge_attempts WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows,
+    ).toEqual([{ status: 'BILLED', resolved_item_id: retried.body.billing.itemId }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM billing_items WHERE source_type='LAB_ORDER' AND source_id=$1",
+          [order.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM audit_logs WHERE facility_id=$1 AND resource='LabOrder' AND resource_id=$2 AND action='UPDATE' AND details LIKE 'Investigation explicitly confirmed complete%'",
+          [facility, String(order.id)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
   });
 
   it('rejects inactive and wrongly classified investigations without creating an order', async () => {
