@@ -37,6 +37,33 @@ export interface AccountingOverview {
   };
   limitations: { notice: string; billingReconciliation: string; serviceLineProfitability: string };
 }
+export interface ExpenseReviewItem {
+  id: number;
+  requestNumber: string;
+  incurredDate: string;
+  payeeName: string;
+  category: string;
+  amountKes: string;
+  currency: string;
+  description: string;
+  serviceLine: string | null;
+  status: string;
+  requestedByUserId: number | null;
+  reviewedByUserId: number | null;
+  journalId: number | null;
+  reversalJournalId: number | null;
+  accountingStatus: 'NOT_POSTED' | 'POSTED' | 'REVERSED' | 'REVIEW_REQUIRED';
+  expenseAccount: { id: number | null; code: string | null; name: string | null };
+  payableAccount: { id: number | null; code: string | null; name: string | null };
+  supportingDocuments: Array<{ name: string; storageReference: string }>;
+  reviewHash: string | null;
+  reviewIssue: 'SOURCE_CHANGED' | 'ACCOUNT_REVIEW_REQUIRED' | null;
+}
+export interface ExpenseReviewPage {
+  expenses: ExpenseReviewItem[];
+  nextAfterId: number | null;
+  notice: string;
+}
 export interface PaymentSettlementSource {
   sourceType: 'BILLING_PAYMENT' | 'BILLING_REFUND';
   sourceId: number;
@@ -147,6 +174,25 @@ function patch<T>(url: string, body: unknown) {
   return fetchJson<T>(url, { method: 'PATCH', body: JSON.stringify(body) });
 }
 export const sprintApi = {
+  expenseReviewPage: (facilityId: number, search = '', afterId = 0) =>
+    fetchJson<ExpenseReviewPage>(
+      `/api/accounting/expenses?${new URLSearchParams({
+        facilityId: String(facilityId),
+        search,
+        afterId: String(afterId),
+      })}`,
+    ),
+  approveAndPostExpense: (
+    id: number,
+    body: { facilityId: number; reviewHash: string; notes: string },
+  ) =>
+    post<{
+      expenseId: number;
+      status: 'POSTED';
+      journalId: number;
+      idempotentReplay: boolean;
+      paymentRecorded: false;
+    }>(`/api/accounting/expenses/${id}/approve-and-post`, body),
   paymentSettlements: (
     facilityId: number,
     state: 'UNRESOLVED' | 'ALL',

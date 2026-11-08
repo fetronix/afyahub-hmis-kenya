@@ -6,6 +6,7 @@ import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts
 import * as queries from '../db/queries.ts';
 import {
   closeFinancialPeriodBodySchema,
+  approveAndPostExpenseBodySchema,
   createAccountBodySchema,
   createBankAccountBodySchema,
   createFinancialPeriodBodySchema,
@@ -20,6 +21,7 @@ import { validateBody } from '../validation/validate.ts';
 import {
   AccountingIntegrityError,
   closeFinancialPeriodScoped,
+  approveAndPostExpenseScoped,
   createAccountScoped,
   createExpenseRequestScoped,
   decideExpenseRequestScoped,
@@ -393,7 +395,14 @@ router.get(
 
 router.get('/expenses', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
   try {
-    res.json({ success: true, ...(await listExpensesScoped(await scoped(req))) });
+    res.json({
+      success: true,
+      ...(await listExpensesScoped(await scoped(req), {
+        search: req.query.search,
+        afterId: req.query.afterId,
+        limit: req.query.limit,
+      })),
+    });
   } catch (error) {
     fail(res, error);
   }
@@ -428,6 +437,23 @@ router.post(
           req.body ?? {},
         )),
       });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/expenses/:id/approve-and-post',
+  requirePermission('accounting.expenses.approve', 'accounting.journals.post'),
+  validateBody(approveAndPostExpenseBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await approveAndPostExpenseScoped(
+        await scoped(req),
+        Number(req.params.id),
+        req.body ?? {},
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
     } catch (error) {
       fail(res, error);
     }

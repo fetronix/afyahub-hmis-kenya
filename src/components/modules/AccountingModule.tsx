@@ -2,6 +2,7 @@ import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BillingJournalPostingPanel } from './BillingJournalPostingPanel.tsx';
 import { PaymentSettlementWork } from './PaymentSettlementWork.tsx';
+import { ExpenseApprovalPanel } from './ExpenseApprovalPanel.tsx';
 import { getSessionToken } from '../../api/client.ts';
 import {
   sprintApi,
@@ -312,6 +313,15 @@ export const AccountingModule: React.FC = () => {
             </>
           )}
         </section>
+      )}
+      {authenticatedUser && !authenticatedUser.isSuperAdmin && can('accounting.read') && (
+        <ExpenseApprovalPanel
+          key={`${currentFacility.id}:${authenticatedUser.id}`}
+          facilityId={currentFacility.id}
+          userId={authenticatedUser.id}
+          canApproveAndPost={can('accounting.expenses.approve') && can('accounting.journals.post')}
+          onPosted={() => void load()}
+        />
       )}
       {authenticatedUser &&
         !authenticatedUser.isSuperAdmin &&

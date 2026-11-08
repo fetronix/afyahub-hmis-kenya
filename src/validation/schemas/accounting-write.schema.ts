@@ -38,6 +38,14 @@ export const decideExpenseRequestBodySchema = z.object({
   notes: text(1000),
 });
 
+export const approveAndPostExpenseBodySchema = z
+  .object({
+    facilityId,
+    notes: text(1000),
+    reviewHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+
 export const createExpenseRequestBodySchema = z
   .object({
     facilityId,

@@ -708,6 +708,180 @@ function documentReferences(input: unknown): Array<{ name: string; storageRefere
   });
 }
 
+interface ExpenseReviewRow {
+  id: number;
+  tenant_id: number;
+  facility_id: number;
+  request_number: string;
+  incurred_date_text: string;
+  expense_account_id: number;
+  payment_account_id: number | null;
+  payee_name: string;
+  category: string;
+  amount_kes: string;
+  currency: string;
+  description: string;
+  service_line: string | null;
+  supporting_documents: unknown;
+  status: string;
+  requested_by_user_id: number | null;
+  reviewed_by_user_id: number | null;
+  review_notes: string | null;
+  posted_journal_id: number | null;
+  request_hash: string | null;
+  expense_account_code: string | null;
+  expense_account_name: string | null;
+  expense_account_type: string | null;
+  expense_account_active: boolean | null;
+  expense_account_tenant: number | null;
+  expense_account_facility: number | null;
+  payable_account_code: string | null;
+  payable_account_name: string | null;
+  payable_account_type: string | null;
+  payable_account_active: boolean | null;
+  payable_account_tenant: number | null;
+  payable_account_facility: number | null;
+  linked_journal_id: number | null;
+  linked_journal_status: string | null;
+  linked_journal_source_type: string | null;
+  linked_journal_source_id: string | null;
+  linked_journal_debit: string | null;
+  linked_journal_credit: string | null;
+  linked_line_count: number;
+  linked_expense_line_count: number;
+  linked_payable_line_count: number;
+  source_journal_count: number;
+  reversal_journal_id: number | null;
+}
+
+// Include account names and classification in the reviewed snapshot, as well as
+// the originally hashed financial source fields. This is a review token, not a
+// secret or an approval: authorization and the independent actor are checked
+// separately inside the same transaction as posting.
+function expenseReview(row: ExpenseReviewRow): {
+  reviewHash: string | null;
+  reviewIssue: 'SOURCE_CHANGED' | 'ACCOUNT_REVIEW_REQUIRED' | null;
+} {
+  // These requests and journal amounts are denominated in KES only; a changed
+  // legacy currency is inconsistent evidence, not an implicit conversion.
+  if (row.currency !== 'KES') return { reviewHash: null, reviewIssue: 'SOURCE_CHANGED' };
+  let sourceHash: string;
+  try {
+    sourceHash = createHash('sha256')
+      .update(
+        JSON.stringify({
+          expenseAccountId: row.expense_account_id,
+          payableAccountId: row.payment_account_id,
+          amount: parseKesToCents(row.amount_kes).toString(),
+          incurredDate: row.incurred_date_text,
+          payee: row.payee_name,
+          category: row.category,
+          description: row.description,
+          serviceLine: row.service_line,
+          documents: documentReferences(row.supporting_documents),
+        }),
+      )
+      .digest('hex');
+  } catch (error) {
+    if (error instanceof AccountingIntegrityError)
+      return { reviewHash: null, reviewIssue: 'SOURCE_CHANGED' };
+    throw error;
+  }
+  if (!row.request_hash || sourceHash !== row.request_hash)
+    return { reviewHash: null, reviewIssue: 'SOURCE_CHANGED' };
+  if (
+    !row.payment_account_id ||
+    row.expense_account_id === row.payment_account_id ||
+    row.expense_account_tenant !== row.tenant_id ||
+    row.expense_account_facility !== row.facility_id ||
+    row.expense_account_type !== 'EXPENSE' ||
+    row.expense_account_active !== true ||
+    row.payable_account_tenant !== row.tenant_id ||
+    row.payable_account_facility !== row.facility_id ||
+    row.payable_account_type !== 'LIABILITY' ||
+    row.payable_account_active !== true
+  )
+    return { reviewHash: null, reviewIssue: 'ACCOUNT_REVIEW_REQUIRED' };
+  return {
+    reviewHash: createHash('sha256')
+      .update(
+        JSON.stringify({
+          id: row.id,
+          tenantId: row.tenant_id,
+          facilityId: row.facility_id,
+          requestNumber: row.request_number,
+          currency: row.currency,
+          sourceHash,
+          requestedBy: row.requested_by_user_id,
+          expense: [row.expense_account_id, row.expense_account_code, row.expense_account_name],
+          payable: [row.payment_account_id, row.payable_account_code, row.payable_account_name],
+        }),
+      )
+      .digest('hex'),
+    reviewIssue: null,
+  };
+}
+
+const expenseReviewSelect = `SELECT e.*,e.incurred_date::text AS incurred_date_text,
+  ea.account_code AS expense_account_code,ea.account_name AS expense_account_name,
+  ea.account_type AS expense_account_type,ea.is_active AS expense_account_active,
+  ea.tenant_id AS expense_account_tenant,ea.facility_id AS expense_account_facility,
+  pa.account_code AS payable_account_code,pa.account_name AS payable_account_name,
+  pa.account_type AS payable_account_type,pa.is_active AS payable_account_active,
+  pa.tenant_id AS payable_account_tenant,pa.facility_id AS payable_account_facility,
+  j.id AS linked_journal_id,j.status AS linked_journal_status,j.source_type AS linked_journal_source_type,
+  j.source_id AS linked_journal_source_id,j.total_debit_cents::text AS linked_journal_debit,
+  j.total_credit_cents::text AS linked_journal_credit,
+  jl.line_count AS linked_line_count,jl.expense_lines AS linked_expense_line_count,
+  jl.payable_lines AS linked_payable_line_count,sj.source_count AS source_journal_count,
+  r.id AS reversal_journal_id
+  FROM expense_requests e
+  LEFT JOIN chart_of_accounts ea ON ea.id=e.expense_account_id AND ea.tenant_id=e.tenant_id AND ea.facility_id=e.facility_id
+  LEFT JOIN chart_of_accounts pa ON pa.id=e.payment_account_id AND pa.tenant_id=e.tenant_id AND pa.facility_id=e.facility_id
+  LEFT JOIN journal_entries j ON j.id=e.posted_journal_id AND j.tenant_id=e.tenant_id AND j.facility_id=e.facility_id
+  LEFT JOIN LATERAL (
+    SELECT count(*)::int AS source_count FROM journal_entries source_entry
+    WHERE source_entry.tenant_id=e.tenant_id AND source_entry.facility_id=e.facility_id
+      AND source_entry.source_type='EXPENSE_REQUEST' AND source_entry.source_id=e.id::text
+  ) sj ON true
+  LEFT JOIN LATERAL (
+    SELECT count(*)::int AS line_count,
+      count(*) FILTER (WHERE l.account_id=e.expense_account_id AND l.debit_cents=j.total_debit_cents AND l.credit_cents=0)::int AS expense_lines,
+      count(*) FILTER (WHERE l.account_id=e.payment_account_id AND l.credit_cents=j.total_credit_cents AND l.debit_cents=0)::int AS payable_lines
+    FROM journal_lines l WHERE l.journal_entry_id=j.id
+  ) jl ON true
+  LEFT JOIN journal_entries r ON r.reversal_of_journal_id=j.id AND r.tenant_id=e.tenant_id
+    AND r.facility_id=e.facility_id AND r.status='POSTED'`;
+
+function expenseAccountingStatus(
+  row: ExpenseReviewRow,
+): 'NOT_POSTED' | 'POSTED' | 'REVERSED' | 'REVIEW_REQUIRED' {
+  if (row.status !== 'POSTED')
+    return row.posted_journal_id || row.source_journal_count ? 'REVIEW_REQUIRED' : 'NOT_POSTED';
+  let amount: string;
+  try {
+    amount = parseKesToCents(row.amount_kes).toString();
+  } catch {
+    return 'REVIEW_REQUIRED';
+  }
+  if (
+    !row.posted_journal_id ||
+    row.currency !== 'KES' ||
+    row.linked_journal_id !== row.posted_journal_id ||
+    row.linked_journal_status !== 'POSTED' ||
+    row.linked_journal_source_type !== 'EXPENSE_REQUEST' ||
+    row.linked_journal_source_id !== String(row.id) ||
+    row.linked_journal_debit !== amount ||
+    row.linked_journal_credit !== amount ||
+    row.source_journal_count !== 1 ||
+    row.linked_line_count !== 2 ||
+    row.linked_expense_line_count !== 1 ||
+    row.linked_payable_line_count !== 1
+  )
+    return 'REVIEW_REQUIRED';
+  return row.reversal_journal_id ? 'REVERSED' : 'POSTED';
+}
+
 export async function createExpenseRequestScoped(
   scope: AccountingScope,
   input: Record<string, unknown>,
@@ -853,82 +1027,298 @@ export async function decideExpenseRequestScoped(
   });
 }
 
+async function lockedExpenseReview(c: PoolClient, scope: AccountingScope, expenseId: number) {
+  const initial = await c.query<ExpenseReviewRow>(
+    `${expenseReviewSelect} WHERE e.id=$1 AND e.tenant_id=$2 AND e.facility_id=$3 FOR UPDATE OF e`,
+    [expenseId, scope.tenantId, scope.facilityId],
+  );
+  if (!initial.rows.length)
+    throw new AccountingIntegrityError('EXPENSE_NOT_FOUND', 'Expense request not found.', 404);
+  const first = initial.rows[0];
+  const ids = [first.expense_account_id, first.payment_account_id].filter(
+    (id): id is number => id !== null,
+  );
+  // Account changes cannot race the reviewed snapshot or the resulting journal.
+  await c.query(
+    'SELECT id FROM chart_of_accounts WHERE id=ANY($1::int[]) AND tenant_id=$2 AND facility_id=$3 ORDER BY id FOR SHARE',
+    [ids, scope.tenantId, scope.facilityId],
+  );
+  // Serialize a replay with reversal, then re-read the reversal state. Otherwise
+  // a concurrent reversal could commit between the status check and response.
+  if (first.posted_journal_id)
+    await c.query(
+      'SELECT id FROM journal_entries WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE',
+      [first.posted_journal_id, scope.tenantId, scope.facilityId],
+    );
+  const refreshed = await c.query<ExpenseReviewRow>(
+    `${expenseReviewSelect} WHERE e.id=$1 AND e.tenant_id=$2 AND e.facility_id=$3`,
+    [expenseId, scope.tenantId, scope.facilityId],
+  );
+  return refreshed.rows[0];
+}
+
+function requireReviewedExpense(row: ExpenseReviewRow) {
+  const assessment = expenseReview(row);
+  if (!assessment.reviewHash)
+    throw new AccountingIntegrityError(
+      'EXPENSE_REVIEW_CHANGED',
+      'Expense details or the scoped account classifications require a fresh financial review.',
+      409,
+    );
+  return assessment.reviewHash;
+}
+
+async function postApprovedExpenseInsideTransaction(
+  c: PoolClient,
+  scope: AccountingScope,
+  expenseId: number,
+) {
+  const e = await lockedExpenseReview(c, scope, expenseId);
+  const accountingStatus = expenseAccountingStatus(e);
+  if (accountingStatus === 'REVERSED')
+    throw new AccountingIntegrityError(
+      'EXPENSE_POSTING_REVERSED',
+      'The expense journal was reversed; use a controlled correction rather than reposting it.',
+      409,
+    );
+  if (accountingStatus === 'REVIEW_REQUIRED')
+    throw new AccountingIntegrityError(
+      'EXPENSE_POSTING_INCONSISTENT',
+      'The expense and its source-linked journal require financial review.',
+      409,
+    );
+  if (e.status === 'POSTED')
+    return {
+      expenseId,
+      status: 'POSTED' as const,
+      journalId: e.posted_journal_id!,
+      idempotentReplay: true,
+      paymentRecorded: false,
+    };
+  if (e.status !== 'APPROVED')
+    throw new AccountingIntegrityError(
+      'EXPENSE_NOT_APPROVED',
+      'Only approved requests can be posted.',
+      409,
+    );
+  if (
+    !e.requested_by_user_id ||
+    !e.reviewed_by_user_id ||
+    e.requested_by_user_id === e.reviewed_by_user_id
+  )
+    throw new AccountingIntegrityError(
+      'INDEPENDENT_EXPENSE_REVIEW_REQUIRED',
+      'A different authorized staff member must approve this expense before posting.',
+      409,
+    );
+  requireReviewedExpense(e);
+  const untracked = await c.query(
+    "SELECT id FROM journal_entries WHERE tenant_id=$1 AND facility_id=$2 AND source_type='EXPENSE_REQUEST' AND source_id=$3 LIMIT 1",
+    [scope.tenantId, scope.facilityId, String(expenseId)],
+  );
+  if (untracked.rows.length)
+    throw new AccountingIntegrityError(
+      'EXPENSE_POSTING_INCONSISTENT',
+      'An existing source journal is not linked to this expense; review it before posting.',
+      409,
+    );
+  const amount = parseKesToCents(e.amount_kes);
+  if (amount <= 0n)
+    throw new AccountingIntegrityError('INVALID_AMOUNT', 'Expense amount must be positive.', 409);
+  const request: JournalRequest = {
+    entryDate: e.incurred_date_text,
+    description: `Expense request ${e.request_number}`,
+    idempotencyKey: `expense-post:${expenseId}`,
+    sourceType: 'EXPENSE_REQUEST',
+    sourceId: String(expenseId),
+    totalCents: amount,
+    lines: [
+      {
+        accountId: e.expense_account_id,
+        debitCents: amount,
+        creditCents: 0n,
+        description: null,
+        serviceLine: e.service_line,
+      },
+      {
+        accountId: e.payment_account_id!,
+        debitCents: 0n,
+        creditCents: amount,
+        description: null,
+        serviceLine: e.service_line,
+      },
+    ],
+  };
+  const posted = await postInsideTransaction(c, scope, request);
+  if (posted.idempotentReplay)
+    throw new AccountingIntegrityError(
+      'EXPENSE_POSTING_INCONSISTENT',
+      'An existing journal is not linked to this expense; review it before posting.',
+      409,
+    );
+  await c.query(
+    "UPDATE expense_requests SET status='POSTED',posted_journal_id=$1,updated_at=now() WHERE id=$2",
+    [posted.journal.id, expenseId],
+  );
+  await audit(c, scope, 'POST', 'expense_request', expenseId, {
+    journalId: posted.journal.id,
+    representsPayment: false,
+  });
+  return {
+    expenseId,
+    status: 'POSTED' as const,
+    journalId: posted.journal.id,
+    idempotentReplay: false,
+    paymentRecorded: false,
+  };
+}
+
 export async function postApprovedExpenseScoped(scope: AccountingScope, expenseId: number) {
   if (!Number.isSafeInteger(expenseId) || expenseId <= 0)
     throw new AccountingIntegrityError('EXPENSE_NOT_FOUND', 'Expense request not found.', 404);
+  return transaction((c) => postApprovedExpenseInsideTransaction(c, scope, expenseId));
+}
+
+/**
+ * A reviewer who also has journal-posting permission explicitly approves the
+ * displayed source and accounts, then the payable journal is posted in the
+ * same transaction. This records no payment and establishes no standing
+ * facility mapping or approval policy for other sources.
+ */
+export async function approveAndPostExpenseScoped(
+  scope: AccountingScope,
+  expenseId: number,
+  input: Record<string, unknown>,
+) {
+  if (!Number.isSafeInteger(expenseId) || expenseId <= 0)
+    throw new AccountingIntegrityError('EXPENSE_NOT_FOUND', 'Expense request not found.', 404);
+  const notes = requiredText(input.notes, 'Review notes', 1000);
+  const reviewedHash = typeof input.reviewHash === 'string' ? input.reviewHash : '';
+  if (!/^[a-f0-9]{64}$/.test(reviewedHash))
+    throw new AccountingIntegrityError('INVALID_REVIEW', 'A current expense review is required.');
   return transaction(async (c) => {
-    const result = await c.query(
-      'SELECT *,incurred_date::text AS incurred_date_text FROM expense_requests WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE',
-      [expenseId, scope.tenantId, scope.facilityId],
-    );
-    if (!result.rows.length)
-      throw new AccountingIntegrityError('EXPENSE_NOT_FOUND', 'Expense request not found.', 404);
-    const e = result.rows[0];
-    if (e.status === 'POSTED')
-      return {
-        expenseId,
-        status: 'POSTED',
-        journalId: e.posted_journal_id,
-        idempotentReplay: true,
-      };
-    if (e.status !== 'APPROVED')
+    const e = await lockedExpenseReview(c, scope, expenseId);
+    if (e.requested_by_user_id === scope.actorUserId)
       throw new AccountingIntegrityError(
-        'EXPENSE_NOT_APPROVED',
-        'Only approved requests can be posted.',
+        'SELF_APPROVAL_FORBIDDEN',
+        'A different authorized staff member must review the request.',
+        403,
+      );
+    if (e.status === 'POSTED') {
+      const priorAudit = await c.query<{ details: string | null }>(
+        `SELECT details FROM audit_logs WHERE tenant_id=$1 AND facility_id=$2
+          AND resource='expense_request' AND resource_id=$3 AND action='APPROVE'
+          ORDER BY id DESC LIMIT 1`,
+        [scope.tenantId, scope.facilityId, String(expenseId)],
+      );
+      let priorHash: unknown = null;
+      try {
+        priorHash = priorAudit.rows[0]?.details
+          ? JSON.parse(priorAudit.rows[0].details).reviewHash
+          : null;
+      } catch {
+        // A missing or unreadable approval snapshot cannot establish a safe replay.
+        priorHash = null;
+      }
+      if (
+        e.reviewed_by_user_id !== scope.actorUserId ||
+        e.review_notes !== notes ||
+        priorHash !== reviewedHash
+      )
+        throw new AccountingIntegrityError(
+          'EXPENSE_ALREADY_REVIEWED',
+          'This expense was already reviewed with different or unverified approval details.',
+          409,
+        );
+      // A genuine replay is independent of later account deactivation, but a
+      // subsequently reversed or inconsistent journal still requires review.
+      return postApprovedExpenseInsideTransaction(c, scope, expenseId);
+    }
+    if (requireReviewedExpense(e) !== reviewedHash)
+      throw new AccountingIntegrityError(
+        'EXPENSE_REVIEW_CHANGED',
+        'The expense or account details changed; refresh and review them before approval.',
         409,
       );
-    const amount = parseKesToCents(e.amount_kes);
-    const request: JournalRequest = {
-      entryDate: e.incurred_date_text,
-      description: `Expense request ${e.request_number}`,
-      idempotencyKey: `expense-post:${expenseId}`,
-      sourceType: 'EXPENSE_REQUEST',
-      sourceId: String(expenseId),
-      totalCents: amount,
-      lines: [
-        {
-          accountId: e.expense_account_id,
-          debitCents: amount,
-          creditCents: 0n,
-          description: null,
-          serviceLine: e.service_line,
-        },
-        {
-          accountId: e.payment_account_id,
-          debitCents: 0n,
-          creditCents: amount,
-          description: null,
-          serviceLine: e.service_line,
-        },
-      ],
-    };
-    const posted = await postInsideTransaction(c, scope, request);
+    if (e.status !== 'SUBMITTED')
+      throw new AccountingIntegrityError(
+        'EXPENSE_NOT_SUBMITTED',
+        'Only submitted requests may be reviewed by this action.',
+        409,
+      );
     await c.query(
-      "UPDATE expense_requests SET status='POSTED',posted_journal_id=$1,updated_at=now() WHERE id=$2",
-      [posted.journal.id, expenseId],
+      "UPDATE expense_requests SET status='APPROVED',reviewed_by_user_id=$1,reviewed_at=now(),review_notes=$2,updated_at=now() WHERE id=$3",
+      [scope.actorUserId, notes, expenseId],
     );
-    await audit(c, scope, 'POST', 'expense_request', expenseId, {
-      journalId: posted.journal.id,
-      representsPayment: false,
+    await audit(c, scope, 'APPROVE', 'expense_request', expenseId, {
+      status: 'APPROVED',
+      reviewHash: reviewedHash,
+      expenseAccountId: e.expense_account_id,
+      payableAccountId: e.payment_account_id,
+      postsPayableNotPayment: true,
     });
-    return {
-      expenseId,
-      status: 'POSTED',
-      journalId: posted.journal.id,
-      idempotentReplay: false,
-      paymentRecorded: false,
-    };
+    return postApprovedExpenseInsideTransaction(c, scope, expenseId);
   });
 }
 
-export async function listExpensesScoped(scope: AccountingScope) {
-  const result = await pool.query(
-    'SELECT id,request_number AS "requestNumber",incurred_date::text AS "incurredDate",payee_name AS "payeeName",category,amount_kes AS "amountKes",description,status,requested_by_user_id AS "requestedByUserId",reviewed_by_user_id AS "reviewedByUserId",posted_journal_id AS "journalId",supporting_documents AS "supportingDocuments" FROM expense_requests WHERE tenant_id=$1 AND facility_id=$2 ORDER BY id DESC LIMIT 100',
-    [scope.tenantId, scope.facilityId],
+export async function listExpensesScoped(
+  scope: AccountingScope,
+  input: { search?: unknown; afterId?: unknown; limit?: unknown } = {},
+) {
+  const search = input.search === undefined ? '' : input.search;
+  const afterId = input.afterId === undefined || input.afterId === '' ? 0 : Number(input.afterId);
+  const limit = input.limit === undefined || input.limit === '' ? 25 : Number(input.limit);
+  if (typeof search !== 'string' || search.trim().length > 80)
+    throw new AccountingIntegrityError('INVALID_SEARCH', 'Search must be at most 80 characters.');
+  if (
+    !Number.isSafeInteger(afterId) ||
+    afterId < 0 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 50
+  )
+    throw new AccountingIntegrityError('INVALID_PAGE', 'Choose a valid expense page.');
+  const result = await pool.query<ExpenseReviewRow>(
+    `${expenseReviewSelect} WHERE e.tenant_id=$1 AND e.facility_id=$2
+      AND ($3::int=0 OR e.id<$3)
+      AND ($4::text='' OR e.id::text=$4 OR strpos(lower(e.request_number),lower($4))>0
+        OR strpos(lower(e.payee_name),lower($4))>0)
+      ORDER BY e.id DESC LIMIT $5`,
+    [scope.tenantId, scope.facilityId, afterId, search.trim(), limit + 1],
   );
+  const page = result.rows.slice(0, limit);
   return {
-    expenses: result.rows,
+    expenses: page.map((e) => ({
+      id: e.id,
+      requestNumber: e.request_number,
+      incurredDate: e.incurred_date_text,
+      payeeName: e.payee_name,
+      category: e.category,
+      amountKes: e.amount_kes,
+      currency: e.currency,
+      description: e.description,
+      serviceLine: e.service_line,
+      status: e.status,
+      requestedByUserId: e.requested_by_user_id,
+      reviewedByUserId: e.reviewed_by_user_id,
+      journalId: e.linked_journal_id,
+      reversalJournalId: e.reversal_journal_id,
+      accountingStatus: expenseAccountingStatus(e),
+      expenseAccount: {
+        id: e.expense_account_facility === e.facility_id ? e.expense_account_id : null,
+        code: e.expense_account_code,
+        name: e.expense_account_name,
+      },
+      payableAccount: {
+        id: e.payable_account_facility === e.facility_id ? e.payment_account_id : null,
+        code: e.payable_account_code,
+        name: e.payable_account_name,
+      },
+      supportingDocuments: e.supporting_documents,
+      ...expenseReview(e),
+    })),
+    nextAfterId: result.rows.length > limit && page.length ? page[page.length - 1].id : null,
     notice:
-      'Supporting documents are references only; file upload and existence verification are not implemented.',
+      'Supporting documents are references only; file upload and existence verification are not implemented. A posted expense is a payable, not a recorded payment.',
   };
 }
