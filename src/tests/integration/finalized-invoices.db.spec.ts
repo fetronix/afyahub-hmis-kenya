@@ -16,6 +16,7 @@ import {
 } from '../../billing/payments.service.ts';
 import { previewClaimEvidence } from '../../insurance/claims/claim-evidence.service.ts';
 import { recordManualRefund } from '../../billing/refunds.service.ts';
+import { approvedSyntheticManualRefund } from './support/refund-approval.ts';
 import { db, pool } from '../../db/index.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
@@ -346,7 +347,7 @@ describeDb('Finalized invoices and explicit receipt allocation', () => {
         idempotencyKey: randomUUID(),
       }),
     ).rejects.toMatchObject({ code: 'PAYER_REFUND_REVIEW_REQUIRED' });
-    await recordManualRefund(ctx, {
+    await approvedSyntheticManualRefund(ctx, {
       facilityId: facility,
       invoiceId: id,
       paymentId: retries[0].payment.id,

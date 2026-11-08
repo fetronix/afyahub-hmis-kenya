@@ -4,9 +4,11 @@ import { unzipSync, strFromU8 } from 'fflate';
 import PDFParser from 'pdf2json';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createSession } from '../../auth/session.service.ts';
+import { addCalendarDays } from '../../dashboard/date-range.ts';
 import { pool } from '../../db/index.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
+import { insertSyntheticReportRefund } from './support/refund-approval.ts';
 
 describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTTP)', () => {
   const suffix = randomUUID().slice(0, 8);
@@ -31,6 +33,7 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
     'laboratory.read',
     'pharmacy.read',
     'billing.read',
+    'billing.refunds.record',
     'users.read',
   ];
   let tenant: number,
@@ -44,6 +47,7 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
     department: number,
     actor: number;
   let full: string, onlyReports: string, noExport: string, base: string, close: () => Promise<void>;
+  let refundNumber: string, refundDate: string, lastRefundDate: string;
 
   async function user(label: string, permissions: string[]) {
     const id = (
@@ -239,11 +243,11 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
     );
     const invoiceIds = (
       await pool.query(
-        `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,balance_amount,status,created_at) VALUES
-       ($1,$2,$4,$7,100.50,'Pending','2026-04-01 08:00'),
-       ($1,$2,$4,$8,NULL,'Pending','2026-04-02 08:00'),
-       ($1,$2,$6,$9,20.00,'Pending','2026-04-03 08:00'),
-       ($1,$3,$5,$10,999.00,'Pending','2026-04-01 08:00') RETURNING id`,
+        `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,status,created_at) VALUES
+       ($1,$2,$4,$7,280.50,210.00,70.50,'Partially Paid','2026-04-01 08:00'),
+       ($1,$2,$4,$8,0,0,NULL,'Pending','2026-04-02 08:00'),
+       ($1,$2,$6,$9,0,0,20.00,'Pending','2026-04-03 08:00'),
+       ($1,$3,$5,$10,0,0,999.00,'Pending','2026-04-01 08:00') RETURNING id`,
         [
           tenant,
           facility,
@@ -275,23 +279,29 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
         ],
       )
     ).rows.map((r) => r.id);
-    await pool.query(
-      `INSERT INTO billing_refunds(tenant_id,facility_id,invoice_id,payment_id,refund_number,amount,refund_method,reason,manual_confirmation,idempotency_key,request_hash,actor_user_id,created_at) VALUES
-       ($1,$2,$3,$4,$6,25.00,'CASH','Synthetic test',true,$8,'synthetic',$10,'2026-04-01 15:00'),
-       ($1,$2,$3,$5,$7,5.00,'CASH','Synthetic test',true,$9,'synthetic',$10,'2026-04-03 15:00')`,
-      [
-        tenant,
-        facility,
-        invoiceIds[0],
-        payments[0],
-        payments[1],
-        `REF-A-${suffix}`,
-        `REF-B-${suffix}`,
-        `key-a-${suffix}`,
-        `key-b-${suffix}`,
-        actor,
-      ],
-    );
+    const firstRefund = await insertSyntheticReportRefund({
+      tenant,
+      facility,
+      invoice: invoiceIds[0],
+      payment: payments[0],
+      actor,
+      amount: '25.00',
+      reason: 'Synthetic test',
+      key: `key-a-${suffix}`,
+    });
+    refundNumber = firstRefund.number;
+    refundDate = firstRefund.date;
+    const secondRefund = await insertSyntheticReportRefund({
+      tenant,
+      facility,
+      invoice: invoiceIds[0],
+      payment: payments[1],
+      actor,
+      amount: '5.00',
+      reason: 'Synthetic test',
+      key: `key-b-${suffix}`,
+    });
+    lastRefundDate = secondRefund.date;
     const { createApp } = await import('../../app.ts');
     ({ baseUrl: base, close } = await startTestServer(await createApp()));
   });
@@ -393,12 +403,15 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
   it.each(cases)(
     '$id returns scoped actual rows and generates real PDF/XLSX',
     async ({ id, search, expected, field, title, date }) => {
-      const filters = { search, from: date, to: date, limit: 1 };
+      const selectedDate = id === 'recorded-refunds' ? refundDate : date;
+      const selectedSearch = id === 'recorded-refunds' ? refundNumber : search;
+      const expectedText = id === 'recorded-refunds' ? refundNumber : expected;
+      const filters = { search: selectedSearch, from: selectedDate, to: selectedDate, limit: 1 };
       const response = await generate(id, filters);
       expect(response.status).toBe(200);
       expect(response.body.title).toBe(title);
       expect(response.body.total).toBe(1);
-      expect(String(response.body.rows[0][field])).toContain(expected);
+      expect(String(response.body.rows[0][field])).toContain(expectedText);
       expect(JSON.stringify(response.body)).not.toContain('SiblingPrivate');
       expect(JSON.stringify(response.body)).not.toContain('ForeignPrivate');
       expect((await generate(id, { facilityId: sibling })).status).toBe(403);
@@ -421,7 +434,7 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
         parser.parseBuffer(bytes);
       });
       expect(text).toContain(title);
-      expect(text).toContain(expected);
+      expect(text).toContain(expectedText);
       parser.destroy();
       const xlsx = await exp(id, 'xlsx', filters);
       expect(xlsx.status).toBe(200);
@@ -429,7 +442,7 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
         .filter(([name]) => name.endsWith('.xml'))
         .map(([, data]) => strFromU8(data))
         .join('\n');
-      expect(xml).toContain(expected);
+      expect(xml).toContain(expectedText);
       expect(xml).not.toMatch(/<f[ >]/);
     },
     20000,
@@ -519,13 +532,20 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
     expect(cashier.body.rows[0].receiptCount).toBe(2);
     expect(cashier.body.rows[0].amount).toBe('200.00');
     const refunds = await generate('recorded-refunds', {
-      from: '2026-04-01',
-      to: '2026-04-03',
+      from: refundDate,
+      to: lastRefundDate,
       staffId: actor,
       limit: 1,
     });
     expect(refunds.body.total).toBe(2);
     expect(refunds.body.summaries[0].value).toBe('30.00');
+    const priorDate = addCalendarDays(refundDate, -1);
+    const excluded = await generate('recorded-refunds', {
+      from: priorDate,
+      to: priorDate,
+      staffId: actor,
+    });
+    expect(excluded.body.total).toBe(0);
     const balances = await generate('invoice-balances');
     expect(balances.body.total).toBe(3);
     expect(balances.body.summaries[0].value).toBe('120.50');

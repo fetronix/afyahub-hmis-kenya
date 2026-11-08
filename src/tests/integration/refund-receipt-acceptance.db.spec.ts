@@ -11,6 +11,10 @@ import { db, pool } from '../../db/index.ts';
 import { matchRecordedPayerPayment } from '../../insurance/hub/recorded-payment.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
+import {
+  createSyntheticRefundReviewer,
+  approveSyntheticRefund,
+} from './support/refund-approval.ts';
 
 describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
   const suffix = randomUUID().slice(0, 8);
@@ -21,7 +25,7 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
     platformToken: string,
     base: string,
     close: () => Promise<void>;
-  let ctx: AuthorizationContext;
+  let ctx: AuthorizationContext, reviewer: AuthorizationContext;
   let serial = 0;
   const call = (path: string, body: object, auth = token) =>
     httpJson(base, 'POST', path, { token: auth, body });
@@ -174,6 +178,7 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
       permissions: ['billing.read', 'billing.refunds.record'],
       isSuperAdmin: false,
     };
+    reviewer = await createSyntheticRefundReviewer(ctx);
     const { createApp } = await import('../../app.ts');
     ({ baseUrl: base, close } = await startTestServer(await createApp()));
   });
@@ -238,6 +243,7 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
     const id = await invoice(),
       p = await receipt(id),
       input = body(id, p.id);
+    await approveSyntheticRefund(ctx, reviewer, input);
     const results = await Promise.all(
       Array.from({ length: 4 }, () => call('/api/billing/refunds', input)),
     );
@@ -301,13 +307,24 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
   it('serializes competing partial refunds so the receipt cannot be over-refunded', async () => {
     const id = await invoice(),
       p = await receipt(id);
+    const first = body(id, p.id, '60.00'),
+      second = body(id, p.id, '60.00');
+    await approveSyntheticRefund(ctx, reviewer, first);
     const results = await Promise.all([
-      call('/api/billing/refunds', body(id, p.id, '60.00')),
-      call('/api/billing/refunds', body(id, p.id, '60.00')),
+      call('/api/billing/refunds', first),
+      call('/api/billing/refunds', second),
     ]);
     expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
-    expect(results.find((r) => r.status === 409)!.body.error).toBe('REFUND_EXCEEDS_RECEIPT');
+    expect(['REFUND_EXCEEDS_RECEIPT', 'REFUND_APPROVAL_REQUIRED']).toContain(
+      results.find((r) => r.status === 409)!.body.error,
+    );
     expect(await state(id)).toMatchObject({ paid: '40.00', balance: '60.00' });
+    // After the winner commits, an independently retried excessive amount
+    // deterministically reaches the receipt-limit guard, not merely the
+    // missing-approval branch of the concurrent race.
+    const excessive = await call('/api/billing/refunds', body(id, p.id, '60.00'));
+    expect(excessive.status).toBe(409);
+    expect(excessive.body.error).toBe('REFUND_EXCEEDS_RECEIPT');
     expect(
       (
         await pool.query('SELECT count(*)::int AS n FROM billing_refunds WHERE payment_id=$1', [
@@ -321,7 +338,9 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
     const id = await invoice(),
       p = await receipt(id, '130.00', 'Cash', true);
     expect(await state(id)).toMatchObject({ paid: '130.00', balance: '0.00', credit: '30.00' });
-    expect((await call('/api/billing/refunds', body(id, p.id, '50.00'))).status).toBe(201);
+    const refundInput = body(id, p.id, '50.00');
+    await approveSyntheticRefund(ctx, reviewer, refundInput);
+    expect((await call('/api/billing/refunds', refundInput)).status).toBe(201);
     expect(await state(id)).toMatchObject({
       paid: '80.00',
       balance: '20.00',
@@ -363,11 +382,13 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
     const blocked = await call('/api/billing/refunds', body(payerId, payer.id));
     expect(blocked.status).toBe(409);
     expect(blocked.body.error).toBe('PAYER_REFUND_REVIEW_REQUIRED');
-    const manual = await call('/api/billing/refunds', {
+    const manualInput = {
       ...body(id, p.id),
       refundMethod: 'CARD',
       externalReference: 'MANUAL-SLIP-123',
-    });
+    };
+    await approveSyntheticRefund(ctx, reviewer, manualInput);
+    const manual = await call('/api/billing/refunds', manualInput);
     expect(manual.status).toBe(201);
     expect(manual.body.refund.status).toBe('MANUALLY_RECORDED');
   });
@@ -375,7 +396,9 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
   it('refuses payer allocation of any receipt that already has a refund', async () => {
     const id = await invoice(),
       p = await receipt(id);
-    expect((await call('/api/billing/refunds', body(id, p.id))).status).toBe(201);
+    const refundInput = body(id, p.id);
+    await approveSyntheticRefund(ctx, reviewer, refundInput);
+    expect((await call('/api/billing/refunds', refundInput)).status).toBe(201);
     await expect(
       db.transaction((tx) =>
         matchRecordedPayerPayment(tx, {
@@ -437,7 +460,9 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
   it('reports each invoice source without claiming that unposted receipts or refunds reached the ledger', async () => {
     const id = await invoice(),
       p = await receipt(id);
-    expect((await call('/api/billing/refunds', body(id, p.id, '25.00'))).status).toBe(201);
+    const refundInput = body(id, p.id, '25.00');
+    await approveSyntheticRefund(ctx, reviewer, refundInput);
+    expect((await call('/api/billing/refunds', refundInput)).status).toBe(201);
     const url = `/api/accounting/billing-ledger-review?facilityId=${facility}&startDate=2000-01-01&endDate=2099-12-31&afterId=${id - 1}&limit=1`;
     expect((await httpJson(base, 'GET', url, { token: readerToken })).status).toBe(403);
     expect((await httpJson(base, 'GET', url, { token: foreignToken })).status).toBe(403);
@@ -571,10 +596,9 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
         await tx.execute(sql`INSERT INTO sha_eclaims(tenant_id,facility_id,patient_id,invoice_id,claim_number,claim_uuid,billable_start,billable_end,total_billed_amount,total_claimed_amount,settled_payment_id)
         VALUES(${tenant},${facility},${patient},${id},${'SYN-CLAIM-' + randomUUID()},${randomUUID()},'2026-01-01','2026-01-01','100.00','100.00',${payment.id})`);
       });
-    const outcomes = await Promise.allSettled([
-      linkClaim(),
-      recordManualRefund(ctx, body(id, payment.id, '20.00')),
-    ]);
+    const refundInput = body(id, payment.id, '20.00');
+    await approveSyntheticRefund(ctx, reviewer, refundInput);
+    const outcomes = await Promise.allSettled([linkClaim(), recordManualRefund(ctx, refundInput)]);
     expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
     const refunded = Number(
       (
@@ -609,6 +633,8 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
   it('rolls back receipt, invoice and audit together if the audit write fails', async () => {
     const id = await invoice(),
       p = await receipt(id);
+    const refundInput = body(id, p.id);
+    await approveSyntheticRefund(ctx, reviewer, refundInput);
     const name = `refund_audit_${suffix.replaceAll('-', '')}`;
     const client = await pool.connect();
     try {
@@ -618,7 +644,7 @@ describeDb('Manual refund receipts (synthetic PostgreSQL)', () => {
       await client.query(
         `CREATE TRIGGER ${name} BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION ${name}()`,
       );
-      expect((await call('/api/billing/refunds', body(id, p.id))).status).toBe(500);
+      expect((await call('/api/billing/refunds', refundInput)).status).toBe(500);
       expect(await state(id)).toMatchObject({ paid: '100.00', balance: '0.00' });
       expect(
         (

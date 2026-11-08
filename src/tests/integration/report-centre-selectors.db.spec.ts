@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { createSession } from '../../auth/session.service.ts';
+import { addCalendarDays } from '../../dashboard/date-range.ts';
 import { pool } from '../../db/index.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
+import { insertSyntheticReportRefund } from './support/refund-approval.ts';
 
 describeDb('Report selection and filtered exports (synthetic PostgreSQL and real HTTP)', () => {
   const suffix = randomUUID().slice(0, 8);
@@ -33,6 +35,7 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
     'laboratory.read',
     'pharmacy.read',
     'billing.read',
+    'billing.refunds.record',
     'users.read',
     'accounting.read',
     'accounting.reports.export',
@@ -59,6 +62,7 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
     order2: number;
   let labTest: number, labService: number, radService: number, siblingService: number;
   let invoice: number, paidInvoice: number, siblingInvoice: number, receipt: number;
+  let refundDate: string;
   let cashAccount: number, revenueAccount: number, siblingAccount: number;
   let full: string,
     reportsOnly: string,
@@ -333,7 +337,7 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
     [invoice, paidInvoice, siblingInvoice] = (
       await pool.query(
         `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,status,created_at) VALUES
-       ($1,$2,$4,$7,120.50,20.00,100.50,'Partial','2026-04-01 08:00'),
+       ($1,$2,$4,$7,120.50,25.00,95.50,'Partially Paid','2026-04-01 08:00'),
        ($1,$2,$5,$8,50.00,50.00,0.00,'Paid','2026-04-02 08:00'),
        ($1,$3,$6,$9,999.00,0,999.00,'Pending','2026-04-01 08:00') RETURNING id`,
         [
@@ -351,15 +355,22 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
     ).rows.map((r) => r.id);
     receipt = (
       await pool.query(
-        `INSERT INTO billing_payments(invoice_id,receipt_number,payment_method,amount,cashier_name,payment_date) VALUES($1,$2,'Cash',20.00,'Synthetic Cashier','2026-04-01 13:00') RETURNING id`,
+        `INSERT INTO billing_payments(invoice_id,receipt_number,payment_method,amount,cashier_name,payment_date) VALUES($1,$2,'Cash',25.00,'Synthetic Cashier','2026-04-01 13:00') RETURNING id`,
         [invoice, `REC-${suffix}`],
       )
     ).rows[0].id;
-    await pool.query(
-      `INSERT INTO billing_refunds(tenant_id,facility_id,invoice_id,payment_id,refund_number,amount,refund_method,reason,manual_confirmation,idempotency_key,request_hash,actor_user_id,created_at)
-       VALUES($1,$2,$3,$4,$5,5.00,'CASH','Synthetic',true,$6,'synthetic',$7,'2026-04-01 14:00')`,
-      [tenant, facility, invoice, receipt, `REF-${suffix}`, `KEY-${suffix}`, actor],
-    );
+    refundDate = (
+      await insertSyntheticReportRefund({
+        tenant,
+        facility,
+        invoice,
+        payment: receipt,
+        actor,
+        amount: '5.00',
+        reason: 'Synthetic',
+        key: `KEY-${suffix}`,
+      })
+    ).date;
     const period = (
       await pool.query(
         `INSERT INTO financial_periods(tenant_id,facility_id,period_code,name,start_date,end_date,status)
@@ -559,7 +570,7 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
       expect.objectContaining({
         id: receipt,
         label: expect.stringContaining('Synthetic Alice'),
-        detail: expect.stringContaining('20.00'),
+        detail: expect.stringContaining('25.00'),
       }),
     ]);
     expect((await options('ledger-income', 'account')).body.options).toEqual([
@@ -741,7 +752,7 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
     },
     {
       id: 'recorded-refunds',
-      filter: { staffId: actor, from: '2026-04-01', to: '2026-04-01' },
+      filter: { staffId: actor, from: refundDate, to: refundDate },
       total: 1,
       label: 'Synthetic full Staff',
     },
@@ -792,7 +803,7 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
     const balance = await generate('invoice-balances', { patientId: patient, invoiceId: invoice });
     expect(balance.body.summaries).toEqual([expect.objectContaining({ value: '100.50' })]);
     const receipts = await generate('cashier-receipts', { receiptId: receipt });
-    expect(receipts.body.summaries).toEqual([expect.objectContaining({ value: '20.00' })]);
+    expect(receipts.body.summaries).toEqual([expect.objectContaining({ value: '25.00' })]);
     const ledger = await generate('ledger-trial-movements', {
       accountIds: [cashAccount],
       from: '2026-04-01',
@@ -802,8 +813,17 @@ describeDb('Report selection and filtered exports (synthetic PostgreSQL and real
       '120.10',
       '0.00',
     ]);
-    const refunds = await generate('recorded-refunds', { staffId: actor });
+    const refunds = await generate('recorded-refunds', {
+      staffId: actor,
+      from: refundDate,
+      to: refundDate,
+    });
     expect(refunds.body.summaries).toEqual([expect.objectContaining({ value: '5.00' })]);
+    const priorDate = addCalendarDays(refundDate, -1);
+    expect(
+      (await generate('recorded-refunds', { staffId: actor, from: priorDate, to: priorDate })).body
+        .total,
+    ).toBe(0);
     const all = await generate('inventory-category', { itemIds: [item, item2] });
     const one = await generate('inventory-category', { itemIds: [item] });
     expect(all.body.total).toBe(2);

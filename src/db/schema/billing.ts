@@ -621,6 +621,62 @@ export const billingRefunds = pgTable(
   ],
 );
 
+/** Independent review of a patient-receipt refund; no transfer is initiated. */
+export const billingRefundRequests = pgTable(
+  'billing_refund_requests',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    invoiceId: integer('invoice_id')
+      .references(() => billingInvoices.id)
+      .notNull(),
+    paymentId: integer('payment_id')
+      .references(() => billingPayments.id)
+      .notNull(),
+    requestNumber: text('request_number').notNull().unique(),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    refundMethod: text('refund_method').notNull(),
+    reason: text('reason').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    status: text('status').notNull().default('REQUESTED'),
+    requestedByUserId: integer('requested_by_user_id')
+      .references(() => users.id)
+      .notNull(),
+    reviewedByUserId: integer('reviewed_by_user_id').references(() => users.id),
+    reviewNotes: text('review_notes'),
+    reviewHash: text('review_hash'),
+    reviewedAt: timestamp('reviewed_at'),
+    revokedByUserId: integer('revoked_by_user_id').references(() => users.id),
+    revocationReason: text('revocation_reason'),
+    revokedAt: timestamp('revoked_at'),
+    settledRefundId: integer('settled_refund_id')
+      .references(() => billingRefunds.id)
+      .unique(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('refund_requests_facility_key_idx').on(table.facilityId, table.idempotencyKey),
+    index('refund_requests_invoice_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.invoiceId,
+      table.id,
+    ),
+    index('refund_requests_payment_status_idx').on(table.paymentId, table.status),
+    check(
+      'refund_request_amount_chk',
+      sql`${table.amount} > 0 AND ${table.amount}::text NOT IN ('NaN','Infinity','-Infinity')`,
+    ),
+  ],
+);
+
 /* ============================================================
    42. INSURANCE / SHA CLAIMS
    ============================================================ */

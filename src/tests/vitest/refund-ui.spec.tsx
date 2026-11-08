@@ -16,7 +16,16 @@ const mocked = vi.hoisted(() => ({
     refreshKey: 0,
     triggerRefresh: vi.fn(),
   },
-  api: { getInvoiceDetail: vi.fn(), recordManualRefund: vi.fn(), checkRefundStatus: vi.fn() },
+  api: {
+    getInvoiceDetail: vi.fn(),
+    recordManualRefund: vi.fn(),
+    checkRefundStatus: vi.fn(),
+    listRefundRequests: vi.fn(),
+    createRefundRequest: vi.fn(),
+    checkRefundRequestStatus: vi.fn(),
+    decideRefundRequest: vi.fn(),
+    revokeRefundApproval: vi.fn(),
+  },
 }));
 vi.mock('../../context/HmisContext.tsx', () => ({ useHmis: () => mocked.context }));
 vi.mock('../../api/client.ts', () => ({ api: mocked.api }));
@@ -40,6 +49,30 @@ const result = {
   replayed: false,
   accounting: 'NOT_POSTED',
 };
+const approved = {
+  id: 44,
+  requestNumber: 'RFR-SYNTHETIC',
+  facilityId: 10,
+  invoiceId: 8,
+  paymentId: 12,
+  amount: '20.00',
+  refundMethod: 'CASH',
+  reason: 'Synthetic refund',
+  idempotencyKey: 'synthetic-approved-key',
+  status: 'APPROVED',
+  requestedByUserId: 7,
+  reviewedByUserId: 9,
+  reviewNotes: 'Synthetic independent review',
+  reviewedAt: '2026-10-30',
+  revokedByUserId: null,
+  revocationReason: null,
+  revokedAt: null,
+  settledRefundId: null,
+  createdAt: '2026-10-30',
+  reviewHash: null,
+  issue: null,
+  evidence: null,
+};
 const fill = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.type(screen.getByLabelText('Amount (KES)'), '20.00');
   await user.type(screen.getByLabelText('Reason'), 'Synthetic refund');
@@ -56,6 +89,7 @@ describe('Manual refund browser recovery', () => {
       isSuperAdmin: false,
       permissions: ['billing.read', 'billing.refunds.record'],
     };
+    mocked.api.listRefundRequests.mockResolvedValue({ requests: [approved], nextAfterId: null });
     mocked.api.getInvoiceDetail.mockResolvedValue({
       invoice: { id: 8 },
       items: [],
@@ -84,8 +118,12 @@ describe('Manual refund browser recovery', () => {
       .mockResolvedValueOnce({ ...result, replayed: true });
     mocked.api.checkRefundStatus.mockResolvedValue({ status: 'NOT_FOUND' });
     const view = render(<RefundsPanel invoiceId={8} />);
-    await user.click(await screen.findByRole('button', { name: 'Record manual refund' }));
-    await fill(user);
+    await user.click(
+      await screen.findByRole('button', { name: 'Record external refund for RFR-SYNTHETIC' }),
+    );
+    expect(screen.getByLabelText('Amount (KES)')).toHaveValue('20.00');
+    expect(screen.getByLabelText('Reason')).toHaveValue('Synthetic refund');
+    await user.click(screen.getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: 'Record refund receipt' }));
     await waitFor(() => expect(mocked.api.recordManualRefund).toHaveBeenCalledTimes(1));
     const first = mocked.api.recordManualRefund.mock.calls[0]![0];
@@ -153,7 +191,9 @@ describe('Manual refund browser recovery', () => {
     mocked.context.authenticatedUser.permissions = ['billing.read'];
     render(<RefundsPanel invoiceId={8} />);
     expect(await screen.findByText(/RCP-SYNTHETIC/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Record manual refund' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Record external refund for RFR-SYNTHETIC' }),
+    ).not.toBeInTheDocument();
   });
 
   it('reports failed receipt loading rather than showing an empty history', async () => {
@@ -165,14 +205,16 @@ describe('Manual refund browser recovery', () => {
     );
     expect(screen.queryByText(/No receipts recorded/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry receipt history' }));
-    expect(await screen.findByText(/RCP-SYNTHETIC/)).toBeInTheDocument();
+    expect(await screen.findByText('RCP-SYNTHETIC', { selector: 'strong' })).toBeInTheDocument();
   });
 
   it('fails closed on malformed stored identity', async () => {
     window.localStorage.setItem(key, '{broken');
     render(<RefundsPanel invoiceId={8} />);
     expect(await screen.findByText(/saved refund identity cannot be read/i)).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Record manual refund' })).toBeDisabled();
+    expect(
+      await screen.findByRole('button', { name: 'Record external refund for RFR-SYNTHETIC' }),
+    ).toBeDisabled();
     expect(mocked.api.recordManualRefund).not.toHaveBeenCalled();
   });
 });

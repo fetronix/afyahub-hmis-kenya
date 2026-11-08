@@ -21,13 +21,18 @@ function positiveId(value: unknown): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-function requireRefundPermission(context: AuthorizationContext) {
+export function requireRefundPermission(
+  context: AuthorizationContext,
+  permission:
+    'billing.refunds.record' | 'billing.refunds.approve' | 'either' = 'billing.refunds.record',
+) {
   // Global platform administration is not facility financial authority.
-  if (
-    context.isSuperAdmin ||
-    !context.permissions.includes('billing.read') ||
-    !context.permissions.includes('billing.refunds.record')
-  ) {
+  const hasPermission =
+    permission === 'either'
+      ? context.permissions.includes('billing.refunds.record') ||
+        context.permissions.includes('billing.refunds.approve')
+      : context.permissions.includes(permission);
+  if (context.isSuperAdmin || !context.permissions.includes('billing.read') || !hasPermission) {
     throw new PaymentDomainError(
       'REFUND_FORBIDDEN',
       'Facility billing and refund permissions are required.',
@@ -36,7 +41,7 @@ function requireRefundPermission(context: AuthorizationContext) {
   }
 }
 
-function keyValue(value: unknown): string {
+export function refundKeyValue(value: unknown): string {
   const key = typeof value === 'string' ? value.trim() : '';
   if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
     throw new PaymentDomainError('INVALID_INPUT', 'A valid retry identity is required.', 400);
@@ -44,8 +49,13 @@ function keyValue(value: unknown): string {
   return key;
 }
 
-async function facilityForRefund(context: AuthorizationContext, value: unknown) {
-  requireRefundPermission(context);
+export async function facilityForRefund(
+  context: AuthorizationContext,
+  value: unknown,
+  permission:
+    'billing.refunds.record' | 'billing.refunds.approve' | 'either' = 'billing.refunds.record',
+) {
+  requireRefundPermission(context, permission);
   const requested =
     value === undefined || value === null || value === '' ? null : positiveId(value);
   if (value !== undefined && value !== null && value !== '' && requested === null) {
@@ -58,6 +68,117 @@ async function facilityForRefund(context: AuthorizationContext, value: unknown) 
     throw new PaymentDomainError('FACILITY_MODULE_DISABLED', 'Finance is disabled.', 403);
   }
   return facility;
+}
+
+export type RefundTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** One shared, scoped receipt/ledger validation for requests, review and settlement. */
+export async function refundableSource(
+  tx: RefundTransaction,
+  facility: { id: number; tenantId: number },
+  invoiceId: number,
+  paymentId: number,
+  amount: number,
+  lock: boolean,
+  enforceAmount: boolean,
+) {
+  const invoiceQuery = tx
+    .select()
+    .from(schema.billingInvoices)
+    .where(
+      and(
+        eq(schema.billingInvoices.id, invoiceId),
+        eq(schema.billingInvoices.tenantId, facility.tenantId),
+        eq(schema.billingInvoices.facilityId, facility.id),
+      ),
+    );
+  const [invoice] = lock ? await invoiceQuery.for('update') : await invoiceQuery;
+  if (!invoice) throw new PaymentDomainError('INVOICE_NOT_FOUND', 'Invoice not found.', 404);
+  if (invoice.status === 'Void' || invoice.voidedAt) {
+    throw new PaymentDomainError('INVOICE_VOIDED', 'A voided invoice cannot be refunded.', 409);
+  }
+  const paymentQuery = tx
+    .select()
+    .from(schema.billingPayments)
+    .where(
+      and(
+        eq(schema.billingPayments.id, paymentId),
+        eq(schema.billingPayments.invoiceId, invoice.id),
+      ),
+    );
+  const [payment] = lock ? await paymentQuery.for('update') : await paymentQuery;
+  if (!payment) throw new PaymentDomainError('PAYMENT_NOT_FOUND', 'Receipt not found.', 404);
+  if (!PATIENT_RECEIPT_METHODS.has((payment.paymentMethod ?? '').trim().toLowerCase())) {
+    throw new PaymentDomainError(
+      'PAYER_REFUND_REVIEW_REQUIRED',
+      'This receipt requires payer or other authorized reversal review.',
+      409,
+    );
+  }
+  const [attribution] = await tx
+    .select({ party: schema.billingPaymentAttributions.party })
+    .from(schema.billingPaymentAttributions)
+    .where(eq(schema.billingPaymentAttributions.paymentId, payment.id));
+  if (attribution?.party === 'INSURER') {
+    throw new PaymentDomainError(
+      'PAYER_REFUND_REVIEW_REQUIRED',
+      'An insurer-attributed receipt requires authorized payer reversal review.',
+      409,
+    );
+  }
+  // Matching uses this same payment lock. A refund and a claim allocation
+  // cannot both succeed based on an earlier unallocated snapshot.
+  const linked = await tx.execute(sql`SELECT (
+      EXISTS(SELECT 1 FROM insurance_claims WHERE settled_payment_id=${paymentId}) OR
+      EXISTS(SELECT 1 FROM insurance_reconciliation_entries WHERE posted_payment_id=${paymentId}) OR
+      EXISTS(SELECT 1 FROM private_insurance_remittance_allocations WHERE posted_payment_id=${paymentId}) OR
+      EXISTS(SELECT 1 FROM sha_eclaims WHERE settled_payment_id=${paymentId}) OR
+      EXISTS(SELECT 1 FROM private_insurance_claims WHERE settled_payment_id=${paymentId})
+    ) AS linked`);
+  if ((linked as unknown as { rows: Array<{ linked: boolean }> }).rows[0]?.linked) {
+    throw new PaymentDomainError(
+      'PAYER_REFUND_REVIEW_REQUIRED',
+      'A payer-linked receipt requires authorized payer reversal review.',
+      409,
+    );
+  }
+  const total = parseMoneyToCents(invoice.totalAmount);
+  const paid = parseMoneyToCents(invoice.paidAmount);
+  const balance = parseMoneyToCents(invoice.balanceAmount);
+  const credit = parseMoneyToCents(invoice.creditBalance);
+  const ledger = await readInvoicePaymentLedger(tx, invoice.id);
+  if (
+    total === null ||
+    paid === null ||
+    balance === null ||
+    credit === null ||
+    total < 0 ||
+    paid < 0 ||
+    balance < 0 ||
+    credit < 0 ||
+    balance !== Math.max(0, total - paid) ||
+    credit !== Math.max(0, paid - total) ||
+    !ledger ||
+    ledger.netCents !== paid
+  ) {
+    throw new PaymentDomainError(
+      'INVOICE_RECONCILIATION_REQUIRED',
+      'Invoice, receipts and refunds require authorized review before refunding.',
+      409,
+    );
+  }
+  const receipt = ledger.byPayment.get(payment.id);
+  if (
+    !receipt ||
+    (enforceAmount && (amount > receipt.grossCents - receipt.refundedCents || amount > paid))
+  ) {
+    throw new PaymentDomainError(
+      'REFUND_EXCEEDS_RECEIPT',
+      'Refund exceeds the unreversed amount on this receipt.',
+      409,
+    );
+  }
+  return { invoice, payment, total, paid, balance, credit, receipt };
 }
 
 export interface RecordRefundInput {
@@ -88,7 +209,7 @@ export async function recordManualRefund(context: AuthorizationContext, input: R
       : typeof input.externalReference === 'string'
         ? input.externalReference.trim() || null
         : undefined;
-  const key = keyValue(input?.idempotencyKey);
+  const key = refundKeyValue(input?.idempotencyKey);
   if (
     !invoiceId ||
     !paymentId ||
@@ -138,96 +259,40 @@ export async function recordManualRefund(context: AuthorizationContext, input: R
       }
       return { refund: publicRefund(prior), replayed: true, accounting: 'NOT_POSTED' as const };
     }
-    const [invoice] = await tx
+    const { invoice, total, paid } = await refundableSource(
+      tx,
+      facility,
+      invoiceId,
+      paymentId,
+      amount,
+      true,
+      true,
+    );
+    const [approval] = await tx
       .select()
-      .from(schema.billingInvoices)
+      .from(schema.billingRefundRequests)
       .where(
         and(
-          eq(schema.billingInvoices.id, invoiceId),
-          eq(schema.billingInvoices.tenantId, facility.tenantId),
-          eq(schema.billingInvoices.facilityId, facility.id),
+          eq(schema.billingRefundRequests.tenantId, facility.tenantId),
+          eq(schema.billingRefundRequests.facilityId, facility.id),
+          eq(schema.billingRefundRequests.idempotencyKey, key),
         ),
       )
       .for('update');
-    if (!invoice) throw new PaymentDomainError('INVOICE_NOT_FOUND', 'Invoice not found.', 404);
-    if (invoice.status === 'Void' || invoice.voidedAt) {
-      throw new PaymentDomainError('INVOICE_VOIDED', 'A voided invoice cannot be refunded.', 409);
-    }
-    const [payment] = await tx
-      .select()
-      .from(schema.billingPayments)
-      .where(
-        and(
-          eq(schema.billingPayments.id, paymentId),
-          eq(schema.billingPayments.invoiceId, invoice.id),
-        ),
-      )
-      .for('update');
-    if (!payment) throw new PaymentDomainError('PAYMENT_NOT_FOUND', 'Receipt not found.', 404);
-    if (!PATIENT_RECEIPT_METHODS.has((payment.paymentMethod ?? '').trim().toLowerCase())) {
-      throw new PaymentDomainError(
-        'PAYER_REFUND_REVIEW_REQUIRED',
-        'This receipt requires payer or other authorized reversal review.',
-        409,
-      );
-    }
-    const [attribution] = await tx
-      .select({ party: schema.billingPaymentAttributions.party })
-      .from(schema.billingPaymentAttributions)
-      .where(eq(schema.billingPaymentAttributions.paymentId, payment.id));
-    if (attribution?.party === 'INSURER') {
-      throw new PaymentDomainError(
-        'PAYER_REFUND_REVIEW_REQUIRED',
-        'An insurer-attributed receipt requires authorized payer reversal review.',
-        409,
-      );
-    }
-    // Matching uses this same payment lock. A refund and a claim allocation
-    // cannot both succeed based on an earlier unallocated snapshot.
-    const linked = await tx.execute(sql`SELECT (
-      EXISTS(SELECT 1 FROM insurance_claims WHERE settled_payment_id=${paymentId}) OR
-      EXISTS(SELECT 1 FROM insurance_reconciliation_entries WHERE posted_payment_id=${paymentId}) OR
-      EXISTS(SELECT 1 FROM private_insurance_remittance_allocations WHERE posted_payment_id=${paymentId}) OR
-      EXISTS(SELECT 1 FROM sha_eclaims WHERE settled_payment_id=${paymentId}) OR
-      EXISTS(SELECT 1 FROM private_insurance_claims WHERE settled_payment_id=${paymentId})
-    ) AS linked`);
-    if ((linked as unknown as { rows: Array<{ linked: boolean }> }).rows[0]?.linked) {
-      throw new PaymentDomainError(
-        'PAYER_REFUND_REVIEW_REQUIRED',
-        'A payer-linked receipt requires authorized payer reversal review.',
-        409,
-      );
-    }
-    const total = parseMoneyToCents(invoice.totalAmount);
-    const paid = parseMoneyToCents(invoice.paidAmount);
-    const balance = parseMoneyToCents(invoice.balanceAmount);
-    const credit = parseMoneyToCents(invoice.creditBalance);
-    const ledger = await readInvoicePaymentLedger(tx, invoice.id);
     if (
-      total === null ||
-      paid === null ||
-      balance === null ||
-      credit === null ||
-      total < 0 ||
-      paid < 0 ||
-      balance < 0 ||
-      credit < 0 ||
-      balance !== Math.max(0, total - paid) ||
-      credit !== Math.max(0, paid - total) ||
-      !ledger ||
-      ledger.netCents !== paid
+      !approval ||
+      approval.status !== 'APPROVED' ||
+      approval.invoiceId !== invoiceId ||
+      approval.paymentId !== paymentId ||
+      parseMoneyToCents(approval.amount) !== amount ||
+      approval.refundMethod !== method ||
+      approval.reason !== reason ||
+      !approval.reviewedByUserId ||
+      approval.reviewedByUserId === approval.requestedByUserId
     ) {
       throw new PaymentDomainError(
-        'INVOICE_RECONCILIATION_REQUIRED',
-        'Invoice, receipts and refunds require authorized review before refunding.',
-        409,
-      );
-    }
-    const receipt = ledger.byPayment.get(payment.id);
-    if (!receipt || amount > receipt.grossCents - receipt.refundedCents || amount > paid) {
-      throw new PaymentDomainError(
-        'REFUND_EXCEEDS_RECEIPT',
-        'Refund exceeds the unreversed amount on this receipt.',
+        'REFUND_APPROVAL_REQUIRED',
+        'A matching independent refund approval is required before manual settlement evidence can be recorded.',
         409,
       );
     }
@@ -277,6 +342,23 @@ export async function recordManualRefund(context: AuthorizationContext, input: R
         updatedAt: new Date(),
       })
       .where(eq(schema.billingInvoices.id, invoice.id));
+    await tx
+      .update(schema.billingRefundRequests)
+      .set({
+        status: 'SETTLED',
+        settledRefundId: refund.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.billingRefundRequests.id, approval.id));
+    await tx.insert(schema.auditLogs).values({
+      tenantId: facility.tenantId,
+      facilityId: facility.id,
+      userId: String(context.userId),
+      action: 'SETTLE',
+      resource: 'RefundRequest',
+      resourceId: String(approval.id),
+      details: JSON.stringify({ refundId: refund.id, invoiceId, paymentId, manual: true }),
+    });
     await tx.insert(schema.auditLogs).values({
       tenantId: facility.tenantId,
       facilityId: facility.id,
@@ -318,7 +400,7 @@ export async function checkRefundStatus(
   context: AuthorizationContext,
   input: { facilityId?: unknown; idempotencyKey: unknown },
 ) {
-  const key = keyValue(input?.idempotencyKey);
+  const key = refundKeyValue(input?.idempotencyKey);
   const facility = await facilityForRefund(context, input?.facilityId);
   const [refund] = await db
     .select()

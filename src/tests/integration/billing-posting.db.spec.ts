@@ -7,7 +7,7 @@ import { createSession } from '../../auth/session.service.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
 import { finalizeInvoice } from '../../billing/finalized-invoice.service.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
-import { recordManualRefund } from '../../billing/refunds.service.ts';
+import { approvedSyntheticManualRefund } from './support/refund-approval.ts';
 import { inspectBillingLedgerScoped } from '../../accounting/billing-ledger-diagnostics.service.ts';
 import { inspectBillingJournalExceptionsScoped } from '../../accounting/billing-journal-exceptions.service.ts';
 import { postBillingSourceScoped } from '../../accounting/billing-posting.service.ts';
@@ -453,7 +453,7 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
       receivableKes: '30.00',
       liabilityKes: '0.00',
     });
-    const refund = await recordManualRefund(context, {
+    const refund = await approvedSyntheticManualRefund(context, {
       facilityId: facility,
       invoiceId: invoice,
       paymentId: patientPayment.payment.id,
@@ -484,7 +484,7 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
       otherReceipt.payment.id,
       paymentInput(),
     );
-    const otherRefund = await recordManualRefund(context, {
+    const otherRefund = await approvedSyntheticManualRefund(context, {
       facilityId: facility,
       invoiceId: otherInvoice,
       paymentId: otherReceipt.payment.id,
@@ -1500,7 +1500,7 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
         )
       ).rows[0];
     const refund = async (amount: string) =>
-      recordManualRefund(context, {
+      approvedSyntheticManualRefund(context, {
         facilityId: facility,
         invoiceId: invoice,
         paymentId,
@@ -1750,9 +1750,57 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
         ])
       ).rows[0].n,
     ).toBe(before);
+    // A separately approved refund remains a source event if its journal
+    // cannot be posted in a closed period; neither the receipt nor history is edited.
+    await postBillingSourceScoped(scope, 'BILLING_INVOICE', invoice, invoiceInput());
+    await postBillingSourceScoped(scope, 'BILLING_PAYMENT', receipt.payment.id, paymentInput());
+    const refund = await approvedSyntheticManualRefund(context, {
+      facilityId: facility,
+      invoiceId: invoice,
+      paymentId: receipt.payment.id,
+      amount: '5.00',
+      refundMethod: 'CASH',
+      reason: 'Synthetic period-closure refund',
+      manualConfirmation: true,
+      idempotencyKey: randomUUID(),
+    });
+    const unopenedInvoice = await makeInvoice();
+    const journalsBeforeClose = (
+      await pool.query('SELECT count(*)::int n FROM journal_entries WHERE facility_id=$1', [
+        facility,
+      ])
+    ).rows[0].n;
     await closeFinancialPeriodScoped(scope, period, 'Synthetic close');
     await expect(
-      postBillingSourceScoped(scope, 'BILLING_INVOICE', invoice, invoiceInput()),
+      postBillingSourceScoped(scope, 'BILLING_INVOICE', unopenedInvoice, invoiceInput()),
     ).rejects.toMatchObject({ code: 'OPEN_PERIOD_REQUIRED' });
+    await expect(
+      postBillingSourceScoped(scope, 'BILLING_REFUND', refund.refund.id, {
+        ...paymentInput(),
+        receivableRefundKes: '5.00',
+      }),
+    ).rejects.toMatchObject({ code: 'OPEN_PERIOD_REQUIRED' });
+    expect(
+      (
+        await pool.query('SELECT count(*)::int n FROM journal_entries WHERE facility_id=$1', [
+          facility,
+        ])
+      ).rows[0].n,
+    ).toBe(journalsBeforeClose);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM accounting_billing_postings WHERE source_type='BILLING_REFUND' AND source_id=$1",
+          [refund.refund.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query('SELECT paid_amount::text paid FROM billing_invoices WHERE id=$1', [
+          invoice,
+        ])
+      ).rows[0].paid,
+    ).toBe('15.00');
   });
 });

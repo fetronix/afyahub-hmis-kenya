@@ -44,6 +44,7 @@ describe('schema barrel: pre-extraction contract', () => {
         'labSpecimens',
         'labSpecimenOrders',
         'billingRefunds',
+        'billingRefundRequests',
         'billingInvoiceFinalizations',
         'billingPaymentAttributions',
         'billingPaymentRequests',

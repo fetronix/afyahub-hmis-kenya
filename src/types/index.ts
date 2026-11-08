@@ -1014,6 +1014,55 @@ export interface BillingRefund {
   status?: 'MANUALLY_RECORDED';
 }
 
+export type RefundMethod = 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER' | 'CHEQUE';
+export interface RefundReviewEvidence {
+  invoiceStatus: string | null;
+  invoiceTotal: string;
+  invoicePaid: string;
+  invoiceBalance: string;
+  invoiceCredit: string;
+  receiptNumber: string;
+  receiptMethod: string | null;
+  receiptGross: string;
+  receiptRefunded: string;
+  receiptReserved: string;
+  invoiceReserved: string;
+  receiptAvailable: string;
+  invoiceAvailable: string;
+}
+export interface RefundRequest {
+  id: number;
+  requestNumber: string;
+  facilityId: number;
+  invoiceId: number;
+  paymentId: number;
+  amount: string;
+  refundMethod: RefundMethod;
+  reason: string;
+  idempotencyKey: string;
+  status: 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'REVOKED' | 'SETTLED';
+  requestedByUserId: number;
+  reviewedByUserId: number | null;
+  reviewNotes: string | null;
+  reviewedAt: string | null;
+  revokedByUserId: number | null;
+  revocationReason: string | null;
+  revokedAt: string | null;
+  settledRefundId: number | null;
+  createdAt: string;
+}
+export type RefundRequestForReview = RefundRequest & {
+  reviewHash: string | null;
+  issue: string | null;
+  evidence: RefundReviewEvidence | null;
+};
+export interface RefundRequestPage {
+  requests: RefundRequestForReview[];
+  nextAfterId: number | null;
+}
+export type RefundRequestStatus =
+  { status: 'NOT_FOUND' } | { status: 'FOUND'; request: RefundRequest };
+
 export interface RecordRefundResult {
   refund: BillingRefund;
   replayed: boolean;

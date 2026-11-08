@@ -7,12 +7,14 @@ import { addCalendarDays, kenyaToday } from '../../dashboard/date-range.ts';
 import { resolveDashboardFacility } from '../../dashboard/dashboard.service.ts';
 import { describeDb } from '../vitest/support/db.ts';
 import { httpJson, startTestServer } from './support/http-harness.ts';
+import { insertSyntheticReportRefund } from './support/refund-approval.ts';
 
 describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', () => {
   const suffix = randomUUID().slice(0, 8);
   const enabled = ['registration', 'reception', 'opd', 'inpatient', 'theatre', 'finance', 'audit'];
   let tenant: number, facility: number, sibling: number, foreignFacility: number;
   let patient: number, oldPatient: number, siblingPatient: number, manager: number;
+  let refundDate: string;
   let token: string,
     limited: string,
     wardOnly: string,
@@ -71,6 +73,7 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
       'inpatient.read',
       'theatre.read',
       'billing.read',
+      'billing.refunds.record',
       'tariffs.read',
       'audit.read',
     ];
@@ -144,7 +147,7 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
     );
     const invoices = await pool.query(
       `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,invoice_number,total_amount,paid_amount,balance_amount,status,voided_at,created_at) VALUES
-      ($1,$2,$3,$4,300,100,200,'Partially Paid',NULL,'2025-04-02 08:00'),
+      ($1,$2,$3,$4,300,120,180,'Partially Paid',NULL,'2025-04-02 08:00'),
       ($1,$2,$3,$5,100,0,100,'Pending',NULL,'2025-04-03 08:00'),
       ($1,$2,$3,$6,1000,0,1000,'Void','2025-04-08 08:00','2025-04-02 08:00'),
       ($1,$7,$8,$9,5000,0,5000,'Pending',NULL,'2025-04-03 08:00') RETURNING id`,
@@ -173,11 +176,18 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
       ($1,$5,'Cash',10,'Synthetic','2025-03-15'),($2,$6,'Cash',50,'Synthetic','2025-04-06') RETURNING id`,
       [bill, voided, `DR1-${suffix}`, `DR2-${suffix}`, `DR3-${suffix}`, `DRV-${suffix}`],
     );
-    await pool.query(
-      `INSERT INTO billing_refunds(tenant_id,facility_id,invoice_id,payment_id,refund_number,amount,refund_method,reason,manual_confirmation,idempotency_key,request_hash,actor_user_id,created_at)
-      VALUES($1,$2,$3,$4,$5,20,'CASH','Synthetic refund',true,$6,'synthetic-hash',$7,'2025-04-07')`,
-      [tenant, facility, bill, payment.rows[0].id, `DREF-${suffix}`, `refund-${suffix}`, manager],
-    );
+    refundDate = (
+      await insertSyntheticReportRefund({
+        tenant,
+        facility,
+        invoice: bill,
+        payment: payment.rows[0].id,
+        actor: manager,
+        amount: '20.00',
+        reason: 'Synthetic refund',
+        key: `refund-${suffix}`,
+      })
+    ).date;
     await pool.query(
       "INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,fee) VALUES($1,$2,$3,'Synthetic Consultation','OPD',100)",
       [tenant, facility, `DSVC-${suffix}`],
@@ -261,7 +271,7 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
     );
     expect(result.body.receipts).toMatchObject({
       status: 'ok',
-      data: { gross: '160.00', refunds: '20.00', net: '140.00', previousNet: '10.00' },
+      data: { gross: '160.00', refunds: '0.00', net: '160.00', previousNet: '10.00' },
     });
     const first = result.body.flow.data[0];
     expect(first).toMatchObject({
@@ -277,6 +287,16 @@ describeDb('facility dashboard HTTP and calculations (synthetic PostgreSQL)', ()
     const march = await call('GET', overview(facility, '2025-03-01', '2025-03-31'), token);
     expect(march.body.receipts.data.net).toBe('10.00');
     expect(march.body.invoices.data.current).toBe(0);
+    const recorded = await call('GET', overview(facility, refundDate, refundDate), token);
+    expect(recorded.body.receipts).toMatchObject({
+      status: 'ok',
+      data: { gross: '0.00', refunds: '20.00', net: '-20.00' },
+    });
+    const beforeRefund = addCalendarDays(refundDate, -1);
+    expect(
+      (await call('GET', overview(facility, beforeRefund, beforeRefund), token)).body.receipts.data
+        .refunds,
+    ).toBe('0.00');
   });
 
   it('treats restricted and disabled modules as unavailable, never as zero', async () => {

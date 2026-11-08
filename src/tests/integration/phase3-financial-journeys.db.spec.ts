@@ -6,6 +6,10 @@ import { pool } from '../../db/index.ts';
 import { finalizeInvoice } from '../../billing/finalized-invoice.service.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
 import { recordManualRefund } from '../../billing/refunds.service.ts';
+import {
+  createSyntheticRefundReviewer,
+  approveSyntheticRefund,
+} from './support/refund-approval.ts';
 import { postBillingSourceScoped } from '../../accounting/billing-posting.service.ts';
 import {
   createAccountScoped,
@@ -553,6 +557,8 @@ describeDb('Phase 3 clinical-to-reviewed-ledger journeys (synthetic PostgreSQL)'
       manualConfirmation: true,
       idempotencyKey: randomUUID(),
     };
+    const reviewer = await createSyntheticRefundReviewer(context);
+    await approveSyntheticRefund(context, reviewer, input);
     const [a, b] = await Promise.all([
       recordManualRefund(context, input),
       recordManualRefund(context, input),

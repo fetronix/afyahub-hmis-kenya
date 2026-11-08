@@ -8,7 +8,8 @@ import {
   savePendingRefund,
   type PendingRefund,
 } from '../../billing/refund-retry-storage.ts';
-import type { BillingPayment, BillingRefund } from '../../types/index.ts';
+import type { BillingPayment, BillingRefund, RefundRequest } from '../../types/index.ts';
+import { RefundRequestWorkflow } from './RefundRequestWorkflow.tsx';
 
 type RefundMethod = 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER' | 'CHEQUE';
 const PATIENT_METHODS = new Set(['cash', 'm-pesa', 'airtel money', 'card', 'cheque']);
@@ -23,6 +24,12 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
     authenticatedUser.permissions?.includes('billing.read') &&
     authenticatedUser.permissions?.includes('billing.refunds.record'),
   );
+  const canReview = Boolean(
+    authenticatedUser &&
+    !authenticatedUser.isSuperAdmin &&
+    authenticatedUser.permissions?.includes('billing.read') &&
+    authenticatedUser.permissions?.includes('billing.refunds.approve'),
+  );
   const storageKey =
     canRefund && facilityId && authenticatedUser?.id
       ? `jalicare:refund:pending:${authenticatedUser.id}:${facilityId}`
@@ -36,6 +43,7 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
   const [pending, setPending] = useState<PendingRefund | null>(null);
   const [storageError, setStorageError] = useState('');
   const [target, setTarget] = useState<BillingPayment | null>(null);
+  const [approvedRequest, setApprovedRequest] = useState<RefundRequest | null>(null);
   const [refundKey, setRefundKey] = useState('');
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<RefundMethod>('CASH');
@@ -72,6 +80,7 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
     setPayments([]);
     setRefunds([]);
     setTarget(null);
+    setApprovedRequest(null);
     if (!scope) {
       setLoadError('A facility is required to load receipt history.');
       return;
@@ -101,21 +110,51 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
     };
   }, [invoiceId, scope, refreshKey, reload]);
 
-  const start = (payment: BillingPayment) => {
+  // Legacy or interrupted manual receipts may be retried with their retained
+  // identity. The server still permits a new record only with an approval.
+  const resume = (payment: BillingPayment) => {
     if (
       !storageKey ||
       storageError ||
-      (pending && (pending.invoiceId !== invoiceId || pending.paymentId !== payment.id))
+      !pending ||
+      pending.invoiceId !== invoiceId ||
+      pending.paymentId !== payment.id
     ) {
       showToast('Resolve the unconfirmed refund before starting another.');
       return;
     }
     setTarget(payment);
-    setRefundKey(pending?.key ?? crypto.randomUUID());
+    setApprovedRequest(null);
+    setRefundKey(pending.key);
     setAmount('');
     setMethod('CASH');
     setReference('');
     setReason('');
+    setConfirmed(false);
+  };
+  const startApproved = (request: RefundRequest) => {
+    const payment = payments.find((item) => item.id === request.paymentId);
+    if (
+      !storageKey ||
+      storageError ||
+      !payment ||
+      request.invoiceId !== invoiceId ||
+      request.status !== 'APPROVED' ||
+      (pending &&
+        (pending.invoiceId !== invoiceId ||
+          pending.paymentId !== payment.id ||
+          pending.key !== request.idempotencyKey))
+    ) {
+      showToast('Resolve the unconfirmed refund and review the approved request before recording.');
+      return;
+    }
+    setTarget(payment);
+    setApprovedRequest(request);
+    setRefundKey(request.idempotencyKey);
+    setAmount(request.amount);
+    setMethod(request.refundMethod);
+    setReason(request.reason);
+    setReference('');
     setConfirmed(false);
   };
   const checkStatus = async () => {
@@ -170,7 +209,10 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
     let key = refundKey;
     try {
       const saved = readPendingRefund(window.localStorage, storageKey);
-      if (saved && (saved.invoiceId !== invoiceId || saved.paymentId !== target.id)) {
+      if (
+        saved &&
+        (saved.invoiceId !== invoiceId || saved.paymentId !== target.id || saved.key !== refundKey)
+      ) {
         setPending(saved);
         showToast('Resolve the unconfirmed refund before starting another.');
         return;
@@ -302,12 +344,13 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
                         : `KES ${(remaining / 100).toFixed(2)}`}
                     </span>
                     {canRefund &&
+                      pending?.invoiceId === invoiceId &&
+                      pending.paymentId === payment.id &&
                       remaining !== null &&
-                      remaining > 0 &&
                       PATIENT_METHODS.has((payment.paymentMethod ?? '').trim().toLowerCase()) && (
                         <button
                           type="button"
-                          onClick={() => start(payment)}
+                          onClick={() => resume(payment)}
                           disabled={
                             busy ||
                             Boolean(storageError) ||
@@ -318,9 +361,7 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
                           }
                           className="rounded border border-teal-700 px-2 py-1 text-teal-800 disabled:opacity-50"
                         >
-                          {pending?.paymentId === payment.id && pending.invoiceId === invoiceId
-                            ? 'Resume same refund'
-                            : 'Record manual refund'}
+                          Resume same refund
                         </button>
                       )}
                   </li>
@@ -340,15 +381,34 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
           )}
         </>
       )}
+      {loadedScope === scope && facilityId && authenticatedUser?.id && (canRefund || canReview) && (
+        <RefundRequestWorkflow
+          key={`${authenticatedUser.id}:${facilityId}:${invoiceId}`}
+          facilityId={facilityId}
+          invoiceId={invoiceId}
+          payments={payments}
+          canRequest={canRefund}
+          canReview={canReview}
+          userId={authenticatedUser.id}
+          recordBlocked={Boolean(storageError) || busy}
+          onRecordApproved={startApproved}
+        />
+      )}
       {target && loadedScope === scope && (
         <div className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3">
           <h4 className="font-bold">Record refund against {target.receiptNumber}</h4>
-          <p>This records a refund already performed outside the system. It does not send funds.</p>
+          <p>
+            {approvedRequest
+              ? `Approved request ${approvedRequest.requestNumber}. `
+              : 'Retrying an earlier unconfirmed identity. '}
+            This records a refund already performed outside the system. It does not send funds.
+          </p>
           <label className="block">
             Amount (KES)
             <input
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              readOnly={Boolean(approvedRequest)}
               inputMode="decimal"
               className="block w-full rounded border p-2"
             />
@@ -358,6 +418,7 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value as RefundMethod)}
+              disabled={Boolean(approvedRequest)}
               className="block w-full rounded border p-2"
             >
               <option value="CASH">Cash</option>
@@ -381,6 +442,7 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
             <input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
+              readOnly={Boolean(approvedRequest)}
               maxLength={500}
               className="block w-full rounded border p-2"
             />

@@ -42,7 +42,7 @@ import {
 import { createInvoice, voidInvoiceScoped } from '../../db/queries/billing.ts';
 import { dispenseFefoScoped } from '../../inventory/inventory.service.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
-import { recordManualRefund } from '../../billing/refunds.service.ts';
+import { approvedSyntheticManualRefund } from './support/refund-approval.ts';
 import { describeDb } from '../vitest/support/db.ts';
 
 // Only synthetic IDs and amounts in a fresh test database; no facility data.
@@ -460,7 +460,7 @@ describeDb('Master tariff workflow (synthetic PostgreSQL)', () => {
       { facilityId: facility, invoiceId, amount: '50.00', paymentMethod: 'Cash' },
       'Synthetic cashier',
     );
-    await recordManualRefund(ctx, {
+    await approvedSyntheticManualRefund(ctx, {
       facilityId: facility,
       invoiceId,
       paymentId: paid.payment.id,

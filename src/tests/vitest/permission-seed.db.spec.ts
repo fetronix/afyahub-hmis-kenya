@@ -49,7 +49,10 @@ describeDb('permission seed plans missing rows without writing', () => {
     const out = run(['--dry-run']);
     expect(out).toContain('would create permission payment_hub.global.read');
     expect(out).toContain('would create permission procurement.reject');
+    expect(out).toContain('would create permission billing.refunds.approve');
     expect(out).not.toContain('would grant SUPER_ADMIN -> procurement.approve');
+    expect(out).not.toContain('would grant SUPER_ADMIN -> billing.refunds.approve');
+    expect(out).not.toMatch(/would grant FACILITY_ADMIN\(\d+\) -> billing\.refunds\.approve/);
     for (const permission of [
       'billing.read',
       'billing.payments.record',
@@ -98,6 +101,17 @@ describeDb('permission seed plans missing rows without writing', () => {
       `SELECT r.name,p.code FROM "${schema}".role_permissions rp JOIN "${schema}".roles r ON r.id=rp.role_id JOIN "${schema}".permissions p ON p.id=rp.permission_id WHERE p.code IN ('procurement.approve','procurement.reject','procurement.complete','procurement.delete','procurement.update')`,
     );
     expect(procurement.rows).toEqual([]);
+    const refundReview = await testPool().query(
+      `SELECT r.name,p.code FROM "${schema}".role_permissions rp JOIN "${schema}".roles r ON r.id=rp.role_id JOIN "${schema}".permissions p ON p.id=rp.permission_id WHERE p.code='billing.refunds.approve'`,
+    );
+    expect(refundReview.rows).toEqual([]);
+    expect(
+      (
+        await testPool().query(
+          `SELECT count(*)::int n FROM "${schema}".permissions WHERE code='billing.refunds.approve'`,
+        )
+      ).rows[0].n,
+    ).toBe(1);
     expect(run(['--dry-run'])).toMatch(/Rows that would be written\s*:\s*0/);
   });
 });

@@ -9,6 +9,10 @@ import type {
   BillingRefund,
   RecordRefundResult,
   RefundStatusResult,
+  RefundRequest,
+  RefundRequestPage,
+  RefundRequestStatus,
+  RefundMethod,
   ClaimSettlementResult,
   ClaimableLinesResponse,
   DraftClaimResult,
@@ -317,6 +321,62 @@ export const billingClient = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  createRefundRequest: (input: {
+    facilityId: number;
+    invoiceId: number;
+    paymentId: number;
+    amount: string;
+    refundMethod: RefundMethod;
+    reason: string;
+    idempotencyKey: string;
+  }) =>
+    fetchJson<{ request: RefundRequest; replayed: boolean }>(
+      `${API_BASE}/billing/refund-requests`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
+
+  checkRefundRequestStatus: (input: { facilityId: number; idempotencyKey: string }) =>
+    fetchJson<RefundRequestStatus>(`${API_BASE}/billing/refund-requests/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  listRefundRequests: (input: {
+    facilityId: number;
+    invoiceId?: number;
+    afterId?: number;
+    limit?: number;
+  }) => {
+    const params = new URLSearchParams({ facilityId: String(input.facilityId) });
+    if (input.invoiceId) params.set('invoiceId', String(input.invoiceId));
+    if (input.afterId) params.set('afterId', String(input.afterId));
+    if (input.limit) params.set('limit', String(input.limit));
+    return fetchJson<RefundRequestPage>(`${API_BASE}/billing/refund-requests?${params}`);
+  },
+
+  decideRefundRequest: (
+    id: number,
+    input: {
+      facilityId: number;
+      decision: 'APPROVE' | 'REJECT';
+      reviewHash: string;
+      notes: string;
+    },
+  ) =>
+    fetchJson<{ requestId: number; status: string; replayed: boolean }>(
+      `${API_BASE}/billing/refund-requests/${id}/decision`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+
+  revokeRefundApproval: (id: number, input: { facilityId: number; reason: string }) =>
+    fetchJson<{ requestId: number; status: string; replayed: boolean }>(
+      `${API_BASE}/billing/refund-requests/${id}/revoke`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
 
   recordManualRefund: (input: {
     facilityId: number;

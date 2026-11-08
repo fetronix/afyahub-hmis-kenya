@@ -112,6 +112,34 @@ export const refundBodySchema = z.object({
     .optional(),
 });
 
+export const refundRequestBodySchema = refundBodySchema
+  .omit({ externalReference: true, manualConfirmation: true })
+  .extend({
+    idempotencyKey: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._:-]{8,128}$/),
+  });
+
+export const refundRequestQuerySchema = z.object({
+  facilityId: optionalPositiveIntField('Invalid facilityId.'),
+  invoiceId: optionalPositiveIntField('Invalid invoiceId.'),
+  afterId: optionalPositiveIntField('Invalid cursor.'),
+  limit: optionalPositiveIntField('Invalid page size.'),
+});
+
+export const refundDecisionBodySchema = z.object({
+  facilityId: optionalPositiveIntField('Invalid facilityId.'),
+  decision: z.enum(['APPROVE', 'REJECT']),
+  reviewHash: z.string().regex(/^[a-f0-9]{64}$/),
+  notes: z.string().trim().min(3).max(1000),
+});
+
+export const refundRevocationBodySchema = z.object({
+  facilityId: optionalPositiveIntField('Invalid facilityId.'),
+  reason: z.string().trim().min(3).max(1000),
+});
+
 export const refundStatusBodySchema = z.object({
   facilityId: optionalPositiveIntField('Invalid facilityId.'),
   idempotencyKey: z

@@ -756,7 +756,15 @@ const PERMISSIONS = [
     name: 'Record Manual Refunds',
     module: 'billing',
     description:
-      'Record an externally performed refund against an existing receipt; does not initiate transfers.',
+      'Request and record an approved externally performed refund; does not initiate transfers.',
+  },
+
+  {
+    code: 'billing.refunds.approve',
+    name: 'Independently Review Refund Requests',
+    module: 'billing',
+    description:
+      'Independently approve, reject or revoke a patient-receipt refund request; no transfer is initiated.',
   },
 
   /* ==========================================================

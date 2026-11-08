@@ -13,6 +13,13 @@ import { and, count, eq, sql, sum } from 'drizzle-orm';
 import * as billing from '../../billing/billing.service.ts';
 import * as billingPayments from '../../billing/payments.service.ts';
 import { checkRefundStatus, recordManualRefund } from '../../billing/refunds.service.ts';
+import {
+  createRefundRequest,
+  checkRefundRequestStatus,
+  decideRefundRequest,
+  listRefundRequests,
+  revokeRefundApproval,
+} from '../../billing/refund-requests.service.ts';
 import { db } from '../../db/index.ts';
 import {
   facilityHasTariffModule,
@@ -53,6 +60,10 @@ import {
   recordPaymentBodySchema,
   refundBodySchema,
   refundStatusBodySchema,
+  refundRequestBodySchema,
+  refundRequestQuerySchema,
+  refundDecisionBodySchema,
+  refundRevocationBodySchema,
 } from '../../validation/schemas/index.ts';
 import { validateBody, validateQuery } from '../../validation/validate.ts';
 
@@ -482,6 +493,119 @@ router.post(
 );
 
 /** Manual accounting record only; no bank, card or mobile transfer is initiated. */
+router.post(
+  '/api/billing/refund-requests',
+  requirePermission('billing.read'),
+  requirePermission('billing.refunds.record'),
+  validateBody(refundRequestBodySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext)
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const result = await createRefundRequest(req.authContext, req.body);
+      return res.status(result.replayed ? 200 : 201).json(result);
+    } catch (error: unknown) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      console.error('Refund request failed; transaction rolled back.');
+      return res.status(500).json({
+        success: false,
+        error: 'REFUND_REQUEST_FAILED',
+        message: 'Refund request could not be saved.',
+      });
+    }
+  },
+);
+
+router.post(
+  '/api/billing/refund-requests/status',
+  requirePermission('billing.read'),
+  requirePermission('billing.refunds.record'),
+  validateBody(refundStatusBodySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext)
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      return res.json(await checkRefundRequestStatus(req.authContext, req.body));
+    } catch (error: unknown) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      console.error('Refund request status could not be loaded.');
+      return res.status(500).json({
+        success: false,
+        error: 'REFUND_REQUEST_STATUS_FAILED',
+        message: 'Refund request status could not be loaded.',
+      });
+    }
+  },
+);
+
+router.get(
+  '/api/billing/refund-requests',
+  requirePermission('billing.read'),
+  requireAnyPermission('billing.refunds.record', 'billing.refunds.approve'),
+  validateQuery(refundRequestQuerySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext)
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      return res.json(await listRefundRequests(req.authContext, req.query));
+    } catch (error: unknown) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      console.error('Refund requests could not be loaded.');
+      return res.status(500).json({
+        success: false,
+        error: 'REFUND_REQUEST_LIST_FAILED',
+        message: 'Refund requests could not be loaded.',
+      });
+    }
+  },
+);
+
+router.post(
+  '/api/billing/refund-requests/:id/decision',
+  requirePermission('billing.read'),
+  requirePermission('billing.refunds.approve'),
+  validateBody(refundDecisionBodySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext)
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const result = await decideRefundRequest(req.authContext, req.params.id, req.body);
+      return res.status(result.replayed ? 200 : 201).json(result);
+    } catch (error: unknown) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      console.error('Refund review failed; transaction rolled back.');
+      return res.status(500).json({
+        success: false,
+        error: 'REFUND_REVIEW_FAILED',
+        message: 'Refund review could not be saved.',
+      });
+    }
+  },
+);
+
+router.post(
+  '/api/billing/refund-requests/:id/revoke',
+  requirePermission('billing.read'),
+  requirePermission('billing.refunds.approve'),
+  validateBody(refundRevocationBodySchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext)
+        return res.status(401).json({ success: false, error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const result = await revokeRefundApproval(req.authContext, req.params.id, req.body);
+      return res.status(result.replayed ? 200 : 201).json(result);
+    } catch (error: unknown) {
+      if (handlePaymentError(error, res) || handleScopeError(error, res)) return;
+      console.error('Refund approval revocation failed; transaction rolled back.');
+      return res.status(500).json({
+        success: false,
+        error: 'REFUND_REVOCATION_FAILED',
+        message: 'Refund approval could not be revoked.',
+      });
+    }
+  },
+);
+
 router.post(
   '/api/billing/refunds',
   requirePermission('billing.read'),
