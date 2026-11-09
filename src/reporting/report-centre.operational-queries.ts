@@ -103,6 +103,72 @@ export function operationalQueryPlan(
         'p.id IS NULL OR (e.department_id IS NOT NULL AND d.id IS NULL) OR (e.practitioner_id IS NOT NULL AND pr.id IS NULL)',
     });
   }
+  if (id === 'outpatient-diagnoses') {
+    // Diagnoses have no tenant/facility columns. The scoped encounter is the
+    // ownership anchor; an inconsistent patient link never exposes its fields.
+    const validLink = 'p.id IS NOT NULL AND d.id IS NOT NULL AND d.patient_id=e.patient_id';
+    const safe = (expression: string) => `CASE WHEN ${validLink} THEN ${expression} ELSE NULL END`;
+    const recorded = (expression: string) => `NULLIF(btrim(${expression}),'') IS NOT NULL`;
+    const knownStatuses = "'PLANNED','ACTIVE','ON_HOLD','COMPLETED','CANCELLED'";
+    const unknownStatus = `(e.status IS NULL OR e.status NOT IN (${knownStatuses}))`;
+    const progress = `CASE WHEN e.status IN ('PLANNED','ACTIVE','ON_HOLD') THEN 'Pending'
+      WHEN e.status='COMPLETED' THEN 'Completed' WHEN e.status='CANCELLED' THEN 'Cancelled'
+      ELSE 'Unknown' END`;
+    const incomplete = `(COALESCE(d.coding_system,'') NOT IN ('ICD-10','ICD-11')
+      OR NOT ${recorded('d.status')}
+      OR (d.coding_system='ICD-10' AND NOT (${recorded('d.icd10_code')} OR ${recorded('d.diagnosis_code')}))
+      OR (d.coding_system='ICD-11' AND (NOT ${recorded('d.icd11_code')} OR NOT ${recorded('d.icd11_release')}))
+      OR (d.coding_system='ICD-10' AND ${recorded('d.icd10_code')} AND ${recorded('d.diagnosis_code')} AND d.icd10_code<>d.diagnosis_code)
+      OR (d.coding_system='ICD-11' AND ${recorded('d.icd11_code')} AND ${recorded('d.diagnosis_code')} AND d.icd11_code<>d.diagnosis_code))`;
+    const quality = `CASE WHEN p.id IS NULL THEN 'Inconsistent patient link; details withheld'
+      WHEN d.id IS NULL THEN 'No diagnosis recorded'
+      WHEN d.patient_id IS DISTINCT FROM e.patient_id THEN 'Inconsistent patient link; details withheld'
+      WHEN ${incomplete} THEN 'Incomplete coding or diagnosis status'
+      ELSE 'Recorded; not independently verified' END`;
+    where.push('e.tenant_id=$1', 'e.facility_id=$2', "e.encounter_type='OUTPATIENT'");
+    if (filters.search) {
+      const q = p(textPattern(filters.search));
+      where.push(`(p.mrn ILIKE ${q} OR ${patientName} ILIKE ${q} OR (${validLink} AND (
+        d.diagnosis_code ILIKE ${q} OR d.diagnosis_display ILIKE ${q} OR d.icd10_code ILIKE ${q}
+        OR d.icd10_description ILIKE ${q} OR d.icd11_code ILIKE ${q} OR d.icd11_title ILIKE ${q})))`);
+    }
+    if (filters.patientId) where.push(`p.id=${p(filters.patientId)}`);
+    if (filters.departmentId) where.push(`dep.id=${p(filters.departmentId)}`);
+    if (filters.status === 'PENDING') where.push("e.status IN ('PLANNED','ACTIVE','ON_HOLD')");
+    else if (filters.status === 'COMPLETED') where.push("e.status='COMPLETED'");
+    else if (filters.status === 'CANCELLED') where.push("e.status='CANCELLED'");
+    else if (filters.status === 'UNKNOWN') where.push(unknownStatus);
+    // The required inclusive calendar range is applied to the raw timestamp,
+    // allowing PostgreSQL to use the existing started_at index. No timezone is inferred.
+    if (filters.from && filters.to) {
+      where.push(
+        `e.started_at >= ${p(filters.from)}::date`,
+        `e.started_at < (${p(filters.to)}::date + INTERVAL '1 day')`,
+      );
+    }
+    return finish({
+      from: `encounters e
+        LEFT JOIN patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id
+        LEFT JOIN departments dep ON dep.id=e.department_id AND dep.facility_id=e.facility_id
+        LEFT JOIN diagnoses d ON d.encounter_id=e.id`,
+      select: `e.id AS "encounterId", p.id AS "_patientId", p.mrn,
+        CASE WHEN p.id IS NULL THEN NULL ELSE ${patientName} END AS patient,
+        e.started_at::text AS "startedAt", ${progress} AS "encounterProgress", e.status AS "encounterStatus", dep.name AS department,
+        ${safe('d.id')} AS "diagnosisId", ${safe('d.diagnosis_type')} AS "diagnosisType",
+        ${safe('d.status')} AS "diagnosisStatus", ${safe('d.diagnosed_at::text')} AS "diagnosedAt",
+        ${safe('d.coding_system')} AS "codingSystem", ${safe('d.diagnosis_code')} AS "diagnosisCode",
+        ${safe('d.diagnosis_display')} AS "diagnosisDisplay", ${safe('d.icd10_code')} AS "legacyIcd10Code",
+        ${safe('d.icd10_description')} AS "legacyIcd10Description", ${safe('d.icd11_code')} AS "icd11Code",
+        ${safe('d.icd11_title')} AS "icd11Title", ${safe('d.icd11_release')} AS "icd11Release",
+        ${safe('d.icd11_foundation_uri')} AS "icd11FoundationUri", ${safe('d.icd11_linearization_uri')} AS "icd11LinearizationUri",
+        ${quality} AS "diagnosisQuality"`,
+      order: 'e.started_at DESC, e.id DESC, d.id ASC NULLS LAST',
+      missingExpression: `(${quality} <> 'Recorded; not independently verified') OR ${unknownStatus}
+        OR (e.department_id IS NOT NULL AND dep.id IS NULL)`,
+      missingLabel:
+        'row(s) need review for missing or inconsistent diagnosis/patient details, department, or unrecognised encounter status',
+    });
+  }
   if (id === 'inpatient-admissions' || id === 'inpatient-discharges') {
     where.push('a.tenant_id=$1', 'a.facility_id=$2');
     if (id === 'inpatient-discharges') where.push('a.discharge_date IS NOT NULL');

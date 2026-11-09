@@ -202,7 +202,13 @@ async function queryOptions(
     detail =
       "concat_ws(' · ', CASE WHEN NULLIF(p.phone,'') IS NOT NULL THEN 'Phone ' || p.phone END, 'Record created ' || p.created_at::date::text)";
     patient = 'p.id';
-    where = ['p.tenant_id=$1', 'p.registration_facility_id=$2'];
+    where =
+      report === 'outpatient-diagnoses'
+        ? [
+            'p.tenant_id=$1',
+            "EXISTS (SELECT 1 FROM encounters e WHERE e.tenant_id=$1 AND e.facility_id=$2 AND e.encounter_type='OUTPATIENT' AND e.patient_id=p.id)",
+          ]
+        : ['p.tenant_id=$1', 'p.registration_facility_id=$2'];
     searchable = ['p.mrn', 'p.first_name', 'p.middle_name', 'p.last_name', patientName, 'p.phone'];
   } else if (kind === 'ward') {
     from = 'wards w JOIN facilities f ON f.id=w.facility_id';

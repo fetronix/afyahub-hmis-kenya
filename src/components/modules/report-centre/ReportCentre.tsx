@@ -41,6 +41,7 @@ const icons: Record<string, React.ElementType> = {
 function InvoiceDocument({ facilityId }: { facilityId: number }) {
   const [selected, setSelected] = useState<ReportSelectionOption[]>([]);
   const [invoiceId, setInvoiceId] = useState<number | null>(null);
+  const [openVersion, setOpenVersion] = useState(0);
   const [error, setError] = useState('');
   return (
     <div className="space-y-4">
@@ -61,6 +62,8 @@ function InvoiceDocument({ facilityId }: { facilityId: number }) {
           }
           setError('');
           setInvoiceId(selected[0].id);
+          // Opening the same selection must fetch a fresh, audited snapshot too.
+          setOpenVersion((version) => version + 1);
         }}
         className="space-y-3"
       >
@@ -90,7 +93,11 @@ function InvoiceDocument({ facilityId }: { facilityId: number }) {
         </p>
       )}
       {invoiceId !== null && (
-        <FinalizedInvoicePanel key={invoiceId} invoiceId={invoiceId} reportCentre />
+        <FinalizedInvoicePanel
+          key={`${invoiceId}:${openVersion}`}
+          invoiceId={invoiceId}
+          reportCentre
+        />
       )}
     </div>
   );

@@ -113,7 +113,10 @@ function validateFilters(id: ReportEngineId, raw: unknown): ReportFilters {
         'Select a valid as-of date for this report.',
       );
     }
-  } else if ((from || to) && (!definition.dateLabel || !from || !to || !validateRange(from, to))) {
+  } else if (
+    (definition.dateRangeRequired || from || to) &&
+    (!definition.dateLabel || !from || !to || !validateRange(from, to))
+  ) {
     throw new ReportCentreError(
       'INVALID_DATE_RANGE',
       'Select a valid inclusive date range of at most 366 days for this report.',

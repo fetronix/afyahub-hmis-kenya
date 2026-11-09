@@ -7,6 +7,7 @@ import {
   REPORT_ENGINES,
   type ReportFilters,
   type ReportResult,
+  type ReportRow,
 } from '../../reporting/report-centre.types.ts';
 
 const mocks = vi.hoisted(() => ({
@@ -46,7 +47,7 @@ const modules = ['analytics', 'inventory', 'procurement', 'inpatient', 'finance'
 function result(
   id: keyof typeof REPORT_ENGINES,
   filters: ReportFilters,
-  rows = [
+  rows: ReportRow[] = [
     {
       code: 'SYN-1',
       item: 'Synthetic Item',
@@ -542,6 +543,66 @@ describe('Reporting Centre navigation and report workbench', () => {
     expect(
       await within(picker).findByText('No matching options in this facility.'),
     ).toBeInTheDocument();
+  });
+
+  it('opens the scoped diagnosis register and preserves explicit unknown-status/date filters for export', async () => {
+    mocks.context.currentFacility.enabledModules.push('opd');
+    const linked = REPORT_CATEGORIES.flatMap((category) => category.reports).filter(
+      (report) => report.engine === 'outpatient-diagnoses',
+    );
+    expect(linked.map((entry) => entry.id)).toEqual([
+      'departmental-opd-diagnosis-reports',
+      'records-opd-diagnosis-reports',
+    ]);
+    mocks.generate.mockImplementation(async (id, filters) =>
+      result(id, filters, [
+        {
+          encounterId: 42,
+          patient: 'Synthetic Patient',
+          encounterProgress: 'Unknown',
+          encounterStatus: 'UNRECOGNISED',
+          diagnosisQuality: 'No diagnosis recorded',
+          diagnosisCode: null,
+        },
+      ]),
+    );
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:dx'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<ReportCentre />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
+      target: { value: 'OPD diagnosis reports' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /OPD diagnosis reports/i }));
+    expect(screen.getByText(/not an MOH 705/i)).toBeInTheDocument();
+    expect(screen.getByText(/outpatient encounter at this facility/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'UNKNOWN' } });
+    fireEvent.change(screen.getByLabelText('Recorded encounter start date from'), {
+      target: { value: '2026-04-01' },
+    });
+    fireEvent.change(screen.getByLabelText('Recorded encounter start date to'), {
+      target: { value: '2026-04-30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));
+    expect(await screen.findByText('UNRECOGNISED')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).getByText('No diagnosis recorded'),
+    ).toBeInTheDocument();
+    const expected = expect.objectContaining({
+      facilityId: 10,
+      status: 'UNKNOWN',
+      from: '2026-04-01',
+      to: '2026-04-30',
+    });
+    expect(mocks.generate).toHaveBeenCalledWith('outpatient-diagnoses', expected);
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    await waitFor(() =>
+      expect(mocks.exportReport).toHaveBeenCalledWith('outpatient-diagnoses', expected, 'csv'),
+    );
+    click.mockRestore();
   });
 
   it('never displays late selector data from a previously selected facility', async () => {

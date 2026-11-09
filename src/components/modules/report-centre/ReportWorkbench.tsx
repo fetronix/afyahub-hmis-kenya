@@ -230,6 +230,7 @@ export const ReportWorkbench: React.FC<{
                 <input
                   className={input}
                   type="date"
+                  required={definition.dateRangeRequired}
                   value={from}
                   onChange={(event) => setFrom(event.target.value)}
                 />
@@ -239,12 +240,14 @@ export const ReportWorkbench: React.FC<{
                 <input
                   className={input}
                   type="date"
+                  required={definition.dateRangeRequired}
                   value={to}
                   onChange={(event) => setTo(event.target.value)}
                 />
               </label>
               <p className="text-xs text-slate-500 sm:col-span-2">
-                Optional inclusive range, maximum 366 days. Both dates are required.
+                {definition.dateRangeRequired ? 'Required' : 'Optional'} inclusive range, maximum
+                366 days. Both dates are required.
               </p>
             </>
           ) : null}
@@ -259,7 +262,11 @@ export const ReportWorkbench: React.FC<{
                 setPatient(next);
                 setInvoice([]);
               }}
-              help="Browse patients registered at this facility. Cross-facility registration needs a separate access policy."
+              help={
+                id === 'outpatient-diagnoses'
+                  ? 'Browse patients with a recorded outpatient encounter at this facility, including those registered elsewhere in the same tenant.'
+                  : 'Browse patients registered at this facility. Cross-facility registration needs a separate access policy.'
+              }
             />
           )}
           {definition.wardFilter && (

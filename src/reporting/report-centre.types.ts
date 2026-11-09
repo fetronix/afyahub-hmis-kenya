@@ -33,6 +33,8 @@ export interface ReportEngineDefinition {
   searchLabel: string;
   dateLabel?: string;
   dateMode?: 'asOf';
+  /** Bound a potentially large source register to an explicit inclusive period. */
+  dateRangeRequired?: boolean;
   statuses?: readonly { value: string; label: string }[];
   patientFilter?: boolean;
   wardFilter?: boolean;

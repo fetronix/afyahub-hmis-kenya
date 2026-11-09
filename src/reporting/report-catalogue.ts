@@ -6,6 +6,7 @@ export type ReportEngineId =
   | 'current-inpatients'
   | 'inventory-expiry'
   | 'outpatient-encounters'
+  | 'outpatient-diagnoses'
   | 'inpatient-admissions'
   | 'inpatient-discharges'
   | 'laboratory-orders'
@@ -541,8 +542,9 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         id: 'departmental-opd-diagnosis-reports',
         name: 'Diagnosis reports',
         group: 'OPD',
-        dependency: 'Defined report events, referral lifecycle, clinician attribution and exports.',
-        engine: null,
+        dependency:
+          'Recorded encounter/diagnosis register only; deduplicated morbidity, verified MOH 705 definitions and facility acceptance remain outstanding.',
+        engine: 'outpatient-diagnoses',
         workflow: null,
       },
       {
@@ -928,8 +930,8 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         name: 'OPD diagnosis reports',
         group: null,
         dependency:
-          'Defined reporting data and relationships; cashier finance reconciliation where applicable.',
-        engine: null,
+          'Recorded encounter/diagnosis register only; deduplicated morbidity, verified MOH 705 definitions and facility acceptance remain outstanding.',
+        engine: 'outpatient-diagnoses',
         workflow: null,
       },
       {
