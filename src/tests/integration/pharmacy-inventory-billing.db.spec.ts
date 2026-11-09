@@ -447,6 +447,7 @@ describeDb('Inventory-priced pharmacy billing (synthetic PostgreSQL)', () => {
       expiryDate: '2098-12-31',
       quantity: 3,
       costPerUnit: '2.00',
+      idempotencyKey: randomUUID(),
     });
     expect(res.body.error).toBe('BATCH_EXPIRY_MISMATCH');
     expect(

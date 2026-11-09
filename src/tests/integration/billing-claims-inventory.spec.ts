@@ -46,7 +46,13 @@ const ctx: AuthorizationContext = {
   tenantId: 1,
   facilityId: 10,
   roles: ['FACILITY_ADMIN'],
-  permissions: ['billing.read', 'billing.write', 'pharmacy.write', 'inventory.write'],
+  permissions: [
+    'billing.read',
+    'billing.write',
+    'pharmacy.write',
+    'inventory.write',
+    'inventory.manage',
+  ],
   isSuperAdmin: false,
 };
 
@@ -466,6 +472,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     // Reject already-expired batch after locking the stock item.
     mockDb.state!.queueSelect(
       [{ id: 50, facilityId: 10 }],
+      [], // no prior receipt retry identity
       [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }],
     );
     mockDb.state!.queueUpdate([{ id: 50, currentStock: 100 }]);
@@ -475,12 +482,14 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
         expiryDate: '2020-01-01',
         quantity: 100,
         costPerUnit: 5.5,
+        idempotencyKey: 'synthetic-expired-receipt-key',
       }),
     ).rejects.toMatchObject({ code: 'EXPIRED_BATCH', status: 409 });
 
     // Receive valid batch
     mockDb.state!.queueSelect(
       [{ id: 50, facilityId: 10, name: 'Amoxicillin 500mg' }],
+      [], // no prior receipt retry identity
       [{ timezone: 'Africa/Nairobi', tenantTimezone: 'Africa/Nairobi' }],
       [],
     );
@@ -501,6 +510,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
       expiryDate: '2028-06-30',
       quantity: 100,
       costPerUnit: 5.5,
+      idempotencyKey: 'synthetic-valid-receipt-key',
     });
     expect(received.received).toBe(100);
 

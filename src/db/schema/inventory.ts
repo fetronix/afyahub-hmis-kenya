@@ -121,6 +121,75 @@ export const inventoryBatches = pgTable(
   }),
 );
 
+/** Serializable receipt result captured at commit; it is not a valuation approval. */
+export interface InventoryReceiptSnapshot {
+  batch: {
+    id: number;
+    itemId: number;
+    batchNumber: string;
+    expiryDate: string;
+    quantityRemaining: number;
+    costPerUnit: string | null;
+  };
+  item: Record<string, unknown>;
+  received: number;
+  expiryMismatch: null;
+}
+
+/** New retry identities only; no historical receipt is inferred or backfilled. */
+export const inventoryReceiptRequests = pgTable(
+  'inventory_receipt_requests',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    state: text('state').notNull(),
+    requestHash: text('request_hash'),
+    itemId: integer('item_id').references(() => inventoryItems.id),
+    batchId: integer('batch_id').references(() => inventoryBatches.id),
+    receivedQuantity: integer('received_quantity'),
+    costPerUnit: numeric('cost_per_unit', { precision: 10, scale: 2 }),
+    responseSnapshot: jsonb('response_snapshot').$type<InventoryReceiptSnapshot>(),
+    cancellationReason: text('cancellation_reason'),
+    actorUserId: integer('actor_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    key: uniqueIndex('inventory_receipt_requests_facility_key_idx').on(
+      t.facilityId,
+      t.idempotencyKey,
+    ),
+    keyFormat: check(
+      'inventory_receipt_requests_key_check',
+      sql`${t.idempotencyKey} ~ '^[A-Za-z0-9._:-]{8,128}$'`,
+    ),
+    stateCheck: check(
+      'inventory_receipt_requests_state_values_check',
+      sql`${t.state} IN ('RECORDED','CANCELLED')`,
+    ),
+    content: check(
+      'inventory_receipt_requests_state_check',
+      sql`(${t.state}='RECORDED' AND ${t.requestHash} IS NOT NULL AND ${t.requestHash} ~ '^[0-9a-f]{64}$'
+        AND ${t.itemId} IS NOT NULL AND ${t.batchId} IS NOT NULL AND ${t.receivedQuantity} IS NOT NULL
+        AND ${t.receivedQuantity} BETWEEN 1 AND 1000000 AND ${t.costPerUnit} IS NOT NULL
+        AND ${t.costPerUnit} >= 0 AND ${t.costPerUnit}::text NOT IN ('NaN','Infinity','-Infinity')
+        AND ${t.responseSnapshot} IS NOT NULL AND jsonb_typeof(${t.responseSnapshot})='object'
+        AND ${t.cancellationReason} IS NULL)
+        OR (${t.state}='CANCELLED' AND ${t.requestHash} IS NULL AND ${t.itemId} IS NULL
+        AND ${t.batchId} IS NULL AND ${t.receivedQuantity} IS NULL AND ${t.costPerUnit} IS NULL
+        AND ${t.responseSnapshot} IS NULL AND ${t.cancellationReason} IS NOT NULL
+        AND length(trim(${t.cancellationReason})) BETWEEN 3 AND 500)`,
+    ),
+  }),
+);
+
 /* ============================================================
    36. PHARMACY DISPENSATIONS
    ============================================================ */

@@ -40,6 +40,7 @@ import {
   daysUntilExpiry,
   expiryStatus,
   parseIsoDate,
+  parseReceiptCostCents,
   planFefo,
   stockValueCents,
   type BatchExpiryStatus,
@@ -59,6 +60,8 @@ export type InventoryErrorCode =
   | 'BATCH_NOT_FOUND'
   | 'BATCH_EXPIRY_EVIDENCE_REQUIRED'
   | 'BATCH_EXPIRY_MISMATCH'
+  | 'BATCH_COST_MISMATCH'
+  | 'BATCH_COST_EVIDENCE_REQUIRED'
   | 'INSUFFICIENT_STOCK'
   | 'STOCK_RECONCILIATION_REQUIRED'
   | 'EXPIRED_BATCH'
@@ -70,6 +73,8 @@ export type InventoryErrorCode =
   | 'PRESCRIPTION_PRODUCT_REVIEW'
   | 'IDEMPOTENCY_KEY_REQUIRED'
   | 'IDEMPOTENCY_CONFLICT'
+  | 'IDEMPOTENCY_CANCELLED'
+  | 'RECEIPT_REVIEW_REQUIRED'
   | 'DISPENSATION_REVIEW_REQUIRED';
 
 export class InventoryDomainError extends Error {
@@ -105,7 +110,7 @@ export interface InventoryBatchRow {
   batchNumber: string;
   expiryDate: string;
   quantityRemaining: number;
-  costPerUnit: string;
+  costPerUnit: string | null;
   daysToExpiry: number | null;
   status: BatchExpiryStatus;
 }
@@ -118,8 +123,8 @@ export interface ExpirySummary {
   expiredUnits: number;
   expiringBatches: number;
   expiringUnits: number;
-  expiredValueCents: number;
-  expiringValueCents: number;
+  expiredValueCents: number | null;
+  expiringValueCents: number | null;
   /** Distinct items with anything expired or expiring. */
   affectedItems: number;
   items: Array<{
@@ -136,7 +141,8 @@ export interface ReceiveBatchInput {
   batchNumber?: unknown;
   expiryDate?: unknown;
   quantity?: unknown;
-  costPerUnit?: unknown;
+  costPerUnit: unknown;
+  idempotencyKey: unknown;
 }
 
 interface FacilityContext {
@@ -209,15 +215,14 @@ function parsePositiveInt(value: unknown, label: string, max: number): number {
 }
 
 function parseCost(value: unknown): string {
-  if (value === undefined || value === null || value === '') return '0';
-
-  const parsed = typeof value === 'number' ? value : Number(String(value));
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new InventoryDomainError('INVALID_INPUT', 'Cost per unit must be zero or more.');
+  const cents = parseReceiptCostCents(value);
+  if (cents === null) {
+    throw new InventoryDomainError(
+      'INVALID_INPUT',
+      'Enter an explicit nonnegative unit cost with at most two decimal places.',
+    );
   }
-
-  return parsed.toFixed(2);
+  return formatCents(cents);
 }
 
 /** An audited, optimistic price change; prior dispensing snapshots are never changed. */
@@ -307,20 +312,177 @@ export async function updateInventorySellingPriceScoped(
    RECEIVE STOCK INTO A BATCH
    ============================================================ */
 
+function requireReceiptPermission(context: AuthorizationContext): void {
+  // A platform identity is not a facility stock or financial operator.
+  if (context.isSuperAdmin || !hasAllPermissions(context, ['inventory.manage']))
+    throw new InventoryDomainError(
+      'FORBIDDEN',
+      'A facility or tenant inventory-management permission is required.',
+      403,
+    );
+}
+
+function receiptKey(value: unknown): string {
+  const key = typeof value === 'string' ? value.trim() : '';
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key))
+    throw new InventoryDomainError(
+      'IDEMPOTENCY_KEY_REQUIRED',
+      'A unique receipt retry identity is required and must be reused for retries.',
+      400,
+    );
+  return key;
+}
+
+type ReceiptRequest = typeof schema.inventoryReceiptRequests.$inferSelect;
+
+function checkedReceiptSnapshot(request: ReceiptRequest): schema.InventoryReceiptSnapshot {
+  const snapshot = request.responseSnapshot;
+  if (
+    request.state !== 'RECORDED' ||
+    !snapshot ||
+    typeof snapshot !== 'object' ||
+    !snapshot.batch ||
+    typeof snapshot.batch !== 'object' ||
+    !snapshot.item ||
+    typeof snapshot.item !== 'object' ||
+    !Number.isSafeInteger(request.itemId) ||
+    Number(request.itemId) <= 0 ||
+    !Number.isSafeInteger(request.batchId) ||
+    Number(request.batchId) <= 0 ||
+    !Number.isSafeInteger(request.receivedQuantity) ||
+    Number(request.receivedQuantity) <= 0 ||
+    typeof request.costPerUnit !== 'string' ||
+    parseReceiptCostCents(request.costPerUnit) === null ||
+    typeof snapshot.batch.batchNumber !== 'string' ||
+    !snapshot.batch.batchNumber.trim() ||
+    typeof snapshot.batch.expiryDate !== 'string' ||
+    !parseIsoDate(snapshot.batch.expiryDate) ||
+    snapshot.batch.id !== request.batchId ||
+    snapshot.batch.itemId !== request.itemId ||
+    snapshot.batch.costPerUnit !== request.costPerUnit ||
+    snapshot.item.id !== request.itemId ||
+    snapshot.item.facilityId !== request.facilityId ||
+    snapshot.received !== request.receivedQuantity ||
+    !Number.isSafeInteger(snapshot.batch.quantityRemaining) ||
+    snapshot.batch.quantityRemaining < snapshot.received ||
+    snapshot.expiryMismatch !== null
+  )
+    throw new InventoryDomainError(
+      'RECEIPT_REVIEW_REQUIRED',
+      'The recorded receipt evidence is inconsistent and needs review.',
+      409,
+    );
+  return snapshot;
+}
+
+function receiptStatus(request: ReceiptRequest) {
+  if (request.state === 'CANCELLED') return { status: 'CANCELLED' as const, receiptId: request.id };
+  const snapshot = checkedReceiptSnapshot(request);
+  return {
+    status: 'RECORDED' as const,
+    receiptId: request.id,
+    itemId: request.itemId,
+    batchId: request.batchId,
+    batchNumber: snapshot.batch.batchNumber,
+    quantity: request.receivedQuantity,
+    costPerUnit: request.costPerUnit,
+    recordedAt: request.createdAt.toISOString(),
+  };
+}
+
+/** A NOT_FOUND result is not proof that a delayed request cannot still arrive. */
+export async function getReceiptRequestStatusScoped(
+  context: AuthorizationContext,
+  input: { facilityId?: number; idempotencyKey: unknown },
+) {
+  requireReceiptPermission(context);
+  const { facilityId, tenantId } = await resolveFacility(context, input.facilityId);
+  const key = receiptKey(input.idempotencyKey);
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`inventory-receipt:${facilityId}:${key}`}, 0))`,
+    );
+    const [request] = await tx
+      .select()
+      .from(schema.inventoryReceiptRequests)
+      .where(
+        and(
+          eq(schema.inventoryReceiptRequests.tenantId, tenantId),
+          eq(schema.inventoryReceiptRequests.facilityId, facilityId),
+          eq(schema.inventoryReceiptRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    return request ? receiptStatus(request) : { status: 'NOT_FOUND' as const };
+  });
+}
+
+/** Fence a possibly delayed request; this does not reverse any recorded stock. */
+export async function cancelReceiptRetryScoped(
+  context: AuthorizationContext,
+  input: { facilityId?: number; idempotencyKey: unknown; reason: unknown },
+) {
+  requireReceiptPermission(context);
+  const { facilityId, tenantId } = await resolveFacility(context, input.facilityId);
+  const key = receiptKey(input.idempotencyKey);
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  if (reason.length < 3 || reason.length > 500 || /\p{Cc}/u.test(reason))
+    throw new InventoryDomainError('INVALID_INPUT', 'Enter a reason of 3–500 characters.');
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`inventory-receipt:${facilityId}:${key}`}, 0))`,
+    );
+    const [prior] = await tx
+      .select()
+      .from(schema.inventoryReceiptRequests)
+      .where(
+        and(
+          eq(schema.inventoryReceiptRequests.tenantId, tenantId),
+          eq(schema.inventoryReceiptRequests.facilityId, facilityId),
+          eq(schema.inventoryReceiptRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (prior) return receiptStatus(prior);
+    const [cancelled] = await tx
+      .insert(schema.inventoryReceiptRequests)
+      .values({
+        tenantId,
+        facilityId,
+        idempotencyKey: key,
+        state: 'CANCELLED',
+        cancellationReason: reason,
+        actorUserId: context.userId,
+      })
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      resource: 'InventoryReceiptRetry',
+      resourceId: String(cancelled.id),
+      action: 'CANCEL',
+      details: JSON.stringify({ reason }),
+    });
+    return receiptStatus(cancelled);
+  });
+}
+
 export async function receiveBatchScoped(
   context: AuthorizationContext,
   itemId: number,
   input: ReceiveBatchInput,
   requestedFacilityId?: number | null,
 ) {
+  requireReceiptPermission(context);
   const { facilityId, tenantId } = await resolveFacility(context, requestedFacilityId);
 
   const batchNumber = typeof input.batchNumber === 'string' ? input.batchNumber.trim() : '';
 
-  if (batchNumber.length === 0 || batchNumber.length > 64) {
+  if (batchNumber.length === 0 || batchNumber.length > 64 || /\p{Cc}/u.test(batchNumber)) {
     throw new InventoryDomainError(
       'INVALID_INPUT',
-      'Batch number is required and must be 64 characters or fewer.',
+      'Batch number is required, must be 64 characters or fewer, and cannot contain control characters.',
     );
   }
 
@@ -337,6 +499,21 @@ export async function receiveBatchScoped(
 
   const quantity = parsePositiveInt(input.quantity, 'Quantity', 1_000_000);
   const costPerUnit = parseCost(input.costPerUnit);
+  const key = receiptKey(input.idempotencyKey);
+  const requestHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        version: 1,
+        tenantId,
+        facilityId,
+        itemId,
+        batchNumber,
+        expiryDate: expiryRaw,
+        quantity,
+        costPerUnit,
+      }),
+    )
+    .digest('hex');
 
   const [item] = await db
     .select()
@@ -351,6 +528,36 @@ export async function receiveBatchScoped(
   }
 
   return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`inventory-receipt:${facilityId}:${key}`}, 0))`,
+    );
+    const [prior] = await tx
+      .select()
+      .from(schema.inventoryReceiptRequests)
+      .where(
+        and(
+          eq(schema.inventoryReceiptRequests.tenantId, tenantId),
+          eq(schema.inventoryReceiptRequests.facilityId, facilityId),
+          eq(schema.inventoryReceiptRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (prior) {
+      if (prior.state === 'CANCELLED')
+        throw new InventoryDomainError(
+          'IDEMPOTENCY_CANCELLED',
+          'This receipt retry identity has been closed.',
+          409,
+        );
+      if (prior.requestHash !== requestHash)
+        throw new InventoryDomainError(
+          'IDEMPOTENCY_CONFLICT',
+          'This receipt retry identity was used for different receipt details.',
+          409,
+        );
+      const snapshot = checkedReceiptSnapshot(prior);
+      return { ...snapshot, receiptId: prior.id, replayed: true };
+    }
     const timezone = await facilityTimezone(facilityId, tenantId, tx, true);
     /*
      * Re-receiving the same batch number tops the lot up only when its
@@ -369,6 +576,7 @@ export async function receiveBatchScoped(
           eq(schema.inventoryItems.id, item.id),
           eq(schema.inventoryItems.facilityId, facilityId),
           sql`${schema.inventoryItems.currentStock} >= 0`,
+          sql`${schema.inventoryItems.currentStock} <= ${2_147_483_647 - quantity}`,
         ),
       )
       .returning();
@@ -387,7 +595,11 @@ export async function receiveBatchScoped(
         409,
       );
     const [existing] = await tx
-      .select({ expiryDate: schema.inventoryBatches.expiryDate })
+      .select({
+        expiryDate: schema.inventoryBatches.expiryDate,
+        costPerUnit: schema.inventoryBatches.costPerUnit,
+        quantityRemaining: schema.inventoryBatches.quantityRemaining,
+      })
       .from(schema.inventoryBatches)
       .where(
         and(
@@ -403,6 +615,31 @@ export async function receiveBatchScoped(
         'This batch number already has a different expiry date. Review the physical lot before receiving it.',
         409,
       );
+    if (existing) {
+      if (
+        !Number.isSafeInteger(existing.quantityRemaining) ||
+        existing.quantityRemaining < 0 ||
+        existing.quantityRemaining > 2_147_483_647 - quantity
+      )
+        throw new InventoryDomainError(
+          'STOCK_RECONCILIATION_REQUIRED',
+          'The lot quantity is invalid or cannot accept this receipt; review the stock.',
+          409,
+        );
+      const previousCost = parseReceiptCostCents(existing.costPerUnit);
+      if (previousCost === null)
+        throw new InventoryDomainError(
+          'BATCH_COST_EVIDENCE_REQUIRED',
+          'The existing lot has no valid unit cost. Review its evidence before receiving more stock.',
+          409,
+        );
+      if (previousCost !== parseReceiptCostCents(costPerUnit))
+        throw new InventoryDomainError(
+          'BATCH_COST_MISMATCH',
+          'This lot already has a different unit cost. Review the receipt rather than changing earlier stock value.',
+          409,
+        );
+    }
 
     const [batch] = await tx
       .insert(schema.inventoryBatches)
@@ -417,20 +654,63 @@ export async function receiveBatchScoped(
         target: [schema.inventoryBatches.itemId, schema.inventoryBatches.batchNumber],
         set: {
           quantityRemaining: sql`${schema.inventoryBatches.quantityRemaining} + ${quantity}`,
-          costPerUnit,
         },
+        // A writer outside this service could have inserted the lot after the
+        // earlier check. Never update it unless its evidence still agrees.
+        setWhere: and(
+          eq(schema.inventoryBatches.expiryDate, expiryRaw),
+          eq(schema.inventoryBatches.costPerUnit, costPerUnit),
+          sql`${schema.inventoryBatches.quantityRemaining} >= 0`,
+          sql`${schema.inventoryBatches.quantityRemaining} <= ${2_147_483_647 - quantity}`,
+        ),
       })
       .returning();
-
-    return {
-      batch: {
-        ...batch,
-        expiryDate: batch?.expiryDate ?? expiryRaw,
-      },
-      item: updatedItem,
+    if (!batch)
+      throw new InventoryDomainError(
+        'STOCK_RECONCILIATION_REQUIRED',
+        'The lot could not be recorded; review the stock before trying again.',
+        409,
+      );
+    const snapshot: schema.InventoryReceiptSnapshot = {
+      batch: { ...batch, expiryDate: batch.expiryDate ?? expiryRaw },
+      item: { ...updatedItem },
       received: quantity,
-      expiryMismatch: batch && batch.expiryDate !== expiryRaw ? batch.expiryDate : null,
+      expiryMismatch: null,
     };
+    const [request] = await tx
+      .insert(schema.inventoryReceiptRequests)
+      .values({
+        tenantId,
+        facilityId,
+        idempotencyKey: key,
+        state: 'RECORDED',
+        requestHash,
+        itemId: item.id,
+        batchId: batch.id,
+        receivedQuantity: quantity,
+        costPerUnit,
+        responseSnapshot: snapshot,
+        actorUserId: context.userId,
+      })
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      resource: 'InventoryBatchReceipt',
+      resourceId: String(request.id),
+      action: 'CREATE',
+      details: JSON.stringify({
+        itemId: item.id,
+        batchId: batch.id,
+        batchNumber,
+        expiryDate: expiryRaw,
+        quantity,
+        costPerUnit,
+      }),
+    });
+
+    return { ...snapshot, receiptId: request.id, replayed: false };
   });
 }
 
@@ -477,7 +757,7 @@ export async function getBatchesScoped(
 
   const decorated = rows.map((row) => ({
     ...row,
-    costPerUnit: String(row.costPerUnit ?? '0'),
+    costPerUnit: row.costPerUnit === null ? null : String(row.costPerUnit),
     daysToExpiry: daysUntilExpiry(row.expiryDate, today),
     status: expiryStatus(row.expiryDate, today, horizon),
   }));
@@ -530,22 +810,35 @@ export async function getExpirySummaryScoped(
   >();
 
   for (const batch of batches) {
+    if (!Number.isSafeInteger(batch.quantityRemaining) || batch.quantityRemaining < 0)
+      throw new InventoryDomainError(
+        'STOCK_RECONCILIATION_REQUIRED',
+        'A batch has an invalid remaining quantity; review the stock before using this summary.',
+        409,
+      );
     if (batch.status === 'OK') continue;
 
     const expired = batch.status === 'Expired';
+    const value = stockValueCents([
+      { quantityRemaining: batch.quantityRemaining, costPerUnit: batch.costPerUnit },
+    ]);
 
     if (expired) {
       summary.expiredBatches += 1;
       summary.expiredUnits += batch.quantityRemaining;
-      summary.expiredValueCents += stockValueCents([
-        { quantityRemaining: batch.quantityRemaining, costPerUnit: batch.costPerUnit },
-      ]);
+      const total =
+        summary.expiredValueCents === null || value === null
+          ? null
+          : summary.expiredValueCents + value;
+      summary.expiredValueCents = total !== null && Number.isSafeInteger(total) ? total : null;
     } else {
       summary.expiringBatches += 1;
       summary.expiringUnits += batch.quantityRemaining;
-      summary.expiringValueCents += stockValueCents([
-        { quantityRemaining: batch.quantityRemaining, costPerUnit: batch.costPerUnit },
-      ]);
+      const total =
+        summary.expiringValueCents === null || value === null
+          ? null
+          : summary.expiringValueCents + value;
+      summary.expiringValueCents = total !== null && Number.isSafeInteger(total) ? total : null;
     }
 
     const entry = byItem.get(batch.itemId) ?? {

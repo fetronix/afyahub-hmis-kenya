@@ -1470,7 +1470,7 @@ export interface InventoryBatchRow {
   batchNumber: string;
   expiryDate: string;
   quantityRemaining: number;
-  costPerUnit: string;
+  costPerUnit: string | null;
   daysToExpiry: number | null;
   status: BatchExpiryStatus;
 }
@@ -1492,8 +1492,8 @@ export interface ExpirySummary {
   expiredUnits: number;
   expiringBatches: number;
   expiringUnits: number;
-  expiredValueCents: number;
-  expiringValueCents: number;
+  expiredValueCents: number | null;
+  expiringValueCents: number | null;
   affectedItems: number;
   items: ExpirySummaryItem[];
 }
@@ -1510,7 +1510,23 @@ export interface ReceiveBatchResult {
   item: InventoryItem | null;
   received: number;
   expiryMismatch: string | null;
+  receiptId: number;
+  replayed: boolean;
 }
+
+export type InventoryReceiptRequestStatus =
+  | { status: 'NOT_FOUND' }
+  | { status: 'CANCELLED'; receiptId: number }
+  | {
+      status: 'RECORDED';
+      receiptId: number;
+      itemId: number;
+      batchId: number;
+      batchNumber: string;
+      quantity: number;
+      costPerUnit: string;
+      recordedAt: string;
+    };
 
 export interface DispenseAllocation {
   batchId: number;

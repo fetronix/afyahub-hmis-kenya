@@ -127,15 +127,25 @@ router.post(
       });
     }
 
+    const requestedFacilityId: unknown = req.body?.facilityId;
+    if (
+      requestedFacilityId !== undefined &&
+      (typeof requestedFacilityId !== 'number' ||
+        !Number.isSafeInteger(requestedFacilityId) ||
+        requestedFacilityId <= 0)
+    ) {
+      return res.status(400).json({ success: false, error: 'INVALID_FACILITY_ID' });
+    }
+
     try {
       const result = await inventory.receiveBatchScoped(
         context,
         itemId,
         req.body ?? {},
-        typeof req.body?.facilityId === 'number' ? req.body.facilityId : undefined,
+        requestedFacilityId,
       );
 
-      return res.status(201).json(result);
+      return res.status(result.replayed ? 200 : 201).json(result);
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
       if (handleInventoryError(err, res)) return;
@@ -145,6 +155,63 @@ router.post(
         success: false,
         error: 'BATCH_RECEIVE_FAILED',
       });
+    }
+  },
+);
+
+/** A status lookup never turns NOT_FOUND into permission to use a new identity. */
+router.post(
+  '/api/inventory/receipt-status',
+  requirePermission('inventory.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    const facilityId: unknown = req.body?.facilityId;
+    if (
+      facilityId !== undefined &&
+      (typeof facilityId !== 'number' || !Number.isSafeInteger(facilityId) || facilityId <= 0)
+    )
+      return res.status(400).json({ success: false, error: 'INVALID_FACILITY_ID' });
+    try {
+      return res.json(
+        await inventory.getReceiptRequestStatusScoped(context, {
+          facilityId,
+          idempotencyKey: req.body?.idempotencyKey,
+        }),
+      );
+    } catch (err: unknown) {
+      if (handleScopeError(err, res) || handleInventoryError(err, res)) return;
+      console.error('Receipt status error:', err);
+      return res.status(500).json({ success: false, error: 'RECEIPT_STATUS_FAILED' });
+    }
+  },
+);
+
+/** Close only the retry identity, never a recorded receipt or its stock. */
+router.post(
+  '/api/inventory/receipt-retry-cancellation',
+  requirePermission('inventory.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    const facilityId: unknown = req.body?.facilityId;
+    if (
+      facilityId !== undefined &&
+      (typeof facilityId !== 'number' || !Number.isSafeInteger(facilityId) || facilityId <= 0)
+    )
+      return res.status(400).json({ success: false, error: 'INVALID_FACILITY_ID' });
+    try {
+      return res.json(
+        await inventory.cancelReceiptRetryScoped(context, {
+          facilityId,
+          idempotencyKey: req.body?.idempotencyKey,
+          reason: req.body?.reason,
+        }),
+      );
+    } catch (err: unknown) {
+      if (handleScopeError(err, res) || handleInventoryError(err, res)) return;
+      console.error('Receipt retry cancellation error:', err);
+      return res.status(500).json({ success: false, error: 'RECEIPT_CANCELLATION_FAILED' });
     }
   },
 );

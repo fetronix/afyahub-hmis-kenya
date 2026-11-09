@@ -2,11 +2,25 @@ import { PrimaryButton, SecondaryButton, SearchBar, Tabs } from '../ui/controls.
 import { AlertBanner, ErrorState } from '../ui/feedback.tsx';
 import { Modal } from '../ui/overlays.tsx';
 import { DataTable, PageHeader, StatCard } from '../ui/layout.tsx';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { InventoryItem, InventoryBatchRow, ExpirySummary } from '../../types/index.ts';
 import ExpiryCountdown, { expiryDeadline } from '../ExpiryCountdown.tsx';
+import {
+  parseIsoDate,
+  parseReceiptCostCents,
+  stockValueCents,
+} from '../../inventory/inventory-contracts.ts';
+import { formatCents } from '../../billing/settlement.ts';
+import {
+  clearPendingReceipt,
+  fingerprintReceipt,
+  readPendingReceipt,
+  savePendingReceipt,
+  type PendingInventoryReceipt,
+  type ReceiptFingerprintInput,
+} from '../../inventory/receipt-retry-storage.ts';
 import {
   Package,
   AlertTriangle,
@@ -19,8 +33,25 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+function batchCostLabel(cost: string | null): string {
+  if (cost === null) return 'Unknown';
+  const cents = parseReceiptCostCents(cost);
+  if (cents === null) return 'Invalid — review';
+  return cents === 0 ? 'Zero or unpriced' : `KES ${formatCents(cents)}`;
+}
+
+function batchValueLabel(batch: InventoryBatchRow): string {
+  const cents = stockValueCents([batch]);
+  return cents === null ? 'Unconfirmed' : `KES ${formatCents(cents)}`;
+}
+
 export const InventoryModule: React.FC = () => {
   const { currentFacility, authenticatedUser, showToast, refreshKey, triggerRefresh } = useHmis();
+  const canManageStock = Boolean(
+    authenticatedUser?.id &&
+    !authenticatedUser.isSuperAdmin &&
+    authenticatedUser.permissions?.includes('inventory.manage'),
+  );
   const canSetPrice = Boolean(
     !authenticatedUser?.isSuperAdmin &&
     authenticatedUser?.permissions?.includes('inventory.manage') &&
@@ -45,6 +76,16 @@ export const InventoryModule: React.FC = () => {
   const [expiry, setExpiry] = useState<ExpirySummary | null>(null);
   const [batchFilter, setBatchFilter] = useState<'All' | 'Expired' | 'Expiring' | 'OK'>('All');
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [receiveBusy, setReceiveBusy] = useState(false);
+  const receivePending = useRef(false);
+  const [pendingReceipt, setPendingReceipt] = useState<PendingInventoryReceipt | null>(null);
+  const [receiptStorageError, setReceiptStorageError] = useState('');
+  const [checkingReceipt, setCheckingReceipt] = useState(false);
+  const [receiptCancellationReason, setReceiptCancellationReason] = useState('');
+  const receiptStorageKey =
+    authenticatedUser?.id && currentFacility?.id
+      ? `jalicare:inventory:receipt:${authenticatedUser.id}:${currentFacility.id}`
+      : null;
   const [receiveForm, setReceiveForm] = useState({
     itemId: '',
     batchNumber: '',
@@ -55,6 +96,8 @@ export const InventoryModule: React.FC = () => {
 
   // New Item Modal
   const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const createPending = useRef(false);
   const [newItem, setNewItem] = useState({
     itemCode: '',
     name: '',
@@ -77,6 +120,29 @@ export const InventoryModule: React.FC = () => {
     batchNumber: '',
     expiryDate: '',
   });
+
+  useEffect(() => {
+    if (!receiptStorageKey) {
+      // Reconcile the external storage snapshot when the authenticated scope changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPendingReceipt(null);
+      setReceiptStorageError('A signed-in user and authorized facility are required for receipts.');
+      return;
+    }
+    const refreshPending = () => {
+      try {
+        setPendingReceipt(readPendingReceipt(window.localStorage, receiptStorageKey));
+        setReceiptStorageError('');
+      } catch {
+        setReceiptStorageError(
+          'The saved receipt identity cannot be read. Review receipt records before continuing.',
+        );
+      }
+    };
+    refreshPending();
+    window.addEventListener('storage', refreshPending);
+    return () => window.removeEventListener('storage', refreshPending);
+  }, [receiptStorageKey]);
 
   useEffect(() => {
     let active = true;
@@ -156,8 +222,94 @@ export const InventoryModule: React.FC = () => {
     }
   };
 
+  const prepareReceiptRetry = async (input: ReceiptFingerprintInput): Promise<string> => {
+    if (!canManageStock || !receiptStorageKey || receiptStorageError)
+      throw new Error('A recoverable receipt identity and authorized facility are required.');
+    const fingerprint = await fingerprintReceipt(input);
+    const saved = readPendingReceipt(window.localStorage, receiptStorageKey);
+    if (saved && (saved.itemId !== input.itemId || saved.fingerprint !== fingerprint)) {
+      setPendingReceipt(saved);
+      throw new Error('Resolve the existing receipt attempt or re-enter exactly the same details.');
+    }
+    const pending = saved ?? { key: crypto.randomUUID(), itemId: input.itemId, fingerprint };
+    if (!saved) savePendingReceipt(window.localStorage, receiptStorageKey, pending);
+    setPendingReceipt(pending);
+    return pending.key;
+  };
+
+  const clearReceiptRetry = (key: string) => {
+    if (!receiptStorageKey || !clearPendingReceipt(window.localStorage, receiptStorageKey, key))
+      throw new Error('The saved receipt identity changed. Review it before continuing.');
+    setPendingReceipt(readPendingReceipt(window.localStorage, receiptStorageKey));
+  };
+
+  const reviewReceiptRetry = async (cancel = false) => {
+    if (
+      !pendingReceipt ||
+      !receiptStorageKey ||
+      !currentFacility?.id ||
+      checkingReceipt ||
+      receiveBusy ||
+      createBusy
+    )
+      return;
+    if (
+      cancel &&
+      (receiptCancellationReason.trim().length < 3 || receiptCancellationReason.trim().length > 500)
+    ) {
+      showToast('Enter a reason of 3–500 characters to close the receipt retry identity.', {
+        tone: 'warning',
+      });
+      return;
+    }
+    setCheckingReceipt(true);
+    try {
+      const payload = { facilityId: currentFacility.id, idempotencyKey: pendingReceipt.key };
+      const outcome = cancel
+        ? await api.cancelInventoryReceiptRetry({
+            ...payload,
+            reason: receiptCancellationReason.trim(),
+          })
+        : await api.checkInventoryReceiptRequest(payload);
+      if (outcome.status === 'NOT_FOUND') {
+        showToast(
+          'No committed receipt was found. A delayed request may still arrive; retry the exact details or close this retry identity.',
+          { tone: 'warning' },
+        );
+        return;
+      }
+      if (outcome.status === 'RECORDED' && outcome.itemId !== pendingReceipt.itemId) {
+        showToast(
+          'The recorded receipt does not match the pending item. Manual review is required.',
+          { tone: 'warning' },
+        );
+        return;
+      }
+      clearReceiptRetry(pendingReceipt.key);
+      setReceiptCancellationReason('');
+      showToast(
+        outcome.status === 'RECORDED'
+          ? `Receipt #${outcome.receiptId} recorded ${outcome.quantity} units. Review the batch before another action.`
+          : 'The retry identity was closed. A delayed request using it cannot receive stock; no recorded stock was reversed.',
+      );
+      triggerRefresh();
+    } catch {
+      showToast(
+        'The receipt status could not be confirmed. Keep the retry identity and review before continuing.',
+        { tone: 'warning' },
+      );
+    } finally {
+      setCheckingReceipt(false);
+    }
+  };
+
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (createPending.current) return;
+    if (!canManageStock) {
+      showToast('Inventory management permission is required.', { tone: 'warning' });
+      return;
+    }
     if (!currentFacility?.id) {
       showToast('Select a facility before saving this record.', { tone: 'warning' });
       return;
@@ -173,16 +325,39 @@ export const InventoryModule: React.FC = () => {
     const batchNumber = newItem.batchNumber.trim();
     const expiryDate = newItem.expiryDate.trim();
     const wantsBatch = batchNumber.length > 0 || expiryDate.length > 0;
+    if (wantsBatch) {
+      try {
+        if (
+          !receiptStorageKey ||
+          receiptStorageError ||
+          readPendingReceipt(window.localStorage, receiptStorageKey)
+        ) {
+          showToast(
+            'Resolve the existing receipt identity before creating another opening batch.',
+            { tone: 'warning' },
+          );
+          return;
+        }
+      } catch {
+        showToast('The receipt retry identity is unavailable; no item was created.', {
+          tone: 'warning',
+        });
+        return;
+      }
+    }
 
     /*
      * A batch is all-or-nothing. Half a lot — a batch number with no
      * expiry, or an expiry with no number — cannot be received by the
      * batch endpoint and would silently leave the item untracked.
      */
-    if (wantsBatch && !newItem.unitCost.trim()) {
-      showToast('Enter the unit cost for the opening batch; use zero only when confirmed.', {
-        tone: 'warning',
-      });
+    if (wantsBatch && parseReceiptCostCents(newItem.unitCost) === null) {
+      showToast(
+        'Enter the opening-batch unit cost with at most two decimals; use zero only when confirmed.',
+        {
+          tone: 'warning',
+        },
+      );
       return;
     }
     if (wantsBatch && (!batchNumber || !expiryDate)) {
@@ -213,6 +388,8 @@ export const InventoryModule: React.FC = () => {
     }
 
     let createdItemId: number | null = null;
+    createPending.current = true;
+    setCreateBusy(true);
 
     try {
       /*
@@ -234,16 +411,29 @@ export const InventoryModule: React.FC = () => {
         reorderLevel: Number(newItem.reorderLevel),
       });
 
-      createdItemId = created?.id ?? null;
+      if (!created || !Number.isSafeInteger(created.id) || created.id <= 0)
+        throw new Error('The item response did not include a valid record ID.');
+      createdItemId = created.id;
 
-      if (wantsBatch && created?.id) {
+      if (wantsBatch) {
+        const unitCost = formatCents(parseReceiptCostCents(newItem.unitCost)!);
+        const idempotencyKey = await prepareReceiptRetry({
+          facilityId: currentFacility.id,
+          itemId: created.id,
+          batchNumber,
+          expiryDate,
+          quantity: openingQuantity,
+          costPerUnit: unitCost,
+        });
         await api.receiveBatch(created.id, {
           facilityId: currentFacility.id,
           batchNumber,
           expiryDate,
           quantity: openingQuantity,
-          costPerUnit: newItem.unitCost,
+          costPerUnit: unitCost,
+          idempotencyKey,
         });
+        clearReceiptRetry(idempotencyKey);
       }
 
       showToast(
@@ -257,8 +447,8 @@ export const InventoryModule: React.FC = () => {
     } catch (err: any) {
       showToast(
         createdItemId !== null
-          ? `The item was created, but its opening batch could not be received: ${err.message}. Use Receive Batch to add the stock.`
-          : `Error: ${err.message}`,
+          ? `The item was created, but its opening-batch result could not be confirmed: ${err.message}. Review batch and audit records before another receipt.`
+          : `The item save could not be confirmed: ${err.message}. Review the catalogue before trying again.`,
         { tone: 'warning' },
       );
 
@@ -266,6 +456,9 @@ export const InventoryModule: React.FC = () => {
         setIsNewItemModalOpen(false);
         triggerRefresh();
       }
+    } finally {
+      createPending.current = false;
+      setCreateBusy(false);
     }
   };
 
@@ -358,11 +551,21 @@ export const InventoryModule: React.FC = () => {
 
   const handleReceiveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!receiveForm.quantity.trim() || !receiveForm.costPerUnit.trim()) {
-      showToast('Enter the quantity and unit cost; use zero only when confirmed.', {
+    if (receivePending.current) return;
+    if (!canManageStock || !currentFacility?.id) {
+      showToast('Select an authorized facility and inventory manager before receiving stock.', {
         tone: 'warning',
       });
+      return;
+    }
+
+    if (!receiveForm.quantity.trim() || parseReceiptCostCents(receiveForm.costPerUnit) === null) {
+      showToast(
+        'Enter the quantity and unit cost with at most two decimals; use zero only when confirmed.',
+        {
+          tone: 'warning',
+        },
+      );
       return;
     }
     const itemId = Number(receiveForm.itemId);
@@ -372,17 +575,48 @@ export const InventoryModule: React.FC = () => {
       return;
     }
 
-    try {
-      const result = await api.receiveBatch(itemId, {
-        facilityId: currentFacility?.id,
-        batchNumber: receiveForm.batchNumber.trim(),
-        expiryDate: receiveForm.expiryDate,
-        quantity: Number(receiveForm.quantity),
-        costPerUnit: receiveForm.costPerUnit,
+    const quantity = Number(receiveForm.quantity);
+    const batchNumber = receiveForm.batchNumber.trim();
+    if (
+      !Number.isSafeInteger(quantity) ||
+      quantity < 1 ||
+      quantity > 1_000_000 ||
+      !batchNumber ||
+      batchNumber.length > 64 ||
+      /\p{Cc}/u.test(batchNumber) ||
+      !parseIsoDate(receiveForm.expiryDate)
+    ) {
+      showToast('Enter a valid batch, expiry date and whole quantity before receiving.', {
+        tone: 'warning',
       });
+      return;
+    }
+    receivePending.current = true;
+    setReceiveBusy(true);
+    let sent = false;
+    try {
+      const costPerUnit = formatCents(parseReceiptCostCents(receiveForm.costPerUnit)!);
+      const idempotencyKey = await prepareReceiptRetry({
+        facilityId: currentFacility.id,
+        itemId,
+        batchNumber,
+        expiryDate: receiveForm.expiryDate,
+        quantity,
+        costPerUnit,
+      });
+      sent = true;
+      const result = await api.receiveBatch(itemId, {
+        facilityId: currentFacility.id,
+        batchNumber,
+        expiryDate: receiveForm.expiryDate,
+        quantity,
+        costPerUnit,
+        idempotencyKey,
+      });
+      clearReceiptRetry(idempotencyKey);
 
       showToast(
-        `Received ${result.received} units into batch ${result.batch.batchNumber}` +
+        `${result.replayed ? 'Previous receipt retrieved:' : 'Received'} ${result.received} units into batch ${result.batch.batchNumber}` +
           (result.expiryMismatch
             ? ` (existing expiry ${result.expiryMismatch} kept)`
             : `, expiring ${result.batch.expiryDate}`) +
@@ -399,7 +633,15 @@ export const InventoryModule: React.FC = () => {
       });
       triggerRefresh();
     } catch (err: any) {
-      showToast(`Error: ${err.message}`);
+      showToast(
+        sent
+          ? `The receipt result could not be confirmed: ${err.message}. Review the batch and audit records before trying again.`
+          : `No receipt request was sent: ${err.message}`,
+        { tone: 'warning' },
+      );
+    } finally {
+      receivePending.current = false;
+      setReceiveBusy(false);
     }
   };
 
@@ -415,18 +657,57 @@ export const InventoryModule: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <SecondaryButton onClick={() => setIsReceiveModalOpen(true)}>
+          <SecondaryButton disabled={!canManageStock} onClick={() => setIsReceiveModalOpen(true)}>
             <PackagePlus className="w-3.5 h-3.5" />
             <span>Receive Batch</span>
           </SecondaryButton>
 
-          <PrimaryButton onClick={() => setIsNewItemModalOpen(true)}>
+          <PrimaryButton disabled={!canManageStock} onClick={() => setIsNewItemModalOpen(true)}>
             <Plus className="w-3.5 h-3.5" />
             <span>Add Stock Item</span>
           </PrimaryButton>
         </div>
       </PageHeader>
 
+      {canManageStock && receiptStorageError && (
+        <AlertBanner tone="error">{receiptStorageError}</AlertBanner>
+      )}
+      {canManageStock && pendingReceipt && (
+        <AlertBanner tone="warning">
+          <p>
+            Item #{pendingReceipt.itemId} has an unconfirmed receipt identity. Check its status or
+            retry the exact same item, lot, expiry, quantity and cost. Different identities, tabs or
+            devices are not automatically deduplicated.
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <SecondaryButton
+              disabled={checkingReceipt || receiveBusy || createBusy}
+              onClick={() => void reviewReceiptRetry()}
+            >
+              Check receipt status
+            </SecondaryButton>
+            <label className="text-xs">
+              Reason to close an unrecorded retry
+              <input
+                value={receiptCancellationReason}
+                onChange={(event) => setReceiptCancellationReason(event.target.value)}
+                maxLength={500}
+                className="ml-2 rounded border border-slate-300 px-2 py-1"
+              />
+            </label>
+            <SecondaryButton
+              disabled={checkingReceipt || receiveBusy || createBusy}
+              onClick={() => void reviewReceiptRetry(true)}
+            >
+              Close retry identity
+            </SecondaryButton>
+          </div>
+          <p>
+            Closing a retry never reverses recorded stock. If browser data is lost or another device
+            is used, review receipt and audit records manually.
+          </p>
+        </AlertBanner>
+      )}
       {(itemsError || batchesError || expiryError) && (
         <ErrorState
           message={[itemsError, batchesError, expiryError].filter(Boolean).join(' ')}
@@ -827,14 +1108,10 @@ export const InventoryModule: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-slate-600">
-                          {Number(batch.costPerUnit) === 0
-                            ? 'Zero or unpriced'
-                            : `KES ${Number(batch.costPerUnit).toLocaleString()}`}
+                          {batchCostLabel(batch.costPerUnit)}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-slate-700">
-                          {Number(batch.costPerUnit) === 0
-                            ? 'Unconfirmed'
-                            : `KES ${(Number(batch.costPerUnit) * batch.quantityRemaining).toLocaleString()}`}
+                          {batchValueLabel(batch)}
                         </td>
                       </tr>
                     ))}
@@ -861,14 +1138,18 @@ export const InventoryModule: React.FC = () => {
       {/* ADD ITEM MODAL */}
       <Modal
         open={isNewItemModalOpen}
-        onClose={() => setIsNewItemModalOpen(false)}
+        onClose={() => {
+          if (!createBusy) setIsNewItemModalOpen(false);
+        }}
         title="Add Inventory Stock Item"
 
         actions={
           <>
-            <SecondaryButton onClick={() => setIsNewItemModalOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton type="submit" form="inventory-item-form">
-              Save Stock Item
+            <SecondaryButton disabled={createBusy} onClick={() => setIsNewItemModalOpen(false)}>
+              Cancel
+            </SecondaryButton>
+            <PrimaryButton disabled={createBusy} type="submit" form="inventory-item-form">
+              {createBusy ? 'Saving…' : 'Save Stock Item'}
             </PrimaryButton>
           </>
         }
@@ -1150,14 +1431,18 @@ export const InventoryModule: React.FC = () => {
       {/* RECEIVE BATCH MODAL */}
       <Modal
         open={isReceiveModalOpen}
-        onClose={() => setIsReceiveModalOpen(false)}
+        onClose={() => {
+          if (!receiveBusy) setIsReceiveModalOpen(false);
+        }}
         title="Receive Stock into a Batch"
 
         actions={
           <>
-            <SecondaryButton onClick={() => setIsReceiveModalOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton type="submit" form="inventory-receive-form">
-              Receive Stock
+            <SecondaryButton disabled={receiveBusy} onClick={() => setIsReceiveModalOpen(false)}>
+              Cancel
+            </SecondaryButton>
+            <PrimaryButton disabled={receiveBusy} type="submit" form="inventory-receive-form">
+              {receiveBusy ? 'Recording…' : 'Receive Stock'}
             </PrimaryButton>
           </>
         }
@@ -1251,8 +1536,10 @@ export const InventoryModule: React.FC = () => {
           </div>
 
           <p className="text-2xs text-slate-500 bg-slate-50 border border-slate-200 rounded-md p-2.5">
-            Receiving the same batch number again tops up the existing lot. The expiry already
-            recorded for that batch is never extended. Stock cannot be received already expired.
+            A top-up must match the lot’s expiry and unit cost. A retry with the same retained
+            identity cannot receive twice; different identities are not automatically deduplicated.
+            Independent receipt approval is not yet available. Review uncertain results before
+            another action.
           </p>
         </form>
       </Modal>

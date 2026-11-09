@@ -4,6 +4,7 @@ import type {
   ExpirySummary,
   InventoryBatchRow,
   InventoryItem,
+  InventoryReceiptRequestStatus,
   LabOrder,
   LabResult,
   LabTest,
@@ -215,7 +216,8 @@ export const diagnosticsPharmacyClient = {
       batchNumber: string;
       expiryDate: string;
       quantity: number;
-      costPerUnit?: string | number;
+      costPerUnit: string | number;
+      idempotencyKey: string;
       facilityId?: number;
     },
   ) =>
@@ -223,6 +225,22 @@ export const diagnosticsPharmacyClient = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  checkInventoryReceiptRequest: (payload: { facilityId: number; idempotencyKey: string }) =>
+    fetchJson<InventoryReceiptRequestStatus>(`${API_BASE}/inventory/receipt-status`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  cancelInventoryReceiptRetry: (payload: {
+    facilityId: number;
+    idempotencyKey: string;
+    reason: string;
+  }) =>
+    fetchJson<Exclude<InventoryReceiptRequestStatus, { status: 'NOT_FOUND' }>>(
+      `${API_BASE}/inventory/receipt-retry-cancellation`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
 
   getInventory: (facilityId?: number) =>
     fetchJson<InventoryItem[]>(

@@ -154,7 +154,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
       tenantId: tenant,
       facilityId: facility,
       roles: [],
-      permissions: [],
+      permissions,
       isSuperAdmin: false,
     };
     const { createApp } = await import('../../app.ts');
@@ -591,6 +591,7 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
         expiryDate: '2099-01-01',
         quantity: 3,
         costPerUnit: '1.00',
+        idempotencyKey: randomUUID(),
       }),
     ).rejects.toMatchObject({ code: 'STOCK_RECONCILIATION_REQUIRED' });
     expect(
@@ -836,7 +837,13 @@ describeDb('Clinical workflow boundaries (synthetic PostgreSQL)', () => {
       receiveBatchScoped(
         ctx,
         stockId,
-        { batchNumber: `RECEIVE-${suffix}`, expiryDate: '2040-01-01', quantity: 3, costPerUnit: 0 },
+        {
+          batchNumber: `RECEIVE-${suffix}`,
+          expiryDate: '2040-01-01',
+          quantity: 3,
+          costPerUnit: 0,
+          idempotencyKey: randomUUID(),
+        },
         facility,
       ),
     ]);

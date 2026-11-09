@@ -11,7 +11,21 @@
  * same answer forever.
  */
 
+import { parseMoneyToCents } from '../billing/settlement.ts';
+
 export type BatchExpiryStatus = 'Expired' | 'Expiring' | 'OK';
+
+/**
+ * Receipt costs must fit numeric(10, 2) exactly. Missing, negative and
+ * fractional-cent inputs are not prices and must never be rounded to one.
+ */
+export function parseReceiptCostCents(value: unknown): number | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const text = String(value).trim();
+  if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(text)) return null;
+  const cents = parseMoneyToCents(text);
+  return cents !== null && cents <= 9_999_999_999 ? cents : null;
+}
 
 export interface BatchLot {
   id: number;
@@ -191,25 +205,22 @@ export function planFefo(lots: BatchLot[], quantity: number, today: string): Fef
 }
 
 /**
- * Value of the stock in a set of lots, in cents.
- *
- * Cents rather than floats: stock valuation is money, and 0.1 + 0.2 is
- * not 0.3 in binary floating point.
+ * Exact stock value in cents, or null when a positive quantity is unpriced,
+ * ambiguous, invalid, or too large to represent safely.
  */
 export function stockValueCents(
   lots: Array<{ quantityRemaining: number; costPerUnit: string | number | null }>,
-): number {
-  let cents = 0;
-
+): number | null {
+  let total = 0;
   for (const lot of lots) {
-    const quantity = Number.isFinite(lot.quantityRemaining) ? lot.quantityRemaining : 0;
-
-    const unit = Number(lot.costPerUnit ?? 0);
-
-    if (!Number.isFinite(unit) || quantity <= 0) continue;
-
-    cents += Math.round(unit * 100) * quantity;
+    if (!Number.isSafeInteger(lot.quantityRemaining) || lot.quantityRemaining < 0) return null;
+    if (lot.quantityRemaining === 0) continue;
+    const cents = parseReceiptCostCents(lot.costPerUnit);
+    // Legacy rows cannot distinguish a confirmed free item from an unpriced
+    // item stored as zero, so a positive stock quantity at zero is ambiguous.
+    if (cents === null || cents === 0) return null;
+    total += cents * lot.quantityRemaining;
+    if (!Number.isSafeInteger(total)) return null;
   }
-
-  return cents;
+  return total;
 }

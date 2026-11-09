@@ -3,6 +3,7 @@ import {
   expiryStatus,
   isUsable,
   parseIsoDate,
+  parseReceiptCostCents,
   planFefo,
   stockValueCents,
   todayKey,
@@ -202,15 +203,34 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
       'mixed string and numeric costs',
     ).toBe(10 * 1250 + 4 * 500);
 
+    expect(stockValueCents([{ quantityRemaining: -5, costPerUnit: '10' }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 5, costPerUnit: null }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 5, costPerUnit: '0.00' }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 5, costPerUnit: '1.001' }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 0, costPerUnit: null }])).toBe(0);
     expect(
-      stockValueCents([{ quantityRemaining: -5, costPerUnit: '10' }]),
-      'negative quantities are ignored',
-    ).toBe(0);
+      stockValueCents([{ quantityRemaining: 2_147_483_647, costPerUnit: '99999999.99' }]),
+    ).toBeNull();
+  });
 
-    expect(
-      stockValueCents([{ quantityRemaining: 5, costPerUnit: null }]),
-      'a missing cost is zero',
-    ).toBe(0);
+  it('requires a bounded, explicit and exact receipt unit cost', () => {
+    for (const invalid of [
+      undefined,
+      null,
+      '',
+      ' ',
+      -1,
+      '-0.00',
+      '1.001',
+      '1e2',
+      true,
+      '100000000.00',
+    ]) {
+      expect(parseReceiptCostCents(invalid), String(invalid)).toBeNull();
+    }
+    expect(parseReceiptCostCents(0)).toBe(0);
+    expect(parseReceiptCostCents('0.1')).toBe(10);
+    expect(parseReceiptCostCents('99999999.99')).toBe(9_999_999_999);
   });
 
   it('6. WIRING', async () => {
@@ -296,6 +316,8 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
         batchNumber: 'AMOX-2026',
         expiryDate: '2027-06-30',
         quantity: 200,
+        costPerUnit: '5.50',
+        idempotencyKey: 'synthetic-receipt-key-123',
         facilityId: 5,
       });
     } finally {
@@ -319,6 +341,8 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
         batchNumber: 'AMOX-2026',
         expiryDate: '2027-06-30',
         quantity: 200,
+        costPerUnit: '5.50',
+        idempotencyKey: 'synthetic-receipt-key-123',
         facilityId: 5,
       },
     });

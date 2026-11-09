@@ -40,6 +40,7 @@ describe('schema barrel: pre-extraction contract', () => {
         'theatreLegacyReviewEvents',
         'pharmacyDispenseRequests',
         'pharmacyDispenseAllocations',
+        'inventoryReceiptRequests',
         'medicationStatusEvents',
         'labSpecimens',
         'labSpecimenOrders',

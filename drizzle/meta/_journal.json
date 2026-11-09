@@ -512,6 +512,13 @@
             "when": 1792900000060,
             "tag": "0072_independent_refund_review",
             "breakpoints": true
+        },
+        {
+            "idx": 73,
+            "version": "7",
+            "when": 1792900000061,
+            "tag": "0073_inventory_receipt_retry_identity",
+            "breakpoints": true
         }
     ]
 }

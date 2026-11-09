@@ -65,7 +65,10 @@ vi.mock('../../context/HmisContext.tsx', () => ({
       hiddenModules: [],
     },
     authenticatedUser: {
+      id: 7,
+      isSuperAdmin: false,
       permissions: [
+        'inventory.manage',
         'clinical.read',
         'dialysis.read',
         'appointments.read',

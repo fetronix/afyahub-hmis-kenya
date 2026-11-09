@@ -273,8 +273,10 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
       'The batch fields are stripped before the catalogue insert',
     ).toBe(true);
     expect(
-      inventory.includes('The item was created, but its opening batch could not be received'),
-      'A failed batch receive says the item exists and how to finish it',
+      inventory.includes(
+        'The item was created, but its opening-batch result could not be confirmed',
+      ) && inventory.includes('Review batch and audit records before another receipt'),
+      'An uncertain opening-batch result identifies the created item and requires record review',
     ).toBe(true);
 
     expect(
