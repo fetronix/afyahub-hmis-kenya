@@ -19,6 +19,7 @@ import {
 } from '../validation/schemas/index.ts';
 import { validateBody } from '../validation/validate.ts';
 import {
+  listAccountsScoped,
   AccountingIntegrityError,
   closeFinancialPeriodScoped,
   approveAndPostExpenseScoped,
@@ -201,6 +202,14 @@ router.post(
     }
   },
 );
+
+router.get('/accounts', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
+  try {
+    res.json({ success: true, accounts: await listAccountsScoped(await scoped(req)) });
+  } catch (error) {
+    fail(res, error);
+  }
+});
 
 router.get('/overview', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
   try {

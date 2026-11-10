@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-11-10T07:50:54.454Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "database": "jalicare_synth",
+  "username": "synthetic.procurement.approver",
+  "assertions": {
+    "passed": 13,
+    "failed": 0
+  },
+  "results": [
+    {
+      "name": "Procurement approver signs in through the form",
+      "passed": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "Procurement appears in navigation and opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Supplier register and purchase orders render",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "The three workflow tabs are present",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Requisitions tab opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Requisition register renders without an error state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "New requisition form opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "A requisition draft can be saved from the UI",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Goods received & payables tab opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Goods received notes and payables render",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Received notes show their invoice state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "No uncaught browser errors during the journey",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Every procurement API call the page made was authorized",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "pageErrors": [],
+  "failedResponses": [
+    {
+      "status": 401,
+      "path": "/api/auth/session"
+    },
+    {
+      "status": 403,
+      "path": "/api/dashboard/overview"
+    }
+  ]
+}

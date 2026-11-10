@@ -11,6 +11,8 @@ import type {
 } from '../../types/index.ts';
 import { calculateOrder } from '../../procurement/order-items.ts';
 import { OrderDetails } from '../procurement/OrderDetails.tsx';
+import { RequisitionsPanel } from '../procurement/RequisitionsPanel.tsx';
+import { ReceivingPanel } from '../procurement/ReceivingPanel.tsx';
 import { SupplierEditor } from '../procurement/SupplierEditor.tsx';
 import {
   ShoppingCart,
@@ -49,6 +51,7 @@ export const ProcurementModule: React.FC = () => {
   const savingRef = useRef(false);
   const scopeRef = useRef<string | null>(null);
   const openPoButtonRef = useRef<HTMLButtonElement>(null);
+  const [tab, setTab] = useState<'orders' | 'requisitions' | 'receiving'>('orders');
   const [detail, setDetail] = useState<PurchaseOrderDetail | null>(null);
   const [editing, setEditing] = useState<PurchaseOrderDetail | null>(null);
   const editingRef = useRef(false);
@@ -493,130 +496,185 @@ export const ProcurementModule: React.FC = () => {
         </div>
       </PageHeader>
 
-      {loading && (
-        <p className="text-xs text-slate-500" role="status">
-          Loading procurement records…
-        </p>
-      )}
-      {loadError && (
-        <p className="text-xs text-red-700">
-          Could not load suppliers or purchase orders. Refresh the page and try again.
-        </p>
-      )}
-      {!loading && !loadError && !suppliers.length && (
-        <p className="text-xs text-slate-500">No supplier records yet.</p>
-      )}
-      {/* Suppliers */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {suppliers.map((s) => (
-          <div
-            key={s.id}
-            className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs space-y-1"
+      <div role="tablist" aria-label="Procurement workflow" className="flex flex-wrap gap-2">
+        {(
+          [
+            ['orders', 'Suppliers & purchase orders'],
+            ['requisitions', 'Requisitions'],
+            ['receiving', 'Goods received & payables'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={
+              tab === id
+                ? 'rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white'
+                : 'rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700'
+            }
           >
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-slate-900">{supplierLabel(s)}</span>
-              {s.kraPin && (
-                <span className="font-mono text-3xs px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">
-                  PIN: {s.kraPin}
-                </span>
-              )}
-            </div>
-            <div className="text-2xs text-slate-500">
-              {s.contactPerson || s.phone
-                ? `Contact: ${[s.contactPerson, s.phone].filter(Boolean).join(' · ')}`
-                : 'Contact details not provided'}
-            </div>
-            {s.email && <div className="text-2xs text-slate-500">Email: {s.email}</div>}
-            {s.address && <div className="text-2xs text-slate-400 truncate">{s.address}</div>}
-            {!s.isActive && <p className="font-semibold text-amber-700">Inactive</p>}
-            {(can('procurement.update') || can('procurement.delete')) && (
-              <button
-                type="button"
-                className="mt-2 rounded border border-slate-300 px-2 py-1"
-                onClick={(e) => {
-                  supplierTrigger.current = e.currentTarget;
-                  setSupplierEditor({ supplier: s });
-                }}
-              >
-                Manage {supplierLabel(s)}
-              </button>
-            )}
-          </div>
+            {label}
+          </button>
         ))}
       </div>
 
-      {/* Purchase Orders Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-          <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
-            <ShoppingCart className="w-4 h-4 text-teal-700" />
-            <span>Purchase Orders & Requisitions ({purchaseOrders.length})</span>
-          </h2>
-          <span className="text-2xs text-slate-400">Administrative workflow</span>
-        </div>
+      {tab === 'requisitions' && (
+        <RequisitionsPanel
+          facilityId={currentFacility?.id ?? 0}
+          canCreate={can('procurement.create')}
+          canApprove={can('procurement.approve')}
+          suppliers={suppliers.map((supplier) => ({
+            id: supplier.id,
+            name: supplierLabel(supplier),
+          }))}
+          onChanged={triggerRefresh}
+        />
+      )}
 
-        <div className="overflow-x-auto">
-          <DataTable className="w-full text-xs text-left">
-            <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">PO Number</th>
-                <th className="px-4 py-2.5 font-medium">Vendor / Supplier</th>
-                <th className="px-4 py-2.5 font-medium text-right">PO Total Amount</th>
-                <th className="px-4 py-2.5 font-medium">Ordered By</th>
-                <th className="px-4 py-2.5 font-medium">Approved By</th>
-                <th className="px-4 py-2.5 font-medium">Date</th>
-                <th className="px-4 py-2.5 font-medium text-right">Status</th>
-                <th className="px-4 py-2.5 font-medium">Details</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-mono">
-              {purchaseOrders.map((po) => (
-                <tr key={po.id} className="hover:bg-slate-50/70">
-                  <td className="px-4 py-3 font-bold text-teal-800">{po.poNumber}</td>
-                  <td className="px-4 py-3 font-sans font-semibold text-slate-900">
-                    {getSupplierName(po.supplierId)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900">
-                    KES {Number(po.totalAmount).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 font-sans text-slate-600">
-                    {po.orderedBy || 'Not recorded'}
-                  </td>
-                  <td className="px-4 py-3 font-sans text-slate-600">
-                    {po.approvedBy || 'Not recorded'}
-                  </td>
-                  <td className="px-4 py-3 text-slate-500">
-                    {new Date(po.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-right font-sans">
-                    <span
-                      className={`px-2 py-0.5 rounded text-2xs font-medium ${
-                        po.status === 'Approved'
-                          ? 'bg-emerald-50 text-emerald-800'
-                          : 'bg-amber-50 text-amber-800'
-                      }`}
-                    >
-                      {po.status}
+      {tab === 'receiving' && (
+        <ReceivingPanel
+          facilityId={currentFacility?.id ?? 0}
+          orders={purchaseOrders.map((order) => ({
+            id: order.id,
+            poNumber: order.poNumber,
+            supplierId: order.supplierId,
+            status: order.status ?? null,
+          }))}
+          canReceive={can('procurement.complete')}
+        />
+      )}
+
+      {tab === 'orders' && (
+        <>
+          {loading && (
+            <p className="text-xs text-slate-500" role="status">
+              Loading procurement records…
+            </p>
+          )}
+          {loadError && (
+            <p className="text-xs text-red-700">
+              Could not load suppliers or purchase orders. Refresh the page and try again.
+            </p>
+          )}
+          {!loading && !loadError && !suppliers.length && (
+            <p className="text-xs text-slate-500">No supplier records yet.</p>
+          )}
+          {/* Suppliers */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {suppliers.map((s) => (
+              <div
+                key={s.id}
+                className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs text-xs space-y-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-900">{supplierLabel(s)}</span>
+                  {s.kraPin && (
+                    <span className="font-mono text-3xs px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">
+                      PIN: {s.kraPin}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 font-sans">
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 px-2 py-1"
-                      onClick={(e) => {
-                        detailTrigger.current = e.currentTarget;
-                        void showDetails(po);
-                      }}
-                    >
-                      View {po.poNumber}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </DataTable>
-        </div>
-      </div>
+                  )}
+                </div>
+                <div className="text-2xs text-slate-500">
+                  {s.contactPerson || s.phone
+                    ? `Contact: ${[s.contactPerson, s.phone].filter(Boolean).join(' · ')}`
+                    : 'Contact details not provided'}
+                </div>
+                {s.email && <div className="text-2xs text-slate-500">Email: {s.email}</div>}
+                {s.address && <div className="text-2xs text-slate-400 truncate">{s.address}</div>}
+                {!s.isActive && <p className="font-semibold text-amber-700">Inactive</p>}
+                {(can('procurement.update') || can('procurement.delete')) && (
+                  <button
+                    type="button"
+                    className="mt-2 rounded border border-slate-300 px-2 py-1"
+                    onClick={(e) => {
+                      supplierTrigger.current = e.currentTarget;
+                      setSupplierEditor({ supplier: s });
+                    }}
+                  >
+                    Manage {supplierLabel(s)}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Purchase Orders Table */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
+                <ShoppingCart className="w-4 h-4 text-teal-700" />
+                <span>Purchase Orders & Requisitions ({purchaseOrders.length})</span>
+              </h2>
+              <span className="text-2xs text-slate-400">Administrative workflow</span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <DataTable className="w-full text-xs text-left">
+                <thead className="bg-slate-50/80 text-2xs text-slate-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">PO Number</th>
+                    <th className="px-4 py-2.5 font-medium">Vendor / Supplier</th>
+                    <th className="px-4 py-2.5 font-medium text-right">PO Total Amount</th>
+                    <th className="px-4 py-2.5 font-medium">Ordered By</th>
+                    <th className="px-4 py-2.5 font-medium">Approved By</th>
+                    <th className="px-4 py-2.5 font-medium">Date</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Status</th>
+                    <th className="px-4 py-2.5 font-medium">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {purchaseOrders.map((po) => (
+                    <tr key={po.id} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-3 font-bold text-teal-800">{po.poNumber}</td>
+                      <td className="px-4 py-3 font-sans font-semibold text-slate-900">
+                        {getSupplierName(po.supplierId)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900">
+                        KES {Number(po.totalAmount).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 font-sans text-slate-600">
+                        {po.orderedBy || 'Not recorded'}
+                      </td>
+                      <td className="px-4 py-3 font-sans text-slate-600">
+                        {po.approvedBy || 'Not recorded'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">
+                        {new Date(po.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-right font-sans">
+                        <span
+                          className={`px-2 py-0.5 rounded text-2xs font-medium ${
+                            po.status === 'Approved'
+                              ? 'bg-emerald-50 text-emerald-800'
+                              : 'bg-amber-50 text-amber-800'
+                          }`}
+                        >
+                          {po.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-sans">
+                        <button
+                          type="button"
+                          className="rounded border border-slate-300 px-2 py-1"
+                          onClick={(e) => {
+                            detailTrigger.current = e.currentTarget;
+                            void showDetails(po);
+                          }}
+                        >
+                          View {po.poNumber}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DataTable>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* CREATE PO MODAL */}
       {isPoModalOpen && (

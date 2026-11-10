@@ -614,6 +614,26 @@ async function trialRows(
   return result.rows;
 }
 
+/**
+ * Active chart of accounts for a facility.
+ *
+ * Purchasing, payables and facility administration need to pick a posting
+ * account. Until now the only list was the trial-balance rows, which omit
+ * accounts with no activity, so a new facility could not select anything.
+ */
+export async function listAccountsScoped(scope: AccountingScope) {
+  const result = await pool.query(
+    `SELECT id, account_code AS "accountCode", account_name AS "accountName",
+            account_type AS "accountType", sub_type AS "subType",
+            normal_balance AS "normalBalance", is_system_account AS "isSystemAccount"
+       FROM chart_of_accounts
+      WHERE tenant_id = $1 AND facility_id = $2 AND is_active = true
+      ORDER BY account_code`,
+    [scope.tenantId, scope.facilityId],
+  );
+  return result.rows;
+}
+
 export async function getAccountingOverviewScoped(
   scope: AccountingScope,
   start: unknown,

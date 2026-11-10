@@ -50,6 +50,7 @@ import laboratoryRoutes from './laboratory.routes.ts';
 import radiologyRoutes from './radiology.routes.ts';
 import pharmacyRoutes from './pharmacy.routes.ts';
 import procurementRoutes from './procurement.routes.ts';
+import procurementWorkflowRoutes from './procurement-workflow.routes.ts';
 import workforceRoutes from './workforce.routes.ts';
 import fixedAssetRoutes from './fixed-assets.routes.ts';
 import facilityServicesRoutes from './facility-services.routes.ts';
@@ -155,6 +156,7 @@ export function createApiRoutes(): Router {
 
   api.use('/suppliers', requireFacilityModule('procurement'));
   api.use('/purchase-orders', requireFacilityModule('procurement'));
+  api.use('/procurement', requireFacilityModule('procurement'));
 
   api.use('/claims', requireFacilityModule('insurance'));
   api.use('/insurance/evidence', requireFacilityModule('insurance'), claimEvidenceRoutes);
@@ -199,6 +201,7 @@ export function createDomainRoutes(): Router {
   domains.use(billingRoutes);
   domains.use(facilityServicesRoutes);
   domains.use(procurementRoutes);
+  domains.use(procurementWorkflowRoutes);
   // HR and payroll declare full /api/hr and /api/payroll paths.
   domains.use(workforceRoutes);
   domains.use('/api/fixed-assets', requireFacilityModule('accounting'), fixedAssetRoutes);

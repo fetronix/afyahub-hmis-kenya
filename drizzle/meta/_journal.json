@@ -533,6 +533,13 @@
             "when": 1792900000063,
             "tag": "0075_fixed_assets",
             "breakpoints": true
+        },
+        {
+            "idx": 76,
+            "version": "7",
+            "when": 1794278400000,
+            "tag": "0076_procurement_chain",
+            "breakpoints": true
         }
     ]
 }

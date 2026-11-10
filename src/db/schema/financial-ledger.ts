@@ -310,6 +310,8 @@ export const supplierInvoices = pgTable(
       .references(() => suppliers.id)
       .notNull(),
     purchaseOrderId: integer('purchase_order_id').references(() => purchaseOrders.id),
+    // Migration 0076 links an invoice to the goods received note it evidences.
+    goodsReceivedNoteId: integer('goods_received_note_id'),
     invoiceNumber: text('invoice_number').notNull(),
     invoiceDate: text('invoice_date').notNull(),
     dueDate: text('due_date'),
@@ -335,6 +337,7 @@ export const supplierInvoices = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
+    goodsReceivedNoteIdx: uniqueIndex('supplier_invoices_grn_idx').on(table.goodsReceivedNoteId),
     facilitySupNumIdx: uniqueIndex('supplier_invoices_facility_sup_num_idx').on(
       table.facilityId,
       table.supplierId,

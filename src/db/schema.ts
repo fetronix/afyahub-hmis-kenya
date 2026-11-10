@@ -45,3 +45,4 @@ export * from './schema/relations-operations.ts';
 export * from './schema/notifications.ts';
 export * from './schema/workforce.ts';
 export * from './schema/assets.ts';
+export * from './schema/procurement.ts';
