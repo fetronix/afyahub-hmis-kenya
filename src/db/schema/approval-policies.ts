@@ -7,7 +7,18 @@
  * rule. With no policies, the existing permission gate is unchanged.
  */
 
-import { bigint, boolean, date, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  boolean,
+  date,
+  index,
+  integer,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 import { users } from './auth.ts';
 import { facilities, tenants } from './tenancy.ts';

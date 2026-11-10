@@ -5,7 +5,18 @@
  * posting: these tables record a verdict (did the invoice agree with the order
  * and the receipt?), and give stock and money a way back to the supplier.
  */
-import { bigint, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 import { suppliers } from './inventory.ts';
 import { inventoryBatches, inventoryItems, purchaseOrders } from './inventory.ts';
@@ -95,10 +106,7 @@ export const supplierReturns = pgTable(
   },
   (table) => [
     uniqueIndex('supplier_returns_number_once_idx').on(table.facilityId, table.returnNumber),
-    uniqueIndex('supplier_returns_idempotency_once_idx').on(
-      table.facilityId,
-      table.idempotencyKey,
-    ),
+    uniqueIndex('supplier_returns_idempotency_once_idx').on(table.facilityId, table.idempotencyKey),
   ],
 );
 

@@ -930,7 +930,9 @@ export async function postSupplierReturn(
   if (!policy || policy.basis !== 'PERPETUAL' || !policy.stockAssetAccountId) return null;
 
   const counterAccount =
-    input.counterpart === 'PAYABLE' ? (input.payableAccountId ?? policy.clearingAccountId) : policy.clearingAccountId;
+    input.counterpart === 'PAYABLE'
+      ? (input.payableAccountId ?? policy.clearingAccountId)
+      : policy.clearingAccountId;
 
   /*
    * A return that has no account to come out of is not a posting decision, it

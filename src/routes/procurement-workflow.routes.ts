@@ -413,8 +413,7 @@ router.get(
     const access = await scope(req, res, req.query.facilityId);
     if (!access) return;
     const rawGrn = req.query.goodsReceivedNoteId;
-    const grnId =
-      rawGrn === undefined || rawGrn === '' ? undefined : Number(rawGrn);
+    const grnId = rawGrn === undefined || rawGrn === '' ? undefined : Number(rawGrn);
     if (grnId !== undefined && (!Number.isSafeInteger(grnId) || grnId <= 0)) {
       res
         .status(400)
@@ -469,7 +468,8 @@ router.get(
     const access = await scope(req, res, req.query.facilityId);
     if (!access) return;
     const rawInvoice = req.query.supplierInvoiceId;
-    const invoiceId = rawInvoice === undefined || rawInvoice === '' ? undefined : Number(rawInvoice);
+    const invoiceId =
+      rawInvoice === undefined || rawInvoice === '' ? undefined : Number(rawInvoice);
     if (invoiceId !== undefined && (!Number.isSafeInteger(invoiceId) || invoiceId <= 0)) {
       res.status(400).json({
         success: false,

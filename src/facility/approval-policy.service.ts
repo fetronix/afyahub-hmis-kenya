@@ -68,7 +68,9 @@ function isoDate(value: unknown, label: string, required: boolean): string | nul
 }
 
 function scopeKey(value: unknown): ApprovalScopeKey {
-  const raw = String(value ?? '').trim().toUpperCase();
+  const raw = String(value ?? '')
+    .trim()
+    .toUpperCase();
   if (!APPROVAL_SCOPES.includes(raw as ApprovalScopeKey))
     fail(400, 'INVALID_SCOPE', `Scope must be one of ${APPROVAL_SCOPES.join(', ')}.`);
   return raw as ApprovalScopeKey;
@@ -189,8 +191,7 @@ export async function createPolicy(scope: FacilityScope, body: Record<string, un
     fail(400, 'INVALID_INPUT', 'Policy name is required (120 characters or fewer).');
   const minAmountCents = amountCents(body.minAmountCents ?? 0, 'Minimum amount');
   const requiredPermission = String(body.requiredPermission ?? '').trim();
-  if (!requiredPermission)
-    fail(400, 'INVALID_INPUT', 'A required permission is needed.');
+  if (!requiredPermission) fail(400, 'INVALID_INPUT', 'A required permission is needed.');
   if (!(await permissionExists(requiredPermission)))
     fail(400, 'UNKNOWN_PERMISSION', 'That permission is not in the catalogue.');
   const effectiveFrom = isoDate(body.effectiveFrom, 'Effective from', true)!;
@@ -267,9 +268,10 @@ export async function updatePolicy(
   if (!current) fail(404, 'APPROVAL_POLICY_NOT_FOUND', 'Approval policy not found.');
 
   const isActive =
-    body.isActive === undefined ? current.isActive : body.isActive === true || body.isActive === 'true';
-  const name =
-    body.policyName === undefined ? current.policyName : String(body.policyName).trim();
+    body.isActive === undefined
+      ? current.isActive
+      : body.isActive === true || body.isActive === 'true';
+  const name = body.policyName === undefined ? current.policyName : String(body.policyName).trim();
   if (!name || name.length > 120) fail(400, 'INVALID_INPUT', 'Policy name is invalid.');
   const effectiveTo =
     body.effectiveTo === undefined
