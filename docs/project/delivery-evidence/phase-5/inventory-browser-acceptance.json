@@ -1,0 +1,104 @@
+{
+  "generatedAt": "2026-11-10T08:08:16.373Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "database": "jalicare_synth",
+  "username": "synthetic.inventory",
+  "assertions": {
+    "passed": 17,
+    "failed": 0
+  },
+  "results": [
+    {
+      "name": "The stores officer signs in through the form",
+      "passed": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "Inventory appears in navigation and opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "The inventory register renders with its existing tabs",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "The stock control tab is present",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Stock Control tab opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Stock value, reorder alerts and the ledger render",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "The ledger shows receipt, adjustment or dispensing evidence",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Adjustments view opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "An adjustment can be posted from the UI and explains the new balance",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Physical counts view opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "A physical count can be opened from the UI",
+      "passed": true,
+      "detail": "COUNT-BROWSER-MWAER666"
+    },
+    {
+      "name": "Store transfers view opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "A store transfer can be recorded from the UI",
+      "passed": true,
+      "detail": "TRF-BROWSER-MWAER8U2"
+    },
+    {
+      "name": "Reorder and valuation view opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Reorder alerts and stock valuation render",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "No uncaught browser errors during the journey",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Every inventory API call the page made was authorized",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "pageErrors": [],
+  "failedResponses": [
+    {
+      "status": 401,
+      "path": "/api/auth/session"
+    }
+  ]
+}

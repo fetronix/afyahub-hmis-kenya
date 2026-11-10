@@ -1,6 +1,7 @@
 import { PrimaryButton, SecondaryButton, SearchBar, Tabs } from '../ui/controls.tsx';
 import { AlertBanner, ErrorState } from '../ui/feedback.tsx';
 import { Modal } from '../ui/overlays.tsx';
+import { StockControlPanel } from '../inventory/StockControlPanel.tsx';
 import { DataTable, PageHeader, StatCard } from '../ui/layout.tsx';
 import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
@@ -71,7 +72,7 @@ export const InventoryModule: React.FC = () => {
   const [attempt, setAttempt] = useState(0);
 
   /* Stock batches and expiry */
-  const [tab, setTab] = useState<'items' | 'batches'>('items');
+  const [tab, setTab] = useState<'items' | 'batches' | 'control'>('items');
   const [batches, setBatches] = useState<InventoryBatchRow[]>([]);
   const [expiry, setExpiry] = useState<ExpirySummary | null>(null);
   const [batchFilter, setBatchFilter] = useState<'All' | 'Expired' | 'Expiring' | 'OK'>('All');
@@ -718,7 +719,7 @@ export const InventoryModule: React.FC = () => {
         label="Inventory views"
         idPrefix="inventory"
         value={tab}
-        onChange={(id) => setTab(id as 'items' | 'batches')}
+        onChange={(id) => setTab(id as 'items' | 'batches' | 'control')}
         items={[
           { id: 'items', label: 'Stock Items' },
           {
@@ -734,6 +735,7 @@ export const InventoryModule: React.FC = () => {
               </>
             ),
           },
+          { id: 'control', label: 'Stock Control' },
         ]}
       />
       <div
@@ -916,6 +918,20 @@ export const InventoryModule: React.FC = () => {
               </div>
             </div>
           </>
+        )}
+      </div>
+      <div
+        role="tabpanel"
+        id="inventory-panel-control"
+        aria-labelledby="inventory-tab-control"
+        hidden={tab !== 'control'}
+      >
+        {tab === 'control' && (
+          <StockControlPanel
+            facilityId={currentFacility?.id ?? 0}
+            items={items}
+            canManage={canManageStock}
+          />
         )}
       </div>
       <div

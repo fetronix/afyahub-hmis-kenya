@@ -373,8 +373,14 @@ export async function postGoodsReceivedNote(scope: ReceivingScope, body: Record<
       const ordered = byId.get(line.purchaseOrderItemId)!;
       let batchId: number | null = null;
       if (line.inventoryItemId) {
+        // Lock the item first: receiving and dispensing both change stock on
+        // hand, and the same lock order keeps them from deadlocking.
         const [item] = await tx
-          .select({ id: schema.inventoryItems.id })
+          .select({
+            id: schema.inventoryItems.id,
+            name: schema.inventoryItems.name,
+            currentStock: schema.inventoryItems.currentStock,
+          })
           .from(schema.inventoryItems)
           .where(
             and(
@@ -382,7 +388,8 @@ export async function postGoodsReceivedNote(scope: ReceivingScope, body: Record<
               eq(schema.inventoryItems.facilityId, scope.facilityId),
             ),
           )
-          .limit(1);
+          .limit(1)
+          .for('update');
         if (!item)
           fail(
             404,
@@ -448,6 +455,53 @@ export async function postGoodsReceivedNote(scope: ReceivingScope, body: Record<
             .returning({ id: schema.inventoryBatches.id });
           batchId = batch.id;
         }
+
+        /*
+         * Goods received are stock on hand, not just a lot row. The item total
+         * and the ledger move with the batch inside this same transaction, so
+         * a posted note can never leave the shelf unexplained. The GRN line is
+         * the ledger reference, and the unique index on
+         * (facility, reference_type, reference_id, movement_type) refuses a
+         * second RECEIPT for the same line.
+         */
+        const stockQuantity = Math.floor(line.quantity);
+        const [updatedItem] = await tx
+          .update(schema.inventoryItems)
+          .set({
+            currentStock: sql`COALESCE(${schema.inventoryItems.currentStock}, 0) + ${stockQuantity}`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.inventoryItems.id, line.inventoryItemId),
+              eq(schema.inventoryItems.facilityId, scope.facilityId),
+              sql`COALESCE(${schema.inventoryItems.currentStock}, 0) <= ${2_147_483_647 - stockQuantity}`,
+            ),
+          )
+          .returning({ currentStock: schema.inventoryItems.currentStock });
+        if (!updatedItem)
+          fail(
+            409,
+            'STOCK_RECONCILIATION_REQUIRED',
+            'Recorded stock for a received item is invalid; review it before posting this note.',
+          );
+
+        await tx.insert(schema.inventoryMovements).values({
+          tenantId: scope.tenantId,
+          facilityId: scope.facilityId,
+          itemId: line.inventoryItemId,
+          batchId,
+          movementType: 'RECEIPT',
+          quantityDelta: stockQuantity,
+          stockAfter: updatedItem.currentStock ?? stockQuantity,
+          reasonCode: 'GOODS_RECEIVED',
+          referenceType: 'GOODS_RECEIVED_NOTE',
+          referenceId: `${note.id}:${line.purchaseOrderItemId}`,
+          notes: `Received against ${grnNumber}.`,
+          actorUserId: scope.actorId,
+          actorName: scope.actorName,
+          movementDate: receivedDate,
+        });
       }
 
       await tx.insert(schema.goodsReceivedNoteItems).values({

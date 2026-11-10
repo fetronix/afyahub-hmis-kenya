@@ -280,6 +280,112 @@ try {
     replay.status === 201 && replay.body.id === grnId && replay.body.replayed === true,
   );
 
+  // ---- Procurement → inventory -------------------------------------------
+  /*
+   * A purchase order line can name a stock item. Receiving it must move the
+   * shelf and the ledger, not just create a lot, or procurement and inventory
+   * disagree about what the facility owns.
+   */
+  const stockItemRow = await pool.query(
+    `SELECT id, current_stock FROM inventory_items
+      WHERE facility_id = $1 AND item_code = 'SYNTH-CTRL-GAUZE'`,
+    [facilityId],
+  );
+  if (stockItemRow.rows.length === 0) {
+    record('A stock-linked order can be received into inventory', false, 'stock item missing');
+  } else {
+    const stockItem = stockItemRow.rows[0];
+    const stockRequisition = await call(requester, 'POST', '/api/procurement/requisitions', {
+      requisitionNumber: `REQ-STOCK-${stamp}`,
+      requestDate: '2026-11-06',
+      neededBy: '2026-11-30',
+      department: 'Pharmacy',
+      justification: 'Synthetic stock-linked restock for acceptance testing. Not a real purchase.',
+      items: [
+        {
+          inventoryItemId: stockItem.id,
+          description: 'Synthetic gauze swabs',
+          quantity: '4',
+          unit: 'pack',
+          estimatedUnitPrice: '350.00',
+        },
+      ],
+    });
+    await call(
+      requester,
+      'POST',
+      `/api/procurement/requisitions/${stockRequisition.body.id}/submit`,
+    );
+    await call(approver, 'POST', `/api/procurement/requisitions/${stockRequisition.body.id}/approve`, {
+      note: 'Synthetic approval for the stock-linked order.',
+    });
+    const stockConverted = await call(
+      approver,
+      'POST',
+      `/api/procurement/requisitions/${stockRequisition.body.id}/convert`,
+      { supplierId: 1 },
+    );
+    const stockOrderId = stockConverted.body.purchaseOrderId;
+    const stockOrder = await call(approver, 'GET', `/api/purchase-orders/${stockOrderId}`);
+    await call(approver, 'POST', `/api/purchase-orders/${stockOrderId}/approve`, {
+      expectedRevision: stockOrder.body.revision,
+    });
+    const stockLines = (
+      await call(approver, 'GET', `/api/procurement/purchase-orders/${stockOrderId}/outstanding`)
+    ).body.lines;
+    const stockGrnNumber = `GRN-STOCK-${stamp}`;
+    const stockGrnBody = {
+      purchaseOrderId: stockOrderId,
+      grnNumber: stockGrnNumber,
+      receivedDate: '2026-11-06',
+      idempotencyKey: `grn-stock:${stockOrderId}:${stockGrnNumber}`,
+      lines: stockLines.map((line) => ({
+        purchaseOrderItemId: line.id,
+        quantityReceived: '4',
+        unitCost: '350.00',
+        inventoryItemId: stockItem.id,
+        batchNumber: `SYNTH-GRN-${stamp}`,
+        expiryDate: '2028-03-31',
+      })),
+    };
+    const stockGrn = await call(approver, 'POST', '/api/procurement/goods-received', stockGrnBody);
+    const afterStock = await pool.query(
+      'SELECT current_stock FROM inventory_items WHERE id = $1',
+      [stockItem.id],
+    );
+    const stockDelta = Number(afterStock.rows[0]?.current_stock ?? 0) - Number(stockItem.current_stock);
+    const grnMovement = await pool.query(
+      `SELECT quantity_delta, reference_type FROM inventory_movements
+        WHERE facility_id = $1 AND item_id = $2 AND reference_type = 'GOODS_RECEIVED_NOTE'
+        ORDER BY id DESC LIMIT 1`,
+      [facilityId, stockItem.id],
+    );
+    record(
+      'Receiving a stock-linked line increases stock on hand',
+      stockGrn.status === 201 &&
+        stockDelta === 4 &&
+        grnMovement.rows[0]?.quantity_delta === 4,
+      `HTTP ${stockGrn.status}, stock +${stockDelta}`,
+    );
+
+    await call(approver, 'POST', '/api/procurement/goods-received', stockGrnBody);
+    const afterReplay = await pool.query(
+      'SELECT current_stock FROM inventory_items WHERE id = $1',
+      [stockItem.id],
+    );
+    const movementCount = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM inventory_movements
+        WHERE facility_id = $1 AND item_id = $2 AND reference_type = 'GOODS_RECEIVED_NOTE'`,
+      [facilityId, stockItem.id],
+    );
+    record(
+      'A replayed goods receipt does not receive the stock twice',
+      Number(afterReplay.rows[0]?.current_stock) === Number(stockItem.current_stock) + 4 &&
+        movementCount.rows[0].count === 1,
+      `stock ${afterReplay.rows[0]?.current_stock}, ${movementCount.rows[0].count} movement(s)`,
+    );
+  }
+
   // ---- Invoice and payment ---------------------------------------------
   const invoiceNumber = `SINV-${stamp}`;
   const invoice = await call(approver, 'POST', '/api/procurement/supplier-invoices', {

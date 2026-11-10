@@ -309,6 +309,58 @@ export async function updateInventorySellingPriceScoped(
 }
 
 /* ============================================================
+   STOCK LEDGER
+   ============================================================ */
+
+/**
+ * Append one row to the stock ledger.
+ *
+ * Receiving and dispensing already change `current_stock` inside their own
+ * transaction. This writes the matching movement in that same transaction, so
+ * a committed stock change can never exist without an explanation. The ledger
+ * is append-only: corrections are new movements, never edits.
+ */
+async function appendStockMovement(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  entry: {
+    tenantId: number;
+    facilityId: number;
+    itemId: number;
+    batchId: number | null;
+    movementType: 'RECEIPT' | 'DISPENSE';
+    quantityDelta: number;
+    stockAfter: number;
+    referenceType: string;
+    referenceId: string;
+    notes?: string | null;
+    movementDate: string;
+    actorUserId: number;
+  },
+) {
+  const [actor] = await tx
+    .select({ fullName: schema.users.fullName, username: schema.users.username })
+    .from(schema.users)
+    .where(eq(schema.users.id, entry.actorUserId))
+    .limit(1);
+  await tx.insert(schema.inventoryMovements).values({
+    tenantId: entry.tenantId,
+    facilityId: entry.facilityId,
+    itemId: entry.itemId,
+    batchId: entry.batchId,
+    movementType: entry.movementType,
+    quantityDelta: entry.quantityDelta,
+    stockAfter: entry.stockAfter,
+    reasonCode: null,
+    referenceType: entry.referenceType,
+    referenceId: entry.referenceId,
+    notes: entry.notes ?? null,
+    actorUserId: entry.actorUserId,
+    actorName: actor?.fullName || actor?.username || `User ${entry.actorUserId}`,
+    movementDate: entry.movementDate,
+  });
+}
+
+/* ============================================================
    RECEIVE STOCK INTO A BATCH
    ============================================================ */
 
@@ -708,6 +760,20 @@ export async function receiveBatchScoped(
         quantity,
         costPerUnit,
       }),
+    });
+    await appendStockMovement(tx, {
+      tenantId,
+      facilityId,
+      itemId: item.id,
+      batchId: batch.id,
+      movementType: 'RECEIPT',
+      quantityDelta: quantity,
+      stockAfter: updatedItem.currentStock ?? quantity,
+      referenceType: 'INVENTORY_RECEIPT',
+      referenceId: String(request.id),
+      notes: `Batch ${batchNumber} received.`,
+      movementDate: calendarDateInZone(timezone),
+      actorUserId: context.userId,
     });
 
     return { ...snapshot, receiptId: request.id, replayed: false };
@@ -1415,6 +1481,24 @@ export async function dispenseFefoScoped(
       stockTracking,
       stockAfter,
     });
+    if (stockAfter !== null) {
+      await appendStockMovement(tx, {
+        tenantId,
+        facilityId,
+        itemId: item.id,
+        batchId: null,
+        movementType: 'DISPENSE',
+        quantityDelta: -quantity,
+        stockAfter,
+        referenceType: 'PHARMACY_DISPENSATION',
+        referenceId: String(dispensation.id),
+        notes: allocations.length
+          ? `FEFO from ${allocations.map((a) => a.batchNumber).join(', ')}.`
+          : null,
+        movementDate: dispensingDate!,
+        actorUserId: context.userId,
+      });
+    }
 
     await tx.insert(schema.auditLogs).values({
       tenantId,

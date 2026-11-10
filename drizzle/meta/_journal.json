@@ -540,6 +540,13 @@
             "when": 1794278400000,
             "tag": "0076_procurement_chain",
             "breakpoints": true
+        },
+        {
+            "idx": 77,
+            "version": "7",
+            "when": 1794364800000,
+            "tag": "0077_inventory_control",
+            "breakpoints": true
         }
     ]
 }
