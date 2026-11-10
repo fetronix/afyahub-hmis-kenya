@@ -59,14 +59,6 @@ async function clickByText(page, selector, text) {
   return false;
 }
 
-async function waitForText(page, text, timeout = 20_000) {
-  await page.waitForFunction(
-    (needle) => document.body?.innerText?.includes(needle),
-    { timeout },
-    text,
-  );
-}
-
 async function shot(page, name) {
   const dismissed = await clickByText(page, 'button', 'Dismiss').catch(() => false);
   if (dismissed) await sleep(350);

@@ -11,12 +11,15 @@ import {
   diagnosticsPharmacyClient,
   getSessionToken,
   hasSessionToken,
+  fixedAssetsClient,
   inpatientClient,
   maternityClient,
   patientsClinicalClient,
   platformClient,
+  procurementWorkflowClient,
   setSessionToken,
   theatreClient,
+  workforceClient,
 } from '../../api/client.ts';
 import { sanitizeServerErrorMessage } from '../../api/clients/http.ts';
 
@@ -72,6 +75,12 @@ describe('Domain API clients and backward-compatible src/api/client.ts facade', 
       theatreClient,
       diagnosticsPharmacyClient,
       billingClient,
+      // Phase 5 added these three; the facade spreads them too, so the
+      // collision check has to cover them or it silently stops measuring
+      // what its name claims.
+      workforceClient,
+      fixedAssetsClient,
+      procurementWorkflowClient,
     ];
 
     const seen = new Set<string>();

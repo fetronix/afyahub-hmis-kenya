@@ -23,7 +23,8 @@ const FACILITY_ID = Number(process.env.SYNTH_FACILITY_ID ?? 1);
 
 if (process.env.SYNTHETIC_JOURNEY_CONFIRM !== 'yes')
   throw new Error('Set SYNTHETIC_JOURNEY_CONFIRM=yes to run the synthetic journey.');
-if (process.env.NODE_ENV === 'production') throw new Error('The synthetic journey refuses production.');
+if (process.env.NODE_ENV === 'production')
+  throw new Error('The synthetic journey refuses production.');
 
 const results = [];
 let failures = 0;
@@ -212,9 +213,27 @@ async function main() {
       sourceReference: 'SYNTHETIC TEST FIXTURE — NOT AN AUTHORITY PUBLICATION',
       authority: 'Synthetic acceptance fixture',
       bands: [
-        { lowerBoundCents: '0', upperBoundCents: '2400000', employeeRateBp: 1000, employerRateBp: 0, reliefCents: '240000' },
-        { lowerBoundCents: '2400000', upperBoundCents: '3233333', employeeRateBp: 2500, employerRateBp: 0, reliefCents: '0' },
-        { lowerBoundCents: '3233333', upperBoundCents: null, employeeRateBp: 3000, employerRateBp: 0, reliefCents: '0' },
+        {
+          lowerBoundCents: '0',
+          upperBoundCents: '2400000',
+          employeeRateBp: 1000,
+          employerRateBp: 0,
+          reliefCents: '240000',
+        },
+        {
+          lowerBoundCents: '2400000',
+          upperBoundCents: '3233333',
+          employeeRateBp: 2500,
+          employerRateBp: 0,
+          reliefCents: '0',
+        },
+        {
+          lowerBoundCents: '3233333',
+          upperBoundCents: null,
+          employeeRateBp: 3000,
+          employerRateBp: 0,
+          reliefCents: '0',
+        },
       ],
     },
     {
@@ -222,7 +241,15 @@ async function main() {
       label: 'Synthetic test band — not a legal rate',
       sourceReference: 'SYNTHETIC TEST FIXTURE — NOT AN AUTHORITY PUBLICATION',
       authority: 'Synthetic acceptance fixture',
-      bands: [{ lowerBoundCents: '0', employeeRateBp: 600, employerRateBp: 600, employeeCapCents: '216000', employerCapCents: '216000' }],
+      bands: [
+        {
+          lowerBoundCents: '0',
+          employeeRateBp: 600,
+          employerRateBp: 600,
+          employeeCapCents: '216000',
+          employerCapCents: '216000',
+        },
+      ],
     },
     {
       statute: 'SHIF',
@@ -247,7 +274,11 @@ async function main() {
     label: `${statutory[0].label} ${stamp}`,
     effectiveFrom: `${year}-01-01`,
   });
-  check('HR officer cannot record statutory rules', hrAttempt.status === 403, `status ${hrAttempt.status}`);
+  check(
+    'HR officer cannot record statutory rules',
+    hrAttempt.status === 403,
+    `status ${hrAttempt.status}`,
+  );
 
   const existingVersions = await finance(
     'GET',
@@ -281,10 +312,14 @@ async function main() {
       }
     }
     if (versionId) {
-      const activated = await finance('POST', `/api/payroll/statutory-versions/${versionId}/status`, {
-        facilityId: FACILITY_ID,
-        status: 'ACTIVE',
-      });
+      const activated = await finance(
+        'POST',
+        `/api/payroll/statutory-versions/${versionId}/status`,
+        {
+          facilityId: FACILITY_ID,
+          status: 'ACTIVE',
+        },
+      );
       check(`Activate ${rule.statute} version`, activated.ok, activated.body.message ?? '');
     }
   }
@@ -312,7 +347,11 @@ async function main() {
     });
     if (created.status === 201) accounts.push(created.body.account);
   }
-  check('Payroll ledger accounts created', accounts.length === accountSpecs.length, `${accounts.length}/8`);
+  check(
+    'Payroll ledger accounts created',
+    accounts.length === accountSpecs.length,
+    `${accounts.length}/8`,
+  );
 
   const [salary, employerCost, netPay, paye, nssf, shif, ahl, other] = accounts;
   if (accounts.length === accountSpecs.length) {
@@ -378,14 +417,13 @@ async function main() {
   const runDetail = await hr('GET', `/api/payroll/runs/${runId}?facilityId=${FACILITY_ID}`);
   check('Run detail returns payslips', runDetail.ok && runDetail.body.payslips.length >= 2);
   const slip = runDetail.body.payslips[0];
-  const expectedNet = (
+  const expectedNet =
     Number(slip.grossCents) -
     Number(slip.nssfEmployeeCents) -
     Number(slip.shifCents) -
     Number(slip.ahlEmployeeCents) -
     Number(slip.payeCents) -
-    Number(slip.otherDeductionsCents)
-  );
+    Number(slip.otherDeductionsCents);
   check(
     'Net pay equals gross less every deduction',
     expectedNet === Number(slip.netCents),
@@ -407,16 +445,26 @@ async function main() {
     const approve = await finance('POST', `/api/payroll/runs/${runId}/approve`, {
       facilityId: FACILITY_ID,
     });
-    check('Finance manager approves the run', approve.ok && approve.body.status === 'APPROVED', approve.body.message ?? '');
+    check(
+      'Finance manager approves the run',
+      approve.ok && approve.body.status === 'APPROVED',
+      approve.body.message ?? '',
+    );
   } else {
-    check('Run was already approved in an earlier visit', ['APPROVED', 'POSTED'].includes(runStatus), runStatus);
+    check(
+      'Run was already approved in an earlier visit',
+      ['APPROVED', 'POSTED'].includes(runStatus),
+      runStatus,
+    );
   }
 
   if (runStatus !== 'POSTED') {
     const hrPost = await hr('POST', `/api/payroll/runs/${runId}/post`, { facilityId: FACILITY_ID });
     check('HR officer cannot post to the ledger', hrPost.status === 403, `status ${hrPost.status}`);
 
-    const post = await finance('POST', `/api/payroll/runs/${runId}/post`, { facilityId: FACILITY_ID });
+    const post = await finance('POST', `/api/payroll/runs/${runId}/post`, {
+      facilityId: FACILITY_ID,
+    });
     check(
       'Post payroll to the ledger',
       post.ok && post.body.status === 'POSTED',
@@ -427,7 +475,9 @@ async function main() {
       post.ok && post.body.debitTotalCents === post.body.creditTotalCents,
       post.ok ? `${money(post.body.debitTotalCents)} = ${money(post.body.creditTotalCents)}` : '',
     );
-    const replay = await finance('POST', `/api/payroll/runs/${runId}/post`, { facilityId: FACILITY_ID });
+    const replay = await finance('POST', `/api/payroll/runs/${runId}/post`, {
+      facilityId: FACILITY_ID,
+    });
     check(
       'A retried post is refused, not duplicated',
       replay.status === 409,
@@ -436,7 +486,9 @@ async function main() {
     postOutcome = post;
   } else {
     check('Run was already posted in an earlier visit', true, 'verifying the existing journal');
-    const replay = await finance('POST', `/api/payroll/runs/${runId}/post`, { facilityId: FACILITY_ID });
+    const replay = await finance('POST', `/api/payroll/runs/${runId}/post`, {
+      facilityId: FACILITY_ID,
+    });
     check(
       'A retried post is refused, not duplicated',
       replay.status === 409,
@@ -460,10 +512,15 @@ async function main() {
   check('Payslip detail is retrievable', payslip.ok && payslip.body.netCents);
   check(
     'Payslip records the rules applied',
-    payslip.ok && Array.isArray(payslip.body.breakdown?.statutes) && payslip.body.breakdown.statutes.length === 4,
+    payslip.ok &&
+      Array.isArray(payslip.body.breakdown?.statutes) &&
+      payslip.body.breakdown.statutes.length === 4,
   );
 
-  const overview = await finance('GET', `/api/accounting/overview?facilityId=${FACILITY_ID}&endDate=${year}-12-31`);
+  const overview = await finance(
+    'GET',
+    `/api/accounting/overview?facilityId=${FACILITY_ID}&endDate=${year}-12-31`,
+  );
   check('Ledger overview loads after posting', overview.ok);
   if (overview.ok) {
     const journalNumber = postOutcome?.body?.journalNumber;
@@ -472,7 +529,11 @@ async function main() {
     const found = journalNumber
       ? journals.some((journal) => journal.journalNumber === journalNumber)
       : journals.some((journal) => journal.id === journalEntryId);
-    check('Payroll journal appears in the general ledger', found, journalNumber ?? `id ${journalEntryId}`);
+    check(
+      'Payroll journal appears in the general ledger',
+      found,
+      journalNumber ?? `id ${journalEntryId}`,
+    );
     // Sum every expense debit: the run may have been posted against an
     // earlier mapping while this visit created fresh synthetic accounts.
     const gross = Number(runDetail.body.run.grossCents);
@@ -500,12 +561,20 @@ async function main() {
     decemberId =
       (existingPeriods.body ?? []).find(
         (candidate) =>
-          candidate.startDate === decemberRange.startDate && candidate.endDate === decemberRange.endDate,
+          candidate.startDate === decemberRange.startDate &&
+          candidate.endDate === decemberRange.endDate,
       )?.id ?? null;
   }
-  check('Second period available for refusal tests', Boolean(decemberId), `id ${decemberId ?? 'none'}`);
+  check(
+    'Second period available for refusal tests',
+    Boolean(decemberId),
+    `id ${decemberId ?? 'none'}`,
+  );
 
-  const versionsNow = await finance('GET', `/api/payroll/statutory-versions?facilityId=${FACILITY_ID}`);
+  const versionsNow = await finance(
+    'GET',
+    `/api/payroll/statutory-versions?facilityId=${FACILITY_ID}`,
+  );
   const activeAhl = (versionsNow.body ?? []).find(
     (version) => version.statute === 'AHL' && version.status === 'ACTIVE',
   );
@@ -533,9 +602,13 @@ async function main() {
   }
 
   if (decemberId) {
-    const financeCalculation = await finance('POST', `/api/payroll/periods/${decemberId}/calculate`, {
-      facilityId: FACILITY_ID,
-    });
+    const financeCalculation = await finance(
+      'POST',
+      `/api/payroll/periods/${decemberId}/calculate`,
+      {
+        facilityId: FACILITY_ID,
+      },
+    );
     check(
       'Finance manager calculates the second run',
       financeCalculation.ok,

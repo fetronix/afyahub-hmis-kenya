@@ -83,6 +83,8 @@ export { theatreClient } from './clients/theatre.client.ts';
 export { diagnosticsPharmacyClient } from './clients/diagnostics-pharmacy.client.ts';
 export { billingClient } from './clients/billing.client.ts';
 export { workforceClient } from './clients/workforce.client.ts';
+export { fixedAssetsClient } from './clients/fixed-assets.client.ts';
+export { procurementWorkflowClient } from './clients/procurement-workflow.client.ts';
 
 import { authClient } from './clients/auth.client.ts';
 import { billingClient } from './clients/billing.client.ts';

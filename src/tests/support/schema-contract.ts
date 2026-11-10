@@ -137,6 +137,40 @@ export function contractWithReviewedAdditions(name: string, original: unknown) {
     });
     return expected;
   }
+  if (name === 'supplierInvoices') {
+    const expected = structuredClone(original) as {
+      columns: Array<{ name: string } & Record<string, unknown>>;
+      indexes: Array<Record<string, unknown>>;
+    };
+    // Migration 0076 links a supplier invoice to the receipt it bills, and
+    // makes that receipt unique per invoice so a note cannot be billed twice.
+    const position = expected.columns.findIndex((column) => column.name === 'invoice_number');
+    if (position < 0) throw new Error('Expected historical invoice_number column not found');
+    expected.columns.splice(position, 0, {
+      name: 'goods_received_note_id',
+      type: 'integer',
+      notNull: false,
+      primary: false,
+      hasDefault: false,
+      default: null,
+      unique: false,
+      uniqueName: null,
+    });
+    // Declared before the existing lookup index, so it leads the array.
+    expected.indexes.unshift({
+      name: 'supplier_invoices_grn_idx',
+      columns: [
+        {
+          name: 'goods_received_note_id',
+          order: { order: 'asc', nulls: 'last', opClass: undefined },
+        },
+      ],
+      unique: true,
+      method: 'btree',
+      where: null,
+    });
+    return expected;
+  }
   if (name === 'facilities') {
     const expected = structuredClone(original) as {
       columns: Array<{ name: string } & Record<string, unknown>>;

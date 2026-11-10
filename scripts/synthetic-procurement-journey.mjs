@@ -316,9 +316,14 @@ try {
       'POST',
       `/api/procurement/requisitions/${stockRequisition.body.id}/submit`,
     );
-    await call(approver, 'POST', `/api/procurement/requisitions/${stockRequisition.body.id}/approve`, {
-      note: 'Synthetic approval for the stock-linked order.',
-    });
+    await call(
+      approver,
+      'POST',
+      `/api/procurement/requisitions/${stockRequisition.body.id}/approve`,
+      {
+        note: 'Synthetic approval for the stock-linked order.',
+      },
+    );
     const stockConverted = await call(
       approver,
       'POST',
@@ -349,11 +354,11 @@ try {
       })),
     };
     const stockGrn = await call(approver, 'POST', '/api/procurement/goods-received', stockGrnBody);
-    const afterStock = await pool.query(
-      'SELECT current_stock FROM inventory_items WHERE id = $1',
-      [stockItem.id],
-    );
-    const stockDelta = Number(afterStock.rows[0]?.current_stock ?? 0) - Number(stockItem.current_stock);
+    const afterStock = await pool.query('SELECT current_stock FROM inventory_items WHERE id = $1', [
+      stockItem.id,
+    ]);
+    const stockDelta =
+      Number(afterStock.rows[0]?.current_stock ?? 0) - Number(stockItem.current_stock);
     const grnMovement = await pool.query(
       `SELECT quantity_delta, reference_type FROM inventory_movements
         WHERE facility_id = $1 AND item_id = $2 AND reference_type = 'GOODS_RECEIVED_NOTE'
@@ -362,9 +367,7 @@ try {
     );
     record(
       'Receiving a stock-linked line increases stock on hand',
-      stockGrn.status === 201 &&
-        stockDelta === 4 &&
-        grnMovement.rows[0]?.quantity_delta === 4,
+      stockGrn.status === 201 && stockDelta === 4 && grnMovement.rows[0]?.quantity_delta === 4,
       `HTTP ${stockGrn.status}, stock +${stockDelta}`,
     );
 
