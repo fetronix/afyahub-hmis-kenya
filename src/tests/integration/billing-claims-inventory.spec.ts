@@ -583,6 +583,16 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
     );
     expect(await inventory.getBatchesScoped(ctx, { itemId: 50 })).toHaveLength(1);
 
+    /*
+     * The expiry has to be derived, not written down. It was hard-coded to a
+     * calendar date, and the summary classifies a batch against "today" in the
+     * facility timezone: once Africa/Nairobi crossed midnight past that date
+     * the lot became `Expired` (-1 days) instead of expiring, and this
+     * assertion failed at that time of day and passed before it. Ten days out
+     * keeps it inside the default 30-day horizon whatever the clock says.
+     */
+    const expiringSoon = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+
     mockDb.state!.queueSelect(
       [
         {
@@ -591,7 +601,7 @@ describe('Billing, Charge Attempts, Insurance Claims & FEFO Inventory Domain Ser
           itemCode: 'DRG-AMOX',
           itemName: 'Amoxicillin 500mg',
           batchNumber: 'LOT-EXPIRING',
-          expiryDate: '2026-11-10',
+          expiryDate: expiringSoon,
           quantityRemaining: 40,
           costPerUnit: '5.50',
         },

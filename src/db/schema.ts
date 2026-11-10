@@ -47,5 +47,6 @@ export * from './schema/workforce.ts';
 export * from './schema/assets.ts';
 export * from './schema/procurement.ts';
 export * from './schema/inventory-control.ts';
+export * from './schema/approval-policies.ts';
 export * from './schema/procurement-matching.ts';
 export * from './schema/inventory-accounting.ts';

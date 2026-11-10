@@ -551,12 +551,19 @@
     {
       "idx": 78,
       "version": "7",
+      "when": 1794400000000,
+      "tag": "0078_approval_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
       "when": 1794451200000,
       "tag": "0079_inventory_accounting",
       "breakpoints": true
     },
     {
-      "idx": 79,
+      "idx": 80,
       "version": "7",
       "when": 1794537600000,
       "tag": "0080_procurement_matching",

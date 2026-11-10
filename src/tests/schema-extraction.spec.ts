@@ -107,6 +107,7 @@ describe('schema barrel: pre-extraction contract', () => {
         'procurementRequisitions',
         // Batch E (migration 0080): the three-way match verdict per invoice,
         // supplier returns and their lines, and supplier credit notes.
+        'approvalPolicies',
         'supplierInvoiceMatches',
         'supplierReturns',
         'supplierReturnItems',
