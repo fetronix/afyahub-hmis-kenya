@@ -271,7 +271,7 @@ export const PayrollModule: React.FC = () => {
               description="Create a period, record the statutory rules, then calculate the run."
             />
           ) : (
-            <DataTable>
+            <DataTable className="table-quiet">
               <thead>
                 <tr>
                   <th>Period</th>
@@ -417,7 +417,7 @@ export const PayrollModule: React.FC = () => {
               description="Record PAYE, NSSF, SHIF and Affordable Housing Levy versions with their authority source."
             />
           ) : (
-            <DataTable>
+            <DataTable className="table-quiet">
               <thead>
                 <tr>
                   <th>Statute</th>
@@ -620,7 +620,7 @@ function RunDetailView({
         ))}
       </dl>
 
-      <DataTable>
+      <DataTable className="table-quiet">
         <thead>
           <tr>
             <th>Employee</th>

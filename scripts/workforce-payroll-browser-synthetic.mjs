@@ -191,9 +191,10 @@ try {
       );
       await shot(page, '09-payroll-run-detail.png');
 
-      const payslipButton = await page.$('tbody tr button');
+      // The run detail lists one "Payslip" button per employee. Clicking the
+      // first tbody button would hit the period row behind the modal instead.
+      const payslipButton = await clickByText(page, 'tbody button', 'Payslip');
       if (payslipButton) {
-        await payslipButton.click();
         await sleep(1400);
         const slip = await page.evaluate(() => document.body.innerText);
         record(

@@ -411,7 +411,7 @@ export const WorkforceModule: React.FC = () => {
               }
             />
           ) : (
-            <DataTable>
+            <DataTable className="table-quiet">
               <thead>
                 <tr>
                   <th>Employee</th>
@@ -480,7 +480,7 @@ export const WorkforceModule: React.FC = () => {
                 description="Create departments before registering staff."
               />
             ) : (
-              <DataTable>
+              <DataTable className="table-quiet">
                 <thead>
                   <tr>
                     <th>Code</th>
@@ -528,7 +528,7 @@ export const WorkforceModule: React.FC = () => {
                 description="Add job titles and grades for this facility."
               />
             ) : (
-              <DataTable>
+              <DataTable className="table-quiet">
                 <thead>
                   <tr>
                     <th>Title</th>
@@ -577,7 +577,7 @@ export const WorkforceModule: React.FC = () => {
                 description="Register staff to record attendance."
               />
             ) : (
-              <DataTable>
+              <DataTable className="table-quiet">
                 <thead>
                   <tr>
                     <th>Employee</th>
@@ -704,7 +704,7 @@ export const WorkforceModule: React.FC = () => {
               }
             />
           ) : (
-            <DataTable>
+            <DataTable className="table-quiet">
               <thead>
                 <tr>
                   <th>Employee</th>
