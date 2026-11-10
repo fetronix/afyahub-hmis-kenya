@@ -559,7 +559,17 @@ export async function postStockCount(scope: StockScope, countId: number) {
         stockAfter,
         reasonCode: 'PHYSICAL_COUNT',
         referenceType: 'STOCK_COUNT',
-        referenceId: String(countId),
+        /*
+         * One variance line per item, so the reference has to name the item as
+         * well as the count. Using the count id alone made every line after the
+         * first collide on inventory_movements_reference_once_idx
+         * (facility, reference_type, reference_id, movement_type), which failed
+         * the whole posting — a two-item count could never be posted. The
+         * transfer legs below use the same composite shape, and
+         * (count_id, item_id) is unique on the lines table, so this reference
+         * stays unique while remaining stable across a replay.
+         */
+        referenceId: `${countId}:${line.itemId}`,
         notes: line.notes,
         date: count.countDate,
       });
