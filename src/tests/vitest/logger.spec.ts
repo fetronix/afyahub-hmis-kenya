@@ -86,6 +86,13 @@ describe('the redaction list itself', () => {
       'authorization',
       'cookie',
       'clientSecret',
+      'consumerKey',
+      'consumerSecret',
+      'merchantCode',
+      'passkey',
+      'shortcode',
+      'credentials',
+      'PAYMENT_HUB_ENCRYPTION_KEY',
       'apiKey',
       'nationalId',
       'phone',
@@ -99,11 +106,35 @@ describe('the redaction list itself', () => {
       expect(REDACT_PATHS, `${key} missing at top level`).toContain(key);
       expect(REDACT_PATHS, `${key} missing two levels down`).toContain(`*.*.${key}`);
     }
+
+    /*
+     * Database errors are a second route to the same data: `pg` attaches the
+     * bound parameter values to the error, and Pino's `err` serializer copies
+     * every enumerable property. These paths are what stop a failed insert
+     * writing a national ID to the log.
+     */
+    for (const path of ['err.parameters', 'error.parameters', 'err.query', 'error.query']) {
+      expect(REDACT_PATHS, `${path} must be redacted`).toContain(path);
+    }
   });
 
   it('names the Authorization header paths explicitly', () => {
     expect(REDACT_PATHS).toContain('req.headers.authorization');
     expect(REDACT_PATHS).toContain('req.headers.cookie');
+  });
+
+  it('redacts Jenga API-key header variants and merchant identifiers from serialized logs', () => {
+    const { log, lines } = capture();
+    log.info({
+      merchantCode: 'synthetic-merchant-sensitive',
+      req: { headers: { 'api-key': 'synthetic-lower-sensitive' } },
+      config: { headers: { 'Api-Key': 'synthetic-upper-sensitive' } },
+    });
+    const output = JSON.stringify(lines());
+    expect(output).not.toContain('synthetic-merchant-sensitive');
+    expect(output).not.toContain('synthetic-lower-sensitive');
+    expect(output).not.toContain('synthetic-upper-sensitive');
+    expect(output).toContain('[REDACTED]');
   });
 
   it('has no duplicate paths', () => {
@@ -112,6 +143,36 @@ describe('the redaction list itself', () => {
 });
 
 describe('redaction', () => {
+  /*
+   * THE DATABASE ERROR THAT LOGGED A NATIONAL ID
+   *
+   * An insert fails on a unique constraint. `pg` hands back an error
+   * carrying `query` and `parameters`; the data layer logs
+   * `{ err: error }`. Before these redaction paths existed, the parameter
+   * array - `['12345678']` - was written verbatim. The message and stack are
+   * what an operator actually needs, and they survive.
+   */
+  it('redacts the bound parameters and SQL carried by a database error', () => {
+    const { log, lines } = capture();
+
+    const dbError = Object.assign(new Error('duplicate key value violates unique constraint'), {
+      code: '23505',
+      query: 'INSERT INTO patients (national_id) VALUES ($1)',
+      parameters: ['12345678'],
+    });
+
+    log.error({ err: dbError }, 'patient.create_failed');
+
+    const out = JSON.stringify(lines());
+
+    expect(out, 'the bound national ID is not written to the log').not.toContain('12345678');
+    expect(out, 'the statement text is not written to the log').not.toContain(
+      'INSERT INTO patients',
+    );
+    expect(out, 'the diagnostic message survives').toContain('duplicate key value');
+    expect(out, 'the error code survives, so the failure is classifiable').toContain('23505');
+  });
+
   it('redacts a password at the top level and one level down', () => {
     const { log, lines } = capture();
 
@@ -164,6 +225,37 @@ describe('redaction', () => {
     for (const secret of ['12345678', '254712345678', '1985-04-12', 'Wanjiku']) {
       expect(out).not.toContain(secret);
     }
+  });
+
+  it('redacts Daraja credentials in a nested request and individually named fields', () => {
+    const { log, lines } = capture();
+    log.info(
+      {
+        req: {
+          body: {
+            credentials: {
+              consumerKey: 'synthetic-key',
+              consumerSecret: 'synthetic-secret',
+              passkey: 'synthetic-passkey',
+              shortcode: '123456',
+            },
+          },
+        },
+        provider: { consumerSecret: 'synthetic-secret-again' },
+        PAYMENT_HUB_ENCRYPTION_KEY: 'synthetic-master-key',
+      },
+      'synthetic.integration',
+    );
+    const out = JSON.stringify(lines());
+    for (const value of [
+      'synthetic-key',
+      'synthetic-secret',
+      'synthetic-passkey',
+      '123456',
+      'synthetic-master-key',
+    ])
+      expect(out).not.toContain(value);
+    expect(out).toContain('[REDACTED]');
   });
 
   it('redacts a client secret nested inside a config object', () => {

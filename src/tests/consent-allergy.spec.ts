@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, appSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -261,7 +261,7 @@ describe('Consent and allergy — regression tests', () => {
      * permission together, which is what keeps it from matching the module
      * guard that also mentions /api/medications.
      */
-    const app = code('src/app.ts');
+    const app = appSource({ stripComments: true });
     const medications = code('src/routes/medications.routes.ts');
 
     const prescriptionMatch = /router\.post\(\s*'\/api\/medications',\s*requirePermission/.exec(

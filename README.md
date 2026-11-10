@@ -333,30 +333,50 @@ Run it before every deployment.
 
 ## Testing
 
-One runner. Every suite in the repository runs under `npm test`.
+### From a fresh checkout: full suite with Docker
+
+Prerequisites: Node.js `^20.19.0` or `>=22.12.0`, npm, a running **local** Docker daemon
+with the Compose V2 plugin, and network access to Docker Hub and npm. In a
+fresh clone, before creating an `.env` file, run:
+
+```bash
+npm run test:docker
+```
+
+No PostgreSQL installation, existing database, `.env`, or payer credentials are
+required. The command uses `docker-compose.test.yml`, **not** the deployment
+`docker-compose.yml`. It creates a uniquely named project with a new PostgreSQL
+16 database in temporary memory-backed storage, random test credentials, and a
+random loopback-only host port. It then runs the equivalent of:
+
+```text
+docker compose up -d db && npm ci && npm run db:migrate -- --yes && npm test
+```
+
+The bootstrap selects the isolated Compose file and project, waits for the
+server to be ready, and sets `JALICARE_REQUIRE_DB=1` so missing database tests
+cannot be silently skipped. The historical migrations run only against this
+new, empty test database. Application and payer environment variables are not
+inherited, integrations default to mock mode, and the test processes use a
+temporary home directory. Docker and npm download the image and dependencies;
+no live payer test is implied.
+
+The command removes its own Compose resources and temporary home on success or
+failure; it never deletes another project's volumes. If interrupted, run the
+project-specific cleanup command printed at startup. `npm ci` replaces the
+checkout's `node_modules`. To avoid accidentally loading real configuration or
+a stale migration bundle, the bootstrap refuses a checkout with local `.env*`
+files (other than `.env.example`), a project `.npmrc`, or a built migration
+script. Use a separate clean clone rather than moving or deleting existing
+configuration.
 
 ### `npm test` — everything, with coverage
 
-```bash
-cp .env.example .env
-# then set SQL_HOST, SQL_PORT, SQL_DB_NAME, SQL_ADMIN_USER,
-# SQL_ADMIN_PASSWORD and FIELD_ENCRYPTION_KEY — see step 2 of Quick start.
-npm test
-```
-
-The suites import `src/config/env.ts`, which validates configuration at load
-time and refuses to start without `SQL_*`. **The values are never used to
-connect** by the source-text suites — any non-empty string satisfies
-validation — but `.env.example` ships those keys empty, so an unedited copy
-is not enough. Run against a bare `.env` and the first suite exits with:
-
-```
-Error: Missing required environment variable: SQL_HOST.
-```
-
-That is deliberate: a server with no database configuration must not start
-quietly. Filling the values with placeholders is enough; no database is
-contacted unless a spec asks for one.
+For iterative work, `npm test` runs the same Vitest suite after dependencies
+are installed. Database specs need a **separately created disposable test
+database**, configured with `SQL_*`; they can apply migrations and must not be
+pointed at an existing facility or production database. Prefer the Docker
+command above for a complete from-scratch run.
 
 ### What used to be here
 
@@ -369,16 +389,18 @@ each batch was checked.
 
 ### Commands
 
-| Command                 | What it runs                                  |
-| ----------------------- | --------------------------------------------- |
-| `npm test`              | Every spec, with coverage thresholds enforced |
-| `npm run test:unit`     | Every spec, no coverage (faster)              |
-| `npm run test:watch`    | Watch mode                                    |
-| `npm run test:coverage` | Same as `npm test`                            |
+| Command                 | What it runs                                                   |
+| ----------------------- | -------------------------------------------------------------- |
+| `npm run test:docker`   | Fresh disposable PostgreSQL, install, migrations and full test |
+| `npm test`              | Every spec, with coverage thresholds enforced                  |
+| `npm run test:unit`     | Every spec, no coverage (faster)                               |
+| `npm run test:watch`    | Watch mode                                                     |
+| `npm run test:coverage` | Same as `npm test`                                             |
 
-Database specs (`*.db.spec.ts`) skip themselves when no PostgreSQL answers,
-so a laptop without a database still gets a green run; CI sets
-`JALICARE_REQUIRE_DB=1`, which turns that skip into a failure.
+Database specs (`*.db.spec.ts`) skip themselves when no PostgreSQL answers;
+coverage thresholds can still cause a no-database run to fail. The Docker
+bootstrap and CI set `JALICARE_REQUIRE_DB=1`, turning a missing DB into a
+failure rather than a skip.
 
 ### Component tests
 
@@ -405,11 +427,12 @@ against a database whose name does not contain `test`.
 
 ### Coverage
 
-Measured, not asserted. Current figures are in
-[`docs/quality/BASELINE.md`](docs/quality/BASELINE.md) and enforced as a
-ratchet in `vitest.config.ts`: global thresholds sit just below the measured
-value so coverage cannot regress, plus high per-module thresholds on the
-pricing rules, where a defect bills a patient the wrong amount.
+Measured, not asserted. The latest database-backed figures and remaining
+branch-coverage gap are in [`docs/quality/COVERAGE.md`](docs/quality/COVERAGE.md).
+`vitest.config.ts` enforces global and risk-specific per-module ratchets;
+coverage does not establish correctness, payer approval or live connectivity.
+The earlier historical baseline remains in
+[`docs/quality/BASELINE.md`](docs/quality/BASELINE.md).
 
 ```bash
 npm run test:coverage
@@ -424,15 +447,16 @@ open coverage/index.html
 request and on pushes to `main`, `arena/**`, `restructure/**`, `feature/**`
 and `fix/**`.
 
-| Job        | What it proves                                                                                     |
-| ---------- | -------------------------------------------------------------------------------------------------- |
-| `static`   | `tsc --noEmit` passes; ESLint reports 0 errors                                                     |
-| `unit`     | Vitest passes and coverage meets the thresholds                                                    |
-| `legacy`   | The 32 hand-written suites still pass                                                              |
-| `database` | Migrations apply to a real **PostgreSQL 16**, status is clean, dry run is read-only, DB specs pass |
-| `build`    | Client and server bundle, then **starts the real artifact** and checks `/api/health` and `/`       |
-| `audit`    | `npm audit --omit=dev --audit-level=high`                                                          |
-| `format`   | `npm run format:check` over every file `npm run format` rewrites                                   |
+| Job         | What it proves                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------- |
+| `static`    | `tsc --noEmit` passes; ESLint reports 0 errors                                                     |
+| `unit`      | Vitest passes and coverage meets the thresholds                                                    |
+| `bootstrap` | A fresh checkout runs the exact `npm run test:docker` command                                      |
+| `legacy`    | The 32 hand-written suites still pass                                                              |
+| `database`  | Migrations apply to a real **PostgreSQL 16**, status is clean, dry run is read-only, DB specs pass |
+| `build`     | Client and server bundle, then **starts the real artifact** and checks `/api/health` and `/`       |
+| `audit`     | `npm audit --omit=dev --audit-level=high`                                                          |
+| `format`    | `npm run format:check` over every file `npm run format` rewrites                                   |
 
 The PostgreSQL service uses throwaway credentials committed on purpose: they
 grant access to an empty database that is destroyed with the runner. No real

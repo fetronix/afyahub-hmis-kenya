@@ -19,6 +19,7 @@
 
 import type { Response } from 'express';
 
+import { AccountingIntegrityError } from '../../accounting/accounting.service.ts';
 import { ScopeAccessError } from '../../auth/scope.service.ts';
 import * as billingPayments from '../../billing/payments.service.ts';
 import * as queries from '../../db/queries.ts';
@@ -229,8 +230,50 @@ export const handlePaymentError = (error: unknown, res: Response): boolean => {
   return false;
 };
 
+/**
+ * Accounting failures raised inside a non-accounting request.
+ *
+ * Inventory and stock control call the accounting posting primitive inside
+ * their own database transactions, so a closed financial period, an account
+ * outside the facility, or a reused idempotency key arrives at an inventory
+ * route as an `AccountingIntegrityError`.
+ *
+ * That class already carries the status, code and message the caller should
+ * see. Before this handler existed, inventory routes passed it to
+ * `respondInternalError`, which answered 500 "The request could not be
+ * completed." An operator told the period is closed can act on that; an
+ * operator told the request failed cannot tell a closed period from a bug in
+ * the ledger.
+ *
+ * The status is taken from the error and never substituted here: only the
+ * accounting service knows whether a failure is a 409 (state conflict), a 403
+ * (account scope) or a 400 (invalid input). The body matches the shape used by
+ * `handleInventoryError` and by the accounting router, so a client that
+ * already parses `{ success, error, message }` needs no special case.
+ *
+ * Returns true when the response has been written.
+ */
+export const handleAccountingIntegrityError = (error: unknown, res: Response): boolean => {
+  if (error instanceof AccountingIntegrityError) {
+    res.status(error.status).json({
+      success: false,
+      error: error.code,
+      message: error.message,
+    });
+
+    return true;
+  }
+
+  return false;
+};
+
 export const handleInventoryError = (error: unknown, res: Response): boolean => {
   if (handleScopeError(error, res)) return true;
+
+  /* Accounting failures are checked before the inventory domain error, so a
+     posting that fails for an accounting reason is reported as that reason
+     rather than falling through to the generic 500. */
+  if (handleAccountingIntegrityError(error, res)) return true;
 
   if (error instanceof inventory.InventoryDomainError) {
     res.status(error.status).json({

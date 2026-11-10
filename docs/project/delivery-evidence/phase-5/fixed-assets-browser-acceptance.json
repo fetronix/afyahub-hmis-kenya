@@ -1,0 +1,98 @@
+{
+  "capturedAt": "2026-11-10T01:09:40.643Z",
+  "databaseClass": "synthetic",
+  "assertions": [
+    {
+      "name": "Asset officer signs in through the form",
+      "passed": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "Fixed Assets appears in navigation and opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Register lists the synthetic ultrasound scanner",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Overview shows cost, accumulated depreciation and net book value",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "An asset row opens its detail",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Detail shows a CAPITALISATION movement and journal reference",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Detail shows the registered custodian/location fields",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab “Categories & accounts” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Categories & accounts” renders without an error state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab “Maintenance” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Maintenance” renders without an error state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab “Depreciation & values” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Depreciation & values” renders without an error state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Depreciation preview runs for the selected period",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Preview reports a charge for the synthetic assets",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Preview banner total equals the sum of the pending charge rows",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Every asset API call was authorized",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "No uncaught browser errors",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "passed": 18,
+  "failed": 0
+}

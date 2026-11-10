@@ -19,13 +19,50 @@
  * app says so rather than failing.
  */
 
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 
 import * as schema from '../db/schema.ts';
-import { chargeForService, type ChargeRequest, type ChargeResult } from './billing.service.ts';
+import { isCatalogueServiceType } from './tariff-resolver.ts';
+import {
+  buildIdempotencyKey,
+  chargeForService,
+  type ChargeRequest,
+  type ChargeResult,
+  type InitialClinicalTariff,
+  type ReviewedTariffPrice,
+} from './billing.service.ts';
+import { formatCents, parseMoneyToCents } from './settlement.ts';
 
 /** Anything that can run a query: the pool, a transaction, a test double. */
 type Executor = any;
+
+function postgresCode(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth++) {
+    const value = current as { code?: unknown; cause?: unknown };
+    if (typeof value.code === 'string') return value.code;
+    current = value.cause;
+  }
+  return undefined;
+}
+
+/** Only a missing 0022 column should disable bed-night identity. Other
+ * undefined columns (including newer migrations) must not change the
+ * process-wide identity policy. Inspect the PostgreSQL cause, not the
+ * wrapper's SQL text, which can mention every column in the statement. */
+function isMissingBedNightIdentityColumn(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth++) {
+    const value = current as { code?: unknown; message?: unknown; cause?: unknown };
+    if (value.code === '42703')
+      return (
+        typeof value.message === 'string' &&
+        /\b(?:idempotency_suffix|ward_type|ward_name)\b/i.test(value.message)
+      );
+    current = value.cause;
+  }
+  return false;
+}
 
 let warnedMissingAttemptsTable = false;
 
@@ -38,13 +75,13 @@ let warnedMissingAttemptsTable = false;
  */
 let supportsBedNightIdentity = true;
 
-/** True when the database predates migration 0020. */
+/** True when the attempts table itself is absent. */
 export function isMissingAttemptsTable(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
 
-  const code = (error as { code?: unknown }).code;
+  const code = postgresCode(error);
 
-  return code === '42P01' || code === '42703';
+  return code === '42P01';
 }
 
 /**
@@ -62,6 +99,7 @@ export async function recordChargeAttempt(
   executor: Executor,
   request: ChargeRequest,
   result: ChargeResult,
+  options: { preserveExisting?: boolean } = {},
 ): Promise<number | null> {
   if (result.charged) return null;
 
@@ -70,7 +108,12 @@ export async function recordChargeAttempt(
    * an operator problem, not a missing tariff. Only the "we could not
    * price this" case belongs in the queue.
    */
-  if (result.reason !== 'TARIFF_NOT_CONFIGURED') return null;
+  if (
+    result.reason !== 'TARIFF_NOT_CONFIGURED' &&
+    result.reason !== 'INVENTORY_PRICE_REVIEW' &&
+    result.reason !== 'BED_OCCUPANCY_REVIEW'
+  )
+    return null;
 
   /*
    * Without a numbered clinical source there is no stable identity for
@@ -101,10 +144,19 @@ export async function recordChargeAttempt(
     serviceName: request.serviceName ?? null,
     encounterType: request.encounterType ?? null,
     aliases: [...(request.aliases ?? [])],
+    serviceRefType: request.serviceRef?.type ?? null,
+    serviceRefId: request.serviceRef?.id ?? null,
+    serviceRefCode: request.serviceRef?.code ?? null,
+    serviceDate:
+      request.serviceDate ??
+      (request.sourceType === 'BED_DAY' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(request.idempotencySuffix ?? '')
+        ? request.idempotencySuffix!
+        : null),
     quantity,
-    fallbackUnitPrice:
-      request.fallbackUnitPrice === undefined ? null : String(request.fallbackUnitPrice),
+    fallbackUnitPrice: request.fallbackUnitPrice == null ? null : String(request.fallbackUnitPrice),
     reason: result.reason,
+    diagnosisCode: result.diagnosis?.code ?? null,
     detail: result.message ?? null,
     codesTried: [...(result.codesTried ?? request.codes ?? [])],
     status: 'PENDING' as const,
@@ -157,6 +209,8 @@ export async function recordChargeAttempt(
    * An explicit lookup is two statements and no inference.
    */
   const bumpExisting = async (id: number): Promise<number> => {
+    // Staging a clinical outbox must not erase an earlier resolver failure.
+    if (options.preserveExisting) return id;
     await executor
       .update(schema.billingChargeAttempts)
       .set({
@@ -164,6 +218,7 @@ export async function recordChargeAttempt(
         lastAttemptAt: new Date(),
         updatedAt: new Date(),
         reason: values.reason,
+        diagnosisCode: values.diagnosisCode,
         detail: values.detail,
         codesTried: values.codesTried,
         quantity: values.quantity,
@@ -200,7 +255,7 @@ export async function recordChargeAttempt(
        * Two attempts on the same encounter at the same moment: one wins
        * the insert, the other becomes the bump.
        */
-      if ((insertError as { code?: unknown })?.code === '23505') {
+      if (postgresCode(insertError) === '23505') {
         const [winner] = await executor
           .select({ id: schema.billingChargeAttempts.id })
           .from(schema.billingChargeAttempts)
@@ -218,14 +273,21 @@ export async function recordChargeAttempt(
      * without the bed-night columns, so the queue keeps working while
      * the administrator applies the migration.
      */
-    if ((error as { code?: unknown })?.code === '42703' && supportsBedNightIdentity) {
+    if (isMissingBedNightIdentityColumn(error) && supportsBedNightIdentity) {
       supportsBedNightIdentity = false;
 
       console.warn(
         'Billing: billing_charge_attempts has no bed-night identity columns. Run `npm run db:migrate` (migration 0022) so each unbilled night can be reprocessed separately. Recording the skip without it for now.',
       );
 
-      return recordChargeAttempt(executor, request, result);
+      return recordChargeAttempt(executor, request, result, options);
+    }
+
+    if (postgresCode(error) === '42703') {
+      console.error(
+        'Billing: the charge-attempt schema is incomplete. Apply the required migrations; manual reconciliation is required.',
+      );
+      return null;
     }
 
     if (isMissingAttemptsTable(error)) {
@@ -240,10 +302,29 @@ export async function recordChargeAttempt(
       return null;
     }
 
-    console.error('Billing: could not record skipped charge:', error);
+    console.error('Billing: could not record a skipped charge; manual reconciliation is required.');
 
     return null;
   }
+}
+
+/** Stage a durable clinical-event outbox without overwriting an existing diagnosis. */
+export function stageClinicalBillingOutbox(
+  executor: Executor,
+  request: ChargeRequest,
+  message: string,
+) {
+  return recordChargeAttempt(
+    executor,
+    request,
+    {
+      charged: false,
+      reason: 'TARIFF_NOT_CONFIGURED',
+      diagnosis: { code: 'BILLING_EVALUATION_PENDING', label: 'Billing evaluation pending' },
+      message,
+    },
+    { preserveExisting: true },
+  );
 }
 
 /**
@@ -256,29 +337,333 @@ export async function recordChargeAttempt(
  * Billing still never breaks clinical care: a fault in the engine is
  * reported in the result, not thrown at the route.
  */
+/**
+ * All ordinary charges, queue retries and write-offs acquire this lock before
+ * locking queue rows or invoice/patient rows. It also covers the no-row-yet
+ * case: a pending attempt cannot be inserted between a direct replay's check
+ * and its charge. The key is the SAME identity used by billing_items.
+ */
+export async function lockChargeIdentity(
+  executor: Executor,
+  facilityId: number,
+  sourceType: ChargeRequest['sourceType'],
+  sourceId: number | string,
+  idempotencySuffix?: string | null,
+): Promise<void> {
+  const key = buildIdempotencyKey({
+    sourceType,
+    sourceId,
+    idempotencySuffix: idempotencySuffix || undefined,
+  });
+  await executor.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`billing-charge:${facilityId}:${key}`}, 0))`,
+  );
+}
+
+function attemptIdentityWhere(request: ChargeRequest) {
+  const suffix = request.idempotencySuffix || null;
+  return and(
+    eq(schema.billingChargeAttempts.tenantId, request.tenantId),
+    eq(schema.billingChargeAttempts.facilityId, request.facilityId),
+    eq(schema.billingChargeAttempts.sourceType, request.sourceType),
+    eq(schema.billingChargeAttempts.sourceId, request.sourceId as number),
+    suffix === null
+      ? or(
+          isNull(schema.billingChargeAttempts.idempotencySuffix),
+          eq(schema.billingChargeAttempts.idempotencySuffix, ''),
+        )
+      : eq(schema.billingChargeAttempts.idempotencySuffix, suffix),
+  );
+}
+
+const chargeReviewRequired = (): ChargeResult => ({
+  charged: false,
+  reason: 'INVALID_INPUT',
+  message: 'The service was recorded but billing needs manual reconciliation.',
+});
+
+function isUnevaluatedClinicalOutbox(row: ChargeAttemptRow): boolean {
+  return ['BILLING_EVALUATION_PENDING', 'SOURCE_NOT_COMPLETED'].includes(row.diagnosisCode ?? '');
+}
+
+// A clinical transaction can return the ID it just staged, internally, to
+// the immediate evaluator. A later replay has no such capability and must be
+// reviewed. Legacy or already-price-evaluated markers are never presumed new.
+function freshClinicalOutbox(row: ChargeAttemptRow, initialAttemptId?: number | null): boolean {
+  return initialAttemptId === row.id && isUnevaluatedClinicalOutbox(row);
+}
+
+// An idempotency key alone does not establish that a legacy invoice line
+// belongs to the same laboratory order and encounter. Lock the evidence until
+// the attempt's outcome commits; never move or rewrite an inconsistent line.
+async function verifiedLabDuplicate(
+  executor: Executor,
+  request: ChargeRequest,
+  expectedItemId?: number | null,
+  expectedInvoiceId?: number | null,
+): Promise<boolean> {
+  if (request.sourceType !== 'LAB_ORDER' || typeof request.sourceId !== 'number') return false;
+  const encounterId = request.encounterId ?? null;
+  const [line] = await executor
+    .select({ itemId: schema.billingItems.id, invoiceId: schema.billingInvoices.id })
+    .from(schema.billingItems)
+    .innerJoin(schema.billingInvoices, eq(schema.billingItems.invoiceId, schema.billingInvoices.id))
+    .innerJoin(schema.labOrders, eq(schema.billingItems.sourceId, schema.labOrders.id))
+    .where(
+      and(
+        eq(schema.billingItems.idempotencyKey, buildIdempotencyKey(request)),
+        eq(schema.billingItems.sourceType, 'LAB_ORDER'),
+        eq(schema.billingItems.sourceId, request.sourceId),
+        eq(schema.labOrders.tenantId, request.tenantId),
+        eq(schema.labOrders.facilityId, request.facilityId),
+        eq(schema.labOrders.patientId, request.patientId),
+        sql`${schema.labOrders.encounterId} IS NOT DISTINCT FROM ${encounterId}`,
+        eq(schema.billingInvoices.tenantId, request.tenantId),
+        eq(schema.billingInvoices.facilityId, request.facilityId),
+        eq(schema.billingInvoices.patientId, request.patientId),
+        sql`${schema.billingInvoices.encounterId} IS NOT DISTINCT FROM ${encounterId}`,
+      ),
+    )
+    .limit(1)
+    .for('share');
+  return Boolean(
+    line &&
+    (expectedItemId == null || line.itemId === expectedItemId) &&
+    (expectedInvoiceId == null || line.invoiceId === expectedInvoiceId),
+  );
+}
+
 export async function chargeAndRecord(
   executor: Executor,
   request: ChargeRequest,
+  initialAttemptId?: number | null,
+  initialClinicalTariff?: InitialClinicalTariff | null,
 ): Promise<ChargeResult> {
-  let result: ChargeResult;
-
   try {
-    result = await chargeForService(executor, request);
-  } catch (error: unknown) {
-    console.error('Billing charge failed:', error);
+    return await executor.transaction(async (tx: Executor) => {
+      await lockChargeIdentity(
+        tx,
+        request.facilityId,
+        request.sourceType,
+        request.sourceId,
+        request.idempotencySuffix,
+      );
 
-    result = {
-      charged: false,
-      reason: 'INVALID_INPUT',
-      message: 'The service was recorded but could not be billed.',
-    };
+      // The queue only accepts numeric clinical source identities. String
+      // identities still use the normal billing-item uniqueness guard.
+      const attempts: ChargeAttemptRow[] = (
+        typeof request.sourceId === 'number' && Number.isSafeInteger(request.sourceId)
+          ? await tx
+              .select()
+              .from(schema.billingChargeAttempts)
+              .where(attemptIdentityWhere(request))
+              .for('update')
+          : []
+      ).filter((row: ChargeAttemptRow) => row.status !== 'SUPERSEDED');
+      if (
+        attempts.some(
+          (row) =>
+            row.patientId !== request.patientId ||
+            row.itemType !== request.itemType ||
+            (request.sourceType === 'LAB_ORDER' &&
+              row.encounterId !== (request.encounterId ?? null)),
+        )
+      ) {
+        return chargeReviewRequired();
+      }
+      if (attempts.some((row) => row.status === 'VOID')) {
+        return {
+          charged: false,
+          reason: 'ATTEMPT_VOIDED',
+          message: 'This unpriced charge was written off and cannot be billed by replay.',
+        };
+      }
+
+      const resolved = attempts.filter((row) => ['BILLED', 'DUPLICATE'].includes(row.status));
+      if (resolved.length) {
+        // Historic queue status by itself does not prove a line exists.
+        const [line] = await tx
+          .select({
+            itemId: schema.billingItems.id,
+            invoiceId: schema.billingInvoices.id,
+            invoiceNumber: schema.billingInvoices.invoiceNumber,
+            tenantId: schema.billingInvoices.tenantId,
+            facilityId: schema.billingInvoices.facilityId,
+            patientId: schema.billingInvoices.patientId,
+          })
+          .from(schema.billingItems)
+          .innerJoin(
+            schema.billingInvoices,
+            eq(schema.billingItems.invoiceId, schema.billingInvoices.id),
+          )
+          .where(eq(schema.billingItems.idempotencyKey, buildIdempotencyKey(request)))
+          .limit(1);
+        if (
+          !line ||
+          line.tenantId !== request.tenantId ||
+          line.facilityId !== request.facilityId ||
+          line.patientId !== request.patientId ||
+          resolved.some(
+            (row) =>
+              (row.resolvedItemId != null && row.resolvedItemId !== line.itemId) ||
+              (row.resolvedInvoiceId != null && row.resolvedInvoiceId !== line.invoiceId),
+          )
+        ) {
+          return chargeReviewRequired();
+        }
+        if (
+          request.sourceType === 'LAB_ORDER' &&
+          !(await verifiedLabDuplicate(tx, request, line.itemId, line.invoiceId))
+        )
+          return chargeReviewRequired();
+        return {
+          charged: false,
+          reason: 'DUPLICATE',
+          itemId: line.itemId,
+          invoiceId: line.invoiceId,
+          invoiceNumber: line.invoiceNumber,
+          message:
+            'This service already has a charge record; review its invoice before any correction.',
+        };
+      }
+      const pending = attempts.filter((row) => row.status === 'PENDING');
+      if (pending.length > 1 || attempts.length !== pending.length) return chargeReviewRequired();
+      if (
+        pending[0] &&
+        request.sourceType === 'BED_DAY' &&
+        (pending[0].serviceRefId !== (request.serviceRef?.id ?? null) ||
+          pending[0].serviceDate !== (request.serviceDate ?? request.idempotencySuffix ?? null))
+      ) {
+        return {
+          charged: false,
+          reason: 'INVALID_INPUT',
+          message:
+            'The recorded bed-day identity differs from the replay. Review the occupancy and pending attempt before billing.',
+        };
+      }
+
+      const initialClinicalEvaluation = Boolean(
+        pending[0] && freshClinicalOutbox(pending[0], initialAttemptId),
+      );
+      let result: ChargeResult = await chargeForService(tx, request, {
+        // A replay cannot turn a previously unpriced clinical event into a
+        // current-price charge without an explicit, auditable price review.
+        // Pharmacy and bed nights instead use their own immutable snapshots.
+        requireTariffReview: Boolean(
+          pending[0] &&
+          !initialClinicalEvaluation &&
+          request.sourceType !== 'PHARMACY' &&
+          request.sourceType !== 'BED_DAY',
+        ),
+        ...(request.sourceType === 'LAB_ORDER' && initialClinicalEvaluation
+          ? { initialClinicalTariff: initialClinicalTariff ?? null }
+          : {}),
+      });
+      // A lab replay can reach billing after the clinical commit but before
+      // its original evaluator. It has no capability to charge, and must not
+      // overwrite the marker that capability needs. This is also safe after a
+      // crash: pending is not proof that an evaluator is still running, and
+      // an authorized retry still requires an explicit historical-price review.
+      // Run the ordinary resolver first so scope, completion, tariff and any
+      // already-existing invoice line are still checked.
+      if (
+        request.sourceType === 'LAB_ORDER' &&
+        pending[0] &&
+        !initialClinicalEvaluation &&
+        isUnevaluatedClinicalOutbox(pending[0]) &&
+        result.diagnosis?.code === 'HISTORICAL_PRICE_REVIEW_REQUIRED'
+      ) {
+        await tx
+          .update(schema.billingChargeAttempts)
+          .set({
+            attempts: sql`${schema.billingChargeAttempts.attempts} + 1`,
+            lastAttemptAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.billingChargeAttempts.id, pending[0].id));
+        return {
+          charged: false,
+          reason: 'BILLING_EVALUATION_PENDING',
+          diagnosis: { code: 'BILLING_EVALUATION_PENDING', label: 'Billing evaluation pending' },
+          message:
+            'Billing is pending and is not confirmed. If it remains unresolved, an authorized reviewer must verify the applicable price before retrying.',
+        };
+      }
+      const verifiedDuplicate =
+        result.reason === 'DUPLICATE' &&
+        result.itemId != null &&
+        result.invoiceId != null &&
+        (request.sourceType !== 'LAB_ORDER' ||
+          (await verifiedLabDuplicate(tx, request, result.itemId, result.invoiceId)));
+      if (result.reason === 'DUPLICATE' && !verifiedDuplicate) result = chargeReviewRequired();
+
+      if (pending[0] && (result.charged || verifiedDuplicate)) {
+        await tx
+          .update(schema.billingChargeAttempts)
+          .set({
+            status: result.charged ? 'BILLED' : 'DUPLICATE',
+            attempts: sql`${schema.billingChargeAttempts.attempts} + 1`,
+            lastAttemptAt: new Date(),
+            updatedAt: new Date(),
+            resolvedAt: new Date(),
+            resolvedItemId: result.itemId ?? null,
+            resolvedInvoiceId: result.invoiceId ?? null,
+            resolvedTariffCode: result.tariffCode ?? null,
+            resolvedUnitPrice: result.unitPrice ?? null,
+            detail: result.charged
+              ? initialClinicalEvaluation
+                ? 'Billed during the initial clinical billing evaluation.'
+                : 'Billed during a replay of the clinical event.'
+              : result.message,
+          })
+          .where(eq(schema.billingChargeAttempts.id, pending[0].id));
+        await tx.insert(schema.auditLogs).values({
+          tenantId: request.tenantId,
+          facilityId: request.facilityId,
+          userId: 'SYSTEM',
+          action: 'UPDATE',
+          resource: 'BillingChargeAttempt',
+          resourceId: String(pending[0].id),
+          details: initialClinicalEvaluation
+            ? 'Charge attempt resolved during the initial clinical billing evaluation.'
+            : 'Charge attempt resolved by replay of the clinical event.',
+        });
+      } else if (
+        !result.charged &&
+        (result.reason === 'TARIFF_NOT_CONFIGURED' ||
+          result.reason === 'INVENTORY_PRICE_REVIEW' ||
+          result.reason === 'BED_OCCUPANCY_REVIEW')
+      ) {
+        const attemptId = await recordChargeAttempt(tx, request, result);
+        if (attemptId === null) {
+          result = {
+            ...result,
+            message:
+              'The service was recorded but not billed. The unpriced charge could not be recorded in the retry queue; manual reconciliation is required.',
+          };
+        } else if (
+          request.sourceType === 'LAB_ORDER' &&
+          initialClinicalEvaluation &&
+          result.diagnosis?.code === 'HISTORICAL_PRICE_REVIEW_REQUIRED'
+        ) {
+          await tx.insert(schema.auditLogs).values({
+            tenantId: request.tenantId,
+            facilityId: request.facilityId,
+            userId: 'SYSTEM',
+            action: 'UPDATE',
+            resource: 'BillingChargeAttempt',
+            resourceId: String(attemptId),
+            details:
+              'Initial laboratory tariff changed or was unavailable; authorized price review required.',
+          });
+        }
+      }
+      return result;
+    });
+  } catch {
+    console.error('Billing charge failed; manual reconciliation is required.');
+    return chargeReviewRequired();
   }
-
-  if (!result.charged) {
-    await recordChargeAttempt(executor, request, result);
-  }
-
-  return result;
 }
 
 export interface ChargeAttemptRow {
@@ -301,9 +686,14 @@ export interface ChargeAttemptRow {
   /** Bed category and ward at accrual time, for a bed-night. */
   wardType: string | null;
   wardName: string | null;
+  serviceRefType?: string | null;
+  serviceRefId?: number | null;
+  serviceRefCode?: string | null;
+  serviceDate?: string | null;
   quantity: number;
   fallbackUnitPrice: string | null;
   reason: string;
+  diagnosisCode?: string | null;
   detail: string | null;
   codesTried: string[];
   status: string;
@@ -368,7 +758,8 @@ export async function listChargeAttempts(
         );
       }
 
-      return [];
+      // An unavailable queue is not evidence that nothing is waiting.
+      throw error;
     }
 
     throw error;
@@ -380,24 +771,20 @@ export async function countPendingChargeAttempts(
   executor: Executor,
   input: { tenantId: number; facilityId: number },
 ): Promise<number> {
-  try {
-    const rows = await executor
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.billingChargeAttempts)
-      .where(
-        and(
-          eq(schema.billingChargeAttempts.tenantId, input.tenantId),
-          eq(schema.billingChargeAttempts.facilityId, input.facilityId),
-          eq(schema.billingChargeAttempts.status, 'PENDING'),
-        ),
-      );
-
-    return rows[0]?.count ?? 0;
-  } catch (error: unknown) {
-    if (isMissingAttemptsTable(error)) return 0;
-
-    throw error;
+  const rows = await executor
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.billingChargeAttempts)
+    .where(
+      and(
+        eq(schema.billingChargeAttempts.tenantId, input.tenantId),
+        eq(schema.billingChargeAttempts.facilityId, input.facilityId),
+        eq(schema.billingChargeAttempts.status, 'PENDING'),
+      ),
+    );
+  if (!rows[0] || typeof rows[0].count !== 'number') {
+    throw new Error('CHARGE_ATTEMPT_COUNT_UNAVAILABLE');
   }
+  return rows[0].count;
 }
 
 /**
@@ -424,6 +811,16 @@ export function toChargeRequest(row: ChargeAttemptRow, tenantId: number): Charge
     ...(row.idempotencySuffix ? { idempotencySuffix: row.idempotencySuffix } : {}),
     ...(row.wardType ? { wardType: row.wardType } : {}),
     ...(row.wardName ? { wardName: row.wardName } : {}),
+    ...(isCatalogueServiceType(row.serviceRefType)
+      ? {
+          serviceRef: {
+            type: row.serviceRefType,
+            id: row.serviceRefId ?? null,
+            code: row.serviceRefCode ?? null,
+          },
+        }
+      : {}),
+    ...(row.serviceDate ? { serviceDate: row.serviceDate } : {}),
     itemType: row.itemType,
     description: row.description ?? undefined,
     quantity: row.quantity,
@@ -433,7 +830,7 @@ export function toChargeRequest(row: ChargeAttemptRow, tenantId: number): Charge
 
 export interface RetryOutcome {
   attemptId: number;
-  status: 'BILLED' | 'DUPLICATE' | 'PENDING';
+  status: 'BILLED' | 'DUPLICATE' | 'PENDING' | 'VOID' | 'SUPERSEDED';
   result: ChargeResult;
 }
 
@@ -455,9 +852,90 @@ async function enrichFromSource(
   executor: Executor,
   request: ChargeRequest,
 ): Promise<ChargeRequest> {
+  if (request.sourceType === 'BED_DAY') {
+    if (typeof request.sourceId !== 'number') throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    const [admission] = await executor
+      .select()
+      .from(schema.admissions)
+      .where(
+        and(
+          eq(schema.admissions.id, request.sourceId),
+          eq(schema.admissions.tenantId, request.tenantId),
+          eq(schema.admissions.facilityId, request.facilityId),
+          eq(schema.admissions.patientId, request.patientId),
+        ),
+      )
+      .limit(1);
+    if (
+      !admission ||
+      (request.encounterId != null && request.encounterId !== admission.encounterId)
+    )
+      throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    // A previously missing encounter may be attached only by the separate,
+    // authorized and audited admission-linking workflow.
+    return { ...request, encounterId: admission.encounterId ?? null };
+  }
+  if (request.sourceType === 'PHARMACY') {
+    if (typeof request.sourceId !== 'number') throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    const [dispense] = await executor
+      .select()
+      .from(schema.pharmacyDispensations)
+      .where(eq(schema.pharmacyDispensations.id, request.sourceId))
+      .limit(1);
+    if (
+      !dispense ||
+      dispense.tenantId !== request.tenantId ||
+      dispense.facilityId !== request.facilityId ||
+      dispense.patientId !== request.patientId ||
+      dispense.quantityDispensed !== request.quantity ||
+      !dispense.itemId
+    ) {
+      throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    }
+    const [item] = await executor
+      .select({ name: schema.inventoryItems.name })
+      .from(schema.inventoryItems)
+      .where(
+        and(
+          eq(schema.inventoryItems.id, dispense.itemId),
+          eq(schema.inventoryItems.facilityId, request.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!item) throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    let serviceName = item.name;
+    let encounterId: number | null = null;
+    if (dispense.prescriptionId !== null) {
+      const [prescription] = await executor
+        .select({
+          drugName: schema.medications.drugName,
+          encounterId: schema.medications.encounterId,
+        })
+        .from(schema.medications)
+        .innerJoin(schema.encounters, eq(schema.medications.encounterId, schema.encounters.id))
+        .where(
+          and(
+            eq(schema.medications.id, dispense.prescriptionId),
+            eq(schema.medications.patientId, request.patientId),
+            eq(schema.encounters.patientId, request.patientId),
+            eq(schema.encounters.tenantId, request.tenantId),
+            eq(schema.encounters.facilityId, request.facilityId),
+          ),
+        )
+        .limit(1);
+      if (!prescription) throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+      serviceName = prescription.drugName;
+      encounterId = prescription.encounterId;
+    }
+    if (serviceName !== request.serviceName || encounterId !== (request.encounterId ?? null)) {
+      // Do not reprice an old source under a changed drug label or encounter.
+      throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    }
+    return request;
+  }
   if (request.sourceType !== 'LAB_ORDER') return request;
 
-  if (typeof request.sourceId !== 'number') return request;
+  if (typeof request.sourceId !== 'number') throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
 
   try {
     const [order] = await executor
@@ -465,15 +943,23 @@ async function enrichFromSource(
         testId: schema.labOrders.testId,
         testName: schema.labOrders.testName,
         facilityId: schema.labOrders.facilityId,
+        tenantId: schema.labOrders.tenantId,
+        patientId: schema.labOrders.patientId,
+        encounterId: schema.labOrders.encounterId,
       })
       .from(schema.labOrders)
       .where(eq(schema.labOrders.id, request.sourceId))
       .limit(1);
 
-    if (!order) return request;
-
-    /* Never let a retry bill another facility's order. */
-    if (order.facilityId !== request.facilityId) return request;
+    if (
+      !order ||
+      order.facilityId !== request.facilityId ||
+      order.tenantId !== request.tenantId ||
+      order.patientId !== request.patientId ||
+      (order.encounterId ?? null) !== (request.encounterId ?? null)
+    ) {
+      throw new Error('CHARGE_SOURCE_REVIEW_REQUIRED');
+    }
 
     let testCode: string | null = null;
 
@@ -503,15 +989,9 @@ async function enrichFromSource(
       },
     };
   } catch (error) {
-    /*
-     * The order may predate a column, or the read may fail. Replaying
-     * without the enriched fields is still safe: the resolver falls
-     * back to codes and reports what it could not do. It must never
-     * throw from here, because a retry that 500s looks like a bill.
-     */
-    console.error('Billing: could not re-read the laboratory order:', error);
-
-    return request;
+    // A failed or out-of-scope source read must not fall back to guessed pricing.
+    console.error('Billing: could not re-read the laboratory order; retry requires review.');
+    throw error;
   }
 }
 
@@ -525,12 +1005,16 @@ async function enrichFromSource(
  * attempt would have used. A second retry of an already-billed attempt
  * therefore reports DUPLICATE and writes no line.
  */
-export async function retryChargeAttempt(
-  executor: Executor,
+async function lockAttemptIdentity(
+  tx: Executor,
   input: { tenantId: number; facilityId: number; attemptId: number },
-): Promise<RetryOutcome | null> {
-  const rows = await executor
-    .select()
+): Promise<ChargeAttemptRow | null> {
+  const [identity] = await tx
+    .select({
+      sourceType: schema.billingChargeAttempts.sourceType,
+      sourceId: schema.billingChargeAttempts.sourceId,
+      idempotencySuffix: schema.billingChargeAttempts.idempotencySuffix,
+    })
     .from(schema.billingChargeAttempts)
     .where(
       and(
@@ -540,88 +1024,310 @@ export async function retryChargeAttempt(
       ),
     )
     .limit(1);
-
-  const row = rows[0] as ChargeAttemptRow | undefined;
-
-  if (!row) return null;
-
-  if (row.status !== 'PENDING') {
-    return {
-      attemptId: row.id,
-      status: row.status === 'BILLED' ? 'BILLED' : 'DUPLICATE',
-      result: {
-        charged: false,
-        reason: 'DUPLICATE',
-        message:
-          row.status === 'BILLED'
-            ? `This charge was already billed${row.resolvedInvoiceId ? ` on invoice ${row.resolvedInvoiceId}` : ''}.`
-            : `This charge is ${row.status.toLowerCase()} and will not be retried.`,
-      },
-    };
-  }
-
-  let result: ChargeResult;
-
-  try {
-    result = await chargeForService(
-      executor,
-      await enrichFromSource(executor, toChargeRequest(row, input.tenantId)),
+  if (!identity) return null;
+  if (identity.sourceId == null) {
+    // Legacy null-source rows cannot be generated by the ordinary queue.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`legacy-billing-attempt:${input.facilityId}:${input.attemptId}`}, 0))`,
     );
-  } catch (error: unknown) {
-    /*
-     * A fault in the engine leaves the row exactly as it is: still
-     * PENDING, still owed, still retryable. It must not become a 500
-     * that the operator reads as "billed".
-     */
-    console.error('Billing: retry failed:', error);
+  } else {
+    await lockChargeIdentity(
+      tx,
+      input.facilityId,
+      identity.sourceType as ChargeRequest['sourceType'],
+      identity.sourceId,
+      identity.idempotencySuffix,
+    );
+  }
+  const [locked] = await tx
+    .select()
+    .from(schema.billingChargeAttempts)
+    .where(
+      and(
+        eq(schema.billingChargeAttempts.id, input.attemptId),
+        eq(schema.billingChargeAttempts.tenantId, input.tenantId),
+        eq(schema.billingChargeAttempts.facilityId, input.facilityId),
+      ),
+    )
+    .limit(1)
+    .for('update');
+  if (!locked) return null;
+  if (
+    locked.sourceType !== identity.sourceType ||
+    locked.sourceId !== identity.sourceId ||
+    (locked.idempotencySuffix || null) !== (identity.idempotencySuffix || null)
+  ) {
+    throw new Error('CHARGE_ATTEMPT_IDENTITY_CHANGED');
+  }
+  return locked as ChargeAttemptRow;
+}
 
-    return {
-      attemptId: row.id,
-      status: 'PENDING',
-      result: {
-        charged: false,
-        reason: 'INVALID_INPUT',
-        message: 'The retry could not run. Nothing was billed; try again.',
-      },
+export type TariffPriceReview = ReviewedTariffPrice & { reason: string };
+export class ChargePriceReviewError extends Error {}
+export class ChargeAttemptReconciliationError extends Error {}
+
+export async function retryChargeAttempt(
+  executor: Executor,
+  input: {
+    tenantId: number;
+    facilityId: number;
+    attemptId: number;
+    actorUserId?: number;
+    priceReview?: TariffPriceReview;
+  },
+): Promise<RetryOutcome | null> {
+  let priceReview: TariffPriceReview | undefined;
+  if (input.priceReview !== undefined) {
+    const value = input.priceReview;
+    const cents = typeof value?.unitPrice === 'string' ? parseMoneyToCents(value.unitPrice) : null;
+    const reason = typeof value?.reason === 'string' ? value.reason.trim() : '';
+    if (
+      !Number.isSafeInteger(input.actorUserId) ||
+      (input.actorUserId ?? 0) <= 0 ||
+      !Number.isSafeInteger(value?.tariffId) ||
+      value.tariffId <= 0 ||
+      !Number.isSafeInteger(value?.revision) ||
+      value.revision <= 0 ||
+      cents === null ||
+      cents <= 0 ||
+      reason.length < 10 ||
+      reason.length > 500
+    )
+      throw new ChargePriceReviewError(
+        'A valid tariff, revision, positive price and review reason are required.',
+      );
+    priceReview = {
+      tariffId: value.tariffId,
+      revision: value.revision,
+      unitPrice: formatCents(cents),
+      reason,
     };
   }
+  return executor.transaction(async (tx: Executor) => {
+    const row = await lockAttemptIdentity(tx, input);
+    if (!row) return null;
 
-  const status: RetryOutcome['status'] = result.charged
-    ? 'BILLED'
-    : result.reason === 'DUPLICATE'
-      ? 'DUPLICATE'
-      : 'PENDING';
+    if (row.status === 'SUPERSEDED') {
+      return {
+        attemptId: row.id,
+        status: 'SUPERSEDED',
+        result: {
+          charged: false,
+          reason: 'INVALID_INPUT',
+          message:
+            'This pending identity was superseded by an audited bed-history review. Retry the reviewed bed nights instead.',
+        },
+      };
+    }
+    if (row.status !== 'PENDING') {
+      if (
+        row.sourceType === 'LAB_ORDER' &&
+        ['BILLED', 'DUPLICATE'].includes(row.status) &&
+        !(await verifiedLabDuplicate(
+          tx,
+          toChargeRequest(row, input.tenantId),
+          row.resolvedItemId,
+          row.resolvedInvoiceId,
+        ))
+      ) {
+        throw new ChargeAttemptReconciliationError(
+          'The stored laboratory charge resolution could not be verified. Nothing was changed; manual reconciliation is required.',
+        );
+      }
+      return {
+        attemptId: row.id,
+        status: row.status === 'BILLED' ? 'BILLED' : row.status === 'VOID' ? 'VOID' : 'DUPLICATE',
+        result: {
+          charged: false,
+          reason: row.status === 'VOID' ? 'ATTEMPT_VOIDED' : 'DUPLICATE',
+          message:
+            row.status === 'BILLED'
+              ? `This charge was already billed${row.resolvedInvoiceId ? ` on invoice ${row.resolvedInvoiceId}` : ''}.`
+              : `This charge is ${row.status.toLowerCase()} and will not be retried.`,
+        },
+      };
+    }
 
-  await executor
-    .update(schema.billingChargeAttempts)
-    .set({
-      status,
-      attempts: sql`${schema.billingChargeAttempts.attempts} + 1`,
-      lastAttemptAt: new Date(),
-      updatedAt: new Date(),
+    if (row.sourceId == null) {
+      return { attemptId: row.id, status: 'PENDING', result: chargeReviewRequired() };
+    }
+    if (priceReview && (row.sourceType === 'PHARMACY' || row.sourceType === 'BED_DAY'))
+      throw new ChargePriceReviewError(
+        'Inventory and bed-night prices must use their recorded snapshots, not a tariff review.',
+      );
+    // Stay-level review rows and legacy dated attempts without a recorded
+    // bed night are not billable nights. Do not overwrite their original
+    // diagnoses while probing the resolver; an authorized admission-specific
+    // review retains those rows and stages real dated evidence.
+    if (row.sourceType === 'BED_DAY') {
+      const date = row.idempotencySuffix ?? '';
+      const [night] = /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? await tx
+            .select({ id: schema.inpatientBedNights.id })
+            .from(schema.inpatientBedNights)
+            .where(
+              and(
+                eq(schema.inpatientBedNights.admissionId, row.sourceId),
+                eq(schema.inpatientBedNights.tenantId, input.tenantId),
+                eq(schema.inpatientBedNights.facilityId, input.facilityId),
+                eq(schema.inpatientBedNights.patientId, row.patientId),
+                sql`${schema.inpatientBedNights.billingDate}::text = ${date}`,
+              ),
+            )
+            .limit(1)
+        : [];
+      if (!night) {
+        return {
+          attemptId: row.id,
+          status: 'PENDING',
+          result: {
+            charged: false,
+            reason: 'BED_OCCUPANCY_REVIEW',
+            diagnosis: {
+              code: row.diagnosisCode ?? 'BED_NIGHT_EVIDENCE_REQUIRED',
+              label: 'Bed occupancy review',
+            },
+            message: `${row.detail ?? 'This bed charge has no verified night evidence.'} Use the admission-specific bed billing recovery before retrying.`,
+          },
+        };
+      }
+    }
+    const request = toChargeRequest(row, input.tenantId);
+    const related: ChargeAttemptRow[] = (
+      await tx
+        .select()
+        .from(schema.billingChargeAttempts)
+        .where(attemptIdentityWhere(request))
+        .for('update')
+    ).filter((other: ChargeAttemptRow) => other.status !== 'SUPERSEDED');
+    if (
+      related.some(
+        (other) =>
+          other.id !== row.id &&
+          (other.status !== 'PENDING' ||
+            other.patientId !== row.patientId ||
+            other.itemType !== row.itemType),
+      ) ||
+      related.filter((other) => other.status === 'PENDING').length !== 1
+    ) {
+      return { attemptId: row.id, status: 'PENDING', result: chargeReviewRequired() };
+    }
+
+    let result: ChargeResult;
+
+    try {
+      result = await chargeForService(tx, await enrichFromSource(tx, request), {
+        requireTariffReview: row.sourceType !== 'PHARMACY' && row.sourceType !== 'BED_DAY',
+        reviewedTariff: priceReview,
+      });
+    } catch {
       /*
-       * `reason` is NOT NULL. A successful retry keeps the original
-       * reason — that is why the charge was queued — and the status
-       * carries the outcome. A failed retry replaces it with the new one.
+       * A fault in the engine leaves the row exactly as it is: still
+       * PENDING, still owed, still retryable. It must not become a 500
+       * that the operator reads as "billed".
        */
-      reason: result.charged ? row.reason : (result.reason ?? row.reason),
-      detail: result.charged
-        ? `Billed as ${result.tariffCode ?? 'a tariff'} (${result.matchExplanation ?? 'matched'}).`
-        : (result.message ?? row.detail),
-      codesTried: [...(result.codesTried ?? row.codesTried)],
-      ...(result.charged
-        ? {
-            resolvedItemId: result.itemId ?? null,
-            resolvedInvoiceId: result.invoiceId ?? null,
-            resolvedTariffCode: result.tariffCode ?? null,
-            resolvedUnitPrice: result.unitPrice === undefined ? null : String(result.unitPrice),
-            resolvedAt: new Date(),
-          }
-        : {}),
-    })
-    .where(eq(schema.billingChargeAttempts.id, row.id));
+      console.error('Billing: retry failed; manual review is required.');
 
-  return { attemptId: row.id, status, result };
+      return {
+        attemptId: row.id,
+        status: 'PENDING',
+        result: {
+          charged: false,
+          reason: 'INVALID_INPUT',
+          message: 'The retry could not run. Nothing was billed; try again.',
+        },
+      };
+    }
+
+    const verifiedDuplicate =
+      result.reason === 'DUPLICATE' &&
+      result.itemId != null &&
+      result.invoiceId != null &&
+      (request.sourceType !== 'LAB_ORDER' ||
+        (await verifiedLabDuplicate(tx, request, result.itemId, result.invoiceId)));
+    if (result.reason === 'DUPLICATE' && !verifiedDuplicate) {
+      if (request.sourceType === 'LAB_ORDER') {
+        return { attemptId: row.id, status: 'PENDING', result: chargeReviewRequired() };
+      }
+      result = chargeReviewRequired();
+    }
+    const status: RetryOutcome['status'] = result.charged
+      ? 'BILLED'
+      : verifiedDuplicate
+        ? 'DUPLICATE'
+        : 'PENDING';
+
+    await tx
+      .update(schema.billingChargeAttempts)
+      .set({
+        status,
+        attempts: sql`${schema.billingChargeAttempts.attempts} + 1`,
+        lastAttemptAt: new Date(),
+        updatedAt: new Date(),
+        /*
+         * `reason` is NOT NULL. A successful retry keeps the original
+         * reason — that is why the charge was queued — and the status
+         * carries the outcome. A failed retry replaces it with the new one.
+         */
+        reason: result.charged ? row.reason : (result.reason ?? row.reason),
+        // Keep the historical diagnosis on resolution; a still-pending retry
+        // must instead expose its most recent specific evaluation.
+        diagnosisCode:
+          result.charged || verifiedDuplicate
+            ? (row.diagnosisCode ?? null)
+            : (result.diagnosis?.code ?? null),
+        detail: result.charged
+          ? `Billed as ${result.tariffCode ?? 'a tariff'} (${result.matchExplanation ?? 'matched'}).`
+          : (result.message ?? row.detail),
+        codesTried: [...(result.codesTried ?? row.codesTried)],
+        ...(result.charged || result.reason === 'DUPLICATE'
+          ? {
+              resolvedItemId: result.itemId ?? null,
+              resolvedInvoiceId: result.invoiceId ?? null,
+              resolvedTariffCode: result.tariffCode ?? null,
+              resolvedUnitPrice: result.unitPrice === undefined ? null : String(result.unitPrice),
+              resolvedAt: new Date(),
+            }
+          : {}),
+      })
+      .where(eq(schema.billingChargeAttempts.id, row.id));
+
+    if (
+      result.charged &&
+      priceReview &&
+      row.sourceType !== 'PHARMACY' &&
+      row.sourceType !== 'BED_DAY'
+    ) {
+      await tx.insert(schema.auditLogs).values({
+        tenantId: input.tenantId,
+        facilityId: input.facilityId,
+        userId: String(input.actorUserId),
+        action: 'APPROVE',
+        resource: 'BILLING_TARIFF_PRICE_REVIEW',
+        resourceId: String(row.id),
+        details: JSON.stringify({
+          tariffId: priceReview.tariffId,
+          tariffRevision: priceReview.revision,
+          reviewedUnitPrice: priceReview.unitPrice,
+          reason: priceReview.reason,
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          invoiceId: result.invoiceId,
+          itemId: result.itemId,
+        }),
+      });
+    }
+    await tx.insert(schema.auditLogs).values({
+      tenantId: input.tenantId,
+      facilityId: input.facilityId,
+      userId: input.actorUserId === undefined ? 'SYSTEM' : String(input.actorUserId),
+      action: 'UPDATE',
+      resource: 'BillingChargeAttempt',
+      resourceId: String(row.id),
+      details: `Charge attempt retry outcome: ${status}.`,
+    });
+    return { attemptId: row.id, status, result };
+  });
 }
 
 /**
@@ -633,8 +1339,14 @@ export async function retryChargeAttempt(
  */
 export async function retryPendingChargeAttempts(
   executor: Executor,
-  input: { tenantId: number; facilityId: number; limit?: number },
-): Promise<{ tried: number; billed: number; stillPending: number }> {
+  input: { tenantId: number; facilityId: number; limit?: number; actorUserId?: number },
+): Promise<{
+  tried: number;
+  billed: number;
+  duplicates: number;
+  stillPending: number;
+  skipped: number;
+}> {
   const limit =
     Number.isSafeInteger(input.limit) && (input.limit ?? 0) > 0
       ? Math.min(Number(input.limit), 200)
@@ -648,7 +1360,9 @@ export async function retryPendingChargeAttempts(
   });
 
   let billed = 0;
+  let duplicates = 0;
   let stillPending = 0;
+  let skipped = 0;
 
   for (const row of pending) {
     try {
@@ -656,44 +1370,95 @@ export async function retryPendingChargeAttempts(
         tenantId: input.tenantId,
         facilityId: input.facilityId,
         attemptId: row.id,
+        actorUserId: input.actorUserId,
       });
 
-      if (outcome?.status === 'BILLED' || outcome?.status === 'DUPLICATE') {
+      if (outcome?.result.charged) {
         billed += 1;
+      } else if (
+        outcome?.status === 'DUPLICATE' &&
+        outcome.result.itemId != null &&
+        outcome.result.invoiceId != null
+      ) {
+        duplicates += 1;
+      } else if (!outcome || outcome.status === 'VOID' || outcome.status === 'BILLED') {
+        skipped += 1;
       } else {
         stillPending += 1;
       }
-    } catch (error: unknown) {
-      console.error('Billing: retry failed:', error);
+    } catch {
+      console.error('Billing: retry failed; manual review is required.');
       stillPending += 1;
     }
   }
 
-  return { tried: pending.length, billed, stillPending };
+  return { tried: pending.length, billed, duplicates, stillPending, skipped };
 }
 
 /** Write an attempt off. Kept so nothing is ever deleted from the record. */
 export async function voidChargeAttempt(
   executor: Executor,
-  input: { tenantId: number; facilityId: number; attemptId: number; reason?: string },
+  input: {
+    tenantId: number;
+    facilityId: number;
+    attemptId: number;
+    reason?: string;
+    actorUserId?: number;
+  },
 ): Promise<boolean> {
-  const rows = await executor
-    .update(schema.billingChargeAttempts)
-    .set({
-      status: 'VOID',
-      detail: input.reason ?? 'Written off by the facility.',
-      resolvedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(schema.billingChargeAttempts.id, input.attemptId),
-        eq(schema.billingChargeAttempts.tenantId, input.tenantId),
-        eq(schema.billingChargeAttempts.facilityId, input.facilityId),
-        eq(schema.billingChargeAttempts.status, 'PENDING'),
-      ),
-    )
-    .returning({ id: schema.billingChargeAttempts.id });
+  const reason = input.reason?.trim();
+  if (!reason || reason.length > 1000) throw new Error('CHARGE_ATTEMPT_REASON_REQUIRED');
+  return executor.transaction(async (tx: Executor) => {
+    const attempt = await lockAttemptIdentity(tx, input);
+    if (!attempt || attempt.status !== 'PENDING') return false;
+    if (attempt.sourceId !== null) {
+      const [existingLine] = await tx
+        .select({ id: schema.billingItems.id })
+        .from(schema.billingItems)
+        .where(
+          eq(
+            schema.billingItems.idempotencyKey,
+            buildIdempotencyKey({
+              sourceType: attempt.sourceType as ChargeRequest['sourceType'],
+              sourceId: attempt.sourceId,
+              idempotencySuffix: attempt.idempotencySuffix || undefined,
+            }),
+          ),
+        )
+        .limit(1);
+      // Older versions could leave a pending attempt next to a billed line.
+      // Do not call it written off; an operator must reconcile the records.
+      if (existingLine) return false;
+    }
+    const rows = await tx
+      .update(schema.billingChargeAttempts)
+      .set({
+        status: 'VOID',
+        detail: reason,
+        resolvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.billingChargeAttempts.id, input.attemptId),
+          eq(schema.billingChargeAttempts.tenantId, input.tenantId),
+          eq(schema.billingChargeAttempts.facilityId, input.facilityId),
+          eq(schema.billingChargeAttempts.status, 'PENDING'),
+        ),
+      )
+      .returning({ id: schema.billingChargeAttempts.id });
 
-  return rows.length > 0;
+    if (rows.length > 0) {
+      await tx.insert(schema.auditLogs).values({
+        tenantId: input.tenantId,
+        facilityId: input.facilityId,
+        userId: input.actorUserId === undefined ? 'SYSTEM' : String(input.actorUserId),
+        action: 'UPDATE',
+        resource: 'BillingChargeAttempt',
+        resourceId: String(input.attemptId),
+        details: 'Unpriced charge written off; reason retained on the attempt.',
+      });
+    }
+    return rows.length > 0;
+  });
 }
