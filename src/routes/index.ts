@@ -50,6 +50,7 @@ import laboratoryRoutes from './laboratory.routes.ts';
 import radiologyRoutes from './radiology.routes.ts';
 import pharmacyRoutes from './pharmacy.routes.ts';
 import procurementRoutes from './procurement.routes.ts';
+import workforceRoutes from './workforce.routes.ts';
 import facilityServicesRoutes from './facility-services.routes.ts';
 import billingRoutes from './billing.routes.ts';
 import dhaRoutes from './dha.routes.ts';
@@ -197,6 +198,8 @@ export function createDomainRoutes(): Router {
   domains.use(billingRoutes);
   domains.use(facilityServicesRoutes);
   domains.use(procurementRoutes);
+  // HR and payroll declare full /api/hr and /api/payroll paths.
+  domains.use(workforceRoutes);
   domains.use(pharmacyRoutes);
   domains.use(radiologyRoutes);
   domains.use(laboratoryRoutes);

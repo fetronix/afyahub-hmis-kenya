@@ -1,0 +1,129 @@
+{
+  "capturedAt": "2026-11-10T00:06:32.008Z",
+  "baseUrl": "http://127.0.0.1",
+  "databaseClass": "synthetic",
+  "assertions": [
+    {
+      "name": "Login through the form succeeds",
+      "passed": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "Human Resources appears in navigation and opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Employee register renders facility staff",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Human Resources tab “Employees” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Employees” tab renders content without an error panel",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Human Resources tab “Departments & roles” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Departments & roles” tab renders content without an error panel",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Human Resources tab “Attendance & roster” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Attendance & roster” tab renders content without an error panel",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Human Resources tab “Leave” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Leave” tab renders content without an error panel",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Employee record opens with profile detail",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Payroll appears in navigation and opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Payroll tab “Statutory rules” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Statutory rules” renders without an error state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Payroll tab “Ledger accounts” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Ledger accounts” renders without an error state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Payroll tab “Payroll runs” opens",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "“Payroll runs” renders without an error state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Payroll run history lists a computed run",
+      "passed": true,
+      "detail": "3 rows"
+    },
+    {
+      "name": "Run detail shows payslip totals and posting state",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Payslip document shows earnings, statutory deductions and net pay",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "No uncaught browser errors during the journey",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Every API call the HR and payroll pages made was authorized",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "passed": 24,
+  "failed": 0
+}

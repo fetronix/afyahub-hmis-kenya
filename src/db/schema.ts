@@ -43,3 +43,4 @@ export * from './schema/relations-clinical.ts';
 export * from './schema/relations-operations.ts';
 
 export * from './schema/notifications.ts';
+export * from './schema/workforce.ts';

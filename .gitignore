@@ -113,3 +113,4 @@ dumps/
 *.sqlite3.lz4.*
 *.sqlite3.br.*
 *.sqlite3.zip.*
+.tmp-tools/

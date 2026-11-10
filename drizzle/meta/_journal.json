@@ -519,6 +519,13 @@
             "when": 1792900000061,
             "tag": "0073_inventory_receipt_retry_identity",
             "breakpoints": true
+        },
+        {
+            "idx": 74,
+            "version": "7",
+            "when": 1792900000062,
+            "tag": "0074_workforce",
+            "breakpoints": true
         }
     ]
 }

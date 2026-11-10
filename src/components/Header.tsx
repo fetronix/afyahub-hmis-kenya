@@ -22,6 +22,8 @@ export const moduleTitles: Record<ModuleId, string> = {
   pharmacy: 'Central Pharmacy & Dispensing',
   inventory: 'Inventory, Batches & Stores',
   procurement: 'Procurement & Purchase Orders',
+  hr: 'Human Resources & Staff Records',
+  payroll: 'Payroll & Statutory Deductions',
   finance: 'Billing, Invoicing & Cashier POS',
   payment_transactions: 'Payment Transactions & Reconciliation',
   accounting: 'Accounting & General Ledger',

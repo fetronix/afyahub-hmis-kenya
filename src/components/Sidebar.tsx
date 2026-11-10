@@ -24,6 +24,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   QrCode,
+  BadgeDollarSign,
 } from 'lucide-react';
 
 export interface NavSection {
@@ -99,6 +100,13 @@ export const navSections: NavSection[] = [
       { id: 'pharmacy', label: 'Pharmacy & Dispense', icon: Pill },
       { id: 'inventory', label: 'Inventory & Batches', icon: Package },
       { id: 'procurement', label: 'Procurement & POs', icon: ShoppingCart },
+    ],
+  },
+  {
+    title: 'WORKFORCE',
+    items: [
+      { id: 'hr', label: 'Human Resources', icon: Users },
+      { id: 'payroll', label: 'Payroll', icon: BadgeDollarSign },
     ],
   },
   {
@@ -288,6 +296,8 @@ export const Sidebar: React.FC<{ collapsed: boolean; onToggleCollapse: () => voi
       pharmacy: ['pharmacy.read'],
       inventory: ['inventory.read'],
       procurement: ['procurement.read'],
+      hr: ['hr.read'],
+      payroll: ['payroll.read'],
       finance: ['billing.read'],
       payment_transactions: ['payment_hub.transactions.read'],
       accounting: ['accounting.read'],

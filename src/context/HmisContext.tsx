@@ -83,6 +83,8 @@ export type ModuleId =
   | 'pharmacy'
   | 'inventory'
   | 'procurement'
+  | 'hr'
+  | 'payroll'
   | 'finance'
   | 'payment_transactions'
   | 'accounting'

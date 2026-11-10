@@ -1032,6 +1032,60 @@ const PERMISSIONS = [
   },
 
   /* ==========================================================
+     WORKFORCE — HR AND PAYROLL
+     ========================================================== */
+
+  {
+    code: 'hr.read',
+    name: 'View Human Resources',
+    module: 'hr',
+    description: 'View employees, departments, attendance, rosters and leave.',
+  },
+  {
+    code: 'hr.manage',
+    name: 'Manage Human Resources',
+    module: 'hr',
+    description: 'Register employees, record attendance, rosters and leave requests.',
+  },
+  {
+    code: 'hr.approve',
+    name: 'Approve Leave',
+    module: 'hr',
+    description: 'Approve or reject leave requests recorded by another user.',
+  },
+  {
+    code: 'payroll.read',
+    name: 'View Payroll',
+    module: 'payroll',
+    description: 'View payroll periods, runs and payslips.',
+  },
+  {
+    code: 'payroll.manage',
+    name: 'Prepare Payroll',
+    module: 'payroll',
+    description: 'Create periods, set pay components and calculate a payroll run.',
+  },
+  {
+    code: 'payroll.approve',
+    name: 'Approve Payroll',
+    module: 'payroll',
+    description: 'Approve a payroll run calculated by another user.',
+  },
+  {
+    code: 'payroll.post',
+    name: 'Post Payroll to Ledger',
+    module: 'payroll',
+    description: 'Post an approved payroll run to the general ledger.',
+  },
+  {
+    code: 'payroll.statutory.manage',
+    name: 'Record Statutory Payroll Rules',
+    module: 'payroll',
+    description:
+      'Record effective-dated statutory versions with their authority source; the application ships none.',
+  },
+
+  /* ==========================================================
      REPORTS
      ========================================================== */
 
@@ -1534,6 +1588,8 @@ async function seedPermissions(): Promise<void> {
   for (const permission of allPermissions) {
     if (
       permission.code.startsWith('theatre.') ||
+      permission.code.startsWith('payroll.') ||
+      (permission.code.startsWith('hr.') && permission.code !== 'hr.read') ||
       (permission.code.startsWith('procurement.') && permission.code !== 'procurement.read') ||
       isFacilityFinancialPermission(permission.code) ||
       ((permission.code.startsWith('payment_hub.') || permission.code.startsWith('payer_hub.')) &&
@@ -1628,6 +1684,10 @@ async function seedPermissions(): Promise<void> {
     'insurance.private.claims.prepare',
     'insurance.private.claims.submit',
     'insurance.private.remittance.reconcile',
+    'hr.read',
+    'hr.manage',
+    'payroll.read',
+    'payroll.manage',
   ] as const;
 
   const staffInvitationPermissions: Array<{ id: number | null; code: string }> = [];

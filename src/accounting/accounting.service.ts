@@ -321,7 +321,8 @@ export interface JournalRequest {
     | 'EXPENSE_REQUEST'
     | 'BILLING_INVOICE'
     | 'BILLING_PAYMENT'
-    | 'BILLING_REFUND';
+    | 'BILLING_REFUND'
+    | 'PAYROLL';
   sourceId?: string;
   reversalOf?: number;
   reversalReason?: string;
@@ -464,13 +465,28 @@ export async function postInsideTransaction(
 
 export async function postJournalScoped(scope: AccountingScope, input: Record<string, unknown>) {
   const { lines, totalCents } = validateBalancedJournalLines(input.lines);
+  /*
+   * A module that posts through this function can name its own source so the
+   * ledger can be traced back to the payroll run, requisition or invoice that
+   * created it. Only known source types are accepted; an unknown value is
+   * recorded as MANUAL rather than written through unchecked.
+   */
+  const requestedSource = typeof input.sourceType === 'string' ? input.sourceType : 'MANUAL';
+  const sourceType: JournalRequest['sourceType'] = ['MANUAL', 'PAYROLL'].includes(requestedSource)
+    ? (requestedSource as JournalRequest['sourceType'])
+    : 'MANUAL';
+  const sourceId =
+    typeof input.sourceId === 'string' && input.sourceId.trim() !== ''
+      ? input.sourceId.trim().slice(0, 80)
+      : undefined;
   const request: JournalRequest = {
     entryDate: requireIsoDate(input.entryDate),
     description: requiredText(input.description, 'Journal description', 500),
     idempotencyKey: requiredText(input.idempotencyKey, 'Idempotency key', 128),
     lines,
     totalCents,
-    sourceType: 'MANUAL',
+    sourceType,
+    sourceId,
   };
   return transaction((client) => postInsideTransaction(client, scope, request));
 }
