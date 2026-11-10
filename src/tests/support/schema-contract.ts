@@ -81,6 +81,62 @@ export function contractWithReviewedAdditions(name: string, original: unknown) {
     }
     return expected;
   }
+  if (name === 'fixedAssets') {
+    const expected = structuredClone(original) as {
+      columns: Array<{ name: string } & Record<string, unknown>>;
+      indexes: Array<Record<string, unknown>>;
+      foreignKeys: Array<Record<string, unknown>>;
+    };
+    // Migration 0075 adds operational register fields. The historical columns
+    // are unchanged; these are appended in the order the migration declares.
+    const position = expected.columns.findIndex((column) => column.name === 'created_at');
+    if (position < 0) throw new Error('Expected historical created_at column not found');
+    const added: Array<[string, string, boolean, unknown]> = [
+      ['category_id', 'integer', false, null],
+      ['location', 'text', false, null],
+      ['custodian_employee_id', 'integer', false, null],
+      ['condition', 'text', true, 'GOOD'],
+      ['acquisition_credit_account_id', 'integer', false, null],
+      ['disposal_proceeds_account_id', 'integer', false, null],
+      ['disposal_gain_loss_account_id', 'integer', false, null],
+      ['supplier_invoice_id', 'integer', false, null],
+      ['purchase_order_id', 'integer', false, null],
+      ['created_by_user_id', 'integer', false, null],
+      ['notes', 'text', false, null],
+    ];
+    added.forEach(([columnName, type, notNull, defaultValue], offset) => {
+      expected.columns.splice(position + offset, 0, {
+        name: columnName,
+        type,
+        notNull,
+        primary: false,
+        hasDefault: notNull,
+        default: defaultValue,
+        unique: false,
+        uniqueName: null,
+      });
+    });
+    // Migration 0075 also adds a status index and a creator foreign key.
+    expected.indexes.push({
+      name: 'fixed_assets_facility_status_idx',
+      columns: [
+        { name: 'facility_id', order: { order: 'asc', nulls: 'last' } },
+        { name: 'status', order: { order: 'asc', nulls: 'last' } },
+      ],
+      unique: false,
+      method: 'btree',
+      where: null,
+    });
+    expected.foreignKeys.push({
+      name: 'fixed_assets_created_by_user_id_users_id_fk',
+      columns: ['created_by_user_id'],
+      foreignTable: 'users',
+      foreignColumns: ['id'],
+      onDelete: 'no action',
+      onUpdate: 'no action',
+    });
+    return expected;
+  }
   if (name === 'facilities') {
     const expected = structuredClone(original) as {
       columns: Array<{ name: string } & Record<string, unknown>>;

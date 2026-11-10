@@ -322,7 +322,9 @@ export interface JournalRequest {
     | 'BILLING_INVOICE'
     | 'BILLING_PAYMENT'
     | 'BILLING_REFUND'
-    | 'PAYROLL';
+    | 'PAYROLL'
+    | 'FIXED_ASSET'
+    | 'PROCUREMENT';
   sourceId?: string;
   reversalOf?: number;
   reversalReason?: string;
@@ -472,7 +474,12 @@ export async function postJournalScoped(scope: AccountingScope, input: Record<st
    * recorded as MANUAL rather than written through unchecked.
    */
   const requestedSource = typeof input.sourceType === 'string' ? input.sourceType : 'MANUAL';
-  const sourceType: JournalRequest['sourceType'] = ['MANUAL', 'PAYROLL'].includes(requestedSource)
+  const sourceType: JournalRequest['sourceType'] = [
+    'MANUAL',
+    'PAYROLL',
+    'FIXED_ASSET',
+    'PROCUREMENT',
+  ].includes(requestedSource)
     ? (requestedSource as JournalRequest['sourceType'])
     : 'MANUAL';
   const sourceId =

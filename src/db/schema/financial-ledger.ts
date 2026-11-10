@@ -240,6 +240,18 @@ export const fixedAssets = pgTable(
     disposalProceedsKes: numeric('disposal_proceeds_kes', { precision: 14, scale: 2 }),
     disposalJournalId: integer('disposal_journal_id').references(() => journalEntries.id),
     disposalNotes: text('disposal_notes'),
+    /* Added by 0075: operational register fields and journal sources. */
+    categoryId: integer('category_id'),
+    location: text('location'),
+    custodianEmployeeId: integer('custodian_employee_id'),
+    condition: text('condition').default('GOOD').notNull(),
+    acquisitionCreditAccountId: integer('acquisition_credit_account_id'),
+    disposalProceedsAccountId: integer('disposal_proceeds_account_id'),
+    disposalGainLossAccountId: integer('disposal_gain_loss_account_id'),
+    supplierInvoiceId: integer('supplier_invoice_id'),
+    purchaseOrderId: integer('purchase_order_id'),
+    createdByUserId: integer('created_by_user_id').references(() => users.id),
+    notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -248,6 +260,7 @@ export const fixedAssets = pgTable(
       table.facilityId,
       table.assetCode,
     ),
+    facilityStatusIdx: index('fixed_assets_facility_status_idx').on(table.facilityId, table.status),
   }),
 );
 

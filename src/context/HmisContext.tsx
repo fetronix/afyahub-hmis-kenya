@@ -88,6 +88,7 @@ export type ModuleId =
   | 'finance'
   | 'payment_transactions'
   | 'accounting'
+  | 'fixed_assets'
   | 'claims'
   | 'private_insurance'
   | 'public_health'

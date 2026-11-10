@@ -526,6 +526,13 @@
             "when": 1792900000062,
             "tag": "0074_workforce",
             "breakpoints": true
+        },
+        {
+            "idx": 75,
+            "version": "7",
+            "when": 1792900000063,
+            "tag": "0075_fixed_assets",
+            "breakpoints": true
         }
     ]
 }

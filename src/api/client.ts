@@ -95,6 +95,7 @@ import { platformClient } from './clients/platform.client.ts';
 import { dashboardClient } from './clients/dashboard.client.ts';
 import { notificationsClient } from './clients/notifications.client.ts';
 import { workforceClient } from './clients/workforce.client.ts';
+import { fixedAssetsClient } from './clients/fixed-assets.client.ts';
 
 export const api = {
   ...dashboardClient,
@@ -108,4 +109,5 @@ export const api = {
   ...diagnosticsPharmacyClient,
   ...billingClient,
   ...workforceClient,
+  ...fixedAssetsClient,
 };

@@ -3,7 +3,7 @@
 -- Statutory payroll rates are deliberately NOT seeded here: the application
 -- ships no Kenyan rates of its own, and a run refuses to calculate until an
 -- authorised administrator records a version with its source reference.
-CREATE TABLE hr_departments (
+CREATE TABLE IF NOT EXISTS hr_departments (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -16,11 +16,11 @@ CREATE TABLE hr_departments (
   updated_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX hr_departments_facility_code_idx ON hr_departments(facility_id, code);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_departments_facility_code_idx ON hr_departments(facility_id, code);
 --> statement-breakpoint
-CREATE INDEX hr_departments_tenant_idx ON hr_departments(tenant_id, facility_id);
+CREATE INDEX IF NOT EXISTS hr_departments_tenant_idx ON hr_departments(tenant_id, facility_id);
 --> statement-breakpoint
-CREATE TABLE hr_designations (
+CREATE TABLE IF NOT EXISTS hr_designations (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -32,11 +32,11 @@ CREATE TABLE hr_designations (
   created_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX hr_designations_facility_title_idx ON hr_designations(facility_id, title);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_designations_facility_title_idx ON hr_designations(facility_id, title);
 --> statement-breakpoint
-CREATE INDEX hr_designations_department_idx ON hr_designations(department_id);
+CREATE INDEX IF NOT EXISTS hr_designations_department_idx ON hr_designations(department_id);
 --> statement-breakpoint
-CREATE TABLE hr_employees (
+CREATE TABLE IF NOT EXISTS hr_employees (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -72,15 +72,15 @@ CREATE TABLE hr_employees (
   CONSTRAINT hr_employees_exit_check CHECK ((employment_status = 'EXITED') = (exit_date IS NOT NULL))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX hr_employees_facility_number_idx ON hr_employees(facility_id, employee_number);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_employees_facility_number_idx ON hr_employees(facility_id, employee_number);
 --> statement-breakpoint
-CREATE INDEX hr_employees_facility_status_idx ON hr_employees(facility_id, employment_status);
+CREATE INDEX IF NOT EXISTS hr_employees_facility_status_idx ON hr_employees(facility_id, employment_status);
 --> statement-breakpoint
-CREATE INDEX hr_employees_department_idx ON hr_employees(department_id);
+CREATE INDEX IF NOT EXISTS hr_employees_department_idx ON hr_employees(department_id);
 --> statement-breakpoint
 -- A manager must be in the same facility; the composite reference below is
 -- enforced with a trigger because it points at a second column pair.
-CREATE TABLE hr_employee_documents (
+CREATE TABLE IF NOT EXISTS hr_employee_documents (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -94,9 +94,9 @@ CREATE TABLE hr_employee_documents (
   created_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE INDEX hr_employee_documents_employee_idx ON hr_employee_documents(employee_id);
+CREATE INDEX IF NOT EXISTS hr_employee_documents_employee_idx ON hr_employee_documents(employee_id);
 --> statement-breakpoint
-CREATE TABLE hr_shifts (
+CREATE TABLE IF NOT EXISTS hr_shifts (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -108,9 +108,9 @@ CREATE TABLE hr_shifts (
   created_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX hr_shifts_facility_name_idx ON hr_shifts(facility_id, name);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_shifts_facility_name_idx ON hr_shifts(facility_id, name);
 --> statement-breakpoint
-CREATE TABLE hr_roster_entries (
+CREATE TABLE IF NOT EXISTS hr_roster_entries (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -122,11 +122,11 @@ CREATE TABLE hr_roster_entries (
   created_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX hr_roster_employee_date_idx ON hr_roster_entries(employee_id, work_date);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_roster_employee_date_idx ON hr_roster_entries(employee_id, work_date);
 --> statement-breakpoint
-CREATE INDEX hr_roster_facility_date_idx ON hr_roster_entries(facility_id, work_date);
+CREATE INDEX IF NOT EXISTS hr_roster_facility_date_idx ON hr_roster_entries(facility_id, work_date);
 --> statement-breakpoint
-CREATE TABLE hr_attendance (
+CREATE TABLE IF NOT EXISTS hr_attendance (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -143,11 +143,11 @@ CREATE TABLE hr_attendance (
   updated_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX hr_attendance_employee_date_idx ON hr_attendance(employee_id, work_date);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_attendance_employee_date_idx ON hr_attendance(employee_id, work_date);
 --> statement-breakpoint
-CREATE INDEX hr_attendance_facility_date_idx ON hr_attendance(facility_id, work_date);
+CREATE INDEX IF NOT EXISTS hr_attendance_facility_date_idx ON hr_attendance(facility_id, work_date);
 --> statement-breakpoint
-CREATE TABLE hr_leave_types (
+CREATE TABLE IF NOT EXISTS hr_leave_types (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -162,9 +162,9 @@ CREATE TABLE hr_leave_types (
   created_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX hr_leave_types_facility_code_idx ON hr_leave_types(facility_id, code);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_leave_types_facility_code_idx ON hr_leave_types(facility_id, code);
 --> statement-breakpoint
-CREATE TABLE hr_leave_requests (
+CREATE TABLE IF NOT EXISTS hr_leave_requests (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -186,11 +186,11 @@ CREATE TABLE hr_leave_requests (
     CHECK ((status IN ('APPROVED','REJECTED')) = (decided_by IS NOT NULL AND decided_at IS NOT NULL))
 );
 --> statement-breakpoint
-CREATE INDEX hr_leave_requests_facility_status_idx ON hr_leave_requests(facility_id, status);
+CREATE INDEX IF NOT EXISTS hr_leave_requests_facility_status_idx ON hr_leave_requests(facility_id, status);
 --> statement-breakpoint
-CREATE INDEX hr_leave_requests_employee_idx ON hr_leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS hr_leave_requests_employee_idx ON hr_leave_requests(employee_id);
 --> statement-breakpoint
-CREATE TABLE payroll_statutory_versions (
+CREATE TABLE IF NOT EXISTS payroll_statutory_versions (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -211,13 +211,13 @@ CREATE TABLE payroll_statutory_versions (
   CONSTRAINT payroll_statutory_versions_range_check CHECK (effective_to IS NULL OR effective_to >= effective_from)
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX payroll_statutory_versions_facility_statute_from_idx
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_statutory_versions_facility_statute_from_idx
   ON payroll_statutory_versions(facility_id, statute, effective_from);
 --> statement-breakpoint
-CREATE INDEX payroll_statutory_versions_lookup_idx
+CREATE INDEX IF NOT EXISTS payroll_statutory_versions_lookup_idx
   ON payroll_statutory_versions(facility_id, statute, status);
 --> statement-breakpoint
-CREATE TABLE payroll_statutory_bands (
+CREATE TABLE IF NOT EXISTS payroll_statutory_bands (
   id serial PRIMARY KEY,
   version_id integer NOT NULL REFERENCES payroll_statutory_versions(id) ON DELETE CASCADE,
   sequence integer NOT NULL,
@@ -236,9 +236,9 @@ CREATE TABLE payroll_statutory_bands (
     CHECK (employee_rate_bp BETWEEN 0 AND 10000 AND employer_rate_bp BETWEEN 0 AND 10000)
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX payroll_statutory_bands_order_idx ON payroll_statutory_bands(version_id, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_statutory_bands_order_idx ON payroll_statutory_bands(version_id, sequence);
 --> statement-breakpoint
-CREATE TABLE payroll_employee_components (
+CREATE TABLE IF NOT EXISTS payroll_employee_components (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -255,13 +255,13 @@ CREATE TABLE payroll_employee_components (
   created_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX payroll_employee_components_key_idx
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_employee_components_key_idx
   ON payroll_employee_components(employee_id, code, effective_from);
 --> statement-breakpoint
-CREATE INDEX payroll_employee_components_lookup_idx
+CREATE INDEX IF NOT EXISTS payroll_employee_components_lookup_idx
   ON payroll_employee_components(employee_id, is_active);
 --> statement-breakpoint
-CREATE TABLE payroll_account_settings (
+CREATE TABLE IF NOT EXISTS payroll_account_settings (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -277,9 +277,9 @@ CREATE TABLE payroll_account_settings (
   updated_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX payroll_account_settings_facility_idx ON payroll_account_settings(facility_id);
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_account_settings_facility_idx ON payroll_account_settings(facility_id);
 --> statement-breakpoint
-CREATE TABLE payroll_periods (
+CREATE TABLE IF NOT EXISTS payroll_periods (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -294,9 +294,9 @@ CREATE TABLE payroll_periods (
   CONSTRAINT payroll_periods_range_check CHECK (end_date >= start_date)
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX payroll_periods_facility_range_idx ON payroll_periods(facility_id, start_date, end_date);
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_periods_facility_range_idx ON payroll_periods(facility_id, start_date, end_date);
 --> statement-breakpoint
-CREATE TABLE payroll_runs (
+CREATE TABLE IF NOT EXISTS payroll_runs (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -329,11 +329,11 @@ CREATE TABLE payroll_runs (
     CHECK (approved_by IS NULL OR calculated_by IS NULL OR approved_by <> calculated_by)
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX payroll_runs_period_idx ON payroll_runs(period_id);
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_runs_period_idx ON payroll_runs(period_id);
 --> statement-breakpoint
-CREATE INDEX payroll_runs_facility_status_idx ON payroll_runs(facility_id, status);
+CREATE INDEX IF NOT EXISTS payroll_runs_facility_status_idx ON payroll_runs(facility_id, status);
 --> statement-breakpoint
-CREATE TABLE payroll_payslips (
+CREATE TABLE IF NOT EXISTS payroll_payslips (
   id serial PRIMARY KEY,
   tenant_id integer NOT NULL REFERENCES tenants(id),
   facility_id integer NOT NULL REFERENCES facilities(id),
@@ -353,11 +353,11 @@ CREATE TABLE payroll_payslips (
   created_at timestamp NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX payroll_payslips_run_employee_idx ON payroll_payslips(run_id, employee_id);
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_payslips_run_employee_idx ON payroll_payslips(run_id, employee_id);
 --> statement-breakpoint
-CREATE INDEX payroll_payslips_employee_idx ON payroll_payslips(employee_id);
+CREATE INDEX IF NOT EXISTS payroll_payslips_employee_idx ON payroll_payslips(employee_id);
 --> statement-breakpoint
-CREATE TABLE payroll_payslip_lines (
+CREATE TABLE IF NOT EXISTS payroll_payslip_lines (
   id serial PRIMARY KEY,
   payslip_id integer NOT NULL REFERENCES payroll_payslips(id) ON DELETE CASCADE,
   sequence integer NOT NULL DEFAULT 0,
@@ -368,7 +368,7 @@ CREATE TABLE payroll_payslip_lines (
   amount_cents bigint NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX payroll_payslip_lines_payslip_idx ON payroll_payslip_lines(payslip_id);
+CREATE INDEX IF NOT EXISTS payroll_payslip_lines_payslip_idx ON payroll_payslip_lines(payslip_id);
 --> statement-breakpoint
 -- Scope guards: a row must never point at another facility's employee.
 CREATE FUNCTION jcare_workforce_scope_guard() RETURNS trigger LANGUAGE plpgsql AS $$

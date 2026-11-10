@@ -30,6 +30,7 @@ import { InventoryModule } from './components/modules/InventoryModule.tsx';
 import { ProcurementModule } from './components/modules/ProcurementModule.tsx';
 import { WorkforceModule } from './components/modules/WorkforceModule.tsx';
 import { PayrollModule } from './components/modules/PayrollModule.tsx';
+import { FixedAssetsModule } from './components/modules/FixedAssetsModule.tsx';
 import { BillingCashierModule } from './components/modules/BillingCashierModule.tsx';
 import { AccountingModule } from './components/modules/AccountingModule.tsx';
 import { PaymentTransactions } from './components/modules/payment-hub/PaymentTransactions.tsx';
@@ -245,6 +246,13 @@ const AppContent: React.FC = () => {
       case 'payroll':
         return (
           <PayrollModule
+            key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
+          />
+        );
+
+      case 'fixed_assets':
+        return (
+          <FixedAssetsModule
             key={`${authenticatedUser?.id ?? 'none'}:${currentFacility?.id ?? 'none'}`}
           />
         );

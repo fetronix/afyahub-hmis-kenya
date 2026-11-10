@@ -27,6 +27,7 @@ export const moduleTitles: Record<ModuleId, string> = {
   finance: 'Billing, Invoicing & Cashier POS',
   payment_transactions: 'Payment Transactions & Reconciliation',
   accounting: 'Accounting & General Ledger',
+  fixed_assets: 'Fixed Assets & Depreciation',
   claims: 'Social Health Authority (SHA) E-Claims',
   private_insurance: 'Private Insurance & Multi-Payer Claims',
   public_health: 'MOH 705 & Disease Surveillance',

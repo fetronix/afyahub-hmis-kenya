@@ -1032,6 +1032,36 @@ const PERMISSIONS = [
   },
 
   /* ==========================================================
+     FIXED ASSETS
+     ========================================================== */
+
+  {
+    code: 'assets.read',
+    name: 'View Fixed Assets',
+    module: 'assets',
+    description:
+      'View the facility asset register, maintenance, transfers and depreciation history.',
+  },
+  {
+    code: 'assets.manage',
+    name: 'Manage Fixed Assets',
+    module: 'assets',
+    description: 'Register assets, maintain categories, move custodians and record maintenance.',
+  },
+  {
+    code: 'assets.depreciate',
+    name: 'Post Depreciation',
+    module: 'assets',
+    description: 'Run and post monthly depreciation to the general ledger.',
+  },
+  {
+    code: 'assets.dispose',
+    name: 'Dispose of Fixed Assets',
+    module: 'assets',
+    description: 'Write off, sell or retire an asset and post the disposal journal.',
+  },
+
+  /* ==========================================================
      WORKFORCE — HR AND PAYROLL
      ========================================================== */
 
@@ -1591,6 +1621,7 @@ async function seedPermissions(): Promise<void> {
       permission.code.startsWith('payroll.') ||
       (permission.code.startsWith('hr.') && permission.code !== 'hr.read') ||
       (permission.code.startsWith('procurement.') && permission.code !== 'procurement.read') ||
+      (permission.code.startsWith('assets.') && permission.code !== 'assets.read') ||
       isFacilityFinancialPermission(permission.code) ||
       ((permission.code.startsWith('payment_hub.') || permission.code.startsWith('payer_hub.')) &&
         !platformHubPermissions.has(permission.code))

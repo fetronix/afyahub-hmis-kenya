@@ -13,6 +13,7 @@ import {
   FlaskConical,
   Scan,
   Pill,
+  Boxes,
   Package,
   ShoppingCart,
   Receipt,
@@ -115,6 +116,7 @@ export const navSections: NavSection[] = [
       { id: 'finance', label: 'Billing & Invoicing', icon: Receipt },
       { id: 'payment_transactions', label: 'Payment Transactions', icon: Receipt },
       { id: 'accounting', label: 'Accounting & General Ledger', icon: BarChart3 },
+      { id: 'fixed_assets', label: 'Fixed Assets', icon: Boxes },
       { id: 'claims', label: 'Insurance & SHA eClaims', icon: FileCheck2 },
       { id: 'private_insurance', label: 'Private Insurance', icon: ShieldCheck },
     ],
@@ -208,7 +210,9 @@ export const Sidebar: React.FC<{ collapsed: boolean; onToggleCollapse: () => voi
         ? 'insurance'
         : id === 'payment_transactions'
           ? 'finance'
-          : id;
+          : id === 'fixed_assets'
+            ? 'accounting'
+            : id;
     if (hiddenModules.has(configuredId)) return false;
 
     // Dashboard is available when at least one operational module is enabled.
@@ -301,6 +305,7 @@ export const Sidebar: React.FC<{ collapsed: boolean; onToggleCollapse: () => voi
       finance: ['billing.read'],
       payment_transactions: ['payment_hub.transactions.read'],
       accounting: ['accounting.read'],
+      fixed_assets: ['assets.read'],
       claims: [
         'insurance.read',
         'insurance.sha.read',

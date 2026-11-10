@@ -71,3 +71,24 @@ Update this section after each controlled workstream with exact files, migration
 - `npx tsc --noEmit` passed.
 
 **Limitations.** No official Kenyan statutory version is seeded: the facility must enter current PAYE, NSSF, SHIF and AHL rules with their authority and effective dates, and a named finance owner must approve them. The repository therefore makes no compliance claim and no payroll figure in evidence is a Kenyan rate — the journey fixtures are explicitly labelled arbitrary test numbers. Payroll payment/disbursement to staff bank accounts, loan/advance balances, benefit-in-kind taxation, P9/P10 statutory returns and off-cycle runs are not implemented. Attendance supports recorded status and rosters but not device/biometric capture. Facility UAT and independent payroll review remain outstanding.
+
+## Fixed-asset register workstream — implemented (25 November 2026)
+
+**Status:** Complete as local software, synthetic tested in Chromium and PostgreSQL. Not production verified, no external dependency.
+
+**What was built.** Migration `0075_fixed_assets` adds category defaults, location/custodian/condition fields, acquisition and disposal journal accounts and linkage to supplier invoices/purchase orders on the existing `fixed_assets` table, plus two new facility-scoped tables: `fixed_asset_categories` and `fixed_asset_maintenance`, and `fixed_asset_transfers`. Indexes cover facility/status/category and asset/date lookups.
+
+**Lifecycle.** Register an asset against a category (which supplies the asset, accumulated-depreciation and depreciation-expense accounts) and a funding account; capitalisation posts Dr asset / Cr funding in the same transaction as the register row. Transfers record from/to department, custodian and location with a reason. Maintenance is planned then completed; a costed job can only complete when it has an expense and a payment/credit account, and posting happens on completion, not on planning. Monthly depreciation is previewed per period and posted once: Dr depreciation expense / Cr accumulated depreciation, with the period's idempotency key stored on the journal so a retry replays rather than duplicates. Disposal removes cost and accumulated depreciation, recognises proceeds and posts the gain or loss, and refuses a second disposal.
+
+**Permissions and isolation.** `assets.read`, `assets.manage`, `assets.depreciate`, `assets.dispose`. Facility resolution goes through `requireScopedFacility`; the routes are gated by the accounting facility module. A register manager cannot post depreciation or dispose. Cross-tenant and cross-facility reads return 403/404 and the test asserts nothing is written.
+
+**Application surface.** Sidebar → Revenue & payers → *Fixed Assets*: overview cards (active assets, cost, accumulated depreciation, net book value), asset register with search/status/category filters and pagination, asset detail with movements, maintenance and transfers, categories and default accounts, maintenance list with completion, and a depreciation workspace with preview, posting and a printable valuation report by category.
+
+**Accounting integration.** Capitalisation, depreciation, maintenance and disposal each write one balanced journal through the shared ledger service, tagged with source type `FIXED_ASSET` and a deterministic source id. The ledger service now recognises `FIXED_ASSET` (and `PROCUREMENT`) as traceable source types instead of downgrading them to MANUAL.
+
+**Evidence (synthetic only).**
+- `src/tests/fixed-asset-depreciation.spec.ts` — 11 tests passed (rounding spreads evenly, ends exactly at salvage, refuses invalid salvage/life/accumulated balances).
+- `src/tests/integration/fixed-assets.db.spec.ts` — 8 tests passed on isolated synthetic PostgreSQL 16.15: permission refusal, capitalisation journal, duplicate code, tenant/facility isolation, preview/post/idempotent retry, no depreciation before the acquisition month, balanced disposal with loss, second-disposal refusal and dispose permission refusal.
+- `scripts/synthetic-fixed-assets-fixture.ts` + `scripts/fixed-assets-browser-synthetic.mjs` — 17/17 Chromium assertions through the real login form and sidebar, screenshots `11`–`16` and `fixed-assets-browser-acceptance.json` in `docs/project/delivery-evidence/phase-5/`.
+
+**Limitations.** Depreciation is straight-line only; reducing-balance and Kenyan tax depreciation (capital allowances) are not implemented and no rate is assumed. Asset revaluation, component accounting and impairment are missing. Maintenance work orders do not schedule automatically from a plan date. Disposal reversal is not supported; correction requires an accountant's manual journal and is not offered in the UI. No fixed-asset subsidiary ledger reconciliation report against the general ledger has been produced.

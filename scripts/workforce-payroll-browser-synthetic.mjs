@@ -181,9 +181,8 @@ try {
   const runRows = await page.$$('tbody tr');
   record('Payroll run history lists a computed run', runRows.length > 0, `${runRows.length} rows`);
   if (runRows.length > 0) {
-    const openButton = await page.$('tbody tr button');
+    const openButton = await clickByText(page, 'tbody button', 'View');
     if (openButton) {
-      await openButton.click();
       await sleep(1400);
       const detail = await page.evaluate(() => document.body.innerText);
       record(
