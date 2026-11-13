@@ -1,3 +1,4 @@
+import { dhaLegacyGuard } from '../insurance/hub/guards.ts';
 /**
  * The dha routes.
  *
@@ -19,6 +20,7 @@ import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
 
 const router = Router();
+router.use('/api/integrations/dha', dhaLegacyGuard);
 
 /*
  * =========================================================
@@ -49,8 +51,8 @@ router.get(
         });
       }
 
-      const probe = String(req.query.probe ?? 'true') !== 'false';
-      const report = await buildReadinessReport({ probe });
+      // A readiness page is not authorization for a live sandbox probe.
+      const report = await buildReadinessReport({ probe: false });
 
       return res.json(report);
     } catch (err: unknown) {
@@ -208,6 +210,7 @@ router.get(
 router.post(
   '/api/integrations/dha/patients/:id/eligibility',
   requirePermission('patients.read'),
+  requirePermission('insurance.sha.eligibility.check'),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {
@@ -242,6 +245,7 @@ router.post(
 router.get(
   '/api/integrations/dha/patients/:id/coverage',
   requirePermission('patients.read'),
+  requirePermission('insurance.sha.benefits.validate'),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.authContext) {

@@ -32,12 +32,12 @@ tell a patient "we sent you a message" in this build.
 
 ## 2. What must exist in the environment
 
-| Variable | Purpose | Portal behaviour if missing |
-|---|---|---|
-| `SQL_HOST`, `SQL_PORT`, `SQL_DATABASE`, `SQL_USER`, `SQL_PASSWORD` (or the project's `DATABASE_URL`) | PostgreSQL connection | The server refuses to start (`src/config/env.ts` throws) |
-| `SESSION_SECRET`-class secrets | Staff sessions (existing) | Existing behaviour |
-| `FIELD_ENCRYPTION_KEY` | AES-256-GCM for sealed identifiers **and** the sealed card code | Values are stored unsealed; national IDs are not encrypted. The readiness panel reports this. **Set it.** |
-| `PORTAL_BASE_URL` (or the configured base used by `portalBaseUrl()`) | Builds the activation link | The link points at the wrong origin and handover is broken |
+| Variable                                                                                             | Purpose                                                         | Portal behaviour if missing                                                                               |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `SQL_HOST`, `SQL_PORT`, `SQL_DATABASE`, `SQL_USER`, `SQL_PASSWORD` (or the project's `DATABASE_URL`) | PostgreSQL connection                                           | The server refuses to start (`src/config/env.ts` throws)                                                  |
+| `SESSION_SECRET`-class secrets                                                                       | Staff sessions (existing)                                       | Existing behaviour                                                                                        |
+| `FIELD_ENCRYPTION_KEY`                                                                               | AES-256-GCM for sealed identifiers **and** the sealed card code | Values are stored unsealed; national IDs are not encrypted. The readiness panel reports this. **Set it.** |
+| `PORTAL_BASE_URL` (or the configured base used by `portalBaseUrl()`)                                 | Builds the activation link                                      | The link points at the wrong origin and handover is broken                                                |
 
 **There are no SMS or email variables to set, because there is no provider.** If the facility has a
 provider, the integration goes in `src/notifications/notification-provider.ts`; see §6.
@@ -68,6 +68,7 @@ DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:migrate
 DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:status:all
 
 # 3. Seed the five portal permissions.
+DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:bootstrap-admin   # first
 DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:seed:permissions
 
 # 4. Run the acceptance tests from PATIENT_PORTAL_TEST_RESULTS.md §5 against the rehearsal DB.
@@ -175,16 +176,16 @@ is configured, and the API records `NOT_CONFIGURED` if it is called anyway.
 
 ## 7. Operational runbook
 
-| Situation | What to do | What not to do |
-|---|---|---|
-| Patient lost their invitation slip | **Accounts → Open → (invitation) New link**, hand the new one over. The old one stops working | Do not read an old link back from the database; only hashes are stored |
-| Patient says they never got an SMS | Check `delivery_status`. If `NOT_CONFIGURED`, say plainly that no message was sent and hand over a link | Do not say "it was sent" |
-| Patient forgot their password | **Force password reset** from the account screen, then issue a **RECOVERY** invitation | Do not read or set a password for them |
-| Patient's phone was stolen | **Suspend** with a reason; every session ends immediately. Reactivate after verification | Do not delete the account |
-| Wrong person linked to an account | **Revoke**, then investigate with the audit trail; re-invite after identity is established | Do not edit the patient id or merge records |
-| Staff member leaves | Remove their staff account (existing flow). Portal administration is a staff permission, so it goes with it | — |
-| Suspected disclosure | Read the **Audit** tab and `patient_record_access_logs`; preserve them; follow the facility's breach process | Do not delete audit rows — the database refuses it, and it would be the wrong response anyway |
-| Facility closes | Revoke accounts; keep the data according to the retention decision | — |
+| Situation                          | What to do                                                                                                   | What not to do                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Patient lost their invitation slip | **Accounts → Open → (invitation) New link**, hand the new one over. The old one stops working                | Do not read an old link back from the database; only hashes are stored                        |
+| Patient says they never got an SMS | Check `delivery_status`. If `NOT_CONFIGURED`, say plainly that no message was sent and hand over a link      | Do not say "it was sent"                                                                      |
+| Patient forgot their password      | **Force password reset** from the account screen, then issue a **RECOVERY** invitation                       | Do not read or set a password for them                                                        |
+| Patient's phone was stolen         | **Suspend** with a reason; every session ends immediately. Reactivate after verification                     | Do not delete the account                                                                     |
+| Wrong person linked to an account  | **Revoke**, then investigate with the audit trail; re-invite after identity is established                   | Do not edit the patient id or merge records                                                   |
+| Staff member leaves                | Remove their staff account (existing flow). Portal administration is a staff permission, so it goes with it  | —                                                                                             |
+| Suspected disclosure               | Read the **Audit** tab and `patient_record_access_logs`; preserve them; follow the facility's breach process | Do not delete audit rows — the database refuses it, and it would be the wrong response anyway |
+| Facility closes                    | Revoke accounts; keep the data according to the retention decision                                           | —                                                                                             |
 
 ---
 
@@ -196,7 +197,7 @@ notes:
 
 1. A restored database brings back **live sessions and unexpired invitations**. If the restore is to
    a different environment, revoke the sessions (`UPDATE patient_portal_sessions SET revoked_at =
-   now() WHERE revoked_at IS NULL`) and supersede outstanding invitations before allowing traffic.
+now() WHERE revoked_at IS NULL`) and supersede outstanding invitations before allowing traffic.
 2. The sealed card codes and sealed national IDs are only recoverable with the **same**
    `FIELD_ENCRYPTION_KEY`. Back up the key separately from the database; losing it does not corrupt
    the records, but it makes the sealed columns unreadable.
@@ -205,15 +206,15 @@ notes:
 
 ## 9. Monitoring that actually matters
 
-| Signal | Why | Threshold suggestion |
-|---|---|---|
-| `delivery_status = 'NOT_CONFIGURED'` count | Shows staff are trying to use a channel that cannot send | Any rise should be explained by configuration, not ignored |
-| `delivery_status = 'FAILED'` rate | Provider or contact-data problem | Investigate above a handful per day |
-| Invitations expired without activation | The desk is issuing links that are never used — a process problem, not a code one | Watch the ratio over a month |
-| `ACCOUNT_LOCKED` responses | Either forgetful patients or a guessing attack | Correlate with source IPs |
-| `REDEEM_REJECTED` events | Old links being tried | Spikes suggest superseded slips in circulation |
-| Failed logins per account | Attack signal | 5 in 15 minutes is the code's own threshold |
-| 5xx on `/api/portal/*` | A query that has never been run in this environment is now running | Treat the first week as a live test |
+| Signal                                     | Why                                                                               | Threshold suggestion                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `delivery_status = 'NOT_CONFIGURED'` count | Shows staff are trying to use a channel that cannot send                          | Any rise should be explained by configuration, not ignored |
+| `delivery_status = 'FAILED'` rate          | Provider or contact-data problem                                                  | Investigate above a handful per day                        |
+| Invitations expired without activation     | The desk is issuing links that are never used — a process problem, not a code one | Watch the ratio over a month                               |
+| `ACCOUNT_LOCKED` responses                 | Either forgetful patients or a guessing attack                                    | Correlate with source IPs                                  |
+| `REDEEM_REJECTED` events                   | Old links being tried                                                             | Spikes suggest superseded slips in circulation             |
+| Failed logins per account                  | Attack signal                                                                     | 5 in 15 minutes is the code's own threshold                |
+| 5xx on `/api/portal/*`                     | A query that has never been run in this environment is now running                | Treat the first week as a live test                        |
 
 The portal emits **no analytics** and loads no third-party script. Keep it that way.
 
@@ -233,18 +234,18 @@ the portal only ever reads them.
 
 ## 11. Known blockers before a production claim
 
-| # | Blocker | Owner |
-|---|---|---|
-| B1 | Migration 0017 and 0018 have never been applied | Deployment owner |
-| B2 | No runtime test against PostgreSQL (concurrency, constraints, query correctness) | Engineering |
-| B3 | No SMS/email provider; manual handover only | Facility / vendor |
-| B4 | No retention schedule, no privacy notice specific to the portal | Facility + legal |
-| B5 | Guardian access designed but not implemented; legal questions unanswered | Facility + legal |
-| B6 | No penetration test, load test or accessibility audit | Engineering |
-| B7 | `FIELD_ENCRYPTION_KEY` must be provisioned and held securely | Deployment owner |
-| B8 | `trust proxy` / real-client-IP configuration at the edge | Infrastructure |
-| B9 | Deceased-patient handling undecided | Facility |
-| B10 | Vitals, vaccination and maternal projections are not in the portal yet | Engineering |
+| #   | Blocker                                                                          | Owner             |
+| --- | -------------------------------------------------------------------------------- | ----------------- |
+| B1  | Migration 0017 and 0018 have never been applied                                  | Deployment owner  |
+| B2  | No runtime test against PostgreSQL (concurrency, constraints, query correctness) | Engineering       |
+| B3  | No SMS/email provider; manual handover only                                      | Facility / vendor |
+| B4  | No retention schedule, no privacy notice specific to the portal                  | Facility + legal  |
+| B5  | Guardian access designed but not implemented; legal questions unanswered         | Facility + legal  |
+| B6  | No penetration test, load test or accessibility audit                            | Engineering       |
+| B7  | `FIELD_ENCRYPTION_KEY` must be provisioned and held securely                     | Deployment owner  |
+| B8  | `trust proxy` / real-client-IP configuration at the edge                         | Infrastructure    |
+| B9  | Deceased-patient handling undecided                                              | Facility          |
+| B10 | Vitals, vaccination and maternal projections are not in the portal yet           | Engineering       |
 
 Until B1–B7 are closed, the honest description of this work is: **built, type-checked, contract-tested
 and not yet operated.**

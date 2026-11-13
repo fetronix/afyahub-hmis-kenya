@@ -18,6 +18,8 @@ import { db } from '../../db/index.ts';
 
 export async function chargeSafely(
   request: billing.ChargeRequest,
+  initialAttemptId?: number | null,
+  initialClinicalTariff?: billing.InitialClinicalTariff | null,
 ): Promise<billing.ChargeResult | null> {
-  return chargeAttempts.chargeAndRecord(db, request);
+  return chargeAttempts.chargeAndRecord(db, request, initialAttemptId, initialClinicalTariff);
 }

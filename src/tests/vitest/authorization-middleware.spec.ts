@@ -223,25 +223,23 @@ describe('requirePermission', () => {
     expect(serialised).not.toMatch(/stack|at \w+ \(/);
   });
 
-  it('KNOWN FOOTGUN: an empty permission list allows everyone', async () => {
-    /*
-     * `hasAllPermissions` is `[].every(...)`, which is true. So
-     * `requirePermission()` with no arguments — reachable from a typo'd
-     * spread, or a route that forwards `...undefined` — protects nothing
-     * while looking exactly like a guard.
-     *
-     * Pinned rather than changed: making an empty list deny would turn a
-     * startup-time typo into a 403 for real users, and the safer fix is a
-     * lint or startup assertion on the call sites, which is out of scope
-     * here. Recorded so the next reader knows.
-     */
-    const { res, next } = await drive(requirePermission(), {
-      user: { id: 7 },
-      authContext: context(),
-    });
+  it('fails closed for an empty or blank permission requirement', async () => {
+    for (const permissions of [[], [''], ['patients.read', '   ']]) {
+      const { res, next } = await drive(requirePermission(...permissions), {
+        user: { id: 7 },
+        authContext: context({ permissions: ['patients.read'] }),
+      });
 
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.statusCode).toBeNull();
+      expect(res.statusCode).toBe(500);
+      expect(res.body?.error).toBe('AUTHORIZATION_CONFIGURATION_ERROR');
+      expect(next).not.toHaveBeenCalled();
+    }
+  });
+
+  it('still requires authentication before reporting an empty permission configuration', async () => {
+    const { res, next } = await drive(requirePermission(), {});
+    expect(res.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('does not let a super admin bypass an explicit permission requirement', async () => {

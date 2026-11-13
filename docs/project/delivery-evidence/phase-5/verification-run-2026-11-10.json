@@ -1,0 +1,149 @@
+{
+  "reportGeneratedAt": "2026-11-10T10:09:26Z",
+  "purpose": "CI-equivalent verification of Phase 5 at the published head, run after four pre-existing committed test defects were corrected. Run in an isolated git worktree so untracked work could not influence the result.",
+  "branch": "arena/e088f11d-afyahub-hmis-kenya",
+  "publishedHead": "d729178c4d4541af47201909b9c2c0c20218d38a",
+  "database": {
+    "engine": "PostgreSQL 18.6 (embedded, npm-bundled binaries)",
+    "host": "127.0.0.1",
+    "port": 55432,
+    "name": "jalicare_synthetic_test",
+    "class": "synthetic, disposable",
+    "migrationsApplied": 78,
+    "migrationStatus": "READY - every migration is applied and 0009 is intact",
+    "preflight": "READY WITH WARNINGS (1): no --backup given; acceptable on a local database"
+  },
+  "gates": {
+    "typecheck": {
+      "command": "npm run typecheck",
+      "result": "pass",
+      "exitCode": 0
+    },
+    "lint": {
+      "command": "npm run lint",
+      "result": "pass",
+      "errors": 0,
+      "warnings": 103
+    },
+    "format": {
+      "command": "npm run format:check",
+      "result": "pass",
+      "unformattedFiles": 0
+    },
+    "fullSuite": {
+      "command": "npm test",
+      "testFiles": 255,
+      "testFilesPassed": 255,
+      "tests": 2371,
+      "testsPassed": 2371,
+      "testsFailed": 0,
+      "exitCode": 0
+    },
+    "coverage": {
+      "statements": 62.91,
+      "branches": 60.0,
+      "functions": 61.48,
+      "lines": 64.21,
+      "thresholds": {
+        "statements": 55,
+        "branches": 48,
+        "functions": 58,
+        "lines": 55
+      },
+      "result": "pass"
+    },
+    "databaseSpecs": {
+      "command": "npx vitest run src/tests/vitest",
+      "testFiles": 104,
+      "tests": 1137,
+      "result": "pass"
+    },
+    "authDbSpecs": {
+      "files": 2,
+      "tests": 2,
+      "result": "pass"
+    },
+    "countyMigration": {
+      "files": 1,
+      "tests": 1,
+      "result": "pass"
+    },
+    "httpDatabase": {
+      "files": 1,
+      "tests": 1,
+      "result": "pass"
+    },
+    "productionBuild": {
+      "command": "npm run build",
+      "result": "pass"
+    },
+    "dependencyAudit": {
+      "command": "npm audit --audit-level=high",
+      "high": 0,
+      "critical": 0,
+      "moderate": 4,
+      "result": "pass"
+    },
+    "backupPathGuard": {
+      "command": "npm run security:check-tracked-database-backups",
+      "result": "pass"
+    }
+  },
+  "baselineBeforeFixes": {
+    "publishedHeadTestFailures": 4,
+    "failingFiles": 3,
+    "files": [
+      "src/tests/vitest/api-domain-clients.spec.ts",
+      "src/tests/schema-extraction.spec.ts",
+      "src/tests/schema-financial-ledger.spec.ts"
+    ],
+    "note": "These four assertions failed at the published head. They are stale contract expectations, not runtime defects: the facade spreads 13 domain clients while the test listed 10 (313 unique methods, 0 collisions) and Phase 5 legitimately added 30 barrel exports plus supplier_invoices.goods_received_note_id."
+  },
+  "githubCi": {
+    "lastRunAtHead": "42780612973",
+    "conclusion": "failure",
+    "failingJobs": [
+      "Typecheck and lint",
+      "Formatting",
+      "Coverage with PostgreSQL 16",
+      "Migrations and database specs (PostgreSQL 16)",
+      "Fresh checkout Docker bootstrap"
+    ],
+    "passingJobs": [
+      "Production build",
+      "Dependency audit"
+    ],
+    "logsRetrieved": false,
+    "note": "Actions logs could not be downloaded from this sandbox (EOF from the log store); every gate was reproduced locally instead. CI has not been re-run because this task does not authorize a push."
+  },
+  "notReproducible": [
+    "npm run test:docker (Fresh checkout Docker bootstrap) - no Docker daemon in this sandbox",
+    "GitHub-hosted CI itself - requires a push, which is not authorized"
+  ],
+  "browserEvidence": [
+    {
+      "file": "browser-acceptance.json",
+      "assertions": 24,
+      "passed": 24,
+      "pageErrors": 0
+    },
+    {
+      "file": "fixed-assets-browser-acceptance.json",
+      "assertions": 18,
+      "passed": 18
+    },
+    {
+      "file": "procurement-browser-acceptance.json",
+      "assertions": 13,
+      "passed": 13,
+      "pageErrors": 0
+    },
+    {
+      "file": "inventory-browser-acceptance.json",
+      "assertions": 17,
+      "passed": 17,
+      "pageErrors": 0
+    }
+  ],
+  "honesty": "No real patient, staff or financial data was used. No live provider was contacted. No test was skipped, disabled or loosened to make this run green."
+}

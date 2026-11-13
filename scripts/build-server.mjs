@@ -89,6 +89,7 @@ const ENTRY_POINTS = [
   { in: 'scripts/preflight.ts', out: 'build/scripts/preflight.js' },
   { in: 'src/seeds/permissions.ts', out: 'build/scripts/seed-permissions.js' },
   { in: 'src/db/clean-database.ts', out: 'build/scripts/clean-database.js' },
+  { in: 'src/bootstrap-admin.ts', out: 'build/scripts/bootstrap-admin.js' },
 ];
 
 async function main() {

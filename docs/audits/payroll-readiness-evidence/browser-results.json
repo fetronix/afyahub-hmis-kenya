@@ -1,0 +1,115 @@
+{
+  "syntheticOnly": true,
+  "runId": 14,
+  "results": [
+    {
+      "name": "synthetic.admin real login",
+      "passed": true
+    },
+    {
+      "name": "synthetic.finance real login",
+      "passed": true
+    },
+    {
+      "name": "Employee created through HR form",
+      "passed": true
+    },
+    {
+      "name": "Created staff visible through scoped payroll API",
+      "passed": true
+    },
+    {
+      "name": "Dated earning created through Staff pay UI",
+      "passed": true
+    },
+    {
+      "name": "PAYE explicit synthetic source verification through UI",
+      "passed": true
+    },
+    {
+      "name": "PAYE verified version activated through UI",
+      "passed": true
+    },
+    {
+      "name": "NSSF explicit synthetic source verification through UI",
+      "passed": true
+    },
+    {
+      "name": "NSSF verified version activated through UI",
+      "passed": true
+    },
+    {
+      "name": "SHIF explicit synthetic source verification through UI",
+      "passed": true
+    },
+    {
+      "name": "SHIF verified version activated through UI",
+      "passed": true
+    },
+    {
+      "name": "AHL explicit synthetic source verification through UI",
+      "passed": true
+    },
+    {
+      "name": "AHL verified version activated through UI",
+      "passed": true
+    },
+    {
+      "name": "Four source-cited effective-dated synthetic policies reviewed and activated",
+      "passed": true
+    },
+    {
+      "name": "Administrator selects and saves facility accounting mappings through UI",
+      "passed": true
+    },
+    {
+      "name": "Synthetic configuration is explicitly not certified production-ready",
+      "passed": true
+    },
+    {
+      "name": "Payroll period created through browser",
+      "passed": true
+    },
+    {
+      "name": "Payroll calculated through browser",
+      "passed": true
+    },
+    {
+      "name": "Preparer cannot approve via API",
+      "passed": true
+    },
+    {
+      "name": "Independent authorized approval through browser",
+      "passed": true
+    },
+    {
+      "name": "Authorized payroll finalization through browser",
+      "passed": true
+    },
+    {
+      "name": "Bulk payslips and four remittance schedules reconcile",
+      "passed": true
+    },
+    {
+      "name": "Bulk print clones only individual payslips without application navigation",
+      "passed": true
+    },
+    {
+      "name": "Individual print contains the selected payslip, not the run or employee register",
+      "passed": true
+    },
+    {
+      "name": "Annual review downloaded through browser with pay-date scope and no filing/payment claims",
+      "passed": true
+    },
+    {
+      "name": "Exactly one balanced source-linked payroll journal",
+      "passed": true
+    },
+    {
+      "name": "No uncaught browser rendering errors",
+      "passed": true
+    }
+  ],
+  "browserErrors": []
+}

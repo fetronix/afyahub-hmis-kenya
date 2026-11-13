@@ -1,0 +1,2213 @@
+JaliCare payroll readiness: synthetic validation only. Not production certification.
+Report date: 2026-10-27. Raw sandbox log clock differs; do not infer legal-review dates.
+
+
+=== Fresh migrations ===
+[run-script] migrate: scripts/migrate.ts (tsx, development)
+
+==============================================
+JaliCare HMIS — migration runner
+==============================================
+Target   : jalicare_test@127.0.0.1:55439/jalicare_payroll_readiness_synthetic_test
+Folder   : /home/user/afyahub-hmis-kenya/drizzle
+Journal  : /home/user/afyahub-hmis-kenya/drizzle/meta/_journal.json
+Mode     : APPLY
+Tracking : absent
+Public   : 0 table(s)
+Recorded : 0 migration(s)
+Pending  : 95
+
+Plan:
+  • 0000_new_vertigo  (122 statement(s))
+  • 0001_unknown_gambit  (176 statement(s))
+  • 0002_friendly_lady_deathstrike  (126 statement(s))
+  • 0003_facility_subscription_billing  (27 statement(s))
+  • 0004_facility_rbac_overrides  (1 statement(s))
+  • 0005_facility_service_tariffs  (9 statement(s))
+  • 0006_patient_guardian_and_optional_phone  (5 statement(s))
+  • 0007_lab_order_clinical_details  (1 statement(s))
+  • 0008_lab_result_verification_state  (7 statement(s))
+  • 0009_billing_provenance_and_inpatient  (19 statement(s))
+  • 0010_mobile_money_settlement  (1 statement(s))
+  • 0011_insurance_claims_workflow  (1 statement(s))
+  • 0012_dha_integration_audit  (1 statement(s))
+  • 0013_dha_service_mappings  (1 statement(s))
+  • 0014_professional_verification  (1 statement(s))
+  • 0015_maternity_mch  (1 statement(s))
+  • 0016_postnatal_immunisation  (1 statement(s))
+  • 0017_consent_allergy_audit_integrity  (14 statement(s))
+  • 0018_patient_portal  (1 statement(s))
+  • 0019_service_tariff_billing_key  (3 statement(s))
+  • 0020_billing_charge_attempts  (4 statement(s))
+  • 0021_service_tariff_links  (9 statement(s))
+  • 0022_bed_day_charge_attempts  (5 statement(s))
+  • 0023_normalise_county_subcounty  (12 statement(s))
+  • 0024_sha_eclaims_and_benefits  (37 statement(s))
+  • 0025_private_insurance_multi_payer  (27 statement(s))
+  • 0026_sha_hie_workflows_and_fhir_ig  (12 statement(s))
+  • 0027_dialysis_accounting_icd11_booking_bank  (109 statement(s))
+  • 0028_payment_banking_hub  (23 statement(s))
+  • 0029_payer_integration_hub  (10 statement(s))
+  • 0030_procurement_workflow  (16 statement(s))
+  • 0031_theatre_scheduling  (11 statement(s))
+  • 0032_inpatient_active_admission_guards  (3 statement(s))
+  • 0033_lab_accession_safety  (2 statement(s))
+  • 0034_pharmacy_workflow_safety  (7 statement(s))
+  • 0035_shared_lab_specimens  (8 statement(s))
+  • 0036_refund_receipt_safety  (8 statement(s))
+  • 0037_finalized_invoices  (18 statement(s))
+  • 0038_payment_request_identity  (9 statement(s))
+  • 0039_payment_request_cancellation  (5 statement(s))
+  • 0040_claim_dispatch_safety  (9 statement(s))
+  • 0041_billing_ledger_postings  (11 statement(s))
+  • 0042_facility_tariff_imports  (4 statement(s))
+  • 0043_notification_centre  (5 statement(s))
+  • 0044_master_service_catalogue  (27 statement(s))
+  • 0045_catalogue_scope_and_completion  (10 statement(s))
+  • 0046_billing_service_occurrence  (2 statement(s))
+  • 0047_clinical_service_selection  (6 statement(s))
+  • 0048_consultation_review_state  (1 statement(s))
+  • 0049_radiology_request_idempotency  (1 statement(s))
+  • 0050_encounter_request_idempotency  (1 statement(s))
+  • 0051_lab_clinical_exception  (1 statement(s))
+  • 0052_lab_order_specimen_provenance  (1 statement(s))
+  • 0053_facility_owned_services  (10 statement(s))
+  • 0054_lab_facility_service  (1 statement(s))
+  • 0055_delivery_facility_service  (1 statement(s))
+  • 0056_admission_and_retry_identity  (2 statement(s))
+  • 0057_lab_service_scope  (1 statement(s))
+  • 0058_charge_attempt_diagnosis  (1 statement(s))
+  • 0059_lab_service_code_snapshot  (1 statement(s))
+  • 0060_pharmacy_inventory_price_snapshots  (12 statement(s))
+  • 0061_inventory_price_revision  (3 statement(s))
+  • 0062_inpatient_bed_occupancy_billing  (27 statement(s))
+  • 0063_inpatient_bed_billing_work  (4 statement(s))
+  • 0064_staff_appointment_lifecycle  (15 statement(s))
+  • 0065_inpatient_policy_and_admission_evidence  (6 statement(s))
+  • 0066_ward_default_bed_price_evidence  (7 statement(s))
+  • 0067_facility_integration_vault  (2 statement(s))
+  • 0068_integration_credential_revocation  (2 statement(s))
+  • 0069_payment_settlement_recovery  (7 statement(s))
+  • 0070_journal_facility_scope_guards  (8 statement(s))
+  • 0071_nullable_benefit_estimates  (1 statement(s))
+  • 0072_independent_refund_review  (11 statement(s))
+  • 0073_inventory_receipt_retry_identity  (5 statement(s))
+  • 0074_workforce  (53 statement(s))
+  • 0075_fixed_assets  (1 statement(s))
+  • 0076_procurement_chain  (15 statement(s))
+  • 0077_inventory_control  (11 statement(s))
+  • 0078_approval_policies  (3 statement(s))
+  • 0079_inventory_accounting  (8 statement(s))
+  • 0080_procurement_matching  (15 statement(s))
+  • 0081_bank_reconciliation_approval  (1 statement(s))
+  • 0082_fixed_asset_impairment_revaluation_tax  (1 statement(s))
+  • 0083_payroll_form_profiles  (1 statement(s))
+  • 0084_dialysis_session_billing  (1 statement(s))
+  • 0085_dialysis_service_category  (1 statement(s))
+  • 0086_public_health_report_corrections  (5 statement(s))
+  • 0087_claim_dispatch_reconciliation  (9 statement(s))
+  • 0088_claim_invoice_finalization  (1 statement(s))
+  • 0089_facility_letterheads  (14 statement(s))
+  • 0090_letterhead_pdf_documents  (6 statement(s))
+  • 0091_verified_bank_payments  (10 statement(s))
+  • 0092_bank_refund_evidence  (8 statement(s))
+  • 0093_payroll_completion_controls  (9 statement(s))
+  • 0094_payroll_configuration_readiness  (6 statement(s))
+
+! Destructive statements in this set:
+  - 0002_friendly_lady_deathstrike #10  DROP CONSTRAINT
+    ALTER TABLE "patients" DROP CONSTRAINT "patients_facility_id_facilities_id_fk";
+  - 0002_friendly_lady_deathstrike #126  DROP COLUMN
+    ALTER TABLE "patients" DROP COLUMN "facility_id";
+  - 0080_procurement_matching #1  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE inventory_movements
+  - 0085_dialysis_service_category #1  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE facility_services DROP CONSTRAINT IF EXISTS facility_services_category_check;
+  - 0086_public_health_report_corrections #2  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE public_health_reports
+  - 0087_claim_dispatch_reconciliation #2  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE insurance_claim_dispatch_reconciliations
+  - 0087_claim_dispatch_reconciliation #4  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE insurance_claim_dispatch_reconciliations
+  - 0087_claim_dispatch_reconciliation #6  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE insurance_claim_dispatch_reconciliations
+  - 0088_claim_invoice_finalization #1  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE sha_eclaims
+  - 0090_letterhead_pdf_documents #2  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE facility_letterheads
+  - 0090_letterhead_pdf_documents #3  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE facility_letterheads
+  ✔ 0000_new_vertigo
+  ✔ 0001_unknown_gambit
+  ✔ 0002_friendly_lady_deathstrike
+  ✔ 0003_facility_subscription_billing
+  ✔ 0004_facility_rbac_overrides
+  ✔ 0005_facility_service_tariffs
+  ✔ 0006_patient_guardian_and_optional_phone
+  ✔ 0007_lab_order_clinical_details
+  ✔ 0008_lab_result_verification_state
+  ✔ 0009_billing_provenance_and_inpatient
+  ✔ 0010_mobile_money_settlement
+  ✔ 0011_insurance_claims_workflow
+  ✔ 0012_dha_integration_audit
+  ✔ 0013_dha_service_mappings
+  ✔ 0014_professional_verification
+  ✔ 0015_maternity_mch
+  ✔ 0016_postnatal_immunisation
+  ✔ 0017_consent_allergy_audit_integrity
+  ✔ 0018_patient_portal
+  ✔ 0019_service_tariff_billing_key
+  ✔ 0020_billing_charge_attempts
+  ✔ 0021_service_tariff_links
+  ✔ 0022_bed_day_charge_attempts
+  ✔ 0023_normalise_county_subcounty
+  ✔ 0024_sha_eclaims_and_benefits
+  ✔ 0025_private_insurance_multi_payer
+  ✔ 0026_sha_hie_workflows_and_fhir_ig
+  ✔ 0027_dialysis_accounting_icd11_booking_bank
+  ✔ 0028_payment_banking_hub
+  ✔ 0029_payer_integration_hub
+  ✔ 0030_procurement_workflow
+  ✔ 0031_theatre_scheduling
+  ✔ 0032_inpatient_active_admission_guards
+  ✔ 0033_lab_accession_safety
+  ✔ 0034_pharmacy_workflow_safety
+  ✔ 0035_shared_lab_specimens
+  ✔ 0036_refund_receipt_safety
+  ✔ 0037_finalized_invoices
+  ✔ 0038_payment_request_identity
+  ✔ 0039_payment_request_cancellation
+  ✔ 0040_claim_dispatch_safety
+  ✔ 0041_billing_ledger_postings
+  ✔ 0042_facility_tariff_imports
+  ✔ 0043_notification_centre
+  ✔ 0044_master_service_catalogue
+  ✔ 0045_catalogue_scope_and_completion
+  ✔ 0046_billing_service_occurrence
+  ✔ 0047_clinical_service_selection
+  ✔ 0048_consultation_review_state
+  ✔ 0049_radiology_request_idempotency
+  ✔ 0050_encounter_request_idempotency
+  ✔ 0051_lab_clinical_exception
+  ✔ 0052_lab_order_specimen_provenance
+  ✔ 0053_facility_owned_services
+  ✔ 0054_lab_facility_service
+  ✔ 0055_delivery_facility_service
+  ✔ 0056_admission_and_retry_identity
+  ✔ 0057_lab_service_scope
+  ✔ 0058_charge_attempt_diagnosis
+  ✔ 0059_lab_service_code_snapshot
+  ✔ 0060_pharmacy_inventory_price_snapshots
+  ✔ 0061_inventory_price_revision
+  ✔ 0062_inpatient_bed_occupancy_billing
+  ✔ 0063_inpatient_bed_billing_work
+  ✔ 0064_staff_appointment_lifecycle
+  ✔ 0065_inpatient_policy_and_admission_evidence
+  ✔ 0066_ward_default_bed_price_evidence
+  ✔ 0067_facility_integration_vault
+  ✔ 0068_integration_credential_revocation
+  ✔ 0069_payment_settlement_recovery
+  ✔ 0070_journal_facility_scope_guards
+  ✔ 0071_nullable_benefit_estimates
+  ✔ 0072_independent_refund_review
+  ✔ 0073_inventory_receipt_retry_identity
+  ✔ 0074_workforce
+  ✔ 0075_fixed_assets
+  ✔ 0076_procurement_chain
+  ✔ 0077_inventory_control
+  ✔ 0078_approval_policies
+  ✔ 0079_inventory_accounting
+  ✔ 0080_procurement_matching
+  ✔ 0081_bank_reconciliation_approval
+  ✔ 0082_fixed_asset_impairment_revaluation_tax
+  ✔ 0083_payroll_form_profiles
+  ✔ 0084_dialysis_session_billing
+  ✔ 0085_dialysis_service_category
+  ✔ 0086_public_health_report_corrections
+  ✔ 0087_claim_dispatch_reconciliation
+  ✔ 0088_claim_invoice_finalization
+  ✔ 0089_facility_letterheads
+  ✔ 0090_letterhead_pdf_documents
+  ✔ 0091_verified_bank_payments
+  ✔ 0092_bank_refund_evidence
+  ✔ 0093_payroll_completion_controls
+  ✔ 0094_payroll_configuration_readiness
+
+==============================================
+✔ Applied 95 migration(s).
+==============================================
+
+Next: npm run db:status
+
+
+
+=== Targeted tests (final rerun) ===
+
+ RUN  v5.0.5 /home/user/afyahub-hmis-kenya
+
+stdout | src/tests/integration/workforce-payroll.db.spec.ts
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+
+stderr | src/tests/integration/workforce-payroll.db.spec.ts > workforce and payroll
+WebSocket server error: Port 24678 is already in use
+
+stdout | src/tests/integration/workforce-payroll.db.spec.ts > workforce and payroll
+1:33:53 AM [vite] (client) Re-optimizing dependencies because lockfile has changed
+
+{"level":"info","time":"2026-11-13T22:33:54.004Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"106096c0-c220-4840-9a85-d40a484af557","method":"POST","path":"/api/hr/departments","status":201,"durationMs":46.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.057Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"466d44fd-2d20-4559-aeb0-c05d51dcd0b0","method":"POST","path":"/api/hr/designations","status":201,"durationMs":21.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.137Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"1bf56203-c3c3-41fb-bd44-c5776476795d","method":"POST","path":"/api/hr/employees","status":201,"durationMs":73.4,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.165Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"1e00779e-8033-4592-99d6-ed732f9a811c","method":"POST","path":"/api/hr/employees","status":400,"durationMs":17.1,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.180Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"d10ecd1a-6cc8-4d15-89ba-7b4fa85a62e0","method":"GET","path":"/api/hr/employees","status":403,"durationMs":11.2,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.191Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"96af5a0a-d013-47cc-86b7-ac9736a9a23f","method":"GET","path":"/api/hr/employees/1","status":403,"durationMs":8.7,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.208Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"a88539d5-2413-4320-b973-27a6d46b47b5","method":"GET","path":"/api/hr/employees","status":200,"durationMs":12.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.232Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"410010d9-0ae8-4cb2-a5b7-193b938cdad4","method":"POST","path":"/api/hr/attendance","status":404,"durationMs":20.7,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.263Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"eae493d4-e0e5-4eca-8fb5-4d01d5d3f5fb","method":"POST","path":"/api/hr/attendance","status":201,"durationMs":21.4,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.279Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"1ef07a8c-7cd4-4ae3-ae3c-6e9ba32952a1","method":"POST","path":"/api/hr/attendance","status":201,"durationMs":12.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.302Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"23c3aeda-d8b9-46e1-b587-702e23cc0871","method":"GET","path":"/api/hr/attendance","status":200,"durationMs":20.8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.324Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"76039903-8471-48fc-89da-ba87c4bb30a1","method":"POST","path":"/api/hr/leave-types","status":201,"durationMs":19.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.351Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"7f74025e-a473-4488-afa3-a78ebdf6e1ab","method":"POST","path":"/api/hr/leave-requests","status":201,"durationMs":23.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.378Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"7f271e65-0062-4008-b7f5-331a997eefdc","method":"POST","path":"/api/hr/leave-requests/5/decide","status":403,"durationMs":24.7,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.419Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"117b5f15-206a-4332-8702-de4977ff5599","method":"POST","path":"/api/hr/leave-requests/5/decide","status":200,"durationMs":37.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.437Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"bbe74101-9056-4a53-bc71-4151458ff1d5","method":"POST","path":"/api/payroll/statutory-versions","status":400,"durationMs":15.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.462Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"053ebfc8-a570-41c5-93ee-c95089c76e60","method":"POST","path":"/api/payroll/statutory-versions","status":403,"durationMs":23.4,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.484Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"f33ae6ea-3b46-471b-8e07-aa5c9d5ee590","method":"POST","path":"/api/payroll/statutory-versions","status":400,"durationMs":20.1,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.496Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"9028cd0c-2734-4ad3-8bb2-b5ad7ce91c86","method":"POST","path":"/api/payroll/statutory-versions","status":400,"durationMs":10.7,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.513Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"23db2332-8c71-4123-8d9d-c9660a8621e7","method":"POST","path":"/api/payroll/periods","status":201,"durationMs":14.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.538Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"85363a04-a105-4726-b57f-8ddadf513980","method":"POST","path":"/api/payroll/periods/23/calculate","status":409,"durationMs":22.6,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.559Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"e7ae0f24-9a3f-4034-adb9-73a5fecd7856","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":17.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.574Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"a47c06a2-94f1-4817-bc91-133165feaec9","method":"POST","path":"/api/payroll/statutory-versions/39/status","status":409,"durationMs":14,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.594Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b2de528b-71fe-4e70-9e29-118f422da13b","method":"POST","path":"/api/payroll/statutory-versions/39/verify","status":200,"durationMs":18.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.610Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"0a2cdec6-44ad-488a-94c1-de86d76777c4","method":"POST","path":"/api/payroll/statutory-versions/39/status","status":200,"durationMs":15.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.625Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"39ec1b7c-5685-4c32-bcde-ef5abc4b4a56","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":13.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.638Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"9be4d47e-904d-4892-8d62-e350d917ab5a","method":"POST","path":"/api/payroll/statutory-versions/40/status","status":409,"durationMs":11.2,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.659Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"348e197a-48bd-4470-be65-15ce9c0b919e","method":"POST","path":"/api/payroll/statutory-versions/40/verify","status":200,"durationMs":19.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.675Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"d4c3c85e-d7f3-486c-97fa-e0cb7c9fa036","method":"POST","path":"/api/payroll/statutory-versions/40/status","status":200,"durationMs":14.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.691Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"09a4247c-c78f-4b8c-8759-f8d28635004c","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":13.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.703Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"cfb976f6-851c-419b-98a0-049381bdb0bc","method":"POST","path":"/api/payroll/statutory-versions/41/status","status":409,"durationMs":10.9,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.719Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"a34388dc-bd34-4c42-aa40-0fccf52b56ac","method":"POST","path":"/api/payroll/statutory-versions/41/verify","status":200,"durationMs":14.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.739Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"a2243e4d-b08c-4ecf-8ebe-46b92cb73cab","method":"POST","path":"/api/payroll/statutory-versions/41/status","status":200,"durationMs":18.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.753Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"6470d521-c464-489e-ac7e-fccececa7a2a","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":12.4,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.769Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"f8ea5e30-989a-47a7-b90a-1f86af2c5fa8","method":"POST","path":"/api/payroll/statutory-versions/42/status","status":409,"durationMs":10.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.783Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"94cc3d01-0297-45c8-87b3-6c8e789bb3e3","method":"POST","path":"/api/payroll/statutory-versions/42/verify","status":200,"durationMs":12.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.798Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"1e2fe5c1-d120-4a7e-b4e4-05291b96b7b4","method":"POST","path":"/api/payroll/statutory-versions/42/status","status":200,"durationMs":13.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.820Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"0b64e80d-8529-4d90-b5a2-9de8a479cf50","method":"PUT","path":"/api/payroll/account-settings","status":200,"durationMs":13.4,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.833Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4ff61570-9d33-4b5b-b910-9f10b1142d4e","method":"POST","path":"/api/payroll/periods","status":201,"durationMs":11.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.865Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"a9790038-990c-45e9-9f74-7469269d134c","method":"POST","path":"/api/payroll/periods/24/calculate","status":200,"durationMs":29.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.877Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"f707798e-e36e-4245-9f6b-70e247276bf2","method":"GET","path":"/api/payroll/runs/15","status":200,"durationMs":10.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.887Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"255e1300-c322-4c43-bbb4-d543928bb2fd","method":"POST","path":"/api/payroll/runs/15/approve","status":403,"durationMs":8.1,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.901Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"1d8312d0-56c0-494c-a3c8-97f4653a401e","method":"POST","path":"/api/payroll/runs/15/approve","status":200,"durationMs":12.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.933Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"0e69edce-7ae8-410e-8a39-13ae18761a13","method":"POST","path":"/api/payroll/runs/15/post","status":200,"durationMs":30.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.947Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"e8a5991b-11d4-4e92-a0c1-c5fed8e501e0","method":"POST","path":"/api/payroll/runs/15/post","status":409,"durationMs":10.2,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.961Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"349abb0f-df20-4fce-8b44-2375cc33ad39","method":"GET","path":"/api/payroll/payslips/15","status":200,"durationMs":11.5,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:54.976Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"0f3794f7-4b7f-41cd-8cc1-23724318ceeb","method":"GET","path":"/api/payroll/statutory-extract","status":409,"durationMs":12.2,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.987Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4905e1e9-656c-4a51-b4b0-50561ebeb1bd","method":"POST","path":"/api/payroll/form-profiles","status":400,"durationMs":8.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:54.997Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"59f73a38-5390-4800-8978-fbba89f537fb","method":"POST","path":"/api/payroll/form-profiles","status":400,"durationMs":8.5,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.009Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4c79dbc7-5ea6-4cff-ae14-e8dc9cc661c7","method":"POST","path":"/api/payroll/form-profiles","status":201,"durationMs":10,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.022Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"77695300-66f4-4add-8fa4-f7715a0b4979","method":"GET","path":"/api/payroll/statutory-extract","status":200,"durationMs":12,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.035Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"e235d629-e46f-4c35-a9dc-d707624bac68","method":"GET","path":"/api/payroll/statutory-extract","status":409,"durationMs":10,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.044Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"c32200c5-a3b7-4034-b6c7-675b808bafb2","method":"GET","path":"/api/payroll/statutory-extract","status":403,"durationMs":7.2,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.056Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b823a7a5-34e4-4f30-8f82-87588007bcd6","method":"GET","path":"/api/hr/employees","status":200,"durationMs":11.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.079Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"8fb16e49-b854-47c1-9549-dcdea7979c96","method":"GET","path":"/api/hr/employees/13","status":200,"durationMs":18.8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.103Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"d410e424-f379-4238-abf1-ff00a3dffa6f","method":"GET","path":"/api/hr/overview","status":200,"durationMs":23.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.116Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"5a10f231-3040-4f88-882e-3ffc17104b3b","method":"GET","path":"/api/payroll/employees","status":403,"durationMs":11,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.128Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"5559b878-af9a-49ff-8de3-958f607e8c97","method":"POST","path":"/api/hr/employees","status":403,"durationMs":10.4,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.137Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"87b62ce6-1418-449a-845d-54a7853388ae","method":"PUT","path":"/api/payroll/employees/13/salary","status":403,"durationMs":8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.149Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"45842058-705f-46fb-a2e2-1074e7b0bd0b","method":"GET","path":"/api/payroll/employees","status":200,"durationMs":10.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.162Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"cd498d80-3e33-4338-9320-d6aed3f03b13","method":"PUT","path":"/api/payroll/employees/13/salary","status":200,"durationMs":12.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.174Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"82d4efe8-fb0d-4462-9f86-fab342b2862c","method":"POST","path":"/api/payroll/components","status":400,"durationMs":10.5,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.190Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4f19047e-b360-429d-ba06-b1c18ff39f5c","method":"POST","path":"/api/payroll/components","status":201,"durationMs":14.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.203Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"c76f9a47-dfe9-4e65-9982-d0b5965855fd","method":"GET","path":"/api/payroll/employees/13","status":200,"durationMs":11,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.212Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"e9e63e46-ec0f-44e1-810a-10a894747da9","method":"GET","path":"/api/payroll/employees","status":403,"durationMs":7.7,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.220Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"22415f06-ae18-4751-ad1e-f9577e47c6b7","method":"PUT","path":"/api/payroll/employees/13/salary","status":403,"durationMs":6.9,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.228Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4b85e201-a484-4f8b-9e53-fbed63bdebb7","method":"GET","path":"/api/payroll/employees","status":403,"durationMs":7,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.237Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"0f98f224-ab2f-4744-864f-835709fc404b","method":"PUT","path":"/api/payroll/employees/13/salary","status":403,"durationMs":7.1,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.251Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"70965c6f-c9c1-417e-901d-7648e91a65d3","method":"POST","path":"/api/payroll/periods","status":201,"durationMs":11.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.281Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"814dd3cf-34bd-47e3-8204-7b81d4ae1f60","method":"POST","path":"/api/payroll/periods/25/calculate","status":200,"durationMs":25.5,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.293Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"f3a40c4a-a067-499f-8f02-aeeae2bcf336","method":"GET","path":"/api/payroll/runs/16/reports","status":409,"durationMs":11,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.306Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"d34a5248-78c7-40b0-b03f-c2a7bf893e70","method":"POST","path":"/api/payroll/runs/16/approve","status":200,"durationMs":11.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.335Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"3e7ed052-b4ae-40c4-9842-361b44b7a657","method":"POST","path":"/api/payroll/runs/16/post","status":400,"durationMs":26.5,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.368Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"141c814a-86ab-498b-ae99-5a012ba059a3","method":"POST","path":"/api/payroll/runs/16/post","status":200,"durationMs":27.8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.373Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"fd5afa1c-773f-4e58-94ef-2b053067c7c6","method":"POST","path":"/api/payroll/runs/16/post","status":409,"durationMs":31.6,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.394Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b9989236-1b24-4b63-9a8b-b618c9404ae4","method":"GET","path":"/api/payroll/runs/16/reports","status":200,"durationMs":16.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.413Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"0704d105-908c-44b8-999f-230abc87fbdf","method":"GET","path":"/api/payroll/payslips/16","status":200,"durationMs":14.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.445Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"237c102c-f61c-4ea1-a26e-a936e38e8fad","method":"GET","path":"/api/payroll/history","status":200,"durationMs":19.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.455Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"19055668-b16c-4f99-853a-8dd17c15d240","method":"GET","path":"/api/payroll/runs/16/reports","status":403,"durationMs":8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.464Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"5352d51b-d959-484e-85a5-1e5f13a46f98","method":"GET","path":"/api/payroll/runs/16/reports","status":403,"durationMs":7.3,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.479Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"22686e35-cd50-48c9-8cad-0f60941b416e","method":"GET","path":"/api/payroll/statutory-extract","status":200,"durationMs":13.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.502Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"98f1821a-00c3-4f06-a80b-b31786093c62","method":"GET","path":"/api/payroll/statutory-extract","status":200,"durationMs":20.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.516Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"477ae998-a886-43cf-8398-e1d1705869df","method":"GET","path":"/api/payroll/runs/16","status":200,"durationMs":10.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.537Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"e3c4c27f-0ed2-4052-bed9-48298dcd0d97","method":"PATCH","path":"/api/facilities/17/modules","status":200,"durationMs":17.5,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.546Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"dc9a4985-3d96-4691-9e53-d6375c0ebc8b","method":"GET","path":"/api/payroll/periods","status":403,"durationMs":7.9,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.565Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"d390e957-b071-4d82-8a96-0bd3a8068882","method":"PATCH","path":"/api/facilities/17/modules","status":200,"durationMs":16.8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.581Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b2207935-df21-4428-bc50-ea5378af5bb5","method":"GET","path":"/api/payroll/periods","status":200,"durationMs":15.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.599Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4adfc9b8-4a55-46fd-aca1-956b799d75a4","method":"GET","path":"/api/payroll/readiness","status":200,"durationMs":14.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.616Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b4fc7d8f-1fce-4248-b9d7-7a1be60771c6","method":"GET","path":"/api/payroll/readiness","status":200,"durationMs":15.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.625Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"646d50c4-7663-4984-895c-24b83fec7c03","method":"GET","path":"/api/payroll/readiness","status":403,"durationMs":6.7,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.633Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"c49623f1-8374-46c9-b3b5-ac434c949b2a","method":"GET","path":"/api/payroll/readiness","status":403,"durationMs":7.4,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.642Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"2a433d50-704c-43ff-b74d-76244ef056e7","method":"GET","path":"/api/payroll/readiness","status":403,"durationMs":7.6,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.652Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"06c81057-7263-4023-98b0-092d9394e97c","method":"GET","path":"/api/payroll/readiness","status":400,"durationMs":8.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.668Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"2bd0ca39-3f4e-4291-8e49-104def27d14a","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":14.5,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.677Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"51f781b9-da18-4db1-a8cf-66334d8e1cdf","method":"POST","path":"/api/payroll/statutory-versions/43/verify","status":403,"durationMs":7.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.688Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"211c9868-6473-4faa-8e47-01e5e1a60cde","method":"POST","path":"/api/payroll/statutory-versions/43/verify","status":400,"durationMs":9.2,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.700Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"07e7ab32-a71a-49dd-a73a-508e9ebc6140","method":"POST","path":"/api/payroll/statutory-versions/43/verify","status":400,"durationMs":8.9,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.711Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b2960bf3-ea0c-4630-af33-f9b835bfa86d","method":"POST","path":"/api/payroll/statutory-versions/43/verify","status":400,"durationMs":9.1,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.737Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"44db839b-c0f4-45e2-9bab-e8f3ec856bd6","method":"POST","path":"/api/payroll/statutory-versions/43/verify","status":200,"durationMs":23.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.749Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b70ce04a-403e-45c5-b738-f4f44a933dac","method":"POST","path":"/api/payroll/statutory-versions/43/verify","status":409,"durationMs":10.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.801Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"56ecd41d-5a46-4828-98fe-6e575f5f1450","method":"POST","path":"/api/payroll/statutory-versions/43/status","status":409,"durationMs":19.5,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.815Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"44a412c0-38a4-458b-b882-c679b1574c01","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":12.5,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.827Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4e651b3d-375f-4512-a94a-3fb452ac9281","method":"POST","path":"/api/payroll/statutory-versions/44/verify","status":409,"durationMs":10,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.839Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"509582a7-42ab-4c5d-8526-503591ace3e3","method":"GET","path":"/api/payroll/account-settings","status":200,"durationMs":8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.853Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"b1783ad4-5dd0-40b8-a394-2b45950af83b","method":"POST","path":"/api/payroll/periods","status":201,"durationMs":11.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.870Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"955dc82b-9207-4d2b-a490-877f51985f34","method":"POST","path":"/api/payroll/periods/26/calculate","status":409,"durationMs":15.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.884Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"560fb5fa-e597-449f-bb26-b86b645410a8","method":"PUT","path":"/api/payroll/account-settings","status":200,"durationMs":11.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.895Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"363e4ae3-35f2-4279-8800-e1749db33903","method":"PUT","path":"/api/payroll/account-settings","status":409,"durationMs":9,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.909Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"7deca18c-2b7f-4e6e-b763-41141799080f","method":"GET","path":"/api/payroll/readiness","status":200,"durationMs":11.4,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.927Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"f8a0c975-2387-469e-a39c-e79ac469fc9d","method":"POST","path":"/api/payroll/periods/26/calculate","status":409,"durationMs":16.3,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:55.955Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"7138e4c9-5546-4dfd-ac11-42788f35ddb1","method":"POST","path":"/api/payroll/periods/26/calculate","status":200,"durationMs":25.5,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.968Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"0917fbf6-beb4-458b-b140-ca4c7a76029a","method":"POST","path":"/api/payroll/runs/17/approve","status":200,"durationMs":11.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:55.982Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"4388c65a-bf4c-4276-9429-8a7f39b57cfa","method":"POST","path":"/api/payroll/runs/17/post","status":409,"durationMs":12.3,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:56.013Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"baf8e1c9-7f62-4514-9441-100dd8e53f48","method":"POST","path":"/api/payroll/runs/17/post","status":200,"durationMs":27.9,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.026Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"1816da95-8157-4101-97ba-1ae7a12972dd","method":"POST","path":"/api/payroll/runs/17/post","status":409,"durationMs":11.1,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:56.041Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"f7bd13a9-414b-4a21-8031-3f60f603e92e","method":"POST","path":"/api/hr/employees","status":201,"durationMs":10.8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.053Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"f4a5bbd9-d388-42c6-a5a4-fbb6d9a759e6","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":10.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.068Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"3aa02fd5-5321-47da-aaea-2910d47217f2","method":"POST","path":"/api/payroll/statutory-versions/45/verify","status":200,"durationMs":13.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.083Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"a7e32eae-59ee-4d47-9d6b-dc1f0dcc044e","method":"POST","path":"/api/payroll/statutory-versions/45/status","status":200,"durationMs":13.5,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.096Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"51394eaf-b2da-4739-bbe8-9ef1d849032c","method":"POST","path":"/api/payroll/statutory-versions/45/status","status":200,"durationMs":11.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.112Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"51118f15-4f50-4961-8bfb-f3316b4735ba","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":14.4,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.130Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"603ceaa8-04e9-41f7-91ef-d7043ea97f41","method":"POST","path":"/api/payroll/statutory-versions/46/verify","status":200,"durationMs":16.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.144Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"837be7d2-90cd-4def-bb3a-63a932329ce2","method":"POST","path":"/api/payroll/statutory-versions/46/status","status":200,"durationMs":12.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.156Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"dd32eb00-0aae-44b2-8651-5e33e90e2468","method":"POST","path":"/api/payroll/statutory-versions/46/status","status":200,"durationMs":11.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.170Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"81247150-8764-4005-9451-b91e86748eb9","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":11.7,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.183Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"29c0db1d-dd9c-46db-80e9-506f110b4f7a","method":"POST","path":"/api/payroll/statutory-versions/47/verify","status":200,"durationMs":12.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.198Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"89c6dff8-74eb-4b8c-97a8-d9c36e1c550f","method":"POST","path":"/api/payroll/statutory-versions/47/status","status":200,"durationMs":13.8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.213Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"051c902c-934f-4290-95ed-15f8b3d22925","method":"POST","path":"/api/payroll/statutory-versions/47/status","status":200,"durationMs":13.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.225Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"ab491988-9a24-48b5-9147-0ba2648ec97d","method":"POST","path":"/api/payroll/statutory-versions","status":201,"durationMs":10.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.239Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"aacd79ba-4ffa-4bfc-8b7c-b87bea4d8c11","method":"POST","path":"/api/payroll/statutory-versions/48/verify","status":200,"durationMs":12.8,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.254Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"01e97f5b-a064-4e09-888b-e7870b0b6156","method":"POST","path":"/api/payroll/statutory-versions/48/status","status":200,"durationMs":14.1,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.267Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"68c26605-54fb-4287-a611-a476f50d6792","method":"POST","path":"/api/payroll/statutory-versions/48/status","status":200,"durationMs":11.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.279Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"c4730a06-b3a5-4043-b744-ba5e6fdadbc1","method":"POST","path":"/api/payroll/periods","status":201,"durationMs":10.3,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.299Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"d464ab91-5bb2-4cd3-8cd5-ffbab24b5e55","method":"GET","path":"/api/payroll/readiness","status":200,"durationMs":19,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.324Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"9fa7dbeb-eaaf-4183-837d-3260142f8597","method":"POST","path":"/api/payroll/periods/27/calculate","status":200,"durationMs":22.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.335Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"87d6dd30-79b4-47da-bff7-d057121aea84","method":"POST","path":"/api/payroll/periods","status":201,"durationMs":9.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:56.356Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"dbcb5e2a-484e-4f4e-9a5c-090948c80962","method":"POST","path":"/api/payroll/periods/28/calculate","status":409,"durationMs":19.4,"msg":"request.rejected"}
+ ✓ src/tests/integration/workforce-payroll.db.spec.ts (23 tests) 2825ms
+   ✓ workforce and payroll (23)
+     ✓ runs payroll, blocks self-approval and posts a balanced, idempotent journal 423ms
+     ✓ uses verified finite retired rules for historical periods and blocks boundary-crossing periods 330ms
+stdout | src/tests/vitest/bank-payments.db.spec.ts > controlled bank payments: real synthetic PostgreSQL, no provider network > enforces mounted HTTP authentication, scoped access, configuration secrecy and safe settlement retry
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+
+stderr | src/tests/vitest/bank-payments.db.spec.ts > controlled bank payments: real synthetic PostgreSQL, no provider network > enforces mounted HTTP authentication, scoped access, configuration secrecy and safe settlement retry
+WebSocket server error: Port 24678 is already in use
+
+{"level":"info","time":"2026-11-13T22:33:58.914Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"ba91d5fb-cd08-44b9-afc9-e471c7ea587a","method":"GET","path":"/api/bank-payments","status":401,"durationMs":3.9,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:58.942Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"6fb01752-1f05-4572-985c-1895ced0f5b9","method":"GET","path":"/api/bank-payments","status":200,"durationMs":21.6,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:58.962Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"215ad611-e471-4f78-98a0-315bd10b820c","method":"GET","path":"/api/bank-payments","status":400,"durationMs":11.5,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:58.976Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"e4876404-01e7-4865-9d81-b6dcf93f528e","method":"GET","path":"/api/bank-payments","status":403,"durationMs":11.8,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:59.005Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"8ef309af-21c1-45ed-bdf7-a3d0f50420d8","method":"POST","path":"/api/bank-payments/3/approve-and-settle","status":200,"durationMs":24.2,"msg":"request.completed"}
+{"level":"info","time":"2026-11-13T22:33:59.025Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"69a98505-258d-489b-99c1-00fc35f922f0","method":"POST","path":"/api/bank-payments/policy/enable","status":403,"durationMs":9.2,"msg":"request.rejected"}
+{"level":"info","time":"2026-11-13T22:33:59.035Z","service":"jalicare-hmis","env":"development","module":"http","correlationId":"7781c9e3-9ca9-4111-bb8e-76717c7430e5","method":"POST","path":"/api/bank-payments/accounts","status":403,"durationMs":7.8,"msg":"request.rejected"}
+ ✓ src/tests/vitest/bank-payments.db.spec.ts (13 tests) 1707ms
+   ✓ controlled bank payments: real synthetic PostgreSQL, no provider network (13)
+     ✓ enforces mounted HTTP authentication, scoped access, configuration secrecy and safe settlement retry 1156ms
+ ✓ src/tests/vitest/payroll-readiness-ui.spec.tsx (5 tests) 600ms
+   ✓ payroll readiness and verification UI (5)
+     ✓ requires deliberate date, evidence, purpose and source-review attestation before recording verification 371ms
+ ✓ src/tests/vitest/payroll-ui.spec.tsx (9 tests) 526ms
+ ✓ src/tests/workforce-payroll-calculator.spec.ts (21 tests) 13ms
+ ✓ src/tests/vitest/payroll-readiness.spec.ts (11 tests) 7ms
+ ✓ src/tests/vitest/payroll-statutory-policy.spec.ts (4 tests) 5ms
+
+ Test Files  7 passed (7)
+      Tests  86 passed (86)
+   Start at  22:33:49
+   Duration  13.76s (tests 44%, transform 24%, import 16%, environment 9%, setup 6%)
+
+    Isolate  7 workers spawned · ~267ms startup each (spawn + environment, per file)
+             at least ~1.60s faster with isolate: false — reuses workers across files instead of one per file
+
+
+
+=== Chromium HTTP acceptance ===
+PASS synthetic.admin real login
+PASS synthetic.finance real login
+PASS Employee created through HR form
+PASS Created staff visible through scoped payroll API
+PASS Dated earning created through Staff pay UI
+PASS PAYE explicit synthetic source verification through UI
+PASS PAYE verified version activated through UI
+PASS NSSF explicit synthetic source verification through UI
+PASS NSSF verified version activated through UI
+PASS SHIF explicit synthetic source verification through UI
+PASS SHIF verified version activated through UI
+PASS AHL explicit synthetic source verification through UI
+PASS AHL verified version activated through UI
+PASS Four source-cited effective-dated synthetic policies reviewed and activated
+PASS Administrator selects and saves facility accounting mappings through UI
+PASS Synthetic configuration is explicitly not certified production-ready
+PASS Payroll period created through browser
+PASS Payroll calculated through browser
+PASS Preparer cannot approve via API
+PASS Independent authorized approval through browser
+PASS Authorized payroll finalization through browser
+PASS Bulk payslips and four remittance schedules reconcile
+PASS Bulk print clones only individual payslips without application navigation
+PASS Individual print contains the selected payslip, not the run or employee register
+PASS Annual review downloaded through browser with pay-date scope and no filing/payment claims
+PASS Exactly one balanced source-linked payroll journal
+PASS No uncaught browser rendering errors
+Browser acceptance: 27 assertions passed; no salaries paid or statutory returns filed.
+
+
+=== TypeScript final: exit 0 ===
+
+
+=== ESLint full repository: exit 0, 106 warnings ===
+
+> jalicare-hmis@0.1.0 lint
+> eslint .
+
+
+/home/user/afyahub-hmis-kenya/src/components/Header.tsx
+  117:6   warning  React Hook useEffect has a missing dependency: 'setNotificationsOpen'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      react-hooks/exhaustive-deps
+  120:28  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/Header.tsx:120:28
+  118 |
+  119 |   useEffect(() => {
+> 120 |     if (notificationsOpen) setProfileOpen(false);
+      |                            ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  121 |   }, [notificationsOpen]);
+  122 |
+  123 |   useEffect(() => {  react-hooks/set-state-in-effect
+  133:6   warning  React Hook useEffect has a missing dependency: 'setNotificationsOpen'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      react-hooks/exhaustive-deps
+
+/home/user/afyahub-hmis-kenya/src/components/PatientConsentAllergyPanel.tsx
+  157:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/PatientConsentAllergyPanel.tsx:157:10
+  155 |
+  156 |   useEffect(() => {
+> 157 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  158 |   }, [load]);
+  159 |
+  160 |   const toggleScope = (scope: string) => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/inventory/StockControlPanel.tsx
+  109:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/inventory/StockControlPanel.tsx:109:10
+  107 |
+  108 |   useEffect(() => {
+> 109 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  110 |     // Reloading depends on the facility and the open count only; `load`
+  111 |     // already closes over both.
+  112 |   }, [facilityId]); // eslint-disable-line react-hooks/exhaustive-deps  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/AccountingModule.tsx
+  95:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/AccountingModule.tsx:95:10
+  93 |   }, [facilityId, start, end]);
+  94 |   useEffect(() => {
+> 95 |     void load();
+     |          ^^^^ Avoid calling setState() directly within an effect
+  96 |   }, [load]);
+  97 |   const run = async (action: () => Promise<unknown>, success: string) => {
+  98 |     setBusy(true);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/AddClinicalService.tsx
+  47:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/AddClinicalService.tsx:47:5
+  45 |   useEffect(() => {
+  46 |     scopeVersion.current += 1;
+> 47 |     setOpen(false);
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  48 |     setRows([]);
+  49 |     setLabs({});
+  50 |     setExam('');                                                         react-hooks/set-state-in-effect
+  65:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/AddClinicalService.tsx:65:5
+  63 |     if (!open || (family === 'LABORATORY' ? !canOrderLab : !canOrderImaging)) return;
+  64 |     let active = true;
+> 65 |     setLoading(true);
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  66 |     setError('');
+  67 |     setRows([]);
+  68 |     api  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/AppointmentDiary.tsx
+  105:7  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/AppointmentDiary.tsx:105:7
+  103 |     let live = true;
+  104 |     if (!facilityId || !range) {
+> 105 |       setRows([]);
+      |       ^^^^^^^ Avoid calling setState() directly within an effect
+  106 |       setLoading(false);
+  107 |       setError('');
+  108 |       return;  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/BedBillingPolicyPanel.tsx
+  26:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/BedBillingPolicyPanel.tsx:26:5
+  24 |   useEffect(() => {
+  25 |     let live = true;
+> 26 |     setPolicy(undefined);
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  27 |     setError('');
+  28 |     api
+  29 |       .getBedBillingPolicy(facilityId)  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/BillingCashierModule.tsx
+   83:7  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/BillingCashierModule.tsx:83:7
+  81 |   useEffect(() => {
+  82 |     if (!paymentStorageKey) {
+> 83 |       setPendingPayment(null);
+     |       ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  84 |       setPaymentStorageError('');
+  85 |       return;
+  86 |     }                                                     react-hooks/set-state-in-effect
+  115:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/BillingCashierModule.tsx:115:5
+  113 |   useLayoutEffect(() => {
+  114 |     paymentScopeVersion.current += 1;
+> 115 |     setPaymentRecoveryBusy(false);
+      |     ^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  116 |     setIsPostingPayment(false);
+  117 |     setCancelReason('');
+  118 |     return () => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/BrandingDocumentsPanel.tsx
+  111:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/BrandingDocumentsPanel.tsx:111:10
+  109 |
+  110 |   useEffect(() => {
+> 111 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  112 |     return () => {
+  113 |       if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+  114 |     };  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ClaimEvidencePreview.tsx
+  41:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ClaimEvidencePreview.tsx:41:5
+  39 |   useLayoutEffect(() => {
+  40 |     version.current += 1;
+> 41 |     setBusy(false);
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  42 |     setPreview(null);
+  43 |     setError('');
+  44 |     setSelected([]);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ConfigurationModule.tsx
+  131:26  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ConfigurationModule.tsx:131:26
+  129 |      * the module switches as well, so they are not forced to Staff.
+  130 |      */
+> 131 |     if (integrationOnly) setActiveTab('integrations');
+      |                          ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  132 |     else if (staffOnly) setActiveTab('staff');
+  133 |   }, [staffOnly, integrationOnly]);
+  134 |                                                                react-hooks/set-state-in-effect
+  159:5   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ConfigurationModule.tsx:159:5
+  157 |
+  158 |   useEffect(() => {
+> 159 |     setModuleDraft(resolveFacilityModules(currentFacility?.enabledModules));
+      |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  160 |     setHiddenDraft(resolveHiddenFacilityModules(currentFacility?.hiddenModules));
+  161 |     setModuleError('');
+  162 |   }, [currentFacility?.id, currentFacility?.enabledModules, currentFacility?.hiddenModules]);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/DhaCompliancePanel.tsx
+  132:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/DhaCompliancePanel.tsx:132:10
+  130 |
+  131 |   useEffect(() => {
+> 132 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  133 |   }, [load]);
+  134 |
+  135 |   if (loading) {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/DialysisModule.tsx
+  134:28  warning  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `currentFacility`, but the source dependencies were [currentFacility?.id]. Inferred less specific property than source.
+
+/home/user/afyahub-hmis-kenya/src/components/modules/DialysisModule.tsx:134:28
+  132 |   const permissions = new Set(authenticatedUser?.permissions ?? []),
+  133 |     can = (p: string) => Boolean(authenticatedUser?.isSuperAdmin || permissions.has(p));
+> 134 |   const load = useCallback(async () => {
+      |                            ^^^^^^^^^^^^^
+> 135 |     if (!currentFacility?.id) return;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 136 |     try {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 137 |       setError('');
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 138 |       const workspace = await sprintApi.dialysisWorkspace(currentFacility.id);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 139 |       if (mountedRef.current) setData(workspace);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 140 |     } catch (e: unknown) {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 141 |       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not load dialysis.');
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 142 |     }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 143 |   }, [currentFacility?.id]);
+      | ^^^^ Could not preserve existing manual memoization
+  144 |   useEffect(() => {
+  145 |     void load();
+  146 |   }, [load]);  react-hooks/preserve-manual-memoization
+  145:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/DialysisModule.tsx:145:10
+  143 |   }, [currentFacility?.id]);
+  144 |   useEffect(() => {
+> 145 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  146 |   }, [load]);
+  147 |   const run = async (action: () => Promise<unknown>, message: string) => {
+  148 |     setBusy(true);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/EncounterBillingView.tsx
+  31:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/EncounterBillingView.tsx:31:5
+  29 |     if (!open) return;
+  30 |     let current = true;
+> 31 |     setDataScope(scope);
+     |     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  32 |     setLoading(true);
+  33 |     setError('');
+  34 |     setDetails([]);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityBillingReview.tsx
+  24:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityBillingReview.tsx:24:10
+  22 |   }, [facilityId]);
+  23 |   useEffect(() => {
+> 24 |     void load();
+     |          ^^^^ Avoid calling setState() directly within an effect
+  25 |   }, [load]);
+  26 |   async function retry(id: number | 'all') {
+  27 |     if (!canManage || busy !== null) return;  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityRbacEditor.tsx
+  64:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityRbacEditor.tsx:64:10
+  62 |
+  63 |   useEffect(() => {
+> 64 |     void loadRoles();
+     |          ^^^^^^^^^ Avoid calling setState() directly within an effect
+  65 |   }, [loadRoles]);
+  66 |
+  67 |   const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? null;                                          react-hooks/set-state-in-effect
+  70:5   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityRbacEditor.tsx:70:5
+  68 |
+  69 |   useEffect(() => {
+> 70 |     setDraftPermissionIds(selectedRole ? [...selectedRole.permissionIds] : []);
+     |     ^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  71 |   }, [selectedRoleId, roles]);
+  72 |
+  73 |   const groupedPermissions = useMemo(() => {  react-hooks/set-state-in-effect
+  71:6   warning  React Hook useEffect has a missing dependency: 'selectedRole'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    react-hooks/exhaustive-deps
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityServiceTariffsPanel.tsx
+  175:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityServiceTariffsPanel.tsx:175:10
+  173 |
+  174 |   useEffect(() => {
+> 175 |     void loadLinks();
+      |          ^^^^^^^^^ Avoid calling setState() directly within an effect
+  176 |     void loadDiagnostics();
+  177 |   }, [loadLinks, loadDiagnostics]);
+  178 |                                react-hooks/set-state-in-effect
+  258:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityServiceTariffsPanel.tsx:258:10
+  256 |
+  257 |   useEffect(() => {
+> 258 |     void loadTariffs();
+      |          ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  259 |   }, [loadTariffs]);
+  260 |
+  261 |   const loadAttempts = useCallback(async () => {                      react-hooks/set-state-in-effect
+  283:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityServiceTariffsPanel.tsx:283:10
+  281 |
+  282 |   useEffect(() => {
+> 283 |     void loadAttempts();
+      |          ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  284 |   }, [loadAttempts]);
+  285 |
+  286 |   const retryAttempt = async (attempt: BillingChargeAttempt) => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityServicesManager.tsx
+  125:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FacilityServicesManager.tsx:125:10
+  123 |   }, [facilityId]);
+  124 |   useEffect(() => {
+> 125 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  126 |     return () => {
+  127 |       generation.current += 1;
+  128 |     };  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FinalizedInvoicePanel.tsx
+  51:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FinalizedInvoicePanel.tsx:51:5
+  49 |   useLayoutEffect(() => {
+  50 |     scopeVersion.current += 1;
+> 51 |     setBusy(false);
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  52 |     setView(null);
+  53 |     setHubTransactions(null);
+  54 |     return () => {                    react-hooks/set-state-in-effect
+  61:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FinalizedInvoicePanel.tsx:61:5
+  59 |   useEffect(() => {
+  60 |     let cancelled = false;
+> 61 |     setView(null);
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  62 |     setError('');
+  63 |     setIssues([]);
+  64 |     setPaymentId(null);                                      react-hooks/set-state-in-effect
+  87:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FinalizedInvoicePanel.tsx:87:5
+  85 |   useEffect(() => {
+  86 |     let cancelled = false;
+> 87 |     setHubTransactions(null);
+     |     ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  88 |     setHubError('');
+  89 |     if (facilityId && canViewHub)
+  90 |       paymentHubApi  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FinancialTransactionsPanel.tsx
+  38:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FinancialTransactionsPanel.tsx:38:5
+  36 |   useEffect(() => {
+  37 |     let active = true;
+> 38 |     setReport(null);
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  39 |     setError(null);
+  40 |     if (!canRead || !currentFacility?.id || !from || !to) {
+  41 |       setLoading(false);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FixedAssetsModule.tsx
+  149:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/FixedAssetsModule.tsx:149:10
+  147 |
+  148 |   useEffect(() => {
+> 149 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  150 |   }, [load, refreshKey]);
+  151 |
+  152 |   // `chargeCents` already arrives as integer cents, so it must never round-trip through KES  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InpatientModule.tsx
+  158:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InpatientModule.tsx:158:5
+  156 |   useEffect(() => {
+  157 |     let live = true;
+> 158 |     setAdmissionPolicy(undefined);
+      |     ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  159 |     setAdmissionPolicyError(false);
+  160 |     if (isAdmitModalOpen && currentFacility?.id)
+  161 |       api                                                                        react-hooks/set-state-in-effect
+  175:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InpatientModule.tsx:175:5
+  173 |   useEffect(() => {
+  174 |     let live = true;
+> 175 |     setPatientEncounters([]);
+      |     ^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  176 |     setEncounterError(false);
+  177 |     setAdmitForm((previous) => ({ ...previous, encounterId: '' }));
+  178 |     if (isAdmitModalOpen && admitForm.patientId && canReadClinical) {  react-hooks/set-state-in-effect
+  194:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InpatientModule.tsx:194:5
+  192 |   useEffect(() => {
+  193 |     let current = true;
+> 194 |     setAdmissionServices([]);
+      |     ^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  195 |     setAdmissionServiceError(false);
+  196 |     setAdmitForm((previous) => ({ ...previous, facilityServiceId: '' }));
+  197 |     if (isAdmitModalOpen && currentFacility?.id) {     react-hooks/set-state-in-effect
+  282:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InpatientModule.tsx:282:5
+  280 |   useEffect(() => {
+  281 |     let live = true;
+> 282 |     setBedViews({});
+      |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  283 |     Promise.all(
+  284 |       admissions.map(async (admission) => {
+  285 |         try {                                                                                                                 react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InteroperabilityModule.tsx
+  125:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InteroperabilityModule.tsx:125:10
+  123 |
+  124 |   useEffect(() => {
+> 125 |     void loadReadiness(false);
+      |          ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  126 |     return () => {
+  127 |       readinessRequest.current += 1;
+  128 |     };                                                                                   react-hooks/set-state-in-effect
+  134:5   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InteroperabilityModule.tsx:134:5
+  132 |     let active = true;
+  133 |     eligibilityRequest.current += 1;
+> 134 |     setPatientList(null);
+      |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  135 |     setSelection(null);
+  136 |     setPatientsError('');
+  137 |     setEligibilityState(null);                                   react-hooks/set-state-in-effect
+  164:5   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InteroperabilityModule.tsx:164:5
+  162 |   useEffect(() => {
+  163 |     let active = true;
+> 164 |     setCallState({ scope: scopeKey, rows: [], status: 'loading' });
+      |     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  165 |     if (currentFacility?.id) {
+  166 |       void api
+  167 |         .getDhaCalls(currentFacility.id, 25)  react-hooks/set-state-in-effect
+  184:5   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InteroperabilityModule.tsx:184:5
+  182 |   useEffect(() => {
+  183 |     let active = true;
+> 184 |     setFhirState(null);
+      |     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  185 |     setFhirError('');
+  186 |     if (!selectedPatientId || !currentFacility?.id) {
+  187 |       setFhirLoading(false);                                react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InvoiceFinancialSummary.tsx
+  22:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/InvoiceFinancialSummary.tsx:22:5
+  20 |   useEffect(() => {
+  21 |     let active = true;
+> 22 |     setSummary(null);
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  23 |     setError('');
+  24 |     api
+  25 |       .getInvoiceDetail(invoice.id)  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/MaternityModule.tsx
+  151:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/MaternityModule.tsx:151:10
+  149 |
+  150 |   useEffect(() => {
+> 151 |     void loadAll();
+      |          ^^^^^^^ Avoid calling setState() directly within an effect
+  152 |   }, [loadAll]);
+  153 |
+  154 |   const runAction = useCallback(async (action: () => Promise<void>, fallback: string) => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/NursingPanel.tsx
+  140:7   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/NursingPanel.tsx:140:7
+  138 |   useEffect(() => {
+  139 |     if (admissionId === null && admissions.length > 0) {
+> 140 |       setAdmissionId(admissions[0].id);
+      |       ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  141 |     }
+  142 |
+  143 |     if (admissionId !== null && !admissions.some((admission) => admission.id === admissionId)) {           react-hooks/set-state-in-effect
+  203:32  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/NursingPanel.tsx:203:32
+  201 |
+  202 |   useEffect(() => {
+> 203 |     if (tab === 'vitals') void loadVitals();
+      |                                ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  204 |     if (tab === 'notes') void loadNotes();
+  205 |     if (tab === 'handover') void loadHandover();
+  206 |   }, [tab, loadVitals, loadNotes, loadHandover]);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/OutpatientModule.tsx
+  233:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/OutpatientModule.tsx:233:5
+  231 |   useEffect(() => {
+  232 |     let current = true;
+> 233 |     setLabServices([]);
+      |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  234 |     setConsultationServices([]);
+  235 |     setServiceLoadError(false);
+  236 |     if (currentFacility?.id) {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PatientPortalModule.tsx
+   165:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PatientPortalModule.tsx:165:10
+  163 |
+  164 |   useEffect(() => {
+> 165 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  166 |   }, [load]);
+  167 |
+  168 |   if (loading) {                                                                                              react-hooks/set-state-in-effect
+   369:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PatientPortalModule.tsx:369:10
+  367 |
+  368 |   useEffect(() => {
+> 369 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  370 |   }, [load]);
+  371 |
+  372 |   const openDetail = async (accountId: number) => {                                                           react-hooks/set-state-in-effect
+  1101:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PatientPortalModule.tsx:1101:10
+  1099 |
+  1100 |   useEffect(() => {
+> 1101 |     void load();
+       |          ^^^^ Avoid calling setState() directly within an effect
+  1102 |   }, [load]);
+  1103 |
+  1104 |   if (loading) return <p className="py-6 text-xs text-ink-soft">Reading the portal audit trail…</p>;  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PatientRegistrationModule.tsx
+  140:7  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PatientRegistrationModule.tsx:140:7
+  138 |   useEffect(() => {
+  139 |     if (directorySearch) {
+> 140 |       setSearch(directorySearch);
+      |       ^^^^^^^^^ Avoid calling setState() directly within an effect
+  141 |       setDirectorySearch('');
+  142 |     }
+  143 |   }, [directorySearch, setDirectorySearch]);                                                                                                       react-hooks/set-state-in-effect
+  154:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PatientRegistrationModule.tsx:154:5
+  152 |     if (!candidates.length) return;
+  153 |     let active = true;
+> 154 |     setDuplicateCheck({ key: duplicateKey, status: 'checking' });
+      |     ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  155 |     const tenantId = currentTenant.id;
+  156 |     const facilityId = currentFacility.id;
+  157 |     const timer = window.setTimeout(async () => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PayrollModule.tsx
+  150:6   warning  React Hook useCallback has a missing dependency: 'permissions'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react-hooks/exhaustive-deps
+  158:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PayrollModule.tsx:158:10
+  156 |
+  157 |   useEffect(() => {
+> 158 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  159 |   }, [load, refreshKey]);
+  160 |
+  161 |   const activeVersions = useMemo(  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PharmacyModule.tsx
+  68:7  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PharmacyModule.tsx:68:7
+  66 |   useEffect(() => {
+  67 |     if (!storageKey) {
+> 68 |       setPendingDispense(null);
+     |       ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  69 |       setStorageError('A signed-in user and facility are required.');
+  70 |       return;
+  71 |     }  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PlatformAdministrationModule.tsx
+  167:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PlatformAdministrationModule.tsx:167:10
+  165 |
+  166 |   useEffect(() => {
+> 167 |     void loadData();
+      |          ^^^^^^^^ Avoid calling setState() directly within an effect
+  168 |   }, [loadData]);
+  169 |   const loadInvitations = useCallback(async () => {
+  170 |     setLoadingInvitations(true);                                                      react-hooks/set-state-in-effect
+  184:40  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PlatformAdministrationModule.tsx:184:40
+  182 |
+  183 |   useEffect(() => {
+> 184 |     if (tab === 'administrators') void loadInvitations();
+      |                                        ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  185 |   }, [tab, loadInvitations]);
+  186 |
+  187 |   const revokeInvitation = async (id: number) => {  react-hooks/set-state-in-effect
+  319:7   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PlatformAdministrationModule.tsx:319:7
+  317 |   useEffect(() => {
+  318 |     if (!selectedFacility) {
+> 319 |       setEditFacilityForm({
+      |       ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  320 |         code: '',
+  321 |         name: '',
+  322 |         level: 'Level 4',                                                    react-hooks/set-state-in-effect
+  350:7   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/PlatformAdministrationModule.tsx:350:7
+  348 |   useEffect(() => {
+  349 |     if (!selectedFacility) {
+> 350 |       setEnabledModuleSelection([...DEFAULT_FACILITY_MODULES]);
+      |       ^^^^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  351 |       return;
+  352 |     }
+  353 |                                                    react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/RadiologyModule.tsx
+   69:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/RadiologyModule.tsx:69:5
+  67 |   useEffect(() => {
+  68 |     let active = true;
+> 69 |     setExaminations([]);
+     |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  70 |     setCatalogueError(false);
+  71 |     if (currentFacility?.id) {
+  72 |       Promise.resolve()                                                                react-hooks/set-state-in-effect
+  159:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/RadiologyModule.tsx:159:5
+  157 |   useEffect(() => {
+  158 |     let current = true;
+> 159 |     setPatientEncounters([]);
+      |     ^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  160 |     setEncountersError(false);
+  161 |     if (isNewReqModalOpen && reqForm.patientId && currentFacility?.id) {
+  162 |       Promise.resolve()  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ReceptionQueueModule.tsx
+  150:7  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ReceptionQueueModule.tsx:150:7
+  148 |     let active = true;
+  149 |     if (!currentFacility?.id) {
+> 150 |       setCategories([]);
+      |       ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  151 |       setResources({ departments: [], practitioners: [] });
+  152 |       setConfigFacilityId(undefined);
+  153 |       return;  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/RefundsPanel.tsx
+  65:7  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/RefundsPanel.tsx:65:7
+  63 |   useEffect(() => {
+  64 |     if (!storageKey) {
+> 65 |       setPending(null);
+     |       ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  66 |       setStorageError('');
+  67 |       return;
+  68 |     }                          react-hooks/set-state-in-effect
+  86:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/RefundsPanel.tsx:86:5
+  84 |   useEffect(() => {
+  85 |     let cancelled = false;
+> 86 |     setLoadedScope(null);
+     |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  87 |     setLoadError('');
+  88 |     setPayments([]);
+  89 |     setRefunds([]);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ReportsModule.tsx
+  169:28  warning  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `currentFacility`, but the source dependencies were [currentFacility?.id, range]. Inferred less specific property than source.
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ReportsModule.tsx:169:28
+  167 |   const range = useMemo(() => periodRange(period), [period]);
+  168 |
+> 169 |   const load = useCallback(async () => {
+      |                            ^^^^^^^^^^^^^
+> 170 |     if (!currentFacility?.id) {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 171 |       setRevenue(null);
+      …
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 218 |     setLoading(false);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 219 |   }, [currentFacility?.id, range]);
+      | ^^^^ Could not preserve existing manual memoization
+  220 |
+  221 |   useEffect(() => {
+  222 |     void load();  react-hooks/preserve-manual-memoization
+  222:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ReportsModule.tsx:222:10
+  220 |
+  221 |   useEffect(() => {
+> 222 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  223 |   }, [load, refreshKey]);
+  224 |
+  225 |   const byService = revenue?.byService ?? [];                                                                                                                                                  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ReviewedLabSpecimens.tsx
+  31:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/ReviewedLabSpecimens.tsx:31:5
+  29 |   useEffect(() => {
+  30 |     let current = true;
+> 31 |     setError('');
+     |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  32 |     api
+  33 |       .getReviewedLabSpecimens(facilityId)
+  34 |       .then((value) => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/StaffInvitationsPanel.tsx
+  133:6   warning  React Hook useCallback has missing dependencies: 'invitations', 'regulators', and 'roles'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    react-hooks/exhaustive-deps
+  136:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/StaffInvitationsPanel.tsx:136:10
+  134 |
+  135 |   useEffect(() => {
+> 136 |     void loadData();
+      |          ^^^^^^^^ Avoid calling setState() directly within an effect
+  137 |   }, [loadData]);
+  138 |
+  139 |   const createInvitation = async (event: React.FormEvent) => {  react-hooks/set-state-in-effect
+  558:70  warning  Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/StaffInvitationsPanel.tsx:558:70
+  556 |                       ? 'revoked'
+  557 |                       : invitation.expiresAt &&
+> 558 |                           new Date(invitation.expiresAt).getTime() < Date.now()
+      |                                                                      ^^^^^^^^^^ Cannot call impure function
+  559 |                         ? 'expired'
+  560 |                         : 'pending');
+  561 |                 const pending = status.toLowerCase() === 'pending';                                                                                                                                                         react-hooks/purity
+
+/home/user/afyahub-hmis-kenya/src/components/modules/StaffRolesPanel.tsx
+  194:6   warning  React Hook useCallback has missing dependencies: 'roles' and 'staff'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               react-hooks/exhaustive-deps
+  197:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/StaffRolesPanel.tsx:197:10
+  195 |
+  196 |   useEffect(() => {
+> 197 |     void loadData();
+      |          ^^^^^^^^ Avoid calling setState() directly within an effect
+  198 |   }, [loadData]);
+  199 |
+  200 |   const editing = useMemo(  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/StaffVerificationModal.tsx
+  166:6  warning  React Hook useEffect has a missing dependency: 'regulators'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/user/afyahub-hmis-kenya/src/components/modules/SubscriptionBillingPanel.tsx
+  128:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/SubscriptionBillingPanel.tsx:128:10
+  126 |
+  127 |   useEffect(() => {
+> 128 |     void loadPeriods();
+      |          ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  129 |   }, [loadPeriods]);
+  130 |
+  131 |   useEffect(() => {                                                           react-hooks/set-state-in-effect
+  132:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/SubscriptionBillingPanel.tsx:132:10
+  130 |
+  131 |   useEffect(() => {
+> 132 |     void loadPayments();
+      |          ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  133 |   }, [loadPayments]);
+  134 |
+  135 |   async function perform(label: string, action: () => Promise<unknown>) {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/SuperAdminDashboardModule.tsx
+  92:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/SuperAdminDashboardModule.tsx:92:10
+  90 |
+  91 |   useEffect(() => {
+> 92 |     void refresh();
+     |          ^^^^^^^ Avoid calling setState() directly within an effect
+  93 |   }, [refresh]);
+  94 |
+  95 |   const cardClass = 'rounded-xl border border-slate-200 bg-white p-5 shadow-sm';  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/TariffValidationPanel.tsx
+  17:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/TariffValidationPanel.tsx:17:5
+  15 |     if (!started) return;
+  16 |     let cancelled = false;
+> 17 |     setBusy(true);
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  18 |     setError('');
+  19 |     setReport(null);
+  20 |     api  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/TheatreModule.tsx
+  115:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/TheatreModule.tsx:115:5
+  113 |   useEffect(() => {
+  114 |     let active = true;
+> 115 |     setRooms([]);
+      |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  116 |     setCases([]);
+  117 |     setPractitioners([]);
+  118 |     setLoadedFor(null);                                                                                       react-hooks/set-state-in-effect
+  158:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/TheatreModule.tsx:158:5
+  156 |   // Never carry a patient, reason, request key or open form into another facility.
+  157 |   useEffect(() => {
+> 158 |     setShowCreate(false);
+      |     ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  159 |     setForm(emptyForm());
+  160 |     setPatientResults([]);
+  161 |     setPatientSearch('');  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/WorkforceModule.tsx
+  238:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/WorkforceModule.tsx:238:10
+  236 |
+  237 |   useEffect(() => {
+> 238 |     void loadCore();
+      |          ^^^^^^^^ Avoid calling setState() directly within an effect
+  239 |   }, [loadCore, refreshKey]);
+  240 |
+  241 |   useEffect(() => {                                                                                                           react-hooks/set-state-in-effect
+  242:36  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/WorkforceModule.tsx:242:36
+  240 |
+  241 |   useEffect(() => {
+> 242 |     if (tab === 'attendance') void loadAttendance(attendanceDate);
+      |                                    ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  243 |   }, [tab, attendanceDate, loadAttendance, refreshKey]);
+  244 |
+  245 |   useEffect(() => {  react-hooks/set-state-in-effect
+  246:31  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/WorkforceModule.tsx:246:31
+  244 |
+  245 |   useEffect(() => {
+> 246 |     if (tab === 'leave') void loadLeave();
+      |                               ^^^^^^^^^ Avoid calling setState() directly within an effect
+  247 |   }, [tab, loadLeave, refreshKey]);
+  248 |
+  249 |   const filteredEmployees = useMemo(() => {                                 react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/ClaimsLifecycleWorkspace.tsx
+  120:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/ClaimsLifecycleWorkspace.tsx:120:10
+  118 |
+  119 |   useEffect(() => {
+> 120 |     void loadClaims();
+      |          ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  121 |   }, [loadClaims]);
+  122 |
+  123 |   const openClaimDetail = async (id: number) => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/EligibilityAndBenefitsWorkspace.tsx
+  183:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/EligibilityAndBenefitsWorkspace.tsx:183:10
+  181 |
+  182 |   useEffect(() => {
+> 183 |     void loadRecentEligibility();
+      |          ^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  184 |   }, [loadRecentEligibility]);
+  185 |
+  186 |   useEffect(() => {                                                                                                      react-hooks/set-state-in-effect
+  188:12  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/EligibilityAndBenefitsWorkspace.tsx:188:12
+  186 |   useEffect(() => {
+  187 |     if (selectedPatientId !== '') {
+> 188 |       void loadPatientSpecificHistory(Number(selectedPatientId));
+      |            ^^^^^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  189 |     } else {
+  190 |       setPatientHistory([]);
+  191 |       setPatientBenefitsList([]);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/PreauthorizationWorkspace.tsx
+  91:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/PreauthorizationWorkspace.tsx:91:10
+  89 |
+  90 |   useEffect(() => {
+> 91 |     void loadData();
+     |          ^^^^^^^^ Avoid calling setState() directly within an effect
+  92 |   }, [loadData]);
+  93 |
+  94 |   const handleCreate = async (e: React.FormEvent) => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/RemittanceAndAdminWorkspace.tsx
+  170:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/eclaims/RemittanceAndAdminWorkspace.tsx:170:10
+  168 |
+  169 |   useEffect(() => {
+> 170 |     void loadSectionData();
+      |          ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  171 |   }, [loadSectionData]);
+  172 |
+  173 |   const handleSyncHieRemittances = async () => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/maternity/DeliveryRegisterSection.tsx
+  68:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/maternity/DeliveryRegisterSection.tsx:68:5
+  66 |   useEffect(() => {
+  67 |     let current = true;
+> 68 |     setServiceId('');
+     |     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  69 |     setDeliveryServices([]);
+  70 |     setServiceError('');
+  71 |     if (facilityId && deliveryOpen) {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payer-hub/FacilityPayerIntegrations.tsx
+  44:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payer-hub/FacilityPayerIntegrations.tsx:44:5
+  42 |   }, [facilityId, canView, isSuper]);
+  43 |   useEffect(() => {
+> 44 |     setLoaded(null);
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  45 |     setError('');
+  46 |     setNotice('');
+  47 |     void load().catch((e) =>  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payer-hub/PlatformPayerRegistry.tsx
+  56:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payer-hub/PlatformPayerRegistry.tsx:56:10
+  54 |   }, [canRead, canAssign, superAdmin]);
+  55 |   useEffect(() => {
+> 56 |     void load().catch((e) => setError(e instanceof Error ? e.message : 'Could not load payers.'));
+     |          ^^^^ Avoid calling setState() directly within an effect
+  57 |   }, [load]);
+  58 |   const run = async (action: () => Promise<unknown>, message: string) => {
+  59 |     setBusy(true);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/BankPaymentsWorkspace.tsx
+  46:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/BankPaymentsWorkspace.tsx:46:5
+  44 |   useEffect(() => {
+  45 |     let current = true;
+> 46 |     setData(null);
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  47 |     setError('');
+  48 |     if (allowed && facilityId)
+  49 |       Promise.all([bank.workspace(facilityId), bank.policy(facilityId)])  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/FacilityPaymentIntegrations.tsx
+  53:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/FacilityPaymentIntegrations.tsx:53:5
+  51 |   }, [facilityId, canView, isSuper]);
+  52 |   useEffect(() => {
+> 53 |     setScopedData(null);
+     |     ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  54 |     setNotice('');
+  55 |     void load();
+  56 |     return () => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/PaymentTransactions.tsx
+  54:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/PaymentTransactions.tsx:54:5
+  52 |   }, [activeFacilityId, canRead]);
+  53 |   useEffect(() => {
+> 54 |     setScopedData(null);
+     |     ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  55 |     setNotice('');
+  56 |     void load();
+  57 |     return () => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/PlatformPaymentProviders.tsx
+  45:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/PlatformPaymentProviders.tsx:45:10
+  43 |   }, [canAssign]);
+  44 |   useEffect(() => {
+> 45 |     void load();
+     |          ^^^^ Avoid calling setState() directly within an effect
+  46 |   }, [load]);
+  47 |   const run = async (action: () => Promise<unknown>, message: string) => {
+  48 |     setBusy(true);  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/SandboxCollectionForm.tsx
+   86:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/SandboxCollectionForm.tsx:86:5
+  84 |   useLayoutEffect(() => {
+  85 |     version.current += 1;
+> 86 |     setIntegrations([]);
+     |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  87 |     setInvoices([]);
+  88 |     setIntegrationCursor(null);
+  89 |     setInvoiceCursor(null);                                                                                                                      react-hooks/set-state-in-effect
+  129:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/SandboxCollectionForm.tsx:129:5
+  127 |
+  128 |   useEffect(() => {
+> 129 |     readRecoveryIdentity();
+      |     ^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  130 |     const changed = (event: StorageEvent) => {
+  131 |       if (!storageName || (event.key !== storageName && event.key !== null)) return;
+  132 |       // Another tab may have changed the identity while a request was in flight  react-hooks/set-state-in-effect
+  148:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/SandboxCollectionForm.tsx:148:5
+  146 |     if (!allowed || !facilityId) return;
+  147 |     let cancelled = false;
+> 148 |     setLoadingIntegrations(true);
+      |     ^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  149 |     setIntegrationError(false);
+  150 |     setIntegrations([]);
+  151 |     setIntegrationId('');                                                                            react-hooks/set-state-in-effect
+  173:7  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payment-hub/SandboxCollectionForm.tsx:173:7
+  171 |   useEffect(() => {
+  172 |     if (!allowed || !facilityId || fixedInvoice) {
+> 173 |       setLoadingInvoices(false);
+      |       ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  174 |       return;
+  175 |     }
+  176 |     let cancelled = false;                                                                                                                react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payroll/PayrollReadiness.tsx
+  30:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/payroll/PayrollReadiness.tsx:30:5
+  28 |   useEffect(() => {
+  29 |     let live = true;
+> 30 |     setResult(null);
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  31 |     setError('');
+  32 |     onResult(null);
+  33 |     fetchJson<PayrollReadiness>(  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/modules/private-insurance/PrivateInsuranceModule.tsx
+  217:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/modules/private-insurance/PrivateInsuranceModule.tsx:217:10
+  215 |
+  216 |   useEffect(() => {
+> 217 |     void loadAll();
+      |          ^^^^^^^ Avoid calling setState() directly within an effect
+  218 |     return () => {
+  219 |       requestGeneration.current += 1;
+  220 |     };  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/portal/PortalApp.tsx
+  220:7   warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/portal/PortalApp.tsx:220:7
+  218 |
+  219 |     if (raw) {
+> 220 |       setToken(decodeURIComponent(raw));
+      |       ^^^^^^^^ Avoid calling setState() directly within an effect
+  221 |     }
+  222 |
+  223 |     if (window.location.hash) {            react-hooks/set-state-in-effect
+  920:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/portal/PortalApp.tsx:920:10
+  918 |
+  919 |   useEffect(() => {
+> 920 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  921 |   }, [load]);
+  922 |
+  923 |   const create = async (event: React.FormEvent) => {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/portal/PortalInviteDialog.tsx
+  117:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/portal/PortalInviteDialog.tsx:117:10
+  115 |
+  116 |   useEffect(() => {
+> 117 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+  118 |   }, [load]);
+  119 |
+  120 |   if (!open) return null;  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/components/procurement/ReceivingPanel.tsx
+   96:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/procurement/ReceivingPanel.tsx:96:10
+  94 |
+  95 |   useEffect(() => {
+> 96 |     void load();
+     |          ^^^^ Avoid calling setState() directly within an effect
+  97 |   }, [load]);
+  98 |
+  99 |   const payableTotal = invoices.reduce(  react-hooks/set-state-in-effect
+  353:53  warning  Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/home/user/afyahub-hmis-kenya/src/components/procurement/ReceivingPanel.tsx:353:53
+  351 |   const [lines, setLines] = useState<OutstandingOrderLine[]>([]);
+  352 |   const [quantities, setQuantities] = useState<Record<number, string>>({});
+> 353 |   const [grnNumber, setGrnNumber] = useState(`GRN-${Date.now().toString(36).toUpperCase()}`);
+      |                                                     ^^^^^^^^^^ Cannot call impure function
+  354 |   const [receivedDate, setReceivedDate] = useState(today());
+  355 |   const [loading, setLoading] = useState(true);
+  356 |   const [saving, setSaving] = useState(false);                                       react-hooks/purity
+
+/home/user/afyahub-hmis-kenya/src/components/procurement/RequisitionsPanel.tsx
+  97:10  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/user/afyahub-hmis-kenya/src/components/procurement/RequisitionsPanel.tsx:97:10
+   95 |
+   96 |   useEffect(() => {
+>  97 |     void load();
+      |          ^^^^ Avoid calling setState() directly within an effect
+   98 |   }, [load]);
+   99 |
+  100 |   async function openDetail(id: number) {  react-hooks/set-state-in-effect
+
+/home/user/afyahub-hmis-kenya/src/tests/authentication.db.spec.ts
+  90:5  warning  'adminUser' is never reassigned. Use 'const' instead  prefer-const
+
+✖ 106 problems (0 errors, 106 warnings)
+
+
+
+=== ESLint final changed integration test: exit 0 ===
+
+
+=== Production frontend build: exit 0 ===
+
+> jalicare-hmis@0.1.0 build
+> vite build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 1828 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     1.11 kB │ gzip:   0.48 kB
+dist/assets/index-KDiEnArd.css    136.05 kB │ gzip:  22.71 kB
+dist/assets/index-Bh8OwaTR.js   2,020.44 kB │ gzip: 463.39 kB
+
+✓ built in 1.26s
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

@@ -20,12 +20,25 @@
  * 5. Money is integer cents throughout.
  */
 
+import { createHash } from 'node:crypto';
+import {
+  isBankMethod,
+  requireBankPermission,
+  assertIndependent,
+  BankPaymentError,
+} from '../bank-payments/policy.ts';
+import { bankScope } from '../bank-payments/service.ts';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 
+import { readInvoicePaymentLedger } from './payment-ledger.ts';
+import { calculateInvoiceFinancialView } from './finalized-invoice.service.ts';
+import type { PaymentParty } from './finalized-invoice.types.ts';
+
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
 import { getFacilityByIdScoped } from '../db/queries.ts';
 
@@ -39,13 +52,35 @@ import {
 } from './settlement.ts';
 
 export type PaymentErrorCode =
+  | 'BANK_VERIFICATION_REQUIRED'
+  | 'BANK_PAYMENT_UNAVAILABLE'
   | 'INVALID_INPUT'
   | 'INVOICE_NOT_FOUND'
   | 'FACILITY_NOT_FOUND'
   | 'FACILITY_MODULE_DISABLED'
   | 'INVOICE_VOIDED'
+  | 'INVOICE_RECONCILIATION_REQUIRED'
   | 'DUPLICATE_TRANSACTION_CODE'
-  | 'PAYMENT_EXCEEDS_BALANCE';
+  | 'PAYMENT_EXCEEDS_BALANCE'
+  | 'PAYMENT_IDEMPOTENCY_REQUIRED'
+  | 'PAYMENT_IDEMPOTENCY_CONFLICT'
+  | 'PAYMENT_REQUEST_CANCELLED'
+  | 'PAYMENT_PARTY_REQUIRED'
+  | 'PAYMENT_ATTRIBUTION_REQUIRED'
+  | 'PAYMENT_EXCEEDS_PARTY_BALANCE'
+  | 'REFUND_FORBIDDEN'
+  | 'REFUND_IDEMPOTENCY_CONFLICT'
+  | 'REFUND_REQUEST_IDEMPOTENCY_CONFLICT'
+  | 'REFUND_APPROVAL_REQUIRED'
+  | 'REFUND_REQUEST_NOT_FOUND'
+  | 'REFUND_REVIEW_CHANGED'
+  | 'REFUND_REVIEW_UNAVAILABLE'
+  | 'SELF_REFUND_APPROVAL_FORBIDDEN'
+  | 'REFUND_APPROVAL_EXCEEDS_AVAILABLE'
+  | 'REFUND_DECISION_CONFLICT'
+  | 'PAYMENT_NOT_FOUND'
+  | 'PAYER_REFUND_REVIEW_REQUIRED'
+  | 'REFUND_EXCEEDS_RECEIPT';
 
 export class PaymentDomainError extends Error {
   readonly code: PaymentErrorCode;
@@ -77,9 +112,14 @@ export interface RecordPaymentInput {
   referenceCode?: string | null;
   /** Charging a credit balance back is not a payment. Off by default. */
   allowOverpayment?: boolean | string | null;
+  /** Explicit attribution; never inferred from payment method. */
+  payerParty?: PaymentParty | null;
+  allowPartyOverpayment?: boolean | string | null;
+  idempotencyKey?: string | null;
 }
 
 export interface RecordPaymentResult {
+  idempotentReplay?: boolean;
   payment: typeof schema.billingPayments.$inferSelect;
   settlement: Settlement;
   invoice: {
@@ -112,6 +152,47 @@ export async function recordSettledPayment(
   context: AuthorizationContext,
   input: RecordPaymentInput,
   cashierName: string,
+): Promise<RecordPaymentResult> {
+  return recordPaymentCore(context, input, cashierName);
+}
+
+/** Only this internal, permission-checked boundary can attach verified bank evidence. */
+export async function settleVerifiedBankPayment(
+  context: AuthorizationContext,
+  facilityId: number,
+  bankPaymentId: number,
+  cashierName: string,
+): Promise<RecordPaymentResult> {
+  requireBankPermission(context, 'bank_payments.settle');
+  requireBankPermission(context, 'billing.payments.record');
+  const scope = await bankScope(context, facilityId);
+  const r =
+    await db.execute(sql`SELECT invoice_id,amount_kes::text,payer_party FROM bank_payment_records
+    WHERE id=${bankPaymentId} AND tenant_id=${scope.tenantId} AND facility_id=${scope.facilityId}`);
+  const row = r.rows[0] as
+    { invoice_id: number; amount_kes: string; payer_party: PaymentParty } | undefined;
+  if (!row) throw new BankPaymentError('BANK_PAYMENT_NOT_FOUND', 'Payment not found.', 404);
+  return recordPaymentCore(
+    context,
+    {
+      facilityId,
+      invoiceId: row.invoice_id,
+      amount: row.amount_kes,
+      paymentMethod: 'BANK_TRANSFER',
+      transactionCode: `BANK:${bankPaymentId}`,
+      payerParty: row.payer_party,
+      idempotencyKey: `bank-settle:${bankPaymentId}`,
+    },
+    cashierName,
+    bankPaymentId,
+  );
+}
+
+async function recordPaymentCore(
+  context: AuthorizationContext,
+  input: RecordPaymentInput,
+  cashierName: string,
+  bankPaymentId?: number,
 ): Promise<RecordPaymentResult> {
   const invoiceId = toPositiveInteger(input?.invoiceId);
 
@@ -197,9 +278,108 @@ export async function recordSettledPayment(
   }
 
   const allowOverpayment = truthy(input?.allowOverpayment);
+  const allowPartyOverpayment = truthy(input?.allowPartyOverpayment);
+  const rawKey = input?.idempotencyKey;
+  const key = rawKey == null || rawKey === '' ? null : rawKey;
+  if (key !== null && (typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(key))) {
+    throw new PaymentDomainError('INVALID_INPUT', 'Use a valid payment retry identity.', 400);
+  }
+  const party = input?.payerParty == null ? null : input.payerParty;
+  if (party !== null && party !== 'PATIENT' && party !== 'INSURER') {
+    throw new PaymentDomainError(
+      'INVALID_INPUT',
+      'Choose patient or insurer as the payer party.',
+      400,
+    );
+  }
+
+  const requestHash = key
+    ? createHash('sha256')
+        .update(
+          JSON.stringify({
+            invoiceId,
+            amountCents,
+            paymentMethod,
+            transactionCode,
+            allowOverpayment,
+            party,
+            allowPartyOverpayment,
+            actorUserId: context.userId,
+          }),
+        )
+        .digest('hex')
+    : null;
 
   try {
     return await db.transaction(async (tx) => {
+      // Enforce channel policy inside the transaction, before even replaying a generic request.
+      const policy = await tx.execute(sql`SELECT facility_id FROM facility_bank_payment_policies
+        WHERE facility_id=${facilityId} AND tenant_id=${facility.tenantId}`);
+      if (!bankPaymentId && (policy.rows.length > 0 || isBankMethod(paymentMethod))) {
+        throw new PaymentDomainError(
+          'BANK_VERIFICATION_REQUIRED',
+          'Use the independently verified Bank Payments workflow; a method label or reference is not payment evidence.',
+          403,
+        );
+      }
+      if (key && requestHash) {
+        // Serialize retries even when a key is reused against a different invoice.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, ${facility.id}))`,
+        );
+        const [prior] = await tx
+          .select()
+          .from(schema.billingPaymentRequests)
+          .where(
+            and(
+              eq(schema.billingPaymentRequests.tenantId, facility.tenantId),
+              eq(schema.billingPaymentRequests.facilityId, facility.id),
+              eq(schema.billingPaymentRequests.idempotencyKey, key),
+            ),
+          )
+          .limit(1);
+        if (prior) {
+          if (prior.requestHash !== requestHash || prior.actorUserId !== context.userId) {
+            throw new PaymentDomainError(
+              'PAYMENT_IDEMPOTENCY_CONFLICT',
+              'This retry identity belongs to a different receipt request.',
+              409,
+            );
+          }
+          const [payment] = await tx
+            .select()
+            .from(schema.billingPayments)
+            .where(
+              and(
+                eq(schema.billingPayments.id, prior.paymentId),
+                eq(schema.billingPayments.invoiceId, prior.invoiceId),
+              ),
+            );
+          if (!payment)
+            throw new PaymentDomainError(
+              'INVOICE_RECONCILIATION_REQUIRED',
+              'The saved receipt requires review.',
+              409,
+            );
+          return { payment, ...prior.resultSnapshot, idempotentReplay: true };
+        }
+        const [cancelled] = await tx
+          .select({ id: schema.billingPaymentRequestCancellations.id })
+          .from(schema.billingPaymentRequestCancellations)
+          .where(
+            and(
+              eq(schema.billingPaymentRequestCancellations.facilityId, facility.id),
+              eq(schema.billingPaymentRequestCancellations.idempotencyKey, key),
+            ),
+          )
+          .limit(1);
+        if (cancelled)
+          throw new PaymentDomainError(
+            'PAYMENT_REQUEST_CANCELLED',
+            'This receipt request was cancelled; it cannot be posted later.',
+            409,
+          );
+      }
       const [invoice] = await tx
         .select()
         .from(schema.billingInvoices)
@@ -225,6 +405,61 @@ export async function recordSettledPayment(
         );
       }
 
+      let verifiedBankReference: string | undefined;
+      let verifiedBankDate: string | undefined;
+      if (bankPaymentId) {
+        // Same transaction as receipt, balances, evidence consumption and audit. No remote call here.
+        const bank =
+          await tx.execute(sql`SELECT b.*,b.payment_date::text AS bank_payment_date,a.is_active,a.currency AS account_currency
+          FROM bank_payment_records b JOIN bank_accounts a ON a.id=b.bank_account_id
+          WHERE b.id=${bankPaymentId} AND b.tenant_id=${facility.tenantId} AND b.facility_id=${facilityId}
+          FOR UPDATE OF b FOR SHARE OF a`);
+        const b = bank.rows[0] as
+          | {
+              status: string;
+              invoice_id: number;
+              amount_kes: string;
+              bank_reference: string;
+              submitted_by_user_id: number;
+              verified_by_user_id: number;
+              statement_transaction_id: number;
+              is_active: boolean;
+              account_currency: string;
+              bank_payment_date: string;
+            }
+          | undefined;
+        if (
+          !b ||
+          b.status !== 'VERIFIED' ||
+          b.invoice_id !== invoiceId ||
+          parseMoneyToCents(b.amount_kes) !== amountCents ||
+          !b.is_active ||
+          b.account_currency !== 'KES' ||
+          !invoice.finalizedAt
+        ) {
+          throw new PaymentDomainError(
+            'BANK_PAYMENT_UNAVAILABLE',
+            'Verified active-account evidence and a finalized invoice are required.',
+            409,
+          );
+        }
+        assertIndependent(context.userId, b.submitted_by_user_id, b.verified_by_user_id);
+        const evidence =
+          await tx.execute(sql`SELECT id FROM bank_transactions WHERE id=${b.statement_transaction_id}
+          AND tenant_id=${facility.tenantId} AND facility_id=${facilityId} AND matched_journal_line_id IS NULL AND transaction_date::date<=current_date FOR UPDATE`);
+        if (!evidence.rows.length)
+          throw new PaymentDomainError(
+            'BANK_PAYMENT_UNAVAILABLE',
+            'Statement evidence is already matched; review is required.',
+            409,
+          );
+        await tx.execute(
+          sql`UPDATE bank_payment_records SET approved_by_user_id=${context.userId},approved_at=now() WHERE id=${bankPaymentId}`,
+        );
+        verifiedBankReference = b.bank_reference;
+        verifiedBankDate = b.bank_payment_date;
+      }
+
       if (transactionCode) {
         const [existing] = await tx
           .select({ id: schema.billingPayments.id })
@@ -233,17 +468,108 @@ export async function recordSettledPayment(
           .limit(1);
 
         if (existing) {
+          // The code may belong to another facility. Do not disclose that
+          // receipt's ID, reference, patient or facility in a duplicate error.
           throw new PaymentDomainError(
             'DUPLICATE_TRANSACTION_CODE',
-            `Transaction code ${transactionCode} has already been receipted.`,
+            'This transaction code has already been receipted; seek review.',
             409,
-            { transactionCode, receiptId: existing.id },
           );
         }
       }
 
-      const totalCents = parseMoneyToCents(invoice.totalAmount) ?? 0;
-      const paidCents = parseMoneyToCents(invoice.paidAmount) ?? 0;
+      const totalCents = parseMoneyToCents(invoice.totalAmount);
+      const paidCents = parseMoneyToCents(invoice.paidAmount);
+      const balanceCents = parseMoneyToCents(invoice.balanceAmount);
+      const creditCents = parseMoneyToCents(invoice.creditBalance);
+      if (
+        totalCents === null ||
+        paidCents === null ||
+        balanceCents === null ||
+        creditCents === null ||
+        totalCents < 0 ||
+        paidCents < 0 ||
+        balanceCents < 0 ||
+        creditCents < 0 ||
+        balanceCents !== Math.max(0, totalCents - paidCents) ||
+        creditCents !== Math.max(0, paidCents - totalCents)
+      ) {
+        throw new PaymentDomainError(
+          'INVOICE_RECONCILIATION_REQUIRED',
+          'Invoice amounts are missing or inconsistent; authorized review is required before accepting payment.',
+          409,
+        );
+      }
+      const ledger = await readInvoicePaymentLedger(tx, invoice.id);
+      if (!ledger || ledger.netCents !== paidCents) {
+        throw new PaymentDomainError(
+          'INVOICE_RECONCILIATION_REQUIRED',
+          'The invoice balance, receipts and refunds disagree; authorized review is required.',
+          409,
+        );
+      }
+
+      if (invoice.finalizedAt) {
+        if (!key) {
+          throw new PaymentDomainError(
+            'PAYMENT_IDEMPOTENCY_REQUIRED',
+            'A retry identity is required for a finalized invoice receipt.',
+            400,
+          );
+        }
+        if (!party) {
+          throw new PaymentDomainError(
+            'PAYMENT_PARTY_REQUIRED',
+            'Select whether the patient or insurer is paying this finalized invoice.',
+            400,
+          );
+        }
+        const [finalization] = await tx
+          .select()
+          .from(schema.billingInvoiceFinalizations)
+          .where(eq(schema.billingInvoiceFinalizations.invoiceId, invoice.id));
+        if (
+          !finalization ||
+          finalization.tenantId !== invoice.tenantId ||
+          finalization.facilityId !== invoice.facilityId
+        ) {
+          throw new PaymentDomainError(
+            'INVOICE_RECONCILIATION_REQUIRED',
+            'Invoice finalization evidence is missing; review is required.',
+            409,
+          );
+        }
+        const split = await calculateInvoiceFinancialView(tx, invoice, finalization);
+        if (!split.reconciled || split.patientBalance === null || split.insurerBalance === null) {
+          throw new PaymentDomainError(
+            'PAYMENT_ATTRIBUTION_REQUIRED',
+            'Review and attribute existing receipts before collecting against either party.',
+            409,
+          );
+        }
+        const partyBalance = parseMoneyToCents(
+          party === 'PATIENT' ? split.patientBalance : split.insurerBalance,
+        );
+        if (partyBalance === null)
+          throw new PaymentDomainError(
+            'INVOICE_RECONCILIATION_REQUIRED',
+            'Party balance is unavailable.',
+            409,
+          );
+        if (amountCents > partyBalance && !allowPartyOverpayment) {
+          throw new PaymentDomainError(
+            'PAYMENT_EXCEEDS_PARTY_BALANCE',
+            'This receipt exceeds the selected party balance; explicit confirmation is required.',
+            400,
+            {
+              party,
+              outstandingCents: partyBalance,
+              amountCents,
+              excessCents: amountCents - partyBalance,
+            },
+          );
+        }
+      }
 
       const settlement = classifySettlement({
         invoiceTotalCents: totalCents,
@@ -280,7 +606,9 @@ export async function recordSettledPayment(
           receiptNumber,
           paymentMethod,
           amount: formatCents(amountCents),
-          referenceCode: transactionCode,
+          referenceCode: verifiedBankReference ?? transactionCode,
+          bankPaymentRecordId: bankPaymentId ?? null,
+          ...(verifiedBankDate ? { paymentDate: sql`${verifiedBankDate}::timestamp` } : {}),
           transactionCode,
           settlementStatus: settlement.outcome,
           cashierName: cashierName.slice(0, 150),
@@ -289,6 +617,17 @@ export async function recordSettledPayment(
 
       if (!payment) {
         throw new Error('Payment insert returned no record');
+      }
+      if (party) {
+        await tx.insert(schema.billingPaymentAttributions).values({
+          tenantId: facility.tenantId,
+          facilityId,
+          invoiceId: invoice.id,
+          paymentId: payment.id,
+          party,
+          reason: 'Party selected when receipt was recorded.',
+          actorUserId: context.userId,
+        });
       }
 
       const [updatedInvoice] = await tx
@@ -306,9 +645,25 @@ export async function recordSettledPayment(
       if (!updatedInvoice) {
         throw new Error('Invoice update returned no record');
       }
+      // A receipt and its minimal audit must commit or roll back together.
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
+        facilityId,
+        userId: String(context.userId),
+        action: 'CREATE',
+        resource: 'Payment',
+        resourceId: String(payment.id),
+        details: 'Payment receipt recorded.',
+      });
 
-      return {
-        payment,
+      if (bankPaymentId) {
+        await tx.execute(
+          sql`UPDATE bank_payment_records SET status='SETTLED',billing_payment_id=${payment.id} WHERE id=${bankPaymentId}`,
+        );
+        await tx.execute(sql`INSERT INTO bank_payment_events(bank_payment_id,tenant_id,facility_id,actor_user_id,action)
+          VALUES(${bankPaymentId},${facility.tenantId},${facilityId},${context.userId},'APPROVE_AND_SETTLE')`);
+      }
+      const resultSnapshot = {
         settlement,
         invoice: {
           id: updatedInvoice.id,
@@ -320,6 +675,19 @@ export async function recordSettledPayment(
           status: String(updatedInvoice.status ?? 'Pending'),
         },
       };
+      if (key && requestHash) {
+        await tx.insert(schema.billingPaymentRequests).values({
+          tenantId: facility.tenantId,
+          facilityId,
+          invoiceId: invoice.id,
+          paymentId: payment.id,
+          idempotencyKey: key,
+          requestHash,
+          actorUserId: context.userId,
+          resultSnapshot,
+        });
+      }
+      return { payment, ...resultSnapshot, idempotentReplay: false };
     });
   } catch (error) {
     /*
@@ -327,13 +695,19 @@ export async function recordSettledPayment(
      * code; the check above only exists to give a clean message when it
      * wins the race.
      */
-    if (error instanceof Error && /billing_payments_transaction_code_unique/i.test(error.message)) {
-      throw new PaymentDomainError(
-        'DUPLICATE_TRANSACTION_CODE',
-        `Transaction code ${transactionCode} has already been receipted.`,
-        409,
-        { transactionCode },
-      );
+    // Drizzle can wrap the PostgreSQL error. Inspect structured fields only;
+    // SQL error messages can contain financial data and must not be exposed.
+    let cause: unknown = error;
+    for (let depth = 0; depth < 4 && cause && typeof cause === 'object'; depth++) {
+      const pg = cause as { code?: unknown; constraint?: unknown; cause?: unknown };
+      if (pg.code === '23505' && pg.constraint === 'billing_payments_transaction_code_unique') {
+        throw new PaymentDomainError(
+          'DUPLICATE_TRANSACTION_CODE',
+          'This transaction code has already been receipted; seek review.',
+          409,
+        );
+      }
+      cause = pg.cause;
     }
 
     throw error;
@@ -360,6 +734,211 @@ async function nextReceiptNumber(executor: Executor): Promise<string> {
   ].join('');
 
   return `RCP-${stamp}-${value.padStart(6, '0')}`;
+}
+
+/** Recovery looks up a single actor's opaque retry identity. NOT_FOUND is not
+ * proof that an in-flight or delayed request cannot still arrive. */
+export async function checkPaymentRequestStatus(
+  context: AuthorizationContext,
+  input: { facilityId?: number | string | null; idempotencyKey?: unknown },
+) {
+  if (!hasAllPermissions(context, ['billing.read', 'billing.payments.record']))
+    throw new PaymentDomainError('INVALID_INPUT', 'Payment recovery permission is required.', 403);
+  const key = input.idempotencyKey;
+  if (typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(key))
+    throw new PaymentDomainError(
+      'INVALID_INPUT',
+      'A valid payment retry identity is required.',
+      400,
+    );
+  const requested =
+    input.facilityId == null || input.facilityId === '' ? null : Number(input.facilityId);
+  const facilityId = resolveFacilityScope(context, requested);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+  if (!facility) throw new PaymentDomainError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
+  if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance'))
+    throw new PaymentDomainError(
+      'FACILITY_MODULE_DISABLED',
+      'Finance is disabled for this facility.',
+      403,
+    );
+  const [row] = await db
+    .select({
+      invoiceId: schema.billingPaymentRequests.invoiceId,
+      paymentId: schema.billingPaymentRequests.paymentId,
+      actorUserId: schema.billingPaymentRequests.actorUserId,
+      receiptNumber: schema.billingPayments.receiptNumber,
+    })
+    .from(schema.billingPaymentRequests)
+    .innerJoin(
+      schema.billingPayments,
+      eq(schema.billingPaymentRequests.paymentId, schema.billingPayments.id),
+    )
+    .where(
+      and(
+        eq(schema.billingPaymentRequests.tenantId, facility.tenantId),
+        eq(schema.billingPaymentRequests.facilityId, facilityId),
+        eq(schema.billingPaymentRequests.idempotencyKey, key),
+      ),
+    )
+    .limit(1);
+  if (row && row.actorUserId === context.userId)
+    return {
+      status: 'RECORDED' as const,
+      invoiceId: row.invoiceId,
+      paymentId: row.paymentId,
+      receiptNumber: row.receiptNumber,
+    };
+  const [cancelled] = await db
+    .select({
+      invoiceId: schema.billingPaymentRequestCancellations.invoiceId,
+      actorUserId: schema.billingPaymentRequestCancellations.actorUserId,
+    })
+    .from(schema.billingPaymentRequestCancellations)
+    .where(
+      and(
+        eq(schema.billingPaymentRequestCancellations.tenantId, facility.tenantId),
+        eq(schema.billingPaymentRequestCancellations.facilityId, facilityId),
+        eq(schema.billingPaymentRequestCancellations.idempotencyKey, key),
+      ),
+    )
+    .limit(1);
+  if (cancelled && cancelled.actorUserId === context.userId)
+    return { status: 'CANCELLED' as const, invoiceId: cancelled.invoiceId };
+  return { status: 'NOT_FOUND' as const };
+}
+
+/** Atomically prevent a delayed request from posting, or return the receipt
+ * if the original request already committed. Never cancels an M-Pesa STK. */
+export async function cancelPendingPaymentRequest(
+  context: AuthorizationContext,
+  input: {
+    facilityId?: number | string | null;
+    invoiceId?: unknown;
+    idempotencyKey?: unknown;
+    reason?: unknown;
+  },
+) {
+  if (!hasAllPermissions(context, ['billing.read', 'billing.payments.record']))
+    throw new PaymentDomainError('INVALID_INPUT', 'Payment recovery permission is required.', 403);
+  const invoiceId = toPositiveInteger(input.invoiceId);
+  const key = input.idempotencyKey;
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  if (
+    !invoiceId ||
+    typeof key !== 'string' ||
+    !/^[A-Za-z0-9._:-]{8,128}$/.test(key) ||
+    reason.length < 3 ||
+    reason.length > 500
+  )
+    throw new PaymentDomainError(
+      'INVALID_INPUT',
+      'An invoice, retry identity and review reason are required.',
+      400,
+    );
+  const requested =
+    input.facilityId == null || input.facilityId === '' ? null : Number(input.facilityId);
+  const facilityId = resolveFacilityScope(context, requested);
+  const facility = await getFacilityByIdScoped(context, facilityId);
+  if (!facility) throw new PaymentDomainError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
+  if (!Array.isArray(facility.enabledModules) || !facility.enabledModules.includes('finance'))
+    throw new PaymentDomainError(
+      'FACILITY_MODULE_DISABLED',
+      'Finance is disabled for this facility.',
+      403,
+    );
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, ${facility.id}))`);
+    const [prior] = await tx
+      .select()
+      .from(schema.billingPaymentRequests)
+      .where(
+        and(
+          eq(schema.billingPaymentRequests.tenantId, facility.tenantId),
+          eq(schema.billingPaymentRequests.facilityId, facilityId),
+          eq(schema.billingPaymentRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (prior) {
+      if (prior.invoiceId !== invoiceId || prior.actorUserId !== context.userId)
+        throw new PaymentDomainError(
+          'PAYMENT_IDEMPOTENCY_CONFLICT',
+          'This retry identity belongs to another request.',
+          409,
+        );
+      const [payment] = await tx
+        .select({ receiptNumber: schema.billingPayments.receiptNumber })
+        .from(schema.billingPayments)
+        .where(eq(schema.billingPayments.id, prior.paymentId));
+      if (!payment)
+        throw new PaymentDomainError(
+          'INVOICE_RECONCILIATION_REQUIRED',
+          'The receipt requires review.',
+          409,
+        );
+      return {
+        status: 'RECORDED' as const,
+        invoiceId,
+        paymentId: prior.paymentId,
+        receiptNumber: payment.receiptNumber,
+      };
+    }
+    const [cancelled] = await tx
+      .select()
+      .from(schema.billingPaymentRequestCancellations)
+      .where(
+        and(
+          eq(schema.billingPaymentRequestCancellations.facilityId, facilityId),
+          eq(schema.billingPaymentRequestCancellations.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (cancelled) {
+      if (
+        cancelled.tenantId !== facility.tenantId ||
+        cancelled.invoiceId !== invoiceId ||
+        cancelled.actorUserId !== context.userId ||
+        cancelled.reason !== reason
+      )
+        throw new PaymentDomainError(
+          'PAYMENT_IDEMPOTENCY_CONFLICT',
+          'This retry identity belongs to another request.',
+          409,
+        );
+      return { status: 'CANCELLED' as const, invoiceId, idempotentReplay: true };
+    }
+    const [invoice] = await tx
+      .select({ id: schema.billingInvoices.id })
+      .from(schema.billingInvoices)
+      .where(
+        and(
+          eq(schema.billingInvoices.id, invoiceId),
+          eq(schema.billingInvoices.tenantId, facility.tenantId),
+          eq(schema.billingInvoices.facilityId, facilityId),
+        ),
+      )
+      .for('update');
+    if (!invoice) throw new PaymentDomainError('INVOICE_NOT_FOUND', 'Invoice not found.', 404);
+    await tx.insert(schema.billingPaymentRequestCancellations).values({
+      tenantId: facility.tenantId,
+      facilityId,
+      invoiceId,
+      idempotencyKey: key,
+      actorUserId: context.userId,
+      reason,
+    });
+    await tx.insert(schema.auditLogs).values({
+      tenantId: facility.tenantId,
+      facilityId,
+      userId: String(context.userId),
+      action: 'CANCEL',
+      resource: 'PaymentRequest',
+      resourceId: String(invoiceId),
+      details: 'Unrecorded receipt request cancelled after review.',
+    });
+    return { status: 'CANCELLED' as const, invoiceId, idempotentReplay: false };
+  });
 }
 
 /* ============================================================

@@ -9,7 +9,12 @@ import {
   outstandingDoses,
 } from '../immunisation/immunisation-contracts.ts';
 import { buildPartographPlot, partographGuidance } from '../maternity/maternity-contracts.ts';
-import { schemaSource } from './support/schema-source.ts';
+import {
+  apiClientSource,
+  maternityModuleSource,
+  schemaModule,
+  schemaSource,
+} from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -21,14 +26,6 @@ const ADMITTED = '2026-10-21T08:00:00.000Z';
 
 function at(hours: number): string {
   return new Date(Date.parse(ADMITTED) + hours * 3_600_000).toISOString();
-}
-
-function deliveringIsOneChargePerDelivery(block: string): boolean {
-  return (
-    block.includes('sourceId: created.delivery.id') &&
-    !block.includes('created.babies.map') &&
-    !block.includes('created.babies.forEach')
-  );
 }
 
 describe('Postnatal care, immunisation, the partograph plot and delivery billing', () => {
@@ -319,9 +316,13 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
       'the baby weight sits on the mother’s contact',
     ).toBe(true);
 
-    const immunisationBlock = schema.slice(
-      schema.indexOf('export const immunisationRecords'),
-      schema.indexOf('45. RELATIONS'),
+    /*
+     * Slice inside the maternity module: both ends have to come from the
+     * same file. `45. RELATIONS` is a marker in the barrel, which is
+     * concatenated first, so it resolved before the table it follows.
+     */
+    const immunisationBlock = schemaModule('maternity').slice(
+      schemaModule('maternity').indexOf('export const immunisationRecords'),
     );
 
     expect(
@@ -539,30 +540,40 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
        below are checked against it in its new home. */
     const deliveryCharge = routesSource.slice(
       routesSource.indexOf('const created = await maternity.recordDelivery'),
-      routesSource.indexOf('res.status(201).json({ ...created, billing: charge });'),
+      routesSource.indexOf('res.status(201).json({ ...result, billing: charge });'),
     );
 
     expect(deliveryCharge.length > 100, 'the delivery route has a billing block').toBe(true);
 
-    expect(
-      deliveryCharge.includes('chargeSafely({'),
-      'the delivery is billed through the billing engine',
-    ).toBe(true);
-
-    expect(
-      deliveryCharge.includes("sourceType: 'MATERNITY'"),
-      'and attributed to maternity, not to a generic manual line',
-    ).toBe(true);
-
-    expect(
-      deliveryCharge.includes('sourceId: created.delivery.id'),
-      'with the delivery as the source, so a repeat cannot double-charge',
-    ).toBe(true);
-
-    expect(
-      deliveringIsOneChargePerDelivery(deliveryCharge),
-      'twins do not multiply the delivery charge',
-    ).toBe(true);
+    expect(deliveryCharge).toContain('deliveryChargeRequest(result.delivery)');
+    expect(deliveryCharge).toContain('chargeSafely(');
+    expect(deliveryCharge).toContain('billingOutboxAttemptId');
+    const requestSource = read('src/billing/service-charges.ts');
+    const request = requestSource.slice(
+      requestSource.indexOf('export function deliveryChargeRequest'),
+    );
+    expect(request).toContain("sourceType: 'MATERNITY'");
+    expect(request).toContain('sourceId: delivery.id');
+    expect(request).not.toContain('babies');
+    const service = read('src/maternity/services/delivery.service.ts');
+    const transaction = service.slice(
+      service.indexOf('const result = await db.transaction(async (tx) =>'),
+      service.indexOf('return result;'),
+    );
+    expect(transaction).toMatch(
+      /stageClinicalBillingOutbox\(\s*tx,\s*deliveryChargeRequest\(delivery\)/,
+    );
+    expect(transaction).toContain(
+      "if (attempt === null) throw new Error('DELIVERY_BILLING_QUEUE_UNAVAILABLE')",
+    );
+    expect(transaction).toContain('billingOutboxAttemptId: attempt');
+    const attempts = read('src/billing/charge-attempts.ts');
+    const stageOutbox = attempts.slice(
+      attempts.indexOf('export function stageClinicalBillingOutbox('),
+      attempts.indexOf('export async function lockChargeIdentity('),
+    );
+    expect(stageOutbox).toMatch(/recordChargeAttempt\(\s*executor,\s*request,/);
+    expect(stageOutbox).toContain('preserveExisting: true');
 
     expect(
       !deliveryCharge.includes('fallbackUnitPrice'),
@@ -576,9 +587,9 @@ describe('Postnatal care, immunisation, the partograph plot and delivery billing
   });
 
   it('7. THE SCREEN', async () => {
-    const module = read('src/components/modules/MaternityModule.tsx');
+    const module = maternityModuleSource();
     const chart = read('src/components/maternity/PartographChart.tsx');
-    const client = read('src/api/client.ts');
+    const client = apiClientSource();
 
     expect(module.includes("'postnatal'"), 'the postnatal tab exists').toBe(true);
     expect(module.includes("'immunisation'"), 'the immunisation tab exists').toBe(true);

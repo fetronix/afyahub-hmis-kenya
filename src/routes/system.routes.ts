@@ -39,6 +39,7 @@ import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
 import { moduleLogger } from '../logging/logger.ts';
+import { readJournal } from '../../scripts/migration-journal.ts';
 
 const log = moduleLogger('system');
 
@@ -54,6 +55,15 @@ const log = moduleLogger('system');
  * proxy gives up on the instance.
  */
 const READINESS_CACHE_MS = 2_000;
+
+/** Report the packaged journal size without claiming the database is migrated. */
+export function expectedMigrationCount(directory?: string): number | null {
+  try {
+    return readJournal(directory).length;
+  } catch {
+    return null;
+  }
+}
 
 export function createSystemRouter(): express.Router {
   const router = express.Router();
@@ -121,8 +131,8 @@ export function createSystemRouter(): express.Router {
        * outage.
        */
       schema: {
-        expectedMigrations: 23,
-        note: 'Run npm run db:status to compare the journal with the database.',
+        expectedMigrations: expectedMigrationCount(),
+        note: 'Journal count only; run npm run db:status to compare it with the database.',
       },
       timestamp: new Date().toISOString(),
     });
