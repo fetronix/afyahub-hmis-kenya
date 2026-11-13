@@ -3,6 +3,7 @@ import {
   expiryStatus,
   isUsable,
   parseIsoDate,
+  parseReceiptCostCents,
   planFefo,
   stockValueCents,
   todayKey,
@@ -11,7 +12,10 @@ import {
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { appSource } from './support/schema-source.ts';
+import { api } from '../api/client.ts';
+import { calendarDateInZone } from '../dashboard/timezone.ts';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -29,6 +33,27 @@ function lot(
 }
 
 describe('Pharmacy stock — expiry and FEFO allocation', () => {
+  it('uses the facility-local calendar day at midnight and keeps the expiry day usable', () => {
+    const justBeforeNairobiMidnight = new Date('2026-11-01T20:59:59.000Z');
+    const justAfterNairobiMidnight = new Date('2026-11-01T21:00:00.000Z');
+    const expiring = [lot(1, 'SYNTHETIC', '2026-11-01', 3)];
+    expect(calendarDateInZone('Africa/Nairobi', justBeforeNairobiMidnight)).toBe('2026-11-01');
+    expect(
+      planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justBeforeNairobiMidnight))
+        .shortfall,
+    ).toBe(0);
+    expect(calendarDateInZone('Africa/Nairobi', justAfterNairobiMidnight)).toBe('2026-11-02');
+    expect(
+      planFefo(expiring, 1, calendarDateInZone('Africa/Nairobi', justAfterNairobiMidnight))
+        .shortfall,
+    ).toBe(1);
+    expect(calendarDateInZone('America/Los_Angeles', justAfterNairobiMidnight)).toBe('2026-11-01');
+    expect(
+      planFefo(expiring, 1, calendarDateInZone('America/Los_Angeles', justAfterNairobiMidnight))
+        .shortfall,
+    ).toBe(0);
+  });
+
   it('1. DATE PARSING', async () => {
     expect(parseIsoDate('2026-10-21') !== null, 'a plain ISO date parses').toBe(true);
     expect(parseIsoDate('2024-02-29') !== null, 'a leap day parses in a leap year').toBe(true);
@@ -178,19 +203,38 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
       'mixed string and numeric costs',
     ).toBe(10 * 1250 + 4 * 500);
 
+    expect(stockValueCents([{ quantityRemaining: -5, costPerUnit: '10' }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 5, costPerUnit: null }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 5, costPerUnit: '0.00' }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 5, costPerUnit: '1.001' }])).toBeNull();
+    expect(stockValueCents([{ quantityRemaining: 0, costPerUnit: null }])).toBe(0);
     expect(
-      stockValueCents([{ quantityRemaining: -5, costPerUnit: '10' }]),
-      'negative quantities are ignored',
-    ).toBe(0);
+      stockValueCents([{ quantityRemaining: 2_147_483_647, costPerUnit: '99999999.99' }]),
+    ).toBeNull();
+  });
 
-    expect(
-      stockValueCents([{ quantityRemaining: 5, costPerUnit: null }]),
-      'a missing cost is zero',
-    ).toBe(0);
+  it('requires a bounded, explicit and exact receipt unit cost', () => {
+    for (const invalid of [
+      undefined,
+      null,
+      '',
+      ' ',
+      -1,
+      '-0.00',
+      '1.001',
+      '1e2',
+      true,
+      '100000000.00',
+    ]) {
+      expect(parseReceiptCostCents(invalid), String(invalid)).toBeNull();
+    }
+    expect(parseReceiptCostCents(0)).toBe(0);
+    expect(parseReceiptCostCents('0.1')).toBe(10);
+    expect(parseReceiptCostCents('99999999.99')).toBe(9_999_999_999);
   });
 
   it('6. WIRING', async () => {
-    const app = readRepoFile('src/app.ts');
+    const app = appSource();
     const pharmacy = readRepoFile('src/routes/pharmacy.routes.ts');
     const wiring = readRepoFile('src/routes/index.ts');
 
@@ -252,10 +296,56 @@ describe('Pharmacy stock — expiry and FEFO allocation', () => {
       'the service reads inventory_batches',
     ).toBe(true);
 
-    const client = readRepoFile('src/api/client.ts');
-    expect(client.includes('getInventoryBatches'), 'client exposes batch listing').toBe(true);
-    expect(client.includes('getExpirySummary'), 'client exposes the expiry summary').toBe(true);
-    expect(client.includes('receiveBatch'), 'client can receive a batch').toBe(true);
+    const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: (init?.method ?? 'GET').toUpperCase(),
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+      });
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    try {
+      await api.getInventoryBatches(5, { itemId: 12, status: 'Expiring', horizonDays: 60 });
+      await api.getExpirySummary(5, 90);
+      await api.receiveBatch(12, {
+        batchNumber: 'AMOX-2026',
+        expiryDate: '2027-06-30',
+        quantity: 200,
+        costPerUnit: '5.50',
+        idempotencyKey: 'synthetic-receipt-key-123',
+        facilityId: 5,
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(calls[0]).toEqual({
+      url: '/api/inventory/batches?facilityId=5&itemId=12&status=Expiring&horizonDays=60',
+      method: 'GET',
+      body: undefined,
+    });
+    expect(calls[1]).toEqual({
+      url: '/api/inventory/expiry-summary?facilityId=5&days=90',
+      method: 'GET',
+      body: undefined,
+    });
+    expect(calls[2]).toEqual({
+      url: '/api/inventory/12/batches',
+      method: 'POST',
+      body: {
+        batchNumber: 'AMOX-2026',
+        expiryDate: '2027-06-30',
+        quantity: 200,
+        costPerUnit: '5.50',
+        idempotencyKey: 'synthetic-receipt-key-123',
+        facilityId: 5,
+      },
+    });
 
     const inventoryUi = readRepoFile('src/components/modules/InventoryModule.tsx');
     expect(inventoryUi.includes('Batches & Expiry'), 'inventory screen has a batches tab').toBe(

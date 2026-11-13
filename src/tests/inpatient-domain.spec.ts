@@ -7,6 +7,7 @@ import {
 import { STAFF_ROLE_CATALOGUE } from '../auth/staff-role-catalogue.ts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { apiClientSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -206,7 +207,7 @@ describe('Inpatient & Ward — contract and wiring tests', () => {
       'utf8',
     );
 
-    const client = readFileSync(resolve(import.meta.dirname, '../api/client.ts'), 'utf8');
+    const client = apiClientSource();
 
     /*
      * A router that exists, holds correct handlers and is never mounted is
