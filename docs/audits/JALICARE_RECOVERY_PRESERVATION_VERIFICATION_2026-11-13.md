@@ -582,6 +582,28 @@ All seven are resolved by §9.1, and none needed a weakened gate. Four were the 
 staleness (§5.3), one was the journal-length literal (§6.6), and two were claim preparation being
 attempted from an unfinalised invoice — refused by `claim-invoice-gate.ts`, exactly as designed.
 
+### 9.4 Publication
+
+| Item | Value |
+| --- | --- |
+| Commit | `ea4dfca` — *test: reconcile the unpublished claim-gate work with the published baseline* |
+| Tree | `dd87e908` — the tree verified in §9.2, unchanged |
+| Parent | `4cdbc93`, the branch's published tip, so the push is a fast-forward |
+| Push | `git push origin HEAD:arena/e088f11d-afyahub-hmis-kenya` → `4cdbc93..ea4dfca` |
+| CI | run `43398743745` — **7/7 jobs passed**: typecheck and lint, coverage with PostgreSQL 16, migrations and database specs, production build, Docker bootstrap, formatting, dependency audit |
+| Working tree afterwards | clean |
+
+The commit carries 27 files: **9 additions** — the eight that existed only on disk (§1.4) plus this
+report — and **18 modifications** — the eleven published-path differences analysed in §3.2 plus the
+seven §9.1 edits that touched files already in the published tree. `src/db/schema/facility-branding.ts`
+is one of the eight and is *created* by this commit, not modified; the other seven §9.1 edits
+(`schema-contract.ts`, `operations-status`, `inpatient-bed-billing`, `pharmacy-inventory-billing`,
+`billing.ts`, `schema.ts`, `schema-extraction.spec.ts`) are the remaining modifications.
+
+The preservation archive at `/home/user/jalicare-preservation-2026-11-13/` is no longer the only
+durable copy of the unpublished work, but it is retained: it costs 38 MB, it is outside the
+repository, and it is the rollback of record for this pass.
+
 ---
 
 ## Appendix A — Inspection record (Task A)
