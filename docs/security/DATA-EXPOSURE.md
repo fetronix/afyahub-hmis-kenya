@@ -19,17 +19,23 @@ in its history:
 | `jalicaredb-before-tariff-migration-20261018-103020.dump` | `f5abd3d` |
 | `local-backups/jalicaredb-before-subscription-migration-20261016-035706.dump` | `6e03e01` |
 
-All four reference the `patients` and `patient_identifiers` tables.
+All four reference the `patients` and `patient_identifiers` tables. On
+2026-11-03, repository metadata identified this repository as **public**,
+and Git history metadata still showed these paths in reachable commits. This
+follow-up did not extract the archives or inspect patient or credential values.
+A public repository and reachable history constitute an active incident until
+the data controller and security owner complete containment and assessment.
 
 ### Why it matters
 
 A dump is a complete copy of patient data with **none** of the database's
 protections:
 
-- column-level encryption does not protect the file — the ciphertext is in
-  it, alongside the schema needed to interpret it;
-- the audit trail does not record who reads it;
-- it cannot be revoked. A file that has been pushed is disclosed.
+- it can contain plaintext fields; encrypted fields remain ciphertext, but
+  their protection depends on keys being separately protected and may not
+  cover all exported fields;
+- database access controls and database audit do not record who reads a copy;
+- copies already obtained cannot be revoked by deleting the source.
 
 For a Kenyan HMIS this is a Data Protection Act 2019 matter, not a
 housekeeping one.
@@ -60,12 +66,14 @@ and national-ID-like values are personal data under the Data Protection Act
 Consequences:
 
 1. A **breach assessment** is required, not optional.
-2. The affected user accounts — 14 at most — should be **forced to reset**
-   their passwords. Argon2id at 64 MiB resists offline cracking well, but
-   "resists well" is not "cannot".
-3. The **database password is not in these files**; a `pg_dump` does not
-   carry it. Rotating it is still prudent, but the patient data above is the
-   primary issue.
+2. Identify affected accounts through a controlled private review, force
+   password resets, and invalidate potentially exposed sessions and recovery
+   tokens using an approved operational plan. The pattern counts above are
+   not a count of unique accounts or a complete exposure inventory.
+3. Rotate the database credential and independently assess application,
+   provider and administrator secrets. A normal `pg_dump` does not include
+   PostgreSQL login passwords, but this does not prove that application data
+   or configuration contains no other credential material.
 4. Removing the files from the current tree does **not** remove them from
    history. See the purge procedure below.
 
@@ -73,67 +81,63 @@ Consequences:
 
 - Removed from tracking with `git rm --cached` (the local files are kept —
   they are somebody's backup).
-- `.gitignore` now covers `*.dump`, `*.dump.*`, `*.sql.gz`, `backups/` and
-  `local-backups/`, so the file cannot be re-added by accident.
-- `.dockerignore` already excluded `*.dump` and `backups/`, so no container
-  image contains them.
+- `.gitignore` covers known dump extensions and backup directories, reducing
+  accidental re-addition; ignored files can still be force-added.
+- The current `.dockerignore` excludes known dump patterns. Previously built
+  images and external registries have not been inventoried or verified.
+- CI runs `npm run security:check-tracked-database-backups`, which checks
+  current Git-index paths without opening archive contents. It fails closed if
+  the index cannot be read, but it **does not scan or remove history**, caches,
+  forks, external artifacts, or copies already obtained.
 
 **This does not remove them from history.** They are still retrievable from
 any clone, and from GitHub.
 
-### Outstanding — requires the repository owner
+### Outstanding — requires the repository and data owners
 
-Both steps need credentials and permissions this environment does not have.
+**Not yet done or verified:** containment, account/session remediation,
+credential rotation, repository-wide history cleanup, provider-side cache
+removal, notification assessment and verification of external copies. This
+working branch has no authority to change repository visibility, rotate live
+credentials, force-push other refs or modify production accounts.
 
-#### 1a. Rotate the database credentials
+#### 1a. Contain and rotate
 
-Rotate the PostgreSQL user password **whether or not** the dumps are
-believed to be harmless. Anyone who has cloned the repository has a full
-copy of the database as of October 2026.
+1. Privately notify the data controller, security lead and repository owner;
+   assess whether to restrict repository access immediately and record the
+   exposure window, affected systems and incident decisions.
+2. Privately identify affected accounts, invalidate relevant sessions and
+   recovery tokens, and force password resets through authorized operations.
+   Do not paste credentials or patient records into issues, chat, logs or tests.
+3. Rotate the database credential and assess application, administrator and
+   provider credentials independently, using the owners' secret-management and
+   change procedures. Verify dependent services afterwards.
+4. Do **not** blindly replace `FIELD_ENCRYPTION_KEY`: doing so can make
+   existing encrypted data unreadable. An approved key-versioning and
+   re-encryption plan, retained recovery keys and tested backups are required.
 
-#### 1b. Purge the dumps from history
+#### 1b. Owner-approved history cleanup
 
-This rewrites every commit SHA after the first affected commit. Every
-collaborator must re-clone afterwards; open pull requests will need to be
-re-created.
+History rewriting changes commit IDs and can disrupt collaborators, tags,
+open PRs and audit/release references; it cannot erase copies already made.
+The repository owner must approve the exact affected refs, coordinated freeze,
+restricted incident backup and rollback/recovery plan **before** a rewrite.
+Do not run global force-push commands from this working branch.
 
-```bash
-# 1. Work from a mirror clone, never from a working copy.
-git clone --mirror https://github.com/fetronix/afyahub-hmis-kenya.git jalicare-mirror.git
-cd jalicare-mirror.git
+With that approval, designated administrators should work in an isolated,
+access-controlled mirror, inventory all affected paths and refs without
+printing records, remove the exact sensitive objects using an audited rewrite,
+and verify *all* intended branches, tags and reachable objects. Coordinate
+collaborators and PRs, request GitHub's sensitive-data removal/cache cleanup,
+and separately address forks, release artifacts and other copies. GitHub
+support and external owners must confirm their own steps; a local rewrite or
+an empty current tree is not proof that the exposure is gone.
 
-# 2. Back up before rewriting. A rewrite is not reversible.
-cp -a . ../jalicare-mirror.backup.git
+#### 1c. Breach and notification assessment
 
-# 3. Remove the dump paths from every commit.
-pip install git-filter-repo
-git filter-repo \
-  --invert-paths \
-  --path-glob '*.dump' \
-  --path backups/ \
-  --path local-backups/
-
-# 4. Confirm nothing remains anywhere in history.
-git log --all --oneline -- '*.dump' | wc -l    # must print 0
-
-# 5. Push the rewritten history.
-git push --force --all
-git push --force --tags
-```
-
-Then, and only then:
-
-- every collaborator re-clones (do not pull — the histories are unrelated);
-- GitHub support is asked to garbage-collect unreachable objects, otherwise
-  the old commits stay reachable by SHA;
-- any open PR based on the old history is closed and re-opened.
-
-#### 1c. Assess notification
-
-If the dumps contained real patient records — and they reference
-`patients`, so assume they did until proven otherwise — determine whether
-the exposure requires notification under the Data Protection Act 2019.
-This is a question for the data controller, not for a code change.
+The data controller and privacy officer should assess the incident and any
+notification obligations under applicable law with appropriate advice. No
+notification, external cleanup or legal conclusion is asserted here.
 
 ---
 
