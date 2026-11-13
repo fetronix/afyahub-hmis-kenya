@@ -71,6 +71,7 @@ import bookingAdminRoutes from '../booking/booking-admin.routes.ts';
 import inpatientRoutes from './inpatient.routes.ts';
 import maternalHealthRoutes from './maternal-health.routes.ts';
 import platformRoutes from './platform.routes.ts';
+import documentRoutes from '../documents/document.routes.ts';
 
 import auditRoutes from './domains/audit.routes.ts';
 import billingAnalyticsRoutes from './domains/billing-analytics.routes.ts';
@@ -97,6 +98,16 @@ export function createApiRoutes(): Router {
   api.use('/platform', platformRoutes);
   api.use('/staff-invitations', staffInvitationRoutes);
   api.use('/staff-roles', staffRolesRoutes);
+
+  /*
+   * Printable documents. Every route behind this mount asks the document
+   * service for its own permission (`billing.read`, `procurement.read`,
+   * `laboratory.read`, `radiology.read`, `inpatient.read`) and re-checks the
+   * tenant and facility of the row it loaded, so no module gate is needed here:
+   * a facility that has not enabled procurement simply has no purchase orders
+   * to print.
+   */
+  api.use('/documents', documentRoutes);
 
   /*
    * Facility module provisioning. Deliberately outside the

@@ -6,6 +6,7 @@ import { ApprovalPoliciesPanel } from './ApprovalPoliciesPanel.tsx';
 import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import { StaffRolesPanel } from './StaffRolesPanel.tsx';
 import { FacilityServicesManager } from './FacilityServicesManager.tsx';
+import { BrandingDocumentsPanel } from './BrandingDocumentsPanel.tsx';
 import { FacilityIntegrationHub } from './FacilityIntegrationHub.tsx';
 import {
   FACILITY_MODULES,
@@ -29,6 +30,7 @@ import {
   AlertTriangle,
   Save,
   ShieldCheck,
+  FileText,
 } from 'lucide-react';
 
 export const ConfigurationModule: React.FC = () => {
@@ -110,7 +112,14 @@ export const ConfigurationModule: React.FC = () => {
     !permissions.has('roles.permissions.manage');
 
   const [activeTab, setActiveTab] = useState<
-    'facility' | 'modules' | 'roles' | 'tariffs' | 'integrations' | 'staff' | 'approvals'
+    | 'facility'
+    | 'modules'
+    | 'roles'
+    | 'tariffs'
+    | 'integrations'
+    | 'staff'
+    | 'approvals'
+    | 'branding'
   >(integrationOnly ? 'integrations' : staffOnly ? 'staff' : 'facility');
 
   useEffect(() => {
@@ -275,6 +284,7 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'integrations', label: 'Integration Hub', icon: CreditCard },
           { id: 'tariffs', label: 'Facility Services & Tariffs', icon: DollarSign },
           { id: 'approvals', label: 'Approval Policies', icon: ShieldCheck },
+          { id: 'branding', label: 'Branding & Documents', icon: FileText },
         ]
           .filter((tab) => {
             if (tab.id === 'integrations') return canViewPaymentHub || canViewPayerHub;
@@ -288,6 +298,17 @@ export const ConfigurationModule: React.FC = () => {
              */
             if (tab.id === 'approvals')
               return canReadApprovalPolicies && Boolean(currentFacility?.id);
+            /*
+             * Branding belongs to one facility. Without a selected facility
+             * there is nothing to scope the letterhead to, and a user without
+             * branding permission has no business seeing another facility's
+             * stationery list.
+             */
+            if (tab.id === 'branding')
+              return (
+                Boolean(currentFacility?.id) &&
+                (isFacilityAdmin || permissions.has('facility.branding.read'))
+              );
             /*
              * A facility administrator runs the facility: profile, module
              * provisioning, staff and tariffs. Payment access is checked above
@@ -574,6 +595,14 @@ export const ConfigurationModule: React.FC = () => {
         <ApprovalPoliciesPanel
           facilityId={currentFacility.id}
           canManage={canManageApprovalPolicies}
+        />
+      )}
+
+      {activeTab === 'branding' && currentFacility?.id && (
+        <BrandingDocumentsPanel
+          key={currentFacility.id}
+          facilityId={currentFacility.id}
+          canManage={isFacilityAdmin || permissions.has('facility.branding.manage')}
         />
       )}
 

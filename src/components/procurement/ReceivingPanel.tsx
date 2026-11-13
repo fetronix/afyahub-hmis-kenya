@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { PackageCheck, ReceiptText, Wallet } from 'lucide-react';
 
 import { api } from '../../api/client.ts';
+import { documentClient, openBlob } from '../../api/clients/branding.client.ts';
 import {
   listFacilityBankAccounts,
   listPostingAccounts,
@@ -45,6 +46,7 @@ export function ReceivingPanel({
     [],
   );
   const [loading, setLoading] = useState(true);
+  const [printingGrn, setPrintingGrn] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [receiveFor, setReceiveFor] = useState<OrderOption | null>(null);
   const [receiveOrderId, setReceiveOrderId] = useState('');
@@ -72,6 +74,23 @@ export function ReceivingPanel({
       setLoading(false);
     }
   }, [facilityId]);
+
+  /** The note as posted: the delivery evidence, not a recomputed quantity. */
+  const printGrn = async (id: number, grnNumber: string) => {
+    setPrintingGrn(id);
+    try {
+      const blob = await documentClient.goodsReceivedNote(id);
+      openBlob(blob, `${grnNumber}.pdf`);
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? `The goods received note could not be generated: ${err.message}`
+          : 'The goods received note could not be generated.',
+      );
+    } finally {
+      setPrintingGrn(null);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -191,11 +210,20 @@ export function ReceivingPanel({
                   )}
                 </td>
                 <td className="text-right">
-                  {canReceive && !note.invoice && (
-                    <SecondaryButton onClick={() => setInvoiceFor(note)}>
-                      <ReceiptText size={14} /> Book invoice
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <SecondaryButton
+                      disabled={printingGrn === note.id}
+                      onClick={() => void printGrn(note.id, note.grnNumber)}
+                    >
+                      <PackageCheck size={14} />
+                      {printingGrn === note.id ? 'Generating…' : 'GRN PDF'}
                     </SecondaryButton>
-                  )}
+                    {canReceive && !note.invoice && (
+                      <SecondaryButton onClick={() => setInvoiceFor(note)}>
+                        <ReceiptText size={14} /> Book invoice
+                      </SecondaryButton>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

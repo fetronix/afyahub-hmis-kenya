@@ -227,8 +227,40 @@ export async function dumpLogical(config) {
           )
           .join(', ');
         /* Quoted identifiers: names come from the catalogue, never from a user. */
-        const { rows } = await client.query(`SELECT ${selectList} FROM "${table}"`);
-        captured.push({ table, columns, rows });
+        const { rows: rawRows } = await client.query(`SELECT ${selectList} FROM "${table}"`);
+        /*
+         * Binary columns are captured as PostgreSQL's own hex input format.
+         *
+         * The archive is JSON, and JSON.stringify turns a Node Buffer into
+         * {"type":"Buffer","data":[...]}; writing that object back into a
+         * `bytea` column stores the literal JSON text instead of the bytes.
+         * That is silent corruption of exactly the data a backup exists to
+         * protect, and it was invisible until a column actually held binary
+         * content (a facility letterhead PDF). `\x...` round-trips: PostgreSQL
+         * reads it back as the identical bytes.
+         */
+        const byteaColumns = columns
+          .filter((column) => column.data_type === 'bytea')
+          .map((column) => column.column_name);
+        const rows =
+          byteaColumns.length === 0
+            ? rawRows
+            : rawRows.map((row) => {
+                const copy = { ...row };
+                for (const column of byteaColumns) {
+                  const value = copy[column];
+                  if (value === null || value === undefined) continue;
+                  copy[column] = `\\x${Buffer.from(value).toString('hex')}`;
+                }
+                return copy;
+              });
+        captured.push({
+          table,
+          columns,
+          /* Recorded so restore knows how to treat each value. */
+          byteaColumns,
+          rows,
+        });
       }
 
       const sequences = await client
@@ -346,6 +378,18 @@ export async function restoreLogical(config, payload) {
             .filter((column) => column.data_type === 'json' || column.data_type === 'jsonb')
             .map((column) => column.column_name),
         );
+        /*
+         * `bytea` values arrive as `\x<hex>` strings (see dumpLogical) and are
+         * sent as text, which PostgreSQL parses back into the original bytes.
+         * A Driver-level Buffer is also accepted, so archives written before
+         * this format change still restore.
+         */
+        const byteaColumns = new Set(
+          entry.byteaColumns ??
+            entry.columns
+              .filter((column) => column.data_type === 'bytea')
+              .map((column) => column.column_name),
+        );
         /* Chunked so a wide table cannot exceed the parameter limit. */
         const chunkSize = Math.max(1, Math.floor(30_000 / Math.max(1, columns.length)));
         for (let offset = 0; offset < entry.rows.length; offset += chunkSize) {
@@ -357,7 +401,9 @@ export async function restoreLogical(config, payload) {
               values.push(
                 jsonColumns.has(column) && value !== null && typeof value !== 'string'
                   ? JSON.stringify(value)
-                  : value,
+                  : byteaColumns.has(column) && value !== null && typeof value === 'object'
+                    ? `\\x${Buffer.from(value).toString('hex')}`
+                    : value,
               );
               return `$${values.length}`;
             });

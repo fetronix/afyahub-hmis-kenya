@@ -638,11 +638,30 @@ export async function finalizeInvoice(
         allocationBasis: basis,
       },
     };
+    /*
+     * Record which letterhead this invoice is being issued under. A reprint
+     * resolves THIS version, even after the facility has replaced it, so the
+     * document the patient received can be reproduced exactly. NULL is a
+     * deliberate value: it means the facility had no active letterhead at
+     * finalization, and a reprint must not invent one from today's branding.
+     */
+    const [activeLetterhead] = await tx
+      .select({ id: schema.facilityLetterheads.id })
+      .from(schema.facilityLetterheads)
+      .where(
+        and(
+          eq(schema.facilityLetterheads.tenantId, invoice.tenantId),
+          eq(schema.facilityLetterheads.facilityId, invoice.facilityId),
+          eq(schema.facilityLetterheads.status, 'ACTIVE'),
+        ),
+      );
+
     const now = new Date();
     await tx.insert(schema.billingInvoiceFinalizations).values({
       invoiceId,
       tenantId: invoice.tenantId,
       facilityId: invoice.facilityId,
+      letterheadId: activeLetterhead?.id ?? null,
       finalizedByUserId: context.userId,
       finalizedAt: now,
       patientResponsibility: formatCents(patientResponsibility),

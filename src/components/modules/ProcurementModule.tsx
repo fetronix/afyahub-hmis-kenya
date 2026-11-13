@@ -1,5 +1,6 @@
 import { PrimaryButton } from '../ui/controls.tsx';
 import { DataTable, PageHeader } from '../ui/layout.tsx';
+import { documentClient, openBlob } from '../../api/clients/branding.client.ts';
 import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api, ApiError } from '../../api/client.ts';
@@ -46,6 +47,7 @@ export const ProcurementModule: React.FC = () => {
   const canRead = can('procurement.read');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [printingPo, setPrintingPo] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -406,6 +408,26 @@ export const ProcurementModule: React.FC = () => {
     poForm.supplierId !== NEW_SUPPLIER &&
     !suppliers.some((supplier) => supplier.isActive && String(supplier.id) === poForm.supplierId);
 
+  /**
+   * The approved order document, on the letterhead that was in effect when it
+   * was raised. Pending orders are refused by the service.
+   */
+  const printPurchaseOrder = async (po: PurchaseOrder) => {
+    setPrintingPo(po.id);
+    try {
+      const blob = await documentClient.purchaseOrder(po.id);
+      openBlob(blob, `${po.poNumber}.pdf`);
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? `The purchase order could not be generated: ${err.message}`
+          : 'The purchase order could not be generated.',
+      );
+    } finally {
+      setPrintingPo(null);
+    }
+  };
+
   const showDetails = async (po: PurchaseOrder) => {
     if (!currentFacility) return;
     const requestScope = `${currentFacility.tenantId}:${currentFacility.id}`;
@@ -665,16 +687,26 @@ export const ProcurementModule: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 font-sans">
-                        <button
-                          type="button"
-                          className="rounded border border-slate-300 px-2 py-1"
-                          onClick={(e) => {
-                            detailTrigger.current = e.currentTarget;
-                            void showDetails(po);
-                          }}
-                        >
-                          View {po.poNumber}
-                        </button>
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            className="rounded border border-slate-300 px-2 py-1"
+                            onClick={(e) => {
+                              detailTrigger.current = e.currentTarget;
+                              void showDetails(po);
+                            }}
+                          >
+                            View {po.poNumber}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50"
+                            disabled={printingPo === po.id}
+                            onClick={() => void printPurchaseOrder(po)}
+                          >
+                            {printingPo === po.id ? 'Generating…' : 'Order PDF'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

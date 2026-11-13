@@ -13,6 +13,7 @@ import { and, count, eq, sql, sum } from 'drizzle-orm';
 import { createSystemRouter } from './routes/system.routes.ts';
 import { correlationIdFrom, moduleLogger } from './logging/logger.ts';
 import authRoutes from './auth/auth.routes.ts';
+import facilityBrandingRoutes from './branding/letterhead.routes.ts';
 import { requireAuth } from './middleware/auth.ts';
 import {
   requireAuthorization,
@@ -162,6 +163,25 @@ export async function createApp() {
    * claim or an invoice) and stops a single request from pinning the
    * process while it parses.
    */
+  /*
+   * =========================================================
+   * FACILITY BRANDING (LETTERHEAD) UPLOAD
+   * =========================================================
+   *
+   * Mounted ABOVE `express.json()` and that position is load-bearing: the
+   * upload body IS the letterhead PDF. The JSON parser would consume the
+   * stream first and the endpoint would receive nothing it could validate.
+   * The router therefore parses its own bodies (`express.raw` for the PDF,
+   * a small `express.json` for the two lifecycle calls) and applies
+   * `requireAuth` inside, because the `/api` authentication mount is below
+   * this line and does not cover it.
+   *
+   * Nothing here is reachable unauthenticated: every route in the router
+   * carries `requireAuth` and a `facility.branding.*` permission, and the
+   * service re-checks tenant and facility scope against the row itself.
+   */
+  app.use('/api/facility-branding', facilityBrandingRoutes);
+
   app.use(express.json({ limit: '1mb' }));
 
   /*

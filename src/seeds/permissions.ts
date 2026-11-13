@@ -199,6 +199,28 @@ const PERMISSIONS = [
     description: "Turn a facility module on or off, which also opens or closes that module's API.",
   },
 
+  /*
+   * Letterhead branding (migration 0090). Reading is separate from managing
+   * because a cashier needs to know which branding their receipts carry and
+   * has no business replacing the hospital's stationery. Both are facility
+   * scoped: a facility administrator manages their own letterhead and never
+   * another facility's.
+   */
+  {
+    code: 'facility.branding.read',
+    name: 'View Facility Letterhead',
+    module: 'facilities',
+    description: 'View the letterhead versions this facility has uploaded and which one is active.',
+  },
+
+  {
+    code: 'facility.branding.manage',
+    name: 'Manage Facility Letterhead',
+    module: 'facilities',
+    description:
+      "Upload, preview, activate, replace and withdraw this facility's letterhead versions.",
+  },
+
   {
     code: 'facilities.approve',
     name: 'Approve Facilities',
@@ -1718,6 +1740,9 @@ async function seedPermissions(): Promise<void> {
      * database seeded before this permission existed still works.
      */
     'facilities.modules.manage',
+    /* The facility administrator owns this facility's stationery. */
+    'facility.branding.read',
+    'facility.branding.manage',
     'approval_policies.read',
     'approval_policies.manage',
     'patients.read',

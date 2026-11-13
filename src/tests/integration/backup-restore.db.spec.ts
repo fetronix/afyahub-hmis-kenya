@@ -172,6 +172,79 @@ describeDb('backup and restore', () => {
     expect(await hashes(target, tables)).toEqual(await hashes(source, tables));
   }, 300_000);
 
+  it('preserves binary columns byte for byte across a restore', async () => {
+    /*
+     * A letterhead is stored as `bytea`. The logical archive is JSON, and
+     * JSON.stringify turns a Buffer into {"type":"Buffer","data":[...]} — which
+     * a naive restore writes back as that literal text. The result is a
+     * backup that "restores" and silently corrupts the one payload it exists
+     * to protect, so the bytes are compared, not the row count.
+     */
+    const tag = `bytea-${Date.now()}`;
+    const scratch = new Pool({ ...source, max: 1 });
+    const tenantId = (
+      await scratch.query('INSERT INTO tenants(name,slug) VALUES($1,$2) RETURNING id', [
+        `Binary check ${tag}`,
+        tag,
+      ])
+    ).rows[0].id as number;
+    const facilityId = (
+      await scratch.query(
+        'INSERT INTO facilities(tenant_id,code,name) VALUES($1,$2,$3) RETURNING id',
+        [tenantId, `BC-${tag}`, `Binary check facility ${tag}`],
+      )
+    ).rows[0].id as number;
+    const userId = (
+      await scratch.query(
+        `INSERT INTO users(uid,username,email,full_name,password_hash,account_status)
+         VALUES($1,$1,$2,'Binary check','test-only','ACTIVE') RETURNING id`,
+        [tag, `${tag}@example.test`],
+      )
+    ).rows[0].id as number;
+
+    /* Every byte value, so an encoding mistake cannot pass by luck. */
+    const payload = Buffer.concat([
+      Buffer.from('%PDF-1.7\n'),
+      Buffer.from(Array.from({ length: 1024 }, (_, index) => (index * 37) % 256)),
+      Buffer.from('\n%%EOF'),
+    ]);
+    const letterheadId = (
+      await scratch.query(
+        `INSERT INTO facility_letterheads(tenant_id,facility_id,version,status,source_pdf,
+           source_pdf_sha256,source_pdf_bytes,source_pdf_pages,page_width_pt,page_height_pt,
+           body_top_pt,body_bottom_pt,body_left_pt,body_right_pt,layout_source,checksum,created_by)
+         VALUES($1,$2,1,'DRAFT',$3,'unused',$4,1,595.28,841.89,108,78,40,40,'MEASURED','unused',$5)
+         RETURNING id`,
+        [tenantId, facilityId, payload, payload.length, userId],
+      )
+    ).rows[0].id as number;
+    await scratch.end();
+
+    const binaryDatabase = `${source.database}_bin_${Date.now()}`.toLowerCase();
+    const binaryTarget = { ...source, database: binaryDatabase };
+    try {
+      const dump = await dumpLogical(source);
+      await createDatabase(binaryTarget);
+      await migrate(binaryDatabase);
+      await restoreLogical(binaryTarget, dump.payload);
+
+      const check = new Pool({ ...binaryTarget, max: 1 });
+      try {
+        const { rows } = await check.query(
+          'SELECT source_pdf, source_pdf_bytes FROM facility_letterheads WHERE id=$1',
+          [letterheadId],
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].source_pdf_bytes).toBe(payload.length);
+        expect(Buffer.compare(Buffer.from(rows[0].source_pdf), payload)).toBe(0);
+      } finally {
+        await check.end().catch(() => undefined);
+      }
+    } finally {
+      await dropDatabase(binaryTarget).catch(() => undefined);
+    }
+  }, 300_000);
+
   it('refuses to restore over a database that already holds audit history', async () => {
     /*
      * `audit_logs` has a BEFORE TRUNCATE guard: an audit log that can be wiped

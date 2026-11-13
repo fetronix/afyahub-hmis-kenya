@@ -10,6 +10,7 @@ import {
 } from '../../billing/refund-retry-storage.ts';
 import type { BillingPayment, BillingRefund, RefundRequest } from '../../types/index.ts';
 import { RefundRequestWorkflow } from './RefundRequestWorkflow.tsx';
+import { documentClient, openBlob } from '../../api/clients/branding.client.ts';
 
 type RefundMethod = 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER' | 'CHEQUE';
 const PATIENT_METHODS = new Set(['cash', 'm-pesa', 'airtel money', 'card', 'cheque']);
@@ -51,6 +52,8 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [documentBusy, setDocumentBusy] = useState<number | null>(null);
+  const [documentError, setDocumentError] = useState('');
 
   useEffect(() => {
     if (!storageKey) {
@@ -260,6 +263,26 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
     }
   };
 
+  /**
+   * Fetch one generated document and show or save it.
+   *
+   * Reproduced receipts and credit notes come from the persisted rows, so a
+   * reprint after a refund still shows what was issued rather than a
+   * recomputed balance.
+   */
+  async function loadDocument(key: number, load: () => Promise<Blob>, filename?: string) {
+    setDocumentBusy(key);
+    setDocumentError('');
+    try {
+      const blob = await load();
+      openBlob(blob, filename);
+    } catch (err) {
+      setDocumentError(err instanceof Error ? err.message : 'The document could not be generated.');
+    } finally {
+      setDocumentBusy(null);
+    }
+  }
+
   return (
     <section
       className="space-y-3 border-t border-slate-200 pt-4"
@@ -273,6 +296,11 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
           Refund records do not initiate or verify external payments. Accounting posting requires
           review.
         </p>
+        {documentError && (
+          <p role="alert" className="mt-1 text-rose-800">
+            {documentError}
+          </p>
+        )}
       </div>
       {(pending || storageError) && (
         <div
@@ -343,6 +371,36 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
                         ? 'requires review'
                         : `KES ${(remaining / 100).toFixed(2)}`}
                     </span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={documentBusy !== null}
+                        onClick={() =>
+                          void loadDocument(
+                            payment.id,
+                            () => documentClient.receipt(payment.id),
+                            `${payment.receiptNumber}.pdf`,
+                          )
+                        }
+                        className="rounded border border-slate-400 px-2 py-1 disabled:opacity-50"
+                      >
+                        Receipt PDF
+                      </button>
+                      <button
+                        type="button"
+                        disabled={documentBusy !== null}
+                        onClick={() =>
+                          void loadDocument(
+                            payment.id,
+                            () => documentClient.receipt(payment.id, true),
+                            `${payment.receiptNumber}-thermal.pdf`,
+                          )
+                        }
+                        className="rounded border border-slate-400 px-2 py-1 disabled:opacity-50"
+                      >
+                        Thermal
+                      </button>
+                    </span>
                     {canRefund &&
                       pending?.invoiceId === invoiceId &&
                       pending.paymentId === payment.id &&
@@ -372,9 +430,25 @@ export const RefundsPanel: React.FC<{ invoiceId: number }> = ({ invoiceId }) => 
           {refunds.length > 0 && (
             <ul className="space-y-1 text-slate-600">
               {refunds.map((r) => (
-                <li key={r.id}>
-                  {r.refundNumber} · reverses receipt #{r.paymentId} · KES {r.amount} ·{' '}
-                  {r.refundMethod} · manually recorded
+                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    {r.refundNumber} · reverses receipt #{r.paymentId} · KES {r.amount} ·{' '}
+                    {r.refundMethod} · manually recorded
+                  </span>
+                  <button
+                    type="button"
+                    disabled={documentBusy !== null}
+                    onClick={() =>
+                      void loadDocument(
+                        -r.id,
+                        () => documentClient.creditNote(r.id),
+                        `${r.refundNumber}.pdf`,
+                      )
+                    }
+                    className="rounded border border-slate-400 px-2 py-1 disabled:opacity-50"
+                  >
+                    Credit note PDF
+                  </button>
                 </li>
               ))}
             </ul>

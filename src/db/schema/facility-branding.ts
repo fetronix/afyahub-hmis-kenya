@@ -8,6 +8,7 @@
 import { sql } from 'drizzle-orm';
 import {
   customType,
+  doublePrecision,
   integer,
   pgTable,
   serial,
@@ -48,6 +49,33 @@ export const facilityLetterheads = pgTable(
     logoSha256: text('logo_sha256'),
     logoWidth: integer('logo_width'),
     logoHeight: integer('logo_height'),
+
+    /*
+     * The facility's own letterhead, stored verbatim (migration 0090).
+     *
+     * `sourcePdf` is never selected by a list query and never placed on a web
+     * path: the bytes leave the database only through an authorization-checked
+     * endpoint. `sourcePdfPages` decides how a multi-page document continues —
+     * page 2 of the letterhead is the continuation page when it exists.
+     */
+    sourcePdf: bytea('source_pdf'),
+    sourcePdfSha256: text('source_pdf_sha256'),
+    sourcePdfBytes: integer('source_pdf_bytes'),
+    sourcePdfPages: integer('source_pdf_pages'),
+    pageWidthPt: doublePrecision('page_width_pt'),
+    pageHeightPt: doublePrecision('page_height_pt'),
+
+    /*
+     * The printable body rectangle, in PDF points from each page edge. The
+     * renderer lays content out inside it, so it can never overlap the
+     * artwork. `layoutSource` records whether those numbers were measured from
+     * the uploaded PDF, adjusted by an administrator, or defaulted.
+     */
+    bodyTopPt: doublePrecision('body_top_pt'),
+    bodyBottomPt: doublePrecision('body_bottom_pt'),
+    bodyLeftPt: doublePrecision('body_left_pt'),
+    bodyRightPt: doublePrecision('body_right_pt'),
+    layoutSource: text('layout_source'),
 
     checksum: text('checksum').notNull(),
 

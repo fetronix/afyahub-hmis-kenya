@@ -4,6 +4,7 @@ import { paymentHubApi, type HubTransaction } from '../../api/payment-hub.client
 import { collectionStatusLabel } from '../../payment-hub/collection-status.ts';
 import type { FinalizedInvoiceView, PaymentParty } from '../../billing/finalized-invoice.types.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
+import { documentClient, openBlob } from '../../api/clients/branding.client.ts';
 
 const field = 'w-full rounded border border-slate-300 px-2 py-1.5';
 const button = 'rounded bg-teal-700 px-3 py-2 text-white font-semibold disabled:opacity-50';
@@ -145,6 +146,36 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number; reportCentre?:
     }
   }
 
+  /**
+   * The official PDF, straight from the document service.
+   *
+   * The printed sheet below is the on-screen snapshot; this is the artefact
+   * that is filed, e-mailed and handed to the patient, on the facility's
+   * letterhead. Opening and downloading use the same request, so the printed
+   * page and the download cannot differ.
+   */
+  async function openPdf(download: boolean) {
+    const version = scopeVersion.current;
+    setBusy(true);
+    setError('');
+    try {
+      const blob = await documentClient.invoice(invoiceId);
+      if (version !== scopeVersion.current) return;
+      const number = view?.finalized ? view.snapshot.invoice.number : `invoice-${invoiceId}`;
+      openBlob(blob, download ? `${number}.pdf` : undefined);
+    } catch (err) {
+      if (version === scopeVersion.current) {
+        setError(
+          err instanceof Error
+            ? `The PDF could not be generated: ${err.message}`
+            : 'The PDF could not be generated.',
+        );
+      }
+    } finally {
+      if (version === scopeVersion.current) setBusy(false);
+    }
+  }
+
   async function print() {
     const version = scopeVersion.current;
     setBusy(true);
@@ -267,7 +298,23 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number; reportCentre?:
       )}
       {view?.finalized && (
         <>
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className={button}
+              disabled={busy}
+              onClick={() => void openPdf(false)}
+            >
+              Open invoice PDF
+            </button>
+            <button
+              type="button"
+              className={button}
+              disabled={busy}
+              onClick={() => void openPdf(true)}
+            >
+              Download invoice PDF
+            </button>
             <button type="button" className={button} disabled={busy} onClick={() => void print()}>
               Print finalized invoice
             </button>

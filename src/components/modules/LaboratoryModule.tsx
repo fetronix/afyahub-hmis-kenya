@@ -14,6 +14,7 @@ import {
   Printer,
   Barcode,
 } from 'lucide-react';
+import { documentClient, openBlob } from '../../api/clients/branding.client.ts';
 
 export const LaboratoryModule: React.FC = () => {
   const {
@@ -46,6 +47,7 @@ export const LaboratoryModule: React.FC = () => {
   const [resultsError, setResultsError] = useState('');
   const [resultSaving, setResultSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [verifyingResult, setVerifyingResult] = useState<number | null>(null);
   const resultVersion = useRef(0);
   const selectedOrderId = useRef<number | null>(null);
@@ -213,6 +215,28 @@ export const LaboratoryModule: React.FC = () => {
       triggerRefresh();
     } finally {
       setResultSaving(false);
+    }
+  };
+
+  /**
+   * The report is only generated after completion: before that the findings
+   * are unverified, and a printed report must never be able to show a result
+   * that was still being edited.
+   */
+  const handlePrintReport = async () => {
+    if (!selectedOrder || printing) return;
+    setPrinting(true);
+    try {
+      const blob = await documentClient.laboratoryReport(selectedOrder.id);
+      openBlob(blob, `lab-report-${selectedOrder.id}.pdf`);
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? `The laboratory report could not be generated: ${err.message}`
+          : 'The laboratory report could not be generated.',
+      );
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -429,6 +453,21 @@ export const LaboratoryModule: React.FC = () => {
                   </div>
                 </div>
 
+                {selectedOrder.status === 'Completed' && (
+                  <div className="rounded border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-2xs text-slate-600">
+                      The verified report prints on this facility's letterhead.
+                    </p>
+                    <button
+                      type="button"
+                      className="rounded bg-teal-700 px-3 py-2 text-white disabled:opacity-50"
+                      disabled={printing}
+                      onClick={() => void handlePrintReport()}
+                    >
+                      {printing ? 'Generating…' : 'Print laboratory report'}
+                    </button>
+                  </div>
+                )}
                 {selectedOrder.status === 'Sample Collected' && canVerifyLabResults && (
                   <div className="rounded border border-slate-200 p-3 space-y-2">
                     <p>

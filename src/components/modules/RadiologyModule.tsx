@@ -7,6 +7,7 @@ import { useHmis } from '../../context/HmisContext.tsx';
 import { api } from '../../api/client.ts';
 import { RadiologyOrder, Patient, Encounter, FacilityService } from '../../types/index.ts';
 import { Scan, CheckCircle2, Clock, UserCheck, Plus, FileText } from 'lucide-react';
+import { documentClient, openBlob } from '../../api/clients/branding.client.ts';
 
 export const RadiologyModule: React.FC = () => {
   const {
@@ -30,6 +31,7 @@ export const RadiologyModule: React.FC = () => {
   const requestKey = useRef<{ fingerprint: string; key: string } | null>(null);
   const [catalogueError, setCatalogueError] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RadiologyOrder | null>(null);
+  const [printing, setPrinting] = useState(false);
   const selectedOrderRef = useRef<RadiologyOrder | null>(null);
   const [patientLookup, setPatientLookup] = useState<{
     id: number;
@@ -258,6 +260,27 @@ export const RadiologyModule: React.FC = () => {
     return patients.find((p) => p.id === patientId);
   };
 
+  /**
+   * Only a reported examination can be printed; the service refuses an
+   * unreported one rather than issuing a report with no findings.
+   */
+  const handlePrintReport = async () => {
+    if (!selectedOrder || printing) return;
+    setPrinting(true);
+    try {
+      const blob = await documentClient.radiologyReport(selectedOrder.id);
+      openBlob(blob, `imaging-report-${selectedOrder.id}.pdf`);
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? `The imaging report could not be generated: ${err.message}`
+          : 'The imaging report could not be generated.',
+      );
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -365,15 +388,27 @@ export const RadiologyModule: React.FC = () => {
                     <strong>{selectedOrder.orderedBy || 'Not recorded'}</strong>
                   </div>
                 </div>
-                <span
-                  className={`px-2.5 py-1 rounded text-2xs font-semibold ${
-                    selectedOrder.status === 'Reported'
-                      ? 'bg-emerald-50 text-emerald-800'
-                      : 'bg-amber-50 text-amber-800'
-                  }`}
-                >
-                  {selectedOrder.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  {selectedOrder.status === 'Reported' && (
+                    <button
+                      type="button"
+                      disabled={printing}
+                      onClick={() => void handlePrintReport()}
+                      className="rounded bg-teal-700 px-3 py-1.5 text-white font-semibold disabled:opacity-50"
+                    >
+                      {printing ? 'Generating…' : 'Print report'}
+                    </button>
+                  )}
+                  <span
+                    className={`px-2.5 py-1 rounded text-2xs font-semibold ${
+                      selectedOrder.status === 'Reported'
+                        ? 'bg-emerald-50 text-emerald-800'
+                        : 'bg-amber-50 text-amber-800'
+                    }`}
+                  >
+                    {selectedOrder.status}
+                  </span>
+                </div>
               </div>
 
               {/* Patient info */}

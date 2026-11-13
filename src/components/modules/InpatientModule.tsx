@@ -2,6 +2,7 @@ import { PrimaryButton, SecondaryButton } from '../ui/controls.tsx';
 import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
+import { documentClient, openBlob } from '../../api/clients/branding.client.ts';
 import { api } from '../../api/client.ts';
 import {
   Ward,
@@ -231,6 +232,7 @@ export const InpatientModule: React.FC = () => {
   // Discharge Modal
   const [dischargeTarget, setDischargeTarget] = useState<Admission | null>(null);
   const [dischargeSummary, setDischargeSummary] = useState('');
+  const [printingSummary, setPrintingSummary] = useState<number | null>(null);
   const [dischargeType, setDischargeType] = useState('');
 
   useEffect(() => {
@@ -681,6 +683,28 @@ export const InpatientModule: React.FC = () => {
     selectedAdmissionBed && selectedAdmissionWard
       ? selectBedRate(selectedAdmissionBed, selectedAdmissionWard)
       : null;
+
+  /**
+   * Reprint the documented discharge summary.
+   *
+   * The service refuses an admission that was never discharged or whose
+   * summary is empty, so this cannot produce a blank clinical document.
+   */
+  const handlePrintDischargeSummary = async (admission: Admission) => {
+    setPrintingSummary(admission.id);
+    try {
+      const blob = await documentClient.dischargeSummary(admission.id);
+      openBlob(blob, `discharge-summary-${admission.id}.pdf`);
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? `The discharge summary could not be generated: ${err.message}`
+          : 'The discharge summary could not be generated.',
+      );
+    } finally {
+      setPrintingSummary(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1168,6 +1192,16 @@ export const InpatientModule: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-sans">
+                      {adm.status === 'Discharged' && (
+                        <button
+                          onClick={() => void handlePrintDischargeSummary(adm)}
+                          disabled={printingSummary === adm.id}
+                          className="px-2.5 py-1 mb-1 text-2xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded transition-colors flex items-center gap-1 ml-auto disabled:opacity-50"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>{printingSummary === adm.id ? 'Generating…' : 'Summary PDF'}</span>
+                        </button>
+                      )}
                       {can('inpatient.discharge') && (
                         <button
                           onClick={() => {
