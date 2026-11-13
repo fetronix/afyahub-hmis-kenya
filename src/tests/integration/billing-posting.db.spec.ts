@@ -10,6 +10,10 @@ import { recordSettledPayment } from '../../billing/payments.service.ts';
 import { approvedSyntheticManualRefund } from './support/refund-approval.ts';
 import { inspectBillingLedgerScoped } from '../../accounting/billing-ledger-diagnostics.service.ts';
 import { inspectBillingJournalExceptionsScoped } from '../../accounting/billing-journal-exceptions.service.ts';
+import {
+  inspectInvoiceLedgerCoverageScoped,
+  inspectSourceLedgerCoverageScoped,
+} from '../../accounting/source-ledger-coverage.service.ts';
 import { postBillingSourceScoped } from '../../accounting/billing-posting.service.ts';
 import {
   createBankAccountScoped,
@@ -1802,5 +1806,280 @@ describeDb('Reviewed billing-to-ledger bridge', () => {
         ])
       ).rows[0].paid,
     ).toBe('15.00');
+  });
+
+  /*
+   * Source-to-ledger completeness. Selected by each source's own activity date,
+   * so a receipt taken against an older invoice is still in scope. Uses a third
+   * facility so the totals are this test's own and not another test's backlog.
+   */
+  it('reports unposted, posted and reversed sources by their own activity date', async () => {
+    const facilityC = (
+      await pool.query(
+        `INSERT INTO facilities(tenant_id,code,name,mfl_code,address,county,phone,enabled_modules)
+         VALUES($1,$2,'Coverage Hospital',$3,'Coverage Road','Nyeri','0000000002','["finance","accounting"]')
+         RETURNING id`,
+        [tenant, `C-${suffix}`, `MFL-C-${suffix}`],
+      )
+    ).rows[0].id as number;
+    const scopeC: AccountingScope = { tenantId: tenant, facilityId: facilityC, actorUserId: actor };
+    const contextC: AuthorizationContext = {
+      userId: actor,
+      tenantId: tenant,
+      facilityId: facilityC,
+      roles: [],
+      permissions: ['billing.read', 'billing.update', 'billing.payments.record', 'clinical.read'],
+      isSuperAdmin: false,
+    };
+    const accountC = async (code: string, type: 'ASSET' | 'LIABILITY' | 'REVENUE') =>
+      (
+        await createAccountScoped(scopeC, {
+          accountCode: code,
+          accountName: `Coverage ${code}`,
+          accountType: type,
+          subType: code,
+          normalBalance: type === 'ASSET' ? 'DEBIT' : 'CREDIT',
+        })
+      ).id as number;
+    const patientArC = await accountC('PATIENT_AR', 'ASSET');
+    const insurerArC = await accountC('INSURER_AR', 'ASSET');
+    const revenueC = await accountC('REVENUE', 'REVENUE');
+    const cashC = await accountC('CASH', 'ASSET');
+    const creditC = await accountC('CREDIT', 'LIABILITY');
+    await createFinancialPeriodScoped(scopeC, {
+      periodCode: 'SYNC',
+      name: 'Coverage open period',
+      startDate: '2000-01-01',
+      endDate: '2099-12-31',
+    });
+
+    const patientC = (
+      await pool.query(
+        `INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender)
+         VALUES($1,$2,$3,'Coverage','Patient','1990-01-01','Other') RETURNING id`,
+        [tenant, facilityC, `COV-${suffix}`],
+      )
+    ).rows[0].id as number;
+    const departmentC = (
+      await pool.query(
+        'INSERT INTO departments(facility_id,name,code) VALUES($1,$2,$3) RETURNING id',
+        [facilityC, 'Coverage OPD', `COV-OPD-${suffix}`],
+      )
+    ).rows[0].id as number;
+    const practitionerC = (
+      await pool.query(
+        'INSERT INTO practitioners(tenant_id,facility_id,full_name) VALUES($1,$2,$3) RETURNING id',
+        [tenant, facilityC, 'Coverage clinician'],
+      )
+    ).rows[0].id as number;
+    const encounterC = (
+      await pool.query(
+        `INSERT INTO encounters(tenant_id,facility_id,patient_id,practitioner_id,department_id)
+         VALUES($1,$2,$3,$4,$5) RETURNING id`,
+        [tenant, facilityC, patientC, practitionerC, departmentC],
+      )
+    ).rows[0].id as number;
+    const tariffC = (
+      await pool.query(
+        `INSERT INTO facility_service_tariffs(tenant_id,facility_id,code,description,department,unit,fee)
+         VALUES($1,$2,$3,'Coverage consultation','OPD','Visit','100.00') RETURNING id`,
+        [tenant, facilityC, `COV-T-${suffix}`],
+      )
+    ).rows[0].id as number;
+    const invoiceC = (
+      await pool.query(
+        `INSERT INTO billing_invoices(tenant_id,facility_id,patient_id,encounter_id,invoice_number,
+           total_amount,paid_amount,balance_amount,credit_balance,status,payer_type,payer_name,member_number)
+         VALUES($1,$2,$3,$4,$5,'100.00','0.00','100.00','0.00','Pending','Insurance','Synthetic payer','SYN')
+         RETURNING id`,
+        [tenant, facilityC, patientC, encounterC, `COV-INV-${suffix}`],
+      )
+    ).rows[0].id as number;
+    await pool.query(
+      `INSERT INTO billing_items(invoice_id,tariff_id,tariff_code,item_type,description,quantity,unit_price,total_amount)
+       VALUES($1,$2,$3,'Consultation','Coverage consultation',2,'50.00','100.00')`,
+      [invoiceC, tariffC, `COV-T-${suffix}`],
+    );
+    await pool.query(
+      `INSERT INTO diagnoses(encounter_id,patient_id,coding_system,icd10_code,icd10_description)
+       VALUES($1,$2,'ICD-10','Z00.0','Synthetic coverage diagnosis')`,
+      [encounterC, patientC],
+    );
+    await finalizeInvoice(contextC, invoiceC, {
+      insurerResponsibility: '100.00',
+      copayment: '0.00',
+      allocationBasis: 'Synthetic coverage split',
+    });
+    const receiptC = await recordSettledPayment(
+      contextC,
+      {
+        facilityId: facilityC,
+        invoiceId: invoiceC,
+        amount: '100.00',
+        payerParty: 'INSURER',
+        paymentMethod: 'Cash',
+        idempotencyKey: randomUUID(),
+      },
+      'Synthetic cashier',
+    );
+
+    const window = { startDate: date, endDate: date };
+    const before = await inspectSourceLedgerCoverageScoped(scopeC, window);
+    expect(before.coverage).toBe('GAPS_FOUND');
+    expect(before.sources.invoices).toMatchObject({ examined: 1, posted: 0, unposted: 1 });
+    expect(before.sources.receipts).toMatchObject({ examined: 1, posted: 0, unposted: 1 });
+    expect(before.sources.refunds.examined).toBe(0);
+    expect(before.sources.invoices.unpostedAmount).toBe('100.00');
+    expect(before.exceptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'BILLING_INVOICE',
+          sourceId: invoiceC,
+          reason: 'UNPOSTED',
+          amount: '100.00',
+        }),
+        expect.objectContaining({
+          sourceType: 'BILLING_PAYMENT',
+          sourceId: receiptC.payment.id,
+          reason: 'UNPOSTED',
+        }),
+      ]),
+    );
+
+    const invoicePosting = await postBillingSourceScoped(scopeC, 'BILLING_INVOICE', invoiceC, {
+      entryDate: date,
+      description: 'Coverage invoice posting',
+      idempotencyKey: randomUUID(),
+      patientReceivableAccountId: patientArC,
+      insurerReceivableAccountId: insurerArC,
+      revenueAccountId: revenueC,
+    });
+    const paymentPosting = await postBillingSourceScoped(
+      scopeC,
+      'BILLING_PAYMENT',
+      receiptC.payment.id,
+      {
+        entryDate: date,
+        description: 'Coverage receipt posting',
+        idempotencyKey: randomUUID(),
+        settlementAccountId: cashC,
+        liabilityAccountId: creditC,
+      },
+    );
+    const covered = await inspectSourceLedgerCoverageScoped(scopeC, window);
+    expect(covered.coverage).toBe('COMPLETE');
+    expect(covered.exceptions).toEqual([]);
+    expect(covered.sources.invoices).toMatchObject({ examined: 1, posted: 1, unposted: 0 });
+    expect(covered.sources.receipts).toMatchObject({ examined: 1, posted: 1, unposted: 0 });
+
+    /*
+     * A reversal removes the source from the ledger: coverage must not call it
+     * posted. The dependent receipt journal is reversed first — the ledger
+     * refuses to leave a receipt pointing at a reversed invoice.
+     */
+    await reverseJournalScoped(scopeC, paymentPosting.journal.id, {
+      entryDate: date,
+      reason: 'Synthetic coverage receipt reversal',
+      idempotencyKey: randomUUID(),
+      billingSourceAuthorized: true,
+    });
+    await reverseJournalScoped(scopeC, invoicePosting.journal.id, {
+      entryDate: date,
+      reason: 'Synthetic coverage reversal',
+      idempotencyKey: randomUUID(),
+      billingSourceAuthorized: true,
+    });
+    const afterReversal = await inspectSourceLedgerCoverageScoped(scopeC, window);
+    expect(afterReversal.coverage).toBe('GAPS_FOUND');
+    expect(afterReversal.sources.invoices).toMatchObject({ posted: 0, unposted: 0, reversed: 1 });
+    expect(afterReversal.sources.receipts).toMatchObject({ posted: 0, unposted: 0, reversed: 1 });
+    expect(afterReversal.exceptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'BILLING_INVOICE',
+          sourceId: invoiceC,
+          reason: 'REVERSED',
+          journalId: invoicePosting.journal.id,
+        }),
+        expect.objectContaining({
+          sourceType: 'BILLING_PAYMENT',
+          sourceId: receiptC.payment.id,
+          reason: 'REVERSED',
+          journalId: paymentPosting.journal.id,
+        }),
+      ]),
+    );
+
+    const perInvoice = await inspectInvoiceLedgerCoverageScoped(scopeC, invoiceC);
+    expect(perInvoice.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceType: 'BILLING_INVOICE', state: 'REVERSED' }),
+        expect.objectContaining({
+          sourceType: 'BILLING_PAYMENT',
+          sourceId: receiptC.payment.id,
+          state: 'REVERSED',
+          journalId: paymentPosting.journal.id,
+        }),
+      ]),
+    );
+
+    /*
+     * HTTP: the accountant's own facility. Coverage totals here include other
+     * synthetic fixtures in this shared facility, so only the shape, window and
+     * authorisation boundary are asserted — the source-level assertions above
+     * run against their own facility.
+     */
+    const response = await httpJson(
+      base,
+      'GET',
+      `/api/accounting/source-ledger-coverage?facilityId=${facility}&startDate=${date}&endDate=${date}`,
+      { token: managerToken },
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      window: { startDate: date, endDate: date },
+    });
+    expect(['COMPLETE', 'GAPS_FOUND']).toContain(response.body.coverage);
+    expect(response.body.sources.invoices.examined).toBeGreaterThanOrEqual(1);
+    // Per-invoice view: a facility-A invoice is reachable; another facility's is not.
+    const localInvoice = await makeInvoice(false);
+    const localCoverage = await httpJson(
+      base,
+      'GET',
+      `/api/accounting/invoices/${localInvoice}/source-ledger-coverage`,
+      { token: managerToken },
+    );
+    expect(localCoverage.status).toBe(200);
+    expect(localCoverage.body.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'BILLING_INVOICE',
+          sourceId: localInvoice,
+          state: 'UNPOSTED',
+        }),
+      ]),
+    );
+    const foreignCoverage = await httpJson(
+      base,
+      'GET',
+      `/api/accounting/invoices/${invoiceC}/source-ledger-coverage`,
+      { token: managerToken },
+    );
+    expect(foreignCoverage.status).toBe(404);
+    const forbidden = await httpJson(
+      base,
+      'GET',
+      `/api/accounting/source-ledger-coverage?facilityId=${facility}&startDate=${date}&endDate=${date}`,
+      { token: accountingOnlyToken },
+    );
+    expect(forbidden.status).toBe(403);
+    const badRange = await httpJson(
+      base,
+      'GET',
+      `/api/accounting/source-ledger-coverage?facilityId=${facility}&startDate=${date}&endDate=2000-01-01`,
+      { token: managerToken },
+    );
+    expect(badRange.status).toBe(400);
   });
 });

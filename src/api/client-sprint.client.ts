@@ -173,6 +173,36 @@ export interface BillingLedgerReview extends BillingConsistencyReport {
   }>;
   ledgerPageSummary: { examined: number; unposted: number; requiringReview: number };
 }
+export interface SourceLedgerCoverage {
+  window: { startDate: string; endDate: string };
+  sources: Record<
+    'invoices' | 'receipts' | 'refunds',
+    {
+      examined: number;
+      posted: number;
+      unposted: number;
+      reversed: number;
+      amount: string;
+      unpostedAmount: string;
+      reversedAmount: string;
+    }
+  >;
+  coverage: 'COMPLETE' | 'GAPS_FOUND';
+  exceptions: Array<{
+    sourceType: 'BILLING_INVOICE' | 'BILLING_PAYMENT' | 'BILLING_REFUND';
+    sourceId: number;
+    reference: string;
+    sourceDate: string;
+    amount: string;
+    reason: 'UNPOSTED' | 'REVERSED';
+    journalId: number | null;
+    reversedOn: string | null;
+  }>;
+  exceptionsTruncated: boolean;
+  openExceptionCount: number;
+  limitations: { posting: string; notice: string };
+}
+
 export interface DialysisWorkspace {
   protocol: {
     version: string;
@@ -293,6 +323,10 @@ export const sprintApi = {
   billingGlReconciliation: (facilityId: number, endDate: string) =>
     fetchJson<BillingGlReconciliation>(
       `/api/accounting/billing-gl-reconciliation?${new URLSearchParams({ facilityId: String(facilityId), endDate })}`,
+    ),
+  sourceLedgerCoverage: (facilityId: number, startDate: string, endDate: string, limit = 50) =>
+    fetchJson<SourceLedgerCoverage>(
+      `/api/accounting/source-ledger-coverage?${new URLSearchParams({ facilityId: String(facilityId), startDate, endDate, limit: String(limit) })}`,
     ),
   billingLedgerReview: (facilityId: number, startDate: string, endDate: string, afterId = 0) =>
     fetchJson<BillingLedgerReview>(

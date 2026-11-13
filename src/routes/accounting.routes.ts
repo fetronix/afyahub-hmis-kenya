@@ -60,6 +60,10 @@ import { inspectBillingLedgerScoped } from '../accounting/billing-ledger-diagnos
 import { reconcileBillingLedgerScoped } from '../accounting/billing-gl-reconciliation.service.ts';
 import { inspectBillingJournalExceptionsScoped } from '../accounting/billing-journal-exceptions.service.ts';
 import {
+  inspectInvoiceLedgerCoverageScoped,
+  inspectSourceLedgerCoverageScoped,
+} from '../accounting/source-ledger-coverage.service.ts';
+import {
   listSettlementAccountsScoped,
   listSettlementSourcesScoped,
   retrySettlementSourceScoped,
@@ -144,6 +148,47 @@ router.get(
         endDate: req.query.endDate,
         limit: req.query.limit,
       });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+/*
+ * Source-to-ledger coverage. The existing review endpoints select invoices by
+ * creation date; this one selects every source family by its own activity date,
+ * so a receipt taken today against an old invoice cannot fall outside the
+ * review window.
+ */
+router.get(
+  '/source-ledger-coverage',
+  requirePermission('accounting.read'),
+  requirePermission('billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectSourceLedgerCoverageScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/invoices/:id/source-ledger-coverage',
+  requirePermission('accounting.read'),
+  requirePermission('billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectInvoiceLedgerCoverageScoped(
+        await scoped(req),
+        Number(req.params.id),
+      );
       res.json({ success: true, ...report });
     } catch (error) {
       fail(res, error);

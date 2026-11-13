@@ -317,9 +317,19 @@ describeDb('facility operations status (synthetic PostgreSQL)', () => {
   });
 
   it('compares the applied migrations with the packaged journal', async () => {
+    /*
+     * The count is read from the packaged journal, not written down here.
+     * This test exists to prove the endpoint *compares* the two numbers; a
+     * literal would fail on every future migration and would say nothing
+     * about the comparison it claims to check.
+     */
+    const { readJournal } = await import('../../../scripts/migration-journal.ts');
+    const packaged = readJournal().length;
+
     const res = await status();
-    expect(res.body.schema.expectedMigrations).toBe(88);
-    expect(res.body.schema.appliedMigrations).toBe(88);
+    expect(packaged).toBeGreaterThan(0);
+    expect(res.body.schema.expectedMigrations).toBe(packaged);
+    expect(res.body.schema.appliedMigrations).toBe(packaged);
     expect(res.body.schema.upToDate).toBe(true);
   });
 

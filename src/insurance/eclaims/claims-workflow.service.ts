@@ -32,6 +32,7 @@ import {
   type PractitionerRegulator,
 } from '../../integrations/sha/sha.fhir.ts';
 import { getFacilityPayerConfig } from './configuration.service.ts';
+import { assertClaimInvoiceStillValid, loadClaimInvoiceFacts } from '../core/claim-invoice-gate.ts';
 import {
   assertEclaimTransition,
   canTransitionEclaimStatus,
@@ -393,6 +394,19 @@ export async function prepareShaClaim(scope: InsuranceActorScope, input: Prepare
       404,
     );
   }
+
+  /*
+   * A claim is a statement about a fixed set of lines and a fixed total. Read
+   * the frozen basis here, before anything else is built, so a draft or voided
+   * invoice cannot become a claim and the claim records exactly what was
+   * claimed. See ../core/claim-invoice-gate.ts.
+   */
+  const claimInvoice = await loadClaimInvoiceFacts({
+    tenantId: scope.tenantId,
+    facilityId: scope.facilityId,
+    invoice,
+    makeError: (code, message, status) => new InsuranceDomainError(code, message, status),
+  });
 
   // Prevent duplicate active eClaim on the same invoice + payer
   const existingClaims = await db
@@ -890,6 +904,8 @@ export async function prepareShaClaim(scope: InsuranceActorScope, input: Prepare
         patientId: patient.id,
         encounterId: encounter?.id ?? null,
         invoiceId: invoice.id,
+        invoiceFinalizedAt: claimInvoice.invoiceFinalizedAt,
+        invoiceSnapshot: claimInvoice.snapshot as unknown as Record<string, unknown>,
         eligibilityVerificationId: eligibilityId,
         preauthorizationId: linkedPreauth?.id ?? null,
         authorizationId: resolvedAuthorization?.id ?? null,
@@ -1368,6 +1384,18 @@ export async function submitShaClaim(
   if (detail.status === 'DRAFT') {
     detail = await validateShaClaim(scope, claimId);
   }
+
+  /*
+   * The invoice may have been voided between preparation and dispatch. Sending
+   * a claim for money that has since been cancelled misstates the receivable to
+   * the payer, so re-check before the guard is reserved.
+   */
+  await assertClaimInvoiceStillValid({
+    tenantId: scope.tenantId,
+    facilityId: scope.facilityId,
+    invoiceId: detail.invoiceId,
+    makeError: (code, message, status) => new InsuranceDomainError(code, message, status),
+  });
 
   if (detail.status === 'VALIDATION_FAILED') {
     throw new InsuranceDomainError(

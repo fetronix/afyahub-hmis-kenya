@@ -9,6 +9,7 @@ import {
   type AccountingOverview,
   type BillingGlReconciliation,
   type BillingLedgerReview,
+  type SourceLedgerCoverage,
 } from '../../api/client-sprint.client.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
 
@@ -42,6 +43,11 @@ export const AccountingModule: React.FC = () => {
   const [glErrorScope, setGlErrorScope] = useState('');
   const [glReportScope, setGlReportScope] = useState('');
   const visibleGlReport = glReportScope === currentScope ? glReport : null;
+  const [coverage, setCoverage] = useState<SourceLedgerCoverage | null>(null);
+  const [coverageError, setCoverageError] = useState('');
+  const [coverageErrorScope, setCoverageErrorScope] = useState('');
+  const [coverageScope, setCoverageScope] = useState('');
+  const visibleCoverage = coverageScope === currentScope ? coverage : null;
   const [journalReport, setJournalReport] = useState<Awaited<
     ReturnType<typeof sprintApi.billingJournalExceptions>
   > | null>(null);
@@ -135,6 +141,24 @@ export const AccountingModule: React.FC = () => {
       if (scopeRef.current === requestedScope)
         setGlReportError(
           error instanceof Error ? error.message : 'Billing to ledger tie-out failed.',
+        );
+    }
+  };
+  const loadSourceCoverage = async () => {
+    if (!currentFacility) return;
+    const requestedScope = `${currentFacility.id}:${start}:${end}`;
+    try {
+      setCoverageError('');
+      setCoverageErrorScope(requestedScope);
+      const report = await sprintApi.sourceLedgerCoverage(currentFacility.id, start, end);
+      if (scopeRef.current === requestedScope) {
+        setCoverage(report);
+        setCoverageScope(requestedScope);
+      }
+    } catch (error: unknown) {
+      if (scopeRef.current === requestedScope)
+        setCoverageError(
+          error instanceof Error ? error.message : 'Source-to-ledger coverage review failed.',
         );
     }
   };
@@ -290,6 +314,99 @@ export const AccountingModule: React.FC = () => {
                 </button>
               )}
               <p>{visibleBillingReport.limitations.notice}</p>
+            </>
+          )}
+        </section>
+      )}
+      {can('accounting.read') && can('billing.read') && (
+        <section className="rounded-xl border border-hair bg-surface p-4 space-y-2 text-xs">
+          <h2 className="font-semibold">Source-to-ledger coverage</h2>
+          <p>
+            Selects finalized invoices, receipts and refunds by their own activity date, then shows
+            which of them has no active reviewed journal. A receipt taken today against an old
+            invoice therefore appears in this period, not only in the period the invoice was
+            created. Nothing is posted or corrected here, and a posted state does not prove cash
+            movement or correct account classification.
+          </p>
+          <button className={buttonClass} onClick={() => void loadSourceCoverage()}>
+            Check coverage
+          </button>
+          {coverageErrorScope === currentScope && coverageError && (
+            <p role="alert" className="text-red-700">
+              {coverageError}
+            </p>
+          )}
+          {visibleCoverage && (
+            <>
+              <p>
+                {visibleCoverage.coverage === 'COMPLETE'
+                  ? 'Every source in this range has an active reviewed journal.'
+                  : `${visibleCoverage.openExceptionCount} source(s) are unposted or reversed and need finance review.`}
+              </p>
+              <div className="overflow-x-auto">
+                <DataTable className="w-full text-left">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Examined</th>
+                      <th>Posted</th>
+                      <th>Unposted</th>
+                      <th>Reversed</th>
+                      <th>Amount (KES)</th>
+                      <th>Unposted (KES)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(['invoices', 'receipts', 'refunds'] as const).map((family) => {
+                      const row = visibleCoverage.sources[family];
+                      return (
+                        <tr key={family}>
+                          <td className="capitalize">{family}</td>
+                          <td>{row.examined}</td>
+                          <td>{row.posted}</td>
+                          <td>{row.unposted}</td>
+                          <td>{row.reversed}</td>
+                          <td>{row.amount}</td>
+                          <td>{row.unpostedAmount}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </DataTable>
+              </div>
+              {visibleCoverage.exceptions.length > 0 && (
+                <div className="overflow-x-auto">
+                  <DataTable className="w-full text-left">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Reference</th>
+                        <th>Date</th>
+                        <th>Amount (KES)</th>
+                        <th>Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleCoverage.exceptions.map((row) => (
+                        <tr key={`${row.sourceType}:${row.sourceId}`}>
+                          <td>{row.sourceType.replace('BILLING_', '')}</td>
+                          <td>{row.reference}</td>
+                          <td>{row.sourceDate}</td>
+                          <td>{row.amount}</td>
+                          <td>{row.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </DataTable>
+                </div>
+              )}
+              {visibleCoverage.exceptionsTruncated && (
+                <p>
+                  Showing the first {visibleCoverage.exceptions.length} of{' '}
+                  {visibleCoverage.openExceptionCount} exceptions.
+                </p>
+              )}
+              <p>{visibleCoverage.limitations.notice}</p>
             </>
           )}
         </section>

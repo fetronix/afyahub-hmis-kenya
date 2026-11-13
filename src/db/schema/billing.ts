@@ -36,6 +36,7 @@ import { encounters } from './clinical.ts';
 import { users } from './auth.ts';
 import { masterServices } from './master-services.ts';
 import { facilityServices } from './facility-services.ts';
+import { facilityLetterheads } from './facility-branding.ts';
 
 export const facilityServiceTariffs = pgTable(
   'facility_service_tariffs',
@@ -476,6 +477,9 @@ export const billingInvoiceFinalizations = pgTable('billing_invoice_finalization
   insurerResponsibility: numeric('insurer_responsibility', { precision: 10, scale: 2 }).notNull(),
   copayment: numeric('copayment', { precision: 10, scale: 2 }).notNull(),
   allocationBasis: text('allocation_basis').notNull(),
+  /* Migration 0089: the exact branding version this invoice was issued under.
+     A later letterhead change cannot rewrite a document a payer already has. */
+  letterheadId: integer('letterhead_id').references(() => facilityLetterheads.id),
   snapshot: jsonb('snapshot')
     .$type<import('../../billing/finalized-invoice.types.ts').InvoiceSnapshot>()
     .notNull(),

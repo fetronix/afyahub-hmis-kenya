@@ -36,6 +36,7 @@ import {
 } from '../audit/diagnostics.service.ts';
 import { isEffectiveOnDate } from '../mappings/mappings.service.ts';
 import { getPayerRowScoped, toPayerRuntimeConfig } from '../payers/payer-config.service.ts';
+import { assertClaimInvoiceStillValid, loadClaimInvoiceFacts } from '../core/claim-invoice-gate.ts';
 
 function recordedClaimMoney(value: string | number | null | undefined): number {
   const cents = parseMoneyToCents(value);
@@ -611,6 +612,18 @@ export async function preparePrivateInsuranceClaim(params: {
     );
   }
 
+  /*
+   * Only a frozen invoice can be claimed. This refuses drafts and voids, and
+   * copies the finalization snapshot onto the claim so a later credit note or
+   * void cannot rewrite what the payer was asked to adjudicate.
+   */
+  const claimInvoice = await loadClaimInvoiceFacts({
+    tenantId: params.tenantId,
+    facilityId: params.facilityId,
+    invoice,
+    makeError: (code, message, status) => new PrivateInsuranceError(code, message, status),
+  });
+
   const [memberPolicy] = await db
     .select()
     .from(schema.insuranceMemberPolicies)
@@ -1108,6 +1121,8 @@ export async function preparePrivateInsuranceClaim(params: {
         encounterId: encounter?.id ?? null,
         admissionId: encounterType === 'IPD' && admission ? admission.id : null,
         invoiceId: invoice.id,
+        invoiceFinalizedAt: claimInvoice.invoiceFinalizedAt,
+        invoiceSnapshot: claimInvoice.snapshot as unknown as Record<string, unknown>,
         eligibilityVerificationId: latestElig?.id ?? null,
         preauthorizationId: preauth?.id ?? null,
         payerCode: payerRow.payerCode,
@@ -1622,6 +1637,18 @@ export async function submitPrivateInsuranceClaim(params: {
       });
     }
   }
+
+  /*
+   * The invoice can be voided after the claim was prepared and before it is
+   * dispatched. Re-check it here, for the same reason as the payer rules below:
+   * a stored state is a record of the past, not a guarantee about now.
+   */
+  await assertClaimInvoiceStillValid({
+    tenantId: params.tenantId,
+    facilityId: params.facilityId,
+    invoiceId: claim.invoiceId,
+    makeError: (code, message, status) => new PrivateInsuranceError(code, message, status),
+  });
 
   // Payer rules, eligibility and supporting evidence can change after READY.
   // Revalidate immediately before every dispatch; READY is not a guarantee.

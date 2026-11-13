@@ -312,6 +312,39 @@ export function contractWithReviewedAdditions(name: string, original: unknown) {
     unique: false,
     uniqueName: null,
   });
+
+  /* Migration 0088: a claim records the frozen invoice basis it was prepared
+     from. Both columns are nullable by design — a historical claim cannot be
+     given one retrospectively without inventing data, so it stays NULL and is
+     reported as an unverifiable basis. They sit after their parent invoice_id,
+     which is where the schema module declares them.
+     Inserted second, so the status_index above is still the untouched one. */
+  const invoiceIndex = expected.columns.findIndex((column) => column.name === 'invoice_id');
+  if (invoiceIndex < 0) throw new Error('Expected historical invoice_id column not found');
+  expected.columns.splice(
+    invoiceIndex + 1,
+    0,
+    {
+      name: 'invoice_finalized_at',
+      type: 'timestamp',
+      notNull: false,
+      primary: false,
+      hasDefault: false,
+      default: null,
+      unique: false,
+      uniqueName: null,
+    },
+    {
+      name: 'invoice_snapshot',
+      type: 'jsonb',
+      notNull: false,
+      primary: false,
+      hasDefault: false,
+      default: null,
+      unique: false,
+      uniqueName: null,
+    },
+  );
   return expected;
 }
 

@@ -54,6 +54,10 @@ describe('schema barrel: pre-extraction contract', () => {
         // Migration 0087: the permanent evidence record written when a human
         // reconciles a claim whose dispatch outcome was unknown.
         'insuranceClaimDispatchReconciliations',
+        // Migration 0089: versioned facility letterhead, and the append-only
+        // record of who activated or withdrew each version.
+        'facilityLetterheads',
+        'facilityLetterheadEvents',
         'accountingBillingPostings',
         'facilityTariffImportBatches',
         'notificationAlertStates',

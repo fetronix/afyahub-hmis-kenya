@@ -54,6 +54,9 @@ export const privateInsuranceClaims = pgTable(
     invoiceId: integer('invoice_id')
       .references(() => billingInvoices.id)
       .notNull(),
+    /* See the matching columns on sha_eclaims: the frozen invoice basis. */
+    invoiceFinalizedAt: timestamp('invoice_finalized_at'),
+    invoiceSnapshot: jsonb('invoice_snapshot').$type<Record<string, unknown>>(),
     eligibilityVerificationId: integer('eligibility_verification_id').references(
       () => insuranceEligibilityVerifications.id,
       { onDelete: 'set null' },

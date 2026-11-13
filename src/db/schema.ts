@@ -50,3 +50,4 @@ export * from './schema/inventory-control.ts';
 export * from './schema/approval-policies.ts';
 export * from './schema/procurement-matching.ts';
 export * from './schema/inventory-accounting.ts';
+export * from './schema/facility-branding.ts';

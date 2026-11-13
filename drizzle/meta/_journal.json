@@ -617,6 +617,20 @@
       "when": 1795142400000,
       "tag": "0087_claim_dispatch_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1795228800000,
+      "tag": "0088_claim_invoice_finalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1795315200000,
+      "tag": "0089_facility_letterheads",
+      "breakpoints": true
     }
   ]
 }

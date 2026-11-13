@@ -1737,6 +1737,37 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
 
   it('does not infer SHA or private payer codes from an internal bed number or matching description', async () => {
     const stay = await makeSyntheticStay(1);
+    /*
+     * Migration 0088 only lets a claim cite a finalized invoice, and
+     * finalization refuses to invent document identity or clinical
+     * attribution. Record them the way the billing screen does, before the
+     * discharge that produces the invoice.
+     */
+    await pool.query(
+      "UPDATE facilities SET mfl_code=$1,address='Synthetic road',county='Nyeri',phone='0000000000' WHERE id=$2",
+      [`SYN-BED-MFL-${suffix}`, facility],
+    );
+    /* Departments are unique on (facility_id, code); an earlier case in this
+       file may already have created the synthetic ward department. */
+    const department = (
+      await pool.query(
+        `INSERT INTO departments(facility_id,name,code) VALUES($1,'Synthetic ward department',$2)
+         ON CONFLICT (facility_id, code) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [facility, `BED-DEP-${suffix}`],
+      )
+    ).rows[0].id;
+    const practitioner = (
+      await pool.query(
+        "INSERT INTO practitioners(tenant_id,facility_id,full_name) VALUES($1,$2,'Synthetic clinician') RETURNING id",
+        [tenant, facility],
+      )
+    ).rows[0].id;
+    await pool.query('UPDATE encounters SET department_id=$1,practitioner_id=$2 WHERE id=$3', [
+      department,
+      practitioner,
+      stay.encounter,
+    ]);
     await pool.query(
       "INSERT INTO diagnoses(encounter_id,patient_id,coding_system,icd10_code,icd10_description) VALUES($1,$2,'ICD-10','Z00.0','Synthetic diagnosis')",
       [stay.encounter, stay.patient],
@@ -1744,6 +1775,29 @@ describeDb('Bed daily-charge billing at discharge (synthetic PostgreSQL)', () =>
     const closed = await call('POST', `/api/admissions/${stay.admission}/discharge`, {});
     const itemId = closed.body.billing.bedDays[0].itemId,
       invoiceId = closed.body.billing.bedDays[0].invoiceId;
+    /*
+     * A claim may only be prepared from a finalized invoice (migration 0088).
+     * Finalizing is the real billing workflow, not a shortcut: somebody has to
+     * state the insurer/patient split before the payer can be asked anything.
+     * This does not affect the mapping assertions below — they are about the
+     * absence of a payer service code, not about which invoice was used.
+     */
+    await finalizeInvoice(
+      {
+        userId: actor,
+        tenantId: tenant,
+        facilityId: facility,
+        roles: [],
+        permissions: grants,
+        isSuperAdmin: false,
+      },
+      invoiceId,
+      {
+        insurerResponsibility: '0.00',
+        copayment: '0.00',
+        allocationBasis: 'Synthetic bed-day claim allocation',
+      },
+    );
     const description = (
       await pool.query('SELECT description FROM billing_items WHERE id=$1', [itemId])
     ).rows[0].description;

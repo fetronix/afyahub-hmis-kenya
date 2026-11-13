@@ -24,7 +24,11 @@ import {
 import { checkPrivateInsuranceEligibility } from '../../insurance/eligibility/eligibility.service.ts';
 import { assignPayer, setActivation } from '../../insurance/hub/service.ts';
 import { recordSettledPayment } from '../../billing/payments.service.ts';
-import { attributeInvoicePayment } from '../../billing/finalized-invoice.service.ts';
+import type { AuthorizationContext } from '../../auth/authorization.types.ts';
+import {
+  attributeInvoicePayment,
+  finalizeInvoice,
+} from '../../billing/finalized-invoice.service.ts';
 import { matchRecordedPayerPayment } from '../../insurance/hub/recorded-payment.ts';
 import { getPayerAdapter, registerPayerAdapter } from '../../insurance/core/adapter-registry.ts';
 import { createPayerServiceMapping } from '../../insurance/mappings/mappings.service.ts';
@@ -76,6 +80,34 @@ interface TestActor {
   actorDisplayName: string;
 }
 
+/*
+ * Claims may only be prepared from a finalized invoice (migration 0088).
+ * Finalizing is the real workflow: a billing user states the insurer/patient
+ * split before the payer is asked to adjudicate anything.
+ */
+async function finalizeClaimInvoice(input: {
+  tenantId: number;
+  facilityId: number;
+  userId: number;
+  invoiceId: number;
+  insurer: string;
+  copay?: string;
+}) {
+  const context: AuthorizationContext = {
+    userId: input.userId,
+    tenantId: input.tenantId,
+    facilityId: input.facilityId,
+    roles: ['BILLING_CLERK'],
+    permissions: ['billing.read', 'billing.update', 'clinical.read'],
+    isSuperAdmin: false,
+  };
+  return finalizeInvoice(context, input.invoiceId, {
+    insurerResponsibility: input.insurer,
+    copayment: input.copay ?? '0.00',
+    allocationBasis: 'Synthetic private claim allocation',
+  });
+}
+
 describeDb(
   'Private Insurance (Britam & PACIS) PostgreSQL end-to-end workflow & tenant isolation',
   () => {
@@ -120,6 +152,15 @@ describeDb(
           code: `PRIV-FAC-A-${suffix}`,
           name: 'Nyeri Multi-Payer Hospital A',
           level: 'Level 4',
+          /*
+           * Finalization freezes the facility identity onto the invoice, so a
+           * facility without a registered MFL code or contact cannot issue a
+           * claimable invoice. These are synthetic values.
+           */
+          mflCode: `MFL-${suffix}`,
+          address: 'Synthetic Road, Nyeri',
+          county: 'Nyeri',
+          phone: '+254700000000',
         })
         .returning();
 
@@ -203,12 +244,26 @@ describeDb(
         .returning();
       patientAId = patient.id;
 
+      /* Finalization records the treating department and clinician. */
+      const [departmentRow] = await db
+        .insert(schema.departments)
+        .values({ facilityId: facilityA.id, name: 'Synthetic outpatient', code: `OPD-${suffix}` })
+        .returning();
+      const [practitionerRow] = await db
+        .insert(schema.practitioners)
+        .values({ tenantId: tenantA.id, facilityId: facilityA.id, fullName: 'Synthetic clinician' })
+        .returning();
+      const departmentA = async () => departmentRow;
+      const practitionerA = async () => practitionerRow;
+
       const [encounter] = await db
         .insert(schema.encounters)
         .values({
           tenantId: tenantA.id,
           facilityId: facilityA.id,
           patientId: patient.id,
+          departmentId: (await departmentA()).id,
+          practitionerId: (await practitionerA()).id,
           encounterType: 'OUTPATIENT',
           status: 'COMPLETED',
           chiefComplaint: 'Chest pain and cough',
@@ -264,6 +319,9 @@ describeDb(
           balanceAmount: '3000.00',
           status: 'Unpaid',
           payerType: 'Insurance',
+          /* Finalization requires the recorded payer identity. */
+          payerName: 'Synthetic Insurer',
+          memberNumber: `INS-MEMBER-${randomUUID()}`,
         })
         .returning();
       invoiceBritamId = invBritam.id;
@@ -280,6 +338,20 @@ describeDb(
         totalAmount: '3000.00',
       });
 
+      /*
+       * The scheme covers KES 2,500 and the patient pays the KES 500 copay;
+       * finalization records that split so each party's receipts are checked
+       * against its own share of the invoice.
+       */
+      await finalizeClaimInvoice({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        userId: actorA.actorUserId,
+        invoiceId: invBritam.id,
+        insurer: '2500.00',
+        copay: '500.00',
+      });
+
       // Invoice 2: PACIS CT scan requiring preauth (KES 12,000.00)
       const [invPacis] = await db
         .insert(schema.billingInvoices)
@@ -294,6 +366,9 @@ describeDb(
           balanceAmount: '12000.00',
           status: 'Unpaid',
           payerType: 'Insurance',
+          /* Finalization requires the recorded payer identity. */
+          payerName: 'Synthetic Insurer',
+          memberNumber: `INS-MEMBER-${randomUUID()}`,
         })
         .returning();
       invoicePacisId = invPacis.id;
@@ -308,6 +383,13 @@ describeDb(
         quantity: 1,
         unitPrice: '12000.00',
         totalAmount: '12000.00',
+      });
+      await finalizeClaimInvoice({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        userId: actorA.actorUserId,
+        invoiceId: invPacis.id,
+        insurer: '12000.00',
       });
     });
 
@@ -653,6 +735,9 @@ describeDb(
           balanceAmount: '3000.00',
           status: 'Unpaid',
           payerType: 'Insurance',
+          /* Finalization requires the recorded payer identity. */
+          payerName: 'Synthetic Insurer',
+          memberNumber: `INS-MEMBER-${randomUUID()}`,
         })
         .returning();
       const [splitTariff] = await db
@@ -680,9 +765,23 @@ describeDb(
       };
       const unattributed = await recordSettledPayment(
         paymentCtx,
-        { invoiceId: splitInvoice.id, amount: '100.00', paymentMethod: 'Cash' },
+        {
+          invoiceId: splitInvoice.id,
+          amount: '100.00',
+          paymentMethod: 'Cash',
+          /* Finalized invoices require a retry identity on every receipt. */
+          idempotencyKey: randomUUID(),
+        },
         'Synthetic cashier',
       );
+      /* The split invoice is claimed below, so it must be finalized first. */
+      await finalizeClaimInvoice({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        userId: actorA.actorUserId,
+        invoiceId: splitInvoice.id,
+        insurer: '3000.00',
+      });
       const splitInput = {
         ...actorA,
         input: {
@@ -721,27 +820,84 @@ describeDb(
           amount: '200.00',
           paymentMethod: 'Insurance - BRITAM',
           payerParty: 'INSURER',
+          idempotencyKey: randomUUID(),
         },
         'Synthetic cashier',
       );
+      /*
+       * A separate invoice for the concurrency-under-lock scenario, so the
+       * claim it legitimately creates does not collide with the duplicate-
+       * protection assertions that follow on the split invoice.
+       */
+      const [lockInvoice] = await db
+        .insert(schema.billingInvoices)
+        .values({
+          tenantId: actorA.tenantId,
+          facilityId: actorA.facilityId,
+          patientId: patientAId,
+          encounterId: encounterAId,
+          invoiceNumber: `INV-LOCK-${randomUUID()}`,
+          totalAmount: '3000.00',
+          paidAmount: '0.00',
+          balanceAmount: '3000.00',
+          status: 'Unpaid',
+          payerType: 'Insurance',
+          payerName: 'Synthetic Insurer',
+          memberNumber: `INS-MEMBER-${randomUUID()}`,
+        })
+        .returning();
+      await db.insert(schema.billingItems).values({
+        invoiceId: lockInvoice.id,
+        tariffId: tariffConsultId,
+        tariffCode: splitTariff.code,
+        sourceType: 'OPD',
+        itemType: 'Consultation',
+        description: 'Specialist Consultation',
+        quantity: 1,
+        unitPrice: '3000.00',
+        totalAmount: '3000.00',
+      });
+      await finalizeClaimInvoice({
+        tenantId: actorA.tenantId,
+        facilityId: actorA.facilityId,
+        userId: actorA.actorUserId,
+        invoiceId: lockInvoice.id,
+        insurer: '3000.00',
+      });
+      const lockInput = {
+        ...splitInput,
+        input: { ...splitInput.input, invoiceId: lockInvoice.id },
+      };
       const lockClient = await pool.connect();
       try {
         await lockClient.query('BEGIN');
         const pid = (await lockClient.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
         await lockClient.query('SELECT id FROM billing_invoices WHERE id=$1 FOR UPDATE', [
-          splitInvoice.id,
+          lockInvoice.id,
         ]);
-        const pending = preparePrivateInsuranceClaim(splitInput).then(
+        const pending = preparePrivateInsuranceClaim(lockInput).then(
           () => null,
           (err: unknown) => err,
         );
         await waitForInvoiceLock(pid);
-        await lockClient.query(
-          `UPDATE billing_items SET description='Synthetic changed consultation' WHERE invoice_id=$1`,
-          [splitInvoice.id],
-        );
+        /*
+         * A concurrent writer tries to change the invoice while the claim is
+         * being prepared. Finalized lines are immutable, so the change is
+         * refused outright — stronger than the old INVOICE_CHANGED detection,
+         * which fired only after the invoice had already moved.
+         */
+        const tamperError = await lockClient
+          .query(
+            `UPDATE billing_items SET description='Synthetic changed consultation' WHERE invoice_id=$1`,
+            [lockInvoice.id],
+          )
+          .then(
+            () => null,
+            (err: unknown) => err as Error,
+          );
+        expect(tamperError?.message).toMatch(/finalized invoice/i);
         await lockClient.query('COMMIT');
-        expect(await pending).toMatchObject({ code: 'INVOICE_CHANGED' });
+        expect(await pending).toBeNull();
       } finally {
         await lockClient.query('ROLLBACK');
         lockClient.release();
@@ -1098,6 +1254,8 @@ describeDb(
           amount: '2500.00',
           paymentMethod: 'Insurance - BRITAM',
           referenceCode: reference,
+          payerParty: 'INSURER',
+          idempotencyKey: reference,
         },
         'Synthetic cashier',
       );
@@ -1109,6 +1267,7 @@ describeDb(
           paymentMethod: 'Insurance - BRITAM',
           referenceCode: `PATIENT-${actorA.facilityId}`,
           payerParty: 'PATIENT',
+          idempotencyKey: `PATIENT-KEY-${actorA.facilityId}`,
         },
         'Synthetic cashier',
       );

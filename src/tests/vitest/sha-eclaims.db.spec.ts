@@ -23,6 +23,7 @@ import { defaultShaGatewayAdapter } from '../../integrations/sha/sha.adapter.ts'
 import { recordSettledPayment } from '../../billing/payments.service.ts';
 import { finalizeInvoice, getFinalizedInvoice } from '../../billing/finalized-invoice.service.ts';
 import { postBillingSourceScoped } from '../../accounting/billing-posting.service.ts';
+import { voidInvoiceScoped } from '../../db/queries/billing.ts';
 import {
   createAccountScoped,
   createFinancialPeriodScoped,
@@ -84,6 +85,34 @@ async function waitForInvoiceLock(blocker: number) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error('Timed out waiting for the synthetic claim transaction to block on its invoice.');
+}
+
+/*
+ * Claims may only be prepared from a finalized invoice (migration 0088).
+ * Finalizing is the real workflow, not a test shortcut: a billing user has to
+ * state the insurer/patient split before anything can be claimed.
+ */
+async function finalizeClaimInvoice(input: {
+  tenantId: number;
+  facilityId: number;
+  userId: number;
+  invoiceId: number;
+  insurer: string;
+  copay?: string;
+}) {
+  const context: AuthorizationContext = {
+    userId: input.userId,
+    tenantId: input.tenantId,
+    facilityId: input.facilityId,
+    roles: ['BILLING_CLERK'],
+    permissions: ['billing.read', 'billing.update', 'clinical.read'],
+    isSuperAdmin: false,
+  };
+  return finalizeInvoice(context, input.invoiceId, {
+    insurerResponsibility: input.insurer,
+    copayment: input.copay ?? '0.00',
+    allocationBasis: 'Synthetic claim allocation',
+  });
 }
 
 describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () => {
@@ -197,6 +226,27 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       userEmail: userB.email,
     };
 
+    /*
+     * Claims may only be prepared from a finalized invoice (migration 0088).
+     * Finalizing here is the real workflow, not a test shortcut: the split has
+     * to be stated by a billing user before anything can be claimed.
+     */
+    const finalizeForClaim = async (invoiceId: number, insurer: string, copay = '0.00') => {
+      const billingContext: AuthorizationContext = {
+        userId: userA.id,
+        tenantId: tenantA.id,
+        facilityId: facilityA.id,
+        roles: ['BILLING_CLERK'],
+        permissions: ['billing.read', 'billing.update', 'clinical.read'],
+        isSuperAdmin: false,
+      };
+      return finalizeInvoice(billingContext, invoiceId, {
+        insurerResponsibility: insurer,
+        copayment: copay,
+        allocationBasis: 'Synthetic claim allocation',
+      });
+    };
+
     const [patient] = await db
       .insert(schema.patients)
       .values({
@@ -271,6 +321,10 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         balanceAmount: '8500.00',
         status: 'Unpaid',
         payerType: 'SHA',
+        /* Finalization requires the recorded payer identity; a SHA invoice
+         * without a member number is not a claimable invoice. */
+        payerName: 'Social Health Authority',
+        memberNumber: `SHA-MEMBER-${randomUUID()}`,
       })
       .returning();
     invoiceAId = invoice.id;
@@ -285,6 +339,13 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       quantity: 1,
       unitPrice: '8500.00',
       totalAmount: '8500.00',
+    });
+    await finalizeClaimInvoice({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      userId: scopeA.userId,
+      invoiceId: invoice.id,
+      insurer: '8500.00',
     });
   });
 
@@ -531,6 +592,10 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         balanceAmount: '8500.00',
         status: 'Unpaid',
         payerType: 'SHA',
+        /* Finalization requires the recorded payer identity; a SHA invoice
+         * without a member number is not a claimable invoice. */
+        payerName: 'Social Health Authority',
+        memberNumber: `SHA-MEMBER-${randomUUID()}`,
       })
       .returning();
     const [simulationTariff] = await db
@@ -547,6 +612,13 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       quantity: 1,
       unitPrice: '8500.00',
       totalAmount: '8500.00',
+    });
+    await finalizeClaimInvoice({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      userId: scopeA.userId,
+      invoiceId: simulationInvoice.id,
+      insurer: '8500.00',
     });
     const simulatedPreauthClaim = await prepareShaClaim(scopeA, {
       invoiceId: simulationInvoice.id,
@@ -613,29 +685,29 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         [invoiceAId],
       )
     ).rows[0];
-    await pool.query("UPDATE billing_items SET unit_price='NaN' WHERE id=$1", [billingLine.id]);
+    /*
+     * The invoice basis is frozen. These three statements used to succeed and
+     * were then caught by claim preparation (FINANCIAL_REVIEW_REQUIRED). Now
+     * the database itself refuses to move a finalized line, which is a stronger
+     * guarantee: the amount the payer will be asked about cannot drift between
+     * preparation and dispatch, and it cannot be tampered with by raw SQL.
+     */
     await expect(
-      prepareShaClaim(scopeA, {
-        invoiceId: invoiceAId,
-        encounterId: encounterAId,
-        schemeCode: 'SHIF',
-      }),
-    ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
-    await pool.query('UPDATE billing_items SET unit_price=$2,quantity=NULL WHERE id=$1', [
-      billingLine.id,
-      billingLine.unit_price,
-    ]);
+      pool.query("UPDATE billing_items SET unit_price='NaN' WHERE id=$1", [billingLine.id]),
+    ).rejects.toThrow(/finalized invoice/i);
     await expect(
-      prepareShaClaim(scopeA, {
-        invoiceId: invoiceAId,
-        encounterId: encounterAId,
-        schemeCode: 'SHIF',
-      }),
-    ).rejects.toMatchObject({ code: 'FINANCIAL_REVIEW_REQUIRED' });
-    await pool.query('UPDATE billing_items SET quantity=$2 WHERE id=$1', [
-      billingLine.id,
-      billingLine.quantity,
-    ]);
+      pool.query('UPDATE billing_items SET quantity=NULL WHERE id=$1', [billingLine.id]),
+    ).rejects.toThrow(/finalized invoice/i);
+    await expect(
+      pool.query('DELETE FROM billing_items WHERE id=$1', [billingLine.id]),
+    ).rejects.toThrow(/finalized invoice/i);
+    const unchangedLine = (
+      await pool.query('SELECT unit_price,quantity FROM billing_items WHERE id=$1', [
+        billingLine.id,
+      ])
+    ).rows[0];
+    expect(unchangedLine.unit_price).toBe(billingLine.unit_price);
+    expect(unchangedLine.quantity).toBe(billingLine.quantity);
     const prepared = await prepareShaClaim(scopeA, {
       invoiceId: invoiceAId,
       encounterId: encounterAId,
@@ -709,6 +781,10 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         balanceAmount: '8500.00',
         status: 'Unpaid',
         payerType: 'SHA',
+        /* Finalization requires the recorded payer identity; a SHA invoice
+         * without a member number is not a claimable invoice. */
+        payerName: 'Social Health Authority',
+        memberNumber: `SHA-MEMBER-${randomUUID()}`,
       })
       .returning();
     const [changeTariff] = await db
@@ -725,6 +801,13 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       quantity: 1,
       unitPrice: '8500.00',
       totalAmount: '8500.00',
+    });
+    await finalizeClaimInvoice({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      userId: scopeA.userId,
+      invoiceId: changedInvoice.id,
+      insurer: '8500.00',
     });
     const lockClient = await pool.connect();
     try {
@@ -744,12 +827,27 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         (err: unknown) => err,
       );
       await waitForInvoiceLock(pid);
-      await lockClient.query(
-        `UPDATE billing_items SET description='Synthetic changed item' WHERE invoice_id=$1`,
-        [changedInvoice.id],
-      );
+      /*
+       * A concurrent writer tries to change the invoice while a claim is being
+       * prepared from it. On a finalized invoice this is refused by the
+       * database, so the claim basis cannot move underneath the claim. (Before
+       * migration 0088 this succeeded and preparation caught it as
+       * INVOICE_CHANGED; the guarantee is now stronger — the change never
+       * happens at all.)
+       */
+      const tamperError = await lockClient
+        .query(
+          `UPDATE billing_items SET description='Synthetic changed item' WHERE invoice_id=$1`,
+          [changedInvoice.id],
+        )
+        .then(
+          () => null,
+          (err: unknown) => err as Error,
+        );
+      expect(tamperError?.message).toMatch(/finalized invoice/i);
       await lockClient.query('COMMIT');
-      expect(await pending).toMatchObject({ code: 'INVOICE_CHANGED' });
+      /* `pending` maps success to null and failure to the error. */
+      expect(await pending).toBeNull();
     } finally {
       await lockClient.query('ROLLBACK');
       lockClient.release();
@@ -769,6 +867,10 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         balanceAmount: '8500.00',
         status: 'Unpaid',
         payerType: 'SHA',
+        /* Finalization requires the recorded payer identity; a SHA invoice
+         * without a member number is not a claimable invoice. */
+        payerName: 'Social Health Authority',
+        memberNumber: `SHA-MEMBER-${randomUUID()}`,
       })
       .returning();
     const [tariff] = await db
@@ -785,6 +887,13 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
       quantity: 1,
       unitPrice: '8500.00',
       totalAmount: '8500.00',
+    });
+    await finalizeClaimInvoice({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      userId: scopeA.userId,
+      invoiceId: retryInvoice.id,
+      insurer: '8500.00',
     });
     const [otherPatient] = await db
       .insert(schema.patients)
@@ -1058,6 +1167,8 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
         balanceAmount: '8500.00',
         status: 'Unpaid',
         payerType: 'SHA',
+        /* Finalization requires the recorded payer identity; a SHA invoice
+         * without a member number is not a claimable invoice. */
         payerName: 'Synthetic SHA payer',
         memberNumber: 'SYNTHETIC-MEMBER',
       })
@@ -1444,5 +1555,118 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(opReport.gatewayStatus).toMatchObject({ enabled: false, verified: false });
     expect(opReport.callbackVerification).toBe('NOT_ESTABLISHED');
     expect(JSON.stringify(opReport)).not.toContain(sentinel);
+  });
+
+  /*
+   * Migration 0088: a claim is a statement about a fixed invoice. These cases
+   * pin the gate itself, because the happy path above only proves that a
+   * finalized invoice works — not that an unfinalized or cancelled one is
+   * refused, nor that the claimed invoice state survives on the claim row.
+   */
+  it('refuses draft and voided invoices and freezes the claimed invoice onto the claim', async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const billingContext: AuthorizationContext = {
+      userId: scopeA.userId,
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      roles: ['BILLING_CLERK'],
+      permissions: ['billing.read', 'billing.update', 'clinical.read'],
+      isSuperAdmin: false,
+    };
+
+    const makeInvoice = async (label: string) => {
+      const [invoice] = await db
+        .insert(schema.billingInvoices)
+        .values({
+          tenantId: scopeA.tenantId,
+          facilityId: scopeA.facilityId,
+          patientId: patientAId,
+          encounterId: encounterAId,
+          invoiceNumber: `INV-${label}-${suffix}`,
+          totalAmount: '8500.00',
+          paidAmount: '0.00',
+          balanceAmount: '8500.00',
+          status: 'Unpaid',
+          payerType: 'SHA',
+          payerName: 'Social Health Authority',
+          memberNumber: `SHA-MEMBER-${randomUUID()}`,
+        })
+        .returning();
+      await db.insert(schema.billingItems).values({
+        invoiceId: invoice.id,
+        tariffId: tariffAId,
+        tariffCode: `RAD-CT-${suffix}`,
+        sourceType: 'OPD',
+        itemType: 'Radiology',
+        description: 'CT Brain Scan',
+        quantity: 1,
+        unitPrice: '8500.00',
+        totalAmount: '8500.00',
+      });
+      return invoice;
+    };
+
+    const prepInput = (invoiceId: number) => ({
+      invoiceId,
+      encounterId: encounterAId,
+      schemeCode: 'SHIF',
+      subType: 'op' as const,
+    });
+
+    // 1. A draft invoice has a total that can still move, so it cannot be claimed.
+    const draft = await makeInvoice('DRAFT');
+    await expect(prepareShaClaim(scopeA, prepInput(draft.id))).rejects.toMatchObject({
+      code: 'INVOICE_NOT_FINALIZED',
+      httpStatus: 409,
+    });
+    expect(
+      (
+        await pool.query('SELECT count(*)::int AS n FROM sha_eclaims WHERE invoice_id=$1', [
+          draft.id,
+        ])
+      ).rows[0].n,
+    ).toBe(0);
+
+    // 2. A finalized invoice can be claimed, and the claim records exactly what was frozen.
+    const finalized = await makeInvoice('FROZEN');
+    await finalizeClaimInvoice({
+      tenantId: scopeA.tenantId,
+      facilityId: scopeA.facilityId,
+      userId: scopeA.userId,
+      invoiceId: finalized.id,
+      insurer: '8500.00',
+    });
+    const claim = await prepareShaClaim(scopeA, prepInput(finalized.id));
+    const frozen = await getFinalizedInvoice(billingContext, finalized.id);
+    if (!('finalizedAt' in frozen)) throw new Error('Synthetic invoice was not finalized');
+    expect(claim.invoiceFinalizedAt).not.toBeNull();
+    expect(new Date(claim.invoiceFinalizedAt as Date).toISOString()).toBe(frozen.finalizedAt);
+    expect(claim.invoiceSnapshot).toEqual(frozen.snapshot);
+    expect(claim.invoiceSnapshot).toMatchObject({
+      invoice: { id: finalized.id, number: finalized.invoiceNumber },
+      amounts: { itemizedTotal: '8500.00', insurerResponsibility: '8500.00' },
+    });
+
+    // 3. A void after preparation must stop the dispatch, because the payer would
+    //    otherwise be billed for a cancelled receivable.
+    await voidInvoiceScoped(billingContext, finalized.id, 'Synthetic cancellation before dispatch');
+    await expect(submitShaClaim(scopeA, claim.id)).rejects.toMatchObject({
+      code: 'INVOICE_VOIDED',
+      httpStatus: 409,
+    });
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS n FROM sha_eclaim_submissions WHERE eclaim_id=$1',
+          [claim.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+
+    // 4. The same voided invoice can never seed another claim.
+    await expect(prepareShaClaim(scopeA, prepInput(finalized.id))).rejects.toMatchObject({
+      code: 'INVOICE_VOIDED',
+      httpStatus: 409,
+    });
   });
 });

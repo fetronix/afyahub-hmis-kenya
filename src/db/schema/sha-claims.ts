@@ -48,6 +48,14 @@ export const shaEclaims = pgTable(
     invoiceId: integer('invoice_id')
       .references(() => billingInvoices.id)
       .notNull(),
+    /*
+     * The invoice state this claim was built from. Written from
+     * billing_invoice_finalizations inside claim preparation, so a claim can
+     * never cite an invoice that was still a draft, and a later credit note or
+     * void cannot silently change what was submitted to the payer.
+     */
+    invoiceFinalizedAt: timestamp('invoice_finalized_at'),
+    invoiceSnapshot: jsonb('invoice_snapshot').$type<Record<string, unknown>>(),
     eligibilityVerificationId: integer('eligibility_verification_id').references(
       () => insuranceEligibilityVerifications.id,
       { onDelete: 'set null' },

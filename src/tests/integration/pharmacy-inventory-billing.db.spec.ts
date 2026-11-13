@@ -965,6 +965,18 @@ describeDb('Inventory-priced pharmacy billing (synthetic PostgreSQL)', () => {
     const dispensed = await dispense(c, 2);
     expect(dispensed.body.billing.charged).toBe(true);
     const invoiceId = dispensed.body.billing.invoiceId;
+    /*
+     * A claim may only be prepared from a finalized invoice (migration 0088).
+     * Finalizing is the real billing workflow: somebody has to state the
+     * insurer/patient split before the payer is asked anything. It does not
+     * affect what this case asserts — that no payer code is invented from a
+     * medicine name.
+     */
+    await finalizeInvoice(ctx, invoiceId, {
+      insurerResponsibility: '0.00',
+      copayment: '0.00',
+      allocationBasis: 'Synthetic pharmacy claim allocation',
+    });
     // This unrelated synthetic tariff deliberately has the same description.
     const trap = (
       await pool.query(
