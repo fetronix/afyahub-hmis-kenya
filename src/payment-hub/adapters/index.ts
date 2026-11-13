@@ -1,0 +1,44 @@
+import type { ProviderBoundary } from './contracts.ts';
+import {
+  KcbBuniAdapter,
+  NcbaAdapter,
+  EquityAdapter,
+  UnconfiguredProviderAdapter,
+  bankDescriptor,
+  validateKcbCredentials,
+  validateEquityCredentials,
+} from './banks.ts';
+import { DarajaSandboxAdapter, validateDarajaCredentials } from './daraja.ts';
+
+export function providerBoundary(
+  key: string,
+  credentials?: Record<string, string>,
+): ProviderBoundary {
+  switch (key) {
+    case 'KCB_BUNI':
+      return credentials
+        ? new KcbBuniAdapter(validateKcbCredentials(credentials))
+        : { descriptor: bankDescriptor('KCB_BUNI') };
+    case 'NCBA':
+      return new NcbaAdapter();
+    case 'EQUITY':
+      return credentials
+        ? new EquityAdapter(validateEquityCredentials(credentials))
+        : { descriptor: bankDescriptor('EQUITY') };
+    case 'MPESA_DARAJA':
+      // Descriptor discovery does not require or inspect credentials.
+      if (!credentials)
+        return {
+          descriptor: {
+            key,
+            implementedCapabilities: ['PAYMENT_COLLECTION', 'PAYMENT_STATUS', 'HEALTH'],
+            sandboxOnly: true,
+            productionReady: false,
+            note: 'Sandbox OAuth and status only; callback verification is unavailable and deliveries are rejected. Production is blocked.',
+          },
+        };
+      return new DarajaSandboxAdapter(validateDarajaCredentials(credentials));
+    default:
+      return new UnconfiguredProviderAdapter();
+  }
+}

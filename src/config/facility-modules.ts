@@ -40,6 +40,13 @@ export const FACILITY_MODULES: readonly FacilityModuleDefinition[] = Object.free
     description: 'Check patients in and route them to a service point.',
   },
   {
+    id: 'website_booking',
+    label: 'Website booking',
+    group: 'Front desk',
+    description:
+      'Online slot availability, WordPress booking API, booking references and patient reminders.',
+  },
+  {
     id: 'opd',
     label: 'Outpatient & triage',
     group: 'Clinical care',
@@ -63,6 +70,13 @@ export const FACILITY_MODULES: readonly FacilityModuleDefinition[] = Object.free
     label: 'Operating theatre',
     group: 'Clinical care',
     description: 'Theatre lists, procedures and recovery.',
+  },
+  {
+    id: 'dialysis',
+    label: 'Dialysis unit',
+    group: 'Clinical care',
+    description:
+      'Renal assessments, authorized treatment plans, machine allocation, dialysis sessions, consumables and adverse events.',
   },
   {
     id: 'specialty',
@@ -107,10 +121,18 @@ export const FACILITY_MODULES: readonly FacilityModuleDefinition[] = Object.free
     description: 'Invoices, payments, cashiering and reconciliation.',
   },
   {
-    id: 'insurance',
-    label: 'SHA & e-claims',
+    id: 'accounting',
+    label: 'Accounting & general ledger',
     group: 'Revenue & payers',
-    description: 'Insurance payers, claims and pre-authorisation.',
+    description:
+      'Double-entry general ledger, financial statements, expenses, fixed assets, payables, bank reconciliation and profitability.',
+  },
+  {
+    id: 'insurance',
+    label: 'Insurance & SHA eClaims',
+    group: 'Revenue & payers',
+    description:
+      'SHA eligibility verification, benefits coverage, preauthorization, eClaims and remittances.',
   },
   {
     id: 'public_health',
@@ -207,4 +229,27 @@ export function resolveFacilityModules(input: unknown): string[] {
   for (const id of ALWAYS_ENABLED_MODULES) requested.add(id);
 
   return FACILITY_MODULE_IDS.filter((id) => requested.has(id));
+}
+
+/**
+ * Turns a persisted `hidden_modules` list into a clean, ordered list of
+ * known module ids hidden from navigation for that facility while keeping
+ * historical records and shared services intact. Always-on modules cannot
+ * be hidden.
+ */
+export function resolveHiddenFacilityModules(input: unknown): string[] {
+  const hidden = new Set<string>();
+
+  if (Array.isArray(input)) {
+    for (const value of input) {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (isKnownFacilityModule(trimmed) && !isAlwaysEnabledModule(trimmed)) {
+          hidden.add(trimmed);
+        }
+      }
+    }
+  }
+
+  return FACILITY_MODULE_IDS.filter((id) => hidden.has(id));
 }

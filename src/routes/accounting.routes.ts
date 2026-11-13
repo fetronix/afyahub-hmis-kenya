@@ -1,0 +1,702 @@
+import { Router, type Response } from 'express';
+import type { AuthRequest } from '../auth/auth.middleware.ts';
+import { requirePermission } from '../auth/authorization.middleware.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
+import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
+import * as queries from '../db/queries.ts';
+import {
+  closeFinancialPeriodBodySchema,
+  approveAndPostExpenseBodySchema,
+  createAccountBodySchema,
+  createBankAccountBodySchema,
+  createFinancialPeriodBodySchema,
+  createExpenseRequestBodySchema,
+  decideExpenseRequestBodySchema,
+  facilityActionBodySchema,
+  postJournalBodySchema,
+  postBillingSourceBodySchema,
+  reverseJournalBodySchema,
+} from '../validation/schemas/index.ts';
+import { validateBody } from '../validation/validate.ts';
+import {
+  listAccountsScoped,
+  AccountingIntegrityError,
+  closeFinancialPeriodScoped,
+  approveAndPostExpenseScoped,
+  createAccountScoped,
+  createExpenseRequestScoped,
+  decideExpenseRequestScoped,
+  listExpensesScoped,
+  postApprovedExpenseScoped,
+  createFinancialPeriodScoped,
+  getAccountingOverviewScoped,
+  postJournalScoped,
+  recordAccountingExport,
+  reverseJournalScoped,
+  type AccountingScope,
+} from '../accounting/accounting.service.ts';
+import {
+  BankStatementError,
+  approveBankReconciliationScoped,
+  bankReconciliationReportScoped,
+  createBankAccountScoped,
+  importStatementScoped,
+  investigateUnmatchedScoped,
+  listBankWorkspaceScoped,
+  matchBankTransactionScoped,
+  postBankStatementAdjustmentScoped,
+  previewBankReconciliationScoped,
+  saveBankReconciliationScoped,
+  suggestMatchesForTransactionScoped,
+  unmatchBankTransactionScoped,
+} from '../accounting/bank-integration.service.ts';
+
+import {
+  getBillingSourcePostingScoped,
+  postBillingSourceScoped,
+} from '../accounting/billing-posting.service.ts';
+import { inspectBillingConsistencyScoped } from '../accounting/billing-diagnostics.service.ts';
+import { inspectBillingLedgerScoped } from '../accounting/billing-ledger-diagnostics.service.ts';
+import { reconcileBillingLedgerScoped } from '../accounting/billing-gl-reconciliation.service.ts';
+import { inspectBillingJournalExceptionsScoped } from '../accounting/billing-journal-exceptions.service.ts';
+import {
+  listSettlementAccountsScoped,
+  listSettlementSourcesScoped,
+  retrySettlementSourceScoped,
+} from '../accounting/payment-settlement-recovery.service.ts';
+
+const router = Router();
+
+async function scoped(req: AuthRequest): Promise<AccountingScope> {
+  if (!req.authContext) throw new ScopeAccessError('Authorization context required.');
+  const bodyId = req.body?.facilityId;
+  const queryId = req.query.facilityId;
+  const raw = bodyId ?? queryId;
+  const id = raw === undefined || raw === null || raw === '' ? undefined : Number(raw);
+  if (id !== undefined && (!Number.isSafeInteger(id) || id <= 0)) {
+    throw new AccountingIntegrityError(
+      'INVALID_FACILITY_ID',
+      'facilityId must be a positive integer.',
+    );
+  }
+  if (bodyId != null && queryId != null && Number(bodyId) !== Number(queryId)) {
+    throw new AccountingIntegrityError(
+      'FACILITY_SCOPE_MISMATCH',
+      'Facility identifiers do not match.',
+      403,
+    );
+  }
+  const facilityId = resolveFacilityScope(req.authContext, id);
+  const facility = await queries.getFacilityByIdScoped(req.authContext, facilityId);
+  if (!facility)
+    throw new AccountingIntegrityError('FACILITY_NOT_FOUND', 'Facility not found.', 404);
+  return {
+    tenantId: facility.tenantId,
+    facilityId: facility.id,
+    actorUserId: req.authContext.userId,
+  };
+}
+
+function fail(res: Response, error: unknown) {
+  if (error instanceof AccountingIntegrityError || error instanceof BankStatementError) {
+    res.status(error.status).json({ success: false, error: error.code, message: error.message });
+    return;
+  }
+  if (error instanceof ScopeAccessError) {
+    res.status(403).json({ success: false, error: error.code, message: 'Facility access denied.' });
+    return;
+  }
+  // Do not return or log database errors, SQL parameters or patient data.
+  res.status(500).json({
+    success: false,
+    error: 'ACCOUNTING_OPERATION_FAILED',
+    message: 'Accounting operation failed.',
+  });
+}
+
+router.get(
+  '/billing-consistency',
+  requirePermission('accounting.read'),
+  requirePermission('billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectBillingConsistencyScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        afterId: req.query.afterId,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/billing-gl-reconciliation',
+  requirePermission('accounting.read'),
+  requirePermission('billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await reconcileBillingLedgerScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/billing-ledger-review',
+  requirePermission('accounting.read'),
+  requirePermission('billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectBillingLedgerScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        afterId: req.query.afterId,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/payment-settlements',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await listSettlementSourcesScoped(await scoped(req), {
+          afterType: req.query.afterType,
+          afterId: req.query.afterId,
+          limit: req.query.limit,
+          state: req.query.state,
+        })),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/payment-settlement-accounts',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await listSettlementAccountsScoped(await scoped(req), {
+          search: req.query.search,
+          afterId: req.query.afterId,
+          limit: req.query.limit,
+        })),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/payment-settlements/:sourceType/:sourceId/retry',
+  requirePermission('accounting.journals.post', 'billing.read'),
+  validateBody(postBillingSourceBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await retrySettlementSourceScoped(
+        await scoped(req),
+        req.params.sourceType,
+        req.params.sourceId,
+        req.body,
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get('/accounts', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
+  try {
+    res.json({ success: true, accounts: await listAccountsScoped(await scoped(req)) });
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+router.get('/overview', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
+  try {
+    const scope = await scoped(req);
+    const data = await getAccountingOverviewScoped(scope, req.query.startDate, req.query.endDate);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+router.get(
+  '/billing-journal-exceptions',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await inspectBillingJournalExceptionsScoped(await scoped(req), {
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        afterJournalId: req.query.afterJournalId,
+        limit: req.query.limit,
+      });
+      res.json({ success: true, ...report });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/accounts',
+  requirePermission('accounting.coa.manage'),
+  validateBody(createAccountBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      res.status(201).json({
+        success: true,
+        account: await createAccountScoped(await scoped(req), req.body ?? {}),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/periods',
+  requirePermission('accounting.coa.manage'),
+  validateBody(createFinancialPeriodBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      res.status(201).json({
+        success: true,
+        period: await createFinancialPeriodScoped(await scoped(req), req.body ?? {}),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/periods/:id/close',
+  requirePermission('accounting.periods.close'),
+  validateBody(closeFinancialPeriodBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        period: await closeFinancialPeriodScoped(
+          await scoped(req),
+          Number(req.params.id),
+          req.body?.notes,
+        ),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/journals',
+  requirePermission('accounting.journals.post'),
+  validateBody(postJournalBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await postJournalScoped(await scoped(req), {
+        ...req.body,
+        idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
+      });
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get(
+  '/billing-postings/:sourceType/:sourceId',
+  requirePermission('accounting.read', 'billing.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await getBillingSourcePostingScoped(
+          await scoped(req),
+          req.params.sourceType,
+          req.params.sourceId,
+        )),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/billing-postings/:sourceType/:sourceId',
+  requirePermission('accounting.journals.post', 'billing.read'),
+  validateBody(postBillingSourceBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await postBillingSourceScoped(
+        await scoped(req),
+        req.params.sourceType,
+        req.params.sourceId,
+        {
+          ...req.body,
+          idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
+        },
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/journals/:id/reverse',
+  requirePermission('accounting.journals.post'),
+  validateBody(reverseJournalBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await reverseJournalScoped(await scoped(req), Number(req.params.id), {
+        ...req.body,
+        idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
+        billingSourceAuthorized:
+          !!req.authContext && hasAllPermissions(req.authContext, ['billing.read']),
+      });
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+function csvCell(value: string): string {
+  // Spreadsheet formula injection is possible even in an otherwise valid CSV.
+  const safe = /^[\s]*[=+@\-\t\r]/.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
+router.get(
+  '/trial-balance.csv',
+  requirePermission('accounting.reports.export'),
+  async (req: AuthRequest, res) => {
+    try {
+      const scope = await scoped(req);
+      const data = await getAccountingOverviewScoped(scope, req.query.startDate, req.query.endDate);
+      await recordAccountingExport(scope, data.filters);
+      const rows = [
+        ['Account code', 'Account name', 'Type', 'Debits KES', 'Credits KES'],
+        ...data.accounts.map((a) => [
+          a.accountCode,
+          a.accountName,
+          a.accountType,
+          a.debitKes,
+          a.creditKes,
+        ]),
+        ['TOTAL', '', '', data.trialBalance.debitKes, data.trialBalance.creditKes],
+      ];
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="trial-balance.csv"');
+      res.send(rows.map((row) => row.map(csvCell).join(',')).join('\r\n'));
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get('/expenses', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
+  try {
+    res.json({
+      success: true,
+      ...(await listExpensesScoped(await scoped(req), {
+        search: req.query.search,
+        afterId: req.query.afterId,
+        limit: req.query.limit,
+      })),
+    });
+  } catch (error) {
+    fail(res, error);
+  }
+});
+router.post(
+  '/expenses',
+  requirePermission('accounting.expenses.request'),
+  validateBody(createExpenseRequestBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await createExpenseRequestScoped(await scoped(req), {
+        ...req.body,
+        idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
+      });
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/expenses/:id/decision',
+  requirePermission('accounting.expenses.approve'),
+  validateBody(decideExpenseRequestBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await decideExpenseRequestScoped(
+          await scoped(req),
+          Number(req.params.id),
+          req.body ?? {},
+        )),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/expenses/:id/approve-and-post',
+  requirePermission('accounting.expenses.approve', 'accounting.journals.post'),
+  validateBody(approveAndPostExpenseBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await approveAndPostExpenseScoped(
+        await scoped(req),
+        Number(req.params.id),
+        req.body ?? {},
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/expenses/:id/post',
+  requirePermission('accounting.journals.post'),
+  validateBody(facilityActionBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await postApprovedExpenseScoped(await scoped(req), Number(req.params.id));
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.get('/bank', requirePermission('accounting.read'), async (req: AuthRequest, res) => {
+  try {
+    res.json({ success: true, ...(await listBankWorkspaceScoped(await scoped(req))) });
+  } catch (error) {
+    fail(res, error);
+  }
+});
+router.post(
+  '/bank/accounts',
+  requirePermission('accounting.bank.manage'),
+  validateBody(createBankAccountBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      res.status(201).json({
+        success: true,
+        account: await createBankAccountScoped(await scoped(req), req.body ?? {}),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/bank/accounts/:id/statements',
+  requirePermission('accounting.bank.manage'),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await importStatementScoped(
+        await scoped(req),
+        Number(req.params.id),
+        req.body ?? {},
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/bank/transactions/:id/match',
+  requirePermission('accounting.bank.manage'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await matchBankTransactionScoped(
+          await scoped(req),
+          Number(req.params.id),
+          Number(req.body?.journalLineId),
+        )),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.get(
+  '/bank/accounts/:id/statements/:statementId/reconciliation',
+  requirePermission('accounting.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        worksheet: await previewBankReconciliationScoped(
+          await scoped(req),
+          Number(req.params.id),
+          Number(req.params.statementId),
+        ),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/bank/accounts/:id/statements/:statementId/reconciliation',
+  requirePermission('accounting.bank.manage'),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await saveBankReconciliationScoped(
+        await scoped(req),
+        Number(req.params.id),
+        Number(req.params.statementId),
+        { ...req.body, idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey },
+      );
+      res.status(result.idempotentReplay ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+/* ---------------------------------------------------------- reconciliation */
+
+router.get(
+  '/bank/transactions/:id/suggestions',
+  requirePermission('accounting.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await suggestMatchesForTransactionScoped(await scoped(req), Number(req.params.id))),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.get(
+  '/bank/accounts/:id/unmatched',
+  requirePermission('accounting.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await investigateUnmatchedScoped(await scoped(req), Number(req.params.id))),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/bank/transactions/:id/unmatch',
+  requirePermission('accounting.bank.manage'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await unmatchBankTransactionScoped(
+          await scoped(req),
+          Number(req.params.id),
+          req.body?.reason,
+        )),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.post(
+  '/bank/reconciliations/:id/approve',
+  requirePermission('accounting.bank.manage'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await approveBankReconciliationScoped(
+          await scoped(req),
+          Number(req.params.id),
+          req.body ?? {},
+        )),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+router.get(
+  '/bank/accounts/:id/reconciliation-report',
+  requirePermission('accounting.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        success: true,
+        ...(await bankReconciliationReportScoped(await scoped(req), Number(req.params.id))),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+router.post(
+  '/bank/statements/:id/adjustments',
+  requirePermission('accounting.bank.manage'),
+  async (req: AuthRequest, res) => {
+    try {
+      res.status(201).json({
+        success: true,
+        ...(await postBankStatementAdjustmentScoped(
+          await scoped(req),
+          Number(req.params.id),
+          req.body ?? {},
+        )),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+);
+
+export default router;

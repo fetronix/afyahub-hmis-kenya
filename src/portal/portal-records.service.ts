@@ -215,9 +215,15 @@ export async function getPortalOverview(
             verifiedAt: schema.labResults.verifiedAt,
           })
           .from(schema.labResults)
+          .innerJoin(schema.labOrders, eq(schema.labResults.orderId, schema.labOrders.id))
+          .innerJoin(schema.facilities, eq(schema.labOrders.facilityId, schema.facilities.id))
           .where(
             and(
               eq(schema.labResults.patientId, session.patientId),
+              eq(schema.labOrders.patientId, session.patientId),
+              eq(schema.labOrders.tenantId, session.tenantId),
+              eq(schema.facilities.tenantId, session.tenantId),
+              inArray(schema.labOrders.facilityId, facilities),
               eq(schema.labResults.status, 'Verified'),
             ),
           )
@@ -315,6 +321,10 @@ export async function listPortalVisits(
           encounterId: schema.diagnoses.encounterId,
           icd10Code: schema.diagnoses.icd10Code,
           icd10Description: schema.diagnoses.icd10Description,
+          codingSystem: schema.diagnoses.codingSystem,
+          icd11Code: schema.diagnoses.icd11Code,
+          icd11Title: schema.diagnoses.icd11Title,
+          icd11Release: schema.diagnoses.icd11Release,
           diagnosisType: schema.diagnoses.diagnosisType,
           status: schema.diagnoses.status,
           diagnosedBy: schema.diagnoses.diagnosedBy,
@@ -393,9 +403,12 @@ export async function listPortalLabResults(
       facilityId: schema.labOrders.facilityId,
     })
     .from(schema.labOrders)
+    .innerJoin(schema.facilities, eq(schema.labOrders.facilityId, schema.facilities.id))
     .where(
       and(
         eq(schema.labOrders.patientId, session.patientId),
+        eq(schema.labOrders.tenantId, session.tenantId),
+        eq(schema.facilities.tenantId, session.tenantId),
         inArray(schema.labOrders.facilityId, facilities),
       ),
     )
@@ -418,7 +431,13 @@ export async function listPortalLabResults(
           verifiedBy: schema.labResults.verifiedBy,
         })
         .from(schema.labResults)
-        .where(inArray(schema.labResults.orderId, orderIds))
+        .where(
+          and(
+            inArray(schema.labResults.orderId, orderIds),
+            eq(schema.labResults.patientId, session.patientId),
+            eq(schema.labResults.status, 'Verified'),
+          ),
+        )
     : [];
 
   const releasedByOrder = new Map<number, typeof results>();

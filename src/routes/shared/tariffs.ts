@@ -16,34 +16,8 @@ import { isValidBillingKey } from '../../billing/tariff-codes.ts';
 import * as queries from '../../db/queries.ts';
 import { handleScopeError } from './errors.ts';
 
-export const tariffModuleForDepartment = (department: string): string | null => {
-  const value = department
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, '_');
-  const aliases: Record<string, string> = {
-    opd: 'opd',
-    outpatient: 'opd',
-    inpatient: 'inpatient',
-    ward: 'inpatient',
-    theatre: 'theatre',
-    operating_theatre: 'theatre',
-    specialty: 'specialty',
-    specialist: 'specialty',
-    laboratory: 'laboratory',
-    lab: 'laboratory',
-    radiology: 'radiology',
-    imaging: 'radiology',
-    pharmacy: 'pharmacy',
-    registration: 'registration',
-    reception: 'reception',
-    insurance: 'insurance',
-    sha: 'insurance',
-    finance: 'finance',
-    general: 'finance',
-  };
-  return aliases[value] ?? null;
-};
+import { tariffModuleForDepartment } from '../../billing/tariff-departments.ts';
+export { tariffModuleForDepartment } from '../../billing/tariff-departments.ts';
 
 export const validateTariffInput = (input: any) => {
   /*
@@ -54,7 +28,7 @@ export const validateTariffInput = (input: any) => {
   const code = typeof input?.code === 'string' ? input.code.trim().toUpperCase() : '';
   const description = typeof input?.description === 'string' ? input.description.trim() : '';
   const department = typeof input?.department === 'string' ? input.department.trim() : '';
-  const unit = typeof input?.unit === 'string' ? input.unit.trim() : 'Service';
+  const unit = typeof input?.unit === 'string' ? input.unit.trim() : '';
   const feeText =
     typeof input?.fee === 'string' || typeof input?.fee === 'number'
       ? String(input.fee).trim()
@@ -97,7 +71,9 @@ export const validateTariffInput = (input: any) => {
 
     const parsed = new Date(`${value.trim()}T00:00:00Z`);
 
-    return Number.isNaN(parsed.getTime()) ? undefined : value.trim();
+    return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value.trim()
+      ? undefined
+      : value.trim();
   };
 
   const effectiveFrom = parseDate(input?.effectiveFrom);

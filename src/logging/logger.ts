@@ -93,8 +93,17 @@ const SECRET_KEYS = [
   'refreshToken',
   'idToken',
   'apiKey',
+  'manageToken',
+  'bookingApiKey',
   'secret',
   'clientSecret',
+  'consumerKey',
+  'consumerSecret',
+  'merchantCode',
+  'passkey',
+  'shortcode',
+  'credentials',
+  'PAYMENT_HUB_ENCRYPTION_KEY',
   'authorization',
   'cookie',
   'FIELD_ENCRYPTION_KEY',
@@ -141,10 +150,38 @@ function buildRedactPaths(): string[] {
   paths.add('req.headers.authorization');
   paths.add('req.headers.cookie');
   paths.add('req.headers["x-api-key"]');
+  // Jenga uses Api-Key rather than X-API-Key; transports can retain the
+  // original case or normalize it to lowercase.
+  for (const parent of ['req.headers', 'headers', 'config.headers', 'err.config.headers']) {
+    paths.add(`${parent}["api-key"]`);
+    paths.add(`${parent}["Api-Key"]`);
+  }
+  paths.add('req.headers["x-booking-api-key"]');
+  paths.add('req.headers["x-booking-manage-token"]');
   paths.add('res.headers["set-cookie"]');
   paths.add('headers.authorization');
   paths.add('config.headers.authorization');
   paths.add('err.config.headers.authorization');
+
+  /*
+   * Database errors carry the failed statement and its bound values.
+   *
+   * `pg` puts both on the error object: `query` is the SQL, `parameters` is
+   * the array of values bound to `$1..$n`. For this application those bound
+   * values are national IDs, patient names and phone numbers, and a raw
+   * statement can embed the same as a literal. Pino's standard `err`
+   * serializer emits message, stack *and* any enumerable properties, so a
+   * `log.error({ err })` in the data layer writes them to the log file -
+   * which, as the header of this file says, is a copy of patient data with
+   * none of the database's access control.
+   *
+   * `queryId` is not redacted on purpose: it identifies the statement
+   * without disclosing the values.
+   */
+  for (const holder of ['err', 'error', '*.err', '*.error']) {
+    paths.add(`${holder}.parameters`);
+    paths.add(`${holder}.query`);
+  }
 
   return [...paths];
 }

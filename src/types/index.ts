@@ -23,10 +23,14 @@ export interface Facility {
   county: string;
   subCounty: string;
   mflCode: string;
+  /** NULL inherits the tenant timezone. */
+  timezone?: string | null;
   address?: string;
   phone?: string;
   email?: string;
   enabledModules: string[];
+  hiddenModules?: string[];
+  clinicalProtocols?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -82,6 +86,9 @@ export interface Encounter {
   patientId: number;
   practitionerId?: number;
   encounterType: string;
+  consultationMasterServiceId?: number | null;
+  consultationFacilityServiceId?: number | null;
+  consultationSelectionReviewRequired?: boolean;
   departmentId?: number;
   status: string;
   triageCategory: string;
@@ -118,10 +125,44 @@ export interface Appointment {
   departmentId?: number;
   scheduledTime: string;
   durationMinutes: number;
-  appointmentType: string;
+  appointmentType: string | null;
   status: string;
-  reason?: string;
-  notes?: string;
+  reason?: string | null;
+  notes?: string | null;
+  bookingReference?: string | null;
+  categoryId?: number | null;
+  facilityServiceId?: number | null;
+  priority?: string | null;
+  createdByUserId?: number | null;
+  replacementOfId?: number | null;
+  checkinQueueId?: number | null;
+  createdAt: string;
+}
+
+export interface AppointmentCategory {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  code: string;
+  name: string;
+  facilityServiceId: number | null;
+  isActive: boolean;
+}
+
+export interface AppointmentEvent {
+  id: number;
+  appointmentId: number;
+  eventType: string;
+  actorType: string;
+  actorUserId: number;
+  fromStatus: string | null;
+  toStatus: string;
+  reason: string | null;
+  scheduledTimeBefore: string | null;
+  scheduledTimeAfter: string | null;
+  relatedAppointmentId: number | null;
+  queueId: number | null;
+  paymentState: string;
   createdAt: string;
 }
 
@@ -147,8 +188,16 @@ export interface Diagnosis {
   id: number;
   encounterId: number;
   patientId: number;
-  icd10Code: string;
-  icd10Description: string;
+  icd10Code: string | null;
+  icd10Description: string | null;
+  codingSystem?: 'ICD-10' | 'ICD-11';
+  diagnosisCode?: string | null;
+  diagnosisDisplay?: string | null;
+  icd11Code?: string | null;
+  icd11Title?: string | null;
+  icd11Release?: string | null;
+  icd11FoundationUri?: string | null;
+  icd11LinearizationUri?: string | null;
   diagnosisType: string;
   status: string;
   notes?: string;
@@ -183,6 +232,8 @@ export interface Medication {
   route: string;
   instructions?: string;
   quantity: number;
+  /** Sum of actual dispensing records; may be absent in older clients. */
+  quantityDispensed?: number;
   unitPrice: string;
   status: string;
   prescribedBy?: string;
@@ -198,8 +249,10 @@ export interface Ward {
   genderAllocation: string;
   /** Counted from the beds in the ward, not typed in. */
   totalBeds: number;
-  /** NULL when the facility has not set a rate. Never a guess. */
+  /** A legacy number is not a billing default until explicitly confirmed. */
   dailyRate: string | null;
+  dailyRateConfigured?: boolean;
+  dailyRateRevision?: number;
   isActive: boolean;
 }
 
@@ -211,7 +264,106 @@ export interface Bed {
   status: string; // Available, Occupied, Maintenance, Cleaning, Reserved
   /** NULL when the facility has not set a charge. Never a guess. */
   dailyCharge: string | null;
+  priceRevision: number;
+  dailyChargeReviewRequired: boolean;
   currentPatientId?: number | null;
+}
+
+export interface BedBillingPolicy {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  cutoffMinutes: number;
+  graceMinutes: number;
+  sameDayRule: 'ONE' | 'ZERO';
+  isActive: boolean | null;
+  effectiveFrom: string | null;
+  effectiveUntil: string | null;
+  revision: number;
+  scope: 'FACILITY';
+  applicability: { code: string; message: string };
+}
+
+export interface BedBillingUnresolvedPage {
+  admissions: Array<{
+    admissionId: number;
+    admissionStatus: string | null;
+    pendingAttempts: number;
+    stagingPending: boolean;
+  }>;
+  hasMore: boolean;
+  offset: number;
+  pageSize: number;
+}
+
+export interface BedOccupancyView {
+  admissionId: number;
+  admission: {
+    patientId: number;
+    encounterId: number | null;
+    admissionDate: string;
+    dischargeDate: string | null;
+    status: string | null;
+    wardId: number;
+    bedId: number;
+  };
+  transfers: Array<{
+    fromWardId: number | null;
+    fromBedId: number | null;
+    toWardId: number;
+    toBedId: number;
+    transferredAt: string;
+  }>;
+  asOf: string;
+  staySnapshot: {
+    timezoneSnapshot: string | null;
+    cutoffMinutes: number | null;
+    graceMinutes: number | null;
+    sameDayRule: string | null;
+    policyRevision: number | null;
+    policyId: number | null;
+    policyApplicability: string | null;
+    policyEffectiveFrom: string | null;
+    policyEffectiveUntil: string | null;
+    manualAdmissionTime: boolean;
+    manualDischargeTime: boolean;
+    capturedAt: string;
+  } | null;
+  unresolved: {
+    attempts: Array<{
+      id: number;
+      idempotencySuffix: string | null;
+      reason: string;
+      diagnosisCode: string | null;
+      attempts: number;
+      lastAttemptAt: string;
+    }>;
+    hasMore: boolean;
+    stagingPending: boolean;
+  } | null;
+  policy: {
+    timezone: string;
+    cutoffMinutes: number;
+    graceMinutes: number;
+    sameDayRule: 'ONE' | 'ZERO';
+  } | null;
+  periods: Array<{
+    id: number;
+    wardId: number;
+    bedId: number;
+    startedAt: string;
+    endedAt: string | null;
+    dailyRateSnapshot: string | null;
+    priceRevisionSnapshot: number | null;
+    /** NULL/absent on older stays whose source was not recorded. */
+    rateSourceSnapshot?: 'BED_OVERRIDE' | 'WARD_DEFAULT' | 'REVIEWED' | null;
+    bedNumberSnapshot: string;
+    wardNameSnapshot: string;
+  }>;
+  durationSeconds: number | null;
+  nights: number | null;
+  estimatedAmount: string | null;
+  review: { code: string; message: string } | null;
 }
 
 export interface Admission {
@@ -219,7 +371,9 @@ export interface Admission {
   tenantId: number;
   facilityId: number;
   patientId: number;
-  encounterId?: number;
+  encounterId?: number | null;
+  bedBillingReadiness?: { ready: boolean; issues: Array<{ code: string; message: string }> };
+  facilityServiceId?: number | null;
   wardId: number;
   bedId: number;
   admissionDate: string;
@@ -354,6 +508,46 @@ export interface TheatreCase {
   createdAt: string;
 }
 
+export interface FacilityService {
+  id: number;
+  tenantId: number;
+  facilityId: number;
+  code: string;
+  name: string;
+  description: string;
+  department: string;
+  category: string;
+  unit: string;
+  isActive: boolean;
+  autoBill: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tariffId?: number;
+  tariffCode?: string;
+  unitPrice?: string | null;
+  priceStatus?: string;
+}
+
+export interface ClinicalCatalogueService {
+  id: number;
+  code: string;
+  description: string;
+  department: string;
+  family: 'CONSULTATION' | 'LABORATORY' | 'RADIOLOGY';
+  unit: string;
+  unitPrice: string | null;
+  priceStatus: string;
+  priceMessage: string | null;
+  tariffCode?: string;
+  approvedAt?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  clinicalSource?: string;
+  testId?: number;
+  category?: string | null;
+  specimenOptions?: Array<{ id: number; specimenType: string }>;
+}
+
 export interface LabTest {
   id: number;
   facilityId: number;
@@ -373,11 +567,22 @@ export interface LabOrder {
   facilityId: number;
   patientId: number;
   encounterId?: number;
-  testId?: number;
+  testId?: number | null;
+  facilityServiceId?: number | null;
+  /** Order-time code snapshot, null on older orders without a recorded snapshot. */
+  serviceCode?: string | null;
+  /** Current code of the explicitly linked service, joined within the order's scope. */
+  currentServiceCode?: string | null;
+  /** Catalogue code returned by order creation or idempotent replay. */
+  testCode?: string | null;
   testName: string;
   status: string;
   clinicalIndication?: string | null;
   specimenType?: string | null;
+  /** The reviewed option selected at ordering, if recorded for this order. */
+  reviewedSpecimenOptionId?: number | null;
+  /** Present only where a specimen has been explicitly linked. */
+  specimenId?: number | null;
   priority?: string | null;
   clinicalNotes?: string | null;
   sampleCollectedAt?: string;
@@ -407,6 +612,8 @@ export interface RadiologyOrder {
   facilityId: number;
   patientId: number;
   encounterId?: number;
+  masterServiceId?: number | null;
+  facilityServiceId?: number | null;
   modality: string;
   procedureName: string;
   clinicalIndication?: string;
@@ -432,10 +639,12 @@ export interface InventoryItem {
   dosageForm?: string;
   currentStock: number;
   reorderLevel: number;
-  unitCost: string;
-  sellingPrice: string;
+  unitCost: string | null;
+  sellingPrice: string | null;
+  priceRevision?: number;
   storeLocation: string;
   isActive: boolean;
+  updatedAt?: string;
 }
 
 export interface Supplier {
@@ -448,6 +657,7 @@ export interface Supplier {
   kraPin?: string;
   address?: string;
   isActive: boolean;
+  revision?: number;
 }
 
 export interface PurchaseOrder {
@@ -459,8 +669,45 @@ export interface PurchaseOrder {
   totalAmount: string;
   status: string;
   orderedBy?: string;
-  approvedBy?: string;
+  approvedBy?: string | null;
+  description?: string | null;
+  expectedDeliveryDate?: string | null;
+  deliveryAddress?: string | null;
+  paymentTerms?: string | null;
+  notes?: string | null;
+  subtotalAmount?: string | null;
+  taxAmount?: string;
+  shippingAmount?: string;
+  discountAmount?: string;
+  createdByUserId?: number | null;
+  revision?: number;
   createdAt: string;
+}
+
+export interface PurchaseOrderItem {
+  id?: number;
+  lineNumber?: number;
+  description: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  lineTotal?: string;
+}
+
+export interface PurchaseOrderEvent {
+  id: number;
+  eventType: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  actorUserId: number | null;
+  note: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface PurchaseOrderDetail extends PurchaseOrder {
+  items: PurchaseOrderItem[];
+  events: PurchaseOrderEvent[];
 }
 
 export interface BillingInvoice {
@@ -476,6 +723,7 @@ export interface BillingInvoice {
   /** Money received beyond the total, held as patient credit. */
   creditBalance?: string;
   status: string;
+  finalizedAt?: string | null;
   payerType: string;
   payerName?: string;
   memberNumber?: string;
@@ -492,6 +740,26 @@ export interface BillingItem {
   totalAmount: string;
   tariffId?: number | null;
   tariffCode?: string | null;
+  masterServiceId?: number | null;
+  serviceCode?: string | null;
+  serviceDepartment?: string | null;
+  serviceUnit?: string | null;
+  serviceDate?: string | null;
+  servicePerformedAt?: string | null;
+  inventoryItemId?: number | null;
+  prescriptionId?: number | null;
+  bedOccupancyId?: number | null;
+  bedNightId?: number | null;
+  pharmacyStockTracking?: 'FEFO' | 'untracked' | null;
+  pharmacyBatchAllocations?: Array<{
+    batchId: number;
+    batchNumber: string;
+    expiryDate: string;
+    quantity: number;
+  }> | null;
+  sourceType?: string | null;
+  sourceId?: number | null;
+  createdAt?: string;
 }
 
 export interface ServiceTariff {
@@ -521,6 +789,11 @@ export interface ServiceTariff {
   /** Whether automatic billing may use this tariff. */
   autoBill: boolean;
   isActive: boolean;
+  facilityServiceId?: number | null;
+  archivedAt?: string | null;
+  masterServiceId?: number | null;
+  approvalStatus?: 'DRAFT' | 'APPROVED';
+  revision?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -548,6 +821,8 @@ export interface BillingChargeAttempt {
   encounterType: string | null;
   quantity: number;
   reason: string;
+  /** Specific resolver outcome for newer charge evaluations. */
+  diagnosisCode?: string | null;
   detail: string | null;
   codesTried: string[];
   status: 'PENDING' | 'BILLED' | 'DUPLICATE' | 'VOID';
@@ -587,7 +862,9 @@ export interface BillingChargeAttemptOutcome {
 export interface BillingChargeRetrySummary {
   tried: number;
   billed: number;
+  duplicates: number;
   stillPending: number;
+  skipped: number;
 }
 
 export interface TariffMatchRow {
@@ -690,6 +967,25 @@ export interface LabServiceDiagnostics {
   tests: LabServiceDiagnostic[];
 }
 
+export interface FacilityTariffValidation {
+  facilityId: number;
+  asOfDate: string;
+  summary: { examined: number; review: number; invalid: number; manualOnly: number };
+  checks: Array<{
+    key: string;
+    kind: 'CATALOGUE' | 'FAMILY_SCENARIO' | 'TARIFF' | 'LINK' | 'BILLED_SERVICE';
+    serviceType: string | null;
+    name: string;
+    code: string | null;
+    result: 'RESOLVED' | 'REVIEW' | 'INVALID' | 'MANUAL_ONLY';
+    reasons: string[];
+    tariffId: number | null;
+    tariffCode: string | null;
+  }>;
+  nextOffset: number | null;
+  limitations: string[];
+}
+
 export interface BillingPayment {
   id: number;
   invoiceId: number;
@@ -703,6 +999,78 @@ export interface BillingPayment {
   cashierName: string;
   paymentDate: string;
 }
+
+export interface BillingRefund {
+  id: number;
+  invoiceId: number;
+  paymentId: number;
+  refundNumber: string;
+  amount: string;
+  refundMethod: string;
+  externalReference: string | null;
+  reason: string;
+  actorUserId: number;
+  createdAt: string;
+  status?: 'MANUALLY_RECORDED';
+}
+
+export type RefundMethod = 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER' | 'CHEQUE';
+export interface RefundReviewEvidence {
+  invoiceStatus: string | null;
+  invoiceTotal: string;
+  invoicePaid: string;
+  invoiceBalance: string;
+  invoiceCredit: string;
+  receiptNumber: string;
+  receiptMethod: string | null;
+  receiptGross: string;
+  receiptRefunded: string;
+  receiptReserved: string;
+  invoiceReserved: string;
+  receiptAvailable: string;
+  invoiceAvailable: string;
+}
+export interface RefundRequest {
+  id: number;
+  requestNumber: string;
+  facilityId: number;
+  invoiceId: number;
+  paymentId: number;
+  amount: string;
+  refundMethod: RefundMethod;
+  reason: string;
+  idempotencyKey: string;
+  status: 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'REVOKED' | 'SETTLED';
+  requestedByUserId: number;
+  reviewedByUserId: number | null;
+  reviewNotes: string | null;
+  reviewedAt: string | null;
+  revokedByUserId: number | null;
+  revocationReason: string | null;
+  revokedAt: string | null;
+  settledRefundId: number | null;
+  createdAt: string;
+}
+export type RefundRequestForReview = RefundRequest & {
+  reviewHash: string | null;
+  issue: string | null;
+  evidence: RefundReviewEvidence | null;
+};
+export interface RefundRequestPage {
+  requests: RefundRequestForReview[];
+  nextAfterId: number | null;
+}
+export type RefundRequestStatus =
+  { status: 'NOT_FOUND' } | { status: 'FOUND'; request: RefundRequest };
+
+export interface RecordRefundResult {
+  refund: BillingRefund;
+  replayed: boolean;
+  accounting: 'NOT_POSTED';
+}
+
+export type RefundStatusResult =
+  { status: 'NOT_FOUND' } | { status: 'RECORDED'; refund: BillingRefund; accounting: 'NOT_POSTED' };
 
 export type SettlementOutcome = 'FULLY_PAID' | 'BALANCE_REMAINING' | 'OVERPAID';
 
@@ -720,6 +1088,7 @@ export interface PaymentSettlement {
 }
 
 export interface RecordPaymentResult {
+  idempotentReplay?: boolean;
   payment: BillingPayment;
   settlement: PaymentSettlement;
   invoice: {
@@ -802,7 +1171,6 @@ export interface DraftClaimResult {
 export interface ClaimSettlementResult {
   claim: InsuranceClaim;
   payment: BillingPayment;
-  settlement: PaymentSettlement;
   appliedCents: number;
   unappliedCents: number;
   facilityId: number;
@@ -901,6 +1269,45 @@ export interface PublicHealthReport {
   ageGroup: string;
   epiWeek: string;
   reportedAt: string;
+  /** DRAFT or SUBMITTED. SUPERSEDED rows were replaced by a correction. */
+  status?: string | null;
+  /** Only on a correction: the record it replaced. The replaced row is retained. */
+  supersedesReportId?: number | null;
+}
+
+export interface SurveillanceWeekSummary {
+  facilityId: number;
+  epiWeek: string;
+  tallies: Array<{
+    diseaseCode: string;
+    diseaseName: string;
+    ageGroup: string;
+    casesCount: number;
+    mortalityCount: number;
+    caseFatalityRatio: string | null;
+    recordCount: number;
+    reportIds: number[];
+    disputed: boolean;
+    reviewNote: string | null;
+  }>;
+  superseded: Array<{
+    id: number;
+    diseaseCode: string;
+    ageGroup: string;
+    casesCount: number | null;
+    mortalityCount: number | null;
+    replacedBy: number | null;
+    reportedAt: string;
+  }>;
+  totals: {
+    diseases: number;
+    records: number;
+    casesCount: number;
+    mortalityCount: number;
+    disputedGroups: number;
+  };
+  submission: { ready: boolean; blockedBy: string | null; transmitted: boolean };
+  limitations: { format: string; notice: string };
 }
 
 export interface AuditLog {
@@ -968,6 +1375,43 @@ export interface RevenueChannelReconciliation {
   unmappedMethods: string[];
 }
 
+export interface FinancialTransactionsReport {
+  facilityId: number;
+  from: string;
+  to: string;
+  timezone: string;
+  totals: {
+    receiptCount: number;
+    grossReceipts: string;
+    refundCount: number;
+    manualRefunds: string;
+    netRecorded: string;
+  };
+  receipts: Array<{ method: string; count: number; amount: string }>;
+  refunds: Array<{ method: string; count: number; amount: string }>;
+  departments: Array<{ department: string; source: string; count: number; amount: string }>;
+  bedCharges: Array<{ source: string; count: number; amount: string }>;
+  invoiceCohort: { count: number; invoiced: string; currentOutstanding: string };
+  excludedScopeConflicts: number;
+  transactions: {
+    rows: Array<{
+      kind: 'RECEIPT' | 'MANUAL_REFUND';
+      id: number;
+      reference: string;
+      method: string | null;
+      amount: string;
+      invoiceNumber: string;
+      externalReference: string | null;
+      localDate: string;
+      recordedAtUtcAssumed: string;
+    }>;
+    hasMore: boolean;
+    offset: number;
+    pageSize: number;
+  };
+  limitations: string[];
+}
+
 export interface RevenueReport {
   facilityId: number;
   from: string | null;
@@ -1008,6 +1452,8 @@ export interface LengthOfStaySummary {
   longestStayDays: number | null;
   overstayCount: number;
   unparseableCount: number;
+  unresolvedPatientCount?: number;
+  outOfScopeAdmissionCount?: number;
   dischargedInWindow: number;
   averageDischargedStayDays: number | null;
   medianDischargedStayDays: number | null;
@@ -1063,7 +1509,7 @@ export interface InventoryBatchRow {
   batchNumber: string;
   expiryDate: string;
   quantityRemaining: number;
-  costPerUnit: string;
+  costPerUnit: string | null;
   daysToExpiry: number | null;
   status: BatchExpiryStatus;
 }
@@ -1085,8 +1531,8 @@ export interface ExpirySummary {
   expiredUnits: number;
   expiringBatches: number;
   expiringUnits: number;
-  expiredValueCents: number;
-  expiringValueCents: number;
+  expiredValueCents: number | null;
+  expiringValueCents: number | null;
   affectedItems: number;
   items: ExpirySummaryItem[];
 }
@@ -1103,7 +1549,23 @@ export interface ReceiveBatchResult {
   item: InventoryItem | null;
   received: number;
   expiryMismatch: string | null;
+  receiptId: number;
+  replayed: boolean;
 }
+
+export type InventoryReceiptRequestStatus =
+  | { status: 'NOT_FOUND' }
+  | { status: 'CANCELLED'; receiptId: number }
+  | {
+      status: 'RECORDED';
+      receiptId: number;
+      itemId: number;
+      batchId: number;
+      batchNumber: string;
+      quantity: number;
+      costPerUnit: string;
+      recordedAt: string;
+    };
 
 export interface DispenseAllocation {
   batchId: number;

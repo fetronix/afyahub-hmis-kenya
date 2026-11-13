@@ -585,7 +585,7 @@ export async function getInpatientBoardScoped(
   const admissions = await getAdmissionsScoped(context, requestedFacilityId, 'Admitted');
 
   const wards = await getWardsScoped(context, requestedFacilityId);
-  const beds = await getBedsScoped(context);
+  const beds = await getBedsScoped(context, undefined, requestedFacilityId);
 
   const facilityId = admissions[0]?.facilityId ?? wards[0]?.facilityId ?? 0;
 

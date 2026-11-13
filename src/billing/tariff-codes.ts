@@ -86,6 +86,7 @@ export const BILLING_FAMILIES = [
   { key: 'ADMISSION', label: 'Inpatient admission' },
   { key: 'BED_DAY', label: 'Bed charge — per night' },
   { key: 'DELIVERY', label: 'Maternity delivery' },
+  { key: 'DIALYSIS', label: 'Dialysis — one completed session' },
   { key: 'PHARMACY', label: 'Pharmacy — dispensing' },
 ] as const;
 
