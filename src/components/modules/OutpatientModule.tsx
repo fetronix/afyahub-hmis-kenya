@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useHmis } from '../../context/HmisContext.tsx';
 import { api, ApiError } from '../../api/client.ts';
 import type { ServiceCharge } from '../../api/client.ts';
+import { EncounterBillingView } from './EncounterBillingView.tsx';
+import { PatientDirectoryPicker } from '../patient/PatientDirectoryPicker.tsx';
 import {
   Patient,
   Encounter,
@@ -9,7 +11,7 @@ import {
   Diagnosis,
   Procedure,
   Medication,
-  LabTest,
+  FacilityService,
   QueueItem,
 } from '../../types/index.ts';
 import {
@@ -46,6 +48,7 @@ export const OutpatientModule: React.FC = () => {
     currentTenant,
     currentFacility,
     currentUser,
+    authenticatedUser,
     setSelectedPatient,
     setIsJourneyModalOpen,
     showToast,
@@ -53,10 +56,22 @@ export const OutpatientModule: React.FC = () => {
     triggerRefresh,
   } = useHmis();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [activeEncounter, setActiveEncounter] = useState<Encounter | null>(null);
   const [triageQueue, setTriageQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadData, setReloadData] = useState(0);
+  const [selectionLoading, setSelectionLoading] = useState(false);
+  const [selectionError, setSelectionError] = useState('');
+  const selectionVersion = useRef(0);
+  useEffect(
+    () => () => {
+      selectionVersion.current += 1;
+    },
+    [],
+  );
 
   // Vitals State
   const emptyVitals = {
@@ -90,6 +105,18 @@ export const OutpatientModule: React.FC = () => {
   const [customDiagnosisMode, setCustomDiagnosisMode] = useState(false);
   const [customDiagnosisDescription, setCustomDiagnosisDescription] = useState('');
   const [customDiagnosisNotes, setCustomDiagnosisNotes] = useState('');
+  const [whoMode, setWhoMode] = useState(false);
+  const [whoQuery, setWhoQuery] = useState('');
+  const [whoResults, setWhoResults] = useState<
+    Array<{ code: string; title: string; releaseId: string }>
+  >([]);
+  const [selectedWho, setSelectedWho] = useState<{
+    code: string;
+    title: string;
+    releaseId: string;
+  } | null>(null);
+  const [whoNotice, setWhoNotice] = useState('');
+  const [whoSearching, setWhoSearching] = useState(false);
 
   // Prescription Form
   const [newMed, setNewMed] = useState({
@@ -103,42 +130,164 @@ export const OutpatientModule: React.FC = () => {
     unitPrice: '',
   });
   const [prescriptions, setPrescriptions] = useState<Medication[]>([]);
+  const [prescribing, setPrescribing] = useState(false);
+  const prescribingRef = useRef(false);
+  const [medicationChange, setMedicationChange] = useState<{
+    id: number;
+    action: string;
+    reason: string;
+  } | null>(null);
+  const [changingMedication, setChangingMedication] = useState(false);
 
   // Laboratory batch-order form
-  const [labTests, setLabTests] = useState<LabTest[]>([]);
-  const [selectedLabTestIds, setSelectedLabTestIds] = useState<string[]>([]);
+  const [labServices, setLabServices] = useState<FacilityService[]>([]);
+  const [consultationServices, setConsultationServices] = useState<FacilityService[]>([]);
+  const [serviceLoadError, setServiceLoadError] = useState(false);
+  const [consultationChoice, setConsultationChoice] = useState('');
+  const [consultationReason, setConsultationReason] = useState('');
+  const [savingConsultation, setSavingConsultation] = useState(false);
+  // Keep the actual selected service identity independently of the catalogue
+  // response: a refresh must not silently remove a selected order line.
+  const [labSelections, setLabSelections] = useState<
+    Record<
+      number,
+      { service: FacilityService; specimenType: string; facilityId: number; tenantId: number }
+    >
+  >({});
+  const [freeSpecimens, setFreeSpecimens] = useState<Record<string, string>>({});
+  const [startingVisit, setStartingVisit] = useState(false);
+  const startingVisitRef = useRef(false);
+  const visitRequest = useRef<{ fingerprint: string; key: string } | null>(null);
+  const labRequest = useRef<{ fingerprint: string; key: string } | null>(null);
   const [labInvestigations, setLabInvestigations] = useState('');
-  const [labSearch, setLabSearch] = useState('');
-  const [labCategory, setLabCategory] = useState('All');
   const [labIndication, setLabIndication] = useState('');
-  const [labSpecimenType, setLabSpecimenType] = useState('Blood');
   const [labPriority, setLabPriority] = useState<'Routine' | 'Urgent' | 'STAT'>('Routine');
   const [labClinicalNotes, setLabClinicalNotes] = useState('');
   const [submittingLabOrder, setSubmittingLabOrder] = useState(false);
+  const labDraftScope = useRef({ tenantId: currentTenant?.id, facilityId: currentFacility?.id });
 
   useEffect(() => {
+    if (
+      labDraftScope.current.tenantId === currentTenant?.id &&
+      labDraftScope.current.facilityId === currentFacility?.id
+    )
+      return;
+    labDraftScope.current = { tenantId: currentTenant?.id, facilityId: currentFacility?.id };
+    // Never carry an unsent draft into a different authenticated facility.
+    selectionVersion.current += 1;
+    labRequest.current = null;
+    setLabSelections({});
+    setFreeSpecimens({});
+    setLabInvestigations('');
+    setLabIndication('');
+    setLabClinicalNotes('');
+    setLabPriority('Routine');
+    showToast(
+      'Facility changed; the unsent laboratory draft was cleared. Review the patient and investigations.',
+    );
+  }, [currentTenant?.id, currentFacility?.id, showToast]);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadData() {
       setLoading(true);
-      try {
-        const [pList, tests, queue] = await Promise.all([
-          api.getPatients(currentTenant?.id, currentFacility?.id),
-          api.getLabTests(currentFacility?.id),
-          // The desk works from the queue the receptionist filled.
-          api.getQueues(currentFacility?.id, 'Triage').catch(() => []),
-        ]);
-        setPatients(pList);
-        setLabTests(tests);
-        setTriageQueue(queue);
-      } catch (err) {
-        console.error('Failed to load OPD data:', err);
-      } finally {
+      setLoadError('');
+      if (!currentTenant?.id || !currentFacility?.id) {
+        setPatients([]);
+        setTriageQueue([]);
+        setLoadError('Select an authorized facility to load outpatient data.');
         setLoading(false);
+        return;
+      }
+      try {
+        const [pList, queue] = await Promise.all([
+          api.getPatients(currentTenant.id, currentFacility.id),
+          api.getQueues(currentFacility.id, 'Triage'),
+        ]);
+        if (cancelled) return;
+        if (!Array.isArray(pList) || !Array.isArray(queue))
+          throw new Error('Invalid outpatient response');
+        setPatients(pList);
+        setTriageQueue(queue);
+      } catch {
+        if (!cancelled) {
+          setPatients([]);
+          setTriageQueue([]);
+          setLoadError(
+            'Outpatient data could not be loaded. Do not assume the triage queue is empty.',
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
-    loadData();
-  }, [currentTenant, currentFacility, refreshKey]);
+    void loadData();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTenant?.id, currentFacility?.id, refreshKey, reloadData]);
+
+  // Prices are useful but a catalogue failure must not block triage or care.
+  useEffect(() => {
+    let current = true;
+    setLabServices([]);
+    setConsultationServices([]);
+    setServiceLoadError(false);
+    if (currentFacility?.id) {
+      Promise.allSettled([
+        Promise.resolve().then(() =>
+          api.getAvailableFacilityServices(currentFacility.id, { category: 'LABORATORY' }),
+        ),
+        Promise.resolve().then(() =>
+          api.getAvailableFacilityServices(currentFacility.id, { category: 'CONSULTATION' }),
+        ),
+      ]).then(([labs, consultations]) => {
+        if (!current) return;
+        if (labs.status === 'fulfilled' && Array.isArray(labs.value)) setLabServices(labs.value);
+        else setServiceLoadError(true);
+        if (consultations.status === 'fulfilled' && Array.isArray(consultations.value))
+          setConsultationServices(consultations.value);
+      });
+    }
+    return () => {
+      current = false;
+    };
+  }, [currentFacility?.id, refreshKey]);
+
+  const saveConsultation = async () => {
+    if (
+      !activeEncounter ||
+      !consultationChoice ||
+      consultationReason.trim().length < 3 ||
+      savingConsultation
+    )
+      return;
+    const version = selectionVersion.current;
+    setSavingConsultation(true);
+    try {
+      const selected = await api.selectEncounterConsultation(
+        activeEncounter.id,
+        Number(consultationChoice),
+        consultationReason.trim(),
+      );
+      if (version === selectionVersion.current) {
+        setActiveEncounter(selected);
+        setConsultationReason('');
+      }
+      showToast('Consultation selection saved; billing is assessed at completion.');
+    } catch (error) {
+      showToast(
+        `Consultation selection not saved: ${error instanceof Error ? error.message : 'review required.'}`,
+      );
+    } finally {
+      setSavingConsultation(false);
+    }
+  };
 
   const selectPatient = async (p: Patient) => {
+    const version = ++selectionVersion.current;
+    setSelectionLoading(true);
+    setSelectionError('');
     setActivePatient(p);
     setActiveEncounter(null);
     setVitals({ ...emptyVitals });
@@ -152,16 +301,41 @@ export const OutpatientModule: React.FC = () => {
     });
     setDiagnosisList([]);
     setPrescriptions([]);
-    setSelectedLabTestIds([]);
+    setSelectedIcd(null);
+    setDiagnosisType('Primary');
+    setCustomDiagnosisMode(false);
+    setCustomDiagnosisDescription('');
+    setCustomDiagnosisNotes('');
+    setWhoMode(false);
+    setWhoQuery('');
+    setWhoResults([]);
+    setSelectedWho(null);
+    setWhoNotice('');
+    setWhoSearching(false);
+    setNewMed({
+      drugName: '',
+      dosage: '',
+      frequency: '',
+      duration: '',
+      route: '',
+      instructions: '',
+      quantity: '',
+      unitPrice: '',
+    });
+    setMedicationChange(null);
+    setLabSelections({});
+    setFreeSpecimens({});
+    setConsultationChoice('');
+    setConsultationReason('');
+    labRequest.current = null;
     setLabInvestigations('');
-    setLabSearch('');
     setLabIndication('');
-    setLabSpecimenType('Blood');
     setLabPriority('Routine');
     setLabClinicalNotes('');
 
     try {
       const encs = await api.getEncounters(p.id, currentFacility?.id);
+      if (version !== selectionVersion.current) return;
       const openEncounter = encs.find((encounter) =>
         ['active', 'in progress'].includes((encounter.status || '').trim().toLowerCase()),
       );
@@ -170,6 +344,14 @@ export const OutpatientModule: React.FC = () => {
         return;
       }
 
+      // Do not expose an actionable encounter until all patient-specific
+      // records are loaded and this is still the selected patient.
+      const [vList, dList, mList] = await Promise.all([
+        api.getObservations(openEncounter.id),
+        api.getDiagnoses(openEncounter.id),
+        api.getMedications(openEncounter.id),
+      ]);
+      if (version !== selectionVersion.current) return;
       setActiveEncounter(openEncounter);
       setNotes({
         triageCategory: openEncounter.triageCategory || '',
@@ -179,12 +361,6 @@ export const OutpatientModule: React.FC = () => {
         clinicalNotes: openEncounter.clinicalNotes || '',
         referralFacility: openEncounter.referralFacility || '',
       });
-
-      const [vList, dList, mList] = await Promise.all([
-        api.getObservations(openEncounter.id),
-        api.getDiagnoses(openEncounter.id),
-        api.getMedications(openEncounter.id),
-      ]);
 
       if (vList.length > 0) {
         const v = vList[0];
@@ -203,18 +379,78 @@ export const OutpatientModule: React.FC = () => {
 
       setDiagnosisList(dList);
       setPrescriptions(mList);
-    } catch (err) {
-      console.error('Failed to select patient for encounter:', err);
-      showToast('Could not load this patient’s visit. Please try again.');
+    } catch {
+      if (version === selectionVersion.current)
+        setSelectionError(
+          'Could not load this patient’s visit. Do not assume there is no active visit.',
+        );
+    } finally {
+      if (version === selectionVersion.current) setSelectionLoading(false);
+    }
+  };
+
+  // A queued patient may not be in the legacy 50-row carousel. Resolve them
+  // through the audited directory in this exact facility rather than guessing.
+  const selectQueuedPatient = async (token: QueueItem) => {
+    const known = patients.find((patient) => patient.id === token.patientId);
+    if (known) {
+      await selectPatient(known);
+      return;
+    }
+    if (!currentTenant?.id || !currentFacility?.id) {
+      showToast('Select an authorized facility before opening the queued patient.');
+      return;
+    }
+    const version = ++selectionVersion.current;
+    setActivePatient(null);
+    setActiveEncounter(null);
+    setSelectionLoading(true);
+    setSelectionError('');
+    try {
+      const page = await api.getPatientDirectoryPage({
+        tenantId: currentTenant.id,
+        facilityId: currentFacility.id,
+        patientId: token.patientId,
+      });
+      if (version !== selectionVersion.current) return;
+      if (
+        !Array.isArray(page.items) ||
+        page.items.length !== 1 ||
+        page.items[0].id !== token.patientId
+      ) {
+        showToast(
+          'This queued patient could not be resolved in the selected facility directory. Review the queue and patient identity.',
+        );
+        return;
+      }
+      await selectPatient(page.items[0]);
+    } catch {
+      if (version === selectionVersion.current)
+        showToast(
+          'Could not load the queued patient. Review the queue and patient identity before proceeding.',
+        );
+    } finally {
+      if (version === selectionVersion.current) setSelectionLoading(false);
     }
   };
 
   const startVisit = async () => {
-    if (!activePatient || !currentFacility) {
+    if (startingVisitRef.current) return;
+    if (!activePatient || !currentFacility || selectionLoading || selectionError) {
       showToast('Select a patient and facility before starting a visit.');
       return;
     }
 
+    const version = selectionVersion.current;
+    const fingerprint = JSON.stringify({
+      patient: activePatient.id,
+      facility: currentFacility.id,
+      consultationChoice,
+    });
+    if (visitRequest.current?.fingerprint !== fingerprint)
+      visitRequest.current = { fingerprint, key: crypto.randomUUID() };
+    startingVisitRef.current = true;
+    setStartingVisit(true);
     try {
       const newEncounter = await api.createEncounter({
         tenantId: activePatient.tenantId,
@@ -223,8 +459,19 @@ export const OutpatientModule: React.FC = () => {
         encounterType: 'Outpatient',
         status: 'Active',
         triageCategory: '',
+        ...(consultationChoice
+          ? { consultationFacilityServiceId: Number(consultationChoice) }
+          : {}),
+        idempotencyKey: visitRequest.current.key,
       });
+      visitRequest.current = null;
 
+      if (version !== selectionVersion.current) {
+        showToast(
+          'Visit started for the previously selected patient. Review their triage queue before routing.',
+        );
+        return;
+      }
       setActiveEncounter(newEncounter);
       setVitals({ ...emptyVitals });
 
@@ -243,6 +490,10 @@ export const OutpatientModule: React.FC = () => {
           console.error('Could not move the triage token:', error);
         });
       }
+      if (version !== selectionVersion.current) {
+        showToast('Visit started for the previously selected patient. Review their record.');
+        return;
+      }
       setNotes({
         triageCategory: '',
         chiefComplaint: '',
@@ -253,39 +504,15 @@ export const OutpatientModule: React.FC = () => {
       });
       setDiagnosisList([]);
       setPrescriptions([]);
-      /*
-       * Say what the invoice says. The consultation is charged by the
-       * server; if the facility has not priced OPD-CONSULT the screen
-       * must not imply a fee was raised.
-       */
-      const consultBilling = (newEncounter as { billing?: ServiceCharge | null }).billing;
-
-      if (consultBilling?.charged) {
-        /*
-         * The unit is what the facility priced against — "Per visit"
-         * rather than a day rate is a different promise, and it comes
-         * from the tariff row, not from this screen.
-         */
-        showToast(
-          `Visit started. Consultation billed KES ${consultBilling.totalAmount}${
-            consultBilling.unit ? ` (${consultBilling.unit})` : ''
-          } on ${consultBilling.invoiceNumber}.`,
-        );
-      } else {
-        /*
-         * The server has already recorded this in the retry queue, so
-         * the message says where to find it rather than implying the
-         * fee was simply lost.
-         */
-        showToast(
-          `Visit started, but the consultation was not billed: ${
-            consultBilling?.message ?? 'the server returned no billing result'
-          } It is listed under Configuration → Services & Tariffs → “Charges that could not be priced”, and can be billed once a price is set.`,
-        );
-      }
+      showToast('Visit started. Consultation billing is assessed on completion.');
     } catch (err: any) {
       console.error('Failed to start outpatient visit:', err);
-      showToast(`Could not start visit: ${err.message}`);
+      showToast(
+        `Visit creation could not be confirmed. Review the patient’s encounters before trying again. ${err.message}`,
+      );
+    } finally {
+      startingVisitRef.current = false;
+      setStartingVisit(false);
     }
   };
 
@@ -408,6 +635,7 @@ export const OutpatientModule: React.FC = () => {
    */
   const handleCompleteVisit = async () => {
     if (!activeEncounter) return;
+    const version = selectionVersion.current;
 
     if (
       !window.confirm(
@@ -418,7 +646,8 @@ export const OutpatientModule: React.FC = () => {
     }
 
     try {
-      await api.updateEncounter(activeEncounter.id, { status: 'Completed' });
+      const completed = await api.updateEncounter(activeEncounter.id, { status: 'Completed' });
+      const consultBilling = (completed as { billing?: ServiceCharge | null }).billing;
 
       const openToken = triageQueue.find(
         (token) => token.patientId === activeEncounter.patientId && token.status === 'In-Progress',
@@ -430,8 +659,14 @@ export const OutpatientModule: React.FC = () => {
         });
       }
 
-      showToast('Visit completed. The patient can be seen again as a new visit.');
-      setActiveEncounter(null);
+      showToast(
+        consultBilling?.charged
+          ? `Visit completed. Consultation billed KES ${consultBilling.totalAmount}.`
+          : consultBilling?.reason === 'DUPLICATE'
+            ? 'Visit completed. The consultation charge already exists.'
+            : `Visit completed; billing not confirmed: ${consultBilling?.message ?? 'review the billing queue.'}`,
+      );
+      if (version === selectionVersion.current) setActiveEncounter(null);
       triggerRefresh();
     } catch (err: any) {
       showToast(`Could not complete the visit: ${err.message}`);
@@ -455,16 +690,48 @@ export const OutpatientModule: React.FC = () => {
     }
   };
 
+  const handleWhoSearch = async () => {
+    const version = selectionVersion.current;
+    if (whoQuery.trim().length < 2) {
+      setWhoNotice('Enter at least two characters to search WHO ICD-11.');
+      return;
+    }
+    setWhoSearching(true);
+    setSelectedWho(null);
+    try {
+      const response = await api.searchIcd11(whoQuery.trim());
+      if (version !== selectionVersion.current) return;
+      setWhoResults(response.items);
+      setWhoNotice(
+        response.warning ||
+          `WHO ICD-11 MMS ${response.releaseId}. Results are not a complete offline catalogue.`,
+      );
+    } catch (error: unknown) {
+      if (version !== selectionVersion.current) return;
+      setWhoResults([]);
+      setWhoNotice(error instanceof Error ? error.message : 'WHO search is unavailable.');
+    } finally {
+      if (version === selectionVersion.current) setWhoSearching(false);
+    }
+  };
+
   const handleAddDiagnosis = async () => {
     if (!activeEncounter || !activePatient) {
       showToast('Select a patient and start an outpatient visit first.');
       return;
     }
 
-    const description = customDiagnosisMode
-      ? customDiagnosisDescription.trim()
-      : selectedIcd?.desc || '';
-    const code = customDiagnosisMode ? 'UNCODED' : selectedIcd?.code || '';
+    const version = selectionVersion.current;
+    const description = whoMode
+      ? selectedWho?.title || ''
+      : customDiagnosisMode
+        ? customDiagnosisDescription.trim()
+        : selectedIcd?.desc || '';
+    const code = whoMode
+      ? selectedWho?.code || ''
+      : customDiagnosisMode
+        ? 'UNCODED'
+        : selectedIcd?.code || '';
 
     if (!description) {
       showToast(
@@ -484,8 +751,11 @@ export const OutpatientModule: React.FC = () => {
       const diag = await api.recordDiagnosis({
         encounterId: activeEncounter.id,
         patientId: activePatient.id,
-        icd10Code: code,
-        icd10Description: description,
+        codingSystem: whoMode ? 'ICD-11' : 'ICD-10',
+        icd10Code: whoMode ? null : code,
+        icd10Description: whoMode ? null : description,
+        icd11Code: whoMode ? code : null,
+        icd11Release: whoMode ? selectedWho?.releaseId : null,
         diagnosisType,
         status: customDiagnosisMode ? 'Provisional' : 'Confirmed',
         notes: customDiagnosisMode
@@ -495,21 +765,25 @@ export const OutpatientModule: React.FC = () => {
           : undefined,
         diagnosedBy: currentUser.name,
       });
-      setDiagnosisList((prev) => [...prev, diag]);
+      if (version === selectionVersion.current) setDiagnosisList((prev) => [...prev, diag]);
       showToast(
         customDiagnosisMode
           ? 'Uncoded provisional diagnosis recorded for later coding review.'
           : `Diagnosis ${code} added.`,
       );
-      setSelectedIcd(null);
-      setCustomDiagnosisDescription('');
-      setCustomDiagnosisNotes('');
+      if (version === selectionVersion.current) {
+        setSelectedIcd(null);
+        setSelectedWho(null);
+        setCustomDiagnosisDescription('');
+        setCustomDiagnosisNotes('');
+      }
     } catch (err: any) {
       showToast(`Error: ${err.message}`);
     }
   };
 
   const handlePrescribe = async () => {
+    if (prescribingRef.current) return;
     if (!activeEncounter || !activePatient) {
       showToast('Select a patient and start an outpatient visit first.');
       return;
@@ -539,6 +813,10 @@ export const OutpatientModule: React.FC = () => {
       return;
     }
 
+    const version = selectionVersion.current;
+    prescribingRef.current = true;
+    setPrescribing(true);
+
     /*
      * The server refuses a prescription that matches a recorded
      * allergy until the prescriber acknowledges it. That is a
@@ -563,30 +841,53 @@ export const OutpatientModule: React.FC = () => {
         ...(allergyAcknowledged ? { allergyAcknowledged: true } : {}),
       });
 
-      setPrescriptions((prev) => [...prev, med]);
+      if (version === selectionVersion.current) {
+        setPrescriptions((prev) => [...prev, med]);
+        setNewMed({
+          drugName: '',
+          dosage: '',
+          frequency: '',
+          duration: '',
+          route: '',
+          instructions: '',
+          quantity: '',
+          unitPrice: '',
+        });
+      }
 
-      // Also route patient to Pharmacy Queue. The token is allocated
-      // by the server so two prescriptions cannot share one.
-      const pharmacyEntry = await api.createQueueItem({
-        tenantId: activeEncounter.tenantId,
-        facilityId: activeEncounter.facilityId,
-        patientId: activePatient.id,
-        encounterId: activeEncounter.id,
-        queueType: 'Pharmacy',
-        priority: 'Normal',
-        status: 'Waiting',
-        waitingTimeMinutes: 0,
-      });
-
-      showToast(
-        `Prescription saved and patient routed to Pharmacy — token ${pharmacyEntry.tokenNumber}.`,
-      );
+      // The prescription is already committed. A queue failure must not
+      // tell the clinician the prescription failed or prompt a duplicate.
+      try {
+        const pharmacyEntry = await api.createQueueItem({
+          tenantId: activeEncounter.tenantId,
+          facilityId: activeEncounter.facilityId,
+          patientId: activePatient.id,
+          encounterId: activeEncounter.id,
+          queueType: 'Pharmacy',
+          priority: 'Normal',
+          status: 'Waiting',
+          waitingTimeMinutes: 0,
+        });
+        showToast(
+          `Prescription saved and patient routed to Pharmacy — token ${pharmacyEntry.tokenNumber}.`,
+        );
+      } catch {
+        showToast(
+          'Prescription saved, but pharmacy routing could not be confirmed. Check the pharmacy queue before routing again; do not prescribe again.',
+        );
+      }
     };
 
     try {
       await submit(false);
     } catch (err: any) {
       if (err instanceof ApiError && err.code === 'ALLERGY_CONFLICT') {
+        if (version !== selectionVersion.current) {
+          showToast(
+            'The previous patient’s prescription was not accepted due to an allergy warning. Review their record before continuing.',
+          );
+          return;
+        }
         const warnings = Array.isArray(err.detail?.warnings)
           ? (err.detail!.warnings as Array<Record<string, unknown>>)
           : [];
@@ -618,16 +919,73 @@ export const OutpatientModule: React.FC = () => {
         try {
           await submit(true);
         } catch (retryError: any) {
-          showToast(`Error: ${retryError.message}`);
+          showToast(
+            `Prescription could not be confirmed. Review the medication list before retrying. ${retryError.message}`,
+          );
         }
 
         return;
       }
 
-      showToast(`Error: ${err.message}`);
+      showToast(
+        `Prescription could not be confirmed. Review the medication list before retrying. ${err.message}`,
+      );
+    } finally {
+      prescribingRef.current = false;
+      setPrescribing(false);
     }
   };
 
+  const handleMedicationChange = async () => {
+    if (!medicationChange || !medicationChange.reason.trim() || changingMedication) return;
+    const version = selectionVersion.current;
+    setChangingMedication(true);
+    try {
+      const updated = await api.updateMedicationStatus(
+        medicationChange.id,
+        medicationChange.action,
+        medicationChange.reason,
+      );
+      if (version === selectionVersion.current) {
+        setPrescriptions((rows) =>
+          rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)),
+        );
+        setMedicationChange(null);
+      }
+      triggerRefresh();
+      showToast(`Prescription status updated to ${updated.status}.`);
+    } catch (error: any) {
+      showToast(`Prescription status was not changed: ${error.message}`);
+    } finally {
+      setChangingMedication(false);
+    }
+  };
+
+  const freeInvestigations = Array.from(
+    new Map(
+      labInvestigations
+        .split(/\r?\n/)
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .map((name) => [name.toLowerCase(), name]),
+    ).values(),
+  );
+  const scopedLabServices = labServices.filter(
+    (service) =>
+      service.facilityId === currentFacility?.id && service.tenantId === currentTenant?.id,
+  );
+  const visibleLabServices = [
+    ...scopedLabServices,
+    ...Object.values(labSelections)
+      .filter(
+        ({ service, facilityId, tenantId }) =>
+          facilityId === currentFacility?.id &&
+          tenantId === currentTenant?.id &&
+          !scopedLabServices.some((row) => row.id === service.id),
+      )
+      .map(({ service }) => service),
+  ];
+  const currentLabServiceIds = new Set(scopedLabServices.map((service) => service.id));
   const handleOrderLab = async () => {
     if (submittingLabOrder) return;
     if (!activeEncounter || !activePatient) {
@@ -635,66 +993,74 @@ export const OutpatientModule: React.FC = () => {
       return;
     }
 
-    const seen = new Set<string>();
-    const investigations = labInvestigations
-      .split(/\r?\n/)
-      .map((name) => name.trim())
-      .filter((name) => {
-        if (!name) return false;
-        const key = name.toLocaleLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-    if (investigations.length === 0) {
-      showToast('Enter at least one laboratory investigation.');
+    const selections = Object.values(labSelections);
+    if (
+      !currentFacility?.id ||
+      !currentTenant?.id ||
+      activeEncounter.facilityId !== currentFacility.id ||
+      activeEncounter.tenantId !== currentTenant.id ||
+      activeEncounter.patientId !== activePatient.id ||
+      selections.some(
+        (selection) =>
+          selection.facilityId !== currentFacility.id || selection.tenantId !== currentTenant.id,
+      )
+    ) {
+      showToast('Select a patient and investigations for the current facility before ordering.');
       return;
     }
-    if (investigations.length > 100 || investigations.some((name) => name.length > 200)) {
-      showToast('Enter no more than 100 investigations, with each name up to 200 characters.');
+    const selectedLines = selections.map(({ service, specimenType }) => ({
+      facilityServiceId: service.id,
+      specimenType: specimenType.trim(),
+    }));
+    const freeLines = freeInvestigations.map((investigation) => ({
+      investigation,
+      specimenType: (freeSpecimens[investigation.toLowerCase()] ?? '').trim(),
+    }));
+    const orderLines = [...selectedLines, ...freeLines];
+    if (
+      !orderLines.length ||
+      orderLines.length > 100 ||
+      orderLines.some((line) => !line.specimenType)
+    ) {
+      showToast('Select investigations and enter an individual specimen for each (maximum 100).');
       return;
     }
-    if (!labIndication.trim() || !labSpecimenType.trim()) {
-      showToast('Enter the clinical indication and specimen type.');
+    if (!labIndication.trim()) {
+      showToast('Enter the clinical indication.');
       return;
     }
-
+    const version = selectionVersion.current;
+    const payload = {
+      encounterId: activeEncounter.id,
+      patientId: activePatient.id,
+      orderLines,
+      clinicalIndication: labIndication.trim(),
+      priority: labPriority,
+      clinicalNotes: labClinicalNotes.trim() || undefined,
+      orderedBy: currentUser.name,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (labRequest.current?.fingerprint !== fingerprint)
+      labRequest.current = { fingerprint, key: crypto.randomUUID() };
     setSubmittingLabOrder(true);
     try {
       const result = await api.createLabOrderBatch({
-        encounterId: activeEncounter.id,
-        patientId: activePatient.id,
-        investigations,
-        clinicalIndication: labIndication.trim(),
-        specimenType: labSpecimenType.trim(),
-        priority: labPriority,
-        clinicalNotes: labClinicalNotes.trim() || undefined,
-        orderedBy: currentUser.name,
+        ...payload,
+        idempotencyKey: labRequest.current.key,
       });
-
-      const charges = result.billing ?? [];
-      const billedTotal = charges
-        .filter((entry) => entry.billing?.charged)
-        .reduce((sum, entry) => sum + Number(entry.billing?.totalAmount ?? 0), 0);
-      const unbilled = charges.filter((entry) => !entry.billing?.charged);
-
-      if (unbilled.length === 0 && billedTotal > 0) {
-        showToast(
-          `Created ${result.orders.length} lab order(s) and billed KES ${billedTotal.toFixed(2)} — routed to the Laboratory queue.`,
-        );
-      } else {
-        showToast(
-          `Created ${result.orders.length} lab order(s) and routed them to the Laboratory queue. Not billed: ${
-            unbilled[0]?.billing?.message ?? 'no laboratory tariff matched'
-          }`,
-        );
+      labRequest.current = null;
+      showToast(
+        result.idempotentReplay
+          ? 'Existing laboratory request recovered.'
+          : 'Laboratory request recorded and routed to the queue. Billing is assessed after verified results and completion.',
+      );
+      if (version === selectionVersion.current) {
+        setLabSelections({});
+        setFreeSpecimens({});
+        setLabInvestigations('');
+        setLabIndication('');
+        setLabClinicalNotes('');
       }
-      setSelectedLabTestIds([]);
-      setLabInvestigations('');
-      setLabSearch('');
-      setLabIndication('');
-      setLabClinicalNotes('');
       triggerRefresh();
     } catch (err: any) {
       showToast(`Laboratory order failed: ${err.message}`);
@@ -703,17 +1069,28 @@ export const OutpatientModule: React.FC = () => {
     }
   };
 
+  if (loading) return <div role="status">Loading outpatient data...</div>;
+  if (loadError)
+    return (
+      <div role="alert" className="rounded border border-rose-300 bg-rose-50 p-4 text-rose-900">
+        {loadError}{' '}
+        <button type="button" onClick={() => setReloadData((value) => value + 1)}>
+          Retry outpatient data
+        </button>
+      </div>
+    );
+
   return (
     <div className="space-y-6">
       {/* Patient Picker Strip */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
-            <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <h1 className="ui-page-title flex items-center gap-2">
               <Stethoscope className="w-4 h-4 text-teal-700" />
               <span>Outpatient Triage & Clinical Consultation Desk</span>
             </h1>
-            <p className="text-2xs text-slate-500">
+            <p className="ui-page-description">
               Examining Clinician: <strong className="text-slate-800">{currentUser.name}</strong> (
               {currentUser.role})
             </p>
@@ -769,6 +1146,28 @@ export const OutpatientModule: React.FC = () => {
           ))}
         </div>
 
+        <button
+          type="button"
+          onClick={() => setDirectoryOpen((open) => !open)}
+          aria-expanded={directoryOpen}
+          className="mt-3 rounded border border-teal-700 px-3 py-1.5 text-xs font-semibold text-teal-800"
+        >
+          {directoryOpen ? 'Close patient search' : 'Find another facility patient'}
+        </button>
+        {directoryOpen && (
+          <div className="mt-2">
+            <PatientDirectoryPicker
+              tenantId={currentTenant?.id}
+              facilityId={currentFacility?.id}
+              refreshKey={refreshKey}
+              onSelect={(patient) => {
+                setDirectoryOpen(false);
+                void selectPatient(patient);
+              }}
+            />
+          </div>
+        )}
+
         {/*
           Who the reception desk has actually sent. Selecting from here
           is the same as selecting from the carousel, but it tells the
@@ -788,7 +1187,7 @@ export const OutpatientModule: React.FC = () => {
                 return (
                   <button
                     key={token.id}
-                    onClick={() => queuedPatient && selectPatient(queuedPatient)}
+                    onClick={() => void selectQueuedPatient(token)}
                     className="px-2.5 py-1 rounded-md border border-amber-200 bg-amber-50 text-amber-900 text-2xs font-medium hover:bg-amber-100 transition-colors flex items-center gap-1.5"
                   >
                     <Clock className="w-3 h-3" />
@@ -806,8 +1205,72 @@ export const OutpatientModule: React.FC = () => {
         )}
       </div>
 
-      {activePatient && activeEncounter ? (
+      {selectionLoading ? (
+        <div role="status">Loading this patient’s visit...</div>
+      ) : activePatient && selectionError ? (
+        <div role="alert" className="rounded border border-rose-300 bg-rose-50 p-4 text-rose-900">
+          {selectionError}{' '}
+          <button type="button" onClick={() => void selectPatient(activePatient)}>
+            Retry patient visit
+          </button>
+        </div>
+      ) : activePatient && activeEncounter ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {!activeEncounter.consultationFacilityServiceId &&
+            consultationServices.length > 0 &&
+            authenticatedUser?.permissions?.includes('clinical.update') && (
+              <div className="lg:col-span-3 rounded border border-slate-200 bg-white p-4 text-xs">
+                <p>
+                  Consultation was not selected at visit start. Select it here if appropriate; care
+                  can continue without selection.
+                </p>
+                <label>
+                  Consultation{' '}
+                  <select
+                    value={consultationChoice}
+                    onChange={(event) => setConsultationChoice(event.target.value)}
+                  >
+                    <option value="">Select consultation</option>
+                    {consultationServices.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ·{' '}
+                        {item.unitPrice ? `KES ${item.unitPrice}` : 'price unavailable'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {' '}
+                  Selection reason{' '}
+                  <input
+                    value={consultationReason}
+                    onChange={(event) => setConsultationReason(event.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void saveConsultation()}
+                  disabled={
+                    !consultationChoice ||
+                    consultationReason.trim().length < 3 ||
+                    savingConsultation
+                  }
+                >
+                  Save selection
+                </button>
+              </div>
+            )}
+          {authenticatedUser &&
+            !authenticatedUser.isSuperAdmin &&
+            authenticatedUser.permissions?.includes('billing.read') && (
+              <div className="lg:col-span-3">
+                <EncounterBillingView
+                  facilityId={activeEncounter.facilityId}
+                  patientId={activeEncounter.patientId}
+                  encounterId={activeEncounter.id}
+                />
+              </div>
+            )}
           {/* Left Column: Triage Vital Signs & Clinical Alerts (1 col) */}
           <div className="space-y-6">
             {/* Clinical Alerts Card */}
@@ -819,11 +1282,12 @@ export const OutpatientModule: React.FC = () => {
               <div className="text-amber-950 font-medium">
                 Allergies:{' '}
                 <span className="font-bold text-rose-700">
-                  {activePatient.allergies || 'None known'}
+                  {activePatient.allergies?.trim() || 'Not recorded'}
                 </span>
               </div>
               <div className="text-amber-900">
-                Known Chronic: <strong>{activePatient.chronicConditions || 'None'}</strong>
+                Known Chronic:{' '}
+                <strong>{activePatient.chronicConditions?.trim() || 'Not recorded'}</strong>
               </div>
               <div className="text-amber-800 text-2xs pt-1 border-t border-amber-200/60 font-mono">
                 Payer: {activePatient.payerType} · {activePatient.shaNumber || 'Self-Pay'}
@@ -1046,23 +1510,35 @@ export const OutpatientModule: React.FC = () => {
               </div>
             </div>
 
-            {/* ICD-10 Coding & Diagnoses */}
+            {/* Existing diagnoses plus WHO ICD-11 search; historical ICD-10 remains unchanged. */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <div className="font-bold text-slate-900 uppercase">
-                  ICD-10 Diagnostic Coding ({diagnosisList.length})
+                  Diagnostic Coding ({diagnosisList.length})
                 </div>
-                <span className="text-2xs text-slate-400 font-mono">Kenya MOH & SHA Standard</span>
+                <span className="text-2xs text-slate-400 font-mono">ICD-10 / WHO ICD-11</span>
               </div>
 
               <div className="flex flex-col sm:flex-row items-center gap-2">
                 <select
-                  value={customDiagnosisMode ? '__custom__' : selectedIcd?.code || ''}
+                  value={
+                    whoMode
+                      ? '__who__'
+                      : customDiagnosisMode
+                        ? '__custom__'
+                        : selectedIcd?.code || ''
+                  }
                   onChange={(e) => {
-                    if (e.target.value === '__custom__') {
+                    if (e.target.value === '__who__') {
+                      setWhoMode(true);
+                      setCustomDiagnosisMode(false);
+                      setSelectedIcd(null);
+                    } else if (e.target.value === '__custom__') {
+                      setWhoMode(false);
                       setCustomDiagnosisMode(true);
                       setSelectedIcd(null);
                     } else {
+                      setWhoMode(false);
                       setCustomDiagnosisMode(false);
                       setCustomDiagnosisDescription('');
                       setCustomDiagnosisNotes('');
@@ -1078,6 +1554,7 @@ export const OutpatientModule: React.FC = () => {
                       {item.code} — {item.desc}
                     </option>
                   ))}
+                  <option value="__who__">Search WHO ICD-11</option>
                   <option value="__custom__">Diagnosis not listed — enter manually</option>
                 </select>
 
@@ -1100,6 +1577,55 @@ export const OutpatientModule: React.FC = () => {
                 </button>
               </div>
 
+              {whoMode && (
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <label className="block font-semibold text-slate-700" htmlFor="who-icd11-search">
+                    WHO ICD-11 code, description or keyword
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="who-icd11-search"
+                      value={whoQuery}
+                      maxLength={100}
+                      onChange={(event) => setWhoQuery(event.target.value)}
+                      className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-3 py-2"
+                      placeholder="Search terminology (do not enter patient details)"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleWhoSearch}
+                      disabled={whoSearching}
+                      className="rounded bg-slate-900 px-3 py-2 font-semibold text-white disabled:opacity-50"
+                    >
+                      {whoSearching ? 'Searching…' : 'Search'}
+                    </button>
+                  </div>
+                  {whoNotice && (
+                    <p className="text-slate-600" role="status">
+                      {whoNotice}
+                    </p>
+                  )}
+                  {whoResults.length > 0 && (
+                    <select
+                      className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+                      aria-label="Select a WHO ICD-11 result"
+                      value={selectedWho?.code ?? ''}
+                      onChange={(event) =>
+                        setSelectedWho(
+                          whoResults.find((item) => item.code === event.target.value) ?? null,
+                        )
+                      }
+                    >
+                      <option value="">Select a WHO result…</option>
+                      {whoResults.map((item) => (
+                        <option key={`${item.releaseId}-${item.code}`} value={item.code}>
+                          {item.code} — {item.title} ({item.releaseId})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
               {customDiagnosisMode && (
                 <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <div className="font-semibold text-amber-900">Uncoded diagnosis</div>
@@ -1148,8 +1674,16 @@ export const OutpatientModule: React.FC = () => {
                       className="p-2 rounded bg-slate-50 border border-slate-200 flex items-center justify-between"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-teal-800">{d.icd10Code}</span>
-                        <span className="text-slate-800">{d.icd10Description}</span>
+                        <span className="font-mono font-bold text-teal-800">
+                          {d.codingSystem === 'ICD-11' ? d.icd11Code : d.icd10Code}
+                        </span>
+                        <span className="text-slate-800">
+                          {d.codingSystem === 'ICD-11' ? d.icd11Title : d.icd10Description}
+                        </span>
+                        <span className="text-2xs text-slate-500">
+                          {d.codingSystem ?? 'ICD-10'}
+                          {d.icd11Release ? ` · ${d.icd11Release}` : ''}
+                        </span>
                         <span className="text-2xs text-slate-400 font-sans">
                           ({d.diagnosisType})
                         </span>
@@ -1188,8 +1722,73 @@ export const OutpatientModule: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
+                  <fieldset className="space-y-2">
+                    <legend className="font-semibold text-slate-700">
+                      Select facility investigations
+                    </legend>
+                    {visibleLabServices.map((item) => (
+                      <div key={item.id} className="space-y-1">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={Object.hasOwn(labSelections, item.id)}
+                            onChange={(event) => {
+                              const checked = event.currentTarget.checked;
+                              setLabSelections((previous) => {
+                                const next = { ...previous };
+                                if (checked && currentFacility?.id && currentTenant?.id)
+                                  next[item.id] = {
+                                    service: item,
+                                    specimenType: '',
+                                    facilityId: currentFacility.id,
+                                    tenantId: currentTenant.id,
+                                  };
+                                else delete next[item.id];
+                                return next;
+                              });
+                            }}
+                          />{' '}
+                          {item.name} · {item.code} ·{' '}
+                          {currentLabServiceIds.has(item.id)
+                            ? item.unitPrice
+                              ? `KES ${item.unitPrice}`
+                              : 'price unavailable'
+                            : 'not in the current list; availability will be checked when ordering'}
+                        </label>
+                        {Object.hasOwn(labSelections, item.id) && (
+                          <label className="block">
+                            Specimen for {item.name}
+                            <input
+                              aria-label={`Specimen for ${item.name}`}
+                              value={labSelections[item.id].specimenType}
+                              onChange={(event) => {
+                                const specimenType = event.currentTarget.value;
+                                setLabSelections((previous) =>
+                                  previous[item.id]
+                                    ? {
+                                        ...previous,
+                                        [item.id]: { ...previous[item.id], specimenType },
+                                      }
+                                    : previous,
+                                );
+                              }}
+                              maxLength={120}
+                              placeholder="e.g. Blood, Urine"
+                              className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    ))}
+                  </fieldset>
+                  {serviceLoadError && (
+                    <p role="alert">
+                      Facility investigations could not be loaded; a free-text request can still be
+                      sent for clinical review.
+                    </p>
+                  )}
                   <label className="block font-semibold text-slate-700">
-                    Investigations required * (one per line)
+                    Investigations required (free text)
                   </label>
                   <textarea
                     value={labInvestigations}
@@ -1203,8 +1802,9 @@ export const OutpatientModule: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-200 rounded-md"
                   />
                   <p className="text-slate-500">
-                    Type the investigation names directly. Blank lines and duplicate names are
-                    ignored. Maximum 100 investigations; each name may contain up to 200 characters.
+                    Select a facility investigation above to retain its service identity. If it is
+                    not listed, free text can be sent for clinical review but cannot be
+                    automatically priced. Enter the specimen separately for each investigation.
                   </p>
                 </div>
                 <label className="block font-semibold text-slate-700">
@@ -1219,14 +1819,27 @@ export const OutpatientModule: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 />
 
-                <label className="block font-semibold text-slate-700">Specimen type *</label>
-                <input
-                  value={labSpecimenType}
-                  onChange={(e) => setLabSpecimenType(e.target.value)}
-                  maxLength={120}
-                  placeholder="e.g. Blood, Urine"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                />
+                {freeInvestigations.map((investigation) => (
+                  <label
+                    key={investigation.toLowerCase()}
+                    className="block font-semibold text-slate-700"
+                  >
+                    Specimen for {investigation}
+                    <input
+                      aria-label={`Specimen for ${investigation}`}
+                      value={freeSpecimens[investigation.toLowerCase()] ?? ''}
+                      onChange={(event) =>
+                        setFreeSpecimens((previous) => ({
+                          ...previous,
+                          [investigation.toLowerCase()]: event.target.value,
+                        }))
+                      }
+                      maxLength={120}
+                      placeholder="e.g. Blood, Urine"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-md"
+                    />
+                  </label>
+                ))}
 
                 <label className="block font-semibold text-slate-700">Priority</label>
                 <select
@@ -1261,7 +1874,7 @@ export const OutpatientModule: React.FC = () => {
                     submittingLabOrder ||
                     !activePatient ||
                     !activeEncounter ||
-                    !labInvestigations.split(/\r?\n/).some((name) => name.trim())
+                    (!Object.keys(labSelections).length && !freeInvestigations.length)
                   }
                   className="w-full py-2 bg-teal-700 text-white rounded-md font-medium hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -1345,10 +1958,75 @@ export const OutpatientModule: React.FC = () => {
                 </div>
                 <button
                   onClick={handlePrescribe}
+                  disabled={prescribing}
                   className="w-full py-1.5 bg-slate-900 text-white rounded-md font-medium hover:bg-slate-800 transition-colors"
                 >
                   Prescribe & Route to Pharmacy
                 </button>
+                {prescriptions.length > 0 && (
+                  <div className="border-t border-slate-200 pt-3 space-y-2">
+                    <div className="font-semibold">Prescriptions in this visit</div>
+                    {prescriptions.map((med) => (
+                      <div key={med.id} className="rounded border border-slate-200 p-2 space-y-1">
+                        <div>
+                          <strong>{med.drugName}</strong> · {med.status} · prescribed {med.quantity}
+                          , dispensed {med.quantityDispensed ?? 0}
+                        </div>
+                        {['Prescribed', 'Partially Dispensed', 'On Hold'].includes(med.status) && (
+                          <select
+                            aria-label={`Change status for ${med.drugName}`}
+                            value={medicationChange?.id === med.id ? medicationChange.action : ''}
+                            onChange={(event) =>
+                              setMedicationChange(
+                                event.target.value
+                                  ? { id: med.id, action: event.target.value, reason: '' }
+                                  : null,
+                              )
+                            }
+                            className="w-full border border-slate-200 rounded p-1"
+                          >
+                            <option value="">Select a clinical status change</option>
+                            {med.status !== 'On Hold' && (
+                              <option value="On Hold">Put on hold</option>
+                            )}
+                            {med.status === 'On Hold' && <option value="Resume">Resume</option>}
+                            {(med.quantityDispensed ?? 0) === 0 && (
+                              <option value="Cancelled">Cancel</option>
+                            )}
+                            <option value="Discontinued">Discontinue</option>
+                          </select>
+                        )}
+                        {medicationChange?.id === med.id && (
+                          <div className="space-y-1">
+                            <label className="block" htmlFor={`med-reason-${med.id}`}>
+                              Reason for this change
+                            </label>
+                            <input
+                              id={`med-reason-${med.id}`}
+                              value={medicationChange.reason}
+                              maxLength={1000}
+                              onChange={(event) =>
+                                setMedicationChange({
+                                  ...medicationChange,
+                                  reason: event.target.value,
+                                })
+                              }
+                              className="w-full border border-slate-200 rounded p-1"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleMedicationChange}
+                              disabled={changingMedication || !medicationChange.reason.trim()}
+                              className="rounded bg-slate-800 text-white px-2 py-1 disabled:opacity-50"
+                            >
+                              {changingMedication ? 'Saving...' : 'Record status change'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1362,8 +2040,27 @@ export const OutpatientModule: React.FC = () => {
           <p className="text-xs text-slate-500">
             Start a visit to record triage, observations, consultation notes, and orders.
           </p>
+          {consultationServices.length > 1 && (
+            <label className="block text-xs">
+              Consultation service (optional)
+              <select
+                aria-label="Consultation service"
+                value={consultationChoice}
+                onChange={(event) => setConsultationChoice(event.target.value)}
+                className="ml-2 rounded border p-2"
+              >
+                <option value="">Continue without selecting</option>
+                {consultationServices.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.unitPrice ? `KES ${item.unitPrice}` : 'price unavailable'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button
             type="button"
+            disabled={startingVisit}
             onClick={startVisit}
             className="px-4 py-2 bg-teal-700 text-white rounded-lg text-xs font-semibold hover:bg-teal-800"
           >
