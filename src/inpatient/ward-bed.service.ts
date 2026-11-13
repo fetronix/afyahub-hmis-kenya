@@ -24,13 +24,14 @@
  *      the bed is taken out of service), and the refusal says so.
  */
 
-import { and, count, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, or, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
-import { resolveFacilityScope } from '../auth/scope.service.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
+import { resolveFacilityScope, ScopeAccessError } from '../auth/scope.service.ts';
 import { getFacilityByIdScoped } from '../db/queries.ts';
 
 import {
@@ -135,7 +136,11 @@ async function facilityForContext(
   return facility;
 }
 
-async function requireWardInScope(context: AuthorizationContext, wardId: unknown) {
+async function requireWardInScope(
+  context: AuthorizationContext,
+  wardId: unknown,
+  requestedFacilityId?: number,
+) {
   const id = Number(wardId);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
@@ -154,11 +159,20 @@ async function requireWardInScope(context: AuthorizationContext, wardId: unknown
   if (!facility) {
     throw new InpatientDomainError('WARD_NOT_FOUND', 'Ward not found.', 404);
   }
+  if (resolveFacilityScope(context, requestedFacilityId) !== ward.facilityId)
+    throw new ScopeAccessError(
+      'The ward is not in the selected facility.',
+      'FACILITY_SCOPE_MISMATCH',
+    );
 
   return { ward, facility };
 }
 
-async function requireBedInScope(context: AuthorizationContext, bedId: unknown) {
+async function requireBedInScope(
+  context: AuthorizationContext,
+  bedId: unknown,
+  requestedFacilityId?: number,
+) {
   const id = Number(bedId);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
@@ -171,7 +185,7 @@ async function requireBedInScope(context: AuthorizationContext, bedId: unknown) 
     throw new InpatientDomainError('BED_NOT_FOUND', 'Bed not found.', 404);
   }
 
-  const { ward } = await requireWardInScope(context, bed.wardId);
+  const { ward } = await requireWardInScope(context, bed.wardId, requestedFacilityId);
 
   return { bed, ward };
 }
@@ -207,7 +221,34 @@ export type CreateWardInput = {
   wardType: string;
   genderAllocation: string;
   dailyRate?: string | number | null;
+  priceReason?: string;
 };
+
+function wardPriceReason(
+  context: AuthorizationContext,
+  value: unknown,
+  operation: 'create' | 'update',
+) {
+  if (
+    !hasAllPermissions(context, [
+      operation === 'create' ? 'inpatient.wards.create' : 'inpatient.wards.update',
+      'billing.update',
+    ])
+  )
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'Ward setup and facility finance permissions are required to change a ward default.',
+      403,
+    );
+  const reason = typeof value === 'string' ? value.trim() : '';
+  if (reason.length < 3 || reason.length > 500 || /\p{Cc}/u.test(reason))
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'Enter a price-change reason (3–500 characters).',
+      400,
+    );
+  return reason;
+}
 
 export async function createWard(context: AuthorizationContext, input: CreateWardInput) {
   const facility = await facilityForContext(context, input.facilityId);
@@ -230,27 +271,52 @@ export async function createWard(context: AuthorizationContext, input: CreateWar
   const genderAllocation = oneOf(input.genderAllocation, 'Gender allocation', GENDER_ALLOCATIONS);
 
   const dailyRate = optionalMoney(input.dailyRate, 'Daily rate');
+  const reason = dailyRate === null ? null : wardPriceReason(context, input.priceReason, 'create');
 
   try {
-    const [created] = await db
-      .insert(schema.wards)
-      .values({
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(schema.wards)
+        .values({
+          facilityId: facility.id,
+          name,
+          code,
+          wardType,
+          genderAllocation,
+          // Capacity is counted from the beds, not the legacy default of 20.
+          totalBeds: 0,
+          dailyRate,
+          dailyRateConfigured: dailyRate !== null,
+          isActive: true,
+        })
+        .returning();
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
         facilityId: facility.id,
-        name,
-        code,
-        wardType,
-        genderAllocation,
-        /*
-         * Zero until beds exist. Passing NULL would fall back to the
-         * column's 20, which would be a capacity nobody counted.
-         */
-        totalBeds: 0,
-        dailyRate,
-        isActive: true,
-      })
-      .returning();
-
-    return created;
+        userId: String(context.userId),
+        action: 'CREATE',
+        resource: 'Ward',
+        resourceId: String(created.id),
+        details: `Created ward ${created.code} — ${created.name}`,
+      });
+      if (reason && dailyRate)
+        await tx.insert(schema.auditLogs).values({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          userId: String(context.userId),
+          action: 'CREATE',
+          resource: 'WardDailyRate',
+          resourceId: String(created.id),
+          details: JSON.stringify({
+            before: null,
+            after: dailyRate,
+            configured: true,
+            revision: created.dailyRateRevision,
+            reason,
+          }),
+        });
+      return created;
+    });
   } catch (error) {
     if (pgErrorCode(error) === '23505') {
       throw new InpatientDomainError(
@@ -269,6 +335,8 @@ export type UpdateWardInput = {
   wardType?: string;
   genderAllocation?: string;
   dailyRate?: string | number | null;
+  expectedPriceRevision?: number;
+  priceReason?: string;
   isActive?: boolean;
 };
 
@@ -276,10 +344,18 @@ export async function updateWard(
   context: AuthorizationContext,
   wardId: unknown,
   input: UpdateWardInput,
+  requestedFacilityId?: number,
 ) {
-  const { ward } = await requireWardInScope(context, wardId);
+  const { ward: scopedWard, facility } = await requireWardInScope(
+    context,
+    wardId,
+    requestedFacilityId,
+  );
+  const priceRequested = 'dailyRate' in input;
+  const reason = priceRequested ? wardPriceReason(context, input.priceReason, 'update') : null;
+  const requestedRate = priceRequested ? optionalMoney(input.dailyRate, 'Daily rate') : null;
 
-  const patch: Record<string, unknown> = {};
+  const patch: Partial<typeof schema.wards.$inferInsert> = {};
 
   if (input.name !== undefined) {
     patch.name = requiredText(input.name, 'Ward name', 120);
@@ -293,41 +369,17 @@ export async function updateWard(
     patch.genderAllocation = oneOf(input.genderAllocation, 'Gender allocation', GENDER_ALLOCATIONS);
   }
 
-  /*
-   * `dailyRate` is only touched when the caller sends the key, so an
-   * edit form that omits the field cannot silently blank a rate.
-   */
-  if ('dailyRate' in input) {
-    patch.dailyRate = optionalMoney(input.dailyRate, 'Daily rate');
-  }
-
+  // Price is handled only after locking and comparing its revision below.
+  // Omitting dailyRate never confirms or clears an existing legacy value.
   if (input.isActive !== undefined) {
     if (typeof input.isActive !== 'boolean') {
       throw new InpatientDomainError('INVALID_INPUT', 'isActive must be true or false.', 400);
     }
 
-    /* A retired ward cannot be retired twice into an occupied one. */
-    if (input.isActive === false) {
-      const [{ value }] = await db
-        .select({ value: count() })
-        .from(schema.beds)
-        .where(
-          and(eq(schema.beds.wardId, ward.id), sql`${schema.beds.currentPatientId} IS NOT NULL`),
-        );
-
-      if (Number(value ?? 0) > 0) {
-        throw new InpatientDomainError(
-          'WARD_OCCUPIED',
-          'This ward still has patients in it. Discharge or transfer them before retiring the ward.',
-          409,
-        );
-      }
-    }
-
     patch.isActive = input.isActive;
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (Object.keys(patch).length === 0 && !priceRequested) {
     throw new InpatientDomainError(
       'INVALID_INPUT',
       'Nothing to update. Send at least one field.',
@@ -335,13 +387,92 @@ export async function updateWard(
     );
   }
 
-  const [updated] = await db
-    .update(schema.wards)
-    .set(patch)
-    .where(eq(schema.wards.id, ward.id))
-    .returning();
-
-  return updated;
+  return db.transaction(async (tx) => {
+    // Admission/transfer take a shared ward lock before occupying a bed.
+    // Retiring under an exclusive lock serializes the availability check.
+    const [ward] = await tx
+      .select()
+      .from(schema.wards)
+      .where(eq(schema.wards.id, scopedWard.id))
+      .for('update');
+    if (!ward) throw new InpatientDomainError('WARD_NOT_FOUND', 'Ward not found.', 404);
+    if (priceRequested) {
+      if (
+        !Number.isSafeInteger(input.expectedPriceRevision) ||
+        input.expectedPriceRevision !== ward.dailyRateRevision
+      )
+        throw new InpatientDomainError(
+          'INVALID_INPUT',
+          'The ward default changed; refresh before saving.',
+          409,
+        );
+      const configured = requestedRate !== null;
+      if (requestedRate !== ward.dailyRate || configured !== ward.dailyRateConfigured) {
+        if (ward.dailyRateRevision >= 2147483647)
+          throw new InpatientDomainError(
+            'INVALID_INPUT',
+            'Ward price revision requires review.',
+            409,
+          );
+        patch.dailyRate = requestedRate;
+        patch.dailyRateConfigured = configured;
+        patch.dailyRateRevision = ward.dailyRateRevision + 1;
+      }
+    }
+    if (input.isActive === false) {
+      const [{ value }] = await tx
+        .select({ value: count() })
+        .from(schema.beds)
+        .where(
+          and(eq(schema.beds.wardId, ward.id), sql`${schema.beds.currentPatientId} IS NOT NULL`),
+        );
+      const [activeAdmission] = await tx
+        .select({ id: schema.admissions.id })
+        .from(schema.admissions)
+        .where(and(eq(schema.admissions.wardId, ward.id), eq(schema.admissions.status, 'Admitted')))
+        .limit(1);
+      if (Number(value ?? 0) > 0 || activeAdmission)
+        throw new InpatientDomainError(
+          'WARD_OCCUPIED',
+          'This ward still has patients in it. Discharge or transfer them before retiring the ward.',
+          409,
+        );
+    }
+    if (Object.keys(patch).length === 0) return ward;
+    const [updated] = await tx
+      .update(schema.wards)
+      .set(patch)
+      .where(eq(schema.wards.id, ward.id))
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId: facility.tenantId,
+      facilityId: facility.id,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'Ward',
+      resourceId: String(ward.id),
+      details: `Updated ward ${updated.code}`,
+    });
+    if (patch.dailyRateRevision !== undefined)
+      await tx.insert(schema.auditLogs).values({
+        tenantId: facility.tenantId,
+        facilityId: facility.id,
+        userId: String(context.userId),
+        action: 'UPDATE',
+        resource: 'WardDailyRate',
+        resourceId: String(ward.id),
+        details: JSON.stringify({
+          before: ward.dailyRate,
+          after: updated.dailyRate,
+          previouslyConfigured: ward.dailyRateConfigured,
+          configured: updated.dailyRateConfigured,
+          previousRevision: ward.dailyRateRevision,
+          revision: updated.dailyRateRevision,
+          reason,
+        }),
+      });
+    return updated;
+  });
 }
 
 /**
@@ -351,41 +482,67 @@ export async function updateWard(
  * records, and deleting the place an admission happened in would leave
  * the history pointing at nothing. Retire it instead.
  */
-export async function deleteWard(context: AuthorizationContext, wardId: unknown) {
-  const { ward } = await requireWardInScope(context, wardId);
-
-  const [{ value: admissions }] = await db
-    .select({ value: count() })
-    .from(schema.admissions)
-    .where(eq(schema.admissions.wardId, ward.id));
-
-  if (Number(admissions ?? 0) > 0) {
-    throw new InpatientDomainError(
-      'WARD_HAS_HISTORY',
-      `This ward has ${admissions} admission(s) on record, so it cannot be deleted. Retire it instead — retiring keeps the history and hides it from new admissions.`,
-      409,
-    );
-  }
-
-  const [{ value: occupied }] = await db
-    .select({ value: count() })
-    .from(schema.beds)
-    .where(and(eq(schema.beds.wardId, ward.id), sql`${schema.beds.currentPatientId} IS NOT NULL`));
-
-  if (Number(occupied ?? 0) > 0) {
-    throw new InpatientDomainError(
-      'WARD_OCCUPIED',
-      'This ward still has patients in it and cannot be deleted.',
-      409,
-    );
-  }
-
-  await db.transaction(async (tx) => {
+export async function deleteWard(
+  context: AuthorizationContext,
+  wardId: unknown,
+  requestedFacilityId?: number,
+) {
+  const { ward: scopedWard } = await requireWardInScope(context, wardId, requestedFacilityId);
+  return db.transaction(async (tx) => {
+    // Serializes with admissions and transfers, which hold a shared ward lock.
+    const [ward] = await tx
+      .select()
+      .from(schema.wards)
+      .where(eq(schema.wards.id, scopedWard.id))
+      .for('update');
+    if (!ward) throw new InpatientDomainError('WARD_NOT_FOUND', 'Ward not found.', 404);
+    const [{ value: admissions }] = await tx
+      .select({ value: count() })
+      .from(schema.admissions)
+      .where(eq(schema.admissions.wardId, ward.id));
+    if (Number(admissions ?? 0) > 0)
+      throw new InpatientDomainError(
+        'WARD_HAS_HISTORY',
+        'This ward has admission history. Retire it rather than deleting it.',
+        409,
+      );
+    const [transfer] = await tx
+      .select({ id: schema.admissionTransfers.id })
+      .from(schema.admissionTransfers)
+      .where(
+        or(
+          eq(schema.admissionTransfers.fromWardId, ward.id),
+          eq(schema.admissionTransfers.toWardId, ward.id),
+        ),
+      )
+      .limit(1);
+    const [occupancy] = await tx
+      .select({ id: schema.inpatientBedOccupancies.id })
+      .from(schema.inpatientBedOccupancies)
+      .where(eq(schema.inpatientBedOccupancies.wardId, ward.id))
+      .limit(1);
+    if (transfer || occupancy)
+      throw new InpatientDomainError(
+        'WARD_HAS_HISTORY',
+        'This ward has transfer or occupancy history. Retire it rather than deleting it.',
+        409,
+      );
+    const [{ value: occupied }] = await tx
+      .select({ value: count() })
+      .from(schema.beds)
+      .where(
+        and(eq(schema.beds.wardId, ward.id), sql`${schema.beds.currentPatientId} IS NOT NULL`),
+      );
+    if (Number(occupied ?? 0) > 0)
+      throw new InpatientDomainError(
+        'WARD_OCCUPIED',
+        'This ward still has patients in it and cannot be deleted.',
+        409,
+      );
     await tx.delete(schema.beds).where(eq(schema.beds.wardId, ward.id));
     await tx.delete(schema.wards).where(eq(schema.wards.id, ward.id));
+    return { deleted: true, wardId: ward.id, code: ward.code };
   });
-
-  return { deleted: true, wardId: ward.id, code: ward.code };
 }
 
 /* ============================================================
@@ -405,7 +562,34 @@ export type CreateBedsInput = {
   count?: number;
   bedType: string;
   dailyCharge?: string | number | null;
+  priceReason?: string;
 };
+
+function priceReason(
+  context: AuthorizationContext,
+  value: unknown,
+  operation: 'create' | 'update',
+) {
+  if (
+    !hasAllPermissions(context, [
+      operation === 'create' ? 'inpatient.beds.create' : 'inpatient.beds.update',
+      'billing.update',
+    ])
+  )
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'Bed setup and facility finance permissions are required to change a daily charge.',
+      403,
+    );
+  const reason = typeof value === 'string' ? value.trim() : '';
+  if (reason.length < 3 || reason.length > 500 || /\p{Cc}/u.test(reason))
+    throw new InpatientDomainError(
+      'INVALID_INPUT',
+      'Enter a price-change reason (3–500 characters).',
+      400,
+    );
+  return reason;
+}
 
 function normaliseBedNumber(value: unknown): string {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -514,8 +698,12 @@ function bedNumbersFor(input: CreateBedsInput): string[] {
   });
 }
 
-export async function createBeds(context: AuthorizationContext, input: CreateBedsInput) {
-  const { ward } = await requireWardInScope(context, input.wardId);
+export async function createBeds(
+  context: AuthorizationContext,
+  input: CreateBedsInput,
+  requestedFacilityId?: number,
+) {
+  const { ward, facility } = await requireWardInScope(context, input.wardId, requestedFacilityId);
 
   if (ward.isActive === false) {
     throw new InpatientDomainError(
@@ -527,6 +715,7 @@ export async function createBeds(context: AuthorizationContext, input: CreateBed
 
   const bedType = requiredText(input.bedType, 'Bed type', 60);
   const dailyCharge = optionalMoney(input.dailyCharge, 'Daily charge');
+  const reason = dailyCharge === null ? null : priceReason(context, input.priceReason, 'create');
 
   const numbers = bedNumbersFor(input);
 
@@ -562,6 +751,18 @@ export async function createBeds(context: AuthorizationContext, input: CreateBed
         )
         .returning();
 
+      if (reason && dailyCharge) {
+        for (const row of rows)
+          await tx.insert(schema.auditLogs).values({
+            tenantId: facility.tenantId,
+            facilityId: facility.id,
+            userId: String(context.userId),
+            action: 'CREATE',
+            resource: 'BedDailyCharge',
+            resourceId: String(row.id),
+            details: JSON.stringify({ before: null, after: dailyCharge, reason }),
+          });
+      }
       return rows;
     });
 
@@ -585,6 +786,8 @@ export type UpdateBedInput = {
   bedNumber?: string;
   bedType?: string;
   dailyCharge?: string | number | null;
+  expectedPriceRevision?: number;
+  priceReason?: string;
   status?: string;
 };
 
@@ -592,84 +795,114 @@ export async function updateBed(
   context: AuthorizationContext,
   bedId: unknown,
   input: UpdateBedInput,
+  requestedFacilityId?: number,
 ) {
-  const { bed } = await requireBedInScope(context, bedId);
-
-  const patch: Record<string, unknown> = {};
-
-  if (input.bedNumber !== undefined) {
-    const bedNumber = normaliseBedNumber(input.bedNumber);
-
-    if (bedNumber !== bed.bedNumber) {
-      const [clash] = await db
+  const { bed: scoped, ward } = await requireBedInScope(context, bedId, requestedFacilityId);
+  const reason = 'dailyCharge' in input ? priceReason(context, input.priceReason, 'update') : null;
+  return db.transaction(async (tx) => {
+    const [bed] = await tx
+      .select()
+      .from(schema.beds)
+      .where(and(eq(schema.beds.id, scoped.id), eq(schema.beds.wardId, ward.id)))
+      .for('update');
+    if (!bed) throw new InpatientDomainError('BED_NOT_FOUND', 'Bed not found.', 404);
+    const patch: Partial<typeof schema.beds.$inferInsert> = {};
+    if (input.bedNumber !== undefined) {
+      const number = normaliseBedNumber(input.bedNumber);
+      const [clash] = await tx
         .select({ id: schema.beds.id })
         .from(schema.beds)
-        .where(and(eq(schema.beds.wardId, bed.wardId), eq(schema.beds.bedNumber, bedNumber)))
+        .where(and(eq(schema.beds.wardId, bed.wardId), eq(schema.beds.bedNumber, number)))
         .limit(1);
-
-      if (clash) {
+      if (clash && clash.id !== bed.id)
         throw new InpatientDomainError(
           'BED_NUMBER_EXISTS',
-          `This ward already has a bed numbered ${bedNumber}.`,
+          `This ward already has a bed numbered ${number}.`,
           409,
         );
+      patch.bedNumber = number;
+    }
+    if (input.bedType !== undefined) patch.bedType = requiredText(input.bedType, 'Bed type', 60);
+    if ('dailyCharge' in input) {
+      const amount = optionalMoney(input.dailyCharge, 'Daily charge');
+      if (
+        !Number.isSafeInteger(input.expectedPriceRevision) ||
+        input.expectedPriceRevision !== bed.priceRevision
+      )
+        throw new InpatientDomainError(
+          'INVALID_INPUT',
+          'The bed price changed; refresh before saving.',
+          409,
+        );
+      if (bed.priceRevision >= 2147483647)
+        throw new InpatientDomainError('INVALID_INPUT', 'Bed price revision requires review.', 409);
+      if (amount !== bed.dailyCharge || bed.dailyChargeReviewRequired) {
+        patch.dailyCharge = amount;
+        patch.dailyChargeReviewRequired = false;
+        patch.priceRevision = bed.priceRevision + 1;
       }
     }
-
-    patch.bedNumber = bedNumber;
-  }
-
-  if (input.bedType !== undefined) {
-    patch.bedType = requiredText(input.bedType, 'Bed type', 60);
-  }
-
-  if ('dailyCharge' in input) {
-    patch.dailyCharge = optionalMoney(input.dailyCharge, 'Daily charge');
-  }
-
-  if (input.status !== undefined) {
-    const status = String(input.status);
-
-    if (!BED_STATUS_SETTABLE.has(status)) {
+    if (input.status !== undefined) {
+      const status = String(input.status);
+      if (!BED_STATUS_SETTABLE.has(status))
+        throw new InpatientDomainError(
+          'BED_STATUS_NOT_ALLOWED',
+          'Occupancy is created by admitting a patient, not by editing a bed.',
+          400,
+        );
+      const [active] = await tx
+        .select({ id: schema.admissions.id })
+        .from(schema.admissions)
+        .where(and(eq(schema.admissions.bedId, bed.id), eq(schema.admissions.status, 'Admitted')))
+        .limit(1);
+      if (bed.status === 'Occupied' || bed.currentPatientId != null || active)
+        throw new InpatientDomainError(
+          'BED_STATUS_CONFLICT',
+          'This bed is occupied. Discharge or transfer the patient before changing its status.',
+          409,
+        );
+      if (bed.status === 'Cleaning' && status === 'Available')
+        throw new InpatientDomainError(
+          'BED_STATUS_CONFLICT',
+          'Release a cleaned bed through the cleaning completion action.',
+          409,
+        );
+      patch.status = status;
+    }
+    if (Object.keys(patch).length === 0) {
+      // A confirmed unchanged price is an idempotent no-op.
+      if (reason && 'dailyCharge' in input) return bed;
       throw new InpatientDomainError(
-        'BED_STATUS_NOT_ALLOWED',
-        'Occupancy is created by admitting a patient, not by editing a bed.',
+        'INVALID_INPUT',
+        'Nothing to update. Send at least one field.',
         400,
       );
     }
-
-    if (
-      bed.currentPatientId !== null &&
-      bed.currentPatientId !== undefined &&
-      status !== 'Occupied'
-    ) {
-      throw new InpatientDomainError(
-        'BED_STATUS_CONFLICT',
-        'This bed is occupied. Discharge or transfer the patient before changing its status.',
-        409,
-      );
-    }
-
-    patch.status = status;
-  }
-
-  if (Object.keys(patch).length === 0) {
-    throw new InpatientDomainError(
-      'INVALID_INPUT',
-      'Nothing to update. Send at least one field.',
-      400,
-    );
-  }
-
-  patch.updatedAt = new Date();
-
-  const [updated] = await db
-    .update(schema.beds)
-    .set(patch)
-    .where(eq(schema.beds.id, bed.id))
-    .returning();
-
-  return updated;
+    patch.updatedAt = new Date();
+    const [updated] = await tx
+      .update(schema.beds)
+      .set(patch)
+      .where(eq(schema.beds.id, bed.id))
+      .returning();
+    if (patch.priceRevision !== undefined)
+      await tx.insert(schema.auditLogs).values({
+        tenantId: context.tenantId!,
+        facilityId: ward.facilityId,
+        userId: String(context.userId),
+        action: 'UPDATE',
+        resource: 'BedDailyCharge',
+        resourceId: String(bed.id),
+        details: JSON.stringify({
+          before: bed.dailyCharge,
+          after: updated.dailyCharge,
+          previousRevision: bed.priceRevision,
+          revision: updated.priceRevision,
+          confirmedLegacyDefault: bed.dailyChargeReviewRequired,
+          reason,
+        }),
+      });
+    return updated;
+  });
 }
 
 /**
@@ -679,33 +912,71 @@ export async function updateBed(
  * refused more bluntly: deleting the bed under a patient would erase the
  * place they are lying.
  */
-export async function deleteBed(context: AuthorizationContext, bedId: unknown) {
-  const { bed } = await requireBedInScope(context, bedId);
-
-  if (bed.currentPatientId !== null && bed.currentPatientId !== undefined) {
-    throw new InpatientDomainError(
-      'BED_OCCUPIED',
-      'This bed has a patient in it. Discharge or transfer the patient first.',
-      409,
-    );
-  }
-
-  const [{ value: admissions }] = await db
-    .select({ value: count() })
-    .from(schema.admissions)
-    .where(eq(schema.admissions.bedId, bed.id));
-
-  if (Number(admissions ?? 0) > 0) {
-    throw new InpatientDomainError(
-      'BED_HAS_HISTORY',
-      `This bed has ${admissions} admission(s) on record, so it cannot be deleted. Set it to Maintenance instead — that takes it out of the board and keeps the history.`,
-      409,
-    );
-  }
-
-  await db.delete(schema.beds).where(eq(schema.beds.id, bed.id));
-
-  await syncWardCapacity(bed.wardId);
-
-  return { deleted: true, bedId: bed.id, bedNumber: bed.bedNumber };
+export async function deleteBed(
+  context: AuthorizationContext,
+  bedId: unknown,
+  requestedFacilityId?: number,
+) {
+  const { bed: scoped, ward } = await requireBedInScope(context, bedId, requestedFacilityId);
+  return db.transaction(async (tx) => {
+    // Ward then bed is the same lock order used by admission and transfer.
+    const [lockedWard] = await tx
+      .select()
+      .from(schema.wards)
+      .where(eq(schema.wards.id, ward.id))
+      .for('update');
+    const [bed] = await tx
+      .select()
+      .from(schema.beds)
+      .where(and(eq(schema.beds.id, scoped.id), eq(schema.beds.wardId, ward.id)))
+      .for('update');
+    if (!lockedWard || !bed) throw new InpatientDomainError('BED_NOT_FOUND', 'Bed not found.', 404);
+    if (bed.currentPatientId != null)
+      throw new InpatientDomainError(
+        'BED_OCCUPIED',
+        'This bed has a patient in it. Discharge or transfer the patient first.',
+        409,
+      );
+    const [{ value: admissions }] = await tx
+      .select({ value: count() })
+      .from(schema.admissions)
+      .where(eq(schema.admissions.bedId, bed.id));
+    if (Number(admissions ?? 0) > 0)
+      throw new InpatientDomainError(
+        'BED_HAS_HISTORY',
+        'This bed has admission history. Set it to Maintenance instead.',
+        409,
+      );
+    const [transfer] = await tx
+      .select({ id: schema.admissionTransfers.id })
+      .from(schema.admissionTransfers)
+      .where(
+        or(
+          eq(schema.admissionTransfers.fromBedId, bed.id),
+          eq(schema.admissionTransfers.toBedId, bed.id),
+        ),
+      )
+      .limit(1);
+    const [occupancy] = await tx
+      .select({ id: schema.inpatientBedOccupancies.id })
+      .from(schema.inpatientBedOccupancies)
+      .where(eq(schema.inpatientBedOccupancies.bedId, bed.id))
+      .limit(1);
+    if (transfer || occupancy)
+      throw new InpatientDomainError(
+        'BED_HAS_HISTORY',
+        'This bed has transfer or occupancy history. Set it to Maintenance instead.',
+        409,
+      );
+    await tx.delete(schema.beds).where(eq(schema.beds.id, bed.id));
+    const [{ value: total }] = await tx
+      .select({ value: count() })
+      .from(schema.beds)
+      .where(eq(schema.beds.wardId, ward.id));
+    await tx
+      .update(schema.wards)
+      .set({ totalBeds: Number(total ?? 0) })
+      .where(eq(schema.wards.id, ward.id));
+    return { deleted: true, bedId: bed.id, bedNumber: bed.bedNumber };
+  });
 }

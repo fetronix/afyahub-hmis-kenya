@@ -1,174 +1,664 @@
 {
-    "version": "7",
-    "dialect": "postgresql",
-    "entries": [
-        {
-            "idx": 0,
-            "version": "7",
-            "when": 1791074954544,
-            "tag": "0000_new_vertigo",
-            "breakpoints": true
-        },
-        {
-            "idx": 1,
-            "version": "7",
-            "when": 1791226746929,
-            "tag": "0001_unknown_gambit",
-            "breakpoints": true
-        },
-        {
-            "idx": 2,
-            "version": "7",
-            "when": 1791369994876,
-            "tag": "0002_friendly_lady_deathstrike",
-            "breakpoints": true
-        },
-        {
-            "idx": 3,
-            "version": "7",
-            "when": 1792102214455,
-            "tag": "0003_facility_subscription_billing",
-            "breakpoints": true
-        },
-        {
-            "idx": 4,
-            "version": "7",
-            "when": 1792245851394,
-            "tag": "0004_facility_rbac_overrides",
-            "breakpoints": true
-        },
-        {
-            "idx": 5,
-            "version": "7",
-            "when": 1792262484603,
-            "tag": "0005_facility_service_tariffs",
-            "breakpoints": true
-        },
-        {
-            "idx": 6,
-            "version": "7",
-            "when": 1792409375696,
-            "tag": "0006_patient_guardian_and_optional_phone",
-            "breakpoints": true
-        },
-        {
-            "idx": 7,
-            "version": "7",
-            "when": 1792520416402,
-            "tag": "0007_lab_order_clinical_details",
-            "breakpoints": true
-        },
-        {
-            "idx": 8,
-            "version": "7",
-            "when": 1792532002706,
-            "tag": "0008_lab_result_verification_state",
-            "breakpoints": true
-        },
-        {
-            "idx": 9,
-            "version": "7",
-            "when": 1792600000000,
-            "tag": "0009_billing_provenance_and_inpatient",
-            "breakpoints": true
-        },
-        {
-            "idx": 10,
-            "version": "7",
-            "when": 1792700000000,
-            "tag": "0010_mobile_money_settlement",
-            "breakpoints": true
-        },
-        {
-            "idx": 11,
-            "version": "7",
-            "when": 1792800000000,
-            "tag": "0011_insurance_claims_workflow",
-            "breakpoints": true
-        },
-        {
-            "idx": 12,
-            "version": "7",
-            "when": 1792900000000,
-            "tag": "0012_dha_integration_audit",
-            "breakpoints": true
-        },
-        {
-            "idx": 13,
-            "version": "7",
-            "when": 1792900000001,
-            "tag": "0013_dha_service_mappings",
-            "breakpoints": true
-        },
-        {
-            "idx": 14,
-            "version": "7",
-            "when": 1792900000002,
-            "tag": "0014_professional_verification",
-            "breakpoints": true
-        },
-        {
-            "idx": 15,
-            "version": "7",
-            "when": 1792900000003,
-            "tag": "0015_maternity_mch",
-            "breakpoints": true
-        },
-        {
-            "idx": 16,
-            "version": "7",
-            "when": 1792900000004,
-            "tag": "0016_postnatal_immunisation",
-            "breakpoints": true
-        },
-        {
-            "idx": 17,
-            "version": "7",
-            "when": 1792900000005,
-            "tag": "0017_consent_allergy_audit_integrity",
-            "breakpoints": true
-        },
-        {
-            "idx": 18,
-            "version": "7",
-            "when": 1792900000006,
-            "tag": "0018_patient_portal",
-            "breakpoints": true
-        },
-        {
-            "idx": 19,
-            "version": "7",
-            "when": 1792900000007,
-            "tag": "0019_service_tariff_billing_key",
-            "breakpoints": true
-        },
-        {
-            "idx": 20,
-            "version": "7",
-            "when": 1792900000008,
-            "tag": "0020_billing_charge_attempts",
-            "breakpoints": true
-        },
-        {
-            "idx": 21,
-            "version": "7",
-            "when": 1792900000009,
-            "tag": "0021_service_tariff_links",
-            "breakpoints": true
-        },
-        {
-            "idx": 22,
-            "version": "7",
-            "when": 1792900000010,
-            "tag": "0022_bed_day_charge_attempts",
-            "breakpoints": true
-        },
-        {
-            "idx": 23,
-            "version": "7",
-            "when": 1792900000011,
-            "tag": "0023_normalise_county_subcounty",
-            "breakpoints": true
-        }
-    ]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791074954544,
+      "tag": "0000_new_vertigo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791226746929,
+      "tag": "0001_unknown_gambit",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791369994876,
+      "tag": "0002_friendly_lady_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792102214455,
+      "tag": "0003_facility_subscription_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792245851394,
+      "tag": "0004_facility_rbac_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792262484603,
+      "tag": "0005_facility_service_tariffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792409375696,
+      "tag": "0006_patient_guardian_and_optional_phone",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792520416402,
+      "tag": "0007_lab_order_clinical_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792532002706,
+      "tag": "0008_lab_result_verification_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792600000000,
+      "tag": "0009_billing_provenance_and_inpatient",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792700000000,
+      "tag": "0010_mobile_money_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792800000000,
+      "tag": "0011_insurance_claims_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792900000000,
+      "tag": "0012_dha_integration_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792900000001,
+      "tag": "0013_dha_service_mappings",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792900000002,
+      "tag": "0014_professional_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792900000003,
+      "tag": "0015_maternity_mch",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792900000004,
+      "tag": "0016_postnatal_immunisation",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792900000005,
+      "tag": "0017_consent_allergy_audit_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792900000006,
+      "tag": "0018_patient_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792900000007,
+      "tag": "0019_service_tariff_billing_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792900000008,
+      "tag": "0020_billing_charge_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792900000009,
+      "tag": "0021_service_tariff_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792900000010,
+      "tag": "0022_bed_day_charge_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792900000011,
+      "tag": "0023_normalise_county_subcounty",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792900000012,
+      "tag": "0024_sha_eclaims_and_benefits",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792900000013,
+      "tag": "0025_private_insurance_multi_payer",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792900000014,
+      "tag": "0026_sha_hie_workflows_and_fhir_ig",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792900000015,
+      "tag": "0027_dialysis_accounting_icd11_booking_bank",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792900000016,
+      "tag": "0028_payment_banking_hub",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792900000017,
+      "tag": "0029_payer_integration_hub",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792900000018,
+      "tag": "0030_procurement_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792900000019,
+      "tag": "0031_theatre_scheduling",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792900000020,
+      "tag": "0032_inpatient_active_admission_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792900000021,
+      "tag": "0033_lab_accession_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792900000022,
+      "tag": "0034_pharmacy_workflow_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792900000023,
+      "tag": "0035_shared_lab_specimens",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792900000024,
+      "tag": "0036_refund_receipt_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792900000025,
+      "tag": "0037_finalized_invoices",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792900000026,
+      "tag": "0038_payment_request_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792900000027,
+      "tag": "0039_payment_request_cancellation",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792900000028,
+      "tag": "0040_claim_dispatch_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792900000029,
+      "tag": "0041_billing_ledger_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1792900000030,
+      "tag": "0042_facility_tariff_imports",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792900000031,
+      "tag": "0043_notification_centre",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1792900000032,
+      "tag": "0044_master_service_catalogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1792900000033,
+      "tag": "0045_catalogue_scope_and_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1792900000034,
+      "tag": "0046_billing_service_occurrence",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792900000035,
+      "tag": "0047_clinical_service_selection",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792900000036,
+      "tag": "0048_consultation_review_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792900000037,
+      "tag": "0049_radiology_request_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792900000038,
+      "tag": "0050_encounter_request_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1792900000039,
+      "tag": "0051_lab_clinical_exception",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792900000040,
+      "tag": "0052_lab_order_specimen_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792900000041,
+      "tag": "0053_facility_owned_services",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792900000042,
+      "tag": "0054_lab_facility_service",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1792900000043,
+      "tag": "0055_delivery_facility_service",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1792900000044,
+      "tag": "0056_admission_and_retry_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1792900000045,
+      "tag": "0057_lab_service_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792900000046,
+      "tag": "0058_charge_attempt_diagnosis",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792900000047,
+      "tag": "0059_lab_service_code_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792900000048,
+      "tag": "0060_pharmacy_inventory_price_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1792900000049,
+      "tag": "0061_inventory_price_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792900000050,
+      "tag": "0062_inpatient_bed_occupancy_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1792900000051,
+      "tag": "0063_inpatient_bed_billing_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1792900000052,
+      "tag": "0064_staff_appointment_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1792900000053,
+      "tag": "0065_inpatient_policy_and_admission_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1792900000054,
+      "tag": "0066_ward_default_bed_price_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1792900000055,
+      "tag": "0067_facility_integration_vault",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1792900000056,
+      "tag": "0068_integration_credential_revocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1792900000057,
+      "tag": "0069_payment_settlement_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1792900000058,
+      "tag": "0070_journal_facility_scope_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792900000059,
+      "tag": "0071_nullable_benefit_estimates",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792900000060,
+      "tag": "0072_independent_refund_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1792900000061,
+      "tag": "0073_inventory_receipt_retry_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792900000062,
+      "tag": "0074_workforce",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792900000063,
+      "tag": "0075_fixed_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794278400000,
+      "tag": "0076_procurement_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794364800000,
+      "tag": "0077_inventory_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1794400000000,
+      "tag": "0078_approval_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1794451200000,
+      "tag": "0079_inventory_accounting",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1794537600000,
+      "tag": "0080_procurement_matching",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1794624000000,
+      "tag": "0081_bank_reconciliation_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1794710400000,
+      "tag": "0082_fixed_asset_impairment_revaluation_tax",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1794796800000,
+      "tag": "0083_payroll_form_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794883200000,
+      "tag": "0084_dialysis_session_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1794969600000,
+      "tag": "0085_dialysis_service_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1795056000000,
+      "tag": "0086_public_health_report_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1795142400000,
+      "tag": "0087_claim_dispatch_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1795228800000,
+      "tag": "0088_claim_invoice_finalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1795315200000,
+      "tag": "0089_facility_letterheads",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1795401600000,
+      "tag": "0090_letterhead_pdf_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1795488000000,
+      "tag": "0091_verified_bank_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1795574400000,
+      "tag": "0092_bank_refund_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1795660800000,
+      "tag": "0093_payroll_completion_controls",
+      "breakpoints": true
+    }
+  ]
 }
