@@ -118,8 +118,8 @@ export async function chargeLabOrderBatch(
         testName: order.testName,
         billing: await chargeAndRecord(executor, labOrderChargeRequest(order)),
       });
-    } catch (error) {
-      console.error('Laboratory charge failed:', error);
+    } catch {
+      console.error('Laboratory charge failed; manual reconciliation is required.');
 
       results.push({
         orderId: order.id,
@@ -163,5 +163,133 @@ export function radiologyChargeRequest(order: ChargeableRadiologyOrder): ChargeR
     sourceId: order.id,
     itemType: 'Radiology',
     description: order.procedureName,
+  };
+}
+
+/** A procedure is chargeable only when its own record is explicitly completed. */
+export function procedureChargeRequest(
+  procedure: Pick<
+    typeof schema.clinicalProcedures.$inferSelect,
+    'id' | 'patientId' | 'encounterId' | 'procedureCode' | 'procedureName'
+  >,
+  encounter: Pick<typeof schema.encounters.$inferSelect, 'tenantId' | 'facilityId'>,
+): ChargeRequest {
+  return {
+    tenantId: encounter.tenantId,
+    facilityId: encounter.facilityId,
+    patientId: procedure.patientId,
+    encounterId: procedure.encounterId,
+    codes: codesForFamily({
+      family: 'PROCEDURE',
+      code: procedure.procedureCode,
+      name: procedure.procedureName,
+    }),
+    serviceKeys: billingServiceKeys('PROCEDURE', [
+      procedure.procedureCode,
+      procedure.procedureName,
+    ]),
+    family: 'PROCEDURE',
+    serviceName: procedure.procedureName,
+    sourceType: 'PROCEDURE',
+    sourceId: procedure.id,
+    itemType: 'Procedure',
+    description: procedure.procedureName,
+  };
+}
+
+/** One consultation per explicitly completed OPD, follow-up or emergency encounter. */
+export function consultationChargeRequest(
+  encounter: Pick<
+    typeof schema.encounters.$inferSelect,
+    'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterType'
+  >,
+): ChargeRequest {
+  return {
+    tenantId: encounter.tenantId,
+    facilityId: encounter.facilityId,
+    patientId: encounter.patientId,
+    encounterId: encounter.id,
+    codes: [],
+    family: 'CONSULTATION',
+    encounterType: encounter.encounterType,
+    sourceType: 'CONSULTATION',
+    sourceId: encounter.id,
+    itemType: 'Consultation',
+    description: 'Clinical consultation',
+  };
+}
+
+/** One admission charge, separate from occupied ward-nights. */
+export function admissionChargeRequest(
+  admission: Pick<
+    typeof schema.admissions.$inferSelect,
+    'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterId'
+  >,
+): ChargeRequest {
+  return {
+    tenantId: admission.tenantId,
+    facilityId: admission.facilityId,
+    patientId: admission.patientId,
+    encounterId: admission.encounterId ?? null,
+    codes: [],
+    family: 'ADMISSION',
+    sourceType: 'ADMISSION',
+    sourceId: admission.id,
+    itemType: 'Admission',
+    description: 'Inpatient admission',
+  };
+}
+
+/** A delivery is one service even when several babies are recorded. */
+export function deliveryChargeRequest(
+  delivery: Pick<
+    typeof schema.deliveries.$inferSelect,
+    'id' | 'tenantId' | 'facilityId' | 'patientId' | 'deliveryMode'
+  >,
+): ChargeRequest {
+  return {
+    tenantId: delivery.tenantId,
+    facilityId: delivery.facilityId,
+    patientId: delivery.patientId,
+    encounterId: null,
+    codes: [],
+    family: 'DELIVERY',
+    serviceName: 'delivery',
+    sourceType: 'MATERNITY',
+    sourceId: delivery.id,
+    itemType: 'Maternity',
+    description: `Delivery — ${delivery.deliveryMode}`,
+  };
+}
+
+/**
+ * One completed dialysis session is one charge.
+ *
+ * The session's own identity — not the schedule, the machine or the number of
+ * consumables recorded — is what gets billed, so a five-hour session with four
+ * dialysers is one service, and a retry cannot produce a second one. The price
+ * comes from the facility service named on the treatment plan the session was
+ * authorised against.
+ */
+export function dialysisChargeRequest(
+  session: Pick<
+    typeof schema.dialysisSessions.$inferSelect,
+    'id' | 'tenantId' | 'facilityId' | 'patientId' | 'encounterId'
+  >,
+  plan: Pick<typeof schema.dialysisTreatmentPlans.$inferSelect, 'modality'>,
+): ChargeRequest {
+  return {
+    tenantId: session.tenantId,
+    facilityId: session.facilityId,
+    patientId: session.patientId,
+    encounterId: session.encounterId ?? null,
+    codes: codesForFamily({ family: 'DIALYSIS', name: plan.modality }),
+    serviceKeys: billingServiceKeys('DIALYSIS', [plan.modality]),
+    family: 'DIALYSIS',
+    serviceName: plan.modality,
+    sourceType: 'DIALYSIS',
+    sourceId: session.id,
+    itemType: 'Dialysis',
+    description: `Dialysis session — ${plan.modality}`,
   };
 }

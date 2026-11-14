@@ -1,0 +1,17 @@
+
+> jalicare-hmis@0.1.0 build:server
+> node scripts/build-server.mjs
+
+
+Built 8 bundles for node22 in 0.5s:
+  build/workbook-worker.mjs  <- src/budget-planning/workbook-worker.mjs
+  build/server.js  <- server.ts
+  build/scripts/migration-status.js  <- scripts/migration-status.ts
+  build/scripts/migrate.js  <- scripts/migrate.ts
+  build/scripts/preflight.js  <- scripts/preflight.ts
+  build/scripts/seed-permissions.js  <- src/seeds/permissions.ts
+  build/scripts/clean-database.js  <- src/db/clean-database.ts
+  build/scripts/bootstrap-admin.js  <- src/bootstrap-admin.ts
+
+The client build is separate: npm run build (vite build -> dist/).
+

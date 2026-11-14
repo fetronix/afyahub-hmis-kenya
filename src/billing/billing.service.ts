@@ -2,15 +2,16 @@
  * JaliCare HMIS
  * Billing Engine
  *
- * Converts clinical activity into invoice line items using the
- * facility's own service tariffs (`facility_service_tariffs`).
+ * Converts completed clinical activity into invoice line items using
+ * facility service tariffs, or the dispensing-time facility inventory
+ * selling-price snapshot for medicines.
  *
  * DESIGN RULES
  * ------------
- * 1. The facility tariff is the ONLY source of price. This module never
- *    invents a price and never hardcodes one.
- * 2. If no tariff matches, the charge is skipped and reported back as
- *    `TARIFF_NOT_CONFIGURED`. The clinical action still succeeds.
+ * 1. The recorded facility tariff or pharmacy inventory snapshot is the
+ *    ONLY source of price. The engine never invents or accepts a caller price.
+ * 2. If required pricing evidence is missing, the charge remains unresolved.
+ *    The clinical action still succeeds.
  *    A missing price must never block patient care.
  * 3. Every engine charge carries an idempotency key backed by a UNIQUE
  *    partial index, so replaying a clinical event cannot double-bill.
@@ -19,7 +20,7 @@
  *    a patient leaves with a single bill rather than one per service.
  */
 
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 
 import type { db as database } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
@@ -38,9 +39,14 @@ import {
   PAYMENT_CHANNEL_LABELS,
   PAYMENT_CHANNELS,
   paymentChannel,
+  parseMoneyToCents,
   type PaymentChannel,
 } from './settlement.ts';
 import type { BillingFamily } from './tariff-codes.ts';
+import { resolveFacilityCharge } from './facility-charge-resolver.ts';
+import { resolvePharmacyInventoryCharge } from './pharmacy-inventory-charge.ts';
+import { resolveBedOccupancyCharge } from './bed-occupancy-charge.ts';
+import { readInvoicePaymentLedger } from './payment-ledger.ts';
 import {
   failureLabel,
   resolveServiceTariff,
@@ -66,10 +72,18 @@ export type BillingSourceType =
   | 'ADMISSION'
   | 'BED_DAY'
   | 'MATERNITY'
+  | 'DIALYSIS'
   | 'MANUAL';
 
 export type ChargeSkipReason =
-  'TARIFF_NOT_CONFIGURED' | 'DUPLICATE' | 'INVOICE_CLOSED' | 'INVALID_INPUT';
+  | 'TARIFF_NOT_CONFIGURED'
+  | 'BILLING_EVALUATION_PENDING'
+  | 'INVENTORY_PRICE_REVIEW'
+  | 'BED_OCCUPANCY_REVIEW'
+  | 'DUPLICATE'
+  | 'INVOICE_CLOSED'
+  | 'INVALID_INPUT'
+  | 'ATTEMPT_VOIDED';
 
 export interface ChargeRequest {
   tenantId: number;
@@ -136,6 +150,8 @@ export interface ChargeRequest {
     code?: string | null;
   };
 
+  /** Explicit calendar date of the performed event, when known. */
+  serviceDate?: string | null;
   quantity?: number;
 
   sourceType: BillingSourceType;
@@ -147,11 +163,9 @@ export interface ChargeRequest {
   /** Optional display override; the tariff description is used otherwise */
   description?: string;
 
-  /**
-   * Used only when NO tariff matches, for services whose price already
-   * lives on the source record (e.g. a dispensed medication's unit
-   * price). Tariffs still take precedence.
-   */
+  /** Legacy queued value retained for compatibility; automatic pricing
+   * never trusts this caller-supplied value. Medicine prices come from the
+   * immutable dispensing snapshot, and other services use their tariff. */
   fallbackUnitPrice?: string | number | null;
   fallbackDescription?: string;
 
@@ -180,7 +194,14 @@ export interface ChargeResult {
   unit?: string | null;
 
   /** How the tariff was found, when one was. */
-  matchRule?: 'LINK' | 'FAMILY_LINK' | 'ALIAS' | 'CODE' | 'CATALOGUE';
+  matchRule?:
+    | 'LINK'
+    | 'FAMILY_LINK'
+    | 'ALIAS'
+    | 'CODE'
+    | 'CATALOGUE'
+    | 'INVENTORY_SNAPSHOT'
+    | 'BED_OCCUPANCY_SNAPSHOT';
 
   /** Why the charge could not be priced, when it could not. */
   diagnosis?: { code: string; label: string; candidates?: string[] };
@@ -738,16 +759,15 @@ async function nextInvoiceNumber(executor: Executor): Promise<string> {
  */
 async function findOrCreateOpenInvoice(executor: Executor, request: ChargeRequest) {
   const scope = and(
+    eq(schema.billingInvoices.tenantId, request.tenantId),
     eq(schema.billingInvoices.facilityId, request.facilityId),
     eq(schema.billingInvoices.patientId, request.patientId),
     isNull(schema.billingInvoices.voidedAt),
+    isNull(schema.billingInvoices.finalizedAt),
     inArray(schema.billingInvoices.status, OPEN_INVOICE_STATUSES),
     request.encounterId
       ? eq(schema.billingInvoices.encounterId, request.encounterId)
-      : or(
-          isNull(schema.billingInvoices.encounterId),
-          eq(schema.billingInvoices.status, 'Pending'),
-        ),
+      : isNull(schema.billingInvoices.encounterId),
   );
 
   const [existing] = await executor
@@ -755,7 +775,8 @@ async function findOrCreateOpenInvoice(executor: Executor, request: ChargeReques
     .from(schema.billingInvoices)
     .where(scope)
     .orderBy(desc(schema.billingInvoices.createdAt))
-    .limit(1);
+    .limit(1)
+    .for('update');
 
   if (existing) return existing;
 
@@ -785,6 +806,48 @@ async function findOrCreateOpenInvoice(executor: Executor, request: ChargeReques
 }
 
 /**
+ * Do not add a line to a header whose financial history already disagrees.
+ * The caller holds the invoice row lock for the enclosing transaction.
+ */
+async function assertInvoiceCanAcceptCharge(
+  executor: Executor,
+  invoice: typeof schema.billingInvoices.$inferSelect,
+) {
+  const total = parseMoneyToCents(invoice.totalAmount);
+  const paid = parseMoneyToCents(invoice.paidAmount);
+  const balance = parseMoneyToCents(invoice.balanceAmount);
+  const credit = parseMoneyToCents(invoice.creditBalance);
+  if (
+    total === null ||
+    paid === null ||
+    balance === null ||
+    credit === null ||
+    total < 0 ||
+    paid < 0 ||
+    balance < 0 ||
+    credit < 0 ||
+    balance !== Math.max(0, total - paid) ||
+    credit !== Math.max(0, paid - total)
+  ) {
+    throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  }
+  const [lineSummary] = await executor
+    .select({
+      total: sql<string>`COALESCE(SUM(${schema.billingItems.totalAmount}), 0)`,
+      invalid: sql<number>`COUNT(*) FILTER (WHERE ${schema.billingItems.totalAmount} IS NULL OR ${schema.billingItems.totalAmount} < 0)::int`,
+    })
+    .from(schema.billingItems)
+    .where(eq(schema.billingItems.invoiceId, invoice.id));
+  if (!lineSummary || lineSummary.invalid !== 0 || parseMoneyToCents(lineSummary.total) !== total) {
+    throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  }
+  // A refund is an immutable reversal of a receipt. Compare the header
+  // against net receipts, not gross payments, before adding a new charge.
+  const ledger = await readInvoicePaymentLedger(executor, invoice.id);
+  if (!ledger || ledger.netCents !== paid) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+}
+
+/**
  * Recalculate an invoice from its line items.
  *
  * Totals are derived, never incremented, so they cannot drift out of
@@ -794,11 +857,15 @@ export async function recalculateInvoiceTotals(executor: Executor, invoiceId: nu
   const [summed] = await executor
     .select({
       total: sql<string>`COALESCE(SUM(${schema.billingItems.totalAmount}), 0)`,
+      invalid: sql<number>`COUNT(*) FILTER (WHERE ${schema.billingItems.totalAmount} IS NULL OR ${schema.billingItems.totalAmount} < 0)::int`,
     })
     .from(schema.billingItems)
     .where(eq(schema.billingItems.invoiceId, invoiceId));
 
-  const totalCents = toCents(summed?.total);
+  const totalCents = parseMoneyToCents(summed?.total);
+  if (!summed || summed.invalid !== 0 || totalCents === null || totalCents < 0) {
+    throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  }
 
   const [invoice] = await executor
     .select({
@@ -811,7 +878,8 @@ export async function recalculateInvoiceTotals(executor: Executor, invoiceId: nu
 
   if (!invoice) return null;
 
-  const paidCents = toCents(invoice.paidAmount);
+  const paidCents = parseMoneyToCents(invoice.paidAmount);
+  if (paidCents === null || paidCents < 0) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
   const balanceCents = Math.max(0, totalCents - paidCents);
 
   /*
@@ -859,11 +927,59 @@ export async function recalculateInvoiceTotals(executor: Executor, invoiceId: nu
  * as `charged: false` with a reason. Throws only for genuine faults
  * (database errors), so the caller can decide whether to surface them.
  */
+export interface ReviewedTariffPrice {
+  tariffId: number;
+  revision: number;
+  unitPrice: string;
+}
+
+/** In-memory evidence captured while the first laboratory completion commits. */
+export interface InitialClinicalTariff {
+  facilityServiceId: number;
+  serviceCode: string;
+  tariffId: number;
+  tariffCode: string;
+  revision: number;
+  unitPrice: string;
+  serviceDate: string;
+}
+
+type ChargeSafety = {
+  // A pending clinical tariff failure has no reliable historical price. A
+  // deliberate, scoped review must agree with the locked current tariff.
+  requireTariffReview?: boolean;
+  reviewedTariff?: ReviewedTariffPrice;
+  // Undefined means this check is not requested. Null is an explicitly
+  // unavailable first-completion snapshot and must fail closed.
+  initialClinicalTariff?: InitialClinicalTariff | null;
+};
+
 export async function chargeForService(
   executor: Executor,
   request: ChargeRequest,
+  safety: ChargeSafety = {},
 ): Promise<ChargeResult> {
-  if (!Number.isSafeInteger(request.facilityId) || !Number.isSafeInteger(request.patientId)) {
+  // The pool creates a transaction; an existing Drizzle transaction uses a
+  // savepoint. Never fall back to a sequence of independent pool statements.
+  return executor.transaction((tx) => chargeForServiceInTransaction(tx, request, safety));
+}
+
+async function chargeForServiceInTransaction(
+  executor: Executor,
+  request: ChargeRequest,
+  safety: ChargeSafety,
+): Promise<ChargeResult> {
+  if (
+    !Number.isSafeInteger(request.tenantId) ||
+    request.tenantId <= 0 ||
+    !Number.isSafeInteger(request.facilityId) ||
+    request.facilityId <= 0 ||
+    !Number.isSafeInteger(request.patientId) ||
+    request.patientId <= 0 ||
+    (request.encounterId != null &&
+      (!Number.isSafeInteger(request.encounterId) || request.encounterId <= 0)) ||
+    (request.quantity != null && (!Number.isSafeInteger(request.quantity) || request.quantity <= 0))
+  ) {
     return {
       charged: false,
       reason: 'INVALID_INPUT',
@@ -876,82 +992,167 @@ export async function chargeForService(
       ? Number(request.quantity)
       : 1;
 
-  const quantityLabel = quantity === 1 ? '' : ` × ${quantity}`;
+  const idempotencyKey = buildIdempotencyKey(request);
 
-  /* ---- 1. Price it from the facility tariff ---------------------- */
+  /* ---- 2. Serialize invoice creation and lock the selected header ---- */
 
-  /*
-   * LINK → CODE → CATALOGUE.
-   *
-   * The link is the facility's own statement and wins outright. Code
-   * matching is unchanged, so anything that billed before still bills.
-   * The catalogue rule only runs when the caller says which service
-   * this is (`family`), and only accepts a tariff whose own description
-   * names that service inside the right department — and only when
-   * exactly one does. Two candidates is an ambiguity to report, not a
-   * coin to flip.
-   */
-  const match = await resolveTariffForCharge(executor, {
-    facilityId: request.facilityId,
-    codes: request.codes,
-    serviceKeys: request.serviceKeys,
-    family: request.family,
-    serviceName: request.serviceName,
-    encounterType: request.encounterType,
-    aliases: request.aliases,
-    wardType: request.wardType,
-    wardName: request.wardName,
-    ...(request.serviceRef
-      ? { serviceType: request.serviceRef.type, serviceId: request.serviceRef.id }
-      : {}),
-  });
+  // Every automatic charge for this patient uses the same patient lock.
+  // This serializes first-invoice creation as well as competing sources.
+  const [patient] = await executor
+    .select({ id: schema.patients.id })
+    .from(schema.patients)
+    .where(
+      and(
+        eq(schema.patients.id, request.patientId),
+        eq(schema.patients.tenantId, request.tenantId),
+      ),
+    )
+    .limit(1)
+    .for('update');
+  const [facility] = await executor
+    .select({ id: schema.facilities.id })
+    .from(schema.facilities)
+    .where(
+      and(
+        eq(schema.facilities.id, request.facilityId),
+        eq(schema.facilities.tenantId, request.tenantId),
+      ),
+    )
+    .limit(1);
+  if (!patient || !facility) throw new Error('CHARGE_SCOPE_INVALID');
+  if (request.encounterId != null) {
+    const [encounter] = await executor
+      .select({ id: schema.encounters.id })
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.id, request.encounterId),
+          eq(schema.encounters.tenantId, request.tenantId),
+          eq(schema.encounters.facilityId, request.facilityId),
+          eq(schema.encounters.patientId, request.patientId),
+        ),
+      )
+      .limit(1);
+    if (!encounter) throw new Error('CHARGE_SCOPE_INVALID');
+  }
 
-  const tariff = match.tariff;
-
-  const unitPriceCents = tariff ? toCents(tariff.fee) : toCents(request.fallbackUnitPrice);
-
-  if (unitPriceCents <= 0) {
+  // A retry of a voided or already billed source must not create an empty
+  // invoice or silently move the historical line to a new invoice.
+  const [prior] = await executor
+    .select({
+      id: schema.billingItems.id,
+      invoiceId: schema.billingItems.invoiceId,
+      invoiceNumber: schema.billingInvoices.invoiceNumber,
+      tenantId: schema.billingInvoices.tenantId,
+      facilityId: schema.billingInvoices.facilityId,
+      patientId: schema.billingInvoices.patientId,
+    })
+    .from(schema.billingItems)
+    .innerJoin(schema.billingInvoices, eq(schema.billingItems.invoiceId, schema.billingInvoices.id))
+    .where(eq(schema.billingItems.idempotencyKey, idempotencyKey))
+    .limit(1);
+  if (prior) {
+    if (
+      prior.tenantId !== request.tenantId ||
+      prior.facilityId !== request.facilityId ||
+      prior.patientId !== request.patientId
+    ) {
+      throw new Error('CHARGE_IDENTITY_CONFLICT');
+    }
     return {
       charged: false,
-      reason: 'TARIFF_NOT_CONFIGURED',
-      codesTried: match.codesTried,
-      matchExplanation: match.explanation,
-      ...(match.failure
-        ? {
-            diagnosis: {
-              code: match.failure.code,
-              label: match.failure.label,
-              ...(match.failure.candidates ? { candidates: match.failure.candidates } : {}),
-            },
-          }
-        : {}),
-      /*
-       * The resolver's own sentence. It names the row that was found and
-       * why it was refused — inactive, expired, another facility's,
-       * excluded from automatic billing, wrong unit, ambiguous — instead
-       * of the single "no active tariff matched" that made all six
-       * indistinguishable.
-       */
-      message: `${
-        match.failure?.message ??
-        `No active tariff matched ${summariseCodes(request.codes)} for this facility.`
-      } The service was recorded but not billed, and it is listed under Configuration → Services & Tariffs → “Charges that could not be priced” so it can be billed once the price is set.`,
+      reason: 'DUPLICATE',
+      invoiceId: prior.invoiceId,
+      invoiceNumber: prior.invoiceNumber,
+      itemId: prior.id,
+      message:
+        'This service already has a charge record; review its invoice before any correction.',
     };
   }
 
-  const description = tariff
-    ? `${tariff.description}${quantityLabel}`
-    : `${request.description ?? request.fallbackDescription ?? request.itemType}${quantityLabel}`;
-
-  const idempotencyKey = buildIdempotencyKey(request);
-
-  /* ---- 2. Attach to an open invoice ----------------------------- */
+  /* Resolve persisted clinical identity first; never price a text guess. */
+  const resolution =
+    request.sourceType === 'PHARMACY'
+      ? await resolvePharmacyInventoryCharge(executor, request)
+      : request.sourceType === 'BED_DAY'
+        ? await resolveBedOccupancyCharge(executor, request)
+        : await resolveFacilityCharge(executor, request);
+  if ('failure' in resolution) {
+    return {
+      charged: false,
+      reason:
+        request.sourceType === 'PHARMACY'
+          ? 'INVENTORY_PRICE_REVIEW'
+          : request.sourceType === 'BED_DAY'
+            ? 'BED_OCCUPANCY_REVIEW'
+            : 'TARIFF_NOT_CONFIGURED',
+      diagnosis: {
+        code: resolution.failure.code,
+        label: resolution.failure.code.replaceAll('_', ' '),
+      },
+      codesTried: [],
+      matchExplanation: resolution.failure.message,
+      message: `${resolution.failure.message} The service was not billed; review the unresolved billing queue.`,
+    };
+  }
+  const pharmacy = 'prescriptionId' in resolution ? resolution : null;
+  const bedNight = 'nightId' in resolution ? resolution : null;
+  const service = 'service' in resolution ? resolution.service : null;
+  const tariff = 'tariff' in resolution ? resolution.tariff : null;
+  if (tariff && safety.initialClinicalTariff !== undefined) {
+    const initial = safety.initialClinicalTariff;
+    if (
+      !initial ||
+      !service ||
+      initial.facilityServiceId !== service.id ||
+      initial.serviceCode !== service.code ||
+      initial.tariffId !== tariff.id ||
+      initial.tariffCode !== tariff.code ||
+      initial.revision !== tariff.revision ||
+      parseMoneyToCents(initial.unitPrice) !== parseMoneyToCents(tariff.fee) ||
+      initial.serviceDate !== resolution.serviceDate
+    ) {
+      return {
+        charged: false,
+        reason: 'TARIFF_NOT_CONFIGURED',
+        diagnosis: {
+          code: 'HISTORICAL_PRICE_REVIEW_REQUIRED',
+          label: 'Historical price review required',
+        },
+        message:
+          'The laboratory service or tariff changed, or its price was not verified at completion. An authorized reviewer must verify the applicable price before billing.',
+      };
+    }
+  }
+  if (tariff && safety.requireTariffReview) {
+    const review = safety.reviewedTariff;
+    if (
+      !review ||
+      review.tariffId !== tariff.id ||
+      review.revision !== tariff.revision ||
+      parseMoneyToCents(review.unitPrice) !== parseMoneyToCents(tariff.fee)
+    ) {
+      return {
+        charged: false,
+        reason: 'TARIFF_NOT_CONFIGURED',
+        diagnosis: {
+          code: 'HISTORICAL_PRICE_REVIEW_REQUIRED',
+          label: 'Historical price review required',
+        },
+        message:
+          'This service was previously unpriced. An authorized reviewer must verify the applicable price and confirm the current tariff revision before billing; audit history may be incomplete.',
+      };
+    }
+  }
+  const unitPriceCents = parseMoneyToCents(pharmacy?.price ?? bedNight?.price ?? tariff?.fee);
+  if (unitPriceCents === null || unitPriceCents <= 0) throw new Error('FACILITY_PRICE_INVALID');
+  const description = pharmacy?.name ?? bedNight?.name ?? service!.name;
 
   const invoice = await findOrCreateOpenInvoice(executor, request);
 
-  const invoiceStatus = invoice.status ?? 'Pending';
+  const invoiceStatus = invoice.status;
 
-  if (!CHARGEABLE_STATUSES.has(invoiceStatus) && invoiceStatus !== 'Paid') {
+  if (!invoiceStatus || invoice.voidedAt || !CHARGEABLE_STATUSES.has(invoiceStatus)) {
     return {
       charged: false,
       reason: 'INVOICE_CLOSED',
@@ -961,20 +1162,35 @@ export async function chargeForService(
     };
   }
 
+  await assertInvoiceCanAcceptCharge(executor, invoice);
+
   /* ---- 3. Insert the line, deduplicated ------------------------- */
 
   const totalCents = unitPriceCents * quantity;
+  if (!Number.isSafeInteger(totalCents)) throw new Error('CHARGE_AMOUNT_INVALID');
 
   const inserted = await executor
     .insert(schema.billingItems)
     .values({
       invoiceId: invoice.id,
       tariffId: tariff?.id ?? null,
-      tariffCode: tariff?.code ?? request.codes[0] ?? null,
+      tariffCode: tariff?.code ?? null,
+      facilityServiceId: service?.id ?? null,
+      serviceCode: pharmacy?.code ?? bedNight?.code ?? service!.code,
+      serviceDepartment: pharmacy ? 'pharmacy' : bedNight ? 'inpatient' : service!.department,
+      serviceUnit: pharmacy?.unit ?? bedNight?.unit ?? tariff!.unit,
+      serviceDate: resolution.serviceDate,
+      servicePerformedAt: resolution.performedAt,
+      inventoryItemId: pharmacy?.itemId ?? null,
+      prescriptionId: pharmacy?.prescriptionId ?? null,
+      bedOccupancyId: bedNight?.occupancyId ?? null,
+      bedNightId: bedNight?.nightId ?? null,
+      pharmacyStockTracking: pharmacy?.stockTracking ?? null,
+      pharmacyBatchAllocations: pharmacy?.allocations ?? null,
       sourceType: request.sourceType,
       sourceId: typeof request.sourceId === 'number' ? request.sourceId : null,
       idempotencyKey,
-      itemType: request.itemType,
+      itemType: pharmacy ? 'Pharmacy' : request.itemType,
       description,
       quantity,
       unitPrice: fromCents(unitPriceCents),
@@ -998,21 +1214,41 @@ export async function chargeForService(
   /* ---- 4. Re-derive invoice totals ----------------------------- */
 
   const updatedInvoice = await recalculateInvoiceTotals(executor, invoice.id);
+  if (!updatedInvoice) throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+  await executor.insert(schema.auditLogs).values({
+    tenantId: request.tenantId,
+    facilityId: request.facilityId,
+    userId: 'SYSTEM',
+    action: 'CREATE',
+    resource: 'BillingItem',
+    resourceId: String(inserted[0].id),
+    details: 'Automatic service charge recorded.',
+  });
 
   return {
     charged: true,
     invoiceId: invoice.id,
     invoiceNumber: updatedInvoice?.invoiceNumber ?? invoice.invoiceNumber,
     itemId: inserted[0].id,
-    tariffCode: tariff?.code ?? request.codes[0],
+    ...(tariff ? { tariffCode: tariff.code } : {}),
     description,
     quantity,
-    unit: tariff?.unit ?? null,
+    unit: pharmacy?.unit ?? bedNight?.unit ?? tariff!.unit,
     unitPrice: fromCents(unitPriceCents),
     totalAmount: fromCents(totalCents),
-    matchRule: match.rule ?? undefined,
-    matchExplanation: match.explanation,
-    codesTried: match.codesTried,
+    matchRule: pharmacy
+      ? 'INVENTORY_SNAPSHOT'
+      : bedNight
+        ? 'BED_OCCUPANCY_SNAPSHOT'
+        : 'rule' in resolution
+          ? resolution.rule
+          : undefined,
+    matchExplanation: pharmacy
+      ? `Facility inventory product ${pharmacy.code}; selling price recorded at dispensing.`
+      : bedNight
+        ? `Bed ${bedNight.bedId}; daily charge recorded for the occupied period.`
+        : `Facility service ${service!.code}, tariff ${tariff!.code}.`,
+    codesTried: [pharmacy?.code ?? bedNight?.code ?? service!.code],
   };
 }
 

@@ -1,0 +1,38 @@
+{
+  "syntheticOnly": true,
+  "productionActions": 0,
+  "financialYear": 2026,
+  "currency": "KES",
+  "currencyIsExplicitTestConfiguration": true,
+  "policy": "ZERO_FILL",
+  "sourceFiles": [
+    {
+      "filename": "Syrona_Stationery.csv",
+      "sha256": "244f9ba9bdd8f5a28793610cabfa8d931ecc76eff52b0fa553b11702e3f198e1",
+      "byteSize": 39236
+    },
+    {
+      "filename": "Syrona_Branding.csv",
+      "sha256": "75f810a0265ad0e6a08d9efc1e43a6705591ae81ae0aa6c109466a605881797e",
+      "byteSize": 2425
+    }
+  ],
+  "imports": [
+    {
+      "filename": "Syrona_Stationery.csv",
+      "batchId": 1,
+      "created": 232
+    },
+    {
+      "filename": "Syrona_Branding.csv",
+      "batchId": 2,
+      "created": 9
+    }
+  ],
+  "uniformAssumptions": "SUBTRACT opening balance; missing staff/balance/quantity/contribution values zero-filled. Source half-pay amounts not inferred as percentages.",
+  "sourceRows": {
+    "stationery": 232,
+    "brandingMonthly": 5,
+    "uniforms": 4
+  }
+}

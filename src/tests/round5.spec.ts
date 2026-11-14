@@ -3,7 +3,12 @@ import { resolve } from 'node:path';
 import { PAYMENT_CHANNELS, PAYMENT_CHANNEL_LABELS, paymentChannel } from '../billing/settlement.ts';
 import { countdownTo, expiryDeadline, expiryToneClass } from '../components/ExpiryCountdown.tsx';
 import { daysUntilExpiry, expiryStatus } from '../inventory/inventory-contracts.ts';
-import { schemaSource } from './support/schema-source.ts';
+import {
+  expiryCandidates,
+  EXPIRY_CRITICAL_DAYS,
+  EXPIRY_WARNING_DAYS,
+} from '../notifications/inventory-alerts.ts';
+import { schemaSource, appSource, staffRolesServiceSource } from './support/schema-source.ts';
 import { containsCode } from './support/source-text.ts';
 
 import { describe, expect, it } from 'vitest';
@@ -75,12 +80,15 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
       'The mobile channel is labelled as the online rail',
     ).toBe(JSON.stringify('Online mobile money'));
 
-    /* The claims engine posts SHA through the payment table, not beside it. */
+    /* Claim settlement links an existing payer receipt; it must not create one. */
     const claims = source('src/insurance/claims.service.ts');
     expect(
-      claims.includes("paymentMethod: 'SHA'"),
-      'A settled claim writes a payment row with method SHA',
+      claims.includes('matchRecordedPayerPayment'),
+      'Settlement requires an existing receipt',
     ).toBe(true);
+    expect(claims.includes('recordPayment('), 'Claim approval does not create a payment').toBe(
+      false,
+    );
 
     const billing = source('src/billing/billing.service.ts');
     const channelStart = billing.indexOf('getRevenueByPaymentChannel');
@@ -103,7 +111,7 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
       'An unrecognised method is reported, never silently absorbed',
     ).toBe(true);
 
-    const app = source('src/app.ts');
+    const app = appSource();
     expect(
       app.includes('getRevenueByPaymentChannel(db, facilityId, range)'),
       'The revenue route asks for the split',
@@ -125,9 +133,13 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
 
     const reports = source('src/components/modules/ReportsModule.tsx');
     expect(
-      reports.includes('Money In by Payment Channel'),
-      'The revenue report renders the channel split',
+      reports.includes('Recorded Payment Methods on Invoice Cohort'),
+      'The report labels the channel split as payments on the selected invoice cohort',
     ).toBe(true);
+    expect(
+      reports.includes('Money In by Payment Channel'),
+      'The invoice-cohort view must not be mislabeled as all money received in the period',
+    ).toBe(false);
     expect(
       reports.includes('channelReconciliation.reconciled'),
       'The report states the reconciliation rather than assuming it',
@@ -261,8 +273,10 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
       'The batch fields are stripped before the catalogue insert',
     ).toBe(true);
     expect(
-      inventory.includes('The item was created, but its opening batch could not be received'),
-      'A failed batch receive says the item exists and how to finish it',
+      inventory.includes(
+        'The item was created, but its opening-batch result could not be confirmed',
+      ) && inventory.includes('Review batch and audit records before another receipt'),
+      'An uncertain opening-batch result identifies the created item and requires record review',
     ).toBe(true);
 
     expect(
@@ -302,67 +316,65 @@ describe('Round five — expiry, the revenue split, and the role save that vanis
     ).toBe(true);
   });
 
-  it('4. THE OVERVIEW ALERT AT TEN DAYS', async () => {
-    const dashboard = source('src/components/modules/DashboardModule.tsx');
+  it('4. EXPIRY ALERTS — 10-day lots remain visible in the consolidated inbox', () => {
+    expect(EXPIRY_CRITICAL_DAYS).toBe(7);
+    expect(EXPIRY_WARNING_DAYS).toBe(30);
+    const row = (id: number, date: string, quantity = 2) => ({
+      id,
+      name: 'Synthetic medicine',
+      batch_number: `SYN-${id}`,
+      expiry_date: date,
+      quantity_remaining: quantity,
+      unit: 'tablets',
+    });
+    const alerts = expiryCandidates(
+      [
+        row(1, '2025-03-31'),
+        row(2, '2025-04-01'),
+        row(3, '2025-04-08'),
+        row(4, '2025-04-11'),
+        row(5, '2025-05-01'),
+        row(6, '2025-05-02'),
+        row(7, '2025-02-30'),
+        row(8, '2025-04-01', 0),
+      ],
+      '2025-04-01',
+      'Synthetic facility',
+    );
+    expect(alerts.map((item) => [item.group, item.severity])).toEqual([
+      ['expired', 'CRITICAL'],
+      ['expiry7', 'CRITICAL'],
+      ['expiry7', 'CRITICAL'],
+      ['expiry30', 'WARNING'],
+      ['expiry30', 'WARNING'],
+      ['inventoryReview', 'WARNING'],
+    ]);
+    const tenDay = alerts.find((item) => item.sourceKey === 'inventory.expiry:4');
+    expect(tenDay?.details).toContain('Synthetic medicine');
+    expect(tenDay?.details).toContain('SYN-4');
+    expect(tenDay?.details).toContain('2025-04-11');
+    expect(tenDay?.details).toContain('2 tablets');
+    expect(tenDay?.details).toContain('Synthetic facility');
+    expect(tenDay?.details).toContain('10 days remaining');
+    expect(alerts[0].details).toContain('Expired 1 day ago');
+    expect(alerts.at(-1)?.details).toContain('Invalid expiry date');
+    expect(new Set(alerts.map((item) => item.sourceKey)).size).toBe(alerts.length);
 
-    expect(
-      dashboard.includes('const EXPIRY_ALERT_DAYS = 10;'),
-      'The horizon is a named constant, not a scattered literal',
-    ).toBe(true);
-    expect(
-      dashboard.includes('horizonDays: EXPIRY_ALERT_DAYS'),
-      'The dashboard asks the server for the ten-day window',
-    ).toBe(true);
-    expect(
-      dashboard.includes('batch.daysToExpiry !== null') &&
-        dashboard.includes('batch.daysToExpiry <= EXPIRY_ALERT_DAYS'),
-      'Only lots at or inside ten days raise the alert',
-    ).toBe(true);
-    expect(
-      dashboard.includes("key: 'expiring-stock-10d'"),
-      'The alert has its own key beside the thirty-day summary',
-    ).toBe(true);
-    expect(
-      dashboard.includes('expiring within ${EXPIRY_ALERT_DAYS} days'),
-      'The alert states the ten-day horizon',
-    ).toBe(true);
-    expect(
-      dashboard.includes("tone: expiredBatchCount > 0 ? 'danger' : 'warning'"),
-      'Anything already expired escalates the alert',
-    ).toBe(true);
-
-    /* The record, not just the count. */
-    expect(
-      dashboard.includes('Stock about to expire') &&
-        dashboard.includes('aria-label="Stock expiring soon"'),
-      'The overview renders the expiring records',
-    ).toBe(true);
-    expect(
-      dashboard.includes('<th className="px-4 py-2 font-medium">Batch</th>'),
-      'The record names the batch',
-    ).toBe(true);
-    expect(
-      dashboard.includes('batch.quantityRemaining') &&
-        dashboard.includes('batch.expiryDate') &&
-        dashboard.includes('batch.costPerUnit'),
-      'The record carries quantity, expiry and cost',
-    ).toBe(true);
-    expect(
-      dashboard.includes('<ExpiryCountdown expiryDate={batch.expiryDate} short />'),
-      'Each record carries the live countdown',
-    ).toBe(true);
-    expect(
-      dashboard.includes('{expiringRows.length > 0 && ('),
-      'No panel is drawn when nothing is expiring',
-    ).toBe(true);
-    expect(
-      dashboard.includes('Expired lots are never dispensed'),
-      'The panel states the rule it is reporting against',
-    ).toBe(true);
+    // The existing inventory workspace still exposes batch cost and live countdown;
+    // its duplicate dashboard table was replaced by a link to the real records.
+    const inventory = source('src/components/modules/InventoryModule.tsx');
+    expect(inventory).toContain('batch.costPerUnit');
+    expect(inventory.replace(/\s+/g, ' ')).toContain(
+      'expired stock is never dispensed and is excluded from the available quantity',
+    );
+    expect(inventory).toContain('<ExpiryCountdown expiryDate={batch.expiryDate} short />');
+    const centre = source('src/components/NotificationCentre.tsx');
+    expect(centre).toContain('item.details');
+    expect(centre).toContain('setActiveModule(item.destination)');
   });
 
   it('5. ROLE PERMISSIONS — THE SAVE THAT DID NOT SAVE', async () => {
-    const service = source('src/auth/staff-roles.service.ts');
+    const service = staffRolesServiceSource();
     const routes = source('src/auth/staff-roles.routes.ts');
     const panel = source('src/components/modules/StaffRolesPanel.tsx');
     const editor = source('src/components/modules/FacilityRbacEditor.tsx');

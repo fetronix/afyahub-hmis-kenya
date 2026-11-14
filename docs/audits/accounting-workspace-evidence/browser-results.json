@@ -1,0 +1,165 @@
+{
+  "syntheticOnly": true,
+  "facilityId": 12,
+  "journalId": 27,
+  "results": [
+    {
+      "name": "synthetic.finance real login",
+      "passed": true
+    },
+    {
+      "name": "Dashboard has eight distinct workspace destinations",
+      "passed": true
+    },
+    {
+      "name": "Dashboard does not mount billing review or setup forms",
+      "passed": true
+    },
+    {
+      "name": "Existing create-account workflow: ASSET",
+      "passed": true
+    },
+    {
+      "name": "Existing create-account workflow: REVENUE",
+      "passed": true
+    },
+    {
+      "name": "Existing open-period workflow",
+      "passed": true
+    },
+    {
+      "name": "Existing balanced manual journal posted through UI",
+      "passed": true
+    },
+    {
+      "name": "Trial balance uses the posted journal",
+      "passed": true
+    },
+    {
+      "name": "Existing trial-balance CSV export",
+      "passed": true
+    },
+    {
+      "name": "Posted income statement renders real journal-backed revenue",
+      "passed": true
+    },
+    {
+      "name": "Existing balance sheet reflects posted journal",
+      "passed": true
+    },
+    {
+      "name": "Existing billing diagnostic API: billing-ledger-review",
+      "passed": true
+    },
+    {
+      "name": "Existing billing diagnostic API: source-ledger-coverage",
+      "passed": true
+    },
+    {
+      "name": "Existing billing diagnostic API: billing-gl-reconciliation",
+      "passed": true
+    },
+    {
+      "name": "Existing billing diagnostic API: billing-journal-exceptions",
+      "passed": true
+    },
+    {
+      "name": "Settlement view retains recorded-receipt/provider evidence warning",
+      "passed": true
+    },
+    {
+      "name": "Reviewed billing posting controls remain available",
+      "passed": true
+    },
+    {
+      "name": "Existing expense review loads honest empty state",
+      "passed": true
+    },
+    {
+      "name": "Outstanding payables limitation is explicit",
+      "passed": true
+    },
+    {
+      "name": "Setup shows actual missing payroll mappings and statutory blockers",
+      "passed": true
+    },
+    {
+      "name": "Setup mapping link opens existing Payroll Ledger accounts tab",
+      "passed": true
+    },
+    {
+      "name": "Payroll destination: Employee payroll",
+      "passed": true
+    },
+    {
+      "name": "Payroll destination: Payroll periods",
+      "passed": true
+    },
+    {
+      "name": "Payroll destination: Statutory rules",
+      "passed": true
+    },
+    {
+      "name": "Payroll destination: Payroll account mappings",
+      "passed": true
+    },
+    {
+      "name": "Payroll destination: Payroll calculations",
+      "passed": true
+    },
+    {
+      "name": "Payroll destination: Payslips",
+      "passed": true
+    },
+    {
+      "name": "Payroll destination: Payroll accounting postings",
+      "passed": true
+    },
+    {
+      "name": "Banking links to existing controlled manual reconciliation workspace",
+      "passed": true
+    },
+    {
+      "name": "Existing controlled reversal posts without editing original journal",
+      "passed": true
+    },
+    {
+      "name": "Database contains one original and one balanced reversal",
+      "passed": true
+    },
+    {
+      "name": "Mobile navigation exposes all eight modules without horizontal document overflow",
+      "passed": true
+    },
+    {
+      "name": "synthetic.hr real login",
+      "passed": true
+    },
+    {
+      "name": "Read-only role cannot see Billing & Revenue Accounting navigation",
+      "passed": true
+    },
+    {
+      "name": "Read-only role cannot create chart accounts",
+      "passed": true
+    },
+    {
+      "name": "Read-only role cannot post journals",
+      "passed": true
+    },
+    {
+      "name": "Read-only role cannot reverse journals",
+      "passed": true
+    },
+    {
+      "name": "Read-only journal mutation rejected by existing API",
+      "passed": true
+    },
+    {
+      "name": "No uncaught browser rendering errors",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "notice": "No live payments, provider calls, statutory filing or production-readiness claims."
+}

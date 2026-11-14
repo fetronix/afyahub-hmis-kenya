@@ -1,0 +1,779 @@
+/**
+ * JaliCare HMIS
+ * Schema: Service tariffs, invoices, items, payments, and insurance claims
+ *
+ * Extracted from `../schema.ts`, which re-exports every table defined here so
+ * that `import * as schema from '../schema.ts'` and drizzle.config.ts keep
+ * working untouched. Tables are grouped by the domain that owns them; the
+ * relations that join two domains stay in the barrel, because a relation is a
+ * statement about both and belongs to neither.
+ */
+
+import {
+  pgTable,
+  serial,
+  text,
+  integer,
+  timestamp,
+  boolean,
+  numeric,
+  date,
+  jsonb,
+  uniqueIndex,
+  index,
+  check,
+} from 'drizzle-orm/pg-core';
+
+import { sql } from 'drizzle-orm';
+
+import { facilities, tenants } from './tenancy.ts';
+
+import { patients } from './patients.ts';
+import { inventoryItems } from './inventory.ts';
+import { inpatientBedNights, inpatientBedOccupancies, medications } from './inpatient.ts';
+
+import { encounters } from './clinical.ts';
+import { users } from './auth.ts';
+import { masterServices } from './master-services.ts';
+import { facilityServices } from './facility-services.ts';
+import { facilityLetterheads } from './facility-branding.ts';
+
+export const facilityServiceTariffs = pgTable(
+  'facility_service_tariffs',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    code: text('code').notNull(),
+    description: text('description').notNull(),
+    department: text('department').notNull(),
+    unit: text('unit').notNull().default('Service'),
+    fee: numeric('fee', { precision: 10, scale: 2 }).notNull(),
+    shaStatus: text('sha_status').notNull().default('Not Assessed'),
+    shaNotes: text('sha_notes'),
+    /*
+     * Which automatic charge this tariff answers, if any.
+     *
+     * Facilities number their tariffs (`OPD-001`, `LAB-006`) rather than
+     * using the codes the billing engine looks for, so a price list can
+     * exist and still bill nothing. This column records the link the
+     * facility makes, once, instead of the engine guessing between
+     * OPD-001 (150) and OPD-002 (300).
+     *
+     * NULL means "not linked"; the tariff is still reachable by code.
+     * See migration 0019 and `src/billing/tariff-codes.ts` for the
+     * vocabulary.
+     */
+    billingKey: text('billing_key'),
+
+    /*
+     * When this price applies. Both nullable: NULL means "always", so
+     * every existing row keeps working and no date had to be invented
+     * for it. A resolver checks today's date against the pair.
+     */
+    effectiveFrom: date('effective_from'),
+    effectiveTo: date('effective_to'),
+
+    /*
+     * Whether automatic billing may use this tariff. Default true, so
+     * behaviour is unchanged; a facility can keep a tariff for manual
+     * pricing while excluding it from automatic charging.
+     */
+    autoBill: boolean('auto_bill').notNull().default(true),
+
+    isActive: boolean('is_active').notNull().default(true),
+    facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
+    archivedAt: timestamp('archived_at'),
+    archivedByUserId: integer('archived_by_user_id').references(() => users.id),
+    masterServiceId: integer('master_service_id').references(() => masterServices.id),
+    approvalStatus: text('approval_status').notNull().default('DRAFT'),
+    approvedByUserId: integer('approved_by_user_id').references(() => users.id),
+    approvedAt: timestamp('approved_at'),
+    approvalReference: text('approval_reference'),
+    revision: integer('revision').notNull().default(1),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('facility_tariff_master_unique')
+      .on(table.facilityId, table.masterServiceId)
+      .where(sql`${table.masterServiceId} is not null`),
+    uniqueIndex('facility_service_tariffs_facility_code_unique').on(table.facilityId, table.code),
+    index('facility_service_tariffs_tenant_facility_idx').on(table.tenantId, table.facilityId),
+    index('facility_service_tariffs_active_idx').on(table.facilityId, table.isActive),
+  ],
+);
+export const billingInvoices = pgTable('billing_invoices', {
+  id: serial('id').primaryKey(),
+
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
+
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
+
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
+
+  encounterId: integer('encounter_id').references(() => encounters.id),
+
+  invoiceNumber: text('invoice_number').notNull().unique(),
+
+  totalAmount: numeric('total_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
+
+  paidAmount: numeric('paid_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
+
+  balanceAmount: numeric('balance_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
+
+  status: text('status').default('Pending'),
+
+  /*
+   * Money received beyond the invoice total. Kept as its own column
+   * instead of letting balance_amount go negative, because a negative
+   * balance silently cancels out other patients' debts whenever the
+   * facility totals what it is owed.
+   */
+  creditBalance: numeric('credit_balance', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
+
+  payerType: text('payer_type').default('Self-Pay'),
+
+  payerName: text('payer_name'),
+
+  memberNumber: text('member_number'),
+
+  /** Once set, charge lines and invoice identity cannot be changed. */
+  finalizedAt: timestamp('finalized_at'),
+
+  voidedAt: timestamp('voided_at'),
+
+  voidReason: text('void_reason'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/* ============================================================
+   40. BILLING ITEMS
+   ============================================================ */
+
+export const billingItems = pgTable('billing_items', {
+  id: serial('id').primaryKey(),
+
+  invoiceId: integer('invoice_id')
+    .references(() => billingInvoices.id)
+    .notNull(),
+
+  tariffId: integer('tariff_id').references(() => facilityServiceTariffs.id, {
+    onDelete: 'set null',
+  }),
+
+  tariffCode: text('tariff_code'),
+
+  // Historical master references remain intact; new lines record a facility service.
+  facilityServiceId: integer('facility_service_id').references(() => facilityServices.id),
+  masterServiceId: integer('master_service_id').references(() => masterServices.id),
+  serviceCode: text('service_code'),
+  serviceDepartment: text('service_department'),
+  serviceUnit: text('service_unit'),
+  serviceDate: date('service_date'),
+  servicePerformedAt: timestamp('service_performed_at'),
+
+  // Populated only for inventory-priced pharmacy lines; the sourceId is the
+  // actual dispensation. Batch details are immutable line-time snapshots.
+  inventoryItemId: integer('inventory_item_id').references(() => inventoryItems.id),
+  prescriptionId: integer('prescription_id').references(() => medications.id),
+  bedOccupancyId: integer('bed_occupancy_id').references(() => inpatientBedOccupancies.id),
+  bedNightId: integer('bed_night_id').references(() => inpatientBedNights.id),
+  pharmacyStockTracking: text('pharmacy_stock_tracking'),
+  pharmacyBatchAllocations: jsonb('pharmacy_batch_allocations').$type<
+    Array<{ batchId: number; batchNumber: string; expiryDate: string; quantity: number }>
+  >(),
+
+  /*
+   * Provenance: which clinical event produced this line item.
+   *
+   *   CONSULTATION | LAB_ORDER | PROCEDURE | RADIOLOGY | PHARMACY
+   *   ADMISSION | BED_DAY | MANUAL
+   */
+  sourceType: text('source_type'),
+
+  sourceId: integer('source_id'),
+
+  /*
+   * Idempotency key for engine-generated charges, enforced by a UNIQUE
+   * partial index in migration 0009. Replaying a clinical event can
+   * never create a second charge. Manual items leave this NULL.
+   */
+  idempotencyKey: text('idempotency_key'),
+
+  itemType: text('item_type').notNull(),
+
+  description: text('description').notNull(),
+
+  quantity: integer('quantity').default(1),
+
+  unitPrice: numeric('unit_price', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
+
+  totalAmount: numeric('total_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/**
+ * The link between a catalogue service and the price that answers it.
+ *
+ * `service_id` is the stable id of the catalogue row — `lab_tests.id`
+ * for a laboratory test — not a code someone can rename. `NULL` means
+ * the link covers every service of that type.
+ *
+ * Why a table instead of comparing strings: the engine used to ask for
+ * `LAB-BLOOD` when the facility's row was `LAB-001`, and every failure
+ * mode (missing, inactive, expired, another facility, ambiguous) looked
+ * identical from the outside. A link by id cannot be ambiguous, and a
+ * link can be validated field by field.
+ *
+ * The composite foreign key to `(facility_id, id)` means a link can
+ * only reference a tariff of the same facility: isolation is a
+ * constraint, not a convention.
+ *
+ * See migration 0021.
+ */
+export const serviceTariffLinks = pgTable(
+  'service_tariff_links',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    /** LAB_TEST | CONSULTATION | RADIOLOGY | … (see migration 0021). */
+    serviceType: text('service_type').notNull(),
+
+    /** Catalogue row id; NULL links the whole family. */
+    serviceId: integer('service_id'),
+
+    /** Snapshot of the catalogue code and name at link time. */
+    serviceCode: text('service_code'),
+    serviceName: text('service_name'),
+
+    tariffId: integer('tariff_id').notNull(),
+
+    autoBill: boolean('auto_bill').notNull().default(true),
+
+    note: text('note'),
+    createdBy: text('created_by'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('service_tariff_links_service_unique')
+      .on(table.facilityId, table.serviceType, table.serviceId)
+      .where(sql`${table.isActive} AND ${table.serviceId} is not null`),
+    uniqueIndex('service_tariff_links_family_unique')
+      .on(table.facilityId, table.serviceType)
+      .where(sql`${table.isActive} AND ${table.serviceId} is null`),
+    index('service_tariff_links_facility_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.serviceType,
+    ),
+    index('service_tariff_links_tariff_idx').on(table.tariffId),
+  ],
+);
+
+/**
+ * A charge the billing engine could not price.
+ *
+ * The clinical action succeeded but no invoice line exists, so the
+ * money owed is invisible. This row keeps the original request so the
+ * charge can be replayed once the facility configures a tariff — and so
+ * the configuration screen can say what is waiting.
+ *
+ * See migration 0020. Status: PENDING | BILLED | DUPLICATE | VOID.
+ */
+export const billingChargeAttempts = pgTable(
+  'billing_charge_attempts',
+  {
+    id: serial('id').primaryKey(),
+
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+
+    patientId: integer('patient_id')
+      .references(() => patients.id)
+      .notNull(),
+
+    encounterId: integer('encounter_id'),
+
+    sourceType: text('source_type').notNull(),
+    sourceId: integer('source_id'),
+    itemType: text('item_type').notNull(),
+    description: text('description'),
+
+    /** Candidates the engine tried, in priority order. */
+    codes: text('codes').array().notNull().default([]),
+    /** Linked keys the facility can set (`CONSULTATION`). */
+    serviceKeys: text('service_keys').array().notNull().default([]),
+
+    family: text('family'),
+    serviceName: text('service_name'),
+    encounterType: text('encounter_type'),
+    aliases: text('aliases').array().notNull().default([]),
+
+    /*
+     * Which occurrence of the source this is: the bed-night date for a
+     * ward charge (`BED_DAY:12:2026-10-20`), null when the source is
+     * billed once. Without it, a five-night stay with no tariff would
+     * collapse into a single queue row and only one night could ever be
+     * reprocessed.
+     */
+    idempotencySuffix: text('idempotency_suffix'),
+
+    /** Bed category at accrual time, so a replay prices the same bed. */
+    wardType: text('ward_type'),
+    wardName: text('ward_name'),
+    serviceRefType: text('service_ref_type'),
+    serviceRefId: integer('service_ref_id'),
+    serviceRefCode: text('service_ref_code'),
+    serviceDate: date('service_date'),
+
+    quantity: integer('quantity').notNull().default(1),
+    fallbackUnitPrice: numeric('fallback_unit_price', { precision: 10, scale: 2 }),
+
+    reason: text('reason').notNull(),
+    // Optional specific resolver diagnosis; legacy reason semantics are unchanged.
+    diagnosisCode: text('diagnosis_code'),
+    detail: text('detail'),
+    codesTried: text('codes_tried').array().notNull().default([]),
+
+    status: text('status').notNull().default('PENDING'),
+    attempts: integer('attempts').notNull().default(1),
+    lastAttemptAt: timestamp('last_attempt_at').defaultNow().notNull(),
+
+    resolvedItemId: integer('resolved_item_id'),
+    resolvedInvoiceId: integer('resolved_invoice_id'),
+    resolvedTariffCode: text('resolved_tariff_code'),
+    resolvedUnitPrice: numeric('resolved_unit_price', { precision: 10, scale: 2 }),
+    resolvedAt: timestamp('resolved_at'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('billing_charge_attempts_pending_unique')
+      .on(
+        table.facilityId,
+        table.sourceType,
+        table.sourceId,
+        table.itemType,
+        sql`coalesce(${table.idempotencySuffix}, '')`,
+      )
+      .where(sql`${table.status} = 'PENDING' AND ${table.sourceId} is not null`),
+    index('billing_charge_attempts_facility_status_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.status,
+    ),
+    index('billing_charge_attempts_patient_idx').on(table.patientId),
+  ],
+);
+
+/* ============================================================
+   41. BILLING PAYMENTS
+   ============================================================ */
+
+export const billingPayments = pgTable(
+  'billing_payments',
+  {
+    id: serial('id').primaryKey(),
+
+    invoiceId: integer('invoice_id')
+      .references(() => billingInvoices.id)
+      .notNull(),
+
+    // Migration 0091 supplies the FK without introducing a schema import cycle.
+    bankPaymentRecordId: integer('bank_payment_record_id').unique(),
+    receiptNumber: text('receipt_number').notNull().unique(),
+
+    paymentMethod: text('payment_method').default('M-Pesa'),
+
+    amount: numeric('amount', {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+
+    referenceCode: text('reference_code'),
+
+    /*
+     * The code printed on the customer's M-Pesa or Airtel confirmation
+     * message. Distinct from reference_code so reconciliation can match
+     * against a mobile money statement without parsing free text.
+     */
+    transactionCode: text('transaction_code'),
+
+    /* FULLY_PAID | BALANCE_REMAINING | OVERPAID at the moment of posting. */
+    settlementStatus: text('settlement_status'),
+
+    cashierName: text('cashier_name').notNull(),
+
+    paymentDate: timestamp('payment_date').defaultNow().notNull(),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('billing_payments_invoice_source_idx').on(table.invoiceId, table.id)],
+);
+
+/** Immutable snapshot of one existing invoice; it is not a separate invoice. */
+export const billingInvoiceFinalizations = pgTable('billing_invoice_finalizations', {
+  invoiceId: integer('invoice_id')
+    .primaryKey()
+    .references(() => billingInvoices.id),
+  tenantId: integer('tenant_id')
+    .notNull()
+    .references(() => tenants.id),
+  facilityId: integer('facility_id')
+    .notNull()
+    .references(() => facilities.id),
+  finalizedByUserId: integer('finalized_by_user_id')
+    .notNull()
+    .references(() => users.id),
+  finalizedAt: timestamp('finalized_at').notNull().defaultNow(),
+  patientResponsibility: numeric('patient_responsibility', { precision: 10, scale: 2 }).notNull(),
+  insurerResponsibility: numeric('insurer_responsibility', { precision: 10, scale: 2 }).notNull(),
+  copayment: numeric('copayment', { precision: 10, scale: 2 }).notNull(),
+  allocationBasis: text('allocation_basis').notNull(),
+  /* Migration 0089: the exact branding version this invoice was issued under.
+     A later letterhead change cannot rewrite a document a payer already has. */
+  letterheadId: integer('letterhead_id').references(() => facilityLetterheads.id),
+  snapshot: jsonb('snapshot')
+    .$type<import('../../billing/finalized-invoice.types.ts').InvoiceSnapshot>()
+    .notNull(),
+});
+
+/** An explicit, auditable attribution of an existing immutable receipt. */
+export const billingPaymentAttributions = pgTable(
+  'billing_payment_attributions',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => billingInvoices.id),
+    paymentId: integer('payment_id')
+      .notNull()
+      .unique()
+      .references(() => billingPayments.id),
+    party: text('party').$type<'PATIENT' | 'INSURER'>().notNull(),
+    reason: text('reason').notNull(),
+    actorUserId: integer('actor_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('billing_payment_attributions_invoice_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.invoiceId,
+    ),
+  ],
+);
+
+/** A retry identity for an existing receipt, not an additional payment. */
+export const billingPaymentRequests = pgTable(
+  'billing_payment_requests',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => billingInvoices.id),
+    paymentId: integer('payment_id')
+      .notNull()
+      .unique()
+      .references(() => billingPayments.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    actorUserId: integer('actor_user_id')
+      .notNull()
+      .references(() => users.id),
+    resultSnapshot: jsonb('result_snapshot')
+      .$type<import('../../billing/finalized-invoice.types.ts').PaymentReplaySnapshot>()
+      .notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('billing_payment_requests_facility_id_idempotency_key_key').on(
+      table.facilityId,
+      table.idempotencyKey,
+    ),
+  ],
+);
+
+/** Terminal cancellation of a receipt request, not a provider cancellation. */
+export const billingPaymentRequestCancellations = pgTable(
+  'billing_payment_request_cancellations',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    facilityId: integer('facility_id')
+      .notNull()
+      .references(() => facilities.id),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => billingInvoices.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    actorUserId: integer('actor_user_id')
+      .notNull()
+      .references(() => users.id),
+    reason: text('reason').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('billing_payment_request_cancellations_facility_id_idempotency_key_key').on(
+      table.facilityId,
+      table.idempotencyKey,
+    ),
+  ],
+);
+
+/** Immutable, additive manual refund receipts; original payments are retained. */
+export const billingRefunds = pgTable(
+  'billing_refunds',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    invoiceId: integer('invoice_id')
+      .references(() => billingInvoices.id)
+      .notNull(),
+    paymentId: integer('payment_id')
+      .references(() => billingPayments.id)
+      .notNull(),
+    refundNumber: text('refund_number').notNull().unique(),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    refundMethod: text('refund_method').notNull(),
+    bankStatementTransactionId: integer('bank_statement_transaction_id').unique(),
+    externalReference: text('external_reference'),
+    reason: text('reason').notNull(),
+    manualConfirmation: boolean('manual_confirmation').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    actorUserId: integer('actor_user_id')
+      .references(() => users.id)
+      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('billing_refunds_facility_key_idx').on(table.facilityId, table.idempotencyKey),
+    index('billing_refunds_invoice_idx').on(table.invoiceId, table.id),
+    index('billing_refunds_payment_idx').on(table.paymentId, table.id),
+    check(
+      'billing_refund_amount_chk',
+      sql`${table.amount} > 0 AND ${table.amount}::text NOT IN ('NaN','Infinity','-Infinity')`,
+    ),
+  ],
+);
+
+/** Independent review of a patient-receipt refund; no transfer is initiated. */
+export const billingRefundRequests = pgTable(
+  'billing_refund_requests',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    invoiceId: integer('invoice_id')
+      .references(() => billingInvoices.id)
+      .notNull(),
+    paymentId: integer('payment_id')
+      .references(() => billingPayments.id)
+      .notNull(),
+    requestNumber: text('request_number').notNull().unique(),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    refundMethod: text('refund_method').notNull(),
+    reason: text('reason').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    status: text('status').notNull().default('REQUESTED'),
+    requestedByUserId: integer('requested_by_user_id')
+      .references(() => users.id)
+      .notNull(),
+    reviewedByUserId: integer('reviewed_by_user_id').references(() => users.id),
+    reviewNotes: text('review_notes'),
+    reviewHash: text('review_hash'),
+    reviewedAt: timestamp('reviewed_at'),
+    revokedByUserId: integer('revoked_by_user_id').references(() => users.id),
+    revocationReason: text('revocation_reason'),
+    revokedAt: timestamp('revoked_at'),
+    settledRefundId: integer('settled_refund_id')
+      .references(() => billingRefunds.id)
+      .unique(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('refund_requests_facility_key_idx').on(table.facilityId, table.idempotencyKey),
+    index('refund_requests_invoice_idx').on(
+      table.tenantId,
+      table.facilityId,
+      table.invoiceId,
+      table.id,
+    ),
+    index('refund_requests_payment_status_idx').on(table.paymentId, table.status),
+    check(
+      'refund_request_amount_chk',
+      sql`${table.amount} > 0 AND ${table.amount}::text NOT IN ('NaN','Infinity','-Infinity')`,
+    ),
+  ],
+);
+
+/* ============================================================
+   42. INSURANCE / SHA CLAIMS
+   ============================================================ */
+
+export const insuranceClaims = pgTable('insurance_claims', {
+  id: serial('id').primaryKey(),
+
+  tenantId: integer('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
+
+  facilityId: integer('facility_id')
+    .references(() => facilities.id)
+    .notNull(),
+
+  patientId: integer('patient_id')
+    .references(() => patients.id)
+    .notNull(),
+
+  invoiceId: integer('invoice_id')
+    .references(() => billingInvoices.id)
+    .notNull(),
+
+  claimNumber: text('claim_number').notNull().unique(),
+
+  payerName: text('payer_name').default('Social Health Authority (SHA)'),
+
+  payerCode: text('payer_code'),
+
+  manualSubmissionReference: text('manual_submission_reference'),
+
+  policyNumber: text('policy_number'),
+
+  preAuthCode: text('pre_auth_code'),
+
+  claimAmount: numeric('claim_amount', {
+    precision: 10,
+    scale: 2,
+  }).notNull(),
+
+  approvedAmount: numeric('approved_amount', {
+    precision: 10,
+    scale: 2,
+  }).default('0'),
+
+  status: text('status').default('Draft'),
+
+  submittedAt: timestamp('submitted_at'),
+
+  adjudicationNotes: text('adjudication_notes'),
+
+  /*
+   * The payment that settled this claim. Set when an approved amount
+   * is posted against the invoice; null while the money is outstanding.
+   */
+  settledPaymentId: integer('settled_payment_id').references(() => billingPayments.id, {
+    onDelete: 'set null',
+  }),
+
+  settledAt: timestamp('settled_at'),
+
+  createdByUserId: integer('created_by_user_id'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/* ============================================================
+   42b. INSURANCE CLAIM ITEMS
+   ============================================================ */
+
+export const insuranceClaimItems = pgTable('insurance_claim_items', {
+  id: serial('id').primaryKey(),
+
+  claimId: integer('claim_id')
+    .references(() => insuranceClaims.id, { onDelete: 'cascade' })
+    .notNull(),
+
+  billingItemId: integer('billing_item_id').references(() => billingItems.id, {
+    onDelete: 'set null',
+  }),
+
+  /*
+   * Snapshot of the line at claim time. The invoice may be edited or
+   * voided later; the claim must still say what it asked for.
+   */
+  description: text('description').notNull(),
+
+  amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

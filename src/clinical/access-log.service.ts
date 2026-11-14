@@ -132,6 +132,45 @@ export async function logPatientAccess(entry: PatientAccessEntry) {
 }
 
 /**
+ * Account for every record returned in a directory page before sending it.
+ * One statement makes the batch all-or-nothing, and no search text, name or
+ * identifier is stored in the audit entries. An empty page has no patient
+ * records to log. Errors intentionally prevent the page from being returned.
+ */
+export async function logPatientDirectoryAccess(
+  context: AuthorizationContext,
+  patients: Array<{ id: number; tenantId: number; registrationFacilityId: number }>,
+): Promise<void> {
+  if (patients.length === 0) return;
+  if (
+    patients.some(
+      (patient) =>
+        !Number.isSafeInteger(patient.id) ||
+        patient.id <= 0 ||
+        !Number.isSafeInteger(patient.tenantId) ||
+        patient.tenantId <= 0 ||
+        !Number.isSafeInteger(patient.registrationFacilityId) ||
+        patient.registrationFacilityId <= 0,
+    )
+  ) {
+    throw new Error('Valid patient scope is required before directory access can be logged.');
+  }
+  await db.insert(schema.patientRecordAccessLogs).values(
+    patients.map((patient) => ({
+      patientId: patient.id,
+      userId: context.userId,
+      tenantId: patient.tenantId,
+      facilityId: patient.registrationFacilityId,
+      action: 'VIEW',
+      accessChannel: 'STAFF_PORTAL',
+      recordType: 'PatientDirectory',
+      recordId: patient.id,
+      purpose: 'DIRECT_CARE',
+    })),
+  );
+}
+
+/**
  * Same, but a failed log never blocks the caller.
  *
  * Reserved for writes the user has already committed — an allergy or a
