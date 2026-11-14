@@ -1,3 +1,4 @@
+import { PartnerEquityWorkspace } from './accounting/PartnerEquityWorkspace.tsx';
 import {
   readBudgetingView,
   writeBudgetingView,
@@ -304,32 +305,42 @@ export const AccountingModule: React.FC<{ onOpenPayroll?: (tab: PayrollTabId) =>
           </header>
           {activeSection.views.length > 1 && (
             <nav aria-label={`${activeSection.title} views`} className="flex flex-wrap gap-2">
-              {activeSection.views.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-current={
-                    view === item.id ||
-                    (item.id === 'planningDashboard' &&
-                      view.startsWith('planning') &&
-                      view !== 'planningFinancials')
-                      ? 'page'
-                      : undefined
-                  }
-                  className={
-                    view === item.id ||
-                    (item.id === 'planningDashboard' &&
-                      view.startsWith('planning') &&
-                      view !== 'planningFinancials')
-                      ? buttonClass
-                      : 'rounded-lg border border-hair bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-slate-100'
-                  }
-                  onClick={() => navigate(section, item.id)}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {activeSection.views
+                .filter((item) => item.id !== 'partnerEquity' || can('accounting.equity.read'))
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={
+                      view === item.id ||
+                      (item.id === 'planningDashboard' &&
+                        view.startsWith('planning') &&
+                        view !== 'planningFinancials')
+                        ? 'page'
+                        : undefined
+                    }
+                    className={
+                      view === item.id ||
+                      (item.id === 'planningDashboard' &&
+                        view.startsWith('planning') &&
+                        view !== 'planningFinancials')
+                        ? buttonClass
+                        : 'rounded-lg border border-hair bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-slate-100'
+                    }
+                    onClick={() => navigate(section, item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
             </nav>
+          )}
+          {view === 'partnerEquity' && (
+            <PartnerEquityWorkspace
+              key={`${currentFacility.id}:${authenticatedUser?.id}`}
+              facilityId={currentFacility.id}
+              facilityName={currentFacility.name}
+              permissions={authenticatedUser?.permissions ?? []}
+            />
           )}
           {view.startsWith('planning') && !can('accounting.planning.read') && (
             <p role="alert">Planning access requires accounting.planning.read permission.</p>
@@ -344,7 +355,7 @@ export const AccountingModule: React.FC<{ onOpenPayroll?: (tab: PayrollTabId) =>
             />
           )}
           <section
-            hidden={view.startsWith('planning')}
+            hidden={view.startsWith('planning') || view === 'partnerEquity'}
             aria-label="Accounting reporting dates"
             className="rounded-xl border border-hair bg-surface p-4 space-y-3"
           >

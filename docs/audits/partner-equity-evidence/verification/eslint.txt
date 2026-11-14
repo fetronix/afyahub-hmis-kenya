@@ -1,0 +1,36 @@
+
+<repository>/src/components/modules/accounting/PartnerEquityWorkspace.tsx
+   56:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+<repository>/src/components/modules/accounting/PartnerEquityWorkspace.tsx:56:5
+  54 |   const [invalid, setInvalid] = useState(false);
+  55 |   useEffect(() => {
+> 56 |     setText(value ?? '');
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  57 |     setInvalid(false);
+  58 |   }, [value]);
+  59 |   return (  react-hooks/set-state-in-effect
+  235:5  warning  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+<repository>/src/components/modules/accounting/PartnerEquityWorkspace.tsx:235:5
+  233 |   }, [year, refresh, readAllowed]);
+  234 |   useEffect(() => {
+> 235 |     setSaved(null);
+      |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  236 |     setModel(null);
+  237 |     setCarry(null);
+  238 |     setAudit([]);   react-hooks/set-state-in-effect
+
+✖ 2 problems (0 errors, 2 warnings)

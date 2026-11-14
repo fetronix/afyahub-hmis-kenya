@@ -1,0 +1,32 @@
+[
+  {
+    "file": "03-baseline-synthetic.pdf",
+    "pages": 3,
+    "containsOriginalPartners": true,
+    "containsClosingTotal": true,
+    "containsFormulaReview": true,
+    "containsSyntheticLetterhead": true,
+    "containsAllAdditionalPartners": true,
+    "pageNumbers": [
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "file": "04-large-roster-synthetic.pdf",
+    "pages": 5,
+    "containsOriginalPartners": true,
+    "containsClosingTotal": true,
+    "containsFormulaReview": true,
+    "containsSyntheticLetterhead": true,
+    "containsAllAdditionalPartners": true,
+    "pageNumbers": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  }
+]

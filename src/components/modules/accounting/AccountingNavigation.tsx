@@ -43,6 +43,7 @@ export type AccountingView =
   | 'payables'
   | 'payroll'
   | 'banking'
+  | 'partnerEquity'
   | 'income'
   | 'balance';
 export const ACCOUNTING_SECTIONS = [
@@ -137,6 +138,7 @@ export const ACCOUNTING_SECTIONS = [
     icon: ChartNoAxesCombined,
     views: [
       { id: 'trial', label: 'Trial Balance' },
+      { id: 'partnerEquity', label: 'Partners’ Equity Statement' },
       { id: 'income', label: 'Income Statement' },
       { id: 'balance', label: 'Balance Sheet' },
     ],

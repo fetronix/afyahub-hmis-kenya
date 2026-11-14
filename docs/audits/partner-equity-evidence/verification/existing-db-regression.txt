@@ -1,0 +1,24 @@
+
+ RUN  v5.0.5 <repository>
+
+ ✓ src/tests/financial-budget.db.spec.ts (11 tests) 1065ms
+ ✓ src/tests/budget-planning.db.spec.ts (29 tests) 17163ms
+   ✓ synthetic budget planning database workflows (29)
+     ✓ imports only after hash-matched explicit confirmation and is idempotent 1181ms
+     ✓ supports skip and explicit update merge modes 1145ms
+     ✓ retains cancelled sources and blocks duplicate upload without implicitly reopening or importing 620ms
+     ✓ requires explicit authorized retry, locks concurrent retries, preserves evidence and forces fresh preview without changing plans 826ms
+     ✓ exposes retry only for cancelled unapplied batches and refuses imported evidence even if status is inconsistent 377ms
+     ✓ blocks retry of imported batches, nonempty results and linked plan data without changing them 311ms
+     ✓ issues filtered branded PDF and Excel; retains exact reprint bytes and history 370ms
+     ✓ paginates and sorts large plans without paginating report totals 1156ms
+     ✓ exports YoY issued rows and category/item/branding selections consistently 500ms
+     ✓ processes a synthetic 232-item stationery workload plus separate branding and uniform blocks 3988ms
+     ✓ requires an actually recorded preview, not only a caller-computed hash 354ms
+     ✓ imports duplicate CSV source rows, audits defaults and supports year/facility-scoped HTTP CRUD 389ms
+     ✓ persists all 241 official source rows only in the disposable test facility and exports reproducible reports 4954ms
+
+ Test Files  2 passed (2)
+      Tests  40 passed (40)
+   Start at  21:14:59
+   Duration  20.22s (tests 75%, import 15%, transform 7%, setup 3%)

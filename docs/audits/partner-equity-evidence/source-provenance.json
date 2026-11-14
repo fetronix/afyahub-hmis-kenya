@@ -1,0 +1,10 @@
+{
+  "source": "User-supplied image-1.png",
+  "sha256": "a2c5606a4610a01d5a973b32d454c313204e0b144e3b376e559e68f9f937c374",
+  "statement": "Syrona Medical Center \u2014 Statement of Changes in Partners\u2019 Equity",
+  "period": "July 2025\u2013June 2026",
+  "formulaProvenance": "Screenshot-matching arithmetic only; user authorized provisional implementation with review flags. Original workbook formulas are unavailable.",
+  "missingOriginalAdmissionDates": "Unspecified (null); no date inferred",
+  "sourceNulls": "Dashes and blank cells are unconfirmed amounts, not source zeroes. No interest or tax rates inferred.",
+  "rounding": "Original totals use unrounded calculations; displayed partner allocation and closing totals each differ by -1 cent. Displayed share ratios sum to 100.01%, ownership to 99.99%."
+}

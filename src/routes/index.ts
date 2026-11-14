@@ -1,3 +1,4 @@
+import partnerEquityRoutes from '../partner-equity/routes.ts';
 /**
  * The API surface, mounted.
  *
@@ -111,6 +112,7 @@ export function createApiRoutes(): Router {
    * to print.
    */
   api.use('/documents', documentRoutes);
+  api.use('/partner-equity', requireFacilityModule('accounting'), partnerEquityRoutes);
   api.use('/budget-planning', requireFacilityModule('accounting'), budgetPlanningRoutes);
 
   /*

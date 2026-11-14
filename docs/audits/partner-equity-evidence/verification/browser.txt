@@ -1,0 +1,12 @@
+PASS Five original partners plus sticky description/Total
+PASS All twelve monetary rows and two percentage rows
+PASS Six executive KPI cards
+PASS Five charts use statement result values
+PASS Description and Total remain sticky on desktop horizontal scroll
+PASS Net result editing immediately recalculates charts and allocations
+PASS Explicit draft save receives a versioned synthetic receipt
+PASS Saved-statement export retains the scoped statement identifier
+PASS Charts can be hidden for report preparation
+{"body":390,"viewport":390,"grid":1350}
+PASS Mobile horizontal overflow is contained inside the statement grid
+PASS No browser runtime errors or application API/network calls in isolated demo

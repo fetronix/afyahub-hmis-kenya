@@ -1288,6 +1288,55 @@ const PERMISSIONS = [
       'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
   },
   {
+    code: 'accounting.equity.read',
+    name: 'View partner equity statements',
+    module: 'accounting',
+    description:
+      'Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.',
+  },
+  {
+    code: 'accounting.equity.manage',
+    name: 'Prepare draft partner equity statements',
+    module: 'accounting',
+    description:
+      'Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.',
+  },
+  {
+    code: 'accounting.equity.partners',
+    name: 'Manage effective-dated partner register',
+    module: 'accounting',
+    description:
+      'Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.',
+  },
+  {
+    code: 'accounting.equity.review',
+    name: 'Independently review partner equity statements',
+    module: 'accounting',
+    description:
+      'Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.',
+  },
+  {
+    code: 'accounting.equity.approve',
+    name: 'Approve reviewed partner equity statements',
+    module: 'accounting',
+    description:
+      'Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.',
+  },
+  {
+    code: 'accounting.equity.export',
+    name: 'Export full partner equity statements',
+    module: 'accounting',
+    description:
+      'Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.',
+  },
+  {
+    code: 'accounting.equity.audit',
+    name: 'Read partner equity audit history',
+    module: 'accounting',
+    description:
+      'Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.',
+  },
+  {
     code: 'accounting.read',
     name: 'View Accounting & Financial Statements',
     module: 'accounting',

@@ -1,0 +1,20 @@
+{
+  "syntheticDemoOnly": true,
+  "noAuthenticatedApplication": true,
+  "checks": [
+    "Five original partners plus sticky description/Total",
+    "All twelve monetary rows and two percentage rows",
+    "Six executive KPI cards",
+    "Five charts use statement result values",
+    "Description and Total remain sticky on desktop horizontal scroll",
+    "Net result editing immediately recalculates charts and allocations",
+    "Explicit draft save receives a versioned synthetic receipt",
+    "Saved-statement export retains the scoped statement identifier",
+    "Charts can be hidden for report preparation",
+    "Mobile horizontal overflow is contained inside the statement grid",
+    "No browser runtime errors or application API/network calls in isolated demo"
+  ],
+  "errors": [],
+  "unexpectedRequests": [],
+  "passed": true
+}

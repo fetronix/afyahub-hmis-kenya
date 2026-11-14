@@ -1,0 +1,86 @@
+
+ RUN  v5.0.5 <repository>
+
+[vitest] PostgreSQL not reachable at 127.0.0.1:5432 — database specs will be skipped.
+ ✓ src/tests/vitest/budget-navigation-ui.spec.tsx (10 tests) 18546ms
+   ✓ Budgeting navigation relocation — existing modules, unchanged data contracts (10)
+     ✓ opens the existing saved financial draft from the new parent with no duplicate procurement entry 3098ms
+     ✓ keeps formula editing, saved revisions and exports on the existing financial API 4326ms
+     ✓ keeps procurement and supporting planning accessible without the financial tab or a second dataset 4645ms
+     ✓ restores direct links and refresh/remount without changing saved data or selecting a facility from the URL 3940ms
+     ✓ retains read-only and export permission gates for authorized planning readers 2376ms
+ ✓ src/tests/vitest/partner-equity-ui.spec.tsx (12 tests) 5114ms
+   ✓ retrieves the saved period without writes; preserves all original names/rows and six KPIs 601ms
+   ✓ recalculates all chart/table values immediately and saves to the existing statement revision only on explicit save 547ms
+   ✓ edits all permitted input rows, preserves null dashes and supports negative typing without executing formulas 897ms
+   ✓ shows/hides five charts and presents the unchanged statement without editing controls 557ms
+   ✓ exports all three saved formats and disables exports for unsaved edits 597ms
+   ✓ requires explicit partner saving and never exposes permanent deletion 462ms
+   ✓ previews carry-forward and requires confirmation before any write 464ms
+   ✓ opens the separate statement module from Financial Reports only for authorized equity readers 361ms
+ ✓ src/tests/vitest/accounting-workspace-ui.spec.tsx (11 tests) 6704ms
+   ✓ Accounting & Finance modular workspace (11)
+     ✓ starts with API-backed summary, not an endless mixed workflow screen 502ms
+     ✓ opens setup directly, then periods and existing payroll mapping checks 403ms
+     ✓ keeps account creation, period open and close on their existing API methods 2147ms
+     ✓ keeps manual journal and controlled reversal payloads and idempotency keys 1440ms
+     ✓ shows only the selected financial report with posted-journal limitations 470ms
+     ✓ mounts the existing billing and expense panels only in their selected views 582ms
+     ✓ links every payroll destination and the existing bank module without duplicate implementations 649ms
+     ✓ gates read-only operations, billing, payroll and bank destinations by permission 336ms
+ ✓ src/tests/vitest/financial-budget-ui.spec.tsx (14 tests) 34628ms
+   ✓ Excel-like annual financial budget (14)
+     ✓ renders 16 columns, all required groups, five live KPIs and OGD 1521ms
+     ✓ saves Enter once, recalculates chained cells immediately, and restores a manual override 1731ms
+     ✓ saves on blur, supports Escape cancellation and rejects invalid numeric input 1272ms
+     ✓ toggles formula audit, exports the selected view and collapses departments without changing totals 3388ms
+     ✓ creates a formula-driven custom line with an auditable source reference 3620ms
+     ✓ edits custom row metadata without losing monthly values or overrides 3729ms
+     ✓ creates a department and permits deletion only for custom rows with explicit confirmation 3953ms
+     ✓ requires the exact phrase for baseline reset and never resets on opening the dialog 2892ms
+     ✓ toggles optional Apr–Dec professional dialysis fees and shows negative results in red 1146ms
+     ✓ does not allow mutation on read-only budgets 1558ms
+     ✓ loads a preview without writes and persists only after explicit baseline adoption 1682ms
+     ✓ isolates plan changes while the next destination is loading and ignores late reads 1497ms
+     ✓ submits financial reset with the current revision and trimmed audit reason 4231ms
+     ✓ fails closed on persistence conflict without claiming local edits were saved 2406ms
+ ✓ src/tests/vitest/planning-import-outcomes-ui.spec.tsx (12 tests) 4401ms
+   ✓ persistent outcome notification and confirmation boundary (6)
+     ✓ preview notification has zero created/updated and says awaiting confirmation, never imported 1013ms
+     ✓ shows importing while waiting, then uses actual committed counts rather than preview estimates 657ms
+     ✓ a failed confirmation never displays a successful import 625ms
+     ✓ a refresh/callback failure after the committed receipt does not relabel it a failed import 804ms
+     ✓ validation errors block confirmation and show a correction notice 520ms
+   ✓ full results, filters, access and refresh (6)
+     ✓ pages large row results without dropping access to later rows 321ms
+ ✓ src/tests/vitest/planning-sections-ui.spec.tsx (7 tests) 5489ms
+   ✓ dedicated planning viewing/editing sections (4)
+     ✓ shows Branding directly in a mixed plan and paginates after partitioning the full scoped result 1482ms
+     ✓ has distinct Stationery, Branding and Uniform navigation and clears incompatible unit/search filters 1320ms
+     ✓ exposes independent View, Edit and Delete on draft monthly records and a true read-only detail form 1251ms
+     ✓ does not expose mutation actions to a read-only user in any of the three sections 1410ms
+ ✓ src/tests/budget-planning.spec.ts (20 tests) 1424ms
+ ✓ src/tests/partner-equity.spec.ts (27 tests) 1043ms
+   ✓ screenshot-matching partner equity arithmetic — provisional (27)
+     ✓ renders complete PDF statements with facility branding, period, approval fields and pagination 627ms
+     ✓ retains all partner rows in large-roster exports and includes dated review evidence 340ms
+ ✓ src/tests/vitest/planning-reset-ui.spec.tsx (9 tests) 3039ms
+   ✓ safe planning reset interface (9)
+     ✓ requires explicit preview and exact typed confirmation before execution 374ms
+     ✓ invalidates review on selection and reason changes and allows cancellation without mutation 306ms
+     ✓ shows empty planningItems with zero totals and manual creation without requiring imports 556ms
+     ✓ shows empty planningBranding with zero totals and manual creation without requiring imports 577ms
+     ✓ shows empty planningUniforms with zero totals and manual creation without requiring imports 572ms
+ ✓ src/tests/financial-budget.spec.ts (19 tests) 750ms
+ ✓ src/tests/vitest/planning-zero-fill-ui.spec.tsx (4 tests) 544ms
+ ✓ src/tests/planning-import-outcomes.spec.ts (16 tests) 363ms
+ ✓ src/tests/planning-reset-contract.spec.ts (2 tests) 8ms
+ ✓ src/tests/planning-import-destination.spec.ts (31 tests) 186ms
+
+ Test Files  14 passed (14)
+      Tests  194 passed (194)
+   Start at  21:23:51
+   Duration  52.31s (tests 82%, environment 9%, import 4%, setup 3%, transform 1%)
+
+    Isolate  14 workers spawned · ~793ms startup each (spawn + environment, per file)
+             at least ~4.76s faster with isolate: false — reuses workers across files instead of one per file

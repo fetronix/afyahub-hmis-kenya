@@ -1,0 +1,11 @@
+
+ RUN  v5.0.5 <repository>
+
+ ✓ src/tests/partner-equity.db.spec.ts (11 tests) 1088ms
+   ✓ partner equity — disposable synthetic PostgreSQL only (11)
+     ✓ exports CSV/numeric Excel and facility-branded PDF with authorized export audit 594ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  21:25:46
+   Duration  3.11s (import 48%, tests 38%, transform 7%, setup 7%)

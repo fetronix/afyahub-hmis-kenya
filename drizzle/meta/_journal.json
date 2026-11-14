@@ -694,6 +694,13 @@
       "when": 1796092800000,
       "tag": "0098_annual_financial_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1796179200000,
+      "tag": "0099_partner_equity_statements",
+      "breakpoints": true
     }
   ]
 }
